@@ -1,6 +1,7 @@
 # Consumer round-2 response + 0.5 idea-book
 
-*Answers to [`PROPOSAL_0_4.md`](PROPOSAL_0_4.md)'s round-2 checklist from production data, a review of
+*Answers to the 0.4 round-2 checklist (drafted in the since-retired `PROPOSAL_0_4.md`, its decisions now
+in [`CHANGELOG.md`](CHANGELOG.md)) from production data, a review of
 the sample implementation (`vocab`/`binning`/`pgx`/`pgs`), and — in the spirit of the two-way
 collaboration — a book of **0.5 ideas grounded in our WGS pipeline**, kept inside the one constraint
 the consumer named: it stays **VCF-based, possibly augmented on top.***

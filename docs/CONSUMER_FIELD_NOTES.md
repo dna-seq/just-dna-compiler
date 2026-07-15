@@ -17,8 +17,8 @@ major-only, per Principle 3/4.
 >
 > This copy is **annotated inline**, mailing-list style. Blockquoted `↳ maintainer reply` blocks are
 > the maintainer's condensed reasoning + decisions; the surrounding prose is the consumer's original
-> text, unedited. Frozen column shapes and the open round-2 questions live in the companion
-> [`PROPOSAL_0_4.md`](PROPOSAL_0_4.md) — this file is the discussion thread, that file is the spec draft.
+> text, unedited. The frozen column shapes shipped in 0.4 (the companion `PROPOSAL_0_4.md` spec draft
+> was retired into [`CHANGELOG.md`](CHANGELOG.md) on release); this file remains the discussion thread.
 > **Headline:** every ask is accepted in some form. Two diverge from the literal proposal (**B0**:
 > shared column *vocabulary* across per-quantity tables, not one physical table; **B4**: an optional
 > modifier *column*, not a tuple key), and **B5** goes *further* than our standing roadmap (we freeze
@@ -387,7 +387,7 @@ HTT,  CAG,        27,        35,        neutral,   uncertain_significance, "Inte
 > - The motif is part of the identity (T3). Your DAT1 `21/41` vs `3/3` case (same sample, different
 >   motif definitions) is exactly why a bare `repeat_count` is non-comparable — so the consumer's
 >   repeat call MUST state the motif it counted, and the count is a consumer call
->   (ExpansionHunter/adVNTR/span genotyper), never authored. Frozen shape is in `PROPOSAL_0_4.md`.
+>   (ExpansionHunter/adVNTR/span genotyper), never authored. Frozen shape shipped in 0.4 (see `CHANGELOG.md`).
 > - Short-read `CI`/insufficient-spanning maps to the `unresolved` outcome (T1).
 > - The complex-VNTR **motif-path** form (DAT1 `A-A-B-C-D-…`) is reserved as the home for the
 >   sanctioned declarative-grammar escape hatch (regex over an allele string) — **not built now**.
@@ -448,7 +448,7 @@ uses to motivate item 7b is exactly the case the *simple* shape can't fully expr
 >   to a CSV reader, unqueryable per-component, order-fragile: a coder shortcut, not a protocol idiom.
 >   (Coding-standards call, not a Constitution one — but firm: keys here are always named columns.) So
 >   `copynumbers.csv` keeps its scalar `gene` key and gains an **optional, nullable `modifier_gene` +
->   `modifier_cn` pair**. Single-gene rows leave them null. Shape + example rows in `PROPOSAL_0_4.md`.
+>   `modifier_cn` pair**. Single-gene rows leave them null. Shape + example rows in `REFERENCE_EXAMPLES.md`.
 > - Plus the recurring pair: caller provenance (T2, `SMNCopyNumberCaller v1.1.2`) and unresolved (T1 —
 >   a seg-dup region at ~20× is often not resolved: `METHOD_BLIND_SPOT`, never "2 copies").
 > - **Open Q (gates the freeze):** is a **single** modifier pair enough for every dosage locus you run?
@@ -495,7 +495,7 @@ same class of one-way-door bug, one level up.
 >   per-PGS *weights* would be dead data. That reasoning holds for weights — but your three anti-misuse
 >   fields are a one-way door independent of the combine question, on the highest-stakes module type. So
 >   we freeze: `pgs_id, trait_efo_id, note, group, training_ancestry, match_rate, research_tier`
->   (+ optional header `quality_floor`). Full shape in `PROPOSAL_0_4.md`.
+>   (+ optional header `quality_floor`). Full shape shipped in 0.4 (see `CHANGELOG.md`).
 > - `training_ancestry` is the ancestry parameter axis the binning primitive (§B0) left room for;
 >   `research_tier` pins as *data* that a PRS is a Z/percentile-in-reference, never an ancestry-calibrated
 >   absolute risk.
@@ -576,7 +576,7 @@ their divergence). Everything else is additive and can land whenever it is conve
 > | B6 | Accept — reserve note-only `actionability` axis | reserved namespace |
 >
 > Two divergences from the literal proposals (B0 shape, B4 modifier form) and one over-delivery (B5).
-> The frozen column shapes are drafted in [`PROPOSAL_0_4.md`](PROPOSAL_0_4.md); its round-2 checklist
-> collects the nine open questions inlined above. **Nothing is vitrified until those are answered** —
-> 0.4 stays open for one more pass. Thanks for grounding every ask in a named caller and a real row;
+> The frozen column shapes shipped in 0.4 (see [`CHANGELOG.md`](CHANGELOG.md)); the round-2 checklist
+> collected the nine open questions inlined above, answered from production data in
+> [`CONSUMER_ROUND2_AND_0_5.md`](CONSUMER_ROUND2_AND_0_5.md) — the bytes are now frozen. Thanks for grounding every ask in a named caller and a real row;
 > that is exactly the "schema from generalizing implementations" we asked for.

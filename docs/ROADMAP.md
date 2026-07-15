@@ -6,16 +6,20 @@ what already shipped (0.1.0 → 0.4.0) and the rationale behind it now live wher
 - **[CHANGELOG.md](CHANGELOG.md)** — what shipped in each release, newest first (the record of
   0.1–0.4 that this doc used to duplicate).
 - **[COMPILER.md](COMPILER.md)** — the per-feature coverage table (validated / materialized / computed).
-- **[PROPOSAL_0_4.md](PROPOSAL_0_4.md)** + **[CONSUMER_ROUND2_AND_0_5.md](CONSUMER_ROUND2_AND_0_5.md)**
-  — the 0.4 design rationale and the round-2 answers.
+- **[CHANGELOG.md](CHANGELOG.md)** + **[CONSUMER_ROUND2_AND_0_5.md](CONSUMER_ROUND2_AND_0_5.md)**
+  — the shipped 0.4 design rationale (the 0.4 proposal was retired into the changelog on release) and
+  the round-2 answers.
+- **[PROPOSAL_0_5.md](PROPOSAL_0_5.md)** — the forward 0.5 design threads;
+  **[PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md)** — the near-term 0.4.1 patch (registry-owned identity keys).
 - **[USE_CASES.md](USE_CASES.md)** — each use case run through the *what-blocks?* lens (the `RMn`
   items below are derived there); **[REFERENCE_EXAMPLES.md](REFERENCE_EXAMPLES.md)** — worked drafts.
 
 Code comments that cite "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs for
 already-shipped features — follow them to CHANGELOG.md / COMPILER.md.
 
-**Status:** treating the current branch as **0.4-rc** (packages at `0.4.0`, unpublished;
-`schema_version` `"1.0"`). Everything below is 0.5-and-beyond scope plus the open idea-book.
+**Status:** **0.4.0 released** (packages at `0.4.0`; `schema_version` `"1.0"`). The next patch is
+**0.4.1** (registry-owned identity keys — see [PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md)); everything below
+is 0.5-and-beyond scope plus the open idea-book.
 
 ## 0.5 scope — deferred roadmap items (`RMn`)
 
@@ -34,6 +38,7 @@ rows below are kept for traceability, marked ✅); the rest are 0.5-and-beyond s
 | RM11 | ✅ **shipped in 0.4** — **`doi` provenance column** on `StudyRow`, wider than `pmid` (covers preprints/books/theses/datasets with no PubMed id); validated against the DOI grammar, kept verbatim, materialized into `studies.parquet`. A network-first validator (RM13) cross-fills `doi`↔`pmid`. Additive/optional → P3/P8 clean. The full DOI-only fix (relaxing the mandatory `pmid`) is a 1.0 item — see the 1.0 tracker. | format (schema) | validator source-checks (§4a) | done |
 | RM12 | ✅ **shipped in 0.4** — **Provenance locator**: optional `provenance_quote` (keyword phrase) + `provenance_regex` on `StudyRow`, pointing at the passage in the cited article's fulltext so a validator can answer *"does the fulltext contain this claim?"* yes/no. The regex is a **declarative pattern grammar** (Principle 1 — data, not code; `re.compile`-checked at author time, matched by a consumer-side ReDoS-safe engine); the provenance analogue of `source_field`. | format (schema) | validator fulltext check (§4a) | done |
 | RM13 | **`just-module-validator`** — a network-first source-check/enrichment library (validate `pmid` in PubMed, `rsid`/coords in dbSNP, cross-fill ids, confirm fulltext provenance). **NOT a format task.** Principle 2 (no network) keeps all fetching in a **consumer** sibling to `just-dna-lite`; listed here only so it is not mistaken for format scope, and as the motivating consumer for RM11/RM12. | consumer (new sibling) | deterministic module scrutiny (§4a) | — |
+| RM16 | **Authored PRS weights (a scoring file, not a manifest).** 0.4 shipped `pgs.csv` as a *manifest of PGS Catalog IDs* with the ancestry-validity fields — not authored per-variant weights (just-prs resolves a `PGSxxxxxx` id to a harmonized scoring file and scores each id itself, so inlined weights would be dead data; a PRS is a Z/percentile-in-reference, a shape the format does not bin). Deferred: a distinct, digest-bearing `effect_allele`+`effect_weight` scoring table for the case a module must ship weights the PGS Catalog does not host. Build only against a real consumer that combines authored weights into a score. See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) D1. | format (schema + compiler) | authored-weight PRS modules | medium-large (on demand) |
 | RM15 | **Build-agnostic identity & multi-build support (other-builds-support)** — today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is authored/manifest metadata, but every `chrom/start/ref`, the Ensembl resolver, and all coord-based reasoning silently assume GRCh38. Coordinates are **not absolute** — GRCh37 / GRCh38 / T2T-CHM13 disagree, and the rsid↔coordinate mapping is **build-specific**: an rsid may resolve in one build and be un-annotatable (unplaced/absent) in another, and presence/absence combinations vary per build. This item makes the build a first-class axis — coordinates tagged by (or resolved per) build, a **build-aware resolver** (the injected reference declares its build; a module/reference build mismatch degrades to *unverified* rather than a false consistency error), and cross-build rsid annotatability recorded *as data*. **Parks the "coordinate-first identity" design (option C from the rsid↔coord identity discussion): anchoring identity on the coordinate is rejected while the format is single-build, because it would bake GRCh38 into `variant_key` and make identity reference-dependent; it becomes reconsiderable only once identity can name its build.** **Generalizes one-to-many rsid expansion to multi-build:** a no-coord rsid that maps to several loci is expanded to one row per locus (a paralog/SV signal a client can count — data-agnostic), and that ships **GRCh38-only now as compiler behavior** (pinned by `compiler_version`, not a schema break). What is build-specific is *which* loci and *how many*, so RM15 tags expanded coordinates by build and records cross-build annotatability; the GRCh38 expansion itself is not deferred. Blocked by nothing external (schema-shape + resolver decision) but large — touches identity, positions, the resolver, and `artifact.digest`. Interacts with RM5 (symbolic/structural alleles differ across assemblies) and the reserved `reference_db` axis. | format (schema + compiler) | GRCh37 / T2T modules; cross-build annotatability | large |
 
 **Round-3 / on-demand (widen additively only if a real module hits it):**

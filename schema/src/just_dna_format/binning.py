@@ -1,11 +1,12 @@
 """
-The measure → phenotype binning primitive (0.4 — PROPOSAL_0_4 §B0/T1/T3).
+The measure → phenotype binning primitive (0.4 — see docs/CHANGELOG.md).
 
 One declarative shape shared by every quantity-carrying locus: a per-locus table that maps a
 *measured quantity* (activity score, copy number, repeat count, heteroplasmy fraction, PRS
 percentile) to a phenotype by range. The tables differ only in **which** quantity is measured and
-in their explicit key columns (multicolumn keying — never a packed tuple, PROPOSAL_0_4 keying
-stance). Aligning the column vocabulary gives a consumer one "bin-a-measure" code path.
+in their explicit key columns (multicolumn keying — never a packed tuple; the keying stance is a
+coding standard, see CLAUDE.md). Aligning the column vocabulary gives a consumer one "bin-a-measure"
+code path.
 
 **Data-agnostic (design north star — see CLAUDE.md).** These rows are pure annotation: a lookup
 table declaring range→phenotype. The module contains **no measurement** — the measured quantity is

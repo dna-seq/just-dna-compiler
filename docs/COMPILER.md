@@ -1,6 +1,6 @@
 # Compiler coverage of the 0.3 + 0.4 schema
 
-`just-dna-compiler` adopts the schema (`docs/ROADMAP.md`, `docs/PROPOSAL_0_4.md`) with a
+`just-dna-compiler` adopts the schema (`docs/ROADMAP.md`, `docs/CHANGELOG.md`) with a
 **C++-standard-style feature-coverage** stance: rather than all-or-nothing conformance, it ships a
 per-feature table. As of the 0.4 materialization pass the **validator is complete**, the **upgrade
 derivation ships** (`state`/booleans → the 0.3 axes, as read-time aliases + a materializing

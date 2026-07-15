@@ -1,7 +1,7 @@
 """0.4 schema-contract tests: the binning primitive, the PGx four-table model, and the PGS
-declared interface. Compiler materialization is deferred (PROPOSAL_0_4), so these prove the
-*authored contract* — validation, the mandatory `unresolved` outcome, the reserved-namespace
-boundary, and model-level round-trip losslessness (Principle 7) — without touching the compiler.
+declared interface. The compiler's parquet materialization is exercised in the compiler test suite;
+these prove the *authored contract* — validation, the mandatory `unresolved` outcome, the
+reserved-namespace boundary, and model-level round-trip losslessness (Principle 7) — at the schema level.
 
 Mirrors test_v03.py's inline-dict + `model_validate` style and its guard-the-vocabulary tests.
 """

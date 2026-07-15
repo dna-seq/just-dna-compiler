@@ -40,7 +40,9 @@ in order rather than jumping to code:
    *consumer-side* (the format owns nothing), or a *gap* closable additively? →
    [docs/USE_CASES.md](docs/USE_CASES.md)  ← **start a design task here**
 3. **Means → draft schema → decision** — the proposed shape + charter check + open questions →
-   [docs/PROPOSAL_0_4.md](docs/PROPOSAL_0_4.md)
+   [docs/PROPOSAL_0_5.md](docs/PROPOSAL_0_5.md) (0.5 design threads),
+   [docs/PROPOSAL_0_4_1.md](docs/PROPOSAL_0_4_1.md) (the 0.4.1 patch). *(0.4's proposal shipped and
+   was retired — its decisions live in [docs/CHANGELOG.md](docs/CHANGELOG.md).)*
 4. **Conclusion — how to author it now, with these bricks** → [docs/REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md)
 5. **Terminal** — either **shipped** (schema + compiler; recorded in COMPILER.md coverage) **or**
    **deferred** (a recognised gap parked as an `RMn` roadmap item in ROADMAP.md).

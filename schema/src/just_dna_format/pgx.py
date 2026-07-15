@@ -1,5 +1,5 @@
 """
-PGx star-allele model (0.4 — PROPOSAL_0_4 §B1). Three definition/lookup tables that, with the
+PGx star-allele model (0.4 — see docs/CHANGELOG.md). Three definition/lookup tables that, with the
 per-gene `ActivityPhenotypeRow` binning table (`binning.py`), form the four-table model validated
 against the Aldy / Cyrius / PharmCAT stack:
 

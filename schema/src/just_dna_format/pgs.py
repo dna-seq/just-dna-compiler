@@ -1,5 +1,5 @@
 """
-Polygenic score declaration (0.4 — PROPOSAL_0_4 §B5, item 8).
+Polygenic score declaration (0.4 — see docs/CHANGELOG.md).
 
 `pgs.csv` is a **manifest of PGS Catalog IDs, not authored weights** — just-prs resolves a `PGSxxxxxx`
 id to a harmonized scoring file itself and scores each id independently, so per-PGS weights would be
@@ -7,7 +7,7 @@ dead data. It is therefore a *declared interface* (like `GenePanelSpec`), **not*
 binning table: a PRS yields a Z/percentile *within a matched reference distribution*, which the
 format does not bin.
 
-The one-way-door fields (PROPOSAL_0_4 §B5, consumer round-2 Q8) are pinned here from day one so a
+The one-way-door fields (consumer round-2 Q8) are pinned here from day one so a
 consumer can refuse or caveat an out-of-ancestry application instead of silently miscalibrating:
 - `training_ancestry` — the superpopulation(s) the score was validated in (required floor), plus an
   optional free-form `training_cohort` for the sub-superpop precision superpop codes can't express

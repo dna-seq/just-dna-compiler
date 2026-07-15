@@ -116,14 +116,14 @@ of the below is free to absorb). Each fix ships with a regression test.
   validation behavior at all (consulted only by `authoring_reference()`); now reserved vs. arbitrary is
   a real distinction the maintainer's list produces.
 - **Reserved set corrected: `caller`/`caller_version` dropped, `reference_db` re-scoped.** The
-  "provenance triple" (round-2 Q2, PROPOSAL_0_4 §T2) was a category error: `caller`/`caller_version`
+  "provenance triple" (round-2 Q2) was a category error: `caller`/`caller_version`
   name which tool produced a *call* — a consumer-side measurement the module never holds — so there is
   no anticipated module axis to reserve, and barring the bare name is arbitrary (one non-feature among
   unbounded non-features; `extra="forbid"` already rejects them generically). They are removed from
   `RESERVED_NAMES_0_4`, which is now *only* genuine anticipated module axes: **`reference_db`** —
   re-scoped to its real module-side meaning, a hint naming which reference DB the app should join an
   annotation against (implicit Ensembl/ClinVar today; pinnable per module) — and **`callable_from`**
-  (RM6). PROPOSAL_0_4 §T2 carries a superseded note.
+  (RM6). (The provenance-triple framing was dropped when the 0.4 proposal doc was retired.)
 - **DRY: single `AuthoredModel` base** (`base.py`). The reserved-namespace guard (`extra="forbid"` +
   `reject_reserved`) and the field validators for the shared authored vocabulary (`rsid`,
   `trait_efo_id`, `direction`, `clin_sig`, `stat_significance`, `evidence_level`, finite-`effect_size`)
@@ -206,7 +206,8 @@ below are free to absorb.
 
 ## 2026-07-10 — 0.4 quantitative tables + composed modules
 
-Additive 0.4 schema shapes (frozen per `docs/PROPOSAL_0_4.md`) with full compiler materialization.
+Additive 0.4 schema shapes (design frozen through the 0.4 proposal + consumer round-2) with full
+compiler materialization.
 **`schema_version` stays `"1.0"`** — every 0.1–0.3 module keeps validating; all new tables/columns
 are optional.
 
