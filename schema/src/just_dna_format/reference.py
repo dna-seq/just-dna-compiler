@@ -59,6 +59,7 @@ from just_dna_format.spec import (
     StudyRow,
     VariantRow,
 )
+from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     RECOMMENDED_AUTHOR_KINDS,
@@ -168,6 +169,14 @@ def authoring_reference() -> dict[str, Any]:
             "author_kind": sorted(RECOMMENDED_AUTHOR_KINDS),
         },
         "reserved_names": sorted(RESERVED_NAMES_0_4),
+        # Field-ownership boundary for the `module:` block (S2): keys the format knows about but that
+        # a *publishing registry* stamps, so an author must omit them. Distinct from `reserved_names`
+        # (future module columns) — these will never be authored. A consumer strips them before
+        # validation via `normalize.strip_authority_keys`; `module.version` is NOT here (it is a
+        # genuine advisory authored field).
+        "registry_stamped_keys": {
+            key: IDENTITY_AUTHORITY_REASONS[key] for key in sorted(IDENTITY_AUTHORITY_KEYS)
+        },
         "recommended_palette": {"colors": RECOMMENDED_COLORS, "icons": RECOMMENDED_ICONS},
     }
 

@@ -10,7 +10,8 @@ what already shipped (0.1.0 → 0.4.0) and the rationale behind it now live wher
   — the shipped 0.4 design rationale (the 0.4 proposal was retired into the changelog on release) and
   the round-2 answers.
 - **[PROPOSAL_0_5.md](PROPOSAL_0_5.md)** — the forward 0.5 design threads;
-  **[PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md)** — the near-term 0.4.1 patch (registry-owned identity keys).
+  **[PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md)** — the near-term 0.4.1 patch (inject the authority-key list
+  + genuinely adopt `module.version`).
 - **[USE_CASES.md](USE_CASES.md)** — each use case run through the *what-blocks?* lens (the `RMn`
   items below are derived there); **[REFERENCE_EXAMPLES.md](REFERENCE_EXAMPLES.md)** — worked drafts.
 
@@ -18,8 +19,20 @@ Code comments that cite "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical 
 already-shipped features — follow them to CHANGELOG.md / COMPILER.md.
 
 **Status:** **0.4.0 released** (packages at `0.4.0`; `schema_version` `"1.0"`). The next patch is
-**0.4.1** (registry-owned identity keys — see [PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md)); everything below
-is 0.5-and-beyond scope plus the open idea-book.
+**0.4.1** — implemented, pending a release the user cuts (see [PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md)):
+
+- **Inject the authority-key list (not hardcode it).** The format owns a reference stripper
+  (`normalize.strip_authority_keys`) and a documented convenience set
+  (`normalize.IDENTITY_AUTHORITY_KEYS = {namespace, owner, canonical_id}`), but **applies nothing by
+  default** — a consumer injects the set of registry-stamped identity keys it wants dropped from the
+  authored `module:` block *before* validation (`validate_spec(..., authority_keys=...)`). Extends
+  CONSTITUTION P2's inject-only spirit; keeps the validator strict (a stray/typo'd key still trips
+  `extra="forbid"` loudly — "a validator validates, it does not fix").
+- **Genuinely adopt `module.version`** as a freeform advisory field (accepts the pre-0.4 corpus's
+  `v2`/`3`); the compiler previews the future SemVer coercion and warns only when it would change the
+  value. Digest-neutral. SemVer *enforcement* is deferred to **RM17** below.
+
+Everything else below is 0.5-and-beyond scope plus the open idea-book.
 
 ## 0.5 scope — deferred roadmap items (`RMn`)
 
@@ -39,6 +52,7 @@ rows below are kept for traceability, marked ✅); the rest are 0.5-and-beyond s
 | RM12 | ✅ **shipped in 0.4** — **Provenance locator**: optional `provenance_quote` (keyword phrase) + `provenance_regex` on `StudyRow`, pointing at the passage in the cited article's fulltext so a validator can answer *"does the fulltext contain this claim?"* yes/no. The regex is a **declarative pattern grammar** (Principle 1 — data, not code; `re.compile`-checked at author time, matched by a consumer-side ReDoS-safe engine); the provenance analogue of `source_field`. | format (schema) | validator fulltext check (§4a) | done |
 | RM13 | **`just-module-validator`** — a network-first source-check/enrichment library (validate `pmid` in PubMed, `rsid`/coords in dbSNP, cross-fill ids, confirm fulltext provenance). **NOT a format task.** Principle 2 (no network) keeps all fetching in a **consumer** sibling to `just-dna-lite`; listed here only so it is not mistaken for format scope, and as the motivating consumer for RM11/RM12. | consumer (new sibling) | deterministic module scrutiny (§4a) | — |
 | RM16 | **Authored PRS weights (a scoring file, not a manifest).** 0.4 shipped `pgs.csv` as a *manifest of PGS Catalog IDs* with the ancestry-validity fields — not authored per-variant weights (just-prs resolves a `PGSxxxxxx` id to a harmonized scoring file and scores each id itself, so inlined weights would be dead data; a PRS is a Z/percentile-in-reference, a shape the format does not bin). Deferred: a distinct, digest-bearing `effect_allele`+`effect_weight` scoring table for the case a module must ship weights the PGS Catalog does not host. Build only against a real consumer that combines authored weights into a score. See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) D1. | format (schema + compiler) | authored-weight PRS modules | medium-large (on demand) |
+| RM17 | **Enforce SemVer on `module.version`** — 0.4.1 adopted `version` as a *freeform advisory* field and ships the coercion algorithm (`normalize.normalize_version`) used **read-only** to preview what a future release will read. 0.5 promotes it to an enforced `ModuleInfo.version` validator (coerce `v2`→`2.0.0`, or strict-reject — TBD). **Out of `artifact.digest`**, additive (accepts the same inputs, normalizes them). Once enforced, a clean authored SemVer flows into `Identity.version` (0.4.1 already does this for already-valid values). See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) V1. | format (schema) | pre-0.4 corpus `module.version` | low |
 | RM15 | **Build-agnostic identity & multi-build support (other-builds-support)** — today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is authored/manifest metadata, but every `chrom/start/ref`, the Ensembl resolver, and all coord-based reasoning silently assume GRCh38. Coordinates are **not absolute** — GRCh37 / GRCh38 / T2T-CHM13 disagree, and the rsid↔coordinate mapping is **build-specific**: an rsid may resolve in one build and be un-annotatable (unplaced/absent) in another, and presence/absence combinations vary per build. This item makes the build a first-class axis — coordinates tagged by (or resolved per) build, a **build-aware resolver** (the injected reference declares its build; a module/reference build mismatch degrades to *unverified* rather than a false consistency error), and cross-build rsid annotatability recorded *as data*. **Parks the "coordinate-first identity" design (option C from the rsid↔coord identity discussion): anchoring identity on the coordinate is rejected while the format is single-build, because it would bake GRCh38 into `variant_key` and make identity reference-dependent; it becomes reconsiderable only once identity can name its build.** **Generalizes one-to-many rsid expansion to multi-build:** a no-coord rsid that maps to several loci is expanded to one row per locus (a paralog/SV signal a client can count — data-agnostic), and that ships **GRCh38-only now as compiler behavior** (pinned by `compiler_version`, not a schema break). What is build-specific is *which* loci and *how many*, so RM15 tags expanded coordinates by build and records cross-build annotatability; the GRCh38 expansion itself is not deferred. Blocked by nothing external (schema-shape + resolver decision) but large — touches identity, positions, the resolver, and `artifact.digest`. Interacts with RM5 (symbolic/structural alleles differ across assemblies) and the reserved `reference_db` axis. | format (schema + compiler) | GRCh37 / T2T modules; cross-build annotatability | large |
 
 **Round-3 / on-demand (widen additively only if a real module hits it):**

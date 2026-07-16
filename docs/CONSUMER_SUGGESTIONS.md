@@ -71,3 +71,15 @@ aliases). A short **"authored vs. registry-filled field ownership"** table in th
 — which keys an author sets, which the compiler derives, which the registry stamps — would make the
 `forbid` boundary legible and pre-empt the next round of this. The registry's strip handles the
 identity keys durably; the rest are author-facing and best addressed in the format's docs/vocab.
+
+For the newly-`forbid` surfaces generally — an unknown CSV column *or* a `module_spec.yaml` key
+(`module:`/`defaults:`/`panel:`/`authorship:` + top level) that a pre-0.4 lax schema only warned
+about — the registry added a **lossy, opt-in `registry upgrade --trim --force`** that drops the
+offenders so a legacy spec recompiles, and reports a version *blocked* (rather than crashing) when
+such offenders are present without `--trim`. Registry-owned `module:` keys are excluded (the always-on
+strip handles them). That's the right home for a *lossy* fix (explicit human ops), so no format change
+is requested for it. But it reinforces S2's ask: the more
+of the pre-0.4 authored surface that silently-dropped-then-now-rejects, the more of this a catalog
+operator has to triage by hand. A migration note enumerating the newly-`forbid` surfaces (which
+columns/keys moved from warn to reject in 0.4) would let operators plan the `--trim` pass instead of
+discovering each blocker one compile at a time.

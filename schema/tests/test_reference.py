@@ -48,6 +48,20 @@ def test_authoring_reference_is_generated_not_hardcoded() -> None:
     )
 
 
+def test_authoring_reference_surfaces_version_and_registry_stamped_boundary() -> None:
+    ref = authoring_reference()
+    # `version` is a genuine authored field (0.4.1) — it shows up on ModuleInfo, generated.
+    module_fields = {f["name"] for f in ref["models"]["ModuleInfo"]}
+    assert "version" in module_fields
+    # The registry-stamped keys are the S2 field-ownership boundary — distinct from reserved_names,
+    # and `version` is deliberately NOT among them.
+    stamped = ref["registry_stamped_keys"]
+    assert set(stamped) == {"namespace", "owner", "canonical_id"}
+    assert "version" not in stamped
+    assert not (set(stamped) & set(ref["reserved_names"]))
+    assert all(stamped.values())  # every key carries a reason
+
+
 def test_authoring_reference_field_records_carry_type_required_description() -> None:
     genotype = next(
         f for f in authoring_reference()["models"]["VariantRow"] if f["name"] == "genotype"

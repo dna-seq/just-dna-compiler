@@ -30,6 +30,8 @@ form of those.
 | `provenance_regex` (`StudyRow`, RM12) | ✅ author-time `re.compile` sanity (ReDoS-safety is consumer-side) | ✅ `studies.parquet` | — | complete (P1 pattern grammar; matched consumer-side) |
 | `authorship` (`ModuleSpecConfig`/`ModuleManifest`, RM14) | ✅ `Contribution`: role closed-vocab, kind open multi-valued, `extra=forbid` | ✅ **manifest.json** (out of `artifact.digest`) | — | complete (metadata; like `panel`, not reversed from parquets) |
 | `clin_sig` (`VariantRow`) | ✅ full vocab | ✅ | ✅ ↔ `pathogenic`/`benign` aliases (`effective_*` / `upgraded()`) | complete |
+| `module.version` (`ModuleInfo`, 0.4.1) | ✅ freeform advisory (accepts legacy `v2`/`3`) | ✅ **manifest** `Identity.version` iff already valid SemVer (out of `artifact.digest`); `reverse_module(version=)` re-emits | ✅ `normalize.normalize_version` **preview** — warns only when coercion would change the value (`v2`→`2.0.0`); enforcement is RM17 | complete (advisory) |
+| authority-key strip (`module:` block, 0.4.1) | ✅ inject-only: `validate_spec(..., authority_keys=)` pre-strips via `normalize.strip_authority_keys`, dropped keys → `.info`; unstripped/typo'd keys still `extra=forbid` | — (dropped before validation; never materialized) | — | complete (DI; see PROPOSAL_0_4_1) |
 | genotype widening: hemizygous single allele | ✅ | ✅ (1-element list) | — | complete |
 | genotype widening: phased `A\|G` | ✅ (order kept, not sorted) | ✅ `phased` bit + ordered list → **lossless round-trip** | ✅ | complete |
 | `state` (legacy) | ✅ (unchanged, **stays required** — CONSTITUTION P8) | ✅ | ✅ read alias via `effective_direction`; trimmed to {protective,risk,neutral} on `upgraded()` | complete |

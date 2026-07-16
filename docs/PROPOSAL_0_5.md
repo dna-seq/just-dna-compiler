@@ -44,6 +44,35 @@ consumer-side ReDoS-safe match), reusing the `source_field`/`provenance_regex` p
 Build it only when a real module's count proves too coarse; until then it stays an escape hatch, not a
 required shape.
 
+### V1 — Enforce SemVer on `module.version` (0.4.1's advisory preview → 0.5 rule) → ROADMAP RM17
+
+0.4.1 genuinely adopted `module.version` as a **freeform advisory** field (the whole pre-0.4 corpus
+carries an informal `v2`/`3`; see [`PROPOSAL_0_4_1.md`](PROPOSAL_0_4_1.md)). It ships the coercion
+algorithm now — `just_dna_format.normalize.normalize_version` — but uses it **read-only**: the compiler
+*previews* what a future release will read (warning `v2` → *"will read it as `2.0.0`"*, silent on a
+clean `1.2.3`).
+
+**0.5 means:** promote `normalize_version` from preview to **enforcement** on `ModuleInfo.version` — a
+`field_validator` that coerces the authored value to canonical `MAJOR.MINOR.PATCH` (or a strict
+validator that rejects a non-coercible value, TBD below). The algorithm as built: strip every char
+that is not a digit or the `.` separator, split on `.`, take the first three fields (empty/absent → `0`,
+leading zeros dropped), right-pad to three — so `v2`→`2.0.0`, `1.5`→`1.5.0`, `1.2.3`→`1.2.3`
+(idempotent), a no-digit value → `0.0.0`.
+
+**Charter check:** still **out of `artifact.digest`** (identity metadata) and additive — coercion
+*accepts* the same inputs 0.4.1 does, just normalizes them, so it does not tighten requiredness (P8) or
+move digest bytes (P3). Once enforced, an authored SemVer flows straight into `Identity.version` (0.4.1
+already does this for already-clean values).
+
+**Open questions for 0.5:**
+- **Coerce vs. reject.** Coercing (`v2`→`2.0.0`) is maximally compatible and matches the preview an
+  author already saw; strict-reject is louder but re-breaks the corpus 0.4.1 just unbroke. Lean:
+  **coerce**, keeping the authored string recoverable if a consumer wants the verbatim marker.
+- **Separator.** The field report said "comma-separated fields"; a version delimiter is conventionally
+  `.`. Confirm the delimiter (the built algorithm uses `.`) before enforcing.
+- **Round-trip.** Coercion must stay idempotent (`normalize_version(normalize_version(v)) ==
+  normalize_version(v)` — already tested) so compile → reverse → recompile does not oscillate.
+
 ---
 
 ## Settled in 0.4 — do not reopen
@@ -70,5 +99,7 @@ Everything else that was open at the end of the 0.4 round is tracked as `RMn` in
 explicitly **consumer** contracts, not format scope. New ideas enter through the freeform idea-book in
 the roadmap and graduate here once they are worth a draft shape.
 
-**Near-term note:** the 0.4.1 patch (registry-owned identity keys — a consumer field report, not a 0.5
-item) has its own plan in [`PROPOSAL_0_4_1.md`](PROPOSAL_0_4_1.md).
+**Near-term note:** the 0.4.1 patch (inject the authority-key list + genuinely adopt `module.version`
+— a consumer field report, not a 0.5 item) has its own plan in
+[`PROPOSAL_0_4_1.md`](PROPOSAL_0_4_1.md). Its version follow-up (enforce SemVer) is **V1 / RM17**
+above.

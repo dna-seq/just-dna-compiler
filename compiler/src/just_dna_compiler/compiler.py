@@ -20,12 +20,14 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Callable, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Iterable, Optional, Union, get_args, get_origin
 
 import polars as pl
 import yaml
 from just_dna_format.base import derive_variant_key
+from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import build_artifact, file_entries, file_entry, sha256_file
+from just_dna_format.normalize import normalize_version, strip_authority_keys
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     Compilation,
@@ -321,21 +323,32 @@ def _collect_logo(
 # ── File loading helpers ───────────────────────────────────────────────────────
 
 
-def _load_yaml(path: Path) -> tuple[Optional[ModuleSpecConfig], list[str]]:
-    """Load and validate module_spec.yaml. Returns (config, errors)."""
+def _load_yaml(
+    path: Path, authority_keys: Optional[Iterable[str]] = None
+) -> tuple[Optional[ModuleSpecConfig], list[str], list[str]]:
+    """Load and validate module_spec.yaml. Returns (config, errors, dropped_authority_keys).
+
+    When `authority_keys` is given, the format's reference stripper removes those consumer/registry-
+    owned identity keys from the `module:` block *before* validation (inject-only — the caller supplies
+    the set, e.g. `just_dna_format.normalize.IDENTITY_AUTHORITY_KEYS`). The validator itself stays
+    strict: any key NOT in the injected set still trips `extra="forbid"`. `dropped` is the sorted list
+    of keys actually removed, for the caller to surface as INFO."""
     if not path.exists():
-        return None, [f"module_spec.yaml not found at {path}"]
+        return None, [f"module_spec.yaml not found at {path}"], []
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if raw is None:
-        return None, ["module_spec.yaml is empty"]
+        return None, ["module_spec.yaml is empty"], []
+    dropped: list[str] = []
+    if authority_keys and isinstance(raw, dict) and isinstance(raw.get("module"), dict):
+        raw["module"], dropped = strip_authority_keys(raw["module"], authority_keys)
     try:
-        return ModuleSpecConfig.model_validate(raw), []
+        return ModuleSpecConfig.model_validate(raw), [], dropped
     except ValidationError as exc:
         errors = []
         for err in exc.errors():
             loc = " → ".join(str(x) for x in err["loc"])
             errors.append(f"module_spec.yaml [{loc}]: {err['msg']}")
-        return None, errors
+        return None, errors, dropped
 
 
 def _load_csv_rows(
@@ -527,8 +540,16 @@ def _validate_table_kind(
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 
-def validate_spec(spec_dir: Path) -> ValidationResult:
+def validate_spec(
+    spec_dir: Path, authority_keys: Optional[Iterable[str]] = None
+) -> ValidationResult:
     """Validate a module spec directory without producing output.
+
+    `authority_keys` (inject-only) is the set of consumer/registry-owned identity keys to strip from
+    the authored `module:` block before validation — pass `just_dna_format.normalize.
+    IDENTITY_AUTHORITY_KEYS` (or your own set) so a legacy spec carrying `namespace:`/`owner:`/
+    `canonical_id:` validates; the format applies none by default. Stripped keys are surfaced on
+    `.info`. Everything else still trips `extra="forbid"`.
 
     Stats include `genes`/`categories` as lists (filtering None) plus `variant_count`,
     `gene_count`, `study_count`, and the ClinVar quality counts
@@ -543,8 +564,26 @@ def validate_spec(spec_dir: Path) -> ValidationResult:
     if not spec_dir.is_dir():
         return ValidationResult(valid=False, errors=[f"Spec directory does not exist: {spec_dir}"])
 
-    config, yaml_errors = _load_yaml(spec_dir / "module_spec.yaml")
+    config, yaml_errors, dropped_authority = _load_yaml(
+        spec_dir / "module_spec.yaml", authority_keys
+    )
     all_errors.extend(yaml_errors)
+    if dropped_authority:
+        all_info.append(
+            f"dropped injected authority keys from module: block (registry-stamped, not authored): "
+            f"{dropped_authority}"
+        )
+    # `module.version` is advisory (the registry stamps the canonical Identity.version). Preview what
+    # 0.5's SemVer coercion will read, warning only when it differs from the authored value — a clean
+    # MAJOR.MINOR.PATCH stays silent (docs/PROPOSAL_0_5.md).
+    if config is not None and config.module.version:
+        authored = config.module.version
+        coerced = normalize_version(authored)
+        if coerced != authored:
+            all_warnings.append(
+                f"module.version {authored!r} is advisory; 0.5 SemVer parsing will read it as "
+                f"{coerced!r}. The registry stamps the canonical version on publish."
+            )
 
     # A module composes from optional table kinds (RM2): variants.csv is no longer mandatory — a PGx /
     # PharmGKB / PRS module carries only its own table(s). Load whatever is present.
@@ -665,6 +704,7 @@ def compile_module(
     log_files: Optional[list[Path]] = None,
     provenance_file: Optional[Path] = None,
     logo_file: Optional[Path] = None,
+    authority_keys: Optional[Iterable[str]] = None,
 ) -> CompilationResult:
     """Compile a module spec directory into parquet files plus a `manifest.json`.
 
@@ -684,17 +724,20 @@ def compile_module(
             `spec_dir/provenance.json`. Optional; summarized into `manifest.provenance`.
         logo_file: Explicit module logo image. If None, auto-discovers `spec_dir/logo.{png,jpg,jpeg}`.
             Optional; hashed into `manifest.logo`, kept out of `artifact.digest`.
+        authority_keys: Inject-only set of consumer/registry-owned identity keys to strip from the
+            authored `module:` block before validation (e.g. `just_dna_format.normalize.
+            IDENTITY_AUTHORITY_KEYS`). None strips nothing.
     """
     spec_dir = Path(spec_dir)
     output_dir = Path(output_dir)
 
-    validation = validate_spec(spec_dir)
+    validation = validate_spec(spec_dir, authority_keys)
     if not validation.valid:
         return CompilationResult(
             success=False, errors=validation.errors, warnings=validation.warnings
         )
 
-    config, _ = _load_yaml(spec_dir / "module_spec.yaml")
+    config, _, _ = _load_yaml(spec_dir / "module_spec.yaml", authority_keys)
     assert config is not None
     module_name = config.module.name
 
@@ -813,8 +856,14 @@ def _build_manifest(
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
     vstats = validation.stats
+    # Pass an authored version into Identity only when it is already canonical SemVer — a freeform
+    # advisory value (`v2`/`3`) stays None here (the registry stamps the canonical version on publish,
+    # and Identity.version is SemVer-validated). Out of `artifact.digest` either way.
+    authored_version = (
+        module.version if module.version and is_valid_version(module.version) else None
+    )
     return ModuleManifest(
-        identity=Identity(name=module.name),
+        identity=Identity(name=module.name, version=authored_version),
         display=Display(
             title=module.title,
             description=module.description,
@@ -1083,8 +1132,13 @@ def reverse_module(
     report_title: Optional[str] = None,
     icon: str = "database",
     color: str = "#6435c9",
+    version: Optional[str] = None,
 ) -> Path:
-    """Reverse-engineer a parquet module back into the spec DSL (yaml + csv). Returns output_dir."""
+    """Reverse-engineer a parquet module back into the spec DSL (yaml + csv). Returns output_dir.
+
+    `version` (like `title`/`description`) is authored `module:` metadata, out of `artifact.digest`
+    and so not materialized into any parquet — a caller that wants it in the re-emitted spec supplies
+    it (e.g. from the manifest's `identity.version`); when omitted it is left out of the block."""
     parquet_dir = Path(parquet_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1110,16 +1164,19 @@ def reverse_module(
 
     defaults_dict: dict[str, Any] = {"curator": default_curator, "method": default_method}
 
+    module_block: dict[str, Any] = {
+        "name": module_name,
+        "title": title or module_name.replace("_", " ").title(),
+        "description": description or f"Annotation module: {module_name}",
+        "report_title": report_title or module_name.replace("_", " ").title(),
+        "icon": icon,
+        "color": color,
+    }
+    if version is not None:
+        module_block["version"] = version
     spec = {
         "schema_version": "1.0",
-        "module": {
-            "name": module_name,
-            "title": title or module_name.replace("_", " ").title(),
-            "description": description or f"Annotation module: {module_name}",
-            "report_title": report_title or module_name.replace("_", " ").title(),
-            "icon": icon,
-            "color": color,
-        },
+        "module": module_block,
         "defaults": defaults_dict,
         "genome_build": "GRCh38",
     }

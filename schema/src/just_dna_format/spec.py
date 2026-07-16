@@ -94,6 +94,19 @@ class ModuleInfo(Display):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="Machine name: lowercase, underscores, no spaces")
+    version: Optional[str] = Field(
+        default=None,
+        description=(
+            "Authored **advisory** version — a human marker (informal `v2`/`3` or SemVer). The "
+            "publishing registry stamps and overrides the canonical SemVer `Identity.version` on "
+            "publish, so this is not load-bearing for identity. Freeform in 0.4.1 (the compiler warns "
+            "with a SemVer preview when it isn't already `MAJOR.MINOR.PATCH`); slated to become "
+            "coerced-SemVer in 0.5 (docs/PROPOSAL_0_5.md). Genuinely accepted (not stripped) so the "
+            "whole pre-0.4 corpus that carries `module.version` validates — unlike the "
+            "registry-stamped identity keys (namespace/owner/canonical_id), which a consumer strips "
+            "via just_dna_format.normalize.strip_authority_keys before validation."
+        ),
+    )
 
     @field_validator("name")
     @classmethod
