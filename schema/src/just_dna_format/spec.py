@@ -29,9 +29,9 @@ from just_dna_format.manifest import SCHEMA_VERSION, Contribution, Display, Gene
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,
-    VALID_CLIN_SIG,
-    VALID_DIRECTIONS,
-    VALID_SIGNIFICANCE,
+    VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
+    VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
+    VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
     check_vocab,
     validate_allele,
     validate_finite,

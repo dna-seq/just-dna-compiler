@@ -31,8 +31,14 @@ already-shipped features — follow them to CHANGELOG.md / COMPILER.md.
 - **Genuinely adopt `module.version`** as a freeform advisory field (accepts the pre-0.4 corpus's
   `v2`/`3`); the compiler previews the future SemVer coercion and warns only when it would change the
   value. Digest-neutral. SemVer *enforcement* is deferred to **RM17** below.
+- **Strict (all-or-nothing) compile** — `compile_module(..., strict=True)` refuses a partial artifact
+  when a variant position is left unresolved (the "local hash differs from published" failure mode).
+- **A compiler CLI (Typer)** — `just-dna-compiler validate|compile|reverse`, a compiler-only dep (tiers
+  intact). Plus `ruff` added to the dev group and package `authors`/`maintainers`.
 
-Everything else below is 0.5-and-beyond scope plus the open idea-book.
+*Still design-only in [PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md): the "Ensembl cache authority leaves the
+compiler" item (needs the `just-dna-datasets` package to coordinate against).* Everything else below is
+0.5-and-beyond scope plus the open idea-book.
 
 ## 0.5 scope — deferred roadmap items (`RMn`)
 

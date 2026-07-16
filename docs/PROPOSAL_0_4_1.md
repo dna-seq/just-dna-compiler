@@ -195,9 +195,9 @@ like `pytest` / `ruff`, never shipped to a consumer and (base-only) never a runt
 
 ## Strict (all-or-nothing) compile — refuse a partial artifact
 
-**Status: decided, not yet implemented.** This item is not a consumer field-note ask either — it fell
+**Status: implemented on the 0.4.1 branch.** This item is not a consumer field-note ask either — it fell
 out of the **Issue 2 incident** ("post-publish local hash differs from published"). It shares this
-patch's reproducibility/inject-only spirit, so it is recorded here for the implementation pass.
+patch's reproducibility/inject-only spirit.
 
 ### The incident → the lesson
 
@@ -255,9 +255,9 @@ publisher/registry passes `strict=True`.
 
 ## A compiler CLI (Typer)
 
-**Status: decided, not yet implemented.** There is **no CLI today** — no `[project.scripts]`, no
-`argparse`/`typer`/`__main__`; the compiler's whole surface is the Python API (`validate_spec` /
-`compile_module` / `reverse_module`). A catalog operator or CI job has to write a Python snippet to
+**Status: implemented on the 0.4.1 branch.** There was **no CLI** — no `[project.scripts]`, no
+`argparse`/`typer`/`__main__`; the compiler's whole surface was the Python API (`validate_spec` /
+`compile_module` / `reverse_module`). A catalog operator or CI job had to write a Python snippet to
 compile a module. This item adds a first-class command-line front door.
 
 ### The decision — a Typer CLI in `just-dna-compiler` only
@@ -312,25 +312,25 @@ any rsid-only variant).
 - Compiler: `validate_spec(spec_dir, authority_keys=None)` + `compile_module(..., authority_keys=None)`
   pre-strip in `_load_yaml`, surface dropped keys on `.info`, warn with the SemVer preview;
   `_build_manifest` fills `Identity.version` from a clean authored SemVer; `reverse_module(..., version=None)`.
-- Tests: `schema/tests/test_normalize.py`, `compiler/tests/test_authority_keys.py`, plus a
-  reference-surface assertion.
+- **Strict (all-or-nothing) compile**: `compile_module(..., strict: bool = False)` + the
+  post-resolution unresolved-position gate (fails before any parquet is written).
+- **Compiler CLI (Typer)**: `just_dna_compiler/cli.py` (validate/compile/reverse), the `typer` runtime
+  dep, and the `just-dna-compiler` `[project.scripts]` entry. `--strict` / `--strip-identity` /
+  `--authority-key` / `--ensembl-cache` / `--no-resolve`; exit codes 0/1.
+- **Dev tooling + metadata**: `ruff` added to the workspace-root dev group (it was referenced but
+  present in none of the three dev groups); `authors` + `maintainers` (Newton Winter) on both packages'
+  `[project]`.
+- Tests: `schema/tests/test_normalize.py`, `compiler/tests/test_authority_keys.py`,
+  `compiler/tests/test_strict_compile.py`, `compiler/tests/test_cli.py`, plus a reference-surface
+  assertion.
 - **Version bump** `0.4.0 → 0.4.1` (`schema_version` stays `"1.0"`) is the user's to cut — not done here.
 
-**Pending in this patch, not yet in the tree** — all design-only above, deferred to the implementation
-pass:
+**Pending in this patch, not yet in the tree** — design-only, deferred to a later pass:
 
 - *Ensembl cache authority leaves the compiler*: delete `just_dna_compiler/cache.py`; make
   `resolve_variants` / `compile_module` pure inject-only (`None` → skip with a warning); relocate
   `DUCKDB_NAME` into `resolver.py`; drop `platformdirs` + `python-dotenv` from the compiler's runtime
   deps and add `just-dna-datasets` (base) to its dev group; keep `test_resolver_integration.py`,
-  rewiring it from `just_dna_compiler.cache` to `just_dna_datasets.locations`.
-- *Strict (all-or-nothing) compile*: add `compile_module(..., strict: bool = False)` and the
-  post-resolution unresolved-position gate (before parquet writes); tests for strict-fails-on-unresolved
-  and strict-passes-when-complete.
-- *Compiler CLI (Typer)*: add `just_dna_compiler/cli.py` (validate/compile/reverse), the `typer` runtime
-  dep, and a `[project.scripts]` entry; `CliRunner` smoke tests.
-- *Dev tooling*: **add `ruff` to the dev dependency group.** It is referenced in *Tests — kept local*
-  above ("this repo already dev-deps pytest / ruff") but is currently in **none** of the three dev
-  groups — root / `schema` / `compiler` `pyproject.toml` each carry only `pytest>=9.0.3`. Add `ruff`
-  beside `pytest` (workspace-root `[dependency-groups] dev` is the natural home — it lints both
-  members), landing with the datasets-base dev-dep the cache-authority item lists.
+  rewiring it from `just_dna_compiler.cache` to `just_dna_datasets.locations`. (Deferred here because it
+  needs the `just-dna-datasets` package to coordinate against — the CLI's `--ensembl-cache` is already
+  the inject point, so its shape is unaffected when this lands.)

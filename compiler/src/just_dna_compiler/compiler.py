@@ -705,6 +705,7 @@ def compile_module(
     provenance_file: Optional[Path] = None,
     logo_file: Optional[Path] = None,
     authority_keys: Optional[Iterable[str]] = None,
+    strict: bool = False,
 ) -> CompilationResult:
     """Compile a module spec directory into parquet files plus a `manifest.json`.
 
@@ -727,6 +728,11 @@ def compile_module(
         authority_keys: Inject-only set of consumer/registry-owned identity keys to strip from the
             authored `module:` block before validation (e.g. `just_dna_format.normalize.
             IDENTITY_AUTHORITY_KEYS`). None strips nothing.
+        strict: All-or-nothing compile. When True, fail (rather than emit a partial artifact) if any
+            variant still lacks a resolved genomic position (`chrom`+`start`) after resolution — an
+            unresolved position means the injected reference was incomplete/absent and the parquet
+            bytes (hence `artifact.digest`) would not be reproducible. Default False keeps the
+            best-effort behavior (positions left unset, surfaced as warnings).
     """
     spec_dir = Path(spec_dir)
     output_dir = Path(output_dir)
@@ -767,6 +773,28 @@ def compile_module(
             return CompilationResult(
                 success=False,
                 errors=[f"post-resolution: {e}" for e in post_errors],
+                warnings=all_warnings,
+            )
+
+    # Strict (all-or-nothing): refuse to write a partial artifact. A variant still missing its
+    # genomic position after resolution means the injected reference was incomplete or absent, so the
+    # coordinate-anchored parquet bytes (and `artifact.digest`) would not be reproducible — the
+    # failure mode behind "local hash differs from published". Best-effort (strict=False) leaves such
+    # rows unset with a warning instead. Scope is the SNP-core VariantRow; the 0.4 table kinds carry
+    # no positions.
+    if strict and variants:
+        unresolved = sorted(
+            v.rsid or v.variant_key for v in variants if v.chrom is None or v.start is None
+        )
+        if unresolved:
+            return CompilationResult(
+                success=False,
+                errors=[
+                    f"strict compile: {len(unresolved)} variant(s) have unresolved genomic "
+                    f"positions after resolution: {unresolved}. A partial artifact would not be "
+                    f"byte-reproducible; inject a complete Ensembl reference (ensembl_cache=) or "
+                    f"compile without strict."
+                ],
                 warnings=all_warnings,
             )
 
