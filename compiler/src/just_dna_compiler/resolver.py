@@ -184,6 +184,32 @@ def resolve_variants(
     return patched, warnings
 
 
+def lookup_loci(
+    reference: Path,
+    rsids: list[str],
+    positions: list[tuple[Optional[str], Optional[int], Optional[str]]],
+) -> tuple[dict[str, list[dict]], dict[str, str], list[str]]:
+    """Public cache lookup the enricher uses to *build* a resolution table (0.5).
+
+    Returns `(rsid -> [loci], pos_key -> rsid, warnings)` from an injected Ensembl reference, reusing
+    the exact DuckDB queries `resolve_variants` runs — so the enricher (which produces `resolution.csv`)
+    and the compiler's superseded DuckDB path never drift. Inject-only: `reference` is a `.duckdb` file
+    or a parquet dir the caller provisioned (the enricher owns the download); this never fetches.
+    """
+    warnings: list[str] = []
+    con = _connect(reference)
+    try:
+        rsid_to_loci = (
+            _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
+        )
+        pos_to_rsid = (
+            _lookup_rsids_by_position(con, sorted(set(positions)), warnings) if positions else {}
+        )
+    finally:
+        con.close()
+    return rsid_to_loci, pos_to_rsid, warnings
+
+
 def _lookup_positions_by_rsid(
     con: duckdb.DuckDBPyConnection, rsids: list[str], warnings: list[str]
 ) -> dict[str, list[dict]]:

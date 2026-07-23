@@ -19,19 +19,29 @@ purpose.
 - Stay **dependency-light, in tiers.** `just-dna-format` (schema + integrity) costs only `pydantic`
   plus `cryptography` (the latter solely for Ed25519 signature verify/sign, added in 0.2 — a small,
   pure-verify dependency, never a heavy transitive tree), so any verify-only client can depend on it;
-  `just-dna-compiler` adds polars/duckdb/pyyaml for the transform. Consumers pick the tier they need
-  and pull nothing heavier. The bright line is the *heavyweight* deps in Non-goals below (Dagster /
-  LLM SDKs / HuggingFace), which neither tier may ever pull.
+  `just-dna-compiler` adds polars/duckdb/pyyaml for the transform. A third, **network tier**
+  (`just-dna-enricher`, added 0.5) *produces* the injected resolution table these two consume, and is
+  the only tier permitted to fetch (httpx/tenacity/huggingface-hub); it depends inward
+  (`enricher → compiler → format`) so its deps never enter the compile path. Consumers pick the tier
+  they need and pull nothing heavier. The bright line is the *heavyweight* deps in Non-goals below
+  (Dagster / LLM SDKs / HuggingFace), which the **format and compiler tiers** may never pull.
 - Make **integrity the identity.** A version is defined by its content digest, byte-reproducible by
   anyone who holds the inputs.
 
 ## Non-goals
 
-- **No heavyweight dependencies in these libs.** Never pull Dagster, LLM SDKs, or HuggingFace.
-  Orchestration and AI-assisted authoring live in `just-dna-pipelines`; artifact storage and serving
-  live in `just-dna-marketplace`.
-- **No network.** These packages never download reference data. The Ensembl resolver is
-  **inject-only**; provisioning is the caller's job (app-side).
+- **No heavyweight dependencies in `just-dna-format` / `just-dna-compiler`.** Never pull Dagster or
+  LLM SDKs into any tier; never pull HuggingFace into the **format or compiler** tiers. Orchestration
+  and AI-assisted authoring live in `just-dna-pipelines`. HuggingFace is permitted **only** in the
+  network tier (`just-dna-enricher`), which owns the bulk-snapshot download — that carve-out is the
+  0.5 amendment below, and it is scoped: HuggingFace never reaches the two dependency-light tiers a
+  verify-only or compile-only client installs.
+- **No network in the format/compiler tiers.** `just-dna-format` and `just-dna-compiler` never
+  download reference data. Resolution facts are **injected** as a persisted, source-independent table
+  (`resolution.csv`); the compiler consumes only that table (and, transitionally, an injected
+  reference) and **skips with a warning** when nothing is injected, never fetching. Filling that table
+  from any source — a cache, the network, or a human — is the job of the separate network tier
+  (`just-dna-enricher`), which the compile path never imports.
 - **Not a runtime.** The format is data, not a program (Principle 1). A consumer must be able to read
   a module without executing anything the module ships.
 - **No UI and no gene–disease inference.** The format catalogs curated annotations that consumers
@@ -54,9 +64,15 @@ purpose.
    pattern grammars are in; general code is out. None of these are needed yet — they are escape
    hatches, available if a task genuinely demands, never a default.
 
-2. **No network; inject-only.** The libraries do not fetch. Any reference (Ensembl, ClinVar) is
-   injected by the caller; with nothing injected, the compiler skips resolution with a warning rather
-   than downloading.
+2. **No network; inject-only (format + compiler).** `just-dna-format` and `just-dna-compiler` do not
+   fetch. Any reference (Ensembl, ClinVar) is injected by the caller; with nothing injected, the
+   compiler skips resolution with a warning rather than downloading. Since 0.5 the injection is
+   formalized as a **source-independent resolution table** (`resolution.csv`) the compiler consumes,
+   owning no source convention — so this principle *tightened* rather than loosened. Fetching lives in
+   a separate tier, `just-dna-enricher`, which *produces* the table (cache / snapshot / live Ensembl /
+   human) before compilation begins; it is not part of the format/compiler tiers and the compile path
+   never imports it. (The pre-0.5 injected DuckDB reference remains a superseded, still-working
+   inject-only path, queued for removal at the next major.)
 
 3. **Backward-compatible within a major version.** Inside an `N.x` line every change is additive and
    non-breaking: `schema_version` is unchanged, existing modules keep validating, and anything
@@ -124,3 +140,11 @@ reserved-namespace and 1.0-cleanup trackers, and coding-style conventions (type 
 absolute imports) all live in their own documents, never here. If any of them conflicts with a
 principle above, this document governs — resolve the conflict by amending one or the other on
 purpose, not by letting the two drift.
+
+**0.5 amendment — the network tier.** Goal 2, the two Non-goals on dependencies and network, and
+Principle 2 were amended to introduce `just-dna-enricher`: a third, network-capable tier that
+*produces* the injected `resolution.csv` the compiler consumes. The change is additive and scoped, not
+a reversal — `just-dna-format` and `just-dna-compiler` become *more* strictly inject-only (they own no
+source convention and never fetch), and HuggingFace/httpx/tenacity are confined to the enricher, never
+reaching the dependency-light tiers a verify-only or compile-only client installs. This completes the
+`just-dna-datasets`/"cache authority leaves the compiler" decoupling recorded in the 0.4.1 plan.

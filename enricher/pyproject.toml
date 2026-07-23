@@ -1,0 +1,40 @@
+[project]
+name = "just-dna-enricher"
+version = "0.5.0"
+description = "Network tier for just-dna: fills the source-independent resolution table (cache + Ensembl) that the compiler consumes"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "Newton Winter", email = "isoutthere@gmail.com" },
+]
+maintainers = [
+    { name = "Newton Winter", email = "isoutthere@gmail.com" },
+]
+# The network tier. It DEPENDS on format + compiler (it orchestrates them); the arrow never points
+# back, so `import httpx` / `huggingface_hub` never enters the compile path (CONSTITUTION Goal 2 +
+# the 0.5 amendment scoping the network tier + HuggingFace here). This is the only package allowed to
+# fetch; format and compiler stay strictly inject-only.
+dependencies = [
+    "just-dna-format>=0.5.0",
+    "just-dna-compiler>=0.5.0",
+    "httpx>=0.28.1",
+    "tenacity>=9.0.0",
+    "huggingface-hub>=0.34.0",
+    "typer>=0.12.0",
+]
+
+[project.scripts]
+just-dna-enricher = "just_dna_enricher.cli:app"
+
+[build-system]
+requires = ["uv-build"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+just-dna-format = { workspace = true }
+just-dna-compiler = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["schema", "compiler"]
+members = ["schema", "compiler", "enricher"]
 
 [dependency-groups]
 dev = [
@@ -8,7 +8,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["schema/tests", "compiler/tests"]
+testpaths = ["schema/tests", "compiler/tests", "enricher/tests"]
 addopts = "-vvv --import-mode=importlib"
 markers = [
     "integration: needs external data/network (an Ensembl reference cache or HuggingFace). Set JUST_DNA_ENSEMBL_CACHE to run resolver tests; skipped otherwise.",

@@ -51,11 +51,31 @@ Shipped in this increment (schema + compiler; **no network added yet**):
   / offline round-trip; provenance/order-independence; `resolution.csv` absent from `manifest.inputs`
   with `content_signature` unchanged; strict-vs-best-effort via the table).
 
-Still to land in 0.5 (next increments): the `just-dna-enricher` network tier (cache download + Ensembl
-V2 GraphQL + V1 REST fallback on 500/503 + tenacity, best-effort/strict/`--offline`); completing the
-0.4.1 *"cache authority leaves the compiler"* item (delete `cache.py`, pure inject-only) once the
-enricher exists to coordinate against; and the deliberate Constitution amendment scoping the network
-tier + HuggingFace to the enricher.
+**`just-dna-enricher` — the new network tier (shipped this increment).** The only package allowed to
+fetch; it *produces* `resolution.csv`, and the arrow points inward (`enricher → compiler → format`) so
+`httpx`/`huggingface-hub` never enter the compile path. `enrich(spec_dir, mode, offline, ...)` runs a
+first-hit-wins chain — existing/human row (authoritative) → local cache (offline; reuses the
+compiler's new public `resolver.lookup_loci`) → HF snapshot download (footer-checked, atomic, inherited
+from lite byte-for-byte) → live Ensembl **V2 GraphQL → V1 REST fallback on 500/503**, `tenacity`
+retrying transient errors — then writes `resolution.csv`. Modes: `best_effort` records misses as
+`not_found`; `strict` fails unless every variant resolves; `--offline` clamps to the cache (zero
+egress). Ensembl query shapes/endpoints are leeched from ensembl-mcp with `fastmcp`/`eliot` dropped
+(stdlib logging), Python floor held at the compiler's `>=3.13`. CLI: `enrich`, `enrich-and-compile`.
+Downstream (ensembl-mcp, lite/pipelines) adopt this as the single source of truth for resolution.
+**Tests +6** (offline enrich→compile matches the DuckDB digest; `--offline` makes zero network calls;
+V2 503 → V1 REST; tenacity retry; strict failure; one-to-many expansion). The two libs bumped
+`0.4.0 → 0.5.0` so the workspace resolves the new member.
+
+**Constitution amended (deliberately).** Goal 2, both dependency/network Non-goals, and Principle 2
+now name the network tier: format + compiler become *more* strictly inject-only (own no source
+convention, never fetch), and HuggingFace/httpx/tenacity are scoped to the enricher, never reaching
+the dependency-light tiers a verify-only/compile-only client installs. Additive and scoped, not a
+reversal — it completes the 0.4.1 *"cache authority leaves the compiler"* decoupling.
+
+Still to land in 0.5 (final decoupling): delete the compiler's `cache.py` location authority and make
+`resolve_variants` pure inject-only (`None` → skip, no env/platformdirs auto-discovery), moving the
+cache-location logic into the enricher — the DuckDB *lookup* path itself stays as a superseded working
+alias until 1.0 (see the 1.0-cleanup tracker).
 
 ## 2026-07-15 — 0.4.0 (released) — audit pass: input-hardening tidy-ups
 
