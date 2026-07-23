@@ -82,6 +82,25 @@ cycle* in `USE_CASES.md`.
   machine-precision tension, the parquet absorbs the precision; the DSL keeps the human shape.
 - Type hints mandatory; **pathlib** for paths; **absolute imports only**; **no inline imports** (a
   guarded module-level `try/except ImportError` for optional deps is the only exception).
+- **Avoid nested try/except** — it is a nightmare to read and debug, and usually just swallows the
+  real error. Use it only where an error is an unavoidable, handled part of the use case (that guarded
+  optional-dep import is that case).
+- **Polars in the compiler**: prefer lazyframes (`scan_parquet`) and streaming (`sink_parquet`), and
+  pre-filter before joining so you never materialize more than needed. (The format tier stays
+  polars-free — Goal 2.)
+- **Typer for every CLI**; the root package's `[project.scripts]` owns the user-facing command. If a
+  `uv run <cmd>` wrapper goes stale after a dependency upgrade, bump this package's version and
+  re-run `uv sync` — never rename the command to dodge a stale wrapper.
+- **Standard-library `logging`** for diagnostics — never `print`.
+- **Heed terminal warnings, deprecations especially** — they are the signal that an API moved since
+  training. Read and fix them; don't paper over them.
+- **No placeholder paths or fabricated example values** in code (`/my/custom/path/`, dummy digests, …).
+- **Refactor internals aggressively** — don't keep dead code or an old API around for nostalgia. The
+  one exception is the wire/artifact **contract**: it obeys additive-within-a-major (Principles 3/8),
+  never "no legacy support." Internals are free; the schema and `manifest.json` shape are not.
+- **Versions read from `pyproject.toml`** (via `module.version`); never hardcode a version string in
+  `__init__.py`.
+- **Avoid `__all__` / pure re-export `__init__.py`s** — they obscure where a symbol actually lives.
 - Pydantic 2 for all data models. Constrained vocabularies are `frozenset[str]` + a validator, never
   `Enum`/`Literal` (Principle 6).
 - **Authored row models inherit `AuthoredModel`** (`just_dna_format.base`), never `BaseModel` directly.
@@ -128,8 +147,72 @@ cycle* in `USE_CASES.md`.
   /`min(...)` for picks, and first-occurrence (insertion) order for dedup. **Column order and cell
   formatting, by contrast, are normalized, not preserved** (reverse emits a fixed `fieldnames` order;
   values are stripped/canonicalized) — that asymmetry is intended. New orderings get a test.
-- `uv run pytest` runs the suite. Use `uv sync` / `uv add`; **never** `uv pip install`.
+- Use `uv sync` / `uv add`; **never** `uv pip install`. `uv run pytest` runs the suite (see *Testing*).
 - New markdown (except this file / `README`) goes in `docs/`.
+
+## Testing
+
+- `uv run pytest` runs the suite; run it **`-vvv`** when diagnosing.
+- **Real data + ground truth**: exercise the actual compile / reverse paths against real fixtures and
+  **compute expected values at runtime** rather than hardcoding them.
+- **Deterministic coverage**: fixed seeds or explicit filters; cover representative *and* edge cases.
+- **Meaningful assertions**: prefer relationships and aggregates over existence-only checks; prefer
+  set equality (`assert a == b`) over count checks.
+- Hardcoding **domain constants** (vocabulary members from the spec) is fine; hardcoding **row/unique
+  counts** read off a data dump is not.
+- **Avoid the AI test anti-patterns**: happy-path-only tests, hardcoded counts derived from inspecting
+  data, mocking a data transformation instead of running the real path, and claiming a test "would
+  have caught" a bug without first demonstrating the failure on the buggy code.
+- Round-trip / idempotency (Principle 7) and every new ordering get a real test — see the dogfood rule
+  above; a mechanically-possible loss with no real instantiation is not a finding.
+- **Async tests use `pytest-asyncio`** (kept in the dev deps for when async paths land; today there
+  are none).
+
+## Documentation & prose style
+
+- Write in natural, human prose. Avoid AI-typical tells (em-dash pile-ups, filler transitions,
+  marketing voice). Never hallucinate documentation or overpromise an unimplemented feature.
+- Keep the `README` concise; deep detail belongs in `docs/`.
+- Describe the format honestly: it supplies **annotation tables**, never sample data and never a
+  gene–disease inference. Don't let docs imply a module measures or calls anything — the consumer
+  supplies the measurement at query time (mirrors the data-agnostic rule above).
+- **Self-correction**: when outdated API knowledge causes a real crash or logic failure, fix the code
+  *and* update this `CLAUDE.md` / the affected `docs/` with the correct pattern so the next agent
+  doesn't repeat it. Update the guides immediately whenever code is refactored.
+
+## Data & assets conventions
+
+- Generated and sample data lives under `data/`, **git-ignored and build-ignored** — nothing here
+  travels with the repo or the package:
+  - `data/input/` — input samples, where applicable
+  - `data/interim/` — code-generated intermediates
+  - `data/output/` — results
+- Data that must **travel with the project** (a fixture a test or example genuinely needs) lives in
+  `assets/`, committed.
+- Any asset that exceeds **~5 MB** and must travel goes through **Git LFS**: `git lfs install` once,
+  `git lfs track "<path>"`, then commit the **LFS pointer** — never the raw blob.
+
+**Gotcha — check tree history whenever LFS is introduced; no large blob may remain in history.** A
+blob committed *before* `git lfs track` stays in every past commit even after the pointer replaces it
+at HEAD, so the pack still ships it. Detect it:
+
+```bash
+git lfs ls-files                       # what LFS tracks at HEAD
+git rev-list --objects --all \
+  | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' \
+  | awk '/^blob/ && $3 > 5000000 {print $3, $4}' | sort -rn   # large blobs anywhere in history
+```
+
+I don't run history-rewriting operations. **If a large blob is found in history, here is the
+remediation sequence for you to run:**
+
+1. `git lfs migrate import --include="<path-or-glob>" --everything` — rewrites history, moving matching
+   blobs into LFS.
+2. Verify: re-run the large-blob scan above (should be empty) and `git lfs ls-files --all` (should list
+   the migrated paths).
+3. `git push --force-with-lease` the rewritten history; collaborators must re-clone or hard-reset, since
+   history has diverged.
+4. Optionally reclaim local space: `git reflog expire --expire=now --all && git gc --prune=now`.
 
 ## Related repos (read-only unless the task targets them)
 
