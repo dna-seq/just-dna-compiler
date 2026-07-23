@@ -27,6 +27,7 @@ from just_dna_format.manifest import (
     ModuleManifest,
     Signature,
 )
+from just_dna_format.resolution import RESOLUTION_FACT_FIELDS
 
 SHA256_PREFIX: str = "sha256:"
 _CHUNK: int = 1 << 20  # 1 MiB streaming reads
@@ -145,6 +146,41 @@ def content_signature(tables: Mapping[str, Sequence[BaseModel]]) -> str:
     ]
     listing.sort(key=lambda part: part["file"])
     canonical = json.dumps(listing, sort_keys=True, separators=(",", ":"))
+    return sha256_bytes(canonical.encode("utf-8"))
+
+
+def resolution_signature(rows: Sequence[BaseModel]) -> str:
+    """Stable, producer-independent identity over the resolution table's *facts* (0.5).
+
+    `resolution.csv` is a multi-producer artifact — the enricher, a human, and `reverse_module` all
+    write it, with byte-different but fact-identical output (column/row order, provenance columns,
+    timestamps). So it is hashed HERE, over the fact columns only, and is deliberately NOT added to
+    `manifest.inputs`: a raw-bytes `FileEntry` hash would be unstable across those producers and would
+    make a `reverse → recompile` cycle "change the hash" for no real reason. Mirrors
+    `content_signature`, restricted to `resolution.RESOLUTION_FACT_FIELDS`:
+
+    - **Fact-only** — the provenance columns (`source`/`status`/`fetched_at`) are excluded, so a
+      human-filled and an Ensembl-filled table carrying the same facts hash equal.
+    - **Normalized** — each row is `model_dump(mode="json")` restricted to the fact fields with `None`
+      dropped, so CSV reformatting and an unset optional column do not change it.
+    - **Deterministically sorted, order-independent** — rows are sorted by their canonical JSON.
+
+    Together with `content_signature` and `compiler_version` it fully determines `artifact.digest`, so
+    a holder of the two small CSVs reproduces the artifact byte-for-byte, fully offline.
+    """
+    normalized = sorted(
+        json.dumps(
+            {
+                key: value
+                for key, value in row.model_dump(mode="json").items()
+                if key in RESOLUTION_FACT_FIELDS and value is not None
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        for row in rows
+    )
+    canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
     return sha256_bytes(canonical.encode("utf-8"))
 
 

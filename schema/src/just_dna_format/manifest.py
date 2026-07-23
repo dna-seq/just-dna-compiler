@@ -165,6 +165,25 @@ class Compilation(BaseModel):
     compiled_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp")
     warnings: list[str] = Field(default_factory=list)
 
+    # ── 0.5 resolution provenance (all optional, out of artifact.digest) ──
+    # Policy vs outcome are orthogonal axes (Principle 5), not one overloaded flag: `resolution_mode`
+    # is what was *requested*, `fully_resolved` is what was *achieved*. A consumer trusts a module when
+    # `resolution_mode == "strict" or fully_resolved`; the "half-baked" product is
+    # `best_effort and not fully_resolved`.
+    resolution_mode: Optional[str] = Field(
+        default=None, description="Resolution policy used: 'strict' | 'best_effort' (None = legacy/skipped)"
+    )
+    fully_resolved: bool = Field(
+        default=False, description="Every in-scope VariantRow resolved to a genomic position (chrom+start)"
+    )
+    resolution_signature: Optional[str] = Field(
+        default=None,
+        description="Fact-hash of resolution.csv (integrity.resolution_signature); out of artifact.digest",
+    )
+    resolution_sources: list[str] = Field(
+        default_factory=list, description="Sorted union of ResolutionRow.source values that filled the table"
+    )
+
 
 class FileEntry(BaseModel):
     """One hashed file — used for both `inputs[]` and `artifact.files[]` (SPEC §5)."""

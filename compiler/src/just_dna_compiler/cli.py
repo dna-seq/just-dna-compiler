@@ -110,6 +110,11 @@ def compile(  # noqa: A001 — the verb is the command name; shadowing builtins.
         typer.secho(f"compiled: {output_dir}", fg=typer.colors.GREEN)
         typer.echo(f"digest: {manifest.artifact.digest if manifest else '?'}")
         typer.echo(f"content_signature: {manifest.content_signature if manifest else '?'}")
+        if manifest is not None:
+            comp = manifest.compilation
+            typer.echo(f"resolution_mode: {comp.resolution_mode}  fully_resolved: {comp.fully_resolved}")
+            if comp.resolution_signature is not None:
+                typer.echo(f"resolution_signature: {comp.resolution_signature}")
     else:
         typer.secho(f"COMPILE FAILED: {spec_dir}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
@@ -137,6 +142,10 @@ def reverse(
     icon: str = typer.Option("database", "--icon"),
     color: str = typer.Option("#6435c9", "--color"),
     version: Optional[str] = typer.Option(None, "--version", help="Advisory module.version to re-emit into the spec."),
+    resolution: bool = typer.Option(
+        True, "--resolution/--no-resolution",
+        help="Also emit resolution.csv (the resolved facts), so reverse→compile is fully offline.",
+    ),
 ) -> None:
     """Reverse a compiled parquet artifact back into the authored spec DSL (yaml + csv)."""
     out = reverse_module(
@@ -149,6 +158,7 @@ def reverse(
         icon=icon,
         color=color,
         version=version,
+        write_resolution=resolution,
     )
     typer.secho(f"reversed: {out}", fg=typer.colors.GREEN)
 

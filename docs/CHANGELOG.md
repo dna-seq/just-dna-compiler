@@ -5,6 +5,58 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-07-23 — 0.5.0 (in progress, `enricher-0.5`) — source-independent resolution table
+
+The 0.5 rework begins: resolution moves from a *live-ish opaque reference the compiler queries* to a
+*persisted, source-independent table the compiler is handed*, so the compiler owns no source
+convention and becomes strictly inject-only. All fetching (cache download + live Ensembl) will live
+in a new `just-dna-enricher` network tier that *produces* the table; this increment lands the
+consumption side entirely inside the two existing packages — additive, digest-neutral, and green
+(the compiler still never fetches; it is *more* inject-only, not less). See
+`docs/PROPOSAL_0_5.md` and the approved plan.
+
+Shipped in this increment (schema + compiler; **no network added yet**):
+
+- **`resolution.csv` — the injected fact table.** New `just_dna_format.resolution.ResolutionRow`
+  (schema tier, shared by the three parties: compiler consumes, enricher will produce, a verify-only
+  client can re-check). Keyed by the frozen `variant_key`; carries the resolved facts
+  (`rsid/chrom/start/ref/alts/genome_build/locus_index`) and a segregated provenance triple
+  (`source`/`status`/`fetched_at`). A one-to-many rsid is N rows sharing `variant_key` with distinct
+  `locus_index`. `genome_build` is the RM15 forward hook (no more silent GRCh38). `status` is a closed
+  vocabulary `{resolved, not_found, ambiguous}` (Principle 6); `not_found` is the resolution analogue
+  of the binning `unresolved` sentinel.
+- **Pure `resolve_from_table`** (`just_dna_compiler.resolution`, **no `duckdb` import**) reproduces the
+  DuckDB resolver's fill / expand / verify semantics from the injected table. `compile_module`
+  precedence (additive, P3): `resolution.csv` present → this pure path; else an injected
+  `ensembl_cache` → the superseded DuckDB path; else skip-with-warning. **Digest parity is proven** —
+  given the same facts, both paths emit byte-identical `weights.parquet` (the expansion order is
+  pinned on `(locus_index, chrom, start, ref)`).
+- **Two-layer hashing kept intact; the table hashed separately.** `content_signature` (authored-only)
+  is untouched — verified it builds from its own explicit table list, never `_INPUT_FILES`. The table
+  is **not** added to `_INPUT_FILES` (a raw-bytes hash would be unstable across the enricher/human/
+  reverse producers); instead a new **`integrity.resolution_signature`** hashes only the fact columns
+  (provenance excluded), so a human-filled and an Ensembl-filled table with identical facts hash
+  equal. Reproducibility identity is the triple `(content_signature, resolution_signature,
+  compiler_version) ⟹ artifact.digest` — offline from two small CSVs.
+- **Manifest (`Compilation`, all optional, out of `artifact.digest`):** `resolution_mode`
+  (policy: strict|best_effort), `fully_resolved` (outcome — orthogonal axis, P5), `resolution_signature`,
+  `resolution_sources`. Together they tell a catalog a strict, fully-resolved module from a
+  best-effort half-baked one.
+- **Reverse emits `resolution.csv`.** `reverse_module(..., write_resolution=True)` reconstructs the
+  resolved facts from the artifact, so `reverse → compile` reproduces the identical `artifact.digest`
+  with **no network and no reference** — hardening Principle 7's round-trip from reference-dependent to
+  self-contained (a coord-keyed row's resolved rsid, dropped from `variants.csv`, is restored here).
+- **CLI:** `reverse --resolution/--no-resolution`; `compile` prints `resolution_mode`/`fully_resolved`/
+  `resolution_signature`. **Tests +8** (schema `resolution_signature` stability; compiler digest-parity
+  / offline round-trip; provenance/order-independence; `resolution.csv` absent from `manifest.inputs`
+  with `content_signature` unchanged; strict-vs-best-effort via the table).
+
+Still to land in 0.5 (next increments): the `just-dna-enricher` network tier (cache download + Ensembl
+V2 GraphQL + V1 REST fallback on 500/503 + tenacity, best-effort/strict/`--offline`); completing the
+0.4.1 *"cache authority leaves the compiler"* item (delete `cache.py`, pure inject-only) once the
+enricher exists to coordinate against; and the deliberate Constitution amendment scoping the network
+tier + HuggingFace to the enricher.
+
 ## 2026-07-15 — 0.4.0 (released) — audit pass: input-hardening tidy-ups
 
 A fourth audit pass over the 0.4 branch. A full read confirmed the invariants hold (round-trip/

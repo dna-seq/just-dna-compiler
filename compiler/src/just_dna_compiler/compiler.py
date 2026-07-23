@@ -31,8 +31,10 @@ from just_dna_format.integrity import (
     content_signature as _content_signature,
     file_entries,
     file_entry,
+    resolution_signature as _resolution_signature,
     sha256_file,
 )
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.normalize import normalize_version, strip_authority_keys
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
@@ -790,12 +792,44 @@ def compile_module(
         studies, _, _ = _load_csv_rows(spec_dir / "studies.csv", StudyRow, "studies.csv")
 
     all_warnings = list(validation.warnings)
-    if resolve_with_ensembl and variants:
-        from just_dna_compiler.resolver import resolve_variants
 
-        variants, resolve_warnings = resolve_variants(
-            variants, ensembl_cache, genome_build=config.genome_build
+    # The source-independent resolution table (0.5), if authored/produced beside the spec. When
+    # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and
+    # owns no source convention (Ensembl/DuckDB/provisioning) — the strict inject-only end state
+    # (Principle 2). An injected `ensembl_cache` (the DuckDB path) is the superseded fallback (P3).
+    resolution_rows: list[ResolutionRow] = []
+    resolution_table: dict[str, list[ResolutionRow]] = {}
+    resolution_path = spec_dir / "resolution.csv"
+    if resolution_path.exists():
+        resolution_rows, res_errors, _ = _load_csv_rows(
+            resolution_path, ResolutionRow, "resolution.csv"
         )
+        if res_errors:
+            return CompilationResult(success=False, errors=res_errors, warnings=all_warnings)
+        for row in resolution_rows:
+            resolution_table.setdefault(row.variant_key, []).append(row)
+
+    resolution_mode: Optional[str] = None
+    resolution_sources: list[str] = []
+    resolution_sig: Optional[str] = None
+    if resolve_with_ensembl and variants:
+        resolution_mode = "strict" if strict else "best_effort"
+        if resolution_table:
+            from just_dna_compiler.resolution import resolve_from_table
+
+            variants, resolve_warnings = resolve_from_table(
+                variants, resolution_table, genome_build=config.genome_build
+            )
+            resolution_sources = sorted(
+                {row.source for row in resolution_rows if row.source}
+            )
+            resolution_sig = _resolution_signature(resolution_rows)
+        else:
+            from just_dna_compiler.resolver import resolve_variants
+
+            variants, resolve_warnings = resolve_variants(
+                variants, ensembl_cache, genome_build=config.genome_build
+            )
         all_warnings.extend(resolve_warnings)
         # Resolution is an enrichment that can *change identity*: filling a coordinate or expanding a
         # one-to-many rsid into coord-keyed rows may collide with an already-authored row. validate_spec
@@ -809,6 +843,10 @@ def compile_module(
                 errors=[f"post-resolution: {e}" for e in post_errors],
                 warnings=all_warnings,
             )
+
+    # Outcome axis (orthogonal to the requested `resolution_mode` policy, Principle 5): did every
+    # in-scope variant resolve to a genomic position? Vacuously true for a table-kind-only module.
+    fully_resolved = all(v.chrom is not None and v.start is not None for v in variants)
 
     # Strict (all-or-nothing): refuse to write a partial artifact. A variant still missing its
     # genomic position after resolution means the injected reference was incomplete or absent, so the
@@ -885,6 +923,10 @@ def compile_module(
         provenance=provenance,
         logo=logo,
         content_sig=content_signature(spec_dir),
+        resolution_mode=resolution_mode,
+        fully_resolved=fully_resolved,
+        resolution_sig=resolution_sig,
+        resolution_sources=resolution_sources,
     )
     write_manifest(manifest, output_dir / "manifest.json")
 
@@ -919,6 +961,10 @@ def _build_manifest(
     provenance: Optional[Provenance],
     logo: Optional[FileEntry],
     content_sig: Optional[str] = None,
+    resolution_mode: Optional[str] = None,
+    fully_resolved: bool = False,
+    resolution_sig: Optional[str] = None,
+    resolution_sources: Optional[list[str]] = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -960,6 +1006,10 @@ def _build_manifest(
             ensembl_reference=ensembl_reference,
             compiled_at=_now_iso(),
             warnings=warnings,
+            resolution_mode=resolution_mode,
+            fully_resolved=fully_resolved,
+            resolution_signature=resolution_sig,
+            resolution_sources=resolution_sources or [],
         ),
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),
         content_signature=content_sig,
@@ -1201,12 +1251,19 @@ def reverse_module(
     icon: str = "database",
     color: str = "#6435c9",
     version: Optional[str] = None,
+    write_resolution: bool = True,
 ) -> Path:
     """Reverse-engineer a parquet module back into the spec DSL (yaml + csv). Returns output_dir.
 
     `version` (like `title`/`description`) is authored `module:` metadata, out of `artifact.digest`
     and so not materialized into any parquet — a caller that wants it in the re-emitted spec supplies
-    it (e.g. from the manifest's `identity.version`); when omitted it is left out of the block."""
+    it (e.g. from the manifest's `identity.version`); when omitted it is left out of the block.
+
+    `write_resolution` (default True) also emits `resolution.csv` — the resolved facts recovered from
+    the artifact — so `reverse → compile` reproduces the identical `artifact.digest` with **no network
+    and no Ensembl reference** (Principle 7 hardened from reference-dependent to self-contained). A
+    coord-keyed row's resolved rsid, dropped from `variants.csv`, is carried here and restored on
+    recompile via `resolution.resolve_from_table`."""
     parquet_dir = Path(parquet_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1283,6 +1340,8 @@ def reverse_module(
             weights_df, ann_lookup, ann_keyed_by_effect, default_curator, default_method,
             default_priority, output_dir / "variants.csv",
         )
+        if write_resolution:
+            _write_resolution_csv(weights_df, output_dir / "resolution.csv")
     studies_path = parquet_dir / "studies.parquet"
     if studies_path.exists():
         _write_studies_csv(pl.read_parquet(studies_path), output_dir / "studies.csv")
@@ -1294,6 +1353,48 @@ def reverse_module(
             _write_table_csv(pl.read_parquet(kind_path), model, output_dir / csv_name)
 
     return output_dir
+
+
+def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
+    """Emit `resolution.csv` from the compiled weights — the resolved facts, so `reverse → compile`
+    is fully offline (no Ensembl reference, no network).
+
+    Each *positioned* weights row yields one `ResolutionRow` keyed by its frozen `variant_key`,
+    carrying the resolved rsid (which `variants.csv` drops on a coord-keyed row). On recompile,
+    `resolution.resolve_from_table` restores that rsid and reproduces the identical `artifact.digest`.
+    Rows without a resolved position (a best-effort partial) carry no fact and are skipped. Emitted in
+    the weights' authored order; `resolution_signature` is order-independent regardless. `fetched_at`
+    is left blank (no wall-clock is read here, keeping the emit deterministic)."""
+    fieldnames = [
+        "variant_key", "rsid", "chrom", "start", "ref", "alts",
+        "genome_build", "locus_index", "source", "status", "fetched_at",
+    ]
+    with open(output_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in weights_df.iter_rows(named=True):
+            chrom, start = row.get("chrom"), row.get("start")
+            if chrom is None or start is None:
+                continue
+            variant_key = row.get("variant_key") or derive_variant_key(
+                row.get("rsid"), chrom, start, row.get("ref")
+            )
+            alts_list = row.get("alts")
+            writer.writerow(
+                {
+                    "variant_key": variant_key,
+                    "rsid": _scalar_cell(row.get("rsid")),
+                    "chrom": _scalar_cell(chrom),
+                    "start": _scalar_cell(start),
+                    "ref": _scalar_cell(row.get("ref")),
+                    "alts": ",".join(alts_list) if alts_list else "",
+                    "genome_build": "GRCh38",
+                    "locus_index": 0,
+                    "source": "reversed",
+                    "status": "resolved",
+                    "fetched_at": "",
+                }
+            )
 
 
 def _most_common(df: pl.DataFrame, col: str) -> Optional[str]:

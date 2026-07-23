@@ -102,6 +102,14 @@ RESERVED_NAME_REASONS: dict[str, str] = {
 # PharmGKB clinical-annotation evidence levels (item 9). Closed vocabulary (Principle 6).
 VALID_EVIDENCE_LEVELS: frozenset[str] = frozenset({"1A", "1B", "2A", "2B", "3", "4"})
 
+# ── Resolution status (0.5; the source-independent resolution table) ────────────────────────────
+# Closed vocabulary (Principle 6) for a `ResolutionRow`'s outcome. `not_found` is the resolution
+# analogue of the binning tables' mandatory `unresolved` sentinel: it records "a source was consulted
+# and the locus is genuinely absent", distinct from a variant that was never attempted (row absent).
+# `ambiguous` marks a query that resolved to something the resolver could not disambiguate to a single
+# locus (rare — a one-to-many rsid is expanded to distinct rows instead, so it is not `ambiguous`).
+VALID_RESOLUTION_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "ambiguous"})
+
 # ── Module authorship (RM14; docs/USE_CASES.md §5a) ─────────────────────────────
 # A contribution's `role` is a small, stable, CLOSED vocabulary (Principle 6): what a contributor did
 # to *this version*.
