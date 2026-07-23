@@ -31,6 +31,10 @@ already-shipped features — follow them to CHANGELOG.md / COMPILER.md.
 - **Genuinely adopt `module.version`** as a freeform advisory field (accepts the pre-0.4 corpus's
   `v2`/`3`); the compiler previews the future SemVer coercion and warns only when it would change the
   value. Digest-neutral. SemVer *enforcement* is deferred to **RM17** below.
+- **`content_signature`** — a stable, name-/Ensembl-independent content identity over the raw authored
+  data rows (`manifest.content_signature`, out of `artifact.digest`; `just-dna-compiler signature`
+  computes it without recompiling), so a registry can dedup across recompile + metadata-strip where the
+  parquet digest can't. Canonical algorithm owned here; the marketplace adopts it.
 - **Strict (all-or-nothing) compile** — `compile_module(..., strict=True)` refuses a partial artifact
   when a variant position is left unresolved (the "local hash differs from published" failure mode).
 - **A compiler CLI (Typer)** — `just-dna-compiler validate|compile|reverse`, a compiler-only dep (tiers

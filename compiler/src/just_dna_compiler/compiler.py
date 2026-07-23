@@ -26,7 +26,13 @@ import polars as pl
 import yaml
 from just_dna_format.base import derive_variant_key
 from just_dna_format.identity import is_valid_version
-from just_dna_format.integrity import build_artifact, file_entries, file_entry, sha256_file
+from just_dna_format.integrity import (
+    build_artifact,
+    content_signature as _content_signature,
+    file_entries,
+    file_entry,
+    sha256_file,
+)
 from just_dna_format.normalize import normalize_version, strip_authority_keys
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
@@ -693,6 +699,34 @@ def validate_spec(
     )
 
 
+def content_signature(spec_dir: Path) -> str:
+    """Stable content identity over the raw authored data CSVs — name- and Ensembl-independent.
+
+    Reads `variants.csv`, `studies.csv`, and any present 0.4 table CSVs, validates each row, and
+    hashes the normalized + deterministically-sorted rows via
+    `just_dna_format.integrity.content_signature`. The data is read **as authored** (no Ensembl
+    resolution, no parquet build), so this is cheap and reference-independent — a client can compute
+    it without recompiling and dedup against a registry, surviving both metadata-strip and a recompile
+    against a different reference. Raises `ValueError` if a present data CSV fails validation.
+    """
+    spec_dir = Path(spec_dir)
+    kinds: list[tuple[str, type[BaseModel]]] = [
+        ("variants.csv", VariantRow),
+        ("studies.csv", StudyRow),
+        *((csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS),
+    ]
+    tables: dict[str, list[Any]] = {}
+    for csv_name, model in kinds:
+        path = spec_dir / csv_name
+        if not path.is_file():
+            continue
+        rows, errors, _ = _load_csv_rows(path, model, csv_name)
+        if errors:
+            raise ValueError(f"cannot compute content_signature: {csv_name} is invalid: {errors[0]}")
+        tables[csv_name] = rows
+    return _content_signature(tables)
+
+
 def compile_module(
     spec_dir: Path,
     output_dir: Path,
@@ -835,6 +869,9 @@ def compile_module(
         logo = _collect_logo(spec_dir, output_dir, logo_file)
     except ValueError as exc:
         return CompilationResult(success=False, errors=[str(exc)], warnings=all_warnings)
+    # Content identity over the RAW authored data (re-read from disk, so pre-resolution and
+    # reference-independent — the in-scope `variants` here are already resolved). Out of
+    # `artifact.digest`; lets a registry dedup across recompile/metadata-strip.
     manifest = _build_manifest(
         config=config,
         spec_dir=spec_dir,
@@ -847,6 +884,7 @@ def compile_module(
         logs=logs,
         provenance=provenance,
         logo=logo,
+        content_sig=content_signature(spec_dir),
     )
     write_manifest(manifest, output_dir / "manifest.json")
 
@@ -880,6 +918,7 @@ def _build_manifest(
     logs: list[FileEntry],
     provenance: Optional[Provenance],
     logo: Optional[FileEntry],
+    content_sig: Optional[str] = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -923,6 +962,7 @@ def _build_manifest(
             warnings=warnings,
         ),
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),
+        content_signature=content_sig,
         artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),
         logs=logs,
         provenance=provenance,

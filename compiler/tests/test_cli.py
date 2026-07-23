@@ -61,6 +61,13 @@ def test_compile_strict_fails_on_unresolved(tmp_path: Path) -> None:
     assert result.exit_code == 1
 
 
+def test_signature_command_prints_sha(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "spec", _POSITIONED)
+    result = runner.invoke(app, ["signature", str(spec)])
+    assert result.exit_code == 0, result.output
+    assert "sha256:" in result.stdout
+
+
 def test_reverse_roundtrips(tmp_path: Path) -> None:
     spec = _spec(tmp_path / "spec", _POSITIONED)
     runner.invoke(app, ["compile", str(spec), str(tmp_path / "out"), "--no-resolve"])

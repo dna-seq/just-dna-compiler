@@ -359,6 +359,16 @@ class ModuleManifest(BaseModel):
     stats: Stats = Field(default_factory=Stats)
     compilation: Compilation = Field(default_factory=Compilation)
     inputs: list[FileEntry] = Field(default_factory=list)
+    content_signature: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stable content identity over the RAW authored data rows (variants/studies + 0.4 table "
+            "kinds), name- and Ensembl-independent (see `integrity.content_signature`). Unlike "
+            "`artifact.digest` (compiled-parquet bytes, which move on recompile against a different "
+            "reference), this survives import/recompile and metadata-strip — so a registry can dedup "
+            "content across those paths. Optional and out of `artifact.digest`."
+        ),
+    )
     artifact: Artifact
     logs: list[FileEntry] = Field(
         default_factory=list,

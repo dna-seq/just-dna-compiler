@@ -12,11 +12,13 @@ pure and deterministic.
 import base64
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Optional
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from pydantic import BaseModel
 
 from just_dna_format.manifest import (
     MARKETPLACE_COMPILED_BY,
@@ -99,6 +101,51 @@ def build_artifact(output_dir: Path, filenames: list[str]) -> Artifact:
     """Hash each output file and compute the artifact digest over the set."""
     files = file_entries(output_dir, filenames)
     return Artifact(digest=artifact_digest(files), files=files)
+
+
+def content_signature(tables: Mapping[str, Sequence[BaseModel]]) -> str:
+    """Stable content identity over the RAW authored data rows — the canonical, owned algorithm.
+
+    Distinct from `artifact_digest`: that hashes the *compiled parquet* bytes, which are
+    GRCh38-coordinate-relative and therefore depend on the Ensembl reference the resolver was given
+    (and move if the module is recompiled elsewhere). `content_signature` instead hashes the authored
+    *data* rows as parsed — so it is:
+
+    - **Ensembl/build-independent** — computed from the rows *before* resolution (an rsid-only row is
+      hashed as authored, not as resolved coordinates), so recompiling against a different/complete
+      reference does not change it.
+    - **Name/metadata-independent** — only the data tables feed it; `module_spec.yaml` (name, version,
+      namespace, display) is excluded, so a metadata edit or a registry strip does not change it.
+    - **Normalized** — each row is `model_dump(mode="json", exclude_none=True)`, so CSV reformatting
+      (whitespace, quoting, column reorder, cell canonicalization like `1.00`→`1.0`) and additive
+      schema growth (a new optional column left unset) do not change it.
+    - **Deterministically sorted, order-independent** — the normalized rows of each file are sorted by
+      their canonical JSON, and files are sorted by name, so re-ordering rows yields the *same*
+      signature. (This is deliberately unlike `artifact.digest`, which *preserves* authored row order:
+      the two are different identities — a byte-reproducibility digest vs. a content-dedup key.)
+
+    `tables` maps each data-CSV filename (`variants.csv`, `studies.csv`, and the 0.4 table kinds) to
+    its parsed, validated rows. The result is the enabling identity for content-level dedup that
+    survives import/recompile and metadata-strip. It is the reference algorithm a marketplace's
+    `find_versions_by_content` should adopt (see docs/PROPOSAL_0_4_1.md).
+    """
+    listing = [
+        {
+            "file": filename,
+            "rows": sorted(
+                json.dumps(
+                    row.model_dump(mode="json", exclude_none=True),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                for row in rows
+            ),
+        }
+        for filename, rows in tables.items()
+    ]
+    listing.sort(key=lambda part: part["file"])
+    canonical = json.dumps(listing, sort_keys=True, separators=(",", ":"))
+    return sha256_bytes(canonical.encode("utf-8"))
 
 
 def verify_manifest(

@@ -17,7 +17,12 @@ from typing import Optional
 import typer
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 
-from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_compiler.compiler import (
+    compile_module,
+    content_signature,
+    reverse_module,
+    validate_spec,
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -101,12 +106,24 @@ def compile(  # noqa: A001 — the verb is the command name; shadowing builtins.
     )
     _echo_messages(result)
     if result.success:
-        digest = result.manifest.artifact.digest if result.manifest else "?"
+        manifest = result.manifest
         typer.secho(f"compiled: {output_dir}", fg=typer.colors.GREEN)
-        typer.echo(f"digest: {digest}")
+        typer.echo(f"digest: {manifest.artifact.digest if manifest else '?'}")
+        typer.echo(f"content_signature: {manifest.content_signature if manifest else '?'}")
     else:
         typer.secho(f"COMPILE FAILED: {spec_dir}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
+
+
+@app.command()
+def signature(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+) -> None:
+    """Print the content signature of a spec's raw authored data — no compile, no Ensembl.
+
+    Name- and reference-independent, so a client can compute it and dedup against a registry without
+    recompiling (surviving metadata-strip and a recompile against a different reference)."""
+    typer.echo(content_signature(spec_dir))
 
 
 @app.command()

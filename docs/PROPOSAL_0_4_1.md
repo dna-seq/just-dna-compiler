@@ -114,6 +114,63 @@ The registry's broader lossy `--trim` pass (for stray `defaults:` keys / legacy 
 consumer-side (explicit human ops); no format change is requested for it. If the registry's
 whole-corpus run surfaces a concrete next offender, it graduates through the design cycle.
 
+## A stable `content_signature` for cross-recompile dedup
+
+**Status: implemented on the 0.4.1 branch.** From a third field report: a registry's dedup pre-check
+keys on `artifact.digest`, but importing a module **recompiles locally** (a different/complete Ensembl
+reference → different parquet bytes → different digest) and publish **strips metadata**, so the digest
+check misses the dedup path entirely. The only authoritative dedup is the server's `content_signature`
+(a hash of the raw data CSVs), but it is enforced only at publish (409 `duplicate_content`) with no
+client-reachable lookup — so the UI pre-check can't be made robust client-side.
+
+### The friction
+
+`artifact.digest` is a Merkle root over the **compiled parquet**, which is GRCh38-coordinate-relative:
+it moves when the same spec is recompiled against a different reference, and it embeds the module name
+(materialized into the `module` column), so it also moves on rename/metadata-strip. It is a
+*byte-reproducibility* identity, not a *content-dedup* identity. Those are two different jobs.
+
+### The decision — the format owns the canonical content signature
+
+A new `integrity.content_signature(tables)` (the schema package — the lightest tier, so any consumer
+can compute it) hashes the **raw authored data rows**, and the compiler stamps it into
+`manifest.content_signature` (optional, out of `artifact.digest`). It is:
+
+- **Ensembl/build-independent** — computed from the rows *before* resolution, so recompiling against a
+  different/complete reference does not change it. (This is also why it is read from disk at compile
+  time, not from the already-resolved in-memory rows.)
+- **Name/metadata-independent** — only the data tables feed it; `module_spec.yaml` is excluded.
+- **Normalized** — each row is `model_dump(mode="json", exclude_none=True)`, so CSV reformatting and
+  additive schema growth (a new optional column left unset) do not change it.
+- **Deterministically sorted, order-independent** — rows are sorted by canonical JSON and files by
+  name, so reordering rows yields the same signature. (Deliberately unlike `artifact.digest`, which
+  *preserves* authored row order — the two are different identities.)
+- **All authored data CSVs** — `variants.csv` + `studies.csv` + the 0.4 table kinds, so a
+  PGx/PGS-only module (no `variants.csv`) still gets a signature.
+
+The compiler exposes `content_signature(spec_dir)` and a `just-dna-compiler signature <spec_dir>` CLI
+command, so a client computes it **without recompiling** and looks it up — surviving both
+metadata-strip and recompile.
+
+### Own, but adopt the marketplace's implementation where possible
+
+The format owns the *canonical* algorithm, but the intent is to **not break the marketplace's existing
+`content_signature`**: it keeps the marketplace-compatible conventions (the `sha256:` prefix, the raw
+data-CSV file set, per-file grouping). The one deliberate divergence is **raw-bytes → normalized +
+deterministically-sorted rows** — chosen for robustness (survives reformat/reorder/recompile), which
+the marketplace's raw-CSV hash does not. Adopting it is a one-time backfill of stored signatures (the
+marketplace already has `find_versions_by_content` internally — it re-derives with this algorithm and
+exposes a client lookup endpoint). Where the marketplace's current bytes already agree, nothing moves;
+where they don't (the normalization), the backfill reconciles them.
+
+### Charter check
+
+- **P2 (no network):** untouched — pure local hashing of authored data.
+- **P3/P8:** additive — a new **optional** manifest field + new helpers; demotes nothing, retypes
+  nothing.
+- **`artifact.digest`:** unchanged — `content_signature` is a sibling identity, never fed into the
+  digest. Patch-shippable.
+
 ## The Ensembl cache authority leaves the compiler — pure inject-only
 
 **Status: decided, not yet implemented.** This item is not from a consumer field note; it fell out of
@@ -312,6 +369,9 @@ any rsid-only variant).
 - Compiler: `validate_spec(spec_dir, authority_keys=None)` + `compile_module(..., authority_keys=None)`
   pre-strip in `_load_yaml`, surface dropped keys on `.info`, warn with the SemVer preview;
   `_build_manifest` fills `Identity.version` from a clean authored SemVer; `reverse_module(..., version=None)`.
+- **`content_signature`**: `just_dna_format.integrity.content_signature(tables)` (canonical, owned) +
+  `just_dna_compiler.compiler.content_signature(spec_dir)` convenience + `manifest.content_signature`
+  (optional, out of digest) + a `just-dna-compiler signature` CLI command.
 - **Strict (all-or-nothing) compile**: `compile_module(..., strict: bool = False)` + the
   post-resolution unresolved-position gate (fails before any parquet is written).
 - **Compiler CLI (Typer)**: `just_dna_compiler/cli.py` (validate/compile/reverse), the `typer` runtime
@@ -321,8 +381,8 @@ any rsid-only variant).
   present in none of the three dev groups); `authors` + `maintainers` (Newton Winter) on both packages'
   `[project]`.
 - Tests: `schema/tests/test_normalize.py`, `compiler/tests/test_authority_keys.py`,
-  `compiler/tests/test_strict_compile.py`, `compiler/tests/test_cli.py`, plus a reference-surface
-  assertion.
+  `compiler/tests/test_strict_compile.py`, `compiler/tests/test_content_signature.py`,
+  `compiler/tests/test_cli.py`, plus a reference-surface assertion.
 - **Version bump** `0.4.0 → 0.4.1` (`schema_version` stays `"1.0"`) is the user's to cut — not done here.
 
 **Pending in this patch, not yet in the tree** — design-only, deferred to a later pass:
