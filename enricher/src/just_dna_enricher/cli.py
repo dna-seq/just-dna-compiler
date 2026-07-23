@@ -23,7 +23,7 @@ def _mode(strict: bool) -> str:
     return "strict" if strict else "best_effort"
 
 
-@app.command()
+@app.command("enrich")
 def enrich_(  # `enrich` command; function name avoids shadowing the imported enrich()
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every variant resolves."),
@@ -40,9 +40,6 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     typer.echo(f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}")
     if result.unresolved:
         typer.secho(f"  unresolved: {result.unresolved}", fg=typer.colors.YELLOW, err=True)
-
-
-app.command("enrich")(enrich_)
 
 
 @app.command("enrich-and-compile")
