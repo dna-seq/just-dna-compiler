@@ -29,6 +29,14 @@ dependencies = [
 [project.scripts]
 just-dna-enricher = "just_dna_enricher.cli:app"
 
+# Publisher / developer surface. huggingface-hub is already a core dep (snapshot download);
+# this extra marks the upload CLI (`just-dna-enricher upload`) and test tooling as the
+# supported install path for authors republishing modules — `pip install just-dna-enricher[dev]`.
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3",
+]
+
 [build-system]
 requires = ["uv-build"]
 build-backend = "uv_build"
@@ -39,5 +47,5 @@ just-dna-compiler = { workspace = true }
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.3",
+    "just-dna-enricher[dev]",
 ]

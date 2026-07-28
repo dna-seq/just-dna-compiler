@@ -5,6 +5,21 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-07-28 — enricher `[dev]`: HF module upload extracted from just-dna-lite
+
+- **`just_dna_enricher.upload`** — publisher surface for pushing a compiled module
+  (`weights`/`annotations`/`studies.parquet` + `manifest.json` + optional logo) to a HuggingFace
+  dataset collection (`data/<name>/`). Plan + upload APIs, with a lazy `huggingface_hub` import.
+  Extracted from `just_dna_pipelines.v1_port.publish` (just-dna-lite Gen-I recreation/publish path).
+- **CLI:** `just-dna-enricher upload <module_dir> [--repo] [--name] [--message] [--dry-run]`.
+- **`just-dna-enricher[dev]`** optional extra (+ matching `dependency-groups.dev`) marks the
+  publisher/test install path; snapshot *download* stays a core enrich dep, upload is the
+  author/publisher half of the same HF surface.
+- **Consumer note (just-dna-lite):** `v1_port.publish` still carries a local copy (pipelines is
+  pinned to format/compiler `<0.4` and cannot import enricher 0.5 yet). Docstring points here as
+  the canonical home; switch to a thin modules.yaml-aware re-export of
+  `just_dna_enricher.upload` when pipelines adopts the enricher tier (`just-dna-enricher[dev]`).
+
 ## 2026-07-23 — 0.5.0 (in progress, `enricher-0.5`) — source-independent resolution table
 
 The 0.5 rework begins: resolution moves from a *live-ish opaque reference the compiler queries* to a

@@ -380,9 +380,14 @@ dependencies = [
     { name = "typer" },
 ]
 
-[package.dev-dependencies]
+[package.optional-dependencies]
 dev = [
     { name = "pytest" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "just-dna-enricher", extra = ["dev"] },
 ]
 
 [package.metadata]
@@ -393,13 +398,15 @@ requires-dist = [
     { name = "just-dna-compiler", editable = "compiler" },
     { name = "just-dna-format", editable = "schema" },
     { name = "platformdirs", specifier = ">=4.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "tenacity", specifier = ">=9.0.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
+provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.0.3" }]
+dev = [{ name = "just-dna-enricher", extras = ["dev"] }]
 
 [[package]]
 name = "just-dna-format"

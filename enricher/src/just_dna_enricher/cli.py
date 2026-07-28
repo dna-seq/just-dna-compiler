@@ -2,6 +2,7 @@
 
     just-dna-enricher enrich spec/ --strict --offline
     just-dna-enricher enrich-and-compile spec/ out/ --strict
+    just-dna-enricher upload out/coronary --repo just-dna-seq/annotators   # publisher / [dev]
 """
 
 from pathlib import Path
@@ -67,6 +68,63 @@ def enrich_and_compile(
         raise typer.Exit(code=1)
     typer.secho(f"compiled: {output_dir}", fg=typer.colors.GREEN)
     typer.echo(f"digest: {result.manifest.artifact.digest if result.manifest else '?'}")
+
+
+@app.command("upload")
+def upload_(
+    module_dir: Path = typer.Argument(
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Compiled module directory (weights/annotations/studies.parquet + manifest.json).",
+    ),
+    repo_id: Optional[str] = typer.Option(
+        None,
+        "--repo",
+        help="Target HF dataset (owner/name). Default: just-dna-seq/annotators.",
+    ),
+    name: Optional[str] = typer.Option(
+        None,
+        "--name",
+        help="Module name under data/<name>/ in the repo. Default: the directory basename.",
+    ),
+    commit_message: Optional[str] = typer.Option(
+        None,
+        "--message",
+        "-m",
+        help="Commit message. Default: 'Add <name> module'.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be uploaded without contacting HuggingFace.",
+    ),
+) -> None:
+    """Upload a compiled module to a HuggingFace dataset collection (publisher/dev surface)."""
+    from just_dna_enricher.upload import plan_upload, upload_module
+
+    module_name = name or module_dir.name
+    if dry_run:
+        plan = plan_upload(module_dir, module_name, repo_id)
+        typer.echo(f"Would upload to {plan.repo_id} at {plan.path_in_repo}/:")
+        for f in plan.files:
+            typer.echo(f"  • {f}")
+        return
+
+    try:
+        plan = upload_module(
+            module_dir,
+            module_name,
+            repo_id=repo_id,
+            commit_message=commit_message,
+        )
+    except (FileNotFoundError, PermissionError, ImportError) as exc:
+        typer.secho(f"UPLOAD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"uploaded: {module_name} → {plan.repo_id}/{plan.path_in_repo} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
+    )
 
 
 if __name__ == "__main__":
