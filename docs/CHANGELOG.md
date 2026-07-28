@@ -28,7 +28,15 @@ convention and becomes strictly inject-only. All fetching (cache download + live
 in a new `just-dna-enricher` network tier that *produces* the table; this increment lands the
 consumption side entirely inside the two existing packages — additive, digest-neutral, and green
 (the compiler still never fetches; it is *more* inject-only, not less). See
-`docs/PROPOSAL_0_5.md` and the approved plan.
+`docs/PROPOSAL_0_5.md` and the approved plan. **Per-package references (added this pass):**
+[SCHEMAS.md](SCHEMAS.md), [COMPILER.md](COMPILER.md), [ENRICHER.md](ENRICHER.md).
+
+> **`resolution.csv` is provisional.** It is **new in unreleased 0.5** — no 0.4 module carries it — so
+> the additive-within-a-major / digest-freeze obligations (Principles 3/8) have **not** engaged for it.
+> Its shape (`ResolutionRow` columns, keying, the `status` vocabulary, how one-to-many expansion is
+> encoded) may be **refactored wholesale** during 0.5 dev and is expected to take a few passes before
+> it settles. The stable contract (`variant_key` identity, `artifact.digest`, `content_signature`) is
+> unaffected by resolution's internal shape.
 
 Shipped in this increment (schema + compiler; **no network added yet**):
 

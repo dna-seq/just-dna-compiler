@@ -193,7 +193,7 @@ cycle* in `USE_CASES.md`.
   gene–disease inference. Don't let docs imply a module measures or calls anything — the consumer
   supplies the measurement at query time (mirrors the data-agnostic rule above).
 - **Self-correction**: when outdated API knowledge causes a real crash or logic failure, fix the code
-  *and* update this `CLAUDE.md` / the affected `docs/` with the correct pattern so the next agent
+  *and* update this `AGENTS.md` / the affected `docs/` with the correct pattern so the next agent
   doesn't repeat it. Update the guides immediately whenever code is refactored.
 
 ## Data & assets conventions
@@ -219,8 +219,8 @@ git rev-list --objects --all \
   | awk '/^blob/ && $3 > 5000000 {print $3, $4}' | sort -rn   # large blobs anywhere in history
 ```
 
-I don't run history-rewriting operations. **If a large blob is found in history, here is the
-remediation sequence for you to run:**
+Do not run history-rewriting operations unless the user explicitly asks. **If a large blob is found
+in history, here is the remediation sequence (run only when asked):**
 
 1. `git lfs migrate import --include="<path-or-glob>" --everything` — rewrites history, moving matching
    blobs into LFS.
