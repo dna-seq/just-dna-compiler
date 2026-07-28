@@ -14,15 +14,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from just_dna_compiler.cache import resolve_ensembl_reference
 from just_dna_compiler.compiler import _load_csv_rows
-from just_dna_compiler.resolver import lookup_loci
 from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.download import ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.locations import resolve_ensembl_reference
+from just_dna_enricher.resolver import lookup_loci
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.resolver import resolve_variants
+from just_dna_enricher.resolver import resolve_variants
 from just_dna_format.spec import VariantRow
 
 

@@ -77,7 +77,9 @@ def compile(  # noqa: A001 — the verb is the command name; shadowing builtins.
         False, "--strict/--no-strict", help="All-or-nothing: fail rather than emit a partial artifact with unresolved positions."
     ),
     ensembl_cache: Optional[Path] = typer.Option(
-        None, "--ensembl-cache", help="Injected Ensembl reference (.duckdb file or parquet dir)."
+        None, "--ensembl-cache",
+        help="DEPRECATED (removed at 1.0): Ensembl reference (.duckdb/parquet dir); routes to "
+             "just-dna-enricher. Prefer producing resolution.csv with `just-dna-enricher enrich`.",
     ),
     resolve: bool = typer.Option(
         True, "--resolve/--no-resolve", help="Resolve missing rsid/position via the injected Ensembl reference."

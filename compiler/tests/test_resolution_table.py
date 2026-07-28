@@ -10,6 +10,7 @@ side consumes a `resolution.csv` — hand-authored or reverse-emitted.
 from pathlib import Path
 
 import polars as pl
+import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_compiler.resolution import resolve_from_table
 from just_dna_format.resolution import ResolutionRow
@@ -91,6 +92,15 @@ def test_resolve_from_table_warns_on_missing_and_skips_non_grch38() -> None:
 
 
 # ── offline round-trip / digest parity: DuckDB (path 2) vs resolution.csv (path 1) ────────────
+
+
+def test_deprecated_ensembl_cache_path_warns(tmp_path: Path) -> None:
+    # The DuckDB `ensembl_cache` path is deprecated (removed at 1.0) and routes to just-dna-enricher;
+    # the surface still works but must announce itself.
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n")
+    with pytest.warns(DeprecationWarning, match="deprecated"):
+        result = compile_module(spec, tmp_path / "out", ensembl_cache=_cache(tmp_path))
+    assert result.success, result.errors
 
 
 def test_digest_parity_and_offline_roundtrip(tmp_path: Path) -> None:

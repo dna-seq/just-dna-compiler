@@ -16,8 +16,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from just_dna_compiler.cache import default_ensembl_cache_dir
-from just_dna_compiler.resolver import EnsemblReferenceError
+from just_dna_enricher.locations import default_ensembl_cache_dir
+from just_dna_enricher.resolver import EnsemblReferenceError
 
 logger = logging.getLogger(__name__)
 

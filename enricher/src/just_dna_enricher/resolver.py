@@ -18,7 +18,7 @@ import duckdb
 from just_dna_format.base import derive_variant_key
 from just_dna_format.spec import VariantRow
 
-from just_dna_compiler.cache import DUCKDB_NAME, resolve_ensembl_reference
+from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
 
 logger = logging.getLogger(__name__)
 

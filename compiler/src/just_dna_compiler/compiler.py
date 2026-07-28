@@ -16,6 +16,7 @@ import csv
 import re
 import shutil
 import types
+import warnings
 from collections import defaultdict
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
@@ -749,9 +750,13 @@ def compile_module(
         spec_dir: Path to the module spec directory.
         output_dir: Directory for output parquet files + manifest.json.
         compression: Parquet compression codec.
-        resolve_with_ensembl: Resolve missing rsid/position via an injected Ensembl DuckDB.
-        ensembl_cache: Path to a prebuilt Ensembl DuckDB or a parquet cache dir (required to
-            resolve; the standalone compiler does not download it — the caller injects it).
+        resolve_with_ensembl: Master switch for resolution. With a `resolution.csv` present it drives
+            the preferred, source-independent table path; `ensembl_cache` is the deprecated fallback.
+        ensembl_cache: **Deprecated (removed at 1.0).** Path to a prebuilt Ensembl DuckDB or parquet
+            cache dir. In-compiler DuckDB resolution has moved to `just-dna-enricher`; when given, this
+            emits a `DeprecationWarning` and routes to the enricher (which must be installed). Prefer
+            producing a `resolution.csv` (`just-dna-enricher enrich`) — the compiler then resolves with
+            no reference and no network.
         compiled_by: Provenance tag for the manifest (the marketplace passes "marketplace-server";
             a local compile leaves it None, so downloaders treat it as untrusted).
         ensembl_reference: Pinned reference id recorded in the manifest for reproducibility.
@@ -814,6 +819,7 @@ def compile_module(
     resolution_sig: Optional[str] = None
     if resolve_with_ensembl and variants:
         resolution_mode = "strict" if strict else "best_effort"
+        resolve_warnings: list[str] = []
         if resolution_table:
             from just_dna_compiler.resolution import resolve_from_table
 
@@ -824,12 +830,41 @@ def compile_module(
                 {row.source for row in resolution_rows if row.source}
             )
             resolution_sig = _resolution_signature(resolution_rows)
-        else:
-            from just_dna_compiler.resolver import resolve_variants
-
-            variants, resolve_warnings = resolve_variants(
+        elif ensembl_cache is not None:
+            # DEPRECATED (removed at 1.0): the in-compiler DuckDB-reference path. Resolution now belongs
+            # to the source-independent `resolution.csv` (produce it with `just-dna-enricher enrich`); the
+            # compiler owns no source/DuckDB logic. This surface is kept working by routing to the
+            # enricher — additive-within-a-major binds the wire/artifact *contract*, not this internal
+            # call, so the legacy path can retire at the next major. Guarded optional import (CLAUDE.md).
+            warnings.warn(
+                "compile_module(ensembl_cache=...) / in-compiler DuckDB resolution is deprecated and "
+                "will be removed at 1.0. Produce a resolution.csv (e.g. `just-dna-enricher enrich`) and "
+                "the compiler consumes it with no reference and no network.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            try:
+                from just_dna_enricher.resolver import resolve_variants as _legacy_resolve
+            except ImportError:
+                return CompilationResult(
+                    success=False,
+                    errors=[
+                        "ensembl_cache resolution now lives in just-dna-enricher (the network tier). "
+                        "Install just-dna-enricher, or precompute resolution.csv and recompile without "
+                        "ensembl_cache."
+                    ],
+                    warnings=all_warnings,
+                )
+            variants, resolve_warnings = _legacy_resolve(
                 variants, ensembl_cache, genome_build=config.genome_build
             )
+        elif any(v.chrom is None or v.start is None for v in variants):
+            # Nothing injected: the compiler no longer auto-discovers or fetches a reference (P2,
+            # tightened in 0.5). Variants lacking a position are left unresolved with a pointer.
+            resolve_warnings = [
+                "No resolution.csv and no ensembl_cache injected; variants lacking a genomic position "
+                "are left unresolved. Produce a resolution.csv with just-dna-enricher."
+            ]
         all_warnings.extend(resolve_warnings)
         # Resolution is an enrichment that can *change identity*: filling a coordinate or expanding a
         # one-to-many rsid into coord-keyed rows may collide with an already-authored row. validate_spec

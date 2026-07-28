@@ -342,11 +342,8 @@ name = "just-dna-compiler"
 version = "0.5.0"
 source = { editable = "compiler" }
 dependencies = [
-    { name = "duckdb" },
     { name = "just-dna-format" },
-    { name = "platformdirs" },
     { name = "polars" },
-    { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "typer" },
 ]
@@ -358,11 +355,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "duckdb", specifier = ">=1.1.0" },
     { name = "just-dna-format", editable = "schema" },
-    { name = "platformdirs", specifier = ">=4.0.0" },
     { name = "polars", specifier = ">=1.42.0" },
-    { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
@@ -375,10 +369,13 @@ name = "just-dna-enricher"
 version = "0.5.0"
 source = { editable = "enricher" }
 dependencies = [
+    { name = "duckdb" },
     { name = "httpx" },
     { name = "huggingface-hub" },
     { name = "just-dna-compiler" },
     { name = "just-dna-format" },
+    { name = "platformdirs" },
+    { name = "python-dotenv" },
     { name = "tenacity" },
     { name = "typer" },
 ]
@@ -390,10 +387,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "duckdb", specifier = ">=1.1.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", specifier = ">=0.34.0" },
     { name = "just-dna-compiler", editable = "compiler" },
     { name = "just-dna-format", editable = "schema" },
+    { name = "platformdirs", specifier = ">=4.0.0" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "tenacity", specifier = ">=9.0.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]

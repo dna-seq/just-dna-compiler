@@ -9,7 +9,6 @@ The Ensembl-resolution half lives in `test_resolver_integration.py` (skipped wit
 from pathlib import Path
 
 import polars as pl
-import pytest
 import yaml
 
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec

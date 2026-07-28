@@ -72,10 +72,16 @@ convention, never fetch), and HuggingFace/httpx/tenacity are scoped to the enric
 the dependency-light tiers a verify-only/compile-only client installs. Additive and scoped, not a
 reversal — it completes the 0.4.1 *"cache authority leaves the compiler"* decoupling.
 
-Still to land in 0.5 (final decoupling): delete the compiler's `cache.py` location authority and make
-`resolve_variants` pure inject-only (`None` → skip, no env/platformdirs auto-discovery), moving the
-cache-location logic into the enricher — the DuckDB *lookup* path itself stays as a superseded working
-alias until 1.0 (see the 1.0-cleanup tracker).
+**The compiler is now duckdb-free (final decoupling, done).** `cache.py` and `resolver.py` (the cache
+location + the whole DuckDB rsid↔coord resolver) **moved into `just-dna-enricher`** — `enricher/locations.py`
+and `enricher/resolver.py`. The compiler dropped `duckdb`, `platformdirs`, and `python-dotenv`; its only
+resolution is now the pure `resolve_from_table` (a `resolution.csv`). The `compile_module(ensembl_cache=…)`
+**surface is kept** but deprecated: when used it emits a `DeprecationWarning` and routes to the enricher
+via a guarded optional import (the compiler declares no dependency on the enricher and never fetches);
+`None` now means *skip* (no env/platformdirs auto-discovery — the P2 tightening). The legacy path is
+removed at **1.0**. This is legal because additive-within-a-major binds the wire/artifact *contract*, not
+an internal compiler call. The resolver's own tests (`test_resolver_unit`/`test_resolver_integration`)
+moved to `enricher/tests`; a `test_deprecated_ensembl_cache_path_warns` asserts the deprecation fires.
 
 ## 2026-07-15 — 0.4.0 (released) — audit pass: input-hardening tidy-ups
 

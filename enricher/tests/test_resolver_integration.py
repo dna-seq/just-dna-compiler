@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from just_dna_compiler.cache import resolve_ensembl_reference
-from just_dna_compiler.resolver import _connect, resolve_variants
+from just_dna_enricher.locations import resolve_ensembl_reference
+from just_dna_enricher.resolver import _connect, resolve_variants
 from just_dna_format.spec import VariantRow
 
 pytestmark = pytest.mark.integration

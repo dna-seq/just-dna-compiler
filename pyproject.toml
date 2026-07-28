@@ -13,3 +13,9 @@ addopts = "-vvv --import-mode=importlib"
 markers = [
     "integration: needs external data/network (an Ensembl reference cache or HuggingFace). Set JUST_DNA_ENSEMBL_CACHE to run resolver tests; skipped otherwise.",
 ]
+filterwarnings = [
+    # The ensembl_cache/DuckDB path is a deprecated-but-supported surface (removed at 1.0); tests that
+    # exercise it deliberately don't need to shout. `test_deprecated_ensembl_cache_path_warns` asserts
+    # the warning explicitly (pytest.warns overrides this ignore).
+    "ignore:compile_module\\(ensembl_cache:DeprecationWarning",
+]
