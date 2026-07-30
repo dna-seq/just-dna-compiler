@@ -6,7 +6,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from just_dna_enricher.upload import DEFAULT_REPO_ID, UploadPlan, plan_upload, upload_module
+from just_dna_enricher.upload import (
+    DEFAULT_CLINVAR_REPO_ID,
+    DEFAULT_REPO_ID,
+    UploadPlan,
+    plan_reference_snapshot,
+    plan_upload,
+    publish_reference_snapshot,
+    upload_module,
+)
 
 _REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
 
@@ -18,6 +26,13 @@ def _compiled_module(d: Path, *, logo: bool = False) -> Path:
     (d / "manifest.json").write_text("{}", encoding="utf-8")
     if logo:
         (d / "logo.png").write_bytes(b"png")
+    return d
+
+
+def _snapshot(d: Path) -> Path:
+    (d / "data").mkdir(parents=True, exist_ok=True)
+    (d / "data" / "clinvar-chr1.parquet").write_bytes(b"PAR1payloadPAR1")
+    (d / "release.json").write_text("{}", encoding="utf-8")
     return d
 
 
@@ -66,6 +81,10 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
             commit_message="Port lipidmetabolism",
         )
     api_cls.assert_called_once_with(token="hf_test_token")
+    # upload now routes through ensure_repo → create-or-update the repo, then upload in one commit.
+    mock_api.create_repo.assert_called_once_with(
+        repo_id=DEFAULT_REPO_ID, repo_type="dataset", exist_ok=True
+    )
     mock_api.upload_folder.assert_called_once()
     kwargs: dict[str, Any] = mock_api.upload_folder.call_args.kwargs
     assert kwargs["folder_path"] == str(module_dir)
@@ -81,3 +100,47 @@ def test_upload_module_requires_token(tmp_path: Path) -> None:
     with patch("huggingface_hub.get_token", return_value=None):
         with pytest.raises(PermissionError, match="No HuggingFace token"):
             upload_module(module_dir, "superhuman")
+
+
+# ── reference-snapshot publish (ClinVar/Ensembl parquet + release.json) ─────────────────────────
+
+
+def test_plan_reference_snapshot_lists_files(tmp_path: Path) -> None:
+    plan = plan_reference_snapshot(_snapshot(tmp_path / "snap"))
+    assert plan.repo_id == DEFAULT_CLINVAR_REPO_ID
+    assert plan.files == ["data/clinvar-chr1.parquet", "release.json"]
+
+
+def test_plan_reference_snapshot_rejects_empty(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(FileNotFoundError, match="no data/\\*.parquet"):
+        plan_reference_snapshot(empty)
+
+
+def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) -> None:
+    snap = _snapshot(tmp_path / "snap")
+    mock_api = MagicMock()
+    with (
+        patch("huggingface_hub.HfApi", return_value=mock_api) as api_cls,
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        plan = publish_reference_snapshot(snap, "just-dna-seq/clinvar")
+    api_cls.assert_called_once_with(token="hf_test_token")
+    mock_api.create_repo.assert_called_once_with(
+        repo_id="just-dna-seq/clinvar", repo_type="dataset", exist_ok=True
+    )
+    kwargs: dict[str, Any] = mock_api.upload_folder.call_args.kwargs
+    assert kwargs["folder_path"] == str(snap)
+    assert kwargs["path_in_repo"] == ""
+    assert kwargs["repo_id"] == "just-dna-seq/clinvar"
+    assert kwargs["repo_type"] == "dataset"
+    assert kwargs["allow_patterns"] == ["data/*.parquet", "release.json"]
+    assert plan.repo_id == "just-dna-seq/clinvar"
+
+
+def test_publish_reference_snapshot_requires_token(tmp_path: Path) -> None:
+    snap = _snapshot(tmp_path / "snap")
+    with patch("huggingface_hub.get_token", return_value=None):
+        with pytest.raises(PermissionError, match="No HuggingFace token"):
+            publish_reference_snapshot(snap)

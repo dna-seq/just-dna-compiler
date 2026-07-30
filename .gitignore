@@ -219,3 +219,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# just-dna data conventions (CLAUDE.md): generated/sample data never travels with the repo or the
+# package. Fixtures that must travel live in assets/ (committed), not here.
+/data/

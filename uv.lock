@@ -382,6 +382,7 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "polars" },
     { name = "pytest" },
 ]
 
@@ -398,6 +399,7 @@ requires-dist = [
     { name = "just-dna-compiler", editable = "compiler" },
     { name = "just-dna-format", editable = "schema" },
     { name = "platformdirs", specifier = ">=4.0.0" },
+    { name = "polars", marker = "extra == 'dev'", specifier = ">=1.42.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "tenacity", specifier = ">=9.0.0" },

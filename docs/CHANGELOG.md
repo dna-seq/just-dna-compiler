@@ -5,6 +5,33 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-07-30 — enricher: ClinVar reference snapshot (builder + resolver link + publisher)
+
+ClinVar becomes a second, complementary reference beside the Ensembl snapshot in `just-dna-enricher`.
+**No schema change, no compiler change** — `ResolutionRow.source` is an open field, so `"clinvar"`
+needs nothing new, and the compiler's consumption contract is untouched.
+
+- **`clinvar_build`** (`[dev]`, guarded `polars`) — `build_snapshot(vcf, out_dir)` converts the NCBI
+  ClinVar GRCh38 VCF into a per-chromosome parquet snapshot (`data/clinvar-chr{N}.parquet`, one row per
+  ACGT ALT allele) + `release.json` provenance; `download_clinvar_vcf` streams the VCF with the core
+  `httpx`. `clin_sig` is folded into `vocab.VALID_CLIN_SIG` by an explicit severity order, `clin_sig_raw`
+  kept verbatim. The parquet is byte-reproducible across rebuilds.
+- **`clinvar`** (core, `duckdb`) — `lookup_loci` mirroring `resolver.lookup_loci` exactly, so the
+  enrich chain treats the two references identically. Reads only `chrom/start/ref/alt` (annotation
+  columns stay out of `resolution.csv` — orthogonal axes, P5).
+- **Chain wiring** — a ClinVar link between the Ensembl cache and live Ensembl, stamping
+  `source="clinvar"`, filling only what the Ensembl cache missed. It sits **after** the Ensembl cache
+  on purpose: `alts` is a resolution fact flowing into `artifact.digest`, so a both-caches variant keeps
+  the Ensembl `alts`/`source="cache"` and **no already-compiled module's digest moves** (tested).
+  `--offline` clamps to both local caches (zero egress); `--no-clinvar` disables the link.
+- **Publisher** — `upload.py` gains `ensure_repo` (`create_repo(exist_ok=True)`, absent from the
+  extracted `v1_port.publish`) and `publish_reference_snapshot`; module upload now routes through
+  `ensure_repo` too, so create-or-update-then-upload is one pathway.
+- **CLI** — `clinvar build`/`clinvar publish` sub-app; `enrich`/`enrich-and-compile` gain
+  `--clinvar-cache` and `--clinvar/--no-clinvar`.
+- **Doc fix:** `ResolutionRow.start` is documented as **1-based** (VCF POS convention; it always was —
+  the coordinates are unchanged, only the docstring was wrong).
+
 ## 2026-07-28 — enricher `[dev]`: HF module upload extracted from just-dna-lite
 
 - **`just_dna_enricher.upload`** — publisher surface for pushing a compiled module

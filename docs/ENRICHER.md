@@ -18,7 +18,7 @@ lazy import* on its deprecated `ensembl_cache` path — it declares no dependenc
 
 ```
 pip install just-dna-enricher          # runtime: enrich (cache + snapshot download + live Ensembl)
-pip install 'just-dna-enricher[dev]'   # + the publisher surface (module upload) and test tooling
+pip install 'just-dna-enricher[dev]'   # + publisher surface (module/reference upload), ClinVar builder (polars), tests
 ```
 
 Requires Python `>=3.13` (the compiler's floor — deliberately **not** ensembl-mcp's `>=3.14`; the query
@@ -31,17 +31,20 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 |---|---|---|
 | `enrich` | orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
 | `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
+| `clinvar` | the DuckDB ClinVar resolver link — `lookup_loci` mirroring `resolver` | `duckdb`, format |
+| `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `locations` | cache-location resolution + `.env` (moved from the compiler) | `platformdirs`, `python-dotenv` |
-| `download` | HuggingFace **snapshot** download (footer-checked, atomic) | `huggingface_hub` (lazy) |
+| `download` | HuggingFace **snapshot** download (Ensembl + ClinVar; footer-checked, atomic) | `huggingface_hub` (lazy) |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
-| `upload` | publisher surface — push a compiled module to HF (`[dev]`) | `huggingface_hub` (lazy) |
-| `cli` | Typer app: `enrich`, `enrich-and-compile`, `upload` | `typer` |
+| `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
+| `cli` | Typer app: `enrich`, `enrich-and-compile`, `upload`, `clinvar build`/`publish` | `typer` |
 
 ## `enrich()` — the resolver chain
 
 ```python
 enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
-       download=True, genome_build="GRCh38", write=True, resolver=None) -> EnrichmentResult
+       clinvar_cache=None, use_clinvar=True, download=True, genome_build="GRCh38",
+       write=True, resolver=None) -> EnrichmentResult
 ```
 
 Reads `variants.csv`, computes which variants still need work (`need_pos` = rsid but no coord;
@@ -56,11 +59,21 @@ Reads `variants.csv`, computes which variants still need work (`need_pos` = rsid
    fetches the parquet slice (populates the cache read in step 2). The snapshot is *a static slice of
    popular rsIDs*, not a canonical reference — same pains as any source (incompleteness, versions,
    reachability), so a miss falls through.
-4. **Live Ensembl** — for rsIDs the cache/snapshot missed, `ensembl.EnsemblResolver.resolve_rsid`
+4. **ClinVar cache** (offline, `use_clinvar`) — for the variants the Ensembl cache/snapshot missed,
+   `clinvar.lookup_loci` runs the same DuckDB lookups over the ClinVar snapshot
+   (`locations.resolve_clinvar_reference`, or `download.ensure_clinvar_snapshot` when absent and
+   online). Source `clinvar`. It sits **after** the Ensembl cache on purpose: `alts` is a resolution
+   *fact* (it flows into `weights.parquet` → `artifact.digest`), and ClinVar carries only its submitted
+   alleles while Ensembl carries every dbSNP allele — so a variant both caches know keeps the Ensembl
+   `alts` and `source="cache"`, and **no already-compiled module's `artifact.digest` moves**. ClinVar
+   is a complementary reference (4.4M clinically-curated records, 1.54M with no rsid) that makes an
+   offline clinical enrich possible without provisioning the 14 GB dbSNP cache.
+5. **Live Ensembl** — for rsIDs every cache missed, `ensembl.EnsemblResolver.resolve_rsid`
    (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`.
 
-`--offline` clamps the chain to step 2 alone (**guaranteed zero egress**). Every filled row records the
-link that won in `source`, so the compiler can surface `resolution_sources` in the manifest.
+`--offline` clamps the chain to the local caches (steps 2 and 4 — Ensembl and ClinVar; **guaranteed
+zero egress**). Every filled row records the link that won in `source`, so the compiler can surface
+`resolution_sources` in the manifest.
 
 **Modes.** `best_effort` fills what it can and records the rest as `status="not_found"` rows (a warning,
 not a failure). `strict` raises `EnrichmentError` unless every in-scope variant resolves to a position —
@@ -109,29 +122,55 @@ The author/publisher half of the enricher's HF use (snapshot *download* is a run
 `just_dna_pipelines.v1_port.publish` so lite has a canonical home to adopt.
 
 ```python
-plan_upload(module_dir, name, repo_id=None) -> UploadPlan      # dry-run; validates artifacts present
+ensure_repo(repo_id, token=None)                                       # create-or-update (create_repo exist_ok=True)
+plan_upload(module_dir, name, repo_id=None) -> UploadPlan              # dry-run; validates artifacts present
 upload_module(module_dir, name, repo_id=None, token=None, commit_message=None) -> UploadPlan
+plan_reference_snapshot(snapshot_dir, repo_id=None) -> SnapshotPlan     # dry-run for a reference snapshot
+publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None) -> SnapshotPlan
 ```
 
-Uploads `weights/annotations/studies.parquet` (required) + `manifest.json` + optional logo to
-`datasets/<repo>/data/<name>/` in a single commit, matching just-dna-lite's discovery layout. Default
-repo `just-dna-seq/annotators`. Requires a write token (`hf auth login` or `HF_TOKEN`) — a missing one
-raises `PermissionError`; `huggingface_hub` is a guarded lazy import.
+`upload_module` uploads `weights/annotations/studies.parquet` (required) + `manifest.json` + optional
+logo to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
+just-dna-lite's discovery layout. `publish_reference_snapshot` uploads a built `data/*.parquet` +
+`release.json` to the **root** of a dataset repo (default `just-dna-seq/clinvar`), matching the
+`download.ensure_*_snapshot` layout. Both go through `ensure_repo` — one create-or-update-then-upload
+pathway (`create_repo` was added here; the origin `v1_port.publish` assumed the repo pre-existed).
+Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`;
+`huggingface_hub` is a guarded lazy import.
+
+## ClinVar reference snapshot (`clinvar_build.py`, `[dev]`)
+
+`build_snapshot(vcf, out_dir)` turns the NCBI ClinVar GRCh38 VCF into the per-chromosome parquet
+snapshot the `clinvar` link reads (`out_dir/data/clinvar-chr{N}.parquet`, same layout as the Ensembl
+snapshot). One row per ACGT ALT allele; `clin_sig` is folded into `vocab.VALID_CLIN_SIG` by an explicit
+severity order while `clin_sig_raw` keeps the verbatim `CLNSIG` (lossless, auditable). A `release.json`
+records provenance (`clinvar_file_date`, `source_url`, `source_sha256`, `record_count`, …) — the values
+that feed `GenePanelSpec.reference`/`reference_sha256` when RM4 lands. The parquet is byte-reproducible
+across rebuilds (only `release.json`'s `built_at` varies). `polars` is a `[dev]`, guarded import — the
+runtime `clinvar` link is polars-free. `download_clinvar_vcf` streams the NCBI VCF with the core
+`httpx` (atomic `.part` rename, sha256 while streaming).
 
 ## CLI
 
 ```
 just-dna-enricher enrich spec/ --strict            # write spec/resolution.csv, fail if unresolved
-just-dna-enricher enrich spec/ --offline           # cache-only, zero egress
+just-dna-enricher enrich spec/ --offline           # cache-only (Ensembl + ClinVar), zero egress
+just-dna-enricher enrich spec/ --no-clinvar        # Ensembl links only
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
-just-dna-enricher upload out/coronary --dry-run    # plan an HF upload ([dev])
+just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev])
 just-dna-enricher upload out/coronary              # push compiled artifacts to the HF collection
+just-dna-enricher clinvar build --vcf clinvar.vcf.gz --out cv/   # VCF → snapshot parquet ([dev])
+just-dna-enricher clinvar build --download --out cv/            # fetch the NCBI VCF first, then build
+just-dna-enricher clinvar publish cv/ --dry-run                 # plan the reference-snapshot upload
+just-dna-enricher clinvar publish cv/                           # create-or-update datasets/just-dna-seq/clinvar
 ```
 
-`enrich`/`enrich-and-compile` take `--strict/--best-effort`, `--offline`, `--ensembl-cache`; `upload`
-takes `--repo`, `--name`, `--message`, `--dry-run`. `enrich-and-compile` runs `enrich` then
-`compile_module(..., ensembl_cache=None, strict=…)`, so compilation consumes the just-written
-`resolution.csv` (path 1) with no reference and no network.
+`enrich`/`enrich-and-compile` take `--strict/--best-effort`, `--offline`, `--ensembl-cache`,
+`--clinvar-cache`, `--clinvar/--no-clinvar`; `upload` takes `--repo`, `--name`, `--message`,
+`--dry-run`; `clinvar build` takes `--vcf`/`--download`/`--out`; `clinvar publish` takes `--repo`,
+`--message`, `--dry-run`. `enrich-and-compile` runs `enrich` then `compile_module(..., ensembl_cache=None,
+strict=…)`, so compilation consumes the just-written `resolution.csv` (path 1) with no reference and
+no network.
 
 ## `resolution.csv` is provisional (0.5)
 

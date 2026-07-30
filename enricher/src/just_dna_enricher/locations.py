@@ -26,6 +26,10 @@ from platformdirs import user_cache_dir
 APPNAME: str = "just-dna-pipelines"
 ENSEMBL_SUBDIR: str = "ensembl_variations"
 DUCKDB_NAME: str = "ensembl_variations.duckdb"
+# ClinVar reference snapshot — a second, complementary reference beside Ensembl (clinically-curated
+# GRCh38 records, ~200 MB gz), stored under `<base>/clinvar/data/*.parquet` in the same layout so one
+# DuckDB view shape serves both.
+CLINVAR_SUBDIR: str = "clinvar"
 
 
 def load_env(override: bool = False) -> Optional[str]:
@@ -74,5 +78,39 @@ def resolve_ensembl_reference(
             search_dir.glob("*.parquet")
         )
         if has_db or has_parquet:
+            return search_dir
+    return None
+
+
+def default_clinvar_cache_dir() -> Path:
+    """The `<base>/clinvar` directory (same base as the Ensembl cache)."""
+    base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
+    root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
+    return root / CLINVAR_SUBDIR
+
+
+def resolve_clinvar_reference(
+    clinvar_cache: Optional[Path] = None, *, load_dotenv_file: bool = True
+) -> Optional[Path]:
+    """Locate a usable ClinVar reference without downloading.
+
+    Mirrors `resolve_ensembl_reference`'s precedence: explicit `clinvar_cache` →
+    ``$JUST_DNA_CLINVAR_CACHE`` → ``$JUST_DNA_PIPELINES_CACHE_DIR``/platformdirs `clinvar/`. The
+    ClinVar snapshot ships as parquet only (no prebuilt ``.duckdb``); a directory is returned when it
+    holds ``data/*.parquet`` (or bare ``*.parquet``), else ``None``. Never downloads — provisioning is
+    the enricher's `download.ensure_clinvar_snapshot` or the deployment's job.
+    """
+    if load_dotenv_file:
+        load_env()
+
+    candidate = clinvar_cache or os.getenv("JUST_DNA_CLINVAR_CACHE")
+    search_dir = Path(candidate) if candidate else default_clinvar_cache_dir()
+
+    if search_dir.is_dir():
+        data_dir = search_dir / "data"
+        has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
+            search_dir.glob("*.parquet")
+        )
+        if has_parquet:
             return search_dir
     return None

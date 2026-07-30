@@ -19,9 +19,10 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
-from just_dna_enricher.download import ensure_snapshot
+from just_dna_enricher import clinvar
+from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.locations import resolve_ensembl_reference
+from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 
 logger = logging.getLogger(__name__)
@@ -54,12 +55,20 @@ def enrich(
     mode: str = "best_effort",
     offline: bool = False,
     ensembl_cache: Optional[Path] = None,
+    clinvar_cache: Optional[Path] = None,
+    use_clinvar: bool = True,
     download: bool = True,
     genome_build: str = "GRCh38",
     write: bool = True,
     resolver: Optional[EnsemblResolver] = None,
 ) -> EnrichmentResult:
-    """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes."""
+    """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
+
+    The chain is: existing rows → Ensembl cache → ClinVar cache (`use_clinvar`, stamps
+    `source="clinvar"`) → live Ensembl. ClinVar sits *after* the Ensembl cache so a variant both
+    caches know keeps `source="cache"` and its `alts` — no already-compiled module's `artifact.digest`
+    moves. `--offline` clamps the chain to the two local caches (zero egress).
+    """
     spec_dir = Path(spec_dir)
     variants: list[VariantRow] = []
     variants_path = spec_dir / "variants.csv"
@@ -94,8 +103,9 @@ def enrich(
     rsid_to_loci: dict[str, list[dict]] = {}
     pos_to_rsid: dict[str, str] = {}
     source_of_rsid: dict[str, str] = {}
+    source_of_pos: dict[str, str] = {}  # variant_key -> which link reverse-resolved its rsid
 
-    # ── cache link (offline, first) ──────────────────────────────────────────────────────────
+    # ── Ensembl cache link (offline, first) ────────────────────────────────────────────────────
     reference = resolve_ensembl_reference(ensembl_cache)
     if reference is None and not offline and download:
         try:
@@ -109,6 +119,40 @@ def enrich(
         rsid_to_loci, pos_to_rsid, _ = lookup_loci(reference, rsids, positions)
         for rsid in rsid_to_loci:
             source_of_rsid[rsid] = "cache"
+        for key in pos_to_rsid:
+            source_of_pos[key] = "cache"
+
+    # ── ClinVar cache link (offline, after Ensembl cache, before live) ─────────────────────────
+    # Fills only what the Ensembl cache missed, stamping source="clinvar". Placing it after the
+    # Ensembl cache keeps a both-caches variant on source="cache"/Ensembl `alts`, so no compiled
+    # module's artifact.digest moves. Offline uses a local ClinVar cache only (no download).
+    if use_clinvar and genome_build == "GRCh38" and (need_pos or need_rsid):
+        clinvar_ref = resolve_clinvar_reference(clinvar_cache)
+        if clinvar_ref is None and not offline and download:
+            try:
+                ensure_clinvar_snapshot(clinvar_cache)
+                clinvar_ref = resolve_clinvar_reference(clinvar_cache)
+            except Exception as exc:  # provisioning is best-effort; degrade to live/offline
+                logger.warning("ClinVar snapshot provisioning failed (%s); continuing without it.", exc)
+        if clinvar_ref is not None:
+            cv_rsids = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
+            cv_positions = [
+                (v.chrom, v.start, v.ref)
+                for v in need_rsid
+                if derive_variant_key(None, v.chrom, v.start, v.ref) not in pos_to_rsid
+            ]
+            if cv_rsids or cv_positions:
+                cv_rsid_to_loci, cv_pos_to_rsid, _ = clinvar.lookup_loci(
+                    clinvar_ref, cv_rsids, cv_positions
+                )
+                for rsid, loci in cv_rsid_to_loci.items():
+                    if rsid not in rsid_to_loci:
+                        rsid_to_loci[rsid] = loci
+                        source_of_rsid[rsid] = "clinvar"
+                for key, rsid in cv_pos_to_rsid.items():
+                    if key not in pos_to_rsid:
+                        pos_to_rsid[key] = rsid
+                        source_of_pos[key] = "clinvar"
 
     # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
     if not offline and genome_build == "GRCh38":
@@ -153,7 +197,8 @@ def enrich(
             rsid = pos_to_rsid.get(key)
             out.append(ResolutionRow(
                 variant_key=key, rsid=rsid, chrom=v.chrom, start=v.start, ref=v.ref, alts=v.alts,
-                genome_build=genome_build, source="cache" if rsid else "authored", status="resolved",
+                genome_build=genome_build,
+                source=source_of_pos.get(key, "cache") if rsid else "authored", status="resolved",
             ))
         else:
             # already complete, or has a position — a full record, nothing to resolve

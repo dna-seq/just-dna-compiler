@@ -30,11 +30,15 @@ dependencies = [
 just-dna-enricher = "just_dna_enricher.cli:app"
 
 # Publisher / developer surface. huggingface-hub is already a core dep (snapshot download);
-# this extra marks the upload CLI (`just-dna-enricher upload`) and test tooling as the
-# supported install path for authors republishing modules — `pip install just-dna-enricher[dev]`.
+# this extra marks the upload CLI (`just-dna-enricher upload`), the ClinVar reference builder
+# (`just-dna-enricher clinvar build`, which needs polars to write the snapshot parquet) and test
+# tooling as the supported install path for authors — `pip install just-dna-enricher[dev]`. polars
+# is a builder-only dep (guarded import in `clinvar_build`); the runtime resolver path stays
+# polars-free (the compiler tier owns polars, CONSTITUTION Goal 2).
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3",
+    "polars>=1.42.0",
 ]
 
 [build-system]

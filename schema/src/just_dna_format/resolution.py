@@ -58,7 +58,11 @@ class ResolutionRow(BaseModel):
     # ── resolved facts (feed resolution_signature) ──
     rsid: Optional[str] = Field(default=None, description="Resolved dbSNP identifier")
     chrom: Optional[str] = Field(default=None, description="Chromosome without 'chr' prefix")
-    start: Optional[int] = Field(default=None, ge=0, description="0-based genomic position")
+    start: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="1-based genomic position (VCF POS convention; matches the Ensembl and ClinVar snapshots)",
+    )
     ref: Optional[str] = Field(default=None, description="Reference allele")
     alts: Optional[str] = Field(default=None, description="Alt allele(s), comma-separated")
     genome_build: str = Field(
