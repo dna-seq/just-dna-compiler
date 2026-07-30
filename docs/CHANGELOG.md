@@ -5,6 +5,26 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-07-30 — `variant_key` carries the alt (distinct alleles at one locus no longer collide)
+
+Second finding from the ClinVar dogfood (`reference_examples/pathogenic_clinvar/`): with the
+allele-aware back-fill in place, the compiler's reverse round-trip *still* wasn't a fixpoint for
+`resolution_signature`, because `variant_key = chrom:start:ref` **excluded `alt`** — two distinct
+alleles at one locus (the coordinate-only insertion `11:5226762 C>CAAAG` and the expanded `rs33979901`
+locus `11:5226762 C>CA`) collapsed onto one key, and the decompiler couldn't tell them apart.
+
+- **`base.derive_variant_key` gains an optional `alts`.** The coordinate identity is now
+  `chrom:start:ref:alts` (alts normalized/sorted) **when an alt is present**; rsid keys, position-only
+  keys (no alt), and the position-level *matching* helpers (studies, verify, reverse-lookup,
+  haplotypes) are unchanged — a study still matches a variant at `chrom:start:ref` regardless of allele.
+- Passed at the identity-mint sites only: `VariantRow._freeze_variant_key` and the three one-to-many
+  expansion re-key points (compiler `resolution.py`, enricher `resolver.py`, reverse writer).
+- Result: `compile → reverse → compile` is now a **full fixpoint** (`artifact.digest`,
+  `content_signature`, **and** `resolution_signature`). This changes `artifact.digest` for any module
+  carrying alt-bearing *coordinate* variants (rsid-based modules are unaffected) — acceptable while 0.5
+  is unpublished and `resolution.csv`/the digest are not yet frozen. `StudyRow`/`PharmVariantRow` keep
+  their position/rsid-level keys by design.
+
 ## 2026-07-30 — enricher: allele-aware reverse back-fill + ambiguity marking
 
 Surfaced by dogfooding the ClinVar module (see `reference_examples/pathogenic_clinvar/`): the reverse

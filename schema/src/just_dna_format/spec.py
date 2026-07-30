@@ -192,7 +192,8 @@ class VariantRow(AuthoredModel):
     variant_key: Optional[str] = Field(
         default=None,
         description=(
-            "Frozen machine identity (rsid, else chrom:start:ref), stamped at load and never "
+            "Frozen machine identity (rsid, else chrom:start:ref, or chrom:start:ref:alts when an alt "
+            "is present so distinct alleles at one locus don't collide), stamped at load and never "
             "re-derived — so the resolver filling a coord/rsid can't re-key the row, and a one-to-many "
             "rsid expands to distinct coord-keyed rows (Principle 7). Compiler-managed: not authored, "
             "materialized to weights.parquet, and never written back by reverse_module."
@@ -284,7 +285,7 @@ class VariantRow(AuthoredModel):
         """Stamp the frozen identity at load, ignoring any authored value (no foot-gun). Because a
         `mode="after"` validator does not re-run on `model_copy`, the resolver can fill rsid/coord or
         reassign the key on expansion without it re-deriving. See `base.derive_variant_key`."""
-        self.variant_key = derive_variant_key(self.rsid, self.chrom, self.start, self.ref)
+        self.variant_key = derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)
         return self
 
     # ── 0.3 read-time aliases + upgrade (ROADMAP item 1/6 + "Upgrade derivation"). ────────────────

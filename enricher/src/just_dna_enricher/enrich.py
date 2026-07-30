@@ -183,7 +183,7 @@ def enrich(
     out: list[ResolutionRow] = []
     unresolved: list[str] = []
     for v in variants:
-        key = v.variant_key or derive_variant_key(v.rsid, v.chrom, v.start, v.ref)
+        key = v.variant_key or derive_variant_key(v.rsid, v.chrom, v.start, v.ref, v.alts)
         if key in existing:
             out.extend(existing[key])
             if not any(r.chrom is not None for r in existing[key]):

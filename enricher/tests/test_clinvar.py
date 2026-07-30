@@ -303,8 +303,9 @@ def test_reverse_roundtrip_is_a_fixpoint(tmp_path: Path) -> None:
 
     assert r2.manifest.artifact.digest == r3.manifest.artifact.digest
     assert r2.manifest.compilation.resolution_signature == r3.manifest.compilation.resolution_signature
-    # the un-rs'd insertion stays coordinate-only (no allele-blind rsID borrowed from the SNV)
-    ins = [r for r in _resolution_rows(spec) if r.variant_key == "11:5226762:C"]
+    # the un-rs'd insertion stays coordinate-only (no allele-blind rsID borrowed from the SNV) and is
+    # keyed by its own allele (chrom:start:ref:alts), so it no longer collides with a co-located variant
+    ins = [r for r in _resolution_rows(spec) if r.variant_key == "11:5226762:C:CAAAG"]
     assert ins and all(r.rsid is None for r in ins)
 
 

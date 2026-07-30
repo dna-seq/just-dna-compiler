@@ -45,7 +45,23 @@ class TestVariantRow:
             weight=-0.5, state="risk", conclusion="Position-only",
         )
         assert row.rsid is None
-        assert row.variant_key == "10:94781859:G"
+        # coordinate identity now carries the alt (distinct alleles at one locus don't collide)
+        assert row.variant_key == "10:94781859:G:A"
+
+    def test_distinct_alleles_at_one_locus_get_distinct_keys(self) -> None:
+        common = dict(chrom="11", start=5226762, ref="C", state="risk", conclusion="x")
+        ins = VariantRow(alts="CAAAG", genotype="C/CAAAG", **common)
+        dele = VariantRow(alts="CA", genotype="C/CA", **common)
+        assert ins.variant_key == "11:5226762:C:CAAAG"
+        assert dele.variant_key == "11:5226762:C:CA"
+        assert ins.variant_key != dele.variant_key  # no collision on chrom:start:ref
+        # alts are normalized (sorted) so authored allele order doesn't change identity
+        ab = VariantRow(alts="G,A", genotype="A/G", **common).variant_key
+        ba = VariantRow(alts="A,G", genotype="A/G", **common).variant_key
+        assert ab == ba == "11:5226762:C:A,G"
+        # position-only (no alt) keeps the bare coordinate key; unchanged from before
+        pos = VariantRow(chrom="1", start=100, ref="G", genotype="G/G", state="risk", conclusion="x")
+        assert pos.variant_key == "1:100:G"
 
     def test_neither_rsid_nor_position_rejected(self) -> None:
         with pytest.raises(Exception, match="At least one identifier"):

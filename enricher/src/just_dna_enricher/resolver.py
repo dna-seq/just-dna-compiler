@@ -168,7 +168,7 @@ def resolve_variants(
                 )
                 for locus in loci:
                     key = derive_variant_key(
-                        None, locus["chrom"], locus["start"], locus["ref"]
+                        None, locus["chrom"], locus["start"], locus["ref"], locus["alts"]
                     )
                     patched.append(v.model_copy(update={**locus, "variant_key": key}))
         elif v.rsid is None and v.chrom is not None:

@@ -37,17 +37,33 @@ from just_dna_format.vocab import (
 
 
 def derive_variant_key(
-    rsid: Optional[str], chrom: Optional[str], start: Optional[int], ref: Optional[str]
+    rsid: Optional[str],
+    chrom: Optional[str],
+    start: Optional[int],
+    ref: Optional[str],
+    alts: Optional[str] = None,
 ) -> str:
-    """The natural identity for a variant-ish row: the rsid when present, else `chrom:start:ref`.
+    """The natural identity for a variant-ish row: the rsid when present, else the coordinate.
+
+    The coordinate key is `chrom:start:ref` and, **when an alt allele is given**, `chrom:start:ref:alts`
+    — so two *distinct alleles* at the same locus (e.g. an insertion `C>CAAAG` and a deletion `C>CA`, or
+    a benign `C>G` beside a pathogenic `C>A`) are distinct identities rather than colliding on
+    `chrom:start:ref`. `alts` is normalized (its comma-separated alleles are sorted) so the key is
+    stable regardless of authored allele order and round-trips losslessly. A position-only row (no
+    alts) keeps the bare `chrom:start:ref`, and an rsid row keeps its rsid — both unchanged.
 
     Single source of truth shared by `VariantRow` (which *freezes* the result into a stored column so
-    resolution can never re-key a row), `StudyRow`, and `PharmVariantRow`. See docs/COMPILER.md — the
-    frozen `variant_key` is what keeps a position-only row that later resolves to an rsid from flipping
-    its identity, and lets a one-to-many rsid expand to distinct coord-keyed rows (Principle 7)."""
+    resolution can never re-key a row) and the one-to-many expansion re-keying. `StudyRow` and the
+    position-level *matching* helpers deliberately call this without `alts` — a study is position/rsid
+    evidence and matches a variant at `chrom:start:ref` regardless of which allele it carries. See
+    docs/COMPILER.md — the frozen `variant_key` keeps a position-only row that later resolves to an
+    rsid from flipping its identity, and lets a one-to-many rsid expand to distinct coord-keyed rows
+    (Principle 7). `alts` is optional (added 0.5, resolution table still provisional)."""
     if rsid is not None:
         return rsid
-    return f"{chrom}:{start}:{ref}"
+    base = f"{chrom}:{start}:{ref}"
+    alts_norm = ",".join(sorted(a.strip() for a in alts.split(",") if a.strip())) if alts else ""
+    return f"{base}:{alts_norm}" if alts_norm else base
 
 
 class AuthoredModel(BaseModel):

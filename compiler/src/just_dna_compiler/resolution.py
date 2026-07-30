@@ -74,7 +74,7 @@ def resolve_from_table(
                 for locus in _sorted_loci(loci):
                     update = _coord_update(locus)
                     update["variant_key"] = derive_variant_key(
-                        None, locus.chrom, locus.start, locus.ref
+                        None, locus.chrom, locus.start, locus.ref, locus.alts
                     )
                     patched.append(v.model_copy(update=update))
 

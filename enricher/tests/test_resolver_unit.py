@@ -143,7 +143,7 @@ def test_one_to_many_rsid_expands_to_n_rows(paralog_cache: Path) -> None:
     # each keyed by its own coordinate, plus a warning.
     patched, warnings = resolve_variants([_v(rsid="rs555")], paralog_cache)
     assert len(patched) == 2
-    assert {p.variant_key for p in patched} == {"1:1000:A", "16:2000:A"}
+    assert {p.variant_key for p in patched} == {"1:1000:A:G", "16:2000:A:G"}  # coord key carries alt
     assert all(p.rsid == "rs555" for p in patched)  # every row keeps the shared rsid as data
     assert any("maps to 2 loci" in w for w in warnings)
 
@@ -163,7 +163,7 @@ def test_expansion_order_is_deterministic(tmp_path: Path) -> None:
         }
     ).write_parquet(data / "chr.parquet")
     patched, _ = resolve_variants([_v(rsid="rs555")], tmp_path / "cache")
-    assert [p.variant_key for p in patched] == ["1:1000:A", "16:2000:A"]
+    assert [p.variant_key for p in patched] == ["1:1000:A:G", "16:2000:A:G"]  # coord key carries alt
 
 
 def test_both_identifiers_consistent_no_warning(cache: Path) -> None:

@@ -86,27 +86,27 @@ and the full candidate list in `rsid_alternates` — the ambiguity is recorded, 
 *(This corrects an earlier allele-blind back-fill that let the un-rs'd insertion `11:5226762 C>CAAAG`
 inherit the SNV rsID `rs33922842` at that position — see finding 7.)*
 
-### 5. One-to-many rsIDs expand to distinct coordinate-keyed rows
+### 5. One-to-many rsIDs expand to distinct allele-keyed rows
 530 rsIDs (6-gene run; 11 in HBB) map to more than one locus and expand to one weight row per locus,
-each re-keyed to its coordinate (`variant_key = chrom:start:ref`, `locus_index` 0..N−1). Example
-(BRCA1): `rs1131691004 → 17:7676039:A` (SNV) **and** `17:7676039:ACGGAAAC` (insertion).
+each re-keyed to its allele (`variant_key = chrom:start:ref:alts`, `locus_index` 0..N−1). Example
+(BRCA1): `rs1131691004 → 17:7676039:A:ACGGAAAC` (insertion) **and** `17:7676039:ACGGAAAC:A` (deletion).
 
-### 6. Reverse round-trip: a fixpoint for the artifact identity; the residual is a *key* limitation
-`compile → reverse → compile` is **idempotent for `artifact.digest` and `content_signature`** (byte-
-identical on the second pass). Reverse normalizes to a canonical, full-column, coordinate-baked,
-expanded spec (that asymmetry is intended: authored row order is preserved, column order and cell
-formatting are normalized). `resolution_signature` is a fixpoint too **when every `variant_key` is
-distinct** — the allele-aware fix (finding 4) removed the rsID-back-fill drift.
+### 6. Reverse round-trip is a full fixpoint (once `variant_key` carries `alt`)
+`compile → reverse → compile` is now **idempotent for `artifact.digest`, `content_signature`, *and*
+`resolution_signature`** (byte-identical on the second pass). Reverse still normalizes to a canonical,
+full-column, coordinate-baked, expanded spec (that asymmetry is intended: authored row order is
+preserved, column order and cell formatting are normalized).
 
-The one residual non-fixpoint is now traced to a deeper cause, and it is **not** the back-fill: because
-`variant_key = chrom:start:ref` **excludes `alt`**, two *different alleles* at one locus collapse onto
-one key. In HBB, the coordinate-only insertion `11:5226762 C>CAAAG` (rsID null) and the expanded
-`rs33979901` locus `11:5226762 C>CA` share `variant_key 11:5226762:C`; the decompiler reconstructs
-resolution keyed by `(variant_key, locus_index)` and cannot tell which rsID belongs to which allele, so
-its choice is order-dependent across passes. `artifact.digest` stays stable (it keys on the full row);
-only the provisional `resolution_signature` wobbles. The real fix is to carry `alt` in the resolution
-key (or key by the variant-effect pair) — a deeper, still-open item, parked; `resolution.csv` is
-provisional in 0.5, so nothing in the released contract is at stake.
+Getting `resolution_signature` to a fixpoint took a second fix beyond the allele-aware back-fill
+(finding 4). The dogfood first showed it *not* converging, and the cause was that
+`variant_key = chrom:start:ref` **excluded `alt`**: two different alleles at one locus collapsed onto
+one key — in HBB the coordinate-only insertion `11:5226762 C>CAAAG` (rsID null) and the expanded
+`rs33979901` locus `11:5226762 C>CA` both keyed to `11:5226762:C`, so the decompiler could not tell
+which rsID belonged to which and its choice drifted across passes. The fix: **`variant_key` now carries
+the alt** — `chrom:start:ref:alts` (normalized) — so the insertion is `11:5226762:C:CAAAG`, distinct
+from `11:5226762:C:CA`. (rsid keys, position-only keys, and the position-level study/consistency joins
+are unchanged — studies match a variant at `chrom:start:ref` regardless of allele.) This is exactly the
+kind of pre-freeze identity fix the dogfood exists to surface while `resolution.csv` is still provisional.
 
 ### 7. Why ClinVar collocates coord-only and rsID variants (the dbSNP data model)
 **This is structural in the ClinVar/dbSNP data model, not an oversight.** Variant identity is
@@ -128,5 +128,6 @@ there are usually several distinct ALT alleles, each its own ClinVar Variation I
 **not** rsID — a single rsID legitimately maps to alleles with opposite conclusions, so resolving *by
 rsID* is coordinate-faithful but never conclusion-faithful. (b) The enricher aggregates `alts` per
 `(rsid, chrom, start, ref)` for the same reason. (c) Reverse (position→rsid) back-fill is now
-allele-aware and records genuine ambiguity (finding 4) instead of guessing. (d) The remaining wrinkle
-(finding 6) is that `variant_key` itself drops `alt`; carrying it is the deeper follow-up.
+allele-aware and records genuine ambiguity (finding 4) instead of guessing. (d) `variant_key` now
+carries `alt` (finding 6), so distinct alleles at one locus are distinct identities and the reverse
+round-trip is a full fixpoint.

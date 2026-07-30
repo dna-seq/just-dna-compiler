@@ -80,6 +80,28 @@ not a failure). `strict` raises `EnrichmentError` unless every in-scope variant 
 the network analogue of the compiler's `strict=True`. `EnrichmentResult` carries `rows`,
 `unresolved` (variant_keys with no position), `sources`, `mode`, and a `fully_resolved` property.
 
+### Reverse (position→rsid) back-fill is allele-aware
+
+A coordinate-only variant (rsid `None`, coordinate authored) can have an rsid back-filled from the
+reference — but the lookup is **allele-aware**: it matches the exact allele `(chrom, start, ref, alt)`
+via the shared `resolver._lookup_rsid_candidates`, not just `(chrom, start, ref)`. This matters because
+an rsid is a **position/multi-allelic-level** dbSNP tag, not a per-allele one — e.g. `rs33922842` at one
+HBB locus tags `C>A` (pathogenic), `C>G` (benign) *and* `C>T` (uncertain). An allele-blind match would
+let an un-rs'd insertion inherit a co-located SNV's rsid. So:
+
+- **0 allele-exact candidates** → `rsid` stays `null`, `source="authored"` (the coordinate is the
+  identity; never guess a label).
+- **1** → attach it (`status="resolved"`).
+- **≥2 for the same allele** (a genuine dbSNP merge) → deterministic pick in `rsid`, `status="ambiguous"`,
+  and the full candidate list in `ResolutionRow.rsid_alternates` — recorded, never silently chosen.
+
+Relatedly, the frozen identity now carries the allele: `base.derive_variant_key` keys a coordinate
+variant as `chrom:start:ref:alts` (normalized) when an alt is present, so distinct alleles at one locus
+are distinct identities. Together these make the compiler's `compile → reverse → compile` a **full
+fixpoint** (`artifact.digest`, `content_signature`, and the provisional `resolution_signature`). See
+[SCHEMAS.md](SCHEMAS.md) (`derive_variant_key`, `ResolutionRow.rsid_alternates`) and
+`reference_examples/pathogenic_clinvar/README.md` (the ClinVar dogfood these fixes came from).
+
 ## Live Ensembl — V2 GraphQL + V1 REST fallback (`ensembl.py`)
 
 `EnsemblResolver.resolve_rsid(rsid) -> (list[locus], source)` tries two backends in order:
@@ -109,11 +131,17 @@ the fallback triggers.
   `_view_over_parquet` over a `.duckdb` file or a `data/*.parquet` dir, `resolve_variants` (fill/expand/
   verify with the one-to-many `ORDER BY id, chrom, start, ref` expansion), and the public `lookup_loci`
   the enricher and (until 1.0) the compiler's deprecated path share so they never drift.
-- **`download.py`** — `ensure_snapshot(ensembl_cache=None) -> Path` pulls the parquet slice from the HF
-  dataset (`just-dna-seq/ensembl_variations`). A complete parquet begins/ends with the `PAR1` magic;
-  downloads go to a `.part` temp and rename only after the footer verifies, and a corrupt/truncated file
-  is removed and refetched rather than skipped forever. `huggingface_hub` is a **guarded lazy import** —
-  a missing wheel fails with a clear diagnosis pointing at the install or `--ensembl-cache`.
+- **ClinVar cache location** — `locations.resolve_clinvar_reference` mirrors the Ensembl ladder
+  (explicit arg → `$JUST_DNA_CLINVAR_CACHE` → `$JUST_DNA_PIPELINES_CACHE_DIR`/platformdirs, under a
+  `clinvar/` subdir), also **never downloading**. The ClinVar snapshot ships as parquet only (no prebuilt
+  `.duckdb`).
+- **`download.py`** — `ensure_snapshot(ensembl_cache=None)` and `ensure_clinvar_snapshot(clinvar_cache=None)`
+  pull the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations` /
+  `just-dna-seq/clinvar`) via one shared footer-checked/atomic body. A complete parquet begins/ends with
+  the `PAR1` magic; downloads go to a `.part` temp and rename only after the footer verifies, and a
+  corrupt/truncated file is removed and refetched rather than skipped forever. `huggingface_hub` is a
+  **guarded lazy import** — a missing wheel fails with a clear diagnosis pointing at the install or the
+  `--*-cache` flag.
 
 ## Publisher surface — module upload (`upload.py`, `[dev]`)
 
@@ -140,15 +168,49 @@ Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raise
 
 ## ClinVar reference snapshot (`clinvar_build.py`, `[dev]`)
 
+ClinVar is a second, **complementary** reference beside the Ensembl snapshot: ~4.4M clinically-curated
+GRCh38 records (~200 MB gz), 1.54M of them carrying **no rsid**, so a clinical module can enrich offline
+without provisioning the 14 GB dbSNP cache. Build (`[dev]`, `polars`) and download (core) split the same
+way the Ensembl snapshot does:
+
+```mermaid
+flowchart LR
+  ncbi["NCBI clinvar.vcf.gz GRCh38"] --> build["clinvar_build.py (dev)"]
+  build --> pq["clinvar/data/*.parquet + release.json"]
+  pq --> hf["HF datasets/just-dna-seq/clinvar"]
+  hf --> cache["local cache"]
+  cache --> link["clinvar.py lookup_loci (core)"]
+  link --> chain["enrich() chain"]
+  chain --> res["resolution.csv (source=clinvar)"]
+  res --> comp["compiler: weights.parquet"]
+```
+
 `build_snapshot(vcf, out_dir)` turns the NCBI ClinVar GRCh38 VCF into the per-chromosome parquet
 snapshot the `clinvar` link reads (`out_dir/data/clinvar-chr{N}.parquet`, same layout as the Ensembl
-snapshot). One row per ACGT ALT allele; `clin_sig` is folded into `vocab.VALID_CLIN_SIG` by an explicit
-severity order while `clin_sig_raw` keeps the verbatim `CLNSIG` (lossless, auditable). A `release.json`
-records provenance (`clinvar_file_date`, `source_url`, `source_sha256`, `record_count`, …) — the values
-that feed `GenePanelSpec.reference`/`reference_sha256` when RM4 lands. The parquet is byte-reproducible
-across rebuilds (only `release.json`'s `built_at` varies). `polars` is a `[dev]`, guarded import — the
-runtime `clinvar` link is polars-free. `download_clinvar_vcf` streams the NCBI VCF with the core
-`httpx` (atomic `.part` rename, sha256 while streaming).
+snapshot so one DuckDB view shape serves both). **One row per ACGT ALT allele** (symbolic/structural and
+`>50 bp` alleles are skipped and counted), with the columns:
+
+```
+chrom, start, ref, alt, rsid, variation_id, allele_id, gene, genes, clin_sig, clin_sig_raw,
+review_status, review_stars, condition, molecular_consequence, variant_type, origin
+```
+
+The resolver link reads only `chrom/start/ref/alt`; the rest is annotation the parquet carries for RM4
+(it never enters `resolution.csv` — orthogonal axes, P5). `clin_sig` is folded into `vocab.VALID_CLIN_SIG`
+by an explicit **severity order** (a multi-valued `CLNSIG` picks the most severe, splitting on `|`/`/`/`,`
+so `Pathogenic,_low_penetrance` is recognised) while `clin_sig_raw` keeps the verbatim `CLNSIG`
+(lossless, auditable). A `release.json` records provenance (`clinvar_file_date` from the VCF `##fileDate`,
+`source_url`, `source_sha256`, `record_count`, `built_at`, `builder_version`) — the values that feed
+`GenePanelSpec.reference`/`reference_sha256` when RM4 lands.
+
+**Coordinate convention — no shift.** `start` is the **1-based VCF POS**, passed through unchanged; the
+Ensembl snapshot uses the same convention, so a variant resolved by either reference lands on the same
+coordinate. (`ResolutionRow.start`'s field doc was corrected from "0-based" to 1-based accordingly.)
+
+The parquet is **byte-reproducible** across rebuilds (rows sorted per chromosome; only `release.json`'s
+`built_at` varies). `polars` is a `[dev]`, guarded import — the runtime `clinvar` link is polars-free.
+`download_clinvar_vcf` streams the NCBI VCF with the core `httpx` (atomic `.part` rename, sha256 while
+streaming). VCF-parsing idioms are leeched from just-dna-lite's `v1_port.clinvar`.
 
 ## CLI
 
@@ -200,3 +262,11 @@ against a fake `HfApi`. Coverage includes offline enrich → compile matching th
 making zero network calls, the V2 503 → V1 REST fallback, tenacity retrying a transient error, strict
 failure, one-to-many expansion, and the upload plan/token paths. Integration tests that need a real cache
 are `@integration` (skipped without `JUST_DNA_ENSEMBL_CACHE`).
+
+The **ClinVar** tests (`test_clinvar.py`) build against a small committed real slice
+(`assets/clinvar_GRCh38_slice.vcf.gz`), computing expected values from that VCF at runtime: build
+correctness (columns, `clin_sig ⊆ VALID_CLIN_SIG`, `clin_sig_raw` preserved), the cross-source
+coordinate agreement / off-by-one guard, byte-identical rebuild, the ClinVar-after-Ensembl chain order
+(no compiled digest moves), one-to-many expansion, the allele-aware back-fill + ambiguity marking, the
+`compile → reverse → compile` fixpoint, and the mocked reference-snapshot publish. A full build against
+the real local VCF is `@integration` (skipped when absent).

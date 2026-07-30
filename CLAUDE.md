@@ -42,6 +42,39 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
    [docs/ENRICHER.md](docs/ENRICHER.md) (the network tier: the resolver chain, Ensembl V2→V1, snapshot
    download + module upload). Read the tier your task touches.
 
+## 0.5 enricher — current state & gotchas (read before touching resolution)
+
+The **ClinVar snapshot** work is shipped (builder + `clinvar` link + chain + publisher; see
+[ENRICHER.md](docs/ENRICHER.md), reference example at `reference_examples/pathogenic_clinvar/`). The
+**next task** is **gnomAD v4.1** — fully specced, not started, in
+[docs/gnomad_4.1_enricher_a2c1ccca.plan.md](docs/gnomad_4.1_enricher_a2c1ccca.plan.md): 11 todos (live
+resolver link + a `frequencies.csv` pass + an offline-capable `gene_metrics.csv` pass) and **5 open
+design questions to settle first**. It already assumes the alt-carrying `variant_key` below.
+
+- **`variant_key` carries the alt (0.5).** `derive_variant_key(rsid, chrom, start, ref, alts=None)` →
+  coordinate identity is `chrom:start:ref:alts` (alts sorted/normalized) **when an alt is present**;
+  rsid keys and position-only keys are unchanged. Pass `alts` **only when minting a variant identity**
+  (`VariantRow._freeze`, the one-to-many expansion re-key sites). Position-level **matching** — studies,
+  `_verify`, the reverse pos→rsid lookup, haplotype dedup — deliberately calls it **without** `alts` (a
+  study matches a variant at `chrom:start:ref` regardless of allele). Mixing these up reintroduces the
+  same-locus allele collision this fixed.
+- **An rsID is position/multi-allelic-level, not per-allele.** One rsID (`rs33922842`) legitimately spans
+  pathogenic + benign + uncertain alleles at one locus, so clinical identity keys on `variant_key`+
+  genotype, never rsID. The reverse pos→rsID back-fill is therefore **allele-aware**
+  (`resolver._lookup_rsid_candidates`, shared by `clinvar`): 0 allele-exact candidates → leave `rsid`
+  null (don't guess); 1 → attach; ≥2 (a dbSNP merge) → deterministic pick + `status="ambiguous"` +
+  `ResolutionRow.rsid_alternates`.
+- **`enrich()` treats an existing `resolution.csv` beside the spec as authoritative** (merged, never
+  clobbered). To regenerate after a machinery change you MUST **delete `resolution.csv` first**, or stale
+  rows silently persist (this bit me while regenerating the reference example).
+- **Known loose end:** the compiler's reverse writer (`_write_resolution_csv`) omits `rsid_alternates`
+  from its `fieldnames`, so an `ambiguous` candidate list doesn't survive reverse→re-enrich (provenance
+  only — no digest/signature impact). See the gnomAD plan's "adjacent observation".
+- **Dogfood data is git-ignored** (`/data/` now in `.gitignore`): local ClinVar VCF at
+  `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
+  is `data/interim/clinvar`. `resolution.csv` is provisional in 0.5, so `artifact.digest` changes for
+  alt-bearing coordinate modules are acceptable pre-freeze.
+
 ## The design cycle (the order of things)
 
 Feature ideas move through **one loop**; the docs are its stages, and a design task should walk them

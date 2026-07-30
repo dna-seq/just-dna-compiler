@@ -68,8 +68,10 @@ annotation (see [§ resolution table](#the-resolution-table-05-provisional)).
   never `Enum`/`Literal` — additive and inspectable. Live sets in `vocab.py`: `VALID_DIRECTIONS`,
   `VALID_SIGNIFICANCE`, `VALID_CLIN_SIG`, `VALID_EVIDENCE_LEVELS`, `VALID_RESOLUTION_STATUS`,
   `VALID_AUTHOR_ROLES`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`, `ACTIONABILITY_SEED`.
-- **`derive_variant_key(rsid, chrom, start, ref)` (`base.py`).** The single source of a variant's
-  natural identity: the rsid when present, else `chrom:start:ref`. Never hand-build the coord key.
+- **`derive_variant_key(rsid, chrom, start, ref, alts=None)` (`base.py`).** The single source of a
+  variant's natural identity: the rsid when present, else `chrom:start:ref`, or `chrom:start:ref:alts`
+  (alts normalized/sorted) when an alt is given — so distinct alleles at one locus don't collide. Never
+  hand-build the coord key. Position-level *matching* (studies, verify) calls it without `alts`.
 - **Frozen `variant_key`.** On `VariantRow` it is a **stored, compiler-managed** column, stamped once
   at load by `_freeze_variant_key` (authored values ignored) and never re-derived — so resolution can
   fill a coord/rsid or expand a row without ever re-keying it (Principle 7). It is a derived read-only

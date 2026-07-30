@@ -1411,10 +1411,11 @@ def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
             chrom, start = row.get("chrom"), row.get("start")
             if chrom is None or start is None:
                 continue
-            variant_key = row.get("variant_key") or derive_variant_key(
-                row.get("rsid"), chrom, start, row.get("ref")
-            )
             alts_list = row.get("alts")
+            variant_key = row.get("variant_key") or derive_variant_key(
+                row.get("rsid"), chrom, start, row.get("ref"),
+                ",".join(alts_list) if alts_list else None,
+            )
             writer.writerow(
                 {
                     "variant_key": variant_key,
