@@ -29,8 +29,16 @@ logger = logging.getLogger(__name__)
 
 _FIELDNAMES = [
     "variant_key", "rsid", "chrom", "start", "ref", "alts",
-    "genome_build", "locus_index", "source", "status", "fetched_at",
+    "genome_build", "locus_index", "source", "status", "rsid_alternates", "fetched_at",
 ]
+
+
+def _authored_alt(v: VariantRow) -> Optional[str]:
+    """The single authored ALT for allele-aware reverse resolution, or None when absent or
+    multi-allelic (fall back to position/ref-level matching, which may resolve as ambiguous)."""
+    if v.alts and "," not in v.alts:
+        return v.alts
+    return None
 
 
 class EnrichmentError(RuntimeError):
@@ -101,9 +109,13 @@ def enrich(
     ]
 
     rsid_to_loci: dict[str, list[dict]] = {}
-    pos_to_rsid: dict[str, str] = {}
     source_of_rsid: dict[str, str] = {}
-    source_of_pos: dict[str, str] = {}  # variant_key -> which link reverse-resolved its rsid
+    # Reverse (position→rsid) back-fill is allele-aware and keeps ALL candidates per authored allele,
+    # so we can take a deterministic pick and flag a genuine multi-rsid allele as ambiguous rather than
+    # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
+    rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
+    rev_source: dict[tuple, str] = {}            # which link produced the candidates
+    positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
 
     # ── Ensembl cache link (offline, first) ────────────────────────────────────────────────────
     reference = resolve_ensembl_reference(ensembl_cache)
@@ -115,12 +127,13 @@ def enrich(
             logger.warning("Snapshot provisioning failed (%s); continuing without cache.", exc)
     if reference is not None and (need_pos or need_rsid) and genome_build == "GRCh38":
         rsids = [v.rsid for v in need_pos if v.rsid]
-        positions = [(v.chrom, v.start, v.ref) for v in need_rsid]
-        rsid_to_loci, pos_to_rsid, _ = lookup_loci(reference, rsids, positions)
+        rsid_to_loci, pos_candidates, _ = lookup_loci(reference, rsids, positions)
         for rsid in rsid_to_loci:
             source_of_rsid[rsid] = "cache"
-        for key in pos_to_rsid:
-            source_of_pos[key] = "cache"
+        for pt, cands in pos_candidates.items():
+            if cands:
+                rev_candidates[pt] = cands
+                rev_source[pt] = "cache"
 
     # ── ClinVar cache link (offline, after Ensembl cache, before live) ─────────────────────────
     # Fills only what the Ensembl cache missed, stamping source="clinvar". Placing it after the
@@ -136,23 +149,19 @@ def enrich(
                 logger.warning("ClinVar snapshot provisioning failed (%s); continuing without it.", exc)
         if clinvar_ref is not None:
             cv_rsids = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
-            cv_positions = [
-                (v.chrom, v.start, v.ref)
-                for v in need_rsid
-                if derive_variant_key(None, v.chrom, v.start, v.ref) not in pos_to_rsid
-            ]
+            cv_positions = [pt for pt in positions if not rev_candidates.get(pt)]
             if cv_rsids or cv_positions:
-                cv_rsid_to_loci, cv_pos_to_rsid, _ = clinvar.lookup_loci(
+                cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
                     clinvar_ref, cv_rsids, cv_positions
                 )
                 for rsid, loci in cv_rsid_to_loci.items():
                     if rsid not in rsid_to_loci:
                         rsid_to_loci[rsid] = loci
                         source_of_rsid[rsid] = "clinvar"
-                for key, rsid in cv_pos_to_rsid.items():
-                    if key not in pos_to_rsid:
-                        pos_to_rsid[key] = rsid
-                        source_of_pos[key] = "clinvar"
+                for pt, cands in cv_pos_candidates.items():
+                    if cands and not rev_candidates.get(pt):
+                        rev_candidates[pt] = cands
+                        rev_source[pt] = "clinvar"
 
     # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
     if not offline and genome_build == "GRCh38":
@@ -194,11 +203,20 @@ def enrich(
                                          source="ensembl" if not offline else "cache", status="not_found"))
                 unresolved.append(key)
         elif v.rsid is None and v.chrom is not None:
-            rsid = pos_to_rsid.get(key)
+            # Allele-aware back-fill (Tier 0/1/3): 0 candidates → leave rsid null (coordinate is the
+            # identity, don't guess); 1 → attach it; ≥2 (genuine dbSNP merge at the exact allele) →
+            # deterministic pick + status="ambiguous" + the full candidate list, never a silent guess.
+            pt = (v.chrom, v.start, v.ref, _authored_alt(v))
+            cands = rev_candidates.get(pt, [])
+            if not cands:
+                rsid, status, alternates, src = None, "resolved", None, "authored"
+            elif len(cands) == 1:
+                rsid, status, alternates, src = cands[0], "resolved", None, rev_source[pt]
+            else:
+                rsid, status, alternates, src = cands[0], "ambiguous", ",".join(cands), rev_source[pt]
             out.append(ResolutionRow(
                 variant_key=key, rsid=rsid, chrom=v.chrom, start=v.start, ref=v.ref, alts=v.alts,
-                genome_build=genome_build,
-                source=source_of_pos.get(key, "cache") if rsid else "authored", status="resolved",
+                genome_build=genome_build, source=src, status=status, rsid_alternates=alternates,
             ))
         else:
             # already complete, or has a position — a full record, nothing to resolve
@@ -240,6 +258,7 @@ def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
                     "locus_index": r.locus_index,
                     "source": r.source or "",
                     "status": r.status or "",
+                    "rsid_alternates": r.rsid_alternates or "",
                     "fetched_at": r.fetched_at or "",
                 }
             )

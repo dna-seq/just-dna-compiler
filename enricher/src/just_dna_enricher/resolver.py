@@ -187,14 +187,14 @@ def resolve_variants(
 def lookup_loci(
     reference: Path,
     rsids: list[str],
-    positions: list[tuple[Optional[str], Optional[int], Optional[str]]],
-) -> tuple[dict[str, list[dict]], dict[str, str], list[str]]:
+    positions: list[tuple[Optional[str], Optional[int], Optional[str], Optional[str]]],
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """Public cache lookup the enricher uses to *build* a resolution table (0.5).
 
-    Returns `(rsid -> [loci], pos_key -> rsid, warnings)` from an injected Ensembl reference, reusing
-    the exact DuckDB queries `resolve_variants` runs — so the enricher (which produces `resolution.csv`)
-    and the compiler's superseded DuckDB path never drift. Inject-only: `reference` is a `.duckdb` file
-    or a parquet dir the caller provisioned (the enricher owns the download); this never fetches.
+    Returns `(rsid -> [loci], (chrom,start,ref,alt) -> [candidate rsids], warnings)` from an injected
+    Ensembl reference. The reverse map is **allele-aware** (matches the authored `alt` when given) and
+    returns *all* candidate rsIDs at that exact allele — never a silent first-pick — so the caller can
+    take a deterministic pick and flag a genuine multi-rsid allele as ambiguous. Inject-only.
     """
     warnings: list[str] = []
     con = _connect(reference)
@@ -202,12 +202,57 @@ def lookup_loci(
         rsid_to_loci = (
             _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
         )
-        pos_to_rsid = (
-            _lookup_rsids_by_position(con, sorted(set(positions)), warnings) if positions else {}
+        pos_candidates = (
+            _lookup_rsid_candidates(con, "ensembl_variations", "id", positions) if positions else {}
         )
     finally:
         con.close()
-    return rsid_to_loci, pos_to_rsid, warnings
+    return rsid_to_loci, pos_candidates, warnings
+
+
+def _lookup_rsid_candidates(
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    id_col: str,
+    positions: list[tuple[Optional[str], Optional[int], Optional[str], Optional[str]]],
+) -> dict[tuple, list[str]]:
+    """Allele-aware reverse lookup: `(chrom,start,ref,alt) -> sorted [candidate rsids]`.
+
+    Matches the exact allele when `alt` is given (the fix for allele-blind back-fill: an insertion no
+    longer inherits a co-located SNV's rsid), falls back to `(chrom,start,ref)` then `(chrom,start)`
+    when the authored variant is less specific. Returns every distinct rsid found, so the caller flags
+    a >1 result as ambiguous rather than guessing. Shared shape for the Ensembl (`id`) and ClinVar
+    (`rsid`) tables — `id_col` selects which. `ORDER BY` keeps the candidate order deterministic (P7).
+    """
+    uniq = list(dict.fromkeys(positions))
+    concrete = [(c, s) for c, s, r, a in uniq if c is not None and s is not None]
+    if not concrete:
+        return {pt: [] for pt in uniq}
+    conds = " OR ".join("(chrom = ? AND start = ?)" for _ in concrete)
+    params: list[object] = []
+    for chrom, start in concrete:
+        params.extend([chrom, start])
+    rows = con.execute(
+        f"SELECT DISTINCT chrom, start, ref, alt, {id_col} FROM {table} "
+        f"WHERE ({conds}) AND {id_col} LIKE 'rs%' "
+        f"ORDER BY chrom, start, ref, alt, {id_col}",
+        params,
+    ).fetchall()
+    by_pos: dict[tuple, list[tuple]] = defaultdict(list)
+    for chrom, start, ref, alt, rid in rows:
+        by_pos[(str(chrom), int(start))].append((str(ref), str(alt), str(rid)))
+    result: dict[tuple, list[str]] = {}
+    for chrom, start, ref, alt in uniq:
+        cands: list[str] = []
+        for rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
+            if ref is not None and rref != ref:
+                continue
+            if alt is not None and ralt != alt:
+                continue
+            if rid not in cands:  # rows already ordered by ... id
+                cands.append(rid)
+        result[(chrom, start, ref, alt)] = cands
+    return result
 
 
 def _lookup_positions_by_rsid(

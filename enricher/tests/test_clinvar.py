@@ -247,6 +247,67 @@ def test_ensembl_cache_wins_when_both_present_no_digest_move(tmp_path: Path) -> 
 # ── integration: full build against the real local VCF (skipped when absent) ────────────────────
 
 
+# ── allele-aware reverse back-fill + ambiguity marking (Tier 0/1/3) ────────────────────────────
+
+
+def test_reverse_backfill_is_allele_aware_and_flags_ambiguity(tmp_path: Path) -> None:
+    # At 1:100:A there are two alleles: A>T (a genuine dbSNP merge: rs1000 AND rs1001) and A>G (rs9).
+    # At 1:200:C the insertion C>CAT has no rsID. A coordinate-only authoring of each must:
+    #   A>T   → ambiguous: deterministic pick rs1000 + rsid_alternates=rs1000,rs1001 (never rs9)
+    #   A>G   → resolved rs9 (allele-exact; not contaminated by the A>T rsIDs)
+    #   C>CAT → rsid null (don't guess an allele-blind rsID), source=authored
+    cv = _synthetic_clinvar(
+        tmp_path,
+        {"rsid": ["rs1000", "rs1001", "rs9", None], "chrom": ["1", "1", "1", "1"],
+         "start": [100, 100, 100, 200], "ref": ["A", "A", "A", "C"], "alt": ["T", "T", "G", "CAT"]},
+    )
+    variants = (
+        "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
+        ",1,100,A,T,A/T,risk,pathogenic\n"
+        ",1,100,A,G,A/G,risk,pathogenic\n"
+        ",1,200,C,CAT,C/CAT,risk,pathogenic\n"
+    )
+    spec = _spec(tmp_path / "spec", variants)
+    enrich(spec, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
+    by_alt = {r.alts: r for r in _resolution_rows(spec)}
+
+    assert by_alt["T"].status == "ambiguous"
+    assert by_alt["T"].rsid == "rs1000"                       # deterministic pick (lowest id)
+    assert by_alt["T"].rsid_alternates == "rs1000,rs1001"     # full candidate list, inspectable
+    assert by_alt["G"].status == "resolved" and by_alt["G"].rsid == "rs9"  # allele-exact, no contamination
+    assert by_alt["G"].rsid_alternates is None
+    assert by_alt["CAT"].rsid is None and by_alt["CAT"].source == "authored"  # never guessed
+
+
+def test_reverse_roundtrip_is_a_fixpoint(tmp_path: Path) -> None:
+    # With deterministic, allele-exact back-fill, compile→reverse→compile→reverse→compile is a true
+    # fixpoint for artifact.digest AND the (provisional) resolution_signature — the drift that the
+    # allele-blind pick used to cause is gone.
+    cv = tmp_path / "cv"
+    build_snapshot(FIXTURE, cv)
+    spec = _spec(
+        tmp_path / "spec",
+        "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
+        "rs334,,,,,A/T,risk,pathogenic\n"
+        ",11,5226762,C,CAAAG,C/CAAAG,risk,pathogenic\n",   # the un-rs'd insertion from finding 7
+    )
+    enrich(spec, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
+    r1 = compile_module(spec, tmp_path / "o1", ensembl_cache=None)
+    assert r1.success, r1.errors
+
+    from just_dna_compiler.compiler import reverse_module
+    reverse_module(tmp_path / "o1", tmp_path / "rev1", write_resolution=True)
+    r2 = compile_module(tmp_path / "rev1", tmp_path / "o2", ensembl_cache=None)
+    reverse_module(tmp_path / "o2", tmp_path / "rev2", write_resolution=True)
+    r3 = compile_module(tmp_path / "rev2", tmp_path / "o3", ensembl_cache=None)
+
+    assert r2.manifest.artifact.digest == r3.manifest.artifact.digest
+    assert r2.manifest.compilation.resolution_signature == r3.manifest.compilation.resolution_signature
+    # the un-rs'd insertion stays coordinate-only (no allele-blind rsID borrowed from the SNV)
+    ins = [r for r in _resolution_rows(spec) if r.variant_key == "11:5226762:C"]
+    assert ins and all(r.rsid is None for r in ins)
+
+
 @pytest.mark.integration
 def test_build_real_vcf(tmp_path: Path) -> None:
     if not REAL_VCF.exists():

@@ -131,7 +131,9 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
   `rsid?`, `chrom?`, `start? (ge=0)`, `ref?`, `alts?`, `genome_build="GRCh38"` (the RM15 forward hook),
   `locus_index=0` (0 for 1:1; `0..N-1` for a one-to-many rsid expansion). **Provenance** (excluded from
   the signature): `source?`, `status?` (`VALID_RESOLUTION_STATUS = {resolved, not_found, ambiguous}`;
-  `not_found` = "looked, genuinely absent"), `fetched_at?`.
+  `not_found` = "looked, genuinely absent"; `ambiguous` = a reverse position→rsid back-fill hit several
+  rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
+  `ambiguous`; `rsid` holds the deterministic pick), `fetched_at?`.
 - It is a **standalone `BaseModel`** (not `AuthoredModel`) with `extra="forbid"` — a resolution fact is
   not an annotation and must not inherit VariantRow's annotation validators; it reuses only the shared
   `rsid` grammar and the `status` vocabulary.

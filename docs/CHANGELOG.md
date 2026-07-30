@@ -5,6 +5,27 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-07-30 — enricher: allele-aware reverse back-fill + ambiguity marking
+
+Surfaced by dogfooding the ClinVar module (see `reference_examples/pathogenic_clinvar/`): the reverse
+(position→rsid) back-fill for coordinate-only variants was **allele-blind** — it matched
+`(chrom,start,ref)` and could attach a co-located *different-allele* rsID (an un-rs'd insertion
+inheriting the SNV's rsid), which also made the compiler's reverse round-trip drift on
+`resolution_signature`.
+
+- **Allele-aware reverse lookup.** `resolver.lookup_loci` / `clinvar.lookup_loci` now match the exact
+  allele `(chrom,start,ref,alt)` and return *all* candidate rsIDs (shared `_lookup_rsid_candidates`,
+  one implementation for both tables). `enrich()` passes the authored `alt` through.
+- **Don't-guess + mark ambiguity.** A coordinate-only variant with no allele-exact rsid stays
+  `rsid=null`/`source=authored` (coordinate is the identity); with exactly one → resolved; with several
+  for the *same allele* (a dbSNP merge) → `status="ambiguous"`, a deterministic `rsid` pick, and the
+  full candidate list in the new provisional **`ResolutionRow.rsid_alternates`** column (provenance,
+  excluded from `resolution_signature`).
+- This removes the mis-attribution and makes `resolution_signature` a reverse fixpoint whenever
+  `variant_key`s are distinct. A deeper residual remains and is parked: `variant_key = chrom:start:ref`
+  excludes `alt`, so two alleles at one locus still share a key — carrying `alt` in the resolution key
+  is the follow-up. `resolution.csv` is provisional in 0.5, so no released contract is affected.
+
 ## 2026-07-30 — enricher: ClinVar reference snapshot (builder + resolver link + publisher)
 
 ClinVar becomes a second, complementary reference beside the Ensembl snapshot in `just-dna-enricher`.

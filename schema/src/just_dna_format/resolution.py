@@ -83,6 +83,15 @@ class ResolutionRow(BaseModel):
     status: Optional[str] = Field(
         default=None, description="Resolution outcome: resolved|not_found|ambiguous"
     )
+    rsid_alternates: Optional[str] = Field(
+        default=None,
+        description=(
+            "When a reverse (position→rsid) back-fill hit several candidate rsIDs for the *same exact "
+            "allele* (a genuine dbSNP merge), the full sorted candidate list (comma-separated); `rsid` "
+            "carries the deterministic pick (lowest id) and `status` is 'ambiguous'. Empty otherwise. "
+            "Provenance — EXCLUDED from resolution_signature (0.5, provisional)."
+        ),
+    )
     fetched_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp, advisory")
 
     @field_validator("rsid")

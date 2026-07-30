@@ -18,7 +18,7 @@ from typing import Optional
 
 import duckdb
 
-from just_dna_format.base import derive_variant_key
+from just_dna_enricher.resolver import _lookup_rsid_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +48,13 @@ def _connect(reference: Path) -> duckdb.DuckDBPyConnection:
 def lookup_loci(
     reference: Path,
     rsids: list[str],
-    positions: list[tuple[Optional[str], Optional[int], Optional[str]]],
-) -> tuple[dict[str, list[dict]], dict[str, str], list[str]]:
-    """`(rsid -> [loci], pos_key -> rsid, warnings)` over an injected ClinVar reference.
+    positions: list[tuple[Optional[str], Optional[int], Optional[str], Optional[str]]],
+) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
+    """`(rsid -> [loci], (chrom,start,ref,alt) -> [candidate rsids], warnings)` over ClinVar.
 
-    Signature-identical to `resolver.lookup_loci`, so the enrich chain can call either link with the
-    same code. Inject-only; never fetches.
+    Signature-identical to `resolver.lookup_loci`, so the enrich chain calls either link with the same
+    code. The reverse map reuses `resolver._lookup_rsid_candidates` (allele-aware, all candidates) over
+    the `clinvar` view's `rsid` column — one implementation, no drift. Inject-only; never fetches.
     """
     warnings: list[str] = []
     con = _connect(reference)
@@ -61,12 +62,12 @@ def lookup_loci(
         rsid_to_loci = (
             _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
         )
-        pos_to_rsid = (
-            _lookup_rsids_by_position(con, sorted(set(positions)), warnings) if positions else {}
+        pos_candidates = (
+            _lookup_rsid_candidates(con, "clinvar", "rsid", positions) if positions else {}
         )
     finally:
         con.close()
-    return rsid_to_loci, pos_to_rsid, warnings
+    return rsid_to_loci, pos_candidates, warnings
 
 
 def _lookup_positions_by_rsid(
@@ -99,49 +100,3 @@ def _lookup_positions_by_rsid(
         if rsid not in result:
             warnings.append(f"{rsid}: not found in ClinVar, position remains unset")
     return dict(result)
-
-
-def _lookup_rsids_by_position(
-    con: duckdb.DuckDBPyConnection,
-    positions: list[tuple[Optional[str], Optional[int], Optional[str]]],
-    warnings: list[str],
-) -> dict[str, str]:
-    """Batch lookup: (chrom, start, ref) -> rsid. Mirrors `resolver._lookup_rsids_by_position`,
-    including ref-less matching and the deterministic multi-allelic tie-break."""
-    if not positions:
-        return {}
-    conditions = []
-    params: list[object] = []
-    for chrom, start, ref in positions:
-        if ref is not None:
-            conditions.append("(chrom = ? AND start = ? AND ref = ?)")
-            params.extend([chrom, start, ref])
-        else:
-            conditions.append("(chrom = ? AND start = ?)")
-            params.extend([chrom, start])
-    where = " OR ".join(conditions)
-    rows = con.execute(
-        f"SELECT DISTINCT chrom, start, ref, rsid FROM clinvar "
-        f"WHERE ({where}) AND rsid IS NOT NULL "
-        # ORDER BY makes the pick deterministic when a position is multi-allelic (idempotency, P7).
-        f"ORDER BY chrom, start, ref, rsid",
-        params,
-    ).fetchall()
-    refless = {(str(c), s) for c, s, r in positions if r is None}
-    result: dict[str, str] = {}
-    refless_warned: set[tuple[str, int]] = set()
-    for chrom, start, ref, rsid in rows:
-        full = derive_variant_key(None, chrom, start, ref)
-        result.setdefault(full, str(rsid))
-        pos = (str(chrom), start)
-        if pos in refless:
-            refless_key = derive_variant_key(None, chrom, start, None)
-            if refless_key not in result:
-                result[refless_key] = str(rsid)
-            elif result[refless_key] != str(rsid) and pos not in refless_warned:
-                refless_warned.add(pos)
-                warnings.append(
-                    f"{chrom}:{start} (ref unspecified) matches multiple ClinVar rsids; resolved to "
-                    f"{result[refless_key]} deterministically — specify ref to disambiguate."
-                )
-    return result
