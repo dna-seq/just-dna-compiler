@@ -1,0 +1,6 @@
+schema_version: '1.0'
+module:
+  name: pathogenic_hbb
+  title: ClinVar Pathogenic — HBB (dogfood example)
+  description: Pathogenic/likely-pathogenic ClinVar variants in HBB, authored by rsid (+ coordinate-only for un-rs'd variants) and resolved via the just-dna-enricher ClinVar snapshot. A 0.5 dogfood; see README.md.
+  report_title: HBB pathogenic variants
