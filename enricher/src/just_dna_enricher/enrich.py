@@ -20,8 +20,10 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher import clinvar
+from just_dna_enricher.clinical import ClinSigConflict, verify_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.identifiers import RsidStatus, check_rsids
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
@@ -33,7 +35,7 @@ logger = logging.getLogger(__name__)
 _FIELDNAMES = [
     "variant_key", "rsid", "chrom", "start", "ref", "alts",
     "genome_build", "locus_index", "vrs_id", "vrs_spec", "caid",
-    "source", "status", "rsid_alternates", "fetched_at",
+    "source", "status", "rsid_alternates", "rsid_current", "rsid_status", "fetched_at",
 ]
 
 
@@ -58,6 +60,12 @@ class EnrichmentResult:
     # Authored data that disagrees with the reference genome. Reported, never repaired — see
     # `sequences.verify_reference_alleles`. Empty when the check could not run (offline).
     ref_mismatches: list[RefMismatch] = field(default_factory=list)
+    # Authored `clin_sig` values ClinVar's own records do not support. Warnings in BOTH modes on
+    # purpose — see `clinical.verify_clin_sig`. Empty when no snapshot was provisioned.
+    clin_sig_conflicts: list[ClinSigConflict] = field(default_factory=list)
+    # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
+    # columns and reported; never substituted — see `identifiers.check_rsids`.
+    stale_rsids: list[RsidStatus] = field(default_factory=list)
 
     @property
     def fully_resolved(self) -> bool:
@@ -78,6 +86,8 @@ def enrich(
     write: bool = True,
     mint_vrs: bool = True,
     verify_ref: bool = True,
+    verify_clinsig: bool = True,
+    verify_rsids: bool = True,
     resolver: Optional[EnsemblResolver] = None,
     gnomad_client: Optional["GnomadClient"] = None,
 ) -> EnrichmentResult:
@@ -100,6 +110,11 @@ def enrich(
     follows the mode, mirroring the compiler's VRS verify pass: `strict` treats a mismatch as fatal
     (its contract is a reproducible artifact, and a wrong `ref` can silently mint a *different* allele
     id), while `best_effort` warns and carries on. Needs sequence access, so it is skipped offline.
+
+    `verify_clinsig` compares each authored `clin_sig` against the ClinVar snapshot's own. It is
+    offline-capable (the snapshot is local) and is the **one check whose severity does not follow the
+    mode**: it warns in `strict` too, because failing a compile would make the format arbitrate a
+    clinical disagreement. See `clinical.verify_clin_sig` for the full argument.
     """
     spec_dir = Path(spec_dir)
     variants: list[VariantRow] = []
@@ -163,7 +178,10 @@ def enrich(
     # Fills only what the Ensembl cache missed, stamping source="clinvar". Placing it after the
     # Ensembl cache keeps a both-caches variant on source="cache"/Ensembl `alts`, so no compiled
     # module's artifact.digest moves. Offline uses a local ClinVar cache only (no download).
-    if use_clinvar and genome_build == "GRCh38" and (need_pos or need_rsid):
+    # Located once rather than inside the link, because the clin_sig cross-check below needs the same
+    # snapshot even when every variant is already resolved and the link itself has nothing to do.
+    clinvar_ref: Optional[Path] = None
+    if (use_clinvar or verify_clinsig) and genome_build == "GRCh38":
         clinvar_ref = resolve_clinvar_reference(clinvar_cache)
         if clinvar_ref is None and not offline and download:
             try:
@@ -171,6 +189,8 @@ def enrich(
                 clinvar_ref = resolve_clinvar_reference(clinvar_cache)
             except Exception as exc:  # provisioning is best-effort; degrade to live/offline
                 logger.warning("ClinVar snapshot provisioning failed (%s); continuing without it.", exc)
+
+    if use_clinvar and genome_build == "GRCh38" and (need_pos or need_rsid):
         if clinvar_ref is not None:
             cv_rsids = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
             cv_positions = [pt for pt in positions if not rev_candidates.get(pt)]
@@ -309,11 +329,42 @@ def enrich(
     for mismatch in ref_mismatches:
         logger.warning("Reference-allele mismatch — %s", mismatch)
 
+    # Second validation pass: does the module's clinical call agree with ClinVar's? Offline-capable
+    # (the snapshot is local), and — unlike every other check here — it stays a warning in `strict`
+    # too. See `clinical.verify_clin_sig`: escalating would make the format arbitrate a clinical
+    # disagreement, and a curator is allowed to disagree with a one-star submission.
+    clin_sig_conflicts = (
+        verify_clin_sig(variants, out, reference=clinvar_ref) if verify_clinsig else []
+    )
+    for conflict in clin_sig_conflicts:
+        logger.warning("ClinVar clin_sig %s — %s",
+                       "conflict" if conflict.opposed else "difference", conflict)
+
+    # Third validation pass: is the rsID a module keys on still the one dbSNP serves? Needs the live
+    # API (NCBI is the oracle — Ensembl 400s on some merges), so `--offline` skips it. The verdict is
+    # STAMPED onto the rows' provenance columns and reported; the authored label is never replaced,
+    # because doing so would migrate `variant_key` by network lookup. See `identifiers.check_rsids`.
+    stale_rsids: list[RsidStatus] = []
+    if verify_rsids and not offline:
+        statuses = check_rsids(sorted({r.rsid for r in out if r.rsid}))
+        by_rsid = {s.rsid: s for s in statuses}
+        for row in out:
+            status = by_rsid.get(row.rsid or "")
+            if status is not None:
+                row.rsid_status = status.state
+                row.rsid_current = status.current
+        stale_rsids = [s for s in statuses if not s.is_current]
+        for status in stale_rsids:
+            logger.warning("Stale rsID — %s", status)
+    elif verify_rsids:
+        logger.info("rsID currency check skipped: --offline (dbSNP has no offline merge table).")
+
     out.sort(key=lambda r: (r.variant_key, r.locus_index))
     sources = sorted({r.source for r in out if r.source})
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
-        ref_mismatches=ref_mismatches,
+        ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
+        stale_rsids=stale_rsids,
     )
 
     if mode == "strict" and ref_mismatches:
@@ -325,6 +376,28 @@ def enrich(
             f"reference sequence: {[str(m) for m in ref_mismatches]}. Fix the authored coordinates "
             f"(a wrong ref length silently mints a different allele id), or enrich with "
             f"mode='best_effort' to record them as warnings."
+        )
+
+    withdrawn = [s for s in result.stale_rsids if s.is_fatal]
+    if withdrawn:
+        # Fatal in BOTH modes, unlike every other rsID finding — see `RsidStatus.is_fatal`. Never
+        # produced by the automated check; this fires on a curator-recorded retraction.
+        raise EnrichmentError(
+            f"{len(withdrawn)} authored rsID(s) have been WITHDRAWN from dbSNP: "
+            f"{[str(s) for s in withdrawn]}. A retracted variant may leave the annotation describing "
+            f"nothing, so this refuses in best_effort too — re-key onto a coordinate, or remove the row."
+        )
+
+    if mode == "strict" and result.stale_rsids:
+        # Checked after the ref/allele gates and before the unresolved one: a stale label is a real
+        # defect but a milder diagnosis than a row contradicting the genome. Not escalated beyond
+        # strict, because `absent` has benign causes too (a very new rsID, or API lag).
+        raise EnrichmentError(
+            f"strict enrichment: {len(result.stale_rsids)} authored rsID(s) are no longer current in "
+            f"dbSNP: {[str(s) for s in result.stale_rsids]}. An all-or-nothing artifact should not be "
+            f"built on an identifier its own source has retired — fix the identifier in variants.csv, "
+            f"or author the coordinate instead (a VRS allele id cannot drift). Use "
+            f"mode='best_effort' to record these as warnings."
         )
 
     if mode == "strict" and result.unresolved:
@@ -360,6 +433,8 @@ def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
                     "source": r.source or "",
                     "status": r.status or "",
                     "rsid_alternates": r.rsid_alternates or "",
+                    "rsid_current": r.rsid_current or "",
+                    "rsid_status": r.rsid_status or "",
                     "fetched_at": r.fetched_at or "",
                 }
             )

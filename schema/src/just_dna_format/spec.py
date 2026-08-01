@@ -199,6 +199,16 @@ class VariantRow(AuthoredModel):
             "materialized to weights.parquet, and never written back by reverse_module."
         ),
     )
+    authored_ident: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Which identity columns the author actually supplied, from {rsid, chrom, start, ref, "
+            "alts}. Stamped at load like `variant_key` and never re-derived, so resolution can fill "
+            "or expand without disturbing it. Compiler-managed: not authored, materialized to "
+            "weights.parquet, and consumed by reverse_module to re-emit the authored shape — which is "
+            "what keeps `content_signature` stable across a round-trip."
+        ),
+    )
     genotype: str = Field(description="Slash-separated sorted alleles, e.g. A/G")
     weight: Optional[float] = Field(default=None, description="Score (positive=protective)")
     state: str = Field(description="One of: risk, protective, neutral, significant, alt, ref")
@@ -281,12 +291,42 @@ class VariantRow(AuthoredModel):
     )
 
     @model_validator(mode="after")
-    def _freeze_variant_key(self) -> "VariantRow":
-        """Stamp the frozen identity at load, ignoring any authored value (no foot-gun). Because a
-        `mode="after"` validator does not re-run on `model_copy`, the resolver can fill rsid/coord or
-        reassign the key on expansion without it re-deriving. See `base.derive_variant_key`."""
+    def _freeze_identity(self) -> "VariantRow":
+        """Stamp the frozen identity *and the authored shape* at load, ignoring authored values for
+        both (no foot-gun). Because a `mode="after"` validator does not re-run on `model_copy`, the
+        resolver can fill rsid/coord or reassign the key on expansion without either re-deriving.
+
+        `authored_ident` is what makes resolution **reversible**: it records which identity columns the
+        author actually supplied, so `reverse_module` can re-emit that exact shape instead of whatever
+        resolution happened to fill in. Before it existed, reverse had to guess from `variant_key`,
+        which cannot tell an rsid-only row from an rsid+coordinate pair and cannot tell an expanded
+        locus from a coordinate the author wrote — so it materialized resolved coordinates into
+        `variants.csv` and `content_signature` moved across every round-trip of an rsid-authored
+        module. See `base.derive_variant_key` and COMPILER.md § Resolution.
+        """
         self.variant_key = derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)
+        self.authored_ident = [
+            name for name in ("rsid", "chrom", "start", "ref", "alts")
+            if getattr(self, name) is not None
+        ]
         return self
+
+    @property
+    def authored_key(self) -> str:
+        """The identity the author wrote, recomputed from `authored_ident` alone.
+
+        For an expanded one-to-many rsid this is the *authored* rsid while `variant_key` has become
+        the per-locus allele id — which is exactly the pairing reverse needs to collapse N artifact
+        rows back into the one row that was written.
+        """
+        authored = set(self.authored_ident or ())
+        return derive_variant_key(
+            self.rsid if "rsid" in authored else None,
+            self.chrom if "chrom" in authored else None,
+            self.start if "start" in authored else None,
+            self.ref if "ref" in authored else None,
+            self.alts if "alts" in authored else None,
+        )
 
     # ── 0.3 read-time aliases + upgrade (ROADMAP item 1/6 + "Upgrade derivation"). ────────────────
     # `state` and the ClinVar booleans stay REQUIRED/authoritative for 0.2 compat (CONSTITUTION

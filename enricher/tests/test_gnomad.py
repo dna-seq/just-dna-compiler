@@ -25,10 +25,10 @@ from just_dna_enricher.gnomad import (
     GnomadClient,
     GnomadError,
     GnomadSettings,
-    PacingGate,
     _loci_from_variant_ids,
     _populations_from_joint,
 )
+from just_dna_enricher.net import PacingGate
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 

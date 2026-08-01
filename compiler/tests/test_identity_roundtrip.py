@@ -16,7 +16,12 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_compiler.compiler import (
+    compile_module,
+    content_signature,
+    reverse_module,
+    validate_spec,
+)
 from just_dna_format.vrs import derive_vrs_allele_id
 
 _YAML = """\
@@ -83,7 +88,7 @@ def test_position_only_resolves_but_reverses_position_only(tmp_path: Path, cache
     assert m1.manifest.artifact.digest == m2.manifest.artifact.digest  # fixed point
 
 
-def test_expanded_rsid_roundtrips_as_position_only(tmp_path: Path, cache: Path) -> None:
+def test_expanded_rsid_reverses_back_to_the_single_authored_row(tmp_path: Path, cache: Path) -> None:
     spec = _write(
         tmp_path / "spec",
         "rsid,genotype,state,conclusion\nrs555,A/G,risk,c\n",
@@ -102,14 +107,22 @@ def test_expanded_rsid_roundtrips_as_position_only(tmp_path: Path, cache: Path) 
     }
     assert set(w["rsid"].to_list()) == {"rs555"}  # rsid kept as data on every row
 
+    # Reverse restores the AUTHORED shape, not the expanded one: one rsid-only row, exactly as
+    # written. Until 0.5 this emitted two position-only rows, which had two costs — `content_signature`
+    # moved on every round-trip (the authored row had no coordinate, the reversed ones did), and each
+    # locus got a copy of the single authored genotype, so a locus that could not host it was written
+    # out as authored fact. `authored_ident` records the shape so neither is guesswork.
     reverse_module(tmp_path / "o1", tmp_path / "rev")
     rows = _read_csv(tmp_path / "rev" / "variants.csv")
-    assert len(rows) == 2
-    assert all(r["rsid"] == "" for r in rows)  # coord-keyed → position-only
+    assert len(rows) == 1
+    assert rows[0]["rsid"] == "rs555"
+    assert rows[0]["chrom"] == "" and rows[0]["start"] == ""
 
     m2 = compile_module(tmp_path / "rev", tmp_path / "o2", ensembl_cache=cache)
     assert m2.success, m2.errors
     assert m1.manifest.artifact.digest == m2.manifest.artifact.digest
+    # ...and the authored content identity survives too, which is the point of restoring the shape.
+    assert content_signature(spec) == content_signature(tmp_path / "rev")
 
 
 def test_old_artifact_without_variant_key_column_reverses(tmp_path: Path) -> None:

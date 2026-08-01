@@ -21,7 +21,12 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.vocab import VALID_RESOLUTION_STATUS, check_vocab, validate_rsid
+from just_dna_format.vocab import (
+    VALID_RESOLUTION_STATUS,
+    VALID_RSID_STATUS,
+    check_vocab,
+    validate_rsid,
+)
 from just_dna_format.vrs import validate_caid, validate_vrs_id
 
 # The fact columns that feed `integrity.resolution_signature` — the reproducibility-relevant facts,
@@ -120,6 +125,27 @@ class ResolutionRow(BaseModel):
             "Provenance — EXCLUDED from resolution_signature (0.5, provisional)."
         ),
     )
+    rsid_current: Optional[str] = Field(
+        default=None,
+        description=(
+            "The rsID dbSNP serves today when the authored one has been merged away (e.g. `rs3051860` "
+            "for an authored `rs3216883`). **Recorded, never substituted** — `weights.parquet` carries "
+            "the rsID as identity, so writing the new label into the artifact would migrate "
+            "`variant_key` by network lookup and break the round-trip fixed point (Principle 7)."
+        ),
+    )
+    rsid_status: Optional[str] = Field(
+        default=None,
+        description=(
+            "What dbSNP currently says about `rsid`: live|merged|absent|withdrawn. The automated "
+            "check never emits `withdrawn` — a retracted rsID is byte-identical to a never-assigned "
+            "one through every live endpoint — so it reports `absent` and names both readings. "
+            "`withdrawn` is for a curator who has established the retraction by hand, and it refuses "
+            "in BOTH modes where `absent` refuses only under strict, because a retracted variant may "
+            "invalidate the annotation rather than merely dating it. "
+            "Provenance — EXCLUDED from resolution_signature (time-varying external state)."
+        ),
+    )
     fetched_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp, advisory")
 
     @field_validator("rsid")
@@ -131,6 +157,16 @@ class ResolutionRow(BaseModel):
     @classmethod
     def _validate_status(cls, v: Optional[str]) -> Optional[str]:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
+
+    @field_validator("rsid_current")
+    @classmethod
+    def _validate_rsid_current(cls, v: Optional[str]) -> Optional[str]:
+        return validate_rsid(v)
+
+    @field_validator("rsid_status")
+    @classmethod
+    def _validate_rsid_status(cls, v: Optional[str]) -> Optional[str]:
+        return check_vocab(v, VALID_RSID_STATUS, "rsid_status")
 
     @field_validator("vrs_id")
     @classmethod

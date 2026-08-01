@@ -36,9 +36,11 @@ from just_dna_format.integrity import (
     file_entry,
     frequency_signature as _frequency_signature,
     gene_metrics_signature as _gene_metrics_signature,
+    literature_signature as _literature_signature,
     resolution_signature as _resolution_signature,
     sha256_file,
 )
+from just_dna_format.literature import LiteratureRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.normalize import normalize_version, strip_authority_keys
 from just_dna_format.manifest import (
@@ -49,6 +51,7 @@ from just_dna_format.manifest import (
     Frequency,
     GeneMetrics,
     Identity,
+    Literature,
     ModuleManifest,
     Provenance,
     ProvenanceDoc,
@@ -70,7 +73,13 @@ from just_dna_format.pgx import (
     HaplotypeRow,
     PharmVariantRow,
 )
-from just_dna_format.spec import RESERVED_FLAGS, ModuleSpecConfig, StudyRow, VariantRow
+from just_dna_format.spec import (
+    RESERVED_FLAGS,
+    ModuleSpecConfig,
+    StudyRow,
+    VariantRow,
+    extract_pmids,
+)
 from just_dna_format.vocab import population_sort_key
 from just_dna_format.vrs import UnsupportedBuildError, derive_vrs_allele_id, is_substitution
 from pydantic import BaseModel, ValidationError
@@ -88,6 +97,13 @@ def _split_genotype(genotype: str) -> list[str]:
     """Split a genotype string into its alleles, accepting single-allele (hemizygous),
     slash-separated (unphased), and pipe-separated (phased) forms."""
     return [allele for allele in _GENOTYPE_SEP.split(genotype) if allele]
+
+
+# ACMG's BA1 default: an allele above 5% in a general population is stand-alone evidence of benign
+# impact. PUBLIC and overridable (`compile_module(ba1_threshold=…)`) because the honest cutoff is
+# disease-specific — a common recessive carrier allele lives above it legitimately — which is also why
+# the finding it drives is a warning in both modes. See `_check_ba1_lint`.
+BA1_ALLELE_FREQUENCY_THRESHOLD: float = 0.05
 
 # The 0.4 table kinds (RM1): (authored CSV, compiled parquet, row model). Each is optional — a module
 # includes only the kinds it uses (RM2 composition). `file_entries`/`build_artifact` skip absent files,
@@ -139,6 +155,7 @@ _OUTPUT_FILES: tuple[str, ...] = (
     # reverse→recompile cycle does not "change the hash" over column order and timestamps.
     "frequencies.parquet",
     "gene_metrics.parquet",
+    "literature.parquet",
 )
 
 # The 0.5 derived-fact sidecars: (authored CSV, compiled parquet, row model). Deliberately NOT
@@ -149,6 +166,7 @@ _OUTPUT_FILES: tuple[str, ...] = (
 _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("frequencies.csv", "frequencies.parquet", FrequencyRow),
     ("gene_metrics.csv", "gene_metrics.parquet", GeneMetricsRow),
+    ("literature.csv", "literature.parquet", LiteratureRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
 # shipped like logs, kept OUT of `artifact.digest` (it is not in `_OUTPUT_FILES`).
@@ -503,6 +521,123 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
                 f"a single-allele genotype (e.g. 'G') for a homoplasmic/hemizygous call"
             )
     return errors, warnings
+
+
+def _allowed_alleles(
+    variant: VariantRow, resolution_table: dict[str, list[ResolutionRow]]
+) -> tuple[Optional[set[str]], str]:
+    """`(allele set, provenance)` for one variant — `(None, "unknown")` when nothing is comparable.
+
+    The provenance shapes the diagnosis — it says where to go and look — but deliberately **not** the
+    severity; `_check_allele_membership` explains why the obvious escalation is unsafe.
+
+    - **authored** — the row itself carries `ref` *and* `alts`, so it contradicts itself. Note this
+      does not mean a human wrote them: `reverse_module` emits both columns too.
+    - **resolved** — the alleles come from `resolution.csv`, i.e. from whichever link won the variant.
+      ClinVar carries only its *submitted* alleles while Ensembl carries every allele dbSNP knows, so a
+      short alt list is a gap in the source at least as often as it is a defect in the module.
+
+    `ref` without `alts` yields `None` deliberately: `{ref}` alone would flag every heterozygous
+    genotype in the module, which is the normal shape of the data and not a finding.
+
+    The resolved set is the **union over every locus** the key resolves to. A one-to-many rsid keeps one
+    authored genotype while expanding to several loci, so exactly one locus can match and the others
+    cannot; unioning is the only reading that does not manufacture a finding out of the expansion. (This
+    is not hypothetical — `rs281864532`, `rs267607291` and `rs613985` in
+    `reference_examples/pathogenic_clinvar/` are exactly that shape.)
+    """
+    if variant.ref and variant.alts:
+        alleles = {variant.ref.upper()}
+        alleles.update(a.strip().upper() for a in variant.alts.split(",") if a.strip())
+        return alleles, "authored"
+    resolved: set[str] = set()
+    for row in resolution_table.get(variant.variant_key or "", []):
+        if not row.ref or not row.alts:
+            continue
+        resolved.add(row.ref.upper())
+        resolved.update(a.strip().upper() for a in row.alts.split(",") if a.strip())
+    if resolved:
+        return resolved, "resolved"
+    return None, "unknown"
+
+
+def _check_allele_membership(
+    variants: list[VariantRow],
+    resolution_table: dict[str, list[ResolutionRow]],
+    *,
+    strict: bool,
+) -> tuple[list[str], list[str]]:
+    """Every `genotype` allele and every `effect_allele` must be an allele the locus actually has.
+
+    Validate-by-redundancy, and the cheapest high-value pair in the tier: a genotype `A/G` at a `C>T`
+    locus, and an `effect_allele` naming an allele that is not there, both compile clean without this.
+    The second is the more dangerous of the two — `direction`, `weight` and `effect_size` are all
+    *relative to* `effect_allele`, so naming the wrong one silently inverts the module's conclusion
+    rather than corrupting it visibly.
+
+    **Run this on the authored rows, before resolution expands them.** After `resolve_from_table` a
+    one-to-many rsid has become N rows that share the authored genotype and carry N *different* allele
+    sets, so at most one of them can match and the rest would be reported as findings. See
+    `_allowed_alleles` for the union semantics this relies on.
+
+    **Severity is the mode ladder in every case — warning in `best_effort`, error in `strict`** — the
+    same one the VRS *unverifiable* outcome uses. Provenance shapes the *message*, because it changes
+    what the author should go and look at, but it cannot decide severity, and the reason is worth
+    recording so it is not "simplified" back:
+
+    - a **resolved** mismatch may be an incomplete source rather than a bad row (ClinVar carries only
+      its submitted alleles), so failing by default would let a source's gap sink a correct module;
+    - an **authored** mismatch looks decidable, and is not, because `ref`/`alts` in `variants.csv` are
+      not necessarily *human*-authored. `reverse_module` writes them, and a one-to-many rsid reverses
+      into N rows that each carry their own locus's alleles beside the *one* genotype the author wrote.
+      Exactly one of those rows can match. Making that an unconditional error would mean any module
+      with a one-to-many rsid stops recompiling after a round-trip — Principle 7's fixed point, broken
+      by a lint. (Verified against `rs999`'s two loci in `test_resolution_table.py`, and the same shape
+      occurs eleven times in `reference_examples/pathogenic_clinvar/`.)
+
+    A row with neither allele set known is skipped: nothing to compare is not the same as nothing wrong.
+    """
+    errors: list[str] = []
+    warnings_out: list[str] = []
+    for variant in variants:
+        allowed, provenance = _allowed_alleles(variant, resolution_table)
+        if allowed is None:
+            continue
+        shown = "/".join(sorted(allowed))
+        if provenance == "authored":
+            because = (
+                "the row carries both `ref` and `alts`, so it contradicts itself — either the genotype "
+                "or the alleles is wrong, or this row is one locus of a one-to-many rsid whose genotype "
+                "belongs to a sibling locus (reverse writes the alleles per locus but copies the single "
+                "authored genotype to all of them)"
+            )
+        else:
+            because = (
+                "these alleles come from resolution.csv, so either the genotype is wrong or the "
+                "resolving source's allele list is incomplete (ClinVar carries only its submitted "
+                "alleles, while Ensembl carries every allele dbSNP knows) — check which before editing"
+            )
+        findings: list[str] = []
+        missing = sorted(
+            {a.upper() for a in _split_genotype(variant.genotype)} - allowed
+        )
+        if missing:
+            findings.append(
+                f"{variant.variant_key} genotype {variant.genotype}: allele(s) "
+                f"{', '.join(missing)} are not among the {provenance} alleles at this locus "
+                f"({shown}) — {because}"
+            )
+        if variant.effect_allele and variant.effect_allele.upper() not in allowed:
+            findings.append(
+                f"{variant.variant_key} genotype {variant.genotype}: effect_allele "
+                f"{variant.effect_allele!r} is not among the {provenance} alleles at this locus "
+                f"({shown}) — direction/weight/effect_size are all stated relative to it, so a wrong "
+                f"effect allele inverts the conclusion rather than breaking it; {because}"
+            )
+        if not findings:
+            continue
+        (errors if strict else warnings_out).extend(findings)
+    return errors, warnings_out
 
 
 def _verify_vrs_ids(
@@ -882,6 +1017,7 @@ def compile_module(
     logo_file: Optional[Path] = None,
     authority_keys: Optional[Iterable[str]] = None,
     strict: bool = False,
+    ba1_threshold: float = BA1_ALLELE_FREQUENCY_THRESHOLD,
 ) -> CompilationResult:
     """Compile a module spec directory into parquet files plus a `manifest.json`.
 
@@ -913,6 +1049,10 @@ def compile_module(
             unresolved position means the injected reference was incomplete/absent and the parquet
             bytes (hence `artifact.digest`) would not be reproducible. Default False keeps the
             best-effort behavior (positions left unset, surfaced as warnings).
+        ba1_threshold: Allele frequency above which a `pathogenic` variant draws the ACMG BA1 warning
+            (`_check_ba1_lint`). Defaults to ACMG's 5%. Raise it for a module curating a common
+            recessive carrier allele, where the default fires on correct data. Warning-only in both
+            modes, so this tunes noise, never whether the compile succeeds.
     """
     spec_dir = Path(spec_dir)
     output_dir = Path(output_dir)
@@ -959,18 +1099,40 @@ def compile_module(
         if vrs_errors:
             return CompilationResult(success=False, errors=vrs_errors, warnings=all_warnings)
 
+    # Do the alleles the module *states* exist at the loci it points at? Runs here, on the AUTHORED
+    # rows, because resolution may expand one rsid into several loci that share this genotype — after
+    # that expansion the check reports the siblings it was never about. See `_check_allele_membership`.
+    allele_errors, allele_warnings = _check_allele_membership(
+        variants, resolution_table, strict=strict
+    )
+    all_warnings.extend(allele_warnings)
+    if allele_errors:
+        return CompilationResult(success=False, errors=allele_errors, warnings=all_warnings)
+
     resolution_mode: Optional[str] = None
     resolution_sources: list[str] = []
     resolution_sig: Optional[str] = None
     if resolve_with_ensembl and variants:
         resolution_mode = "strict" if strict else "best_effort"
         resolve_warnings: list[str] = []
+        resolve_strict_errors: list[str] = []
         if resolution_table:
             from just_dna_compiler.resolution import resolve_from_table
 
-            variants, resolve_warnings = resolve_from_table(
+            outcome = resolve_from_table(
                 variants, resolution_table, genome_build=config.genome_build
             )
+            variants = outcome.variants
+            resolve_warnings = outcome.warnings
+            resolve_strict_errors = outcome.strict_errors
+            if outcome.errors:
+                # Fatal in both modes — today only a curator-recorded `withdrawn` rsID. See
+                # `ResolutionOutcome`.
+                return CompilationResult(
+                    success=False,
+                    errors=[f"resolution: {e}" for e in outcome.errors],
+                    warnings=all_warnings + resolve_warnings,
+                )
             resolution_sources = sorted(
                 {row.source for row in resolution_rows if row.source}
             )
@@ -1011,6 +1173,17 @@ def compile_module(
                 "are left unresolved. Produce a resolution.csv with just-dna-enricher."
             ]
         all_warnings.extend(resolve_warnings)
+        # The round-trip contract. `strict` promises a *reproducible* artifact, and these are the
+        # conditions under which `compile → reverse → compile` cannot reproduce the resolution table
+        # it started from (a dropped locus, an authored coordinate contradicting the table), plus the
+        # one that is reproducible but rests on a guessed label (`ambiguous`). `best_effort` already
+        # carries them as warnings above. See COMPILER.md § Resolution.
+        if strict and resolve_strict_errors:
+            return CompilationResult(
+                success=False,
+                errors=[f"strict resolution: {e}" for e in resolve_strict_errors],
+                warnings=all_warnings,
+            )
         # Resolution is an enrichment that can *change identity*: filling a coordinate or expanding a
         # one-to-many rsid into coord-keyed rows may collide with an already-authored row. validate_spec
         # ran on the pre-resolution set, so re-run the identity checks on the resolved set — a duplicate
@@ -1078,8 +1251,31 @@ def compile_module(
     # module actually contains. A row describing something the module never mentions is a warning, not
     # an error — an over-broad sidecar is harmless (a stale gene left in after a variant was removed),
     # while failing the compile over it would punish the author for the enricher's generosity.
-    frequency_rows: list[FrequencyRow] = []
-    gene_metrics_rows: list[GeneMetricsRow] = []
+    # One branch per sidecar, keyed by model. A two-way `if/else` was fine for two tables and stops
+    # being readable at three, so each entry states its own checks and its own builder; the loop below
+    # stays generic. Errors are fatal, warnings accumulate — the same contract the SNP core uses.
+    def _frequency_checks(rows: list) -> tuple[list[str], list[str]]:
+        errors, warns = _check_frequency_arithmetic(rows)
+        warns = list(warns)
+        warns.extend(_cross_check_frequencies(rows, variants))
+        warns.extend(_check_ba1_lint(rows, variants, threshold=ba1_threshold))
+        return errors, warns
+
+    def _gene_metrics_checks(rows: list) -> tuple[list[str], list[str]]:
+        warns = list(_check_gene_metrics_arithmetic(rows))
+        warns.extend(_cross_check_gene_metrics(rows, variants))
+        return [], warns
+
+    def _literature_checks(rows: list) -> tuple[list[str], list[str]]:
+        return [], list(_cross_check_literature(rows, studies))
+
+    _FACT_HANDLERS: dict[type, tuple[Callable, Callable]] = {
+        FrequencyRow: (_frequency_checks, lambda rows: _build_frequencies(rows, module_name)),
+        GeneMetricsRow: (_gene_metrics_checks, lambda rows: _build_table(rows, GeneMetricsRow, module_name)),
+        LiteratureRow: (_literature_checks, lambda rows: _build_table(rows, LiteratureRow, module_name)),
+    }
+
+    fact_rows: dict[type, list] = {}
     for csv_name, parquet_name, model in _FACT_TABLES:
         fact_path = spec_dir / csv_name
         if not fact_path.exists():
@@ -1087,23 +1283,19 @@ def compile_module(
         rows, fact_errors, _ = _load_csv_rows(fact_path, model, csv_name)
         if fact_errors:
             return CompilationResult(success=False, errors=fact_errors, warnings=all_warnings)
-        if model is FrequencyRow:
-            frequency_rows = rows
-            arith_errors, arith_warnings = _check_frequency_arithmetic(rows)
-            if arith_errors:
-                return CompilationResult(
-                    success=False, errors=arith_errors, warnings=all_warnings
-                )
-            all_warnings.extend(arith_warnings)
-            all_warnings.extend(_cross_check_frequencies(rows, variants))
-            fact_df = _build_frequencies(rows, module_name)
-        else:
-            gene_metrics_rows = rows
-            all_warnings.extend(_check_gene_metrics_arithmetic(rows))
-            all_warnings.extend(_cross_check_gene_metrics(rows, variants))
-            fact_df = _build_table(rows, model, module_name)
+        fact_rows[model] = rows
+        check, build = _FACT_HANDLERS[model]
+        check_errors, check_warnings = check(rows)
+        if check_errors:
+            return CompilationResult(success=False, errors=check_errors, warnings=all_warnings)
+        all_warnings.extend(check_warnings)
+        fact_df = build(rows)
         fact_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = fact_df.height
+
+    frequency_rows: list[FrequencyRow] = fact_rows.get(FrequencyRow, [])
+    gene_metrics_rows: list[GeneMetricsRow] = fact_rows.get(GeneMetricsRow, [])
+    literature_rows: list[LiteratureRow] = fact_rows.get(LiteratureRow, [])
 
     logs = _collect_logs(spec_dir, output_dir, log_files)
     # Authored side-car assets are validated here (validate_spec does not read them). Surface a
@@ -1140,6 +1332,7 @@ def compile_module(
         resolution_sources=resolution_sources,
         frequency=_frequency_block(frequency_rows),
         gene_metrics=_gene_metrics_block(gene_metrics_rows),
+        literature=_literature_block(literature_rows),
     )
     write_manifest(manifest, output_dir / "manifest.json")
 
@@ -1193,6 +1386,29 @@ def _gene_metrics_block(rows: list[GeneMetricsRow]) -> Optional[GeneMetrics]:
     )
 
 
+def _literature_block(rows: list[LiteratureRow]) -> Optional[Literature]:
+    """The manifest's `literature` summary, or `None` when the module carries no citation sidecar.
+
+    The counters are summed rather than recomputed so the manifest cannot claim more coverage than the
+    sidecar recorded. `quotes_found` counts only rows where it is non-null: a null there means "no
+    fulltext was retrievable", and folding that into zero would report an unchecked quote as a missing
+    one — the single most misleading thing this block could say.
+    """
+    if not rows:
+        return None
+    return Literature(
+        signature=_literature_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        row_count=len(rows),
+        resolved_count=sum(1 for r in rows if r.exists is True),
+        missing_count=sum(1 for r in rows if r.exists is False),
+        open_access_count=sum(1 for r in rows if r.is_open_access is True),
+        abstract_only_count=sum(1 for r in rows if r.quote_source == "abstract"),
+        quotes_authored=sum(r.quotes_authored or 0 for r in rows),
+        quotes_found=sum(r.quotes_found for r in rows if r.quotes_found is not None),
+    )
+
+
 def _build_manifest(
     *,
     config: ModuleSpecConfig,
@@ -1213,6 +1429,7 @@ def _build_manifest(
     resolution_sources: Optional[list[str]] = None,
     frequency: Optional[Frequency] = None,
     gene_metrics: Optional[GeneMetrics] = None,
+    literature: Optional[Literature] = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -1261,6 +1478,7 @@ def _build_manifest(
         ),
         frequency=frequency,
         gene_metrics=gene_metrics,
+        literature=literature,
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),
         content_signature=content_sig,
         artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),
@@ -1289,6 +1507,12 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
                 # only on resolver expansion. Carried so reverse_module can tell an authored rsid from
                 # a resolved one and restore the authored shape without re-keying (Principle 7).
                 "variant_key": v.variant_key,
+                # Which identity columns the AUTHOR wrote. Reverse re-emits exactly these, so an
+                # rsid-only row comes back rsid-only instead of carrying whatever coordinate
+                # resolution filled in, and an expanded one-to-many rsid collapses back to the single
+                # row it was written as. Without it `content_signature` moved on every round-trip of
+                # an rsid-authored module. See COMPILER.md § Resolution.
+                "authored_ident": v.authored_ident,
                 "genotype": _split_genotype(v.genotype),
                 # Phase bit: `genotype` is stored as an allele *list*, which cannot itself
                 # distinguish a phased A|G from an unphased (sorted) A/G — both split to ["A","G"].
@@ -1335,6 +1559,7 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
         )
     schema = {
         "rsid": pl.Utf8,
+        "authored_ident": pl.List(pl.Utf8),
         "variant_key": pl.Utf8,
         "genotype": pl.List(pl.Utf8),
         "phased": pl.Boolean,
@@ -1500,6 +1725,117 @@ def _cross_check_frequencies(
         f"frequencies.csv describes {len(orphans)} coordinate(s) no variant in this module sits at: "
         f"{orphans}"
     ]
+
+
+def _cross_check_literature(
+    rows: list[LiteratureRow], studies: list[StudyRow]
+) -> list[str]:
+    """Two orphan directions, and one finding that is not an orphan at all.
+
+    * a literature row for a PMID no study cites — the sidecar is stale or over-broad (warning, the
+      same reasoning as the frequency/gene-metrics orphan checks: an extra row is harmless);
+    * a **nonexistent citation** (`exists is False`) — not an orphan but a defect in the module, and
+      the compiler can surface it offline because the enricher already recorded the verdict as a fact.
+
+    Matched on digit-only PMIDs, since `StudyRow.pmid` is free-form and may carry several ids or a
+    `[PMID: N]` wrapper — `extract_pmids` is the same normalizer the enricher pass uses, so the two
+    sides cannot drift apart.
+    """
+    if not rows:
+        return []
+    findings: list[str] = []
+    cited: set[str] = set()
+    for study in studies:
+        cited.update(extract_pmids(study.pmid))
+
+    missing = sorted({r.pmid for r in rows if r.exists is False})
+    if missing:
+        findings.append(
+            f"literature.csv records {len(missing)} citation(s) PubMed has no record of: "
+            f"{missing} — either the id is a typo or the article was retracted from the index; "
+            f"the annotation resting on it should be re-examined either way"
+        )
+    if cited:
+        orphans = sorted({r.pmid for r in rows if r.pmid not in cited})
+        if orphans:
+            findings.append(
+                f"literature.csv describes {len(orphans)} citation(s) no study in this module cites: "
+                f"{orphans}"
+            )
+    return findings
+
+
+def _check_ba1_lint(
+    rows: list[FrequencyRow],
+    variants: list[VariantRow],
+    *,
+    threshold: float = BA1_ALLELE_FREQUENCY_THRESHOLD,
+) -> list[str]:
+    """Warn when a variant the module calls pathogenic is common in a general population.
+
+    ACMG's **BA1** rule: an allele frequency above a threshold in a general population is *stand-alone*
+    evidence that a variant is benign. Newly checkable only because `frequencies.csv` exists — before
+    0.5 the compiler held no frequency to compare a `clin_sig` against.
+
+    **Warning only, in both modes, and the threshold is overridable.** The 5% default is ACMG's, not a
+    constant of nature: the right cutoff is disease-specific, and a common recessive carrier allele
+    (sickle-cell's `rs334` sits around 4-5% in African-ancestry groups) legitimately lives near or above
+    it. Failing a compile over that would be the format arbitrating a clinical judgement, which the
+    data-agnostic charter forbids. What it *can* honestly do is make the tension visible.
+
+    Which number: `faf95` when the sidecar carries one — that is the filtering allele frequency an ACMG
+    filter actually uses, a 95% CI lower bound on the group with the highest frequency, and it is
+    deliberately conservative. Otherwise the maximum per-group `allele_frequency`, which is the same
+    quantity without the confidence discount. Matched at position level, like `_cross_check_frequencies`.
+    """
+    if not rows or not variants:
+        return []
+    pathogenic_at: dict[str, list[VariantRow]] = {}
+    for variant in variants:
+        if variant.chrom is None or not variant.effective_pathogenic:
+            continue
+        key = derive_variant_key(None, variant.chrom, variant.start, variant.ref)
+        pathogenic_at.setdefault(key, []).append(variant)
+    if not pathogenic_at:
+        return []
+
+    # Per allele, the strongest frequency evidence and where it came from.
+    strongest: dict[tuple[str, str], tuple[float, str, str]] = {}
+    for row in rows:
+        if row.chrom is None or row.status == "not_found":
+            continue
+        key = derive_variant_key(None, row.chrom, row.start, row.ref)
+        if key not in pathogenic_at:
+            continue
+        if row.faf95 is not None:
+            candidate = (row.faf95, "faf95", row.population)
+        elif row.allele_frequency is not None:
+            candidate = (row.allele_frequency, "allele frequency", row.population)
+        else:
+            continue
+        slot = (key, row.alt or "")
+        # faf95 wins over a raw AF regardless of magnitude (it is the rule's own statistic); among
+        # like measures the larger one is the one BA1 would be evaluated on.
+        held = strongest.get(slot)
+        if held is None or (candidate[1] == "faf95" and held[1] != "faf95") or (
+            candidate[1] == held[1] and candidate[0] > held[0]
+        ):
+            strongest[slot] = candidate
+
+    findings: list[str] = []
+    for (key, alt), (value, measure, population) in sorted(strongest.items()):
+        if value <= threshold:
+            continue
+        for variant in pathogenic_at[key]:
+            findings.append(
+                f"{variant.variant_key} genotype {variant.genotype}: clin_sig "
+                f"{variant.effective_clin_sig!r} but the {measure} of ALT {alt!r} in "
+                f"{population!r} is {value:.4g}, above the ACMG BA1 threshold of {threshold:.4g} — "
+                f"BA1 treats that as stand-alone evidence of benign impact. The threshold is "
+                f"disease-specific (a common recessive carrier allele sits above it legitimately), so "
+                f"this is a prompt to check, not a verdict."
+            )
+    return findings
 
 
 def _cross_check_gene_metrics(
@@ -1772,7 +2108,17 @@ def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
     `resolution.resolve_from_table` restores that rsid and reproduces the identical `artifact.digest`.
     Rows without a resolved position (a best-effort partial) carry no fact and are skipped. Emitted in
     the weights' authored order; `resolution_signature` is order-independent regardless. `fetched_at`
-    is left blank (no wall-clock is read here, keeping the emit deterministic)."""
+    is left blank (no wall-clock is read here, keeping the emit deterministic).
+
+    **Reverse emits facts and discards provenance, deliberately and completely.** `source` becomes
+    `reversed`, `status` becomes `resolved`, `fetched_at` empties — and the provenance-only columns
+    (`rsid_alternates`, `rsid_current`, `rsid_status`, `vrs_id`, `caid`) are simply not written. This
+    was once filed as a bug about `rsid_alternates` specifically; it is not one, and it is not fixable
+    here. Those columns are **outside** the fact set precisely so they stay out of `weights.parquet`,
+    so the information does not exist in the artifact this function reads — emitting the column names
+    would produce a header with permanently empty cells and change nothing. Recovering an ambiguous
+    candidate list after a round-trip means re-running the enricher, which is the correct place for it:
+    the candidate list is a statement about a reference at a moment, not a property of the module."""
     fieldnames = [
         "variant_key", "rsid", "chrom", "start", "ref", "alts",
         "genome_build", "locus_index", "source", "status", "fetched_at",
@@ -1780,25 +2126,51 @@ def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
+        # A one-to-many rsid contributes N rows under ONE authored key, so `locus_index` counts
+        # within that key — matching what the enricher writes and what `resolve_from_table` expects to
+        # read back. Keying these on the per-locus `variant_key` instead (as this writer used to) left
+        # the re-emitted table unjoinable to the collapsed authored row, and `resolution_signature`
+        # moved across the round-trip.
+        seen_rows: set[tuple] = set()
+        locus_counter: dict[str, int] = {}
         for row in weights_df.iter_rows(named=True):
             chrom, start = row.get("chrom"), row.get("start")
             if chrom is None or start is None:
                 continue
             alts_list = row.get("alts")
-            variant_key = row.get("variant_key") or derive_variant_key(
-                row.get("rsid"), chrom, start, row.get("ref"),
-                ",".join(alts_list) if alts_list else None,
-            )
+            alts_cell = ",".join(alts_list) if alts_list else None
+            authored = row.get("authored_ident")
+            if authored is not None:
+                authored_set = set(authored)
+                resolution_key = derive_variant_key(
+                    row.get("rsid") if "rsid" in authored_set else None,
+                    chrom if "chrom" in authored_set else None,
+                    start if "start" in authored_set else None,
+                    row.get("ref") if "ref" in authored_set else None,
+                    alts_cell if "alts" in authored_set else None,
+                )
+            else:
+                resolution_key = row.get("variant_key") or derive_variant_key(
+                    row.get("rsid"), chrom, start, row.get("ref"), alts_cell,
+                )
+            # One authored row may appear several times in weights (one per genotype); the resolved
+            # fact is the same each time, so emit it once.
+            fact = (resolution_key, row.get("rsid"), chrom, start, row.get("ref"), alts_cell)
+            if fact in seen_rows:
+                continue
+            seen_rows.add(fact)
+            index = locus_counter.get(resolution_key, 0)
+            locus_counter[resolution_key] = index + 1
             writer.writerow(
                 {
-                    "variant_key": variant_key,
+                    "variant_key": resolution_key,
                     "rsid": _scalar_cell(row.get("rsid")),
                     "chrom": _scalar_cell(chrom),
                     "start": _scalar_cell(start),
                     "ref": _scalar_cell(row.get("ref")),
-                    "alts": ",".join(alts_list) if alts_list else "",
+                    "alts": alts_cell or "",
                     "genome_build": "GRCh38",
-                    "locus_index": 0,
+                    "locus_index": index,
                     "source": "reversed",
                     "status": "resolved",
                     "fetched_at": "",
@@ -1844,22 +2216,54 @@ def _write_variants_csv(
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
+        emitted_authored_keys: set[str] = set()
         for row in weights_df.iter_rows(named=True):
             raw_rsid = row.get("rsid")
-            # The frozen machine key decides the AUTHORED shape (Principle 7): a row keyed on its rsid
-            # had the rsid authored → emit it; a coord-keyed row's rsid was *resolved* (or it was
-            # position-only, or an expanded one-to-many locus) → emit position-only, dropping the
-            # resolved rsid so recompute (`rsid-else-coord`) + re-resolution reproduce the same key.
             variant_key = row.get("variant_key")
+            # `authored_ident` records which identity columns the author actually wrote, so reverse
+            # re-emits that exact shape rather than whatever resolution filled in. This is what keeps
+            # `content_signature` stable across a round-trip, and it is only safe because the key is
+            # canonical: a VRS allele id identifies the row without the coordinate having to be
+            # written into `variants.csv`, so dropping the resolved coordinate loses nothing.
+            authored = row.get("authored_ident")
             if variant_key is None:
-                # Old artifact without the frozen-key column: fall back to the derived key + prior
-                # (non-restoring) behavior, emitting whatever rsid is present.
+                # Pre-0.4 artifact with no frozen-key column: recompute it so the annotation lookup
+                # below still joins. Independent of `authored_ident` — an artifact can carry one
+                # without the other, and losing the join silently blanked every annotation column.
                 variant_key = derive_variant_key(
                     raw_rsid, row.get("chrom"), row.get("start"), row.get("ref")
                 )
-                emit_rsid = raw_rsid or ""
+            if authored is not None:
+                authored_set = set(authored)
+                # An expanded one-to-many rsid is N artifact rows sharing ONE authored row. Emit it
+                # once — writing N rows would fabricate per-locus annotations the author never made,
+                # and the genotype can only be true of one of them.
+                authored_key = derive_variant_key(
+                    raw_rsid if "rsid" in authored_set else None,
+                    row.get("chrom") if "chrom" in authored_set else None,
+                    row.get("start") if "start" in authored_set else None,
+                    row.get("ref") if "ref" in authored_set else None,
+                    ",".join(row.get("alts") or []) if "alts" in authored_set else None,
+                )
+                dedupe_key = (authored_key, row.get("conclusion"), row.get("negatives"),
+                              tuple(row.get("genotype") or ()))
+                if dedupe_key in emitted_authored_keys:
+                    continue
+                emitted_authored_keys.add(dedupe_key)
+            elif row.get("variant_key") is None:
+                # No shape recorded and no frozen key: the prior (non-restoring) behaviour is the only
+                # safe read — emit whatever the artifact holds.
+                authored_set = {"rsid", "chrom", "start", "ref", "alts"} if raw_rsid else {
+                    "chrom", "start", "ref", "alts"
+                }
             else:
-                emit_rsid = raw_rsid if (raw_rsid is not None and variant_key == raw_rsid) else ""
+                # 0.5 artifact predating `authored_ident`: the frozen key is the only signal, so keep
+                # the previous rule (rsid-keyed → rsid authored; anything else → position-only).
+                authored_set = (
+                    {"rsid"} if (raw_rsid is not None and variant_key == raw_rsid)
+                    else {"chrom", "start", "ref", "alts"}
+                )
+            emit_rsid = raw_rsid or "" if "rsid" in authored_set else ""
             # Probe the annotation on the same key the table was built with: the variant-effect pair
             # (variant_key, conclusion, negatives) when the artifact carries it, else variant_key.
             ann_key = (
@@ -1886,11 +2290,16 @@ def _write_variants_csv(
             alts_list = row.get("alts")
             writer.writerow(
                 {
+                    # Each identity column is emitted only if the author wrote it. A resolved
+                    # coordinate belongs in `resolution.csv`, not in `variants.csv` — putting it back
+                    # here is what used to move `content_signature` on every rsid-authored module.
                     "rsid": emit_rsid,
-                    "chrom": _scalar_cell(row.get("chrom")),
-                    "start": _scalar_cell(row.get("start")),
-                    "ref": _scalar_cell(row.get("ref")),
-                    "alts": ",".join(alts_list) if alts_list else "",
+                    "chrom": _scalar_cell(row.get("chrom")) if "chrom" in authored_set else "",
+                    "start": _scalar_cell(row.get("start")) if "start" in authored_set else "",
+                    "ref": _scalar_cell(row.get("ref")) if "ref" in authored_set else "",
+                    "alts": (
+                        ",".join(alts_list) if alts_list and "alts" in authored_set else ""
+                    ),
                     "genotype": genotype_str,
                     "weight": _scalar_cell(row.get("weight")),
                     "state": _scalar_cell(row.get("state")),

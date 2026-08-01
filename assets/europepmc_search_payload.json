@@ -1,0 +1,40 @@
+{
+ "hitCount": 3,
+ "resultList": {
+  "result": [
+   {
+    "id": "31182865",
+    "source": "MED",
+    "pmid": "31182865",
+    "doi": "10.1038/s41580-019-0134-2",
+    "title": "Integrins as biomechanical sensors of\u00a0the microenvironment.",
+    "isOpenAccess": "N",
+    "inEPMC": "N",
+    "firstPublicationDate": "2019-08-01",
+    "abstractText": "Integrins, and integrin-mediated adhesions, have long been recognized to provide the main molecular link attaching cells to the extracellular matrix (ECM) and to serve as bidirectional hubs transmitting signals between cells and their environment. Recent evidence has shown that their combined biochemical and mechanical properties also allow integrins to sense, respond to and interact with ECM of differing properties with exquisite specificity. Here, we review this work first by providing an overview of how integrin function is regulated from both a biochemical and a mechanical perspective, affecting integrin cell-surface availability, binding properties, activation or clustering. Then, we address how this biomechanical regulation allows integrins to respond to different ECM physicochemical properties and signals, such as rigidity, composition and spatial distribution. Finally, we discuss the importance of this sensing for major cell functions by taking cell migration and cancer as examples."
+   },
+   {
+    "id": "29165669",
+    "source": "MED",
+    "pmid": "29165669",
+    "pmcid": "PMC5753237",
+    "doi": "10.1093/nar/gkx1153",
+    "title": "ClinVar: improving access to variant interpretations and supporting evidence.",
+    "isOpenAccess": "Y",
+    "inEPMC": "Y",
+    "firstPublicationDate": "2018-01-01",
+    "abstractText": "ClinVar (https://www.ncbi.nlm.nih.gov/clinvar/) is a freely available, public archive of human genetic variants and interpretations of their significance to disease, maintained at the National Institutes of Health. Interpretations of the clinical significance of variants are submitted by clinical testing laboratories, research laboratories, expert panels and other groups. ClinVar aggregates data by variant-disease pairs, and by variant (or set of variants). Data aggregated by variant are accessible on the website, in an improved set of variant call format files and as a new comprehensive XML report. ClinVar recently started accepting submissions that are focused primarily on providing phenotypic information for individuals who have had genetic testing. Submissions may come from clinical providers providing their own interpretation of the variant ('provider interpretation') or from groups such as patient registries that primarily provide phenotypic information from patients ('phenotyping only'). ClinVar continues to make improvements to its search and retrieval functions. Several new fields are now indexed for more precise searching, and filters allow the user to narrow down a large set of search results."
+   },
+   {
+    "id": "12345678",
+    "source": "MED",
+    "pmid": "12345678",
+    "doi": "10.1234/2013/999990",
+    "title": "Denpasar Declaration on Population and Development.",
+    "isOpenAccess": "N",
+    "inEPMC": "N",
+    "firstPublicationDate": "1994-06-01"
+   }
+  ]
+ }
+}

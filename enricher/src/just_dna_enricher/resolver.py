@@ -15,6 +15,7 @@ from typing import Optional
 
 import duckdb
 
+from just_dna_compiler.resolution import genotype_fits
 from just_dna_format.base import derive_variant_key
 from just_dna_format.spec import VariantRow
 
@@ -162,15 +163,40 @@ def resolve_variants(
             else:
                 # One-to-many — expand to one coord-keyed row per locus (deterministic order from the
                 # ORDER BY). Each row re-keys variant_key to its coordinate so the loci are distinct.
-                warnings.append(
-                    f"{v.rsid} maps to {len(loci)} loci in Ensembl; expanded to {len(loci)} rows "
-                    f"(one per locus, each keyed by its coordinate — a consumer can count them)."
-                )
-                for locus in loci:
-                    key = derive_variant_key(
-                        None, locus["chrom"], locus["start"], locus["ref"], locus["alts"]
+                #
+                # A locus whose alleles cannot host the authored genotype is dropped, exactly as the
+                # injected-table path does. The shared predicate is imported rather than reimplemented
+                # because digest parity between the two paths is a documented guarantee, and a filter
+                # applied on one side only would silently break it.
+                usable = [
+                    lo for lo in loci
+                    if genotype_fits(v.genotype, lo.get("ref"), lo.get("alts"))
+                ]
+                for lo in loci:
+                    if lo not in usable:
+                        warnings.append(
+                            f"{v.rsid} maps to {lo['chrom']}:{lo['start']} "
+                            f"{lo.get('ref')}>{lo.get('alts')}, which cannot host the authored "
+                            f"genotype {v.genotype} — that locus is dropped from the expansion."
+                        )
+                if not usable:
+                    warnings.append(
+                        f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
+                        f"{v.genotype}; position remains unset"
                     )
-                    patched.append(v.model_copy(update={**locus, "variant_key": key}))
+                    patched.append(v)
+                elif len(usable) == 1:
+                    patched.append(v.model_copy(update=usable[0]))
+                else:
+                    warnings.append(
+                        f"{v.rsid} maps to {len(usable)} loci in Ensembl; expanded to {len(usable)} "
+                        f"rows (one per locus, each keyed by its coordinate — a consumer can count them)."
+                    )
+                    for locus in usable:
+                        key = derive_variant_key(
+                            None, locus["chrom"], locus["start"], locus["ref"], locus["alts"]
+                        )
+                        patched.append(v.model_copy(update={**locus, "variant_key": key}))
         elif v.rsid is None and v.chrom is not None:
             key = derive_variant_key(None, v.chrom, v.start, v.ref)
             if key in pos_to_rsid:

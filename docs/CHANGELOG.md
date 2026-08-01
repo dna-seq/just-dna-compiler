@@ -5,6 +5,173 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-01 — 0.5.0: validation tightening, and resolution made reversible
+
+Where the previous round *added* facts, this one *checks* them. The organising idea is the one written
+down in [COMPILER.md § what the compiler can and cannot validate](COMPILER.md): the compiler proves an
+artifact well-formed and self-consistent, never true, and several of its blind spots are closable by the
+enricher — the only tier that can compare authored data against reality.
+
+**New offline compiler checks (validate-by-redundancy).** Every genotype allele and every
+`effect_allele` must be one of the alleles its locus actually has (`{ref} ∪ alts`). A genotype `A/G` at
+a `C>T` locus — a strand flip, the classic transcription slip — compiled clean before this. A wrong
+`effect_allele` is the more dangerous of the two, because `direction`/`weight`/`effect_size` are all
+stated *relative to* it, so naming the wrong allele silently inverts the module's conclusion rather than
+corrupting it visibly. Also new: an **ACMG BA1 lint** (a `pathogenic` variant whose filtering allele
+frequency exceeds a threshold), newly possible only because `frequencies.csv` exists.
+
+**⚠️ Two things about that check's severity, both decided by dogfooding rather than by argument.** The
+plan specified an unconditional error when the row's *own* `ref`+`alts` contradict its genotype — author
+versus author, apparently decidable. It is not, and building it that way broke the suite in a way worth
+recording: **`ref`/`alts` in `variants.csv` are not necessarily human-authored, because `reverse_module`
+writes them too.** A one-to-many rsid reverses into N rows that each carry their own locus's alleles
+beside the *one* genotype the author wrote, so exactly one of them can match. An unconditional error
+would mean any module with a one-to-many rsid compiles once and never again — Principle 7's fixed point,
+broken by a lint. Severity is therefore the mode ladder in both provenance cases (warn / error in
+`strict`), with provenance shaping only the *message*. Relatedly, the check compares against the
+**union** of every locus a key resolves to, never per-expanded-row: run per-row it produced three
+findings on this repo's own `reference_examples/pathogenic_clinvar/`, and unioned it produces none.
+Both properties now have regression tests built from the real `rs281864532` shape.
+
+**New: the ClinVar clinical cross-check** (`clinical.verify_clin_sig`, offline). Compares each authored
+`clin_sig` against the ClinVar snapshot's own and reports opposed calls with ClinVar's review-star
+count. Matching is **allele-exact, never rsID-level**, and the committed slice shows why: `rs334` at
+11:5227002 carries `T>A` as pathogenic (2 stars) *and* `T>G` as likely_benign (1 star). One rsID, one
+locus, two opposite calls — an rsID-level comparison would report a module that is simply right. It is
+also **the one check whose severity does not escalate in `strict`**: failing there would make the format
+arbitrate a clinical dispute, which the data-agnostic charter forbids. A curator who disagrees with a
+one-star submission is doing their job.
+
+**New: the literature pack and a third derived-fact sidecar.** `literature.csv` → `LiteratureRow`, one
+row per **citation** — the first sidecar not keyed on a variant, because a DOI and a PMCID are
+properties of the paper, not of the variant citing it. Fact-hashed by `literature_signature`, compiled
+to `literature.parquet`, summarized in a new `manifest.literature` block. The enricher pass confirms
+each `pmid` resolves in PubMed, cross-fills DOI/PMCID, and matches `provenance_quote`/`provenance_regex`
+against Europe PMC fulltext for the open-access subset. **Coverage is partial by nature and is reported
+as a fraction**: `quotes_found` is *null* when no fulltext could be read and *0* when one was read and
+the quote was absent. Collapsing those would report an unread paper as a wrong citation.
+
+**New: identifier currency** (`identifiers.py`) — the generalization of the *"is the source stale?"*
+blind spot from datasets to identifiers. rsIDs against dbSNP (live / merged / absent), trait CURIEs
+against OLS4 (obsolete + replacement term), gene symbols against HGNC (approved / previous). The rsID
+verdict lands on two new **provenance** columns, `ResolutionRow.rsid_current` / `rsid_status`, kept
+outside `RESOLUTION_FACT_FIELDS` so a dbSNP merge cannot move a module's `resolution_signature` with no
+change to the module. Report, never repair — `weights.parquet` carries `rsid` as identity, so writing a
+merged-into label back would migrate `variant_key` by network lookup.
+
+**Corrections to the plan, made under probing rather than assumed.**
+(i) **The PMC ID converter is not used at all**, though the plan budgeted for it as a separate step:
+`esummary` already returns both `doi` and `pmc` in `articleids`, and the converter answers a *different*
+question — for PMID 12345678, a real indexed record, it replies `"Identifier not found in PMC"`, so
+wiring it in as an existence check would flag every paywalled article as a broken citation.
+(ii) **Europe PMC is not an existence oracle**: asked about three ids where one does not exist, it
+returns two results and silently omits the third, with no error marker.
+(iii) **`literature.csv` carries no `dataset` column.** Every other fact table has one because gnomAD
+ships numbered releases; PubMed and Europe PMC publish no release identifier, so the column could only
+be null or a fabricated label.
+(iv) **`quote_found` became two integer counts**, because a quote is authored per study row while the
+table's grain is the citation — one boolean would have to lie about one of them.
+(v) **The automated rsID check can never emit `withdrawn`.** ROADMAP asked for the withdrawn shape to
+be probed before deciding; probing dissolved the question instead of answering it. `rs11273140`
+(genuinely withdrawn) returns a response **byte-identical** to `rs2000000000` (never assigned) across
+`esummary`, `esearch` and Ensembl alike. So the check reports `absent` and its *message* names both
+readings without choosing — guessing "typo" sends an author to fix the wrong thing when the truth is
+that the variant itself was retracted. The vocabulary member is kept regardless; see the `withdrawn`
+paragraph below for why, and for why its severity is not `absent`'s.
+(vi) **A thread-based regex timeout does not work**, and looks like it does. `re` cannot be interrupted,
+threads cannot be killed, and the interpreter joins pool threads at exit — so a runaway pattern returns
+`None` on schedule and then hangs the process on the way out (observed: the test suite stopped). The
+bound is a killable child process instead. No `google-re2` dependency was added; the charter's
+linear-time requirement was written when the match was specified as consumer-side, and here the pattern
+comes from the module being enriched, on the author's own machine.
+(vii) **Dogfooding the reference example found a reporting bug in the coverage sentence.** Its single
+citation (PMID 29165669, the ClinVar paper) is open access *and* carries no provenance quote, and the
+first implementation reported "1 have no retrievable fulltext" — the opposite of true. The denominator
+now counts only citations that actually carry a quote: one that asks no question was not skipped for
+lack of an answer.
+(viii) **A previously-filed loose end was not a bug.** `reverse_module` omitting `rsid_alternates` was
+recorded as an open defect; it is neither open nor fixable there. Reverse rebuilds `resolution.csv` from
+`weights.parquet`, which by design holds no provenance at all — it already resets `source`, `status` and
+`fetched_at` — and the provenance columns are kept out of the artifact on purpose, so the information
+does not exist for reverse to emit. Documented as intended behaviour instead.
+
+**Fixtures are recorded, not fabricated.** New committed assets: `pubmed_esummary_payload.json`,
+`europepmc_search_payload.json`, `europepmc_fulltext_PMC5753237.xml` (real JATS, matched with a phrase
+read out of that same document), `dbsnp_esummary_payload.json`, `ols4_terms_payload.json`,
+`hgnc_fetch_payload.json`, `crossref_works_payload.json` (a journal article, a bioRxiv preprint with no
+PMID, and a fabricated DOI that 404s). Each captures a quirk a hand-written fixture would have smoothed away, and
+the withdrawn-vs-never-assigned equality is asserted **on the recordings themselves**, so a future dbSNP
+release that *does* separate them fails the test rather than silently invalidating the design. Each new
+test file also carries an opt-in live probe (`JUST_DNA_NETWORK_TESTS=1`) that re-asks the real services
+the same questions; all pass.
+
+**⚠️ Resolution became reversible, and `weights.parquet` gains `authored_ident`.** The allele-membership
+check above turned up rows in this repo's own reference example asserting alleles their locus does not
+have — not authoring errors, but *fabrications produced by the compiler*: a one-to-many rsid copies one
+authored genotype onto N loci, and reverse then wrote each locus out as an authored row. Three of the
+23 expanded rows in `reference_examples/pathogenic_clinvar/` were of that kind. Two changes fix it at
+the source:
+
+* **A locus whose `{ref} ∪ alts` cannot host the authored genotype is no longer expanded onto**
+  (`resolution.genotype_fits`, shared with the deprecated DuckDB path so digest parity holds).
+* **`VariantRow.authored_ident`** records which identity columns the author actually supplied, stamped
+  at load beside `variant_key` and materialized to the artifact. Reverse re-emits exactly that shape:
+  an rsid-only row comes back rsid-only instead of carrying resolved coordinates, and an expansion
+  collapses back to the single row it was written as. This is only possible now that the key is
+  canonical — a VRS allele id identifies the row without the coordinate having to live in
+  `variants.csv`, which under coordinate-first keying it did.
+
+Consequence: **`content_signature` is now a round-trip fixed point for rsid-authored modules**, where
+before it moved on *every* one of them. Not a regression being fixed — the behaviour dates from 0.4's
+frozen-identity work and was tested under the name `test_expanded_rsid_roundtrips_as_position_only`;
+what changed is that canonical keys made the better answer available.
+
+**The resolution round-trip contract, enumerated.** Five identity columns the author may or may not
+supply, crossed with what the table says about them, is a finite set — so it is enumerated in
+`compiler/tests/test_resolution_matrix.py` under one rule: **every combination is either a round-trip
+fixed point on all three signatures, or it fails in `strict`.** Making that true required tightening two
+cases that used to pass quietly: an authored coordinate or `ref` contradicting the table (the artifact
+keeps the authored value, so the table's is lost on reverse) now refuses in `strict`, and so does an
+`ambiguous` rsid — not because anything is lost, but because a deterministic pick among equals is a pick,
+not a finding. `artifact.digest` remains a fixed point in *every* case, including the unstable ones.
+Also fixed while enumerating: a coordinate-only row never adopted the table's `alts`, so the resolved
+allele never reached the artifact.
+
+**Citation coverage beyond PubMed, and beyond the open-access subset.** Two additions, both probed
+before being built. **Crossref** confirms the *authored* DOI resolves — the registry's own exists by
+construction — which covers what PubMed structurally cannot index (a probed bioRxiv preprint returns
+`type: posted-content`; a fabricated DOI 404s) and de-risks the 1.0 doi-first flip, since existence
+checking then works without a PMID. And the quote check now **falls back to the abstract**, which
+Europe PMC serves for non-open-access records in the response the pass already makes: four of five
+probed non-OA papers carried one. A new `quote_source` column records how far the search reached,
+because a hit and a miss are not symmetric — a phrase found in an abstract is in the paper, while a
+phrase absent from a 200-word abstract says nothing about the body, so an abstract miss still counts
+as unchecked. Worth stating plainly since it was easy to misread: **a paywall never hid *existence*** —
+PubMed indexes paywalled work, and `exists` was always answered for it. Rejected explicitly rather than
+deferred: **Google Scholar** (no API, and automated querying violates its terms); OA-repository PDF
+retrieval via OpenAlex/Unpaywall is on the roadmap, since the closed paper probed had no OA copy at all
+and the ones that exist are PDFs.
+
+**`withdrawn` is back in `VALID_RSID_STATUS`, with its own severity.** Nothing automated emits it — a
+retraction is byte-identical to a never-assigned id through every live endpoint, so the check still
+reports `absent` and names both readings — but the member is kept so a curator who has established a
+retraction can record it, and so a future source can start producing it without a vocabulary change
+(Principle 3 makes that a one-way door). It is **not** interchangeable with `absent`: absent has benign
+causes and refuses only under `strict`, while a retracted variant may leave the annotation describing
+nothing, so `withdrawn` refuses in `best_effort` too — the only resolution finding that does.
+
+**A correction to the analysis, caught by the repo's own fixture rule.** The first pass concluded that
+an ambiguous resolution could not be round-trip stable and therefore had to be an error in both modes.
+That came from a hand-written two-row fixture; the enricher actually writes **one** row carrying the
+deterministic pick, with the candidate list in `rsid_alternates` (provenance, outside the fact set). The
+real shape is stable, so ambiguity stays a best-effort warning as intended.
+
+**Also:** `PacingGate`/`batched`/`dedupe` moved out of `gnomad.py` into a shared `net.py` (three clients
+now need them), a new `eutils.py` NCBI client shared by the literature and rsID checks, and the
+compiler's two-way fact-table branch became a per-model dispatch that scales past three sidecars.
+`compile_module` gains an optional `ba1_threshold`; `enrich()` gains `verify_clinsig` / `verify_rsids`;
+new CLI commands `literature` and `check-identifiers`.
+
 ## 2026-07-31 — 0.5.0: gnomAD v4.1 (frequency + gene constraint) and GA4GH VRS identity
 
 Three roles for one source, plus the identity change the VRS work unlocked. Design thread and the
@@ -96,7 +263,7 @@ redundancy check that fires on genuine data is worse than no check.
 `spec.py`'s `trait_efo_id` description, `vocab.py`'s CURIE comment and its author-facing error message,
 `REFERENCE_EXAMPLES.md`, and a compiler fixture) has been retired in favour of `MONDO_0005010`. The
 grammar examples now use `EFO_0004340`; the two coronary-artery-disease examples use `MONDO_0005010`.
-Found while probing the ontology-currency check drafted in [next_step.md](../next_step.md) — and worth
+Found while probing the ontology-currency check that later shipped as T4.1 — and worth
 recording that `EFO_0001360` is obsolete too, so replacing these by memory rather than by lookup would
 have substituted one retired term for another.
 

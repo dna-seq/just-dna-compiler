@@ -64,8 +64,24 @@ _GENE_METRICS = (
 )
 
 
-def _spec(tmp_path: Path, *, frequencies: bool = False, gene_metrics: bool = False) -> Path:
-    spec = tmp_path / f"spec_{int(frequencies)}{int(gene_metrics)}"
+# One row per cited article, not per variant — the grain that distinguishes this sidecar from the
+# other two. The `quotes_found` cell for the paywalled citation is deliberately EMPTY (null = never
+# checked), not 0 (checked, absent); several assertions below turn on that difference.
+_LITERATURE = (
+    "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
+    "12345678,10.1234/2013/999990,,true,false,1,,pubmed,resolved,\n"
+    "23456789,10.1000/example,PMC1234567,true,true,1,1,pubmed,resolved,\n"
+)
+
+
+def _spec(
+    tmp_path: Path,
+    *,
+    frequencies: bool = False,
+    gene_metrics: bool = False,
+    literature: bool = False,
+) -> Path:
+    spec = tmp_path / f"spec_{int(frequencies)}{int(gene_metrics)}{int(literature)}"
     spec.mkdir(parents=True)
     (spec / "module_spec.yaml").write_text(_YAML)
     (spec / "variants.csv").write_text(_VARIANTS)
@@ -74,6 +90,8 @@ def _spec(tmp_path: Path, *, frequencies: bool = False, gene_metrics: bool = Fal
         (spec / "frequencies.csv").write_text(_FREQUENCIES)
     if gene_metrics:
         (spec / "gene_metrics.csv").write_text(_GENE_METRICS)
+    if literature:
+        (spec / "literature.csv").write_text(_LITERATURE)
     return spec
 
 
@@ -83,15 +101,16 @@ def _spec(tmp_path: Path, *, frequencies: bool = False, gene_metrics: bool = Fal
 def test_sidecars_leave_the_snp_core_byte_identical(tmp_path: Path) -> None:
     bare = compile_module(_spec(tmp_path), tmp_path / "o_bare", resolve_with_ensembl=False)
     rich = compile_module(
-        _spec(tmp_path, frequencies=True, gene_metrics=True),
+        _spec(tmp_path, frequencies=True, gene_metrics=True, literature=True),
         tmp_path / "o_rich", resolve_with_ensembl=False,
     )
     assert bare.success and rich.success, (bare.errors, rich.errors)
-    for name in ("weights.parquet", "annotations.parquet"):
+    for name in ("weights.parquet", "annotations.parquet", "studies.parquet"):
         assert (tmp_path / "o_bare" / name).read_bytes() == (tmp_path / "o_rich" / name).read_bytes()
     # ...but the artifact identity DOES differ, because the module genuinely carries more content.
     assert bare.manifest.artifact.digest != rich.manifest.artifact.digest
     assert bare.manifest.frequency is None and bare.manifest.gene_metrics is None
+    assert bare.manifest.literature is None
 
 
 def test_sidecar_csvs_are_not_hashed_as_raw_inputs(tmp_path: Path) -> None:
@@ -101,14 +120,13 @@ def test_sidecar_csvs_are_not_hashed_as_raw_inputs(tmp_path: Path) -> None:
     nothing but column order and timestamps.
     """
     result = compile_module(
-        _spec(tmp_path, frequencies=True, gene_metrics=True), tmp_path / "out",
+        _spec(tmp_path, frequencies=True, gene_metrics=True, literature=True), tmp_path / "out",
         resolve_with_ensembl=False,
     )
     input_names = {entry.name for entry in result.manifest.inputs}
-    assert "frequencies.csv" not in input_names
-    assert "gene_metrics.csv" not in input_names
+    assert not {"frequencies.csv", "gene_metrics.csv", "literature.csv"} & input_names
     artifact_names = {entry.name for entry in result.manifest.artifact.files}
-    assert {"frequencies.parquet", "gene_metrics.parquet"} <= artifact_names
+    assert {"frequencies.parquet", "gene_metrics.parquet", "literature.parquet"} <= artifact_names
 
 
 # ── the parquet ─────────────────────────────────────────────────────────────────────────────────
@@ -141,7 +159,7 @@ def test_manifest_blocks_summarize_the_sidecars(tmp_path: Path) -> None:
     assert genes.datasets == ["gnomad_v4.1_constraint"]
 
     # The recorded signatures are the producer-independent fact-hashes, recomputable by a consumer.
-    with (tmp_path / "spec_11" / "frequencies.csv").open(newline="") as handle:
+    with (tmp_path / "spec_110" / "frequencies.csv").open(newline="") as handle:
         rows = [FrequencyRow(**{k: (v or None) for k, v in r.items()}) for r in csv.DictReader(handle)]
     assert freq.signature == frequency_signature(rows)
     assert genes.signature is not None and genes.signature.startswith("sha256:")
@@ -164,22 +182,89 @@ def test_fact_signature_ignores_provenance_but_not_the_dataset(tmp_path: Path) -
 
 
 def test_compile_reverse_compile_is_a_fixed_point(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, frequencies=True, gene_metrics=True)
+    spec = _spec(tmp_path, frequencies=True, gene_metrics=True, literature=True)
     first = compile_module(spec, tmp_path / "o1", resolve_with_ensembl=False)
     reverse_module(tmp_path / "o1", tmp_path / "rev")
     second = compile_module(tmp_path / "rev", tmp_path / "o2", resolve_with_ensembl=False)
 
     assert second.success, second.errors
-    assert (tmp_path / "rev" / "frequencies.csv").exists()
-    assert (tmp_path / "rev" / "gene_metrics.csv").exists()
+    for name in ("frequencies.csv", "gene_metrics.csv", "literature.csv"):
+        assert (tmp_path / "rev" / name).exists()
     # The recomputable column must NOT come back as an authored one.
     header = (tmp_path / "rev" / "frequencies.csv").read_text().splitlines()[0]
     assert "allele_frequency" not in header
-    for name in ("frequencies.parquet", "gene_metrics.parquet"):
+    for name in ("frequencies.parquet", "gene_metrics.parquet", "literature.parquet"):
         assert (tmp_path / "o1" / name).read_bytes() == (tmp_path / "o2" / name).read_bytes()
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert first.manifest.frequency.signature == second.manifest.frequency.signature
     assert first.manifest.gene_metrics.signature == second.manifest.gene_metrics.signature
+    assert first.manifest.literature.signature == second.manifest.literature.signature
+
+
+# ── the citation sidecar's own properties ───────────────────────────────────────────────────────
+
+
+def test_the_literature_block_never_reports_unchecked_quotes_as_missing(tmp_path: Path) -> None:
+    """The counter that would be easiest to get wrong, and the most misleading if it were.
+
+    The fixture authors one quote per citation, of which only the open-access one could be checked.
+    `quotes_found` must be 1 of 2 authored with 1 open-access article — NOT 1 of 2 read as "half the
+    quotes are wrong", which is what summing a null as zero would imply.
+    """
+    result = compile_module(
+        _spec(tmp_path, literature=True), tmp_path / "out", resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    block = result.manifest.literature
+    assert (block.row_count, block.resolved_count, block.missing_count) == (2, 2, 0)
+    assert block.open_access_count == 1
+    assert (block.quotes_authored, block.quotes_found) == (2, 1)
+    # The unchecked quote is legible as unchecked: authored − found equals the non-open-access count.
+    assert block.quotes_authored - block.quotes_found == block.row_count - block.open_access_count
+
+
+def test_a_nonexistent_citation_recorded_by_the_enricher_surfaces_at_compile(tmp_path: Path) -> None:
+    """The compiler cannot ask PubMed anything, but the enricher already wrote down the verdict —
+    so an offline compile can still tell the author their citation does not resolve."""
+    spec = _spec(tmp_path, literature=True)
+    (spec / "literature.csv").write_text(
+        "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
+        "12345678,,,false,,,,pubmed,not_found,\n"
+        "23456789,,,true,,,,pubmed,resolved,\n"
+    )
+    result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+    assert result.success                                  # a warning, not a refusal
+    assert any("PubMed has no record of" in w for w in result.warnings)
+    assert result.manifest.literature.missing_count == 1
+
+
+def test_a_citation_no_study_makes_is_an_orphan_warning(tmp_path: Path) -> None:
+    spec = _spec(tmp_path, literature=True)
+    (spec / "literature.csv").write_text(
+        _LITERATURE + "34567890,,,true,,,,pubmed,resolved,\n"
+    )
+    result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+    assert result.success
+    assert any("no study in this module cites" in w for w in result.warnings)
+
+
+def test_the_literature_fact_hash_ignores_open_access_and_coverage(tmp_path: Path) -> None:
+    """An embargo lifting must not move a module's signature — nothing about the module changed.
+
+    This is the concrete reason `is_open_access` and the quote counters sit outside the fact set.
+    """
+    from just_dna_format.integrity import literature_signature
+    from just_dna_format.literature import LiteratureRow
+
+    base = dict(pmid="29165669", doi="10.1093/nar/gkx1153", pmcid="PMC5753237", exists=True)
+    before = [LiteratureRow(**base, is_open_access=False, quotes_authored=1, quotes_found=None)]
+    after = [LiteratureRow(**base, is_open_access=True, quotes_authored=1, quotes_found=1,
+                           source="pubmed", fetched_at="2026-08-01T00:00:00Z")]
+    assert literature_signature(before) == literature_signature(after)
+
+    # ...but a different article genuinely is different content.
+    other = [LiteratureRow(**{**base, "doi": "10.9999/other"})]
+    assert literature_signature(other) != literature_signature(before)
 
 
 def test_compiling_twice_is_byte_identical(tmp_path: Path) -> None:
@@ -475,3 +560,243 @@ def test_gene_metrics_interval_must_bracket_the_point_estimate(tmp_path: Path) -
     )
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert any("outside its own interval" in w for w in result.warnings)
+
+
+# ── the alleles a module names must be alleles its loci actually have ────────────────────────────
+
+
+def _variant(**kw):
+    from just_dna_format.spec import VariantRow
+
+    base = dict(genotype="A/T", state="risk", conclusion="c")
+    return VariantRow(**{**base, **kw})
+
+
+@pytest.mark.parametrize(
+    ("label", "variant_kwargs", "table", "expected"),
+    [
+        ("authored alleles agree with the genotype",
+         dict(chrom="11", start=5227002, ref="T", alts="A"), {}, "pass"),
+        ("authored alleles contradict the genotype",
+         dict(chrom="11", start=5227002, ref="C", alts="G"), {}, "finding"),
+        # The motivating real-world bug: a paper reports alleles on the gene's strand while dbSNP
+        # reports the forward strand, so `A/G` gets authored at a `C>T` locus. Complementing the
+        # genotype gives exactly {T,C} — which is why it looks plausible and compiles clean today.
+        ("strand-flipped genotype (A/G authored at a C>T locus)",
+         dict(chrom="11", start=5227002, ref="C", alts="T", genotype="A/G"), {}, "finding"),
+        ("hemizygous single allele, present",
+         dict(chrom="MT", start=100, ref="A", alts="T", genotype="T"), {}, "pass"),
+        ("hemizygous single allele, absent",
+         dict(chrom="MT", start=100, ref="A", alts="T", genotype="C"), {}, "finding"),
+        ("phased genotype is split on the pipe like any other",
+         dict(chrom="11", start=5227002, ref="T", alts="A", genotype="A|T"), {}, "pass"),
+        ("ref authored but no alts — {ref} alone would flag every het row",
+         dict(chrom="11", start=5227002, ref="T"), {}, "pass"),
+        ("nothing known about the alleles at all",
+         dict(rsid="rs334"), {}, "pass"),
+        ("effect_allele names an allele the locus does not have",
+         dict(chrom="11", start=5227002, ref="T", alts="A", effect_allele="G"), {}, "finding"),
+        ("effect_allele names the reference, which is a real allele",
+         dict(chrom="11", start=5227002, ref="T", alts="A", effect_allele="T"), {}, "pass"),
+    ],
+)
+def test_allele_membership_matrix(
+    label: str, variant_kwargs: dict, table: dict, expected: str
+) -> None:
+    """Severity is the mode ladder in both provenance cases — warn in best_effort, error in strict.
+
+    The escalation the draft plan wanted (authored contradiction ⇒ error in *both* modes) is unsafe,
+    and the reason is not obvious: `ref`/`alts` in `variants.csv` are not necessarily human-authored.
+    `reverse_module` writes them too, so a one-to-many rsid reverses into N rows that each carry their
+    own locus's alleles beside the single genotype the author wrote. See the round-trip test below.
+    """
+    from just_dna_compiler.compiler import _check_allele_membership
+
+    variant = _variant(**variant_kwargs)
+    for strict in (False, True):
+        errors, warnings = _check_allele_membership([variant], table, strict=strict)
+        got = errors if strict else warnings
+        other = warnings if strict else errors
+        if expected == "pass":
+            assert not got and not other, f"{label} (strict={strict}): expected silence, got {got or other}"
+        else:
+            assert got, f"{label} (strict={strict}): expected a finding, got none"
+            assert not other, f"{label} (strict={strict}): finding landed in the wrong channel"
+
+
+def test_resolved_alleles_are_unioned_across_a_one_to_many_rsid() -> None:
+    """The regression this check was nearly shipped without.
+
+    A one-to-many rsid keeps ONE authored genotype while resolving to several loci, so a per-locus
+    comparison flags every sibling the genotype was never about. Checked against the real shape:
+    `rs281864532` in `reference_examples/pathogenic_clinvar/` resolves to both `GTT>G` and `GT>G`, and
+    its authored genotype `G/GT` belongs to the second. Per-locus that is one finding; unioned it is
+    correctly none.
+    """
+    from just_dna_compiler.compiler import _allowed_alleles, _check_allele_membership
+    from just_dna_format.resolution import ResolutionRow
+
+    loci = [
+        ResolutionRow(variant_key="rs281864532", rsid="rs281864532", chrom="11",
+                      start=5226925, ref="GTT", alts="G", locus_index=0),
+        ResolutionRow(variant_key="rs281864532", rsid="rs281864532", chrom="11",
+                      start=5226926, ref="GT", alts="G", locus_index=1),
+    ]
+    variant = _variant(rsid="rs281864532", genotype="G/GT")
+    table = {"rs281864532": loci}
+
+    allowed, provenance = _allowed_alleles(variant, table)
+    assert provenance == "resolved"
+    assert allowed == {"G", "GT", "GTT"}          # the union, not either locus alone
+    assert not {"G", "GT"} <= {"G", "GTT"}        # ...and the first locus alone would NOT cover it
+
+    assert _check_allele_membership([variant], table, strict=True) == ([], [])
+
+
+def test_a_locus_that_cannot_host_the_genotype_is_not_expanded_onto(tmp_path: Path) -> None:
+    """The fabrication this check originally surfaced, now prevented at the source.
+
+    A one-to-many rsid carries ONE authored genotype onto N loci. `rs999` here resolves to `A>T` and
+    `C>G`; the authored `A/T` can only be true of the first. Expanding onto both wrote a row asserting
+    an allele the locus does not have, and reverse then emitted that fabrication as authored data.
+    The incompatible locus is dropped instead — and because dropping it makes the compile
+    unreproducible from the injected table, `strict` refuses rather than silently pruning.
+    """
+    spec = tmp_path / "expand"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML)
+    (spec / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion,gene\nrs999,A/T,risk,two loci,HBB\n"
+    )
+    (spec / "studies.csv").write_text("rsid,pmid\nrs999,12345678\n")
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
+        "rs999,rs999,5,500,A,T,GRCh38,0,manual,resolved,\n"
+        "rs999,rs999,6,600,C,G,GRCh38,1,manual,resolved,\n"
+    )
+    first = compile_module(spec, tmp_path / "out1")
+    assert first.success, first.errors
+    assert any("cannot host the authored genotype" in w for w in first.warnings)
+
+    weights = pl.read_parquet(tmp_path / "out1" / "weights.parquet")
+    assert weights.height == 1                       # only the locus that can host A/T
+    assert weights["chrom"].to_list() == ["5"]
+
+    strict = compile_module(spec, tmp_path / "out_strict", strict=True)
+    assert not strict.success
+    assert any("cannot host the authored genotype" in e for e in strict.errors)
+
+    # ...and the authored shape survives the round-trip: one rsid-only row, no fabricated coordinates.
+    reversed_spec = tmp_path / "rev"
+    reverse_module(tmp_path / "out1", reversed_spec)
+    rows = list(csv.DictReader((reversed_spec / "variants.csv").read_text().splitlines()))
+    assert len(rows) == 1
+    assert rows[0]["rsid"] == "rs999" and rows[0]["chrom"] == ""
+    again = compile_module(reversed_spec, tmp_path / "out2")
+    assert again.success, again.errors
+    assert first.manifest.artifact.digest == again.manifest.artifact.digest
+
+
+def test_the_reference_example_trips_no_allele_finding() -> None:
+    """The real module, through the real code path: silence on genuine data.
+
+    A lint that fires on the repo's own dogfood is worse than no lint. This one did, on three rows,
+    until the union semantics above were fixed.
+    """
+    from just_dna_compiler.compiler import _check_allele_membership, _load_csv_rows
+    from just_dna_format.resolution import ResolutionRow
+    from just_dna_format.spec import VariantRow
+
+    example = Path(__file__).resolve().parents[2] / "reference_examples" / "pathogenic_clinvar"
+    variants, verrors, _ = _load_csv_rows(example / "variants.csv", VariantRow, "variants.csv")
+    rows, rerrors, _ = _load_csv_rows(example / "resolution.csv", ResolutionRow, "resolution.csv")
+    assert not verrors and not rerrors
+    table: dict[str, list[ResolutionRow]] = {}
+    for row in rows:
+        table.setdefault(row.variant_key, []).append(row)
+
+    assert len(variants) > 300, "guard: the example should be the full HBB panel"
+    assert _check_allele_membership(variants, table, strict=True) == ([], [])
+
+
+# ── ACMG BA1: a 'pathogenic' variant that is common in a general population ──────────────────────
+
+
+def _ba1_spec(tmp_path: Path, name: str, clin_sig: str, freq_rows: str) -> Path:
+    spec = tmp_path / name
+    spec.mkdir(parents=True)
+    (spec / "module_spec.yaml").write_text(_YAML)
+    (spec / "variants.csv").write_text(
+        "chrom,start,ref,alts,genotype,state,conclusion,gene,clin_sig\n"
+        f"11,5227002,T,A,A/T,risk,Sickle-cell,HBB,{clin_sig}\n"
+    )
+    (spec / "studies.csv").write_text(
+        "chrom,start,ref,pmid\n11,5227002,T,12345678\n"
+    )
+    (spec / "frequencies.csv").write_text(_freq_csv(freq_rows))
+    return spec
+
+
+def _recorded_faf95(key: str) -> float:
+    """The real gnomAD v4.1 popmax filtering AF from the committed payload — never hardcoded."""
+    import json
+
+    assets = Path(__file__).resolve().parents[2] / "assets"
+    payload = json.loads((assets / "gnomad_v4.1_variant_payload.json").read_text())
+    return payload["data"][key]["joint"]["faf95"]["popmax"]
+
+
+def test_sickle_cell_sits_just_under_the_ba1_threshold(tmp_path: Path) -> None:
+    """Real numbers decide this test, and they are interesting: rs334's filtering AF is ~0.0482 in
+    African-ancestry groups — just *below* ACMG's 5% line. So the default must stay silent on the
+    canonical pathogenic-and-common variant, and a slightly stricter threshold must speak."""
+    faf = _recorded_faf95("sickle")
+    assert 0.04 < faf < 0.05, f"fixture drift: rs334 faf95 is {faf}"
+
+    row = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,afr,3949,41442,,,{faf},gnomad_v4.1_joint,,,gnomad,resolved,\n"
+
+    quiet = compile_module(
+        _ba1_spec(tmp_path, "quiet", "pathogenic", row), tmp_path / "q", resolve_with_ensembl=False
+    )
+    assert quiet.success
+    assert not any("BA1" in w for w in quiet.warnings)
+
+    loud = compile_module(
+        _ba1_spec(tmp_path, "loud", "pathogenic", row), tmp_path / "l",
+        resolve_with_ensembl=False, ba1_threshold=0.04,
+    )
+    assert loud.success            # warning only, in both modes
+    assert any("BA1" in w for w in loud.warnings)
+
+
+def test_ba1_fires_on_a_genuinely_common_allele_called_pathogenic(tmp_path: Path) -> None:
+    """MTHFR C677T's real filtering AF is ~0.47. Calling that `pathogenic` is exactly what BA1 is for."""
+    faf = _recorded_faf95("mthfr")
+    assert faf > 0.4, f"fixture drift: rs1801133 faf95 is {faf}"
+
+    spec = tmp_path / "mthfr"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML)
+    (spec / "variants.csv").write_text(
+        "chrom,start,ref,alts,genotype,state,conclusion,gene,clin_sig\n"
+        "1,11796321,G,A,A/G,risk,Reduced activity,MTHFR,pathogenic\n"
+    )
+    (spec / "studies.csv").write_text("chrom,start,ref,pmid\n1,11796321,G,23456789\n")
+    (spec / "frequencies.csv").write_text(_freq_csv(
+        f"{_MTHFR},rs1801133,1,11796321,G,A,GRCh38,amr,19200,62494,,,{faf},"
+        f"gnomad_v4.1_joint,,,gnomad,resolved,\n"
+    ))
+    result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+    assert result.success
+    assert any("BA1" in w and "stand-alone evidence" in w for w in result.warnings)
+
+
+def test_ba1_says_nothing_about_a_variant_the_module_does_not_call_pathogenic(tmp_path: Path) -> None:
+    """The rule is about pathogenic claims. A common allele called `benign` is simply consistent."""
+    faf = _recorded_faf95("mthfr")
+    row = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,afr,3949,41442,,,{faf},gnomad_v4.1_joint,,,gnomad,resolved,\n"
+    result = compile_module(
+        _ba1_spec(tmp_path, "benign", "benign", row), tmp_path / "out", resolve_with_ensembl=False
+    )
+    assert result.success
+    assert not any("BA1" in w for w in result.warnings)

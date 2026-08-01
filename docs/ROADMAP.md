@@ -144,16 +144,43 @@ the what-blocks lens in [USE_CASES.md](USE_CASES.md) §1. Standing dispositions:
   which reference, how to present ambiguity), and taking a dependency for indel normalization does not
   commit to shipping it. Deferred as a feature, not blocked by tooling.
 - **Multi-build VRS minting.** A second refget table beside `REFGET_GRCh38`; the remaining half of RM15.
-- **dbSNP obsolescence / merge checking** (candidate, cheap). dbSNP merges and retires rsIDs, so an
-  older module can key on a label its source has since superseded. Detectable two ways, both verified:
-  Ensembl REST returns the *current* `name` for a merged query (`rs77121243` → `rs334`, with the
-  queried id in `synonyms`) — a signal the enricher **already receives and discards** in
-  `_loci_from_rest` — and NCBI `esummary db=snp` reports it batched (`merged_sort`, plus a `snp_id`
-  differing from the requested uid). The interesting part is not the lookup but what to do with it:
-  see *the stale-identifier collision* below.
+- ~~**dbSNP obsolescence / merge checking**~~ — **built in 0.5** as `identifiers.check_rsids`, wired
+  into `enrich()` behind `--verify-rsids`. Two corrections to what this entry used to claim, both found
+  by probing: it is **not** "detectable two ways" — Ensembl REST resolves *some* merges (`rs77121243` →
+  `rs334`) and returns **HTTP 400** on others (`rs3216883`, which dbSNP correctly reports as merged into
+  `rs3051860`), so Ensembl alone would misclassify a merged rsID as unresolvable. **NCBI `esummary
+  db=snp` is the oracle**, batched and authoritative. See *the stale-identifier collision* below for
+  what is done with the answer.
 - **Sex-stratified frequency counts.** gnomAD serves `nfe_XX`/`XY`; sex is a second axis, and folding it
   into `population` would be the `state`-overloading mistake again. A future `sex` column on
   `FrequencyRow` is the additive shape if it is ever wanted.
+- **`google-re2` for `provenance_regex` matching** (candidate, only if the current bound proves
+  insufficient). The enricher matches `provenance_regex` against fulltext with stdlib `re` inside a
+  killable child process (`literature.regex_matches`). That is a *bound*, not a linear-time guarantee,
+  and the honest reason it is enough today is that the threat model here is a curator writing a slow
+  pattern by accident — the pattern comes from the module being enriched and the document from a public
+  archive, on the author's own machine, not an attacker meeting an arbitrary document.
+
+  **The reason not to switch pre-emptively is capability, not cost.** Real fulltext has periodic
+  structure — repeated section headers, boilerplate, tabular runs — and pinning a quote inside it often
+  needs a **lookahead or lookbehind**. RE2 does not support either, so adopting it would narrow the
+  pattern language the format offers authors, in exchange for a guarantee the subprocess already
+  approximates. Revisit if `re` exhibits problems the process bound does not contain (a pattern that
+  wedges a worker often enough to matter, or memory blow-up rather than time). If it happens, the shape
+  is: keep `re` as the default, add `google-re2` as an optional accelerator, and record which engine
+  ran — never silently change which patterns match.
+- **Fulltext beyond the open-access subset** (candidate, cost-driven). OpenAlex and Unpaywall can point
+  at a green-OA repository copy for some closed articles. Probed and *not* taken: the closed paper
+  tested (`10.1038/s41580-019-0134-2`) has `is_oa: false` with no location at all, and the copies that
+  do exist are PDFs — which would mean a PDF-parsing dependency in the network tier for a partial
+  improvement on a check that is already labelled partial. The **abstract fallback shipped instead**,
+  which costs nothing (the abstract is already in the Europe PMC response the pass makes) and covers
+  four of five non-OA papers. Revisit only if authors report quotes that live in the body of closed
+  papers often enough to matter.
+- ~~**Google Scholar for citation existence**~~ — **rejected, not deferred.** It publishes no API, and
+  automated querying violates its terms of service and is IP-blocked in practice. Crossref (DOIs,
+  including preprints/books/datasets) and PubMed (indexed literature) cover the same ground through
+  supported interfaces.
 
 
 ### The stale-identifier collision (design note, 0.5)
@@ -173,16 +200,37 @@ authored label (digest stable, round-trip intact), `strict` **refuses**, on the 
 all-or-nothing artifact should not be built on an identifier its own source has retired. Failing is the
 honest move because it pushes the fix to where it belongs: an authored edit.
 
-Two refinements the implementation will need:
+Two refinements, both now settled by the 0.5 implementation:
 
-- **Merged ≠ withdrawn.** A merged rsID still resolves to the right locus, so the module is *dated*,
-  not wrong. A withdrawn one is a repudiation of the variant itself and may deserve failing in both
-  modes. Probe the withdrawn shape before deciding.
-- **The new columns are provenance, not facts.** `rsid_current` + `rsid_status` (`live|merged|
-  withdrawn`) belong **outside** `RESOLUTION_FACT_FIELDS`, beside `rsid_alternates`. They describe
-  time-varying *external* state; putting them in the fact set would make `resolution_signature` change
-  when dbSNP merges something, with no change to the module — the signature would stop being
-  reproducible from the module's own content.
+- **Merged ≠ withdrawn — and withdrawn is not observable.** This entry used to say "probe the withdrawn
+  shape before deciding", on the assumption that a withdrawn rsID deserved failing in both modes. The
+  probe was done, and it dissolved the question rather than answering it: `rs11273140`, a genuinely
+  *withdrawn* id, returns a response **byte-identical** to `rs2000000000`, which was never assigned —
+  the same `error` string from `esummary`, the same `count=0` from `esearch`, the same Ensembl 400.
+  Routes checked and rejected for separating them: `esearch` has no withdrawn filter (the phrase is not
+  indexed), and `latest_release/misc/rs_unsupported_b157.txt` looks like a withdrawn registry but is a
+  one-off build-157 ClinVar-parsing incident list that does not contain `rs11273140`. Separating them
+  would need a historical dbSNP dump, not the live API. So the vocabulary is **`live|merged|absent`**,
+  not `live|merged|withdrawn`, and `absent`'s *message* names both readings and asserts neither —
+  because guessing "typo" sends an author to fix the wrong thing when the truth is that the variant
+  itself was retracted. Severity is the same ladder for both (warn / fail in `strict`), not escalated
+  beyond it, since `absent` has benign causes too (a very new rsID, or API lag).
+- **The new columns are provenance, not facts.** `rsid_current` + `rsid_status` sit **outside**
+  `RESOLUTION_FACT_FIELDS`, beside `rsid_alternates`. They describe time-varying *external* state;
+  inside the fact set they would make `resolution_signature` change when dbSNP merges something, with
+  no change to the module — the signature would stop being reproducible from the module's own content.
+  (Shipped as specified, with a test that pins it.)
+
+One consequence worth recording, since it was previously filed as a loose end: **`reverse_module` does
+not carry these columns, and that is correct rather than a gap.** Reverse rebuilds `resolution.csv` from
+`weights.parquet`, which by design holds no provenance — it already resets `source` to `reversed`,
+`status` to `resolved` and blanks `fetched_at`. `rsid_alternates`/`rsid_current`/`rsid_status` are out
+of the fact set *precisely* so they never reach the artifact, so the information does not exist for
+reverse to emit; adding the column names would produce a permanently empty header. Recovering them
+after a round-trip means re-running the enricher, which is where a statement about a reference at a
+moment belongs. What reverse *does* now carry back correctly is the resolved **facts** and the authored
+**shape** — see [COMPILER.md § Resolution](COMPILER.md) for the enumerated round-trip contract that
+replaced the old "reverse emits position-only" rule.
 
 **The strategic reading:** this whole class of problem is *label drift*, and it exists only for
 rsid-keyed rows. A coordinate-authored row keys on a VRS allele id, which is content-addressed and

@@ -1,0 +1,44 @@
+{
+ "EFO_0001645": {
+  "_embedded": {
+   "terms": [
+    {
+     "iri": "http://www.ebi.ac.uk/efo/EFO_0001645",
+     "label": "obsolete_coronary artery disease",
+     "short_form": "EFO_0001645",
+     "obo_id": "EFO:0001645",
+     "is_obsolete": true,
+     "term_replaced_by": "http://purl.obolibrary.org/obo/MONDO_0005010"
+    }
+   ]
+  }
+ },
+ "EFO_0004340": {
+  "_embedded": {
+   "terms": [
+    {
+     "iri": "http://www.ebi.ac.uk/efo/EFO_0004340",
+     "label": "body mass index",
+     "short_form": "EFO_0004340",
+     "obo_id": "EFO:0004340",
+     "is_obsolete": false,
+     "term_replaced_by": null
+    }
+   ]
+  }
+ },
+ "MONDO_0005010": {
+  "_embedded": {
+   "terms": [
+    {
+     "iri": "http://purl.obolibrary.org/obo/MONDO_0005010",
+     "label": "coronary artery disorder",
+     "short_form": "MONDO_0005010",
+     "obo_id": "MONDO:0005010",
+     "is_obsolete": false,
+     "term_replaced_by": null
+    }
+   ]
+  }
+ }
+}

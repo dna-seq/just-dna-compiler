@@ -3,6 +3,7 @@
     just-dna-enricher enrich spec/ --strict --offline
     just-dna-enricher frequencies spec/                 # pass 2: allele frequency (online only)
     just-dna-enricher gene-metrics spec/                # pass 3: gene constraint (offline capable)
+    just-dna-enricher literature spec/                  # pass 4: citations (online only)
     just-dna-enricher enrich-and-compile spec/ out/ --frequencies --gene-metrics
     just-dna-enricher gnomad constraint build --download --out gnomad_constraint/   # [dev]
     just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            # [dev]
@@ -17,6 +18,7 @@ from just_dna_compiler.compiler import compile_module
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
+from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
 
 app = typer.Typer(
     add_completion=False,
@@ -43,6 +45,14 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         True, "--verify-ref/--no-verify-ref",
         help="Check each authored ref against the reference sequence and report disagreements.",
     ),
+    verify_clinsig: bool = typer.Option(
+        True, "--verify-clinsig/--no-verify-clinsig",
+        help="Check each authored clin_sig against the ClinVar snapshot's own (warns, never fails).",
+    ),
+    verify_rsids: bool = typer.Option(
+        True, "--verify-rsids/--no-verify-rsids",
+        help="Check each authored rsID against dbSNP for merges/withdrawals (online only).",
+    ),
 ) -> None:
     """Resolve a spec's variants into resolution.csv beside the spec. Exit 1 in strict mode if unresolved."""
     try:
@@ -50,6 +60,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             spec_dir, mode=_mode(strict), offline=offline,
             ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, use_clinvar=use_clinvar,
             use_gnomad=use_gnomad, mint_vrs=mint_vrs, verify_ref=verify_ref,
+            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
         )
     except EnrichmentError as exc:
         typer.secho(f"ENRICH FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -62,6 +73,13 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         # Red rather than yellow even in best_effort: this is authored data contradicting the genome,
         # which is a different (and worse) thing than a variant the chain could not find.
         typer.secho(f"  ref mismatch: {mismatch}", fg=typer.colors.RED, err=True)
+    for stale in result.stale_rsids:
+        typer.secho(f"  stale rsid: {stale}", fg=typer.colors.YELLOW, err=True)
+    for conflict in result.clin_sig_conflicts:
+        # Yellow, not red, and in every mode: this is a disagreement between two opinions, not a row
+        # contradicting a fact. An opposed call still deserves the author's attention.
+        label = "clin_sig conflict" if conflict.opposed else "clin_sig differs"
+        typer.secho(f"  {label}: {conflict}", fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("frequencies")
@@ -115,6 +133,81 @@ def gene_metrics_(
     typer.echo(f"rows: {len(result.rows)}  genes covered: {len(result.covered)}  sources: {result.sources}")
     if result.missing:
         typer.secho(f"  no gnomAD constraint: {result.missing}", fg=typer.colors.YELLOW, err=True)
+
+
+@app.command("literature")
+def literature_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail if a cited PMID does not resolve."),
+    offline: bool = typer.Option(False, "--offline", help="No-op with a warning: there is no offline PubMed snapshot."),
+    check_fulltext: bool = typer.Option(
+        True, "--fulltext/--no-fulltext",
+        help="Also match provenance quotes against fulltext, falling back to the abstract.",
+    ),
+    check_doi: bool = typer.Option(
+        True, "--doi/--no-doi",
+        help="Also confirm the authored DOI resolves in Crossref (covers preprints/books).",
+    ),
+) -> None:
+    """Fill literature.csv from the citations in studies.csv (pass 4, online only)."""
+    try:
+        result = enrich_literature(
+            spec_dir, mode=_mode(strict), offline=offline, check_fulltext=check_fulltext,
+            check_doi=check_doi,
+        )
+    except LiteratureEnrichmentError as exc:
+        typer.secho(f"LITERATURE FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped_offline:
+        typer.secho("skipped: --offline (PubMed/Europe PMC have no offline snapshot)", fg=typer.colors.YELLOW)
+        return
+    typer.secho(f"literature: {spec_dir / 'literature.csv'}", fg=typer.colors.GREEN)
+    typer.echo(f"citations: {len(result.rows)}  {result.coverage}")
+    typer.echo(f"quotes: {result.quotes_found}/{result.quotes_authored} found, "
+               f"{result.quotes_unchecked} not checkable")
+    if result.missing:
+        # Red: a citation that does not resolve is a defect in the module, not a coverage gap.
+        typer.secho(f"  PubMed has no record of: {result.missing}", fg=typer.colors.RED, err=True)
+    if result.doi_missing:
+        typer.secho(f"  Crossref has no record of: {result.doi_missing}", fg=typer.colors.RED, err=True)
+    for conflict in result.doi_conflicts:
+        typer.secho(f"  doi conflict: {conflict}", fg=typer.colors.RED, err=True)
+
+
+@app.command("check-identifiers")
+def check_identifiers_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(False, "--strict/--best-effort", help="Exit 1 if any identifier is stale."),
+    traits: bool = typer.Option(True, "--traits/--no-traits", help="Check trait_efo_id against OLS4."),
+    genes: bool = typer.Option(True, "--genes/--no-genes", help="Check gene symbols against HGNC."),
+) -> None:
+    """Report obsolete trait ontology terms and retired gene symbols (online, reports only).
+
+    Writes nothing: unlike the rsID check (whose verdict lands on resolution.csv), these are module-
+    level identifiers with no sidecar column to record, so the report is the whole output.
+    """
+    from just_dna_compiler.compiler import _load_csv_rows
+    from just_dna_format.spec import VariantRow
+
+    from just_dna_enricher.identifiers import check_identifiers
+
+    variants_path = spec_dir / "variants.csv"
+    if not variants_path.exists():
+        typer.secho("no variants.csv — nothing to check", fg=typer.colors.YELLOW)
+        return
+    variants, errors, _ = _load_csv_rows(variants_path, VariantRow, "variants.csv")
+    if errors:
+        typer.secho(f"variants.csv is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    report = check_identifiers(variants, check_traits=traits, check_genes=genes)
+    typer.echo(f"traits checked: {len(report.traits)}  genes checked: {len(report.genes)}")
+    for finding in [*report.stale_traits, *report.stale_genes]:
+        typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
+    if report.clean:
+        typer.secho("all identifiers current", fg=typer.colors.GREEN)
+    elif strict:
+        raise typer.Exit(code=1)
 
 
 @app.command("enrich-and-compile")

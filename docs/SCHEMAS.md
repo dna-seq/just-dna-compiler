@@ -25,11 +25,12 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 | `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |
 | `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `vocab`, `vrs` |
 | `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
+| `literature` | `LiteratureRow` (the 0.5 citation table) | `spec`, `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
-| `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `cryptography` |
+| `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `reference` | Drift-proof authoring reference generated from live models | spec/binning/pgx/pgs/manifest/normalize/vocab |
 | `aggregate` | Cross-version log/provenance union | `manifest` |
@@ -40,7 +41,9 @@ A module is a directory. `module_spec.yaml` carries identity/display/defaults; e
 concern, and a module includes **only** the CSVs it uses (RM2 — `variants.csv` is not mandatory). The
 SNP core is `variants.csv` + `studies.csv` (studies required *iff* variants present). Everything else
 is an optional table kind. `resolution.csv` is compiler *input*, produced by the enricher, not authored
-annotation (see [§ resolution table](#the-resolution-table-05-provisional)).
+annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
+the three derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv`, which are
+therefore absent from the table below.
 
 | File | Model (module) | Role |
 |---|---|---|
@@ -70,16 +73,24 @@ annotation (see [§ resolution table](#the-resolution-table-05-provisional)).
 - **Vocabulary idiom (Principle 6).** A constrained vocabulary is a `frozenset[str]` + a validator,
   never `Enum`/`Literal` — additive and inspectable. Live sets in `vocab.py`: `VALID_DIRECTIONS`,
   `VALID_SIGNIFICANCE`, `VALID_CLIN_SIG`, `VALID_EVIDENCE_LEVELS`, `VALID_RESOLUTION_STATUS`,
-  `VALID_AUTHOR_ROLES`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`, `ACTIONABILITY_SEED`.
+  `VALID_RSID_STATUS`, `VALID_AUTHOR_ROLES`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`,
+  `ACTIONABILITY_SEED`.
 - **`derive_variant_key(rsid, chrom, start, ref, alts=None)` (`base.py`).** The single source of a
   variant's natural identity: the rsid when present, else `chrom:start:ref`, or `chrom:start:ref:alts`
   (alts normalized/sorted) when an alt is given — so distinct alleles at one locus don't collide. Never
   hand-build the coord key. Position-level *matching* (studies, verify) calls it without `alts`.
 - **Frozen `variant_key`.** On `VariantRow` it is a **stored, compiler-managed** column, stamped once
-  at load by `_freeze_variant_key` (authored values ignored) and never re-derived — so resolution can
+  at load by `_freeze_identity` (authored values ignored) and never re-derived — so resolution can
   fill a coord/rsid or expand a row without ever re-keying it (Principle 7). It is a derived read-only
   *property* on `StudyRow`/`PharmVariantRow` (never resolved/expanded), and is excluded from the
   authoring reference.
+- **Frozen `authored_ident`.** Stamped by the same validator: which of `{rsid, chrom, start, ref, alts}`
+  the author actually supplied. Also compiler-managed and materialized to `weights.parquet`, and it is
+  what makes resolution *reversible* — `variant_key` answers "which variant is this", not "what did the
+  author write", so it cannot tell an rsid-only row from an rsid+coordinate pair, nor an expanded locus
+  from an authored coordinate. Without it reverse materialized resolved coordinates back into
+  `variants.csv` and `content_signature` moved on every round-trip of an rsid-authored module. See
+  [COMPILER.md § Resolution](COMPILER.md).
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
   columns later (P5) — today `{reference_db, callable_from}`, each with a reason in
   `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already rejects
@@ -193,10 +204,11 @@ Position-level **matching** helpers (studies, the reverse pos→rsid lookup, hap
 
 ## The derived-fact tables (0.5, **provisional**)
 
-`frequency.FrequencyRow` → `frequencies.csv` and `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` are
-the variant-level and gene-level siblings of `resolution.csv`: machine-produced reference facts, injected
-and human-overridable, hashed by facts and compiled into their own optional parquets. Both are standalone
-`BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow` is.
+Three siblings of `resolution.csv` at three different grains — `frequency.FrequencyRow` →
+`frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**, and
+`literature.LiteratureRow` → `literature.csv` per **citation**. All are machine-produced reference facts:
+injected, human-overridable, hashed by facts, and compiled into their own optional parquets. All are
+standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow` is.
 
 **`FrequencyRow` — one row per (allele, ancestry group).** Facts: `variant_key` (coordinate-derived, so
 it lines up with post-expansion weights rows), `rsid?`, `chrom?`/`start?`/`ref?`, `alt?` (**one** alt, not
@@ -223,6 +235,35 @@ readers ask for by name, with `oe_lof`/`oe_lof_lower` beside it so the interval 
 and variant-level facts are **separate tables** rather than gene metrics repeated on every variant row
 (Principle 5, and one CSV = one concern).
 
+**`LiteratureRow` — one row per cited article, keyed by `pmid`.** The first sidecar not keyed on a
+variant, and deliberately so: a DOI, a PMCID and "does PubMed have this record" are properties of the
+*paper*. A module with three hundred variants citing five papers carries five rows here, not three
+hundred with the same DOI repeated — the same argument that put gene constraint in its own table, and
+the one that keeps the file readable by the human the DSL exists for. Facts: `pmid`, `doi?`, `pmcid?`,
+`exists?`. Everything else is provenance or time-varying state: `doi_exists?`, `is_open_access?`,
+`quotes_authored?`, `quotes_found?`, `quote_source?`, `source?`, `status?`, `fetched_at?`.
+
+- **No `dataset` column**, unlike its two siblings. gnomAD ships numbered releases; PubMed and Europe
+  PMC are continuously updated and publish no release identifier, so the column could only ever be null
+  or a fabricated label. `fetched_at` is this table's currency marker.
+- **`is_open_access` is outside the fact set** because an embargo lifting is the world changing, not the
+  module. Inside it, a module's `literature_signature` would move with no authored edit anywhere —
+  exactly the property that makes a fact-hash worth having.
+- **`exists` is PubMed's answer and `doi_exists` is Crossref's, and they are different questions.**
+  A paywall does not hide a record from PubMed — it hides the *fulltext* — so `exists` is answered for
+  paywalled work. What PubMed cannot answer for is a citation it does not index at all: a preprint,
+  book, thesis or dataset has a DOI and no PMID, which is what Crossref covers. Two registries, two
+  columns (Principle 5), never one overloaded `exists`.
+- **`quote_source` records how far the search reached**, because a hit and a miss are not symmetric: a
+  phrase found in an abstract is in the paper, while a phrase absent from a 200-word abstract says
+  nothing about the body. Without the column a `quotes_found` of 0 would read as a verdict when it was
+  only a partial look.
+- **Quote coverage is two integer counts, not a boolean.** A quote is authored per *study row* while
+  this table's grain is the citation, and two study rows may cite one paper with different quotes, so a
+  single flag would have to lie about one of them. `quotes_found` is **null when no fulltext could be
+  retrieved** and `0` when a fulltext was read and the quote was not in it — a distinction the manifest
+  block preserves, because collapsing it would report an unread paper as a wrong citation.
+
 **Ancestry groups** (`vocab.RECOMMENDED_ANCESTRY_GROUPS`) are an **open, seeded** vocabulary in the
 `RECOMMENDED_AUTHOR_KINDS` idiom rather than a closed `frozenset` — deliberately, even though Principle 6
 makes closed the default. The table must stay source-independent, and TOPMed / ALFA / 1000G bring their
@@ -246,7 +287,21 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
   the signature): `source?`, `status?` (`VALID_RESOLUTION_STATUS = {resolved, not_found, ambiguous}`;
   `not_found` = "looked, genuinely absent"; `ambiguous` = a reverse position→rsid back-fill hit several
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
-  `ambiguous`; `rsid` holds the deterministic pick), `fetched_at?`.
+  `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
+  (`VALID_RSID_STATUS = {live, merged, absent}` — what dbSNP says about `rsid` today), `fetched_at?`.
+- **`rsid_current`/`rsid_status` are provenance, and the exclusion is load-bearing.** They describe
+  *time-varying external state*: inside the fact set, `resolution_signature` would change the day dbSNP
+  merged something, with no change to the module, and would stop being reproducible from the module's
+  own content. The value is also **recorded, never substituted** — `weights.parquet` carries `rsid` as
+  identity, so writing a merged-into label into the artifact would migrate `variant_key` by network
+  lookup and break the round-trip fixed point (see ROADMAP § *the stale-identifier collision*).
+  `absent` deliberately covers both "never assigned" and "withdrawn": no live endpoint separates them,
+  so a fourth vocabulary member would be a value nothing could legitimately produce.
+- **Reverse emits facts and drops provenance, by design.** `reverse_module` rebuilds this table from
+  `weights.parquet`, which holds no provenance at all — it resets `source` to `reversed`, `status` to
+  `resolved`, blanks `fetched_at`, and cannot emit `rsid_alternates`/`rsid_current`/`rsid_status`
+  because those columns are kept out of the artifact on purpose. Recovering them after a round-trip
+  means re-running the enricher, which is where a statement about a reference at a moment belongs.
 - It is a **standalone `BaseModel`** (not `AuthoredModel`) with `extra="forbid"` — a resolution fact is
   not an annotation and must not inherit VariantRow's annotation validators; it reuses only the shared
   `rsid` grammar and the `status` vocabulary.
@@ -268,8 +323,9 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
 
 ## Identity & integrity
 
-Three SHA-256 hashes (`sha256:` hex prefix), each a different job — see [COMPILER.md](COMPILER.md) and
-the CONSTITUTION for how they compose:
+Six SHA-256 hashes (`sha256:` hex prefix), each a different job — see [COMPILER.md](COMPILER.md) and
+the CONSTITUTION for how they compose. (Two are structural, `artifact_digest` and `content_signature`;
+the other four are the one-per-injected-table family below.)
 
 | Hash (`integrity.py`) | Over | Order | Reference-dependent | Purpose |
 |---|---|---|---|---|
@@ -278,9 +334,14 @@ the CONSTITUTION for how they compose:
 | `resolution_signature(rows)` | resolution **facts** only (`RESOLUTION_FACT_FIELDS`) | order-independent | n/a | pins the resolved facts; producer-independent |
 | `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
 | `gene_metrics_signature(rows)` | gene-constraint **facts** (`GENE_METRICS_FACT_FIELDS`) | order-independent | n/a | pins the gene-constraint table |
+| `literature_signature(rows)` | citation **facts** (`LITERATURE_FACT_FIELDS`) | order-independent | n/a | pins which articles the module cites |
 
-The last three share one body, `fact_signature(rows, fact_fields)` — three derived-fact tables under one
-hashing discipline, so the rule cannot drift between them as more sidecars land.
+The last four share one body, `fact_signature(rows, fact_fields)` — every injected table under one
+hashing discipline, so the rule cannot drift between them as more sidecars land. What differs is only
+each table's fact set, and the exclusions are where the thinking is: provenance is always out, and so is
+any column describing the *outside world's* current state rather than the module's content
+(`is_open_access`, `rsid_current`/`rsid_status`). A signature that moved because dbSNP merged an rsID or
+an embargo lifted would no longer be reproducible from the module alone.
 
 Reproducibility identity is the triple **`(content_signature, resolution_signature, compiler_version)
 ⟹ artifact.digest`** — a holder of the two small CSVs reproduces the artifact byte-for-byte, offline.

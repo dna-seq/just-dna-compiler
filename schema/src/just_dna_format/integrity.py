@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
+from just_dna_format.literature import LITERATURE_FACT_FIELDS
 from just_dna_format.manifest import (
     MARKETPLACE_COMPILED_BY,
     Artifact,
@@ -198,6 +199,17 @@ def frequency_signature(rows: Sequence[BaseModel]) -> str:
 def gene_metrics_signature(rows: Sequence[BaseModel]) -> str:
     """Fact-hash of `gene_metrics.csv` (`gene_metrics.GENE_METRICS_FACT_FIELDS`)."""
     return fact_signature(rows, GENE_METRICS_FACT_FIELDS)
+
+
+def literature_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `literature.csv` (`literature.LITERATURE_FACT_FIELDS`).
+
+    The narrowest fact set of the three, and deliberately so: only *which article this is* is a fact
+    about the module. Open-access status and quote coverage are the outside world's state on the day
+    the pass ran, so they stay outside — otherwise an embargo lifting would move a module's signature
+    with no authored edit anywhere.
+    """
+    return fact_signature(rows, LITERATURE_FACT_FIELDS)
 
 
 def resolution_signature(rows: Sequence[BaseModel]) -> str:

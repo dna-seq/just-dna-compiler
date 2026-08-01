@@ -36,12 +36,9 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
    living lists the Constitution keeps out of itself.
 3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what actually shipped, newest first (shared across the
    ecosystem repos that consume these libs).
-3b. **[next_step.md](next_step.md)** — the drafted next round (validation tightening, T1–T4). Read it
-   before proposing a new check: it records which endpoints were probed and what they actually
-   returned, so the cheap wins and the traps are already mapped.
 4. **Per-package references** — [docs/SCHEMAS.md](docs/SCHEMAS.md) (the schema tier: models, the CSV
-   families, conventions, the three hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
-   compile pipeline, resolution precedence, reverse, the per-feature coverage table), and
+   families, conventions, the six hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
+   compile pipeline, the Resolution section + its round-trip matrix, reverse, the coverage table), and
    [docs/ENRICHER.md](docs/ENRICHER.md) (the network tier: the resolver chain, Ensembl V2→V1, snapshot
    download + module upload). Read the tier your task touches.
 
@@ -120,9 +117,57 @@ CHANGELOG entry).
   aliases; 29 returns HTTP 400) behind a 6s pacing gate on an **injectable clock** — tests prove the
   interval without really sleeping. Per-alias GraphQL errors must never sink a batch; a *pathless* error
   must raise (it's our broken query, and swallowing it looks like "nothing found").
-- **Known loose end:** the compiler's reverse writer (`_write_resolution_csv`) omits `rsid_alternates`
-  from its `fieldnames`, so an `ambiguous` candidate list doesn't survive reverse→re-enrich (provenance
-  only — no digest/signature impact). Still open.
+- **Reverse dropping `rsid_alternates` is NOT a bug — closed, don't re-flag it.** This was filed as an
+  open loose end and is neither open nor fixable in the writer. `_write_resolution_csv` rebuilds the
+  table from `weights.parquet`, which by design carries **no provenance at all** (it already resets
+  `source="reversed"`, `status="resolved"`, blank `fetched_at`). `rsid_alternates`/`rsid_current`/
+  `rsid_status` are outside the fact set *precisely* so they never reach the artifact, so the data does
+  not exist for reverse to emit; adding the column names would produce a permanently empty header.
+  Recovering them after a round-trip means re-running the enricher.
+- **Resolution must be REVERSIBLE — read [COMPILER.md § Resolution](docs/COMPILER.md) before touching
+  it.** One rule: `compile → reverse → compile` reproduces the module, or `strict` refuses. The finite
+  matrix of authored-shape × mishap is enumerated and enforced in
+  `compiler/tests/test_resolution_matrix.py`; a new resolution behaviour adds a row there.
+  - **`authored_ident` is what makes it work.** It records which of `{rsid, chrom, start, ref, alts}`
+    the author supplied, stamped at load beside `variant_key` and materialized to `weights.parquet`.
+    Reverse re-emits exactly that shape. `variant_key` **cannot** substitute for it: it answers "which
+    variant is this", not "what did the author write" — identical for an rsid-only row and an
+    rsid+coordinate pair, and after expansion it is the per-locus allele id with no trace of the rsid.
+  - **An expansion collapses back to ONE authored row on reverse.** Until 0.5 it emitted N position-only
+    rows, which moved `content_signature` on every rsid-authored module *and* wrote each locus out
+    carrying the single authored genotype — fabricating annotations for loci that genotype cannot
+    describe (three such rows in `reference_examples/pathogenic_clinvar/`).
+  - **A locus that cannot host the authored genotype is dropped from the expansion**
+    (`resolution.genotype_fits`), and the predicate is **shared with the enricher's deprecated DuckDB
+    path** because digest parity between the two is a documented guarantee.
+  - **`withdrawn` refuses in BOTH modes**, unlike `merged`/`absent` (strict-only). Nothing automated
+    emits it — the API cannot tell a retraction from a never-assigned id — but it is a real vocabulary
+    member for curator-recorded retractions and for a future source. Don't drop it as dead code.
+  - **`ambiguous` is stable and still refuses in strict.** The enricher writes ONE row (deterministic
+    pick + `rsid_alternates`); a two-row fixture is fabricated and will invent an instability that does
+    not exist. Strict refuses because a pick among equals is not a finding, not because anything is lost.
+- **The allele-membership check compares against the UNION of every locus a key resolves to**, on the
+  authored rows before `resolve_from_table` — a per-expanded-row comparison flags the siblings the
+  genotype was never about. Severity is the mode ladder, never an unconditional error. Pinned by tests.
+- **The ClinVar `clin_sig` cross-check is the one check where `strict` does NOT escalate** — it warns in
+  both modes, deliberately, because failing would make the format arbitrate a clinical dispute. The
+  reason is documented at the call site; don't "fix" the inconsistency.
+- **`absent` for an rsID means typo *or* withdrawn, and the API cannot separate them.** `rs11273140`
+  (withdrawn) and `rs2000000000` (never assigned) return byte-identical responses. `VALID_RSID_STATUS`
+  is `{live, merged, absent}` — there is no `withdrawn` member because nothing could ever produce it,
+  and the message names both readings. A test asserts the equality on the *recordings* so a future dbSNP
+  release that separates them fails loudly.
+- **Existence vs retrievability for citations.** A paywall hides the *fulltext*, never the PubMed
+  record — `exists` is answered for paywalled work. The real gaps, both now covered: citations PubMed
+  does not index at all (preprints/books/datasets → **Crossref**, checking the *authored* DOI, since
+  the derived one exists by construction) and quote-checking for paywalled papers (→ the **abstract**,
+  which Europe PMC serves for non-OA records in the same response). `quote_source` records how far the
+  search reached because a hit and a miss are not symmetric — an abstract miss is not a verdict.
+  Google Scholar is rejected, not deferred: no API, and automated querying violates its terms.
+- **A thread-based regex timeout is a trap.** `re` cannot be interrupted, threads cannot be killed, and
+  the interpreter joins `ThreadPoolExecutor` threads at exit — so the obvious implementation returns
+  `None` on schedule and then hangs the process on the way out. `literature.regex_matches` uses a
+  killable child process. Don't "simplify" it back to a thread.
 - **For rsID merge status, NCBI is the oracle — not Ensembl.** Ensembl resolves *some* merged rsIDs
   (`rs77121243` → `rs334`) and returns **HTTP 400 on others** (`rs3216883`, which dbSNP correctly
   reports as merged into `rs3051860`), so Ensembl alone would misclassify a merged rsID as

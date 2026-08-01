@@ -28,11 +28,9 @@ recalled: `variant(variantId:|rsid:|vrsId:, dataset:)`, `variant_search(query:, 
 deliberately **no `af`** — the frequency is ours to compute.
 """
 
-import itertools
 import logging
 import re
-import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -45,6 +43,8 @@ from tenacity import (
 )
 
 from just_dna_format.vocab import normalize_population, population_sort_key
+
+from just_dna_enricher.net import PacingGate, batched, dedupe
 
 logger = logging.getLogger(__name__)
 
@@ -107,53 +107,11 @@ class GnomadSettings:
     timeout: float = 30.0
 
 
-@dataclass
-class PacingGate:
-    """Enforce a minimum interval between requests, on an injectable clock.
-
-    The clock and the sleep are parameters rather than direct `time` calls so a test can prove the gate
-    honours the interval *without* a suite that really sleeps six seconds per request. Monotonic by
-    default, so a wall-clock adjustment mid-run cannot collapse the interval to zero.
-    """
-
-    interval: float
-    clock: Callable[[], float] = time.monotonic
-    sleeper: Callable[[float], None] = time.sleep
-    last: Optional[float] = None
-
-    def wait(self) -> None:
-        now = self.clock()
-        if self.last is not None:
-            remaining = self.interval - (now - self.last)
-            if remaining > 0:
-                self.sleeper(remaining)
-                now = self.clock()
-        self.last = now
-
-
 def _alias(index: int) -> str:
     """A GraphQL-legal alias for batch slot `index`. Positional, so mapping a response back is index
     arithmetic rather than string surgery on ids that may contain any character (`11-5227002-T-A` is
     not a legal alias, and neither is a gene symbol with a hyphen)."""
     return f"v{index}"
-
-
-def _batched(items: list[str], size: int) -> Iterator[list[str]]:
-    """Split into batches of at most `size`, preserving order (so emission stays deterministic)."""
-    iterator = iter(items)
-    while batch := list(itertools.islice(iterator, size)):
-        yield batch
-
-
-def _dedupe(items: Iterable[str]) -> list[str]:
-    """First-occurrence-order de-duplication (Principle 7: never `set` iteration for emitted order)."""
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in items:
-        if item not in seen:
-            seen.add(item)
-            out.append(item)
-    return out
 
 
 def _gql_string(value: str) -> str:
@@ -343,12 +301,12 @@ class GnomadClient:
         variant id, and the alleles are aggregated into one locus. An rsID that returns nothing at all
         is simply absent from the result (the caller falls through to "not found").
         """
-        wanted = _dedupe(r for r in rsids if r)
+        wanted = dedupe(r for r in rsids if r)
         if not wanted:
             return {}
         out: dict[str, list[dict]] = {}
         ambiguous: list[str] = []
-        for batch in _batched(wanted, self.settings.batch_size):
+        for batch in batched(wanted, self.settings.batch_size):
             fields = [
                 f"{_alias(i)}: variant(rsid: {_gql_string(rsid)}, dataset: {self.settings.dataset}) "
                 f"{{ variant_id }}"
@@ -363,7 +321,7 @@ class GnomadClient:
                 node = data.get(alias)
                 if node and node.get("variant_id"):
                     out[rsid] = _loci_from_variant_ids([node["variant_id"]])
-        for batch in _batched(ambiguous, self.settings.batch_size):
+        for batch in batched(ambiguous, self.settings.batch_size):
             fields = [
                 f"{_alias(i)}: variant_search(query: {_gql_string(rsid)}, "
                 f"dataset: {self.settings.dataset}) {{ variant_id }}"
@@ -385,12 +343,12 @@ class GnomadClient:
         which names exactly one allele. Each population entry carries AC/AN — never a frequency, which
         the API does not expose per group and which we compute from the counts instead.
         """
-        wanted = _dedupe(v for v in variant_ids if v)
+        wanted = dedupe(v for v in variant_ids if v)
         if not wanted:
             return {}
         subset = self.settings.frequency_set
         out: dict[str, dict] = {}
-        for batch in _batched(wanted, self.settings.batch_size):
+        for batch in batched(wanted, self.settings.batch_size):
             fields = [
                 f"{_alias(i)}: variant(variantId: {_gql_string(vid)}, dataset: {self.settings.dataset}) "
                 f"{{ variant_id caid rsids vrs {{ _id }} "
@@ -424,11 +382,11 @@ class GnomadClient:
         gene pass can fall back to the live API without the rate limit mattering, while the frequency
         pass cannot go the other way and ship an offline snapshot.
         """
-        wanted = _dedupe(s for s in symbols if s)
+        wanted = dedupe(s for s in symbols if s)
         if not wanted:
             return {}
         out: dict[str, dict] = {}
-        for batch in _batched(wanted, self.settings.batch_size):
+        for batch in batched(wanted, self.settings.batch_size):
             fields = [
                 f"{_alias(i)}: gene(gene_symbol: {_gql_string(symbol)}, "
                 f"reference_genome: {self.settings.reference_genome}) "

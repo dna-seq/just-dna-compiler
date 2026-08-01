@@ -19,7 +19,8 @@ from just_dna_format.vrs import derive_vrs_allele_id
 
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.gnomad import GnomadClient, PacingGate
+from just_dna_enricher.gnomad import GnomadClient
+from just_dna_enricher.net import PacingGate
 
 _YAML = (
     "schema_version: '1.0'\n"

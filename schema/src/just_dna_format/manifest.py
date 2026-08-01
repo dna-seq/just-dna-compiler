@@ -235,6 +235,56 @@ class GeneMetrics(BaseModel):
     genes: list[str] = Field(default_factory=list, description="Sorted gene symbols covered")
 
 
+class Literature(BaseModel):
+    """Summary of a module's injected citation sidecar (0.5), out of `artifact.digest`.
+
+    No `datasets` field, unlike its two siblings: PubMed and Europe PMC publish no release identifier,
+    so there would be nothing true to put in it. The coverage counters take its place — and they are
+    what a reader actually needs, because the fulltext check is *partial by nature* and a summary that
+    hid that would read as "all citations verified" when most of them were never retrievable.
+    """
+
+    signature: Optional[str] = Field(
+        default=None,
+        description="Fact-hash of literature.csv (integrity.literature_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of LiteratureRow.source values"
+    )
+    row_count: int = Field(default=0, description="Number of citations covered (one row each)")
+    resolved_count: int = Field(
+        default=0, description="Citations PubMed returned a record for (`exists` is true)"
+    )
+    missing_count: int = Field(
+        default=0,
+        description=(
+            "Citations PubMed has no record for (`exists` is false) — a nonexistent PMID, which is a "
+            "defect in the module rather than a gap in coverage."
+        ),
+    )
+    open_access_count: int = Field(
+        default=0, description="Citations with retrievable open-access fulltext"
+    )
+    abstract_only_count: int = Field(
+        default=0,
+        description=(
+            "Citations whose quotes could only be matched against the abstract. A hit there is "
+            "conclusive; a miss is not, because the body was never searched."
+        ),
+    )
+    quotes_authored: int = Field(
+        default=0, description="Provenance quotes/regexes authored across all study rows"
+    )
+    quotes_found: int = Field(
+        default=0,
+        description=(
+            "Of those, how many were located in a fulltext. Read it against `quotes_authored` AND "
+            "`open_access_count`: an unfound quote in a paywalled article was never checked, not "
+            "checked and missing."
+        ),
+    )
+
+
 class FileEntry(BaseModel):
     """One hashed file — used for both `inputs[]` and `artifact.files[]` (SPEC §5)."""
 
@@ -439,6 +489,14 @@ class ModuleManifest(BaseModel):
     gene_metrics: Optional[GeneMetrics] = Field(
         default=None,
         description="Summary of the injected gene-constraint sidecar (0.5), when the module carries one.",
+    )
+    literature: Optional[Literature] = Field(
+        default=None,
+        description=(
+            "Summary of the injected citation sidecar (0.5), when the module carries one. Carries the "
+            "coverage counters as well as the fact-hash, because the fulltext check is partial by "
+            "nature and a consumer must be able to tell 'checked and found' from 'never retrievable'."
+        ),
     )
     inputs: list[FileEntry] = Field(default_factory=list)
     content_signature: Optional[str] = Field(

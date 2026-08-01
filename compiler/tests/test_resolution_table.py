@@ -39,7 +39,13 @@ def _spec(d: Path, variants: str, resolution: str | None = None) -> Path:
 
 def _cache(tmp_path: Path) -> Path:
     """A synthetic injectable Ensembl reference: rs1801133 (1:1), rs429358 (for a position-only
-    row → rsid), and rs999 mapping to TWO loci (a one-to-many expansion)."""
+    row → rsid), and rs999 mapping to TWO loci (a one-to-many expansion).
+
+    Both rs999 loci are `A>T` so both can host the authored `A/T` genotype. That is deliberate: since
+    0.5 a locus whose alleles cannot host the genotype is dropped from the expansion, so a fixture
+    with one incompatible locus would quietly stop exercising expansion at all (and, because the
+    deprecated DuckDB path applies the same filter, would still agree on the digest while testing
+    nothing)."""
     data = tmp_path / "cache" / "data"
     data.mkdir(parents=True)
     pl.DataFrame(
@@ -47,8 +53,8 @@ def _cache(tmp_path: Path) -> Path:
             "id": ["rs1801133", "rs429358", "rs999", "rs999"],
             "chrom": ["1", "19", "5", "6"],
             "start": [11856377, 44908683, 500, 600],
-            "ref": ["G", "T", "A", "C"],
-            "alt": ["A", "C", "T", "G"],
+            "ref": ["G", "T", "A", "A"],
+            "alt": ["A", "C", "T", "T"],
         }
     ).write_parquet(data / "chr.parquet")
     return tmp_path / "cache"
@@ -69,7 +75,8 @@ def test_resolve_from_table_fills_expands_and_verifies() -> None:
             ResolutionRow(variant_key="rs999", rsid="rs999", chrom="5", start=500, ref="A", locus_index=0),
         ],
     }
-    patched, warnings = resolve_from_table([v_fill, v_need_rsid, v_multi], table)
+    outcome = resolve_from_table([v_fill, v_need_rsid, v_multi], table)
+    patched, warnings = outcome.variants, outcome.warnings
 
     by_key = {p.variant_key: p for p in patched}
     # 1:1 fill keeps the frozen rsid key, fills the coordinate
@@ -84,10 +91,10 @@ def test_resolve_from_table_fills_expands_and_verifies() -> None:
 
 def test_resolve_from_table_warns_on_missing_and_skips_non_grch38() -> None:
     v = _v(rsid="rs1801133")
-    _, warnings = resolve_from_table([v], {})  # empty table
+    warnings = resolve_from_table([v], {}).warnings  # empty table
     assert any("not found in resolution table" in w for w in warnings)
 
-    _, skip = resolve_from_table([v], {}, genome_build="GRCh37")
+    skip = resolve_from_table([v], {}, genome_build="GRCh37").warnings
     assert any("GRCh38-bound" in w for w in skip)
 
 
@@ -209,12 +216,16 @@ def test_strict_and_best_effort_flags_via_table(tmp_path: Path) -> None:
     variants = (
         "rsid,genotype,state,conclusion\n"
         "rs1801133,A/G,risk,c1\n"
-        "rs99999999,A/G,risk,c2\n"  # not in the partial table
+        "rs99999999,C/T,risk,c2\n"  # not in the partial table
     )
     partial = (
         "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
         "rs1801133,rs1801133,1,11856377,G,A,GRCh38,0,manual,resolved,\n"
     )
+    # Each genotype above sits inside its row's own {ref} ∪ alts — `rs1801133` is G>A with genotype
+    # A/G, `rs99999999` is C>T with genotype C/T. That agreement is not decoration: `strict=True`
+    # below now also runs `_check_allele_membership`, so a genotype naming an allele its locus does
+    # not have would fail this compile for a reason the test is not about.
     complete = partial + "rs99999999,rs99999999,2,222,C,T,GRCh38,0,manual,resolved,\n"
 
     # best-effort with a partial table: succeeds but is not fully resolved (the half-baked product).

@@ -1,0 +1,66 @@
+{
+ "symbol/MLL": {
+  "response": {
+   "numFound": 0,
+   "docs": []
+  }
+ },
+ "prev_symbol/MLL": {
+  "response": {
+   "numFound": 1,
+   "docs": [
+    {
+     "symbol": "KMT2A",
+     "name": "lysine methyltransferase 2A",
+     "status": "Approved",
+     "hgnc_id": "HGNC:7132",
+     "prev_symbol": [
+      "MLL"
+     ],
+     "alias_symbol": [
+      "TRX1",
+      "HRX",
+      "ALL-1",
+      "HTRX1",
+      "CXXC7",
+      "MLL1A",
+      "MLL1",
+      "ALL1",
+      "HTRX"
+     ]
+    }
+   ]
+  }
+ },
+ "symbol/BRCA1": {
+  "response": {
+   "numFound": 1,
+   "docs": [
+    {
+     "symbol": "BRCA1",
+     "name": "BRCA1 DNA repair associated",
+     "status": "Approved",
+     "hgnc_id": "HGNC:1100",
+     "alias_symbol": [
+      "RNF53",
+      "BRCC1",
+      "PPP1R53",
+      "FANCS"
+     ]
+    }
+   ]
+  }
+ },
+ "symbol/NOTAGENE": {
+  "response": {
+   "numFound": 0,
+   "docs": []
+  }
+ },
+ "prev_symbol/NOTAGENE": {
+  "response": {
+   "numFound": 0,
+   "docs": []
+  }
+ }
+}

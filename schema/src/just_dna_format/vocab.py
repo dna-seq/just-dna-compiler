@@ -110,6 +110,29 @@ VALID_EVIDENCE_LEVELS: frozenset[str] = frozenset({"1A", "1B", "2A", "2B", "3", 
 # locus (rare — a one-to-many rsid is expanded to distinct rows instead, so it is not `ambiguous`).
 VALID_RESOLUTION_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "ambiguous"})
 
+# Closed vocabulary (Principle 6) for what dbSNP currently says about an authored rsID. Provenance,
+# not a resolution fact — see `ResolutionRow.rsid_status` for why it stays out of the fact set.
+#
+# **`withdrawn` is real but currently unreachable from the live API, and that is deliberate.** An rsID
+# *withdrawn* after a mapping or clustering error (`rs11273140`) and one *never assigned*
+# (`rs2000000000`) return byte-identical responses from `esummary`, `esearch` and Ensembl alike, so the
+# automated check reports `absent` for both and its message names the two readings without choosing.
+# The member is kept anyway for two reasons: a curator who has established the retraction by hand can
+# record it in `resolution.csv` and have the tooling honour it, and a future source (a historical dbSNP
+# dump, or an endpoint that starts exposing the distinction) can start producing it without a
+# vocabulary change — which Principle 3 would otherwise make a one-way door.
+#
+# The two states are **not interchangeable in severity**: `absent` has benign causes (a very new rsID,
+# API lag, a typo) and refuses only under `strict`, while `withdrawn` is a repudiation of the variant
+# itself — the annotation resting on it may be worthless — and refuses in **both** modes.
+VALID_RSID_STATUS: frozenset[str] = frozenset({"live", "merged", "absent", "withdrawn"})
+
+# What a `provenance_quote`/`provenance_regex` was matched against. The distinction is load-bearing
+# rather than descriptive: a **hit** is conclusive from either source, but a **miss** is only
+# conclusive against fulltext — an abstract that does not contain the phrase says nothing about the
+# body. Collapsing the two would let "not in the 200-word abstract" read as "not in the paper".
+VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
+
 # ── Ancestry groups for the frequency table (0.5) ───────────────────────────────────────────────
 # An OPEN, seeded vocabulary in the `RECOMMENDED_AUTHOR_KINDS` idiom — deliberately NOT a closed
 # `frozenset` + rejecting validator, even though Principle 6 makes closed the default. The reason is

@@ -1,0 +1,29 @@
+{
+ "10.1093/nar/gkx1153": {
+  "status": 200,
+  "message": {
+   "DOI": "10.1093/nar/gkx1153",
+   "type": "journal-article",
+   "container-title": [
+    "Nucleic Acids Research"
+   ],
+   "title": [
+    "ClinVar: improving access to variant interpretations and supporting evidence"
+   ]
+  }
+ },
+ "10.1101/2024.06.17.599351": {
+  "status": 200,
+  "message": {
+   "DOI": "10.1101/2024.06.17.599351",
+   "type": "posted-content",
+   "container-title": [],
+   "title": [
+    "Aberrant Transitional Alveolar Epithelial Cells Promote Pathogenic Activation of Lung Fibroblasts in Preclinical Fibrosis Modeling"
+   ]
+  }
+ },
+ "10.9999/definitely-not-a-real-doi": {
+  "status": 404
+ }
+}

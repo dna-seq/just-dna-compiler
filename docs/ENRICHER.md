@@ -20,6 +20,21 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` (warning) |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
+| **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**) |
+| **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
+| **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
+| **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) |
+| **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
+| **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
+| **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` |
+
+**One check deliberately breaks the severity rule, and it is worth knowing which.** The clinical
+cross-check warns in `strict` too. Every other check compares an authored value against a *fact* — the
+genome's bases, a deterministic digest, a registry's own id — where the source is simply right. A
+`clin_sig` disagreement is two opinions differing, and ClinVar is not truth: a curator who has read the
+primary literature and disagrees with a one-star submission is doing their job. Failing the compile
+would make the format arbitrate a clinical dispute, which the data-agnostic charter forbids. The
+finding therefore carries ClinVar's review-star count so a reader can weigh it themselves.
 
 The division of labour with the compiler is a consequence of Principle 2, not a coincidence: a check
 that can be settled by **computation over injected data** belongs in the compiler (it runs on every
@@ -65,7 +80,12 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 |---|---|---|
 | `enrich` | orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
 | `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
-| `clinvar` | the DuckDB ClinVar resolver link — `lookup_loci` mirroring `resolver` | `duckdb`, format |
+| `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
+| `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
+| `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe` | stdlib |
+| `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
+| `literature` | pass 4: `studies.csv` → `literature.csv` (PubMed + Europe PMC), fulltext quote match | `httpx`, `tenacity` |
+| `identifiers` | rsID / trait-CURIE / gene-symbol currency (dbSNP, OLS4, HGNC) | `httpx`, `tenacity` |
 | `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `_load_csv_rows`, format |
@@ -85,6 +105,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
        clinvar_cache=None, use_clinvar=True, use_gnomad=True, download=True,
        genome_build="GRCh38", write=True, mint_vrs=True,
+       verify_ref=True, verify_clinsig=True, verify_rsids=True,
        resolver=None, gnomad_client=None) -> EnrichmentResult
 ```
 
@@ -403,6 +424,126 @@ The parquet is **byte-reproducible** across rebuilds (rows sorted per chromosome
 `download_clinvar_vcf` streams the NCBI VCF with the core `httpx` (atomic `.part` rename, sha256 while
 streaming). VCF-parsing idioms are leeched from just-dna-lite's `v1_port.clinvar`.
 
+### The clinical cross-check (`clinical.py`, offline)
+
+`verify_clin_sig(variants, resolution_rows, *, reference)` compares each authored `clin_sig` against
+the ClinVar snapshot's own and returns the disagreements. It runs inside `enrich()` by default
+(`--verify-clinsig/--no-verify-clinsig`) and lands on `EnrichmentResult.clin_sig_conflicts`.
+
+**Tier note, because the obvious reading puts it in the wrong place.** This check needs no network at
+all — the snapshot is local — yet it belongs here rather than in the compiler. The boundary is not
+online-vs-offline but *does the check need a reference*: the compiler is inject-only by charter and
+holds no ClinVar. Reading "offline ⇒ compiler" would put it in the tier that cannot host it.
+
+**Allele-exact, never rsID-level**, and the snapshot itself shows why: `rs334` at 11:5227002 carries
+`T>A` as **pathogenic** (2 stars) *and* `T>G` as **likely_benign** (1 star). One rsID, one locus, two
+opposite calls. Comparing by rsID would report a module that is simply right. The allele the annotation
+is *about* is taken from `effect_allele` when set, otherwise from the genotype allele that is not the
+reference; when neither pins it down, the comparison falls back to the whole locus and reports only if
+**no** record there supports the authored call.
+
+**What counts as a disagreement** is coarser than the vocabulary: `pathogenic` vs `likely_pathogenic`
+is a difference of confidence inside one conclusion, not a conflict, and anything paired with
+`uncertain_significance`/`conflicting`/`not_provided` is not a conflict either — ClinVar has no opinion
+to disagree with. Opposed calls (pathogenic-class vs benign-class) are the finding worth acting on and
+are flagged as such.
+
+## The literature pack (`literature.py`, online only)
+
+Pass 4: `studies.csv` in, `literature.csv` out. Three questions of decreasing coverage — does the
+citation exist (PubMed `esummary`), do the identifiers agree (DOI/PMCID arrive in the same response),
+and does the quoted passage appear in the article (Europe PMC fulltext, open-access subset only).
+
+**Coverage is partial by nature, and reporting it as a fraction is part of the check.** A pass that said
+"0 quotes found" for an article it could not read would be describing its own reach as a defect in the
+module, so `quotes_found` is **null** (not zero) when no fulltext could be read. The denominator counts
+only citations that carry an authored quote: one that asks no question was not skipped for lack of an
+answer. (That distinction is not hypothetical — it was a real bug, found by running the pass against
+`reference_examples/pathogenic_clinvar/`, whose single citation is open access *and* quote-free, and
+which the first wording therefore described as unretrievable.)
+
+**Existence and retrievability are different questions, and only the second is affected by a paywall.**
+PubMed indexes paywalled work like any other, so `exists` is answered for it — PMID 12345678 is not in
+PMC at all and `esummary` confirms it perfectly well. What a paywall blocks is the *fulltext*, and two
+things close most of that gap:
+
+- **The abstract.** Europe PMC serves it for non-open-access records, in the same `search` response the
+  pass already makes — four of five probed non-OA papers carried one (the exception was a 1994
+  non-research document). A quote **found** in the abstract is as conclusive as one found in the body;
+  a quote **missing** from a 200-word abstract says nothing, so the row records `quote_source` and the
+  miss still counts as unchecked. That asymmetry is the whole reason the column exists.
+- **Crossref**, for the citations PubMed structurally cannot cover: preprints, books, theses, datasets
+  have DOIs and no PMID. A probed bioRxiv DOI returns `type: posted-content`; a fabricated one 404s.
+  It checks the **authored** DOI rather than the derived one — the registry's own exists by
+  construction — and a transport failure records `None`, never `False`. This is also what makes the
+  1.0 **doi-first** flip low-risk: when `pmid` becomes optional, existence checking already works
+  without it.
+
+**Google Scholar is not an option** and it is worth saying so rather than leaving it as an open idea:
+it publishes no API, and automated querying violates its terms and is blocked in practice.
+
+Three services, not the three the plan budgeted for — the plan's third was the ID converter, and both
+corrections below came from probing:
+
+- **The PMC ID converter is not used.** `esummary` already returns `doi` and `pmc` in `articleids`, and
+  Europe PMC's `search` returns them too, so the converter is a third request for data already in hand.
+  Worse, it answers a *different question*: for PMID 12345678 — a real, indexed PubMed record — it
+  replies `status: error, "Identifier not found in PMC"`. Wired in as an existence check it would report
+  every paywalled article as a broken citation.
+- **Europe PMC is not an existence oracle.** Asked about three ids where one does not exist, it returns
+  two results and silently omits the third — no error, no marker. PubMed decides existence; Europe PMC
+  decides retrievability.
+
+**On evaluating `provenance_regex` here.** The charter requires a linear-time/ReDoS-safe engine, written
+when the match was specified as consumer-side. Here the pattern comes from the module being enriched and
+the document from a public archive, on the author's own machine, so the risk is a curator writing a slow
+pattern by accident. That is worth a bound rather than a compiled dependency — but the bound must be a
+**child process**, not a thread. The thread version looks correct and is not: `re` cannot be interrupted,
+threads cannot be killed, and the interpreter joins pool threads at exit, so a runaway pattern returns on
+schedule and then hangs the process on the way out. A timeout is recorded as **not checked**, never as
+not-found.
+
+## Identifier currency (`identifiers.py`, online)
+
+The generalization of COMPILER.md's *"is the source stale?"* blind spot from datasets to identifiers.
+A dbSNP merge, an EFO retirement and an HGNC rename all leave a module perfectly well-formed and quietly
+out of date.
+
+- **rsIDs** run inside `enrich()` (`--verify-rsids`), because the verdict lands on `resolution.csv`'s
+  `rsid_current`/`rsid_status` columns. Three states from `esummary db=snp`: **live** (`snp_id` ==
+  requested, `merged_sort='0'`), **merged** (`snp_id` != requested, `merged_sort='1'`), **absent**
+  (`{'uid': …, 'error': 'cannot get document summary'}`).
+- **Traits and gene symbols** are module-level with no sidecar column to fill, so they get their own
+  command, `just-dna-enricher check-identifiers`. HGNC uses the **exact** `fetch/symbol` and
+  `fetch/prev_symbol` endpoints, never `search/` — `search/BRCA1` is fuzzy and returns 19 hits including
+  `ABRAXAS1`.
+
+**NCBI is the oracle, not Ensembl.** Ensembl REST resolves *some* merges (`rs77121243` → `rs334`) and
+returns HTTP 400 on others (`rs3216883`, which dbSNP reports as merged into `rs3051860`), so Ensembl
+alone would misclassify a merged rsID as unresolvable.
+
+**`absent` conflates two opposite meanings and no live endpoint separates them.** A *withdrawn* rsID
+(`rs11273140`, retracted after a clustering error) returns a response byte-identical to a *never
+assigned* one (`rs2000000000`). For an author these mean opposite things — fix the typo, versus the
+variant itself was retracted and the annotation resting on it may be worthless — so the message names
+both readings and asserts neither. Guessing "typo" would send an author to fix the wrong thing.
+
+**`withdrawn` is nevertheless a real vocabulary member, and refuses in both modes.** Nothing automated
+emits it today, which is a limitation of the API rather than of the model, and the member is kept for
+two reasons: a curator who has established a retraction can record it in `resolution.csv` and have the
+tooling honour it, and a future source that *can* tell the two apart starts producing it without a
+vocabulary change — which Principle 3 would otherwise make a one-way door. Its severity is deliberately
+not `absent`'s: a merged or absent rsID leaves the annotation intact (dated, or unserved), while a
+retracted variant may leave it describing nothing, so `withdrawn` is the one resolution finding fatal
+in `best_effort` too.
+
+**Report, never repair, and here that is load-bearing.** `weights.parquet` carries both `variant_key`
+and `rsid`; for an rsid-authored row they are the same label. Writing the merged-into id back would be
+an *identity migration performed by a network lookup* — reverse would emit the new rsID, the next
+compile would key on it, and `variant_key` would change with no authored edit anywhere. Severity is the
+usual ladder (warn / fail in `strict`), and `strict` failing is the nudge toward the drift-proof key:
+author the coordinate, and the VRS allele id cannot drift at all.
+
 ## CLI
 
 ```
@@ -410,6 +551,11 @@ just-dna-enricher enrich spec/ --strict            # write spec/resolution.csv, 
 just-dna-enricher enrich spec/ --offline           # cache-only (Ensembl + ClinVar), zero egress
 just-dna-enricher enrich spec/ --no-clinvar        # Ensembl links only
 just-dna-enricher enrich spec/ --no-verify-ref     # skip the reference-allele check
+just-dna-enricher enrich spec/ --no-verify-clinsig # skip the ClinVar clin_sig cross-check
+just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdrawal check
+just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
+just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
+just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC)
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
 just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev])
 just-dna-enricher upload out/coronary              # push compiled artifacts to the HF collection
@@ -420,7 +566,10 @@ just-dna-enricher clinvar publish cv/                           # create-or-upda
 ```
 
 `enrich`/`enrich-and-compile` take `--strict/--best-effort`, `--offline`, `--ensembl-cache`,
-`--clinvar-cache`, `--clinvar/--no-clinvar`; `upload` takes `--repo`, `--name`, `--message`,
+`--clinvar-cache`, `--clinvar/--no-clinvar`, and the three verify toggles above; `literature` takes
+`--strict/--best-effort`, `--offline`, `--fulltext/--no-fulltext`; `check-identifiers` takes
+`--strict`, `--traits/--no-traits`, `--genes/--no-genes` and writes nothing (there is no sidecar column
+for a module-level identifier — the report is the whole output); `upload` takes `--repo`, `--name`, `--message`,
 `--dry-run`; `clinvar build` takes `--vcf`/`--download`/`--out`; `clinvar publish` takes `--repo`,
 `--message`, `--dry-run`. `enrich-and-compile` runs `enrich` then `compile_module(..., ensembl_cache=None,
 strict=…)`, so compilation consumes the just-written `resolution.csv` (path 1) with no reference and
@@ -476,3 +625,27 @@ coordinate agreement / off-by-one guard, byte-identical rebuild, the ClinVar-aft
 (no compiled digest moves), one-to-many expansion, the allele-aware back-fill + ambiguity marking, the
 `compile → reverse → compile` fixpoint, and the mocked reference-snapshot publish. A full build against
 the real local VCF is `@integration` (skipped when absent).
+
+The **clinical cross-check** (`test_clinical.py`) builds a snapshot from that same slice and leans on a
+coincidence in it that is too useful to be luck: the slice contains both of `rs334`'s opposed records
+(`T>A` pathogenic, `T>G` likely_benign), so allele-exactness is provable on real data rather than on a
+constructed pair. Coverage: an opposed call reported with its star count, the *same* call on the other
+allele correctly staying silent, `uncertain_significance` not counting as disagreement, the locus-wide
+fallback in both directions, `strict` not escalating, and a foreign parquet degrading instead of raising.
+
+The **literature** and **identifier** tests replay recorded payloads from the live services
+(`pubmed_esummary_payload.json`, `europepmc_search_payload.json`,
+`europepmc_fulltext_PMC5753237.xml`, `dbsnp_esummary_payload.json`, `ols4_terms_payload.json`,
+`hgnc_fetch_payload.json`). Each recording carries a quirk a hand-written fixture would have smoothed
+away, and the tests exist to pin exactly those: a nonexistent PMID arriving as a normal-looking record
+with an `error` key; a **real** PubMed record that is simply not in PMC (exists-yes, retrievable-no);
+Europe PMC silently omitting ids it does not know; and — the one most worth guarding — `rs11273140`
+(withdrawn) and `rs2000000000` (never assigned) returning **byte-identical** responses, asserted on the
+recordings themselves so that a future dbSNP release which *does* separate them fails the test rather
+than silently invalidating the design. The quote matcher is exercised against the real JATS fulltext
+with a phrase read out of that same document, and the regex bound is demonstrated on a genuinely
+catastrophic pattern (it must return *not checked*, never *not found*).
+
+Each of these files also carries an opt-in live probe (`JUST_DNA_NETWORK_TESTS=1`) that re-asks the real
+services the same questions, so a recording that has drifted away from reality fails loudly instead of
+letting the unit tests pass against a fiction.

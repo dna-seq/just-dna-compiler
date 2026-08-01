@@ -2,10 +2,16 @@
 
 `lookup_loci` mirrors `resolver.lookup_loci` exactly (same signature, same determinism discipline) so
 `enrich()` treats the ClinVar cache and the Ensembl cache identically — a `rsid → [loci]` /
-`pos → rsid` batch lookup over an injected parquet directory. It reads only `chrom/start/ref/alt`;
-the snapshot's annotation columns (`clin_sig`, `gene`, `condition`, ...) are ignored here — that is
-annotation, not a resolution fact (orthogonal axes, Principle 5). Inject-only: the caller provisions
-the reference (`download.ensure_clinvar_snapshot` or a local cache); this never fetches.
+`pos → rsid` batch lookup over an injected parquet directory. **The resolver link** reads only
+`chrom/start/ref/alt`; the snapshot's annotation columns (`clin_sig`, `gene`, `condition`, ...) stay
+out of `resolution.csv`, because they are annotation rather than resolution facts (orthogonal axes,
+Principle 5). Inject-only: the caller provisions the reference (`download.ensure_clinvar_snapshot` or
+a local cache); this never fetches.
+
+`lookup_clin_sig` is the second, separate reader over the same view: it serves the clinical
+cross-check in `clinical.py`, which compares a module's authored `clin_sig` against ClinVar's. Keeping
+it here (data access) and the comparison there (judgement) is the same split `sequences.py` draws
+between reading bases and deciding what a disagreement means.
 
 The snapshot ships as parquet only (built by `clinvar_build`, `[dev]`); there is no prebuilt
 ``.duckdb`` for ClinVar, so this connects a `read_parquet` view directly.
@@ -68,6 +74,57 @@ def lookup_loci(
     finally:
         con.close()
     return rsid_to_loci, pos_candidates, warnings
+
+
+def lookup_clin_sig(
+    reference: Path,
+    alleles: list[tuple[str, int, str, str]],
+) -> dict[tuple[str, int, str, str], list[dict]]:
+    """`(chrom, start, ref, alt) -> [{clin_sig, clin_sig_raw, review_status, review_stars, ...}]`.
+
+    Allele-exact by construction, and that is the whole point: an rsID is a *position/multi-allelic*
+    tag, so one rsID at one locus can carry a pathogenic, a benign and an uncertain allele
+    (`rs33922842` in HBB does exactly that). Looking up clinical significance by rsID would therefore
+    manufacture disagreements out of ClinVar agreeing with itself.
+
+    A list rather than a single record because ClinVar genuinely holds several submissions for one
+    allele — different conditions, different review levels. Ordered by descending `review_stars` then
+    `variation_id` so the best-reviewed record leads and the order is stable (Principle 7).
+    """
+    if not alleles:
+        return {}
+    con = _connect(reference)
+    try:
+        wanted = list(dict.fromkeys(alleles))
+        conds = " OR ".join("(chrom = ? AND start = ? AND ref = ? AND alt = ?)" for _ in wanted)
+        params: list[object] = []
+        for chrom, start, ref, alt in wanted:
+            params.extend([chrom, start, ref, alt])
+        rows = con.execute(
+            f"""
+            SELECT chrom, start, ref, alt, clin_sig, clin_sig_raw, review_status, review_stars,
+                   condition, variation_id
+            FROM clinvar
+            WHERE {conds}
+            ORDER BY chrom, start, ref, alt, review_stars DESC, variation_id
+            """,
+            params,
+        ).fetchall()
+    finally:
+        con.close()
+    result: dict[tuple[str, int, str, str], list[dict]] = defaultdict(list)
+    for chrom, start, ref, alt, clin_sig, raw, status, stars, condition, variation_id in rows:
+        result[(str(chrom), int(start), str(ref), str(alt))].append(
+            {
+                "clin_sig": clin_sig,
+                "clin_sig_raw": raw,
+                "review_status": status,
+                "review_stars": int(stars) if stars is not None else None,
+                "condition": condition,
+                "variation_id": variation_id,
+            }
+        )
+    return dict(result)
 
 
 def _lookup_positions_by_rsid(

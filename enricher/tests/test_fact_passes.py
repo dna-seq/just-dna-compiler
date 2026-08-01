@@ -26,8 +26,8 @@ from just_dna_enricher.gnomad import (
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
     GnomadSettings,
-    PacingGate,
 )
+from just_dna_enricher.net import PacingGate
 from just_dna_enricher.vrs import VrsMinter, mint_resolution_rows
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
