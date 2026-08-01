@@ -39,9 +39,11 @@ from just_dna_format.integrity import (
     literature_signature as _literature_signature,
     resolution_signature as _resolution_signature,
     sha256_file,
+    source_signature as _source_signature,
 )
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.sources import SourceRow, taints_commercial_use
 from just_dna_format.normalize import normalize_version, strip_authority_keys
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
@@ -55,6 +57,7 @@ from just_dna_format.manifest import (
     ModuleManifest,
     Provenance,
     ProvenanceDoc,
+    Sources,
     Stats,
     write_manifest,
 )
@@ -158,6 +161,7 @@ _OUTPUT_FILES: tuple[str, ...] = (
     "frequencies.parquet",
     "gene_metrics.parquet",
     "literature.parquet",
+    "sources.parquet",
 )
 
 # The 0.5 derived-fact sidecars: (authored CSV, compiled parquet, row model). Deliberately NOT
@@ -169,6 +173,7 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("frequencies.csv", "frequencies.parquet", FrequencyRow),
     ("gene_metrics.csv", "gene_metrics.parquet", GeneMetricsRow),
     ("literature.csv", "literature.parquet", LiteratureRow),
+    ("sources.csv", "sources.parquet", SourceRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
 # shipped like logs, kept OUT of `artifact.digest` (it is not in `_OUTPUT_FILES`).
@@ -1225,6 +1230,22 @@ def compile_module(
                 warnings=all_warnings,
             )
 
+    # Licensing gate. Loaded here rather than with the other fact tables because those are read
+    # *after* `output_dir.mkdir()`, and a refusal must leave nothing written — this is the last point
+    # at which that is still true. Purely computation over injected data: the compiler holds no
+    # source→licence map (Principle 2 — it owns no source convention) and only reads what the
+    # enricher recorded.
+    sources_path = spec_dir / "sources.csv"
+    if sources_path.exists():
+        gate_rows, gate_load_errors, _ = _load_csv_rows(sources_path, SourceRow, "sources.csv")
+        if gate_load_errors:
+            return CompilationResult(
+                success=False, errors=gate_load_errors, warnings=all_warnings
+            )
+        gate_errors = _check_license_gate(gate_rows)
+        if gate_errors:
+            return CompilationResult(success=False, errors=gate_errors, warnings=all_warnings)
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # SNP core: weights/annotations only when the module actually has variants.
@@ -1271,10 +1292,28 @@ def compile_module(
     def _literature_checks(rows: list) -> tuple[list[str], list[str]]:
         return [], list(_cross_check_literature(rows, studies))
 
+    def _sources_checks(rows: list) -> tuple[list[str], list[str]]:
+        # `sources.csv` is last in `_FACT_TABLES`, so the other sidecars are already parsed into
+        # `fact_rows` and their `source` values can be cross-checked here. Warnings only — the gate
+        # that can actually refuse already ran, before anything was written.
+        #
+        # `SourceRow` is excluded from the "used" set: the loop stores each model's rows into
+        # `fact_rows` *before* calling its check, so including it would let sources.csv vouch for
+        # itself and no orphan could ever be reported.
+        used = {r.source for r in resolution_rows if r.source}
+        for model, parsed in fact_rows.items():
+            if model is SourceRow:
+                continue
+            used |= {getattr(r, "source", None) for r in parsed if getattr(r, "source", None)}
+        warns = _source_checks(rows, {s for s in used if s})
+        warns.extend(_check_declared_license_agrees(rows, config.license if config else None))
+        return [], warns
+
     _FACT_HANDLERS: dict[type, tuple[Callable, Callable]] = {
         FrequencyRow: (_frequency_checks, lambda rows: _build_frequencies(rows, module_name)),
         GeneMetricsRow: (_gene_metrics_checks, lambda rows: _build_table(rows, GeneMetricsRow, module_name)),
         LiteratureRow: (_literature_checks, lambda rows: _build_table(rows, LiteratureRow, module_name)),
+        SourceRow: (_sources_checks, lambda rows: _build_table(rows, SourceRow, module_name)),
     }
 
     fact_rows: dict[type, list] = {}
@@ -1298,6 +1337,7 @@ def compile_module(
     frequency_rows: list[FrequencyRow] = fact_rows.get(FrequencyRow, [])
     gene_metrics_rows: list[GeneMetricsRow] = fact_rows.get(GeneMetricsRow, [])
     literature_rows: list[LiteratureRow] = fact_rows.get(LiteratureRow, [])
+    source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
 
     logs = _collect_logs(spec_dir, output_dir, log_files)
     # Authored side-car assets are validated here (validate_spec does not read them). Surface a
@@ -1335,6 +1375,7 @@ def compile_module(
         frequency=_frequency_block(frequency_rows),
         gene_metrics=_gene_metrics_block(gene_metrics_rows),
         literature=_literature_block(literature_rows),
+        sources=_sources_block(source_rows),
     )
     write_manifest(manifest, output_dir / "manifest.json")
 
@@ -1388,6 +1429,136 @@ def _gene_metrics_block(rows: list[GeneMetricsRow]) -> Optional[GeneMetrics]:
     )
 
 
+def _check_license_gate(rows: list[SourceRow]) -> list[str]:
+    """Refuse to compile a module whose sources forbid sale and that records no matching declaration.
+
+    The refusal fires in **both** modes. `strict`'s single meaning is "produce a reproducible
+    artifact"; whether the terms were accepted is unrelated to reproducibility, and overloading the
+    flag with a second axis is exactly the orthogonality Principle 5 protects.
+
+    It is keyed on **data carried by the module**, never on a CLI flag. That is what keeps
+    `compile → reverse → compile` a fixed point (Principle 7): `reverse_module` rebuilds
+    `module_spec.yaml` from parquet alone and could never re-emit a flag, so a flag-gated compile
+    would refuse on the third step. `sources.csv` round-trips, so the declaration travels with the
+    module and the cycle reproduces.
+
+    Most-restrictive-wins, module-wide: one tainting row refuses the whole compile. Mixing a
+    permissive source into a restricted one cannot launder it, which is why the verdict is not
+    computed per row or per layer.
+    """
+    tainted = [r for r in rows if taints_commercial_use(r)]
+    if not tainted:
+        return []
+    # A single declaration governs the module, so any tainted row lacking one refuses. `unstated` is
+    # not a loophole: it is the absence of a declaration, which is precisely what this gate wants.
+    undeclared = sorted(
+        {r.source for r in tainted if r.declared_use != "non_commercial"}
+    )
+    if not undeclared:
+        return []
+    return [
+        f"licensing: {undeclared} contribute annotation-layer content under terms that forbid sale, "
+        f"and this module records no non-commercial declaration for them. Re-run the enricher with "
+        f"a declared use (`--use non-commercial`) to record one, or remove the affected content. "
+        f"Declaring it is an assertion about how the module will be used — the compiler records that "
+        f"assertion, it does not verify it."
+    ]
+
+
+def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
+    """Warning-only coherence for `sources.csv`. Never escalates under `strict`.
+
+    Two findings, both mirroring the existing orphan-sidecar precedent (don't punish the author for
+    the enricher's generosity):
+
+    - a declared source that no fact table actually used — over-declaration, harmless but probably
+      stale; and
+    - a source used by a fact table with no `sources.csv` row — under-declaration, which matters more
+      but still cannot be an error, because the compiler cannot know whether the omission is an
+      oversight or a source with no terms worth recording.
+
+    The second is emitted **only when `sources.csv` exists at all**, so a module without one warns
+    exactly as it does today (Principle 3).
+    """
+    warnings: list[str] = []
+    declared = {r.source for r in rows}
+    orphans = sorted(declared - used_sources)
+    if orphans:
+        warnings.append(
+            f"sources.csv declares {len(orphans)} source(s) no table in this module uses: {orphans}"
+        )
+    undeclared = sorted(used_sources - declared)
+    if undeclared:
+        warnings.append(
+            f"sources.csv has no row for {len(undeclared)} source(s) the module's fact tables cite: "
+            f"{undeclared} — their terms are unrecorded."
+        )
+    return warnings
+
+
+def _check_declared_license_agrees(
+    rows: list[SourceRow], declared_license: Optional[str]
+) -> list[str]:
+    """Warn when `module_spec.yaml`'s `license:` contradicts an annotation-layer source's.
+
+    Warning in **both** modes, deliberately — the second such exception after the ClinVar `clin_sig`
+    cross-check, and for the same reason. Every other compiler check compares an authored value
+    against a *fact*; this compares two claims about a legal position, and failing the compile would
+    make the format arbitrate a licensing dispute. String equality only: an SPDX compatibility matrix
+    is world-knowledge that would go stale, and the compiler is not the tier that should hold it.
+    """
+    if not declared_license:
+        return []
+    conflicting = sorted(
+        {
+            r.license
+            for r in rows
+            if r.layer == "annotation" and r.license and r.license != declared_license
+        }
+    )
+    if not conflicting:
+        return []
+    return [
+        f"module declares license {declared_license!r} but annotation-layer sources report "
+        f"{conflicting}. Not adjudicated here — a compatible pair is legitimate, an incompatible "
+        f"one is a real problem, and only a human can tell which."
+    ]
+
+
+def _sources_block(rows: list[SourceRow]) -> Optional[Sources]:
+    """The manifest's `sources` summary, or `None` when the module carries no licensing sidecar.
+
+    The per-layer facets stay lists (see `Sources`); only `commercial_use` collapses, because it is
+    the one question with a single module-wide answer. Its ladder is most-restrictive-first: a
+    forbidding source makes it `False`; failing that, an unknown makes it `None` (undetermined, never
+    permitted); only an all-known, none-forbidding set makes it `True`.
+    """
+    if not rows:
+        return None
+    forbidden = any(taints_commercial_use(r) for r in rows)
+    unknown = sorted({r.source for r in rows if r.commercial_use is None})
+    if forbidden:
+        verdict: Optional[bool] = False
+    elif unknown:
+        verdict = None
+    else:
+        verdict = True
+    return Sources(
+        signature=_source_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        layers=sorted({r.layer for r in rows if r.layer}),
+        licenses=sorted({r.license for r in rows if r.license}),
+        attributions=sorted({r.attribution for r in rows if r.attribution}),
+        notices=sorted({r.notice for r in rows if r.notice}),
+        share_alike_layers=sorted({r.layer for r in rows if r.share_alike}),
+        noncommercial_layers=sorted({r.layer for r in rows if r.commercial_use is False}),
+        unknown_terms_sources=unknown,
+        declared_uses=sorted({r.declared_use for r in rows if r.declared_use}),
+        commercial_use=verdict,
+        row_count=len(rows),
+    )
+
+
 def _literature_block(rows: list[LiteratureRow]) -> Optional[Literature]:
     """The manifest's `literature` summary, or `None` when the module carries no citation sidecar.
 
@@ -1432,6 +1603,7 @@ def _build_manifest(
     frequency: Optional[Frequency] = None,
     gene_metrics: Optional[GeneMetrics] = None,
     literature: Optional[Literature] = None,
+    sources: Optional[Sources] = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -1481,6 +1653,9 @@ def _build_manifest(
         frequency=frequency,
         gene_metrics=gene_metrics,
         literature=literature,
+        sources=sources,
+        # Author-declared and registry-overridable, the same advisory pattern as module.version.
+        license=config.license,
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),
         content_signature=content_sig,
         artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),

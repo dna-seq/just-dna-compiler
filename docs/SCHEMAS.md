@@ -26,11 +26,12 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 | `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `vocab`, `vrs` |
 | `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
 | `literature` | `LiteratureRow` (the 0.5 citation table) | `spec`, `vocab` |
+| `sources` | `SourceRow` (the 0.5 data-source licensing table) | `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
-| `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `cryptography` |
+| `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `reference` | Drift-proof authoring reference generated from live models | spec/binning/pgx/pgs/manifest/normalize/vocab |
 | `aggregate` | Cross-version log/provenance union | `manifest` |
@@ -42,8 +43,8 @@ concern, and a module includes **only** the CSVs it uses (RM2 — `variants.csv`
 SNP core is `variants.csv` + `studies.csv` (studies required *iff* variants present). Everything else
 is an optional table kind. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the three derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv`, which are
-therefore absent from the table below.
+the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+`sources.csv`, which are therefore absent from the table below.
 
 | File | Model (module) | Role |
 |---|---|---|
@@ -212,9 +213,10 @@ Position-level **matching** helpers (studies, the reverse pos→rsid lookup, hap
 
 ## The derived-fact tables (0.5, **provisional**)
 
-Three siblings of `resolution.csv` at three different grains — `frequency.FrequencyRow` →
-`frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**, and
-`literature.LiteratureRow` → `literature.csv` per **citation**. All are machine-produced reference facts:
+Four siblings of `resolution.csv` at four different grains — `frequency.FrequencyRow` →
+`frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**,
+`literature.LiteratureRow` → `literature.csv` per **citation**, and `sources.SourceRow` →
+`sources.csv` per **(data source, layer)**. All are machine-produced reference facts:
 injected, human-overridable, hashed by facts, and compiled into their own optional parquets. All are
 standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow` is.
 
@@ -283,6 +285,28 @@ three letters.
 
 > **Not yet frozen** — the same provisional status as `resolution.csv` below, and for the same reason.
 
+**`SourceRow` — one row per (data source, layer).** Facts: `source`, `layer`
+(`VALID_SOURCE_LAYERS`), `license?`, `license_url?`, `license_sha256?`, `attribution?`, `notice?`,
+`share_alike?`, `commercial_use?`, `declared_use?` (`VALID_DECLARED_USE`), `dataset?`. Provenance
+(excluded): `fetched_at?`.
+
+- **`source` is INSIDE this fact set, inverting the other tables.** Everywhere else `source` is
+  provenance — which link happened to answer — and is excluded so a human-filled and a machine-filled
+  table hash equal. Here the source *is* the subject: "ClinPGx, at the annotation layer, is CC BY-SA
+  and forbids sale" is the fact. Drop it and the row loses its key.
+- **`share_alike` / `commercial_use` are tri-state.** `None` means the terms could not be established,
+  never "does not forbid". A source not shown to permit anything must not read as permissive, so
+  `None` and `False` hash differently and are handled differently everywhere they are consumed.
+- **`layer` decides what taints.** Only `annotation` — the module's own authored tables, where curated
+  prose is embedded — carries a derivative-work obligation. A source consulted purely for a coordinate
+  contributed a fact that Ensembl reports identically, so it is recorded without marking the module.
+  `sources.taints_commercial_use(row)` is the shared predicate, so the compiler's gate and the manifest
+  summary cannot drift apart.
+- **The licence travels as data, not as a lookup table.** The enricher reads it from the bytes it
+  downloaded where a source ships one, and pins it with `license_sha256`. A source→licence map in the
+  compiler would be an un-injected reference (Principle 2) and would go stale — both halves of one did,
+  inside a single release.
+
 ## The resolution table (0.5, **provisional**)
 
 `resolution.ResolutionRow` → `resolution.csv` — persisted, source-independent rsid↔coordinate facts the
@@ -331,9 +355,9 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
 
 ## Identity & integrity
 
-Six SHA-256 hashes (`sha256:` hex prefix), each a different job — see [COMPILER.md](COMPILER.md) and
+Seven SHA-256 hashes (`sha256:` hex prefix), each a different job — see [COMPILER.md](COMPILER.md) and
 the CONSTITUTION for how they compose. (Two are structural, `artifact_digest` and `content_signature`;
-the other four are the one-per-injected-table family below.)
+the other five are the one-per-injected-table family below.)
 
 | Hash (`integrity.py`) | Over | Order | Reference-dependent | Purpose |
 |---|---|---|---|---|
@@ -343,8 +367,9 @@ the other four are the one-per-injected-table family below.)
 | `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
 | `gene_metrics_signature(rows)` | gene-constraint **facts** (`GENE_METRICS_FACT_FIELDS`) | order-independent | n/a | pins the gene-constraint table |
 | `literature_signature(rows)` | citation **facts** (`LITERATURE_FACT_FIELDS`) | order-independent | n/a | pins which articles the module cites |
+| `source_signature(rows)` | licensing **facts** (`SOURCE_FACT_FIELDS`) | order-independent | n/a | pins what the module was built from, and on what terms |
 
-The last four share one body, `fact_signature(rows, fact_fields)` — every injected table under one
+The last five share one body, `fact_signature(rows, fact_fields)` — every injected table under one
 hashing discipline, so the rule cannot drift between them as more sidecars land. What differs is only
 each table's fact set, and the exclusions are where the thinking is: provenance is always out, and so is
 any column describing the *outside world's* current state rather than the module's content

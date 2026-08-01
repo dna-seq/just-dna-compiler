@@ -5,6 +5,56 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-02 — 0.5.0: data-source licensing as data, and the PGx cross-check
+
+**`sources.csv` — the fifth fact table.** One row per (data source, layer), recording what a module
+was built from and on what terms: `license`, `license_url`, `license_sha256`, `attribution`, `notice`,
+tri-state `share_alike`/`commercial_use`, and the acquirer's `declared_use`. Compiled to
+`sources.parquet`, fact-hashed by `integrity.source_signature`, summarized into `manifest.sources`.
+`module_spec.yaml` also gains an optional `license:` (advisory, registry-overridable, like `version`).
+
+The motivation is that every pharmacogenomics upstream is copyleft **and none is sellable**: ClinPGx,
+CPIC and PharmVar are each CC BY-SA 4.0 *plus* a separate contractual bar on sale. A bare "CC BY-SA"
+line is not permission to sell. `api.pharmgkb.org` was retired 2026-07-20 (successor
+`api.clinpgx.org`), and CPIC is inside the ClinPGx merger — `cpicpgx.org/license/` 302-redirects to the
+ClinPGx policy — so switching sources does not escape the terms.
+
+**The compile gate is data-driven, not flag-driven.** The compiler refuses when an annotation-layer
+source forbids sale and the module records no matching declaration. Keying it on a `--non-commercial`
+CLI flag would have broken Principle 7: `reverse_module` rebuilds `module_spec.yaml` from parquet alone
+and could never re-emit a flag, so `compile → reverse → compile` would refuse on the third step.
+`sources.csv` round-trips, so the declaration travels with the module and the cycle reproduces. The
+refusal fires in **both** modes — `strict` means "reproducible artifact", which is a different axis.
+
+Three deliberate non-obvious behaviours, all pinned by tests: **only the `annotation` layer taints** (a
+source used purely to look up a coordinate contributed a fact Ensembl reports identically, so marking
+it viral would be a false positive); **most-restrictive-wins module-wide** (a permissive source cannot
+launder a restricted one); and **`None` is not `False`** — a source whose terms could not be
+established has not been shown to permit anything, so the verdict is *undetermined*, never *permitted*.
+
+The compiler holds **no** source→licence map: that would give it a source convention (Principle 2) and
+an un-injected reference, and it would go stale — both halves of one did inside this release. The
+licence travels as data, read by the enricher from the bytes it downloaded and pinned by
+`license_sha256`.
+
+**Enricher pass 5 (`pgx.py`, `licensing.py`, `pharmvar.py`, `cpic.py`).** Cross-checks authored
+`allele_function.csv` against PharmVar and CPIC and writes `sources.csv`. `--use` (`unstated` |
+`non-commercial` | `commercial`) is a third orthogonal axis, never folded into `mode`: a source that
+forbids sale is *skipped* when nothing is declared and *refuses* when `commercial` is. The refusal
+lives at acquisition, because that is when terms are accepted and because refusing there means nothing
+is fetched. The allele-function check **warns in both modes**, joining the ClinVar `clin_sig`
+exception — PharmVar and CPIC are different expert panels that genuinely disagree, and failing would
+make the format arbitrate between its own authorities.
+
+Generation stays manual: the PGx tables are *authored* `_TABLE_KINDS`, not fact sidecars, so a network
+pass writing them would blur the authored/derived line 0.5 drew. The automatic pass only reads.
+
+Gotchas recorded: PharmVar needs an **`Api-Key`** header (not `X-API-KEY`; every wrong spelling returns
+the same 401) at **2 rps**, and its key is personal so it never enters a module or fixture. CPIC's
+`variantallele` uses IUPAC ambiguity codes (`R` at CYP2C19 `*2`) which are reported, not coerced, and
+its activity scores are inequality strings (`"≥3.0"`). Coordinates from both are 1-based — PharmVar,
+CPIC and our own resolution independently agree on rs4244285 → chr10:94781859.
+
 ## 2026-08-02 — 0.5.0: PGx tables join resolution, and a multi-allelic cache bug
 
 **Resolution now reads every table that can ask for a coordinate**, not just `variants.csv`. A PGx

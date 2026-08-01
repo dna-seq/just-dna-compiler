@@ -9,13 +9,15 @@ The two properties that matter most are opposites of each other, and both are pi
 """
 
 import csv
+import hashlib
 from pathlib import Path
 
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_format.frequency import FrequencyRow
-from just_dna_format.integrity import frequency_signature
+from just_dna_format.sources import SourceRow
+from just_dna_format.integrity import frequency_signature, source_signature
 from just_dna_format.vrs import derive_vrs_allele_id
 
 _YAML = """\
@@ -80,10 +82,19 @@ def _spec(
     frequencies: bool = False,
     gene_metrics: bool = False,
     literature: bool = False,
+    sources: str | None = None,
+    license: str | None = None,
 ) -> Path:
-    spec = tmp_path / f"spec_{int(frequencies)}{int(gene_metrics)}{int(literature)}"
+    # Deterministic directory name: `hash()` is per-process randomized for str, which would make the
+    # path differ run to run for no reason.
+    variant = hashlib.sha256(f"{sources}|{license}".encode()).hexdigest()[:8]
+    spec = tmp_path / (
+        f"spec_{int(frequencies)}{int(gene_metrics)}{int(literature)}_{variant}"
+    )
     spec.mkdir(parents=True)
-    (spec / "module_spec.yaml").write_text(_YAML)
+    (spec / "module_spec.yaml").write_text(
+        _YAML + (f"license: {license}\n" if license else "")
+    )
     (spec / "variants.csv").write_text(_VARIANTS)
     (spec / "studies.csv").write_text(_STUDIES)
     if frequencies:
@@ -92,6 +103,8 @@ def _spec(
         (spec / "gene_metrics.csv").write_text(_GENE_METRICS)
     if literature:
         (spec / "literature.csv").write_text(_LITERATURE)
+    if sources is not None:
+        (spec / "sources.csv").write_text(sources)
     return spec
 
 
@@ -147,10 +160,8 @@ def test_allele_frequency_is_materialized_in_the_parquet_only(tmp_path: Path) ->
 
 
 def test_manifest_blocks_summarize_the_sidecars(tmp_path: Path) -> None:
-    result = compile_module(
-        _spec(tmp_path, frequencies=True, gene_metrics=True), tmp_path / "out",
-        resolve_with_ensembl=False,
-    )
+    spec = _spec(tmp_path, frequencies=True, gene_metrics=True)
+    result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     freq, genes = result.manifest.frequency, result.manifest.gene_metrics
     assert freq.row_count == 3 and freq.variant_count == 2
     assert freq.datasets == ["gnomad_v4.1_joint"]
@@ -159,7 +170,7 @@ def test_manifest_blocks_summarize_the_sidecars(tmp_path: Path) -> None:
     assert genes.datasets == ["gnomad_v4.1_constraint"]
 
     # The recorded signatures are the producer-independent fact-hashes, recomputable by a consumer.
-    with (tmp_path / "spec_110" / "frequencies.csv").open(newline="") as handle:
+    with (spec / "frequencies.csv").open(newline="") as handle:
         rows = [FrequencyRow(**{k: (v or None) for k, v in r.items()}) for r in csv.DictReader(handle)]
     assert freq.signature == frequency_signature(rows)
     assert genes.signature is not None and genes.signature.startswith("sha256:")
@@ -800,3 +811,178 @@ def test_ba1_says_nothing_about_a_variant_the_module_does_not_call_pathogenic(tm
     )
     assert result.success
     assert not any("BA1" in w for w in result.warnings)
+
+
+# ── sources.csv: licensing as data, and the gate ────────────────────────────────────────────────
+_SRC_HDR = "source,layer,license,attribution,share_alike,commercial_use,declared_use\n"
+_CLINPGX_DECLARED = (
+    _SRC_HDR + "clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,false,non_commercial\n"
+)
+_CLINPGX_UNDECLARED = _SRC_HDR + "clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,false,unstated\n"
+
+
+def test_sources_sidecar_materializes_and_summarizes(tmp_path: Path) -> None:
+    result = compile_module(
+        _spec(tmp_path, sources=_CLINPGX_DECLARED), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    assert (tmp_path / "o" / "sources.parquet").is_file()
+    block = result.manifest.sources
+    assert block.signature is not None  # recomputed against the CSV in the next test
+    assert block.sources == ["clinpgx"] and block.layers == ["annotation"]
+    assert block.attributions == ["ClinPGx"]
+    assert block.commercial_use is False
+    assert block.declared_uses == ["non_commercial"]
+
+
+def test_sources_signature_matches_a_runtime_recomputation(tmp_path: Path) -> None:
+    spec = _spec(tmp_path, sources=_CLINPGX_DECLARED)
+    result = compile_module(spec, tmp_path / "o", resolve_with_ensembl=False)
+    with (spec / "sources.csv").open(encoding="utf-8", newline="") as handle:
+        parsed = [SourceRow(**{k: (v or None) for k, v in rec.items()})
+                  for rec in csv.DictReader(handle)]
+    assert result.manifest.sources.signature == source_signature(parsed)
+
+
+def test_adding_sources_leaves_the_snp_core_byte_identical(tmp_path: Path) -> None:
+    """Principle 3: a module that does not carry the table must be completely unaffected."""
+    bare = compile_module(_spec(tmp_path), tmp_path / "o_bare", resolve_with_ensembl=False)
+    withsrc = compile_module(
+        _spec(tmp_path, sources=_CLINPGX_DECLARED), tmp_path / "o_src", resolve_with_ensembl=False
+    )
+    assert bare.success and withsrc.success
+    for name in ("weights.parquet", "annotations.parquet", "studies.parquet"):
+        assert (tmp_path / "o_bare" / name).read_bytes() == (tmp_path / "o_src" / name).read_bytes()
+    assert bare.manifest.sources is None            # absent table → absent block
+    assert bare.manifest.artifact.digest != withsrc.manifest.artifact.digest  # different content
+
+
+# The refusal matrix, exactly as documented. `commercial_use` / `declared_use` / expected outcome.
+@pytest.mark.parametrize(
+    "commercial_use,declared_use,compiles",
+    [
+        ("false", "non_commercial", True),   # forbids, declared → allowed
+        ("false", "unstated", False),        # forbids, no declaration → refuse
+        ("false", "commercial", False),      # forbids, contradicted → refuse
+        ("", "unstated", True),              # unknown terms → warn, never refuse
+        ("true", "unstated", True),          # permissive
+    ],
+)
+def test_license_gate_matrix(
+    tmp_path: Path, commercial_use: str, declared_use: str, compiles: bool
+) -> None:
+    csv_text = _SRC_HDR + f"clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,{commercial_use},{declared_use}\n"
+    result = compile_module(
+        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert result.success is compiles, (result.errors, result.warnings)
+    if not compiles:
+        assert any("licensing" in e for e in result.errors)
+
+
+def test_gate_refuses_in_best_effort_too(tmp_path: Path) -> None:
+    """Not a `strict` concern: strict means 'reproducible artifact', which this is unrelated to."""
+    spec = _spec(tmp_path, sources=_CLINPGX_UNDECLARED)
+    for strict in (False, True):
+        result = compile_module(spec, tmp_path / f"o_{strict}", resolve_with_ensembl=False,
+                                strict=strict)
+        assert not result.success
+
+
+def test_gate_writes_nothing_when_it_refuses(tmp_path: Path) -> None:
+    """The gate sits before `output_dir.mkdir()` — a refusal must leave no artifact behind."""
+    out = tmp_path / "o_refused"
+    result = compile_module(
+        _spec(tmp_path, sources=_CLINPGX_UNDECLARED), out, resolve_with_ensembl=False
+    )
+    assert not result.success
+    assert not out.exists()
+
+
+def test_a_coordinate_only_source_does_not_taint(tmp_path: Path) -> None:
+    """The false-viral case the per-layer split exists to prevent."""
+    csv_text = _SRC_HDR + "cpic,resolution,CC-BY-SA-4.0,CPIC,true,false,unstated\n"
+    result = compile_module(
+        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    block = result.manifest.sources
+    assert block.share_alike_layers == ["resolution"]
+    assert "annotation" not in block.noncommercial_layers
+    assert block.commercial_use is True   # a fact, not expression — the module stays sellable
+
+
+def test_a_permissive_source_cannot_launder_a_restricted_one(tmp_path: Path) -> None:
+    """Most-restrictive-wins, module-wide."""
+    csv_text = (
+        _SRC_HDR
+        + "ensembl,resolution,,Ensembl,false,true,unstated\n"
+        + "clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,false,non_commercial\n"
+    )
+    result = compile_module(
+        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    assert result.manifest.sources.commercial_use is False
+
+
+def test_unknown_terms_leave_the_verdict_undetermined(tmp_path: Path) -> None:
+    """Null is not permission: an unreadable licence must not resolve to `true`."""
+    csv_text = (
+        _SRC_HDR
+        + "ensembl,resolution,,Ensembl,false,true,unstated\n"
+        + "pharmvar,annotation,CC-BY-SA-4.0,PharmVar,true,,unstated\n"
+    )
+    result = compile_module(
+        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    assert result.manifest.sources.commercial_use is None
+    assert result.manifest.sources.unknown_terms_sources == ["pharmvar"]
+
+
+def test_declared_license_conflict_warns_in_both_modes(tmp_path: Path) -> None:
+    """Two legal claims disagreeing is not the compiler's to arbitrate — the second deliberate
+    non-escalation, after the ClinVar clin_sig cross-check."""
+    spec = _spec(tmp_path, sources=_CLINPGX_DECLARED, license="MIT")
+    for strict in (False, True):
+        result = compile_module(spec, tmp_path / f"o_lic_{strict}", resolve_with_ensembl=False,
+                                strict=strict)
+        assert result.success, result.errors
+        assert any("declares license" in w for w in result.manifest.compilation.warnings)
+    assert result.manifest.license == "MIT"   # author-declared, copied through
+
+
+def test_undeclared_and_orphan_sources_warn(tmp_path: Path) -> None:
+    csv_text = _SRC_HDR + "notused,annotation,CC0,,false,true,unstated\n"
+    result = compile_module(
+        _spec(tmp_path, frequencies=True, sources=csv_text), tmp_path / "o",
+        resolve_with_ensembl=False,
+    )
+    assert result.success, result.errors
+    warnings = result.manifest.compilation.warnings
+    assert any("no table in this module uses" in w for w in warnings)   # orphan: notused
+    assert any("has no row for" in w and "gnomad" in w for w in warnings)  # undeclared: gnomad
+
+
+def test_sources_roundtrip_is_lossless(tmp_path: Path) -> None:
+    """Principle 7 over the new table, including the tri-state nulls."""
+    csv_text = (
+        _SRC_HDR
+        + "ensembl,resolution,,Ensembl,false,true,unstated\n"
+        + "pharmvar,annotation,CC-BY-SA-4.0,PharmVar,true,,unstated\n"
+    )
+    spec = _spec(tmp_path, sources=csv_text)
+    first = compile_module(spec, tmp_path / "orig", resolve_with_ensembl=False)
+    reverse_module(tmp_path / "orig", tmp_path / "reversed")
+    assert (tmp_path / "reversed" / "sources.csv").is_file()
+    second = compile_module(tmp_path / "reversed", tmp_path / "recompiled",
+                            resolve_with_ensembl=False)
+    assert second.success, second.errors
+    assert first.manifest.artifact.digest == second.manifest.artifact.digest
+    assert first.manifest.sources.signature == second.manifest.sources.signature
+    # The unknown stays unknown — a round-trip must not turn null into false.
+    assert second.manifest.sources.commercial_use is None
+    orig = pl.read_parquet(tmp_path / "orig" / "sources.parquet")
+    recompiled = pl.read_parquet(tmp_path / "recompiled" / "sources.parquet")
+    assert orig.equals(recompiled)

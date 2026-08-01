@@ -27,9 +27,18 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` |
+| **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
+| **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 
-**One check deliberately breaks the severity rule, and it is worth knowing which.** The clinical
-cross-check warns in `strict` too. Every other check compares an authored value against a *fact* — the
+**Two of these break the severity rule in opposite directions, and both are deliberate.** The
+allele-function check joins the clinical cross-check in warning under `strict` too: PharmVar and CPIC
+are different expert panels — one assigns a molecular function, the other a clinical one — and they
+genuinely disagree about some alleles, so failing a compile would make the format arbitrate between
+the two authorities it depends on. The declared-use gate goes the other way and **refuses in both
+modes**, because it is not a finding about the data at all: it is a statement that the fetch is not
+permitted, and `best_effort` means "resolve what you can", never "take what you may not".
+
+**The clinical cross-check warns in `strict` too.** Every other check compares an authored value against a *fact* — the
 genome's bases, a deterministic digest, a registry's own id — where the source is simply right. A
 `clin_sig` disagreement is two opinions differing, and ClinVar is not truth: a curator who has read the
 primary literature and disagrees with a one-star submission is doing their job. Failing the compile
@@ -86,6 +95,10 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
 | `literature` | pass 4: `studies.csv` → `literature.csv` (PubMed + Europe PMC), fulltext quote match | `httpx`, `tenacity` |
 | `identifiers` | rsID / trait-CURIE / gene-symbol currency (dbSNP, OLS4, HGNC) | `httpx`, `tenacity` |
+| `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
+| `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
+| `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
+| `pgx` | pass 5: cross-check star-allele tables, write `sources.csv` | the three above |
 | `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `_load_csv_rows`, format |
@@ -591,6 +604,95 @@ an *identity migration performed by a network lookup* — reverse would emit the
 compile would key on it, and `variant_key` would change with no authored edit anywhere. Severity is the
 usual ladder (warn / fail in `strict`), and `strict` failing is the nudge toward the drift-proof key:
 author the coordinate, and the VRS allele id cannot drift at all.
+
+## Pharmacogenomics and data-source licensing (`pgx.py`, `licensing.py`, `pharmvar.py`, `cpic.py`)
+
+Pass 5 cross-checks a module's star-allele tables against the nomenclature authorities and records
+**what was consulted and on what terms** into `sources.csv`. It is the first pass whose primary output
+is provenance rather than facts.
+
+### The licensing picture, probed 2026-08-02
+
+| Source | Endpoint | Auth | Licence | Sellable |
+|---|---|---|---|---|
+| **ClinPGx** (ex-PharmGKB) | `api.clinpgx.org` | none | CC BY-SA 4.0 **+ no-sale clause** | ❌ |
+| **CPIC** | `api.cpicpgx.org/v1` (PostgREST) | none | same policy | ❌ |
+| **PharmVar** | `www.pharmvar.org/api-service` | `Api-Key` header, 2 rps | CC BY-SA 4.0 **+ research-use-only** | ❌ |
+| Ensembl / dbSNP | already in the chain | none | unrestricted | ✅ |
+
+Three things follow, and each shaped the code:
+
+**`api.pharmgkb.org` is gone.** Retired 2026-07-20; the successor is `api.clinpgx.org` with paths and
+formats unchanged. ClinPGx is the umbrella that merged PharmGKB, CPIC and PharmCAT.
+
+**CPIC is not an escape hatch.** `cpicpgx.org/license/` 302-redirects to the ClinPGx data usage
+policy, so CPIC carries ClinPGx's terms. Preferring PharmVar for the star-allele layer is a
+*data-authority* choice — it is the naming authority for CYP star alleles — not a licensing one.
+
+**No PGx source is sellable.** Each layers a contractual bar on sale *on top of* the CC grant, so a
+bare "CC BY-SA 4.0" line is not permission to sell; read the surrounding terms. Since the coordinate
+layer is already covered by Ensembl/dbSNP, ClinPGx and CPIC are deliberately **never** wired as
+resolution links — that keeps coordinates unrestricted and leaves nothing to declare there.
+
+### `declared_use` — a third axis, not a mode
+
+`--use` is `unstated` (default) | `non-commercial` | `commercial`, threaded to `enrich_pgx(declared_use=)`.
+It is orthogonal to `mode` on purpose (Principle 5): `mode` says how hard to fail on a finding,
+`declared_use` says who is using the data and why. A three-state string rather than a bool pair,
+because a bool cannot express the default and defaulting either way would have the tool assert a
+purpose on the user's behalf.
+
+| Source terms | `--use unstated` | `--use non-commercial` | `--use commercial` |
+|---|---|---|---|
+| forbids sale | **skip** + warning | fetch, record the declaration | **refuse**, fetch nothing |
+| unknown (`None`) | **skip** + warning | **skip** + warning | **skip** + warning |
+| permits | fetch | fetch | fetch |
+
+Unknown never becomes permission. A source whose terms could not be established has not been shown to
+permit anything, and "we could not read the terms" is not a finding that they forbid anything either —
+so it is skipped in every column, with a message that says which of the two it is.
+
+The refusal lives **here, at acquisition**, because under a data-usage policy that is when the terms
+are accepted, and because refusing here means nothing is fetched rather than merely nothing written.
+
+### Where the terms come from
+
+`licensing.TERMS` holds only the residue that cannot be read from a payload. Where a source ships its
+own licence — ClinPGx bundles a `LICENSE.txt` inside every archive — the pass reads it from the same
+bytes it took the data from and records `license_sha256`, which makes the recorded terms provably
+contemporaneous with the recorded data instead of a lookup that was true once. Both halves of a static
+table went stale inside one release (the retired hostname, the moved licence page); a hash turns the
+next such change into a finding.
+
+The compiler holds **no** source→licence map — that would give it a source convention (Principle 2)
+and an un-injected reference. It reads only what the enricher recorded.
+
+### Generation is not automatic
+
+The PGx tables are *authored* `_TABLE_KINDS`, not fact sidecars: they carry `AuthoredModel` semantics,
+the reserved-namespace guard and raw-byte input hashing. A network pass writing them would blur the
+authored/derived line the 0.5 rework drew, and hand the human author a file they never wrote but are
+accountable for. So the automatic pass only ever **reads**, and scaffolding is an explicit,
+separate step.
+
+### PharmVar and CPIC gotchas
+
+- **The header is `Api-Key`**, no `X-` prefix, documented per-endpoint in the service's own OpenAPI
+  document (`docs/pharmvar_api_docs.json`) rather than in a `securityDefinitions` block. Every wrong
+  spelling returns the *same* 401 as no key at all, so a wrong header is indistinguishable from a bad
+  key — the error message says so rather than guessing.
+- **The key is personal** (PharmVar terms §2), so it comes from `PHARMVAR_API_KEY` and is never
+  written into a module, fixture, log or snapshot.
+- **2 rps**, enforced by the shared `net.PacingGate` on an injectable clock. The unfiltered `/alleles`
+  collection is ~25 MB and silently ignores a `geneSymbol` parameter it does not define; use
+  `/genes/{symbol}`.
+- **CPIC `variantallele` uses IUPAC ambiguity codes** (`R` at CYP2C19 `*2`, `Y` at `*4`).
+  `HaplotypeRow.allele` requires definite nucleotides, so an ambiguous definition is reported and
+  skipped — expanding `R` would invent two defining variants where CPIC recorded one uncertainty.
+- **CPIC activity scores are inequality strings** (`"≥3.0"`, `"n/a"`), not numbers, so they do not drop
+  into `MeasureBinRow`'s numeric bounds; the raw string is carried and the parsing left to a human.
+- **Coordinates are 1-based** in both (verified against Ensembl for rs4244285 → chr10:94781859, which
+  PharmVar, CPIC and our own resolution all agree on). Do not convert.
 
 ## CLI
 

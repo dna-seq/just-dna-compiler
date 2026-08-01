@@ -201,6 +201,25 @@ CHANGELOG entry).
   annotations (`*1`) to `DiplotypeRow`; skip symbolic alleles (`del/del`, 177 rows) as **RM5** rather
   than widening the nucleotide grammar. PharmGKB writes `CC`; canonical form is `C/C`, since `CC`
   would otherwise parse as a single two-base allele — disambiguate using the *resolved* ref/alt.
+- **Licensing lives as DATA in `sources.csv`, never as a table in the compiler.** A source→licence map
+  in `just_dna_compiler` would give it a source convention (Principle 2, tightened in 0.5) and an
+  un-injected reference — and it goes stale (both halves of one did inside 0.5). The enricher reads the
+  terms from the bytes it downloaded and pins them with `license_sha256`. Three rules the tests pin,
+  don't "simplify" any of them: **only the `annotation` layer taints** (a coordinate is a fact Ensembl
+  reports identically, so marking it viral is a false positive); **most-restrictive-wins module-wide**
+  (a permissive source can't launder a restricted one); and **`None` ≠ `False`** on
+  `share_alike`/`commercial_use` (unknown terms are undetermined, never permitted).
+- **The compile gate is data-driven; a `--non-commercial` CLI flag would be charter-illegal.** It
+  refuses when an annotation-layer source forbids sale and the module records no declaration, reading
+  only injected `sources.csv`. A *flag* cannot be recorded in the artifact — `reverse_module` rebuilds
+  `module_spec.yaml` from parquet alone — so `compile → reverse → compile` would refuse on the third
+  step (P7). The gate sits immediately before `output_dir.mkdir()`, which is why `sources.csv` is
+  parsed there rather than with the other fact tables (they load after mkdir). It refuses in **both**
+  modes; `strict` means "reproducible artifact", an unrelated axis (P5).
+- **`declared_use` (`--use`) is a THIRD axis, not a mode.** `mode` says how hard to fail on a finding;
+  `declared_use` says who is using the data. Three states, so not a bool pair — defaulting either way
+  would make the tool assert a purpose for the user. A forbidding source is *skipped* on `unstated`
+  and *refused* on `commercial`, at acquisition (nothing is fetched), in both modes.
 - **The Ensembl snapshot's `alt` is PIPE-joined; every other link uses commas.** A multi-allelic site
   is one snapshot row (`A|C|T`), not one row per alt. `resolver._snapshot_alleles` normalizes at that
   boundary — don't remove it, and don't "fix" it by widening `genotype_fits` instead (the locus-dict

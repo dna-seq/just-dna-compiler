@@ -166,6 +166,16 @@ class ModuleSpecConfig(BaseModel):
             "`artifact.digest`. A joint contribution is two entries (a human and an ai)."
         ),
     )
+    license: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional licence the author declares for the module as a whole, e.g. 'CC-BY-SA-4.0'. "
+            "Advisory and registry-overridable, exactly like `module.version`: the marketplace "
+            "stamps the canonical value on publish. The authoritative per-source record is "
+            "`sources.csv`, which round-trips; this key is a human convenience and is NOT "
+            "reconstructed by the lossy `reverse_module` (same class as `panel`/`authorship`)."
+        ),
+    )
 
     @field_validator("schema_version")
     @classmethod

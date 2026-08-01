@@ -102,6 +102,30 @@ RESERVED_NAME_REASONS: dict[str, str] = {
 # PharmGKB clinical-annotation evidence levels (item 9). Closed vocabulary (Principle 6).
 VALID_EVIDENCE_LEVELS: frozenset[str] = frozenset({"1A", "1B", "2A", "2B", "3", "4"})
 
+# ── Data-source licensing (0.5; the `sources.csv` fact table) ───────────────────────────────────
+# Which layer of a module a source contributed to. Closed vocabulary (Principle 6).
+#
+# The split is the whole point of tracking licences per (source, layer) rather than per source. The
+# first four are machine-produced fact sidecars carrying things a source *reports* — a coordinate, an
+# AC/AN, a PMID — which are not the expressive content a copyright licence covers, and which in the
+# coordinate case are identically available from Ensembl. `annotation` is the module's own authored
+# tables, where a curated annotation text or evidence level is *expressed* and a derivative work
+# genuinely exists.
+#
+# Only `annotation` taints a module. A module that used CPIC purely to look up a coordinate must not
+# be marked as carrying CPIC's restrictions, and a single `share_alike` boolean on the manifest would
+# render that case identically to one embedding ClinPGx annotation prose.
+VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
+    {"resolution", "frequency", "gene_metrics", "literature", "annotation"}
+)
+
+# What the *acquirer* declared about their intended use when the data was fetched. A third orthogonal
+# axis (Principle 5), never folded into the strictness `mode`: `mode` is a claim about how hard to
+# fail, this is a claim about who is using the data and why. `unstated` is the honest default — the
+# tooling must not assert a purpose on the user's behalf — and is distinct from `non_commercial`,
+# which is a declaration actually made.
+VALID_DECLARED_USE: frozenset[str] = frozenset({"unstated", "non_commercial", "commercial"})
+
 # ── Resolution status (0.5; the source-independent resolution table) ────────────────────────────
 # Closed vocabulary (Principle 6) for a `ResolutionRow`'s outcome. `not_found` is the resolution
 # analogue of the binning tables' mandatory `unresolved` sentinel: it records "a source was consulted

@@ -15,7 +15,11 @@ from typing import Optional
 import typer
 from just_dna_compiler.compiler import compile_module
 
+from just_dna_format.vocab import VALID_DECLARED_USE
+
 from just_dna_enricher.enrich import EnrichmentError, enrich
+from just_dna_enricher.licensing import LicenseRefusal
+from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
@@ -29,6 +33,21 @@ app = typer.Typer(
 
 def _mode(strict: bool) -> str:
     return "strict" if strict else "best_effort"
+
+
+def _use(value: str) -> str:
+    """Normalize the `--use` spelling to the `VALID_DECLARED_USE` member.
+
+    A three-state string rather than a `--commercial/--non-commercial` bool pair: a bool cannot
+    express the default, and defaulting either way would have the tool assert a purpose on the
+    user's behalf. `unstated` is the honest default.
+    """
+    normalized = value.strip().replace("-", "_").lower()
+    if normalized not in VALID_DECLARED_USE:
+        raise typer.BadParameter(
+            f"--use must be one of {sorted(VALID_DECLARED_USE)}, got: {value!r}"
+        )
+    return normalized
 
 
 @app.command("enrich")
@@ -172,6 +191,46 @@ def literature_(
         typer.secho(f"  Crossref has no record of: {result.doi_missing}", fg=typer.colors.RED, err=True)
     for conflict in result.doi_conflicts:
         typer.secho(f"  doi conflict: {conflict}", fg=typer.colors.RED, err=True)
+
+
+@app.command("pgx")
+def pgx_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail on an allele-function discrepancy."),
+    offline: bool = typer.Option(False, "--offline", help="No-op: PharmVar/CPIC are live-only."),
+    use: str = typer.Option(
+        "unstated", "--use",
+        help=(
+            "Declared use: unstated | non-commercial | commercial. Sources that forbid sale are "
+            "SKIPPED when unstated and REFUSED when commercial."
+        ),
+    ),
+    use_pharmvar: bool = typer.Option(True, "--pharmvar/--no-pharmvar", help="Consult PharmVar (needs PHARMVAR_API_KEY)."),
+    use_cpic: bool = typer.Option(True, "--cpic/--no-cpic", help="Consult CPIC (open, no key)."),
+) -> None:
+    """Cross-check star-allele tables against PharmVar/CPIC and record terms into sources.csv."""
+    try:
+        result = enrich_pgx(
+            spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use),
+            use_pharmvar=use_pharmvar, use_cpic=use_cpic,
+        )
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except PgxEnrichmentError as exc:
+        typer.secho(f"PGX FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.rows:
+        typer.secho(f"sources: {spec_dir / 'sources.csv'}", fg=typer.colors.GREEN)
+    typer.echo(f"sources recorded: {len(result.rows)}  declared use: {result.declared_use}")
+    for reason in result.skipped:
+        typer.secho(f"  skipped: {reason}", fg=typer.colors.YELLOW, err=True)
+    for warning in result.warnings:
+        typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
+    # Warns in BOTH modes on purpose: PharmVar and CPIC are different expert panels and genuinely
+    # disagree, so failing would make the format arbitrate between its own authorities.
+    for conflict in result.conflicts:
+        typer.secho(f"  allele-function difference: {conflict}", fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("check-identifiers")

@@ -2,8 +2,10 @@
 The `manifest.json` contract — the single source of truth for a compiled annotation module.
 
 Mirrors SPEC §4. Fields known at compile time (display, stats, compilation, inputs, artifact)
-are filled by the compiler; marketplace-level fields (namespace, version, owner, license,
-published_at, canonical_id) are `Optional` and filled by the marketplace on publish.
+are filled by the compiler; marketplace-level fields (namespace, version, owner, published_at,
+canonical_id) are `Optional` and filled by the marketplace on publish. `license` is the one hybrid:
+since 0.5 an author may declare it in `module_spec.yaml` and the compiler copies it through, with the
+marketplace still overriding on publish — the same advisory-then-stamped pattern as `version`.
 
 This module is intentionally dependency-light (Pydantic + stdlib only) so both
 `just-dna-pipelines` (which emits the manifest) and `just-dna-marketplace` (which consumes and
@@ -285,6 +287,74 @@ class Literature(BaseModel):
     )
 
 
+class Sources(BaseModel):
+    """Summary of a module's data-source licensing sidecar (0.5), out of `artifact.digest`.
+
+    **The per-layer facets are lists, and collapsing them to booleans would be a defect.** A module
+    that used CPIC only to resolve a coordinate and one that embeds ClinPGx annotation prose would
+    render identically under a single `share_alike: bool`, falsely marking the first as viral. The
+    lists say *which layer* carries the obligation, so a reader can tell those apart.
+
+    `commercial_use` is the one derived scalar, because it is the one question with a single answer
+    for the module as a whole: most-restrictive-wins. One restricted source at the annotation layer
+    makes the whole module non-sellable, and mixing in a permissive source cannot launder it.
+    """
+
+    signature: Optional[str] = Field(
+        default=None,
+        description="Fact-hash of sources.csv (integrity.source_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of SourceRow.source values"
+    )
+    layers: list[str] = Field(
+        default_factory=list, description="Sorted union of the layers any source contributed to"
+    )
+    licenses: list[str] = Field(
+        default_factory=list, description="Sorted union of SourceRow.license values"
+    )
+    attributions: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of required credit lines — what a redistributor must reproduce",
+    )
+    notices: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of use restrictions stated in the terms (e.g. not for diagnostic use)",
+    )
+    share_alike_layers: list[str] = Field(
+        default_factory=list,
+        description="Sorted layers carrying a ShareAlike obligation (empty ≠ 'no obligation known')",
+    )
+    noncommercial_layers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted layers whose source forbids sale. Read it WITH `commercial_use`, not instead of "
+            "it: only an 'annotation' entry makes the module non-sellable, so a list of "
+            "['resolution'] beside `commercial_use: true` is consistent and is the point — a source "
+            "used purely to look up a coordinate contributed a fact, not expression."
+        ),
+    )
+    unknown_terms_sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted sources whose terms could not be established (commercial_use is null). Reported "
+            "separately from the forbidding ones: unknown is not permission, and not a finding either."
+        ),
+    )
+    declared_uses: list[str] = Field(
+        default_factory=list, description="Sorted union of SourceRow.declared_use values"
+    )
+    commercial_use: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Derived module-wide verdict, most-restrictive-wins: false when ANY annotation-layer "
+            "source forbids sale, else null when any source's terms are unknown, else true. Null "
+            "means undetermined, never permitted."
+        ),
+    )
+    row_count: int = Field(default=0, description="Number of (source, layer) rows")
+
+
 class FileEntry(BaseModel):
     """One hashed file — used for both `inputs[]` and `artifact.files[]` (SPEC §5)."""
 
@@ -459,7 +529,14 @@ class ModuleManifest(BaseModel):
     )
     curator: Optional[str] = None
     method: Optional[str] = None
-    license: Optional[str] = None
+    license: Optional[str] = Field(
+        default=None,
+        description=(
+            "Module-wide licence. Author-declared via `module_spec.yaml`'s `license:` and copied "
+            "through by the compiler; the marketplace overrides on publish. The per-source detail "
+            "lives in `sources`, which is where a redistributor should look."
+        ),
+    )
 
     owner: Optional[str] = None
     authors: list[str] = Field(default_factory=list)
@@ -496,6 +573,15 @@ class ModuleManifest(BaseModel):
             "Summary of the injected citation sidecar (0.5), when the module carries one. Carries the "
             "coverage counters as well as the fact-hash, because the fulltext check is partial by "
             "nature and a consumer must be able to tell 'checked and found' from 'never retrievable'."
+        ),
+    )
+    sources: Optional[Sources] = Field(
+        default=None,
+        description=(
+            "Summary of the data-source licensing sidecar (0.5), when the module carries one. The "
+            "one place a consumer can read what terms a compiled module was built under — which "
+            "attributions must be reproduced, whether a ShareAlike obligation attaches, and whether "
+            "the module may be sold — without re-deriving any of it from source names."
         ),
     )
     inputs: list[FileEntry] = Field(default_factory=list)

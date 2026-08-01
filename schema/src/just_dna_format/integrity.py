@@ -31,6 +31,7 @@ from just_dna_format.manifest import (
     Signature,
 )
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS
+from just_dna_format.sources import SOURCE_FACT_FIELDS
 
 SHA256_PREFIX: str = "sha256:"
 _CHUNK: int = 1 << 20  # 1 MiB streaming reads
@@ -210,6 +211,17 @@ def literature_signature(rows: Sequence[BaseModel]) -> str:
     with no authored edit anywhere.
     """
     return fact_signature(rows, LITERATURE_FACT_FIELDS)
+
+
+def source_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `sources.csv` (`sources.SOURCE_FACT_FIELDS`).
+
+    Note the one inversion against its siblings: `source` is **inside** this fact set, because here it
+    is the subject of the row rather than the provenance of one. Only `fetched_at` is excluded, so
+    re-reading the same terms at a different moment hashes equal, while a changed licence, a changed
+    permission flag or a changed declaration all move the signature — which is the point.
+    """
+    return fact_signature(rows, SOURCE_FACT_FIELDS)
 
 
 def resolution_signature(rows: Sequence[BaseModel]) -> str:
