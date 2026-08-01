@@ -19,14 +19,17 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 | `identity` | `namespace/name` rules, SemVer `Version`, `canonical_id` | — (stdlib leaf) |
 | `derive` | Legacy→0.3 column derivations + read-time aliases | — (stdlib leaf) |
 | `normalize` | Inject-only authority-key stripper, `normalize_version` | — (stdlib leaf) |
-| `base` | `AuthoredModel` + `derive_variant_key` | `vocab` |
+| `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table (stdlib only) | — (stdlib leaf) |
+| `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
-| `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab` |
+| `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |
+| `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `vocab`, `vrs` |
+| `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
-| `integrity` | SHA-256 hashing, the three signatures, Ed25519 verify | `manifest`, `resolution`, `cryptography` |
+| `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `reference` | Drift-proof authoring reference generated from live models | spec/binning/pgx/pgs/manifest/normalize/vocab |
 | `aggregate` | Cross-version log/provenance union | `manifest` |
@@ -123,6 +126,114 @@ are a compile error; interior coverage gaps are warnings.
 `research_tier?` (`VALID_RESEARCH_TIERS`). A manifest of Catalog IDs — not authored per-variant weights
 (that is roadmap RM16).
 
+## Allele identity — the VRS allele id (0.5)
+
+`vrs.derive_vrs_allele_id(chrom, start, ref, alt, *, build="GRCh38") -> str | None` mints a GA4GH VRS
+**allele id** (`ga4gh:VA.<32-char digest>`) — a *content-addressed* name for one allele at one place on
+one reference sequence.
+
+**It names its build.** The sequence is addressed by its **refget accession**, which is the digest of
+the reference sequence itself, so GRCh38 and GRCh37 mint distinct, correctly non-colliding ids. That is
+the property RM15's parking note demanded before coordinate identity could be reconsidered, which is why
+this is not another entry on the parked pile — see [ROADMAP.md](ROADMAP.md).
+
+**Stdlib only.** The digest is `sha512t24u` over a compact canonical JSON — about twenty lines of
+`hashlib` + `base64` + `json`. The format tier gains **no dependency** (it stays pydantic + cryptography),
+and a verify-only consumer can recompute the identity offline. Verified rather than assumed: the ids this
+mints are byte-identical to the ones `ga4gh.vrs` 2.3.3 computes *and* the ones the live gnomAD API
+returns, asserted against a committed ground-truth table.
+
+**Substitutions only, on purpose.** It returns `None` for an indel, an MNV, a multi-allelic cell, a row
+with no coordinate, and a contig outside the primary assembly. A VRS allele id is defined over the
+*fully justified* allele; for a single-base substitution justification is a provable no-op, but for an
+indel it needs the reference *sequence*, which this tier has no access to and will never fetch
+(Principle 2). Minting an unjustified indel id would emit a `ga4gh:VA.…` that *looks* interoperable and
+silently is not — worse than minting nothing. Indel ids are minted upstream in the enricher and passed
+through as data.
+
+`REFGET_GRCh38` (the 24 primary contigs + MT) and `REFGET_GRCh38_LENGTHS` are committed constants, so
+minting needs no `seqrepo`, no sequence store and no network. They are remote-*sourced* reference data
+frozen into the schema tier, which would normally be a staleness hazard — here it is not, because a
+refget accession is the **digest of a sequence that cannot change**: GRCh38's primary contigs are
+immutable, so the correct value is fixed forever and the only possible defect is a typo. That is what
+the `@integration` re-derivation guards, and it is what makes this unlike a ClinVar snapshot, which
+genuinely ages. An `@integration` test re-derives them from
+the public seqrepo REST, because a mistyped accession would mint well-formed ids for the *wrong sequence*
+and nothing downstream could detect it. Asking for a build with no table raises `UnsupportedBuildError`
+rather than quietly answering in GRCh38.
+
+### The identity switch — `variant_key` derives from the VA
+
+`base.derive_variant_key` has three cases, in precedence order:
+
+1. **rsid** — an rsid row keeps its rsid, unchanged.
+2. **A resolved single-base substitution** — the key **is** its `ga4gh:VA.…` id (new in 0.5).
+3. **Everything else** — `chrom:start:ref`, or `chrom:start:ref:alts` when an alt is present.
+
+Why this was legal now rather than at 1.0: `variant_key` is **derived and frozen, never authored**
+(`_COMPILER_MANAGED_FIELDS`), so changing its derivation touches no authored schema, no DSL, and no human
+author — the human-authorability gate is untouched. It is major-only for exactly one reason: the column
+lives in `weights.parquet`, hence in `artifact.digest`. That gate is **publication**, not the version
+number — and 0.4 is the published line while 0.5.0 has never shipped. So it rides the same one-time
+pre-publication re-baseline the alt-carrying key already rode, and no published artifact moves.
+
+> **A VA does not encode `ref`.** VRS addresses the place and the alt; the reference base is *determined*
+> by the accession plus the interval (`sequence[start:end]` has exactly one answer), so storing it would
+> store a derived value — and a redundant field is a way for one allele to acquire two ids, which is what
+> a content-addressed identity exists to prevent. Correct semantics, but it costs two guarantees, and
+> each is bought back where it can be: two rows at one position claiming different reference bases used
+> to be two keys and are now one, so the **compiler** carries an explicit "inconsistent reference allele"
+> error (internal contradiction, catchable offline); and the authored `ref` is otherwise unchecked, so
+> the **enricher** — the only tier with sequence access — compares it against the real bases
+> (`sequences.verify_reference_alleles`, see [ENRICHER.md](ENRICHER.md)).
+
+Position-level **matching** helpers (studies, the reverse pos→rsid lookup, haplotype dedup) call
+`derive_variant_key` **without** `alts` and therefore never mint a VA — a study matches its variant at
+`chrom:start:ref` regardless of allele. Mixing those up would orphan every study.
+
+## The derived-fact tables (0.5, **provisional**)
+
+`frequency.FrequencyRow` → `frequencies.csv` and `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` are
+the variant-level and gene-level siblings of `resolution.csv`: machine-produced reference facts, injected
+and human-overridable, hashed by facts and compiled into their own optional parquets. Both are standalone
+`BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow` is.
+
+**`FrequencyRow` — one row per (allele, ancestry group).** Facts: `variant_key` (coordinate-derived, so
+it lines up with post-expansion weights rows), `rsid?`, `chrom?`/`start?`/`ref?`, `alt?` (**one** alt, not
+`resolution.csv`'s comma-joined `alts` — a frequency is per-allele), `population`, `allele_count` (AC),
+`allele_number` (AN), `homozygote_count?`, `hemizygote_count?`, `faf95?`, `dataset`, `genome_build`.
+Provenance (excluded): `source?`, `status?`, `fetched_at?`. Cross-references `vrs_id?`/`caid?` are also
+outside the fact set.
+
+- **`allele_frequency` is a derived property, never a stored column.** Integers round-trip through CSV
+  exactly; a stored float invites formatting drift, which is a Principle 7 idempotency hazard, for the
+  price of duplicating one fact in two columns. The **parquet** materializes it as a real `Float64`, so a
+  consumer does no arithmetic — the usual "parquet absorbs the precision, the DSL keeps the human shape"
+  split. `AN = 0` yields `None`, not zero: no coverage means *no information*, not "frequency zero".
+- **`dataset` is inside the fact set on purpose** — a v4.1 number and a v2.1.1 number are different facts
+  about the world, not two spellings of one, so a table that swapped releases must hash differently.
+- `faf95` is the one stored float; it is written with `str()`, which since Python 3.1 is the shortest
+  representation that reloads to the identical double — exact *and* deterministic, unlike a fixed `%g`.
+
+**`GeneMetricsRow` — one row per gene.** `gene` (matching `variants.csv`'s column), `gene_id?` (`ENSG…`,
+the stable identity behind the mutable symbol), `transcript?`, `mane_select?`, `pli?`, `loeuf?`, `oe_lof?`,
+`oe_lof_lower?`, `lof_z?`, `mis_z?`, `syn_z?`, `oe_mis?`, `obs_lof?`, `exp_lof?`, `constraint_flags?`,
+`dataset`. `loeuf` is stored under that name rather than `oe_lof_upper` because it is the number clinical
+readers ask for by name, with `oe_lof`/`oe_lof_lower` beside it so the interval is not lost. Gene-level
+and variant-level facts are **separate tables** rather than gene metrics repeated on every variant row
+(Principle 5, and one CSV = one concern).
+
+**Ancestry groups** (`vocab.RECOMMENDED_ANCESTRY_GROUPS`) are an **open, seeded** vocabulary in the
+`RECOMMENDED_AUTHOR_KINDS` idiom rather than a closed `frozenset` — deliberately, even though Principle 6
+makes closed the default. The table must stay source-independent, and TOPMed / ALFA / 1000G bring their
+own labels; a closed set would turn a source swap into a schema change. What makes a label interpretable
+is the row's `dataset`, not membership. `POPULATION_ORDER` + `population_sort_key` pin the emission order.
+This is **not** `pgs.VALID_TRAINING_ANCESTRY` and must never be merged with it: those are 1000G
+superpopulations describing *which cohort a score was trained on*, a different axis that happens to share
+three letters.
+
+> **Not yet frozen** — the same provisional status as `resolution.csv` below, and for the same reason.
+
 ## The resolution table (0.5, **provisional**)
 
 `resolution.ResolutionRow` → `resolution.csv` — persisted, source-independent rsid↔coordinate facts the
@@ -139,6 +250,11 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
 - It is a **standalone `BaseModel`** (not `AuthoredModel`) with `extra="forbid"` — a resolution fact is
   not an annotation and must not inherit VariantRow's annotation validators; it reuses only the shared
   `rsid` grammar and the `status` vocabulary.
+- **Cross-references (0.5, outside the fact set):** `vrs_id?` (`ga4gh:VA.…`), `vrs_spec?` (`"2.0"`),
+  `caid?` (`CA\d+`), each with a grammar validator. Three registries, three columns — never one
+  overloaded `identifier` field (Principle 5). They stay out of `RESOLUTION_FACT_FIELDS` so adding them
+  moves no existing `resolution_signature`; the identity they carry reaches the artifact through
+  `variant_key` instead, so the fact set does not need them.
 - **`RESOLUTION_FACT_FIELDS`** names the fact columns; `integrity.resolution_signature` hashes only
   those (provenance deliberately excluded), so a human-filled and an Ensembl-filled table with identical
   facts hash equal.
@@ -160,6 +276,11 @@ the CONSTITUTION for how they compose:
 | `artifact_digest(files)` | compiled parquet file set (Merkle root of `{name,sha256,size}`) | row order preserved in each file | yes (GRCh38 coords) | the version's immutable content identity |
 | `content_signature(tables)` | raw authored rows, `model_dump(mode="json", exclude_none=True)` | order-independent (sorted) | no (pre-resolution) | content-dedup key surviving recompile/metadata-strip |
 | `resolution_signature(rows)` | resolution **facts** only (`RESOLUTION_FACT_FIELDS`) | order-independent | n/a | pins the resolved facts; producer-independent |
+| `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
+| `gene_metrics_signature(rows)` | gene-constraint **facts** (`GENE_METRICS_FACT_FIELDS`) | order-independent | n/a | pins the gene-constraint table |
+
+The last three share one body, `fact_signature(rows, fact_fields)` — three derived-fact tables under one
+hashing discipline, so the rule cannot drift between them as more sidecars land.
 
 Reproducibility identity is the triple **`(content_signature, resolution_signature, compiler_version)
 ⟹ artifact.digest`** — a holder of the two small CSVs reproduces the artifact byte-for-byte, offline.

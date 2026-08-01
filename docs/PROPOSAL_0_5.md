@@ -90,6 +90,78 @@ Recorded here as forward-design guardrails so these are not re-proposed for 0.5:
 
 ---
 
+## G1 — gnomAD v4.1: population frequency, gene constraint, and VRS identity → **built in 0.5**
+
+The design thread behind [USE_CASES.md §6](USE_CASES.md) and the two new sidecars. Recorded here with
+the reasoning, because several of the decisions were made *against* the plan's own expectations once the
+assumptions were probed.
+
+### The shape
+
+gnomAD enters in three roles, deliberately different in kind: a **resolution link** (no schema change,
+appended last), an **allele-frequency pass** (`frequencies.csv`, variant-level), and a **gene-constraint
+pass** (`gene_metrics.csv`, gene-level). Each sidecar is injected, machine-produced, human-overridable,
+fact-hashed, and compiled into its own optional parquet. The three-parquet SNP core is untouched.
+
+### Decisions, and what changed under probing
+
+**Ancestry vocabulary: open and seeded, not closed.** Principle 6's default is a closed `frozenset`, and
+this is a deliberate exception: the table must stay *source-independent*, and TOPMed / ALFA / 1000G bring
+their own labels. A closed set would make a source swap a schema change. What makes a label interpretable
+is `dataset`, not membership.
+
+**`allele_frequency` derived, not stored.** AC/AN are integers and round-trip through CSV exactly; a
+stored float invites formatting drift (a P7 idempotency hazard) to duplicate one fact in two columns. The
+parquet materializes it as a real `Float64`, so the machine artifact still hands consumers the number.
+
+**VRS: minted, not merely recorded — and the dependency story inverted twice.** The plan's first draft
+deferred minting because "computing a VA needs `seqrepo`/`biocommons.hgvs`". Probing killed that: the
+*identification* step is `sha512t24u` over a compact canonical JSON, reproducible in ~20 lines of stdlib,
+so the format tier mints substitutions with **no new dependency at all**. The plan then assumed the
+remaining half — indel *normalization* — needed `ga4gh.vrs[extras]` (`seqrepo` + `pysam` + `hgvs`: a
+compiled extension and a multi-gigabyte local sequence store), and quarantined it to `[dev]`. Probing
+killed that too: core `ga4gh.vrs` with the seqrepo **REST** data proxy normalizes over HTTP for 14
+pure-Python packages. Reading a remote sequence is exactly what a network tier is for, so complete allele
+identity became a **core** enricher capability rather than an opt-in extra, with `--offline` the only
+thing that degrades it to substitutions-only.
+
+A further correction: the plan explained the 1.x/2.0 allele-id stability by saying the allele is
+serialized over the location's *content*. It is not — the allele embeds the location's **digest**. The
+*conclusion* (our id equals gnomAD's) is right and is now pinned by ground-truth tests; the stated
+mechanism was wrong, and the serialization was settled empirically against recorded ids rather than by
+reading spec prose.
+
+**The identity switch rides 0.5.0's unpublished window.** `variant_key` derives from the VA for a
+resolved substitution. This is legal *now* because `variant_key` is derived and frozen, never authored —
+so no authored schema, no DSL, and no human author is touched. It is "major-only" for exactly one reason:
+the column is in `weights.parquet`, hence in `artifact.digest`. That gate is **publication**, not the
+version number, and 0.4 is the published line while 0.5.0 never shipped. Doing it before any 0.5.0 module
+exists costs one re-baseline and breaks no published artifact.
+
+**Substitutions only.** An indel keeps its coordinate key rather than an enricher-minted one. The plan
+wanted indels keyed on their normalized VA, but that cannot hold: the key is frozen at row load in the
+format tier, and re-keying from an enricher-supplied id would make `artifact.digest` depend on whether an
+optional network call succeeded. Indels get an interoperable `vrs_id` **column** instead — identity stays
+reproducible, interoperability is still recorded.
+
+**The two gene-constraint routes are different releases.** The plan wanted a test asserting the snapshot
+and the live API agree for BRCA1 within float tolerance. They do not, and should not: the live
+`gnomad_constraint` field serves **v2.1.1** while v4.1 ships only in the bulk file (BRCA1 LOEUF 0.928 vs
+0.885, same MANE transcript). They are labelled as the different datasets they are, and the test asserts
+the *difference*.
+
+### Verify severity
+
+A stored `vrs_id` is recomputed at compile time. A **substitution** mismatch is an error in both modes
+(deterministic here, so it can only be corruption); an **indel** is a warning in `best_effort` (minted
+against a sequence proxy, carried unverified) and an error in `strict` (whose contract is
+byte-reproducibility, so an unverifiable identity has no place in it).
+
+### Still deferred
+
+Multi-build VRS minting (a second refget table — the remaining half of RM15), HGVS *generation* as a
+feature, and an offline frequency snapshot (58 GB / 742 GB — parked, not scheduled).
+
 ## The rest of 0.5 scope
 
 Everything else that was open at the end of the 0.4 round is tracked as `RMn` in

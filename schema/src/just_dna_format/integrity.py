@@ -20,6 +20,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from pydantic import BaseModel
 
+from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
+from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.manifest import (
     MARKETPLACE_COMPILED_BY,
     Artifact,
@@ -149,6 +151,55 @@ def content_signature(tables: Mapping[str, Sequence[BaseModel]]) -> str:
     return sha256_bytes(canonical.encode("utf-8"))
 
 
+def fact_signature(rows: Sequence[BaseModel], fact_fields: Sequence[str]) -> str:
+    """Stable, producer-independent identity over a derived-fact table's fact columns.
+
+    The shared body behind `resolution_signature`, `frequency_signature`, and
+    `gene_metrics_signature` — three tables with one hashing discipline, so the rule cannot drift
+    between them as more sidecars land. Each row is reduced to its `fact_fields` with `None` dropped,
+    canonicalized, and the sorted set hashed:
+
+    - **Fact-only** — the provenance columns each table excludes (`source`/`status`/`fetched_at`) are
+      simply not in `fact_fields`, so a human-filled and a machine-filled table with identical facts
+      hash equal. That producer-independence is the whole reason these tables are hashed here instead
+      of entering `manifest.inputs` as raw-byte `FileEntry`s.
+    - **Normalized** — `model_dump(mode="json")` with `None` dropped, so CSV reformatting and an unset
+      optional column do not change it.
+    - **Order-independent** — rows are sorted by their canonical JSON, so a producer that emits them in
+      a different order still hashes equal.
+    """
+    normalized = sorted(
+        json.dumps(
+            {
+                key: value
+                for key, value in row.model_dump(mode="json").items()
+                if key in fact_fields and value is not None
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        for row in rows
+    )
+    canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return sha256_bytes(canonical.encode("utf-8"))
+
+
+def frequency_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `frequencies.csv` (`frequency.FREQUENCY_FACT_FIELDS`). See `fact_signature`.
+
+    Recorded in `manifest.frequency.signature` and kept out of `artifact.digest`: the compiled
+    `frequencies.parquet` is already in the digest, and this is the *producer-independent* identity of
+    the same content — the thing that stays equal when the enricher and a human write the same numbers
+    with different column order and different timestamps.
+    """
+    return fact_signature(rows, FREQUENCY_FACT_FIELDS)
+
+
+def gene_metrics_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `gene_metrics.csv` (`gene_metrics.GENE_METRICS_FACT_FIELDS`)."""
+    return fact_signature(rows, GENE_METRICS_FACT_FIELDS)
+
+
 def resolution_signature(rows: Sequence[BaseModel]) -> str:
     """Stable, producer-independent identity over the resolution table's *facts* (0.5).
 
@@ -168,20 +219,7 @@ def resolution_signature(rows: Sequence[BaseModel]) -> str:
     Together with `content_signature` and `compiler_version` it fully determines `artifact.digest`, so
     a holder of the two small CSVs reproduces the artifact byte-for-byte, fully offline.
     """
-    normalized = sorted(
-        json.dumps(
-            {
-                key: value
-                for key, value in row.model_dump(mode="json").items()
-                if key in RESOLUTION_FACT_FIELDS and value is not None
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        for row in rows
-    )
-    canonical = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
-    return sha256_bytes(canonical.encode("utf-8"))
+    return fact_signature(rows, RESOLUTION_FACT_FIELDS)
 
 
 def verify_manifest(

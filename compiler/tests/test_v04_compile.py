@@ -175,7 +175,7 @@ _ALLELE_FUNCTION = (
 )
 _PGS = (
     "pgs_id,trait_efo_id,training_ancestry,training_cohort,match_rate_floor,research_tier,note\n"
-    "PGS000135,EFO_0001645,EUR|EAS,UK Biobank,0.8,research_only,CAD score\n"
+    "PGS000135,MONDO_0005010,EUR|EAS,UK Biobank,0.8,research_only,CAD score\n"
 )
 
 _QUANT_PARQUETS = (

@@ -24,17 +24,28 @@ dependencies = [
     "tenacity>=9.0.0",
     "huggingface-hub>=0.34.0",
     "typer>=0.12.0",
+    # GA4GH VRS allele identity. CORE, not an extra: minting a *substitution* id is stdlib and lives
+    # in the format tier, but justifying an **indel** needs the reference sequence — and reading
+    # sequence is network access, which is precisely this tier's job. Probed rather than assumed: the
+    # plan budgeted for `ga4gh.vrs[extras]` (seqrepo + pysam + hgvs, a compiled extension and a
+    # multi-GB local sequence store) on the belief that a local seqrepo was required. It is not. Core
+    # `ga4gh.vrs` with the seqrepo **REST** data proxy normalizes indels over HTTP, and costs 14
+    # pure-Python packages with no compiled dependencies (pydantic is already ours). At that price
+    # there is no reason to make complete allele identity opt-in, so it is the default and `--offline`
+    # is the only mode that degrades to substitutions-only.
+    "ga4gh.vrs>=2.3.3",
 ]
 
 [project.scripts]
 just-dna-enricher = "just_dna_enricher.cli:app"
 
-# Publisher / developer surface. huggingface-hub is already a core dep (snapshot download);
-# this extra marks the upload CLI (`just-dna-enricher upload`), the ClinVar reference builder
-# (`just-dna-enricher clinvar build`, which needs polars to write the snapshot parquet) and test
-# tooling as the supported install path for authors — `pip install just-dna-enricher[dev]`. polars
-# is a builder-only dep (guarded import in `clinvar_build`); the runtime resolver path stays
-# polars-free (the compiler tier owns polars, CONSTITUTION Goal 2).
+# Publisher / developer surface. huggingface-hub and ga4gh.vrs are already core deps (snapshot
+# download; allele identity); this extra marks the upload CLI (`just-dna-enricher upload`), the
+# ClinVar and gnomAD-constraint reference builders (`just-dna-enricher clinvar build`,
+# `just-dna-enricher gnomad constraint build`, which need polars to write the snapshot parquet) and
+# test tooling as the supported install path for authors — `pip install just-dna-enricher[dev]`.
+# polars is a builder-only dep (guarded import in `clinvar_build`/`constraint_build`); the runtime
+# resolver path stays polars-free (the compiler tier owns polars, CONSTITUTION Goal 2).
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3",

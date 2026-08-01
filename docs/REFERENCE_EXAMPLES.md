@@ -225,7 +225,7 @@ consumer refuses or caveats an out-of-ancestry application instead of silently m
 ```csv
 pgs_id,trait_efo_id,note,group,training_ancestry,training_cohort,match_rate_floor,research_tier
 PGS000135,EFO_0000692,"Schizophrenia (EUR-derived)",psychiatric,EUR,,0.8,research_only
-PGS000765,EFO_0001645,"Coronary artery disease",cardiometabolic,EUR,"UK Biobank NW-EUR",0.8,research_only
+PGS000765,MONDO_0005010,"Coronary artery disease",cardiometabolic,EUR,"UK Biobank NW-EUR",0.8,research_only
 ```
 `research_tier=research_only` pins as *data* that a PRS is a Z/percentile *within a matched reference
 distribution*, never an ancestry-calibrated absolute risk; `training_ancestry` (superpop floor) +

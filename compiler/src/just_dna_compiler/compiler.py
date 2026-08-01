@@ -26,12 +26,16 @@ from typing import Any, Callable, Iterable, Optional, Union, get_args, get_origi
 import polars as pl
 import yaml
 from just_dna_format.base import derive_variant_key
+from just_dna_format.frequency import FrequencyRow
+from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import (
     build_artifact,
     content_signature as _content_signature,
     file_entries,
     file_entry,
+    frequency_signature as _frequency_signature,
+    gene_metrics_signature as _gene_metrics_signature,
     resolution_signature as _resolution_signature,
     sha256_file,
 )
@@ -42,6 +46,8 @@ from just_dna_format.manifest import (
     Compilation,
     Display,
     FileEntry,
+    Frequency,
+    GeneMetrics,
     Identity,
     ModuleManifest,
     Provenance,
@@ -65,6 +71,8 @@ from just_dna_format.pgx import (
     PharmVariantRow,
 )
 from just_dna_format.spec import RESERVED_FLAGS, ModuleSpecConfig, StudyRow, VariantRow
+from just_dna_format.vocab import population_sort_key
+from just_dna_format.vrs import UnsupportedBuildError, derive_vrs_allele_id, is_substitution
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.models import CompilationResult, ValidationResult
@@ -124,6 +132,23 @@ _OUTPUT_FILES: tuple[str, ...] = (
     "annotations.parquet",
     "studies.parquet",
     *(parquet for _, parquet, _ in _TABLE_KINDS),
+    # The 0.5 derived-fact tables. In `_OUTPUT_FILES` (so a module that carries them has a different
+    # content identity — correct: different content, different artifact) but deliberately NOT in
+    # `_INPUT_FILES`: like `resolution.csv`, their authored CSVs are multi-producer and are hashed by
+    # FACTS (`integrity.frequency_signature` / `gene_metrics_signature`) rather than raw bytes, so a
+    # reverse→recompile cycle does not "change the hash" over column order and timestamps.
+    "frequencies.parquet",
+    "gene_metrics.parquet",
+)
+
+# The 0.5 derived-fact sidecars: (authored CSV, compiled parquet, row model). Deliberately NOT
+# registered in `_TABLE_KINDS`: those are authored DSL tables with `AuthoredModel` semantics, the
+# reserved-namespace guard, duplicate-key checks and raw-byte input hashing. A machine-produced
+# reference-fact table is a third category — injected, fact-hashed, human-overridable — and folding it
+# into the table kinds would blur exactly the line the 0.5 rework drew.
+_FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
+    ("frequencies.csv", "frequencies.parquet", FrequencyRow),
+    ("gene_metrics.csv", "gene_metrics.parquet", GeneMetricsRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
 # shipped like logs, kept OUT of `artifact.digest` (it is not in `_OUTPUT_FILES`).
@@ -411,6 +436,13 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
     # awaiting resolution) is NOT a conflict — comparing `(None, None)` against a real position was a
     # false positive. Two *positioned* rows for one key that disagree are still an error.
     key_positions: dict[str, tuple[str, int]] = {}
+    # `ref` is checked separately from the position because a VA-derived key (0.5) addresses the
+    # *place and the alt* — the reference base at a position is a fact of the genome, so VRS does not
+    # encode it. That is correct VRS semantics but it drops a guarantee the old `chrom:start:ref:alts`
+    # key gave for free: two rows at one position claiming different reference bases used to be two
+    # keys, and now they are one. Exactly one of them can be right, so catching it here keeps the
+    # authored-typo diagnosis the switch would otherwise have lost.
+    key_refs: dict[str, str] = {}
     for row in variants:
         if row.chrom is None or row.start is None:
             continue
@@ -421,6 +453,16 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
                 errors.append(f"Inconsistent positions for {key}: {key_positions[key]} vs {pos}")
         else:
             key_positions[key] = pos
+        if row.ref is not None:
+            if key in key_refs:
+                if key_refs[key] != row.ref:
+                    errors.append(
+                        f"Inconsistent reference allele for {key}: {key_refs[key]!r} vs {row.ref!r} "
+                        f"at {row.chrom}:{row.start} — the reference base at a position is a single "
+                        f"fact, so at most one of these is correct"
+                    )
+            else:
+                key_refs[key] = row.ref
 
     seen_keys: set[tuple[str, str]] = set()
     for row in variants:
@@ -461,6 +503,103 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
                 f"a single-allele genotype (e.g. 'G') for a homoplasmic/hemizygous call"
             )
     return errors, warnings
+
+
+def _verify_vrs_ids(
+    resolution_rows: list[ResolutionRow], *, strict: bool
+) -> tuple[list[str], list[str]]:
+    """Recompute every stored `vrs_id` and report disagreements. Returns (errors, warnings).
+
+    The integrity check the whole minting story earns: a `ga4gh:VA.…` is *content-addressed*, so it is
+    the one column in the whole artifact that can be checked against itself with no reference, no
+    network, and no dependency — `derive_vrs_allele_id` is stdlib, so the compiler tier gains nothing
+    to run this (Goal 2). A mismatch means the row was tampered with, or the producer and this
+    implementation disagree — either way the id is not usable as an identity.
+
+    Every row lands in exactly one of **three** outcomes, and the distinction between the last two is
+    the one that matters:
+
+    - **verified** — recomputed and equal. Silent.
+    - **mismatch** — recomputed and *different*. Always an **error**, in both modes: this computation
+      is fully deterministic here, so a disagreement can only mean the stored id is corrupt.
+    - **unverifiable** — could not be recomputed at all (see `_recompute_vrs_id` for the four reasons).
+      **Warning** in `best_effort`, **error** in `strict`.
+
+    The third case is emphatically *not* "an indel mismatch". This tier cannot recompute an indel's id,
+    so it can never detect that one disagrees — it can only report that it did not check. Calling that
+    a mismatch would claim a verdict that was never reached; `strict` refuses such a row precisely
+    because "unchecked" and "correct" are different things, and its contract is a reproducible artifact.
+
+    A row with no `vrs_id` is skipped entirely — there is nothing to check, which is not the same as
+    something that could not be checked.
+    """
+    errors: list[str] = []
+    warnings_out: list[str] = []
+    for row in resolution_rows:
+        if row.vrs_id is None:
+            continue
+        recomputed, reason = _recompute_vrs_id(row)
+        if recomputed is None:
+            message = f"{row.variant_key}: vrs_id {row.vrs_id} could not be verified — {reason}"
+            if strict:
+                errors.append(
+                    f"{message}. A strict compile will not carry an identity it cannot confirm; "
+                    f"recompile without strict to keep it as a warning, or drop the vrs_id."
+                )
+            else:
+                warnings_out.append(f"{message}; carried unverified.")
+            continue
+        if recomputed != row.vrs_id:
+            errors.append(
+                f"{row.variant_key}: stored vrs_id {row.vrs_id} does not match the id recomputed "
+                f"from {row.chrom}:{row.start} {row.ref}>{row.alts} ({recomputed}) — a substitution's "
+                f"id is deterministic here, so this is corruption, not a difference of opinion."
+            )
+    return errors, warnings_out
+
+
+def _recompute_vrs_id(row: ResolutionRow) -> tuple[Optional[str], Optional[str]]:
+    """`(recomputed_id, reason_it_could_not_be)` — exactly one of the two is non-`None`.
+
+    The four reasons a row is unverifiable here, each a genuine limit of a no-network tier rather than
+    a defect in the row:
+
+    1. **no coordinate** — nothing to recompute from (an unresolved rsid row carrying an external id);
+    2. **no single ALT** — position-only, or multi-allelic; a VRS allele id names exactly one allele,
+       and picking one from a comma-joined cell would be inventing data;
+    3. **not a single-base substitution** — an indel or MNV must be justified against the reference
+       sequence, which this tier has no access to and will never fetch (Principle 2);
+    4. **outside the primary assembly, or a build with no refget table** — no accession to address the
+       sequence by. The build case is *raised* by `refget_accession` rather than returned, deliberately
+       (a caller asking for GRCh37 should hear "not built" rather than get a GRCh38-flavoured answer),
+       so it is caught here and turned into a reason. Letting it propagate would abort the whole
+       compile over one unverifiable row, which is the wrong severity for `best_effort`.
+    """
+    if row.chrom is None or row.start is None:
+        return None, "the row carries no coordinate to recompute from"
+    alt = row.alts if row.alts and "," not in row.alts else None
+    if alt is None:
+        return None, (
+            "the row names no single ALT (position-only, or multi-allelic), and a VRS allele id "
+            "names exactly one allele"
+        )
+    if not is_substitution(row.ref, alt):
+        return None, (
+            f"{row.ref}>{alt} is not a single-base substitution, so justifying it needs the reference "
+            f"sequence — minted upstream by the enricher, not recomputable here"
+        )
+    try:
+        recomputed = derive_vrs_allele_id(
+            row.chrom, row.start, row.ref, alt, build=row.genome_build
+        )
+    except UnsupportedBuildError as exc:
+        return None, str(exc)
+    if recomputed is None:
+        return None, (
+            f"{row.chrom}:{row.start} is outside the primary assembly (no refget accession for the "
+            f"contig, or the position is past its end)"
+        )
+    return recomputed, None
 
 
 def _cross_validate_studies(
@@ -813,6 +952,12 @@ def compile_module(
             return CompilationResult(success=False, errors=res_errors, warnings=all_warnings)
         for row in resolution_rows:
             resolution_table.setdefault(row.variant_key, []).append(row)
+        # Content-addressed identities are checkable against themselves — do it before anything is
+        # written, so a tampered id never reaches an artifact. Dep-free (stdlib), see `_verify_vrs_ids`.
+        vrs_errors, vrs_warnings = _verify_vrs_ids(resolution_rows, strict=strict)
+        all_warnings.extend(vrs_warnings)
+        if vrs_errors:
+            return CompilationResult(success=False, errors=vrs_errors, warnings=all_warnings)
 
     resolution_mode: Optional[str] = None
     resolution_sources: list[str] = []
@@ -929,6 +1074,37 @@ def compile_module(
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 
+    # 0.5 derived-fact sidecars: materialize each present CSV, and cross-check it against what the
+    # module actually contains. A row describing something the module never mentions is a warning, not
+    # an error — an over-broad sidecar is harmless (a stale gene left in after a variant was removed),
+    # while failing the compile over it would punish the author for the enricher's generosity.
+    frequency_rows: list[FrequencyRow] = []
+    gene_metrics_rows: list[GeneMetricsRow] = []
+    for csv_name, parquet_name, model in _FACT_TABLES:
+        fact_path = spec_dir / csv_name
+        if not fact_path.exists():
+            continue
+        rows, fact_errors, _ = _load_csv_rows(fact_path, model, csv_name)
+        if fact_errors:
+            return CompilationResult(success=False, errors=fact_errors, warnings=all_warnings)
+        if model is FrequencyRow:
+            frequency_rows = rows
+            arith_errors, arith_warnings = _check_frequency_arithmetic(rows)
+            if arith_errors:
+                return CompilationResult(
+                    success=False, errors=arith_errors, warnings=all_warnings
+                )
+            all_warnings.extend(arith_warnings)
+            all_warnings.extend(_cross_check_frequencies(rows, variants))
+            fact_df = _build_frequencies(rows, module_name)
+        else:
+            gene_metrics_rows = rows
+            all_warnings.extend(_check_gene_metrics_arithmetic(rows))
+            all_warnings.extend(_cross_check_gene_metrics(rows, variants))
+            fact_df = _build_table(rows, model, module_name)
+        fact_df.write_parquet(output_dir / parquet_name, compression=compression)
+        table_rows[parquet_name] = fact_df.height
+
     logs = _collect_logs(spec_dir, output_dir, log_files)
     # Authored side-car assets are validated here (validate_spec does not read them). Surface a
     # malformed one as a compile error instead of letting the exception escape mid-compile.
@@ -962,6 +1138,8 @@ def compile_module(
         fully_resolved=fully_resolved,
         resolution_sig=resolution_sig,
         resolution_sources=resolution_sources,
+        frequency=_frequency_block(frequency_rows),
+        gene_metrics=_gene_metrics_block(gene_metrics_rows),
     )
     write_manifest(manifest, output_dir / "manifest.json")
 
@@ -979,6 +1157,39 @@ def compile_module(
         warnings=all_warnings,
         stats=stats,
         manifest=manifest,
+    )
+
+
+def _frequency_block(rows: list[FrequencyRow]) -> Optional[Frequency]:
+    """The manifest's `frequency` summary, or `None` when the module carries no frequency sidecar.
+
+    `populations` is emitted in the canonical order rather than sorted alphabetically, so it reads the
+    way the table reads (`global` first). Every other list is sorted — they are set-like facets, and a
+    sorted list is the only order that cannot drift.
+    """
+    if not rows:
+        return None
+    populations = sorted({r.population for r in rows}, key=population_sort_key)
+    return Frequency(
+        signature=_frequency_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        populations=populations,
+        row_count=len(rows),
+        variant_count=len({r.variant_key for r in rows}),
+    )
+
+
+def _gene_metrics_block(rows: list[GeneMetricsRow]) -> Optional[GeneMetrics]:
+    """The manifest's `gene_metrics` summary, or `None` when the module carries no such sidecar."""
+    if not rows:
+        return None
+    return GeneMetrics(
+        signature=_gene_metrics_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        genes=sorted({r.gene for r in rows}),
     )
 
 
@@ -1000,6 +1211,8 @@ def _build_manifest(
     fully_resolved: bool = False,
     resolution_sig: Optional[str] = None,
     resolution_sources: Optional[list[str]] = None,
+    frequency: Optional[Frequency] = None,
+    gene_metrics: Optional[GeneMetrics] = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -1046,6 +1259,8 @@ def _build_manifest(
             resolution_signature=resolution_sig,
             resolution_sources=resolution_sources or [],
         ),
+        frequency=frequency,
+        gene_metrics=gene_metrics,
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),
         content_signature=content_sig,
         artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),
@@ -1154,6 +1369,154 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
         "actionability": pl.Utf8,
     }
     return pl.DataFrame(records, schema=schema)
+
+
+def _build_frequencies(rows: list[FrequencyRow], module_name: str) -> pl.DataFrame:
+    """`frequencies.csv` → `frequencies.parquet`, materializing the derived `allele_frequency`.
+
+    The one place this differs from the generic `_build_table`: the CSV stores AC and AN as integers
+    (exact through a text round-trip) and *no* frequency, while the parquet carries a real `Float64`
+    `allele_frequency` so a consumer never does the division itself. Deriving on write rather than
+    storing on both sides keeps one fact in one place in the human-authorable artifact, and gives the
+    machine artifact the column it wants — the same "parquet absorbs the precision, the DSL keeps the
+    human shape" split the format applies everywhere else.
+    """
+    schema: dict[str, Any] = {"module": pl.Utf8}
+    for name, f in FrequencyRow.model_fields.items():
+        schema[name] = _polars_type(f.annotation)
+    schema["allele_frequency"] = pl.Float64
+    records = [
+        {"module": module_name, **row.model_dump(), "allele_frequency": row.allele_frequency}
+        for row in rows
+    ]
+    return pl.DataFrame(records, schema=schema)
+
+
+# Relative tolerance for the float redundancy checks. These are published numbers rendered through a
+# CSV, so exact equality is the wrong test; anything looser than this would stop catching real slips.
+_REDUNDANCY_TOLERANCE: float = 1e-6
+
+
+def _close(left: float, right: float, tolerance: float = _REDUNDANCY_TOLERANCE) -> bool:
+    """Relative comparison that behaves at zero (where a relative test alone is meaningless)."""
+    return abs(left - right) <= tolerance * max(1.0, abs(left), abs(right))
+
+
+def _check_frequency_arithmetic(rows: list[FrequencyRow]) -> tuple[list[str], list[str]]:
+    """Validate-by-redundancy over the frequency table's own numbers. Returns (errors, warnings).
+
+    These columns are not independent — they constrain each other — so a violation is detectable with
+    no reference at all, which is exactly the class of check a no-network tier can own. The compiler
+    cannot know whether an allele count is *right*; it can know when a set of counts is *impossible*.
+
+    Integer impossibilities are **errors** (exact arithmetic, so there is no tolerance argument to
+    have, and a violation is corruption). Float relations are **warnings**: they hold on real data
+    (verified against the recorded gnomAD payload), but they compare numbers a source computed on
+    possibly-different denominators, and failing a good module over a rounding difference would be
+    worse than the miss.
+    """
+    errors: list[str] = []
+    warnings_out: list[str] = []
+    for row in rows:
+        where = f"frequencies.csv [{row.variant_key} / {row.population}]"
+        ac, an, hom = row.allele_count, row.allele_number, row.homozygote_count
+        if ac is not None and an is not None and ac > an:
+            errors.append(
+                f"{where}: allele_count {ac} exceeds allele_number {an} — a count cannot be larger "
+                f"than its own denominator"
+            )
+        if ac is not None and hom is not None and 2 * hom > ac:
+            errors.append(
+                f"{where}: homozygote_count {hom} implies at least {2 * hom} alleles, but "
+                f"allele_count is {ac} — each homozygote contributes two"
+            )
+        frequency = row.allele_frequency
+        if row.faf95 is not None and frequency is not None and row.faf95 > frequency:
+            if not _close(row.faf95, frequency):
+                warnings_out.append(
+                    f"{where}: faf95 {row.faf95} exceeds the group's own allele frequency "
+                    f"{frequency:.6g} — a 95% CI *lower bound* should sit at or below the point "
+                    f"estimate, so these two numbers may not describe the same denominator"
+                )
+    return errors, warnings_out
+
+
+def _check_gene_metrics_arithmetic(rows: list[GeneMetricsRow]) -> list[str]:
+    """Validate-by-redundancy over the constraint table. Returns warnings.
+
+    Two relations hold by definition and are therefore checkable without a reference: the observed/
+    expected ratio must sit inside its own confidence interval, and it must equal `obs / exp` (on the
+    recorded gnomAD payload it agrees to six decimal places for both BRCA1 and MYH7). Warnings rather
+    than errors throughout: every value here is a float that has been through a CSV, and a constraint
+    score is advisory to begin with.
+    """
+    warnings_out: list[str] = []
+    for row in rows:
+        where = f"gene_metrics.csv [{row.gene}]"
+        lower, point, upper = row.oe_lof_lower, row.oe_lof, row.loeuf
+        if None not in (lower, point, upper) and not lower <= point <= upper:
+            warnings_out.append(
+                f"{where}: oe_lof {point} lies outside its own interval [{lower}, {upper}] — the "
+                f"point estimate and the bounds may have come from different releases or columns"
+            )
+        if row.obs_lof is not None and row.exp_lof and point is not None:
+            derived = row.obs_lof / row.exp_lof
+            if not _close(derived, point, 1e-4):
+                warnings_out.append(
+                    f"{where}: obs_lof/exp_lof is {derived:.6g} but oe_lof is {point} — these are the "
+                    f"same quantity, so a disagreement means one of the three columns is mismapped"
+                )
+    return warnings_out
+
+
+def _cross_check_frequencies(
+    rows: list[FrequencyRow], variants: list[VariantRow]
+) -> list[str]:
+    """Warn when a frequency row describes a coordinate no variant in the module sits at.
+
+    Matched at *position* level (`chrom:start:ref`, no alt) rather than on `variant_key` equality: the
+    sidecar is keyed per-allele while a module row may be position-only or multi-allelic, so key
+    equality would false-alarm on rows that are in fact about the same locus. The same reasoning the
+    study/variant orphan check already uses.
+    """
+    if not variants:
+        return []
+    positions = {
+        derive_variant_key(None, v.chrom, v.start, v.ref) for v in variants if v.chrom is not None
+    }
+    if not positions:
+        return []
+    orphans = sorted(
+        {
+            f"{r.chrom}:{r.start}:{r.ref}"
+            for r in rows
+            if r.chrom is not None
+            and derive_variant_key(None, r.chrom, r.start, r.ref) not in positions
+        }
+    )
+    if not orphans:
+        return []
+    return [
+        f"frequencies.csv describes {len(orphans)} coordinate(s) no variant in this module sits at: "
+        f"{orphans}"
+    ]
+
+
+def _cross_check_gene_metrics(
+    rows: list[GeneMetricsRow], variants: list[VariantRow]
+) -> list[str]:
+    """Warn when a gene-metrics row names a gene the module never mentions."""
+    if not variants:
+        return []
+    genes = {v.gene for v in variants if v.gene}
+    if not genes:
+        return []
+    orphans = sorted({r.gene for r in rows if r.gene not in genes})
+    if not orphans:
+        return []
+    return [
+        f"gene_metrics.csv names {len(orphans)} gene(s) this module never mentions: {orphans}"
+    ]
 
 
 def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataFrame:
@@ -1386,6 +1749,16 @@ def reverse_module(
         kind_path = parquet_dir / parquet_name
         if kind_path.is_file():
             _write_table_csv(pl.read_parquet(kind_path), model, output_dir / csv_name)
+
+    # 0.5 derived-fact sidecars: same round-trip, minus the columns that are recomputed rather than
+    # stored. `_write_table_csv` drops any parquet column the model does not declare, so
+    # `allele_frequency` (derived on write, absent from `FrequencyRow`'s fields) falls away by
+    # construction rather than by a special case — re-deriving it on the next compile reproduces the
+    # identical parquet.
+    for csv_name, parquet_name, model in _FACT_TABLES:
+        fact_path = parquet_dir / parquet_name
+        if fact_path.is_file():
+            _write_table_csv(pl.read_parquet(fact_path), model, output_dir / csv_name)
 
     return output_dir
 

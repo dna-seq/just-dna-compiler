@@ -1,0 +1,570 @@
+{
+ "data": {
+  "mthfr": {
+   "caid": "CA170990",
+   "exome": {
+    "ac": 471698,
+    "af": 0.3226922650671315,
+    "an": 1461758
+   },
+   "joint": {
+    "ac": 513548,
+    "an": 1613846,
+    "faf95": {
+     "popmax": 0.4731112799999998,
+     "popmax_population": "amr"
+    },
+    "hemizygote_count": 0,
+    "homozygote_count": 87723,
+    "populations": [
+     {
+      "ac": 19200,
+      "an": 62494,
+      "hemizygote_count": 0,
+      "homozygote_count": 3108,
+      "id": "remaining"
+     },
+     {
+      "ac": 9971,
+      "an": 32840,
+      "hemizygote_count": 0,
+      "homozygote_count": 1581,
+      "id": "remaining_XX"
+     },
+     {
+      "ac": 9229,
+      "an": 29654,
+      "hemizygote_count": 0,
+      "homozygote_count": 1527,
+      "id": "remaining_XY"
+     },
+     {
+      "ac": 28657,
+      "an": 59984,
+      "hemizygote_count": 0,
+      "homozygote_count": 7236,
+      "id": "amr"
+     },
+     {
+      "ac": 15466,
+      "an": 32474,
+      "hemizygote_count": 0,
+      "homozygote_count": 3889,
+      "id": "amr_XX"
+     },
+     {
+      "ac": 13191,
+      "an": 27510,
+      "hemizygote_count": 0,
+      "homozygote_count": 3347,
+      "id": "amr_XY"
+     },
+     {
+      "ac": 14919,
+      "an": 63990,
+      "hemizygote_count": 0,
+      "homozygote_count": 1788,
+      "id": "fin"
+     },
+     {
+      "ac": 6983,
+      "an": 30208,
+      "hemizygote_count": 0,
+      "homozygote_count": 839,
+      "id": "fin_XX"
+     },
+     {
+      "ac": 7936,
+      "an": 33782,
+      "hemizygote_count": 0,
+      "homozygote_count": 949,
+      "id": "fin_XY"
+     },
+     {
+      "ac": 440,
+      "an": 910,
+      "hemizygote_count": 0,
+      "homozygote_count": 105,
+      "id": "ami"
+     },
+     {
+      "ac": 223,
+      "an": 468,
+      "hemizygote_count": 0,
+      "homozygote_count": 50,
+      "id": "ami_XX"
+     },
+     {
+      "ac": 217,
+      "an": 442,
+      "hemizygote_count": 0,
+      "homozygote_count": 55,
+      "id": "ami_XY"
+     },
+     {
+      "ac": 15635,
+      "an": 44872,
+      "hemizygote_count": 0,
+      "homozygote_count": 2955,
+      "id": "eas"
+     },
+     {
+      "ac": 7998,
+      "an": 22974,
+      "hemizygote_count": 0,
+      "homozygote_count": 1523,
+      "id": "eas_XX"
+     },
+     {
+      "ac": 7637,
+      "an": 21898,
+      "hemizygote_count": 0,
+      "homozygote_count": 1432,
+      "id": "eas_XY"
+     },
+     {
+      "ac": 1584,
+      "an": 6062,
+      "hemizygote_count": 0,
+      "homozygote_count": 233,
+      "id": "mid"
+     },
+     {
+      "ac": 649,
+      "an": 2650,
+      "hemizygote_count": 0,
+      "homozygote_count": 90,
+      "id": "mid_XX"
+     },
+     {
+      "ac": 935,
+      "an": 3412,
+      "hemizygote_count": 0,
+      "homozygote_count": 143,
+      "id": "mid_XY"
+     },
+     {
+      "ac": 13560,
+      "an": 91086,
+      "hemizygote_count": 0,
+      "homozygote_count": 1194,
+      "id": "sas"
+     },
+     {
+      "ac": 3304,
+      "an": 23194,
+      "hemizygote_count": 0,
+      "homozygote_count": 269,
+      "id": "sas_XX"
+     },
+     {
+      "ac": 10256,
+      "an": 67892,
+      "hemizygote_count": 0,
+      "homozygote_count": 925,
+      "id": "sas_XY"
+     },
+     {
+      "ac": 13619,
+      "an": 29604,
+      "hemizygote_count": 0,
+      "homozygote_count": 3147,
+      "id": "asj"
+     },
+     {
+      "ac": 6701,
+      "an": 14502,
+      "hemizygote_count": 0,
+      "homozygote_count": 1562,
+      "id": "asj_XX"
+     },
+     {
+      "ac": 6918,
+      "an": 15102,
+      "hemizygote_count": 0,
+      "homozygote_count": 1585,
+      "id": "asj_XY"
+     },
+     {
+      "ac": 8201,
+      "an": 74986,
+      "hemizygote_count": 0,
+      "homozygote_count": 465,
+      "id": "afr"
+     },
+     {
+      "ac": 4547,
+      "an": 41446,
+      "hemizygote_count": 0,
+      "homozygote_count": 243,
+      "id": "afr_XX"
+     },
+     {
+      "ac": 3654,
+      "an": 33540,
+      "hemizygote_count": 0,
+      "homozygote_count": 222,
+      "id": "afr_XY"
+     },
+     {
+      "ac": 397733,
+      "an": 1179858,
+      "hemizygote_count": 0,
+      "homozygote_count": 67492,
+      "id": "nfe"
+     },
+     {
+      "ac": 205939,
+      "an": 611568,
+      "hemizygote_count": 0,
+      "homozygote_count": 34789,
+      "id": "nfe_XX"
+     },
+     {
+      "ac": 191794,
+      "an": 568290,
+      "hemizygote_count": 0,
+      "homozygote_count": 32703,
+      "id": "nfe_XY"
+     },
+     {
+      "ac": 513548,
+      "an": 1613846,
+      "hemizygote_count": 0,
+      "homozygote_count": 87723,
+      "id": ""
+     },
+     {
+      "ac": 261781,
+      "an": 812324,
+      "hemizygote_count": 0,
+      "homozygote_count": 44835,
+      "id": "XX"
+     },
+     {
+      "ac": 251767,
+      "an": 801522,
+      "hemizygote_count": 0,
+      "homozygote_count": 42888,
+      "id": "XY"
+     },
+     {
+      "ac": 261781,
+      "an": 812324,
+      "hemizygote_count": 0,
+      "homozygote_count": 44835,
+      "id": "XX"
+     },
+     {
+      "ac": 251767,
+      "an": 801522,
+      "hemizygote_count": 0,
+      "homozygote_count": 42888,
+      "id": "XY"
+     }
+    ]
+   },
+   "rsids": [
+    "rs1801133"
+   ],
+   "variant_id": "1-11796321-G-A",
+   "vrs": {
+    "_id": "ga4gh:VA.SOEVGpU16hxYQtJNeRyfq0V-B0rSOGK-"
+   }
+  },
+  "multi": null,
+  "search": [
+   {
+    "variant_id": "11-5227002-T-A"
+   },
+   {
+    "variant_id": "11-5227002-T-G"
+   }
+  ],
+  "sickle": {
+   "caid": "CA125138",
+   "exome": {
+    "ac": 2335,
+    "af": 0.001601117971194962,
+    "an": 1458356
+   },
+   "genome": {
+    "ac": 1937,
+    "af": 0.012718820176763365,
+    "an": 152294
+   },
+   "joint": {
+    "ac": 4272,
+    "an": 1610650,
+    "faf95": {
+     "popmax": 0.04815774000000001,
+     "popmax_population": "afr"
+    },
+    "hemizygote_count": 0,
+    "homozygote_count": 40,
+    "populations": [
+     {
+      "ac": 216,
+      "an": 62392,
+      "hemizygote_count": 0,
+      "homozygote_count": 2,
+      "id": "remaining"
+     },
+     {
+      "ac": 121,
+      "an": 32772,
+      "hemizygote_count": 0,
+      "homozygote_count": 2,
+      "id": "remaining_XX"
+     },
+     {
+      "ac": 95,
+      "an": 29620,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "remaining_XY"
+     },
+     {
+      "ac": 199,
+      "an": 60018,
+      "hemizygote_count": 0,
+      "homozygote_count": 1,
+      "id": "amr"
+     },
+     {
+      "ac": 113,
+      "an": 32480,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "amr_XX"
+     },
+     {
+      "ac": 86,
+      "an": 27538,
+      "hemizygote_count": 0,
+      "homozygote_count": 1,
+      "id": "amr_XY"
+     },
+     {
+      "ac": 0,
+      "an": 64018,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "fin"
+     },
+     {
+      "ac": 0,
+      "an": 30210,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "fin_XX"
+     },
+     {
+      "ac": 0,
+      "an": 33808,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "fin_XY"
+     },
+     {
+      "ac": 0,
+      "an": 912,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "ami"
+     },
+     {
+      "ac": 0,
+      "an": 470,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "ami_XX"
+     },
+     {
+      "ac": 0,
+      "an": 442,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "ami_XY"
+     },
+     {
+      "ac": 0,
+      "an": 44854,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "eas"
+     },
+     {
+      "ac": 0,
+      "an": 22962,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "eas_XX"
+     },
+     {
+      "ac": 0,
+      "an": 21892,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "eas_XY"
+     },
+     {
+      "ac": 23,
+      "an": 6052,
+      "hemizygote_count": 0,
+      "homozygote_count": 1,
+      "id": "mid"
+     },
+     {
+      "ac": 7,
+      "an": 2646,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "mid_XX"
+     },
+     {
+      "ac": 16,
+      "an": 3406,
+      "hemizygote_count": 0,
+      "homozygote_count": 1,
+      "id": "mid_XY"
+     },
+     {
+      "ac": 81,
+      "an": 91040,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "sas"
+     },
+     {
+      "ac": 17,
+      "an": 23166,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "sas_XX"
+     },
+     {
+      "ac": 64,
+      "an": 67874,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "sas_XY"
+     },
+     {
+      "ac": 0,
+      "an": 29584,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "asj"
+     },
+     {
+      "ac": 0,
+      "an": 14490,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "asj_XX"
+     },
+     {
+      "ac": 0,
+      "an": 15094,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "asj_XY"
+     },
+     {
+      "ac": 3707,
+      "an": 74908,
+      "hemizygote_count": 0,
+      "homozygote_count": 36,
+      "id": "afr"
+     },
+     {
+      "ac": 2029,
+      "an": 41402,
+      "hemizygote_count": 0,
+      "homozygote_count": 12,
+      "id": "afr_XX"
+     },
+     {
+      "ac": 1678,
+      "an": 33506,
+      "hemizygote_count": 0,
+      "homozygote_count": 24,
+      "id": "afr_XY"
+     },
+     {
+      "ac": 46,
+      "an": 1176872,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "nfe"
+     },
+     {
+      "ac": 19,
+      "an": 609810,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "nfe_XX"
+     },
+     {
+      "ac": 27,
+      "an": 567062,
+      "hemizygote_count": 0,
+      "homozygote_count": 0,
+      "id": "nfe_XY"
+     },
+     {
+      "ac": 4272,
+      "an": 1610650,
+      "hemizygote_count": 0,
+      "homozygote_count": 40,
+      "id": ""
+     },
+     {
+      "ac": 2306,
+      "an": 810408,
+      "hemizygote_count": 0,
+      "homozygote_count": 14,
+      "id": "XX"
+     },
+     {
+      "ac": 1966,
+      "an": 800242,
+      "hemizygote_count": 0,
+      "homozygote_count": 26,
+      "id": "XY"
+     },
+     {
+      "ac": 2306,
+      "an": 810408,
+      "hemizygote_count": 0,
+      "homozygote_count": 14,
+      "id": "XX"
+     },
+     {
+      "ac": 1966,
+      "an": 800242,
+      "hemizygote_count": 0,
+      "homozygote_count": 26,
+      "id": "XY"
+     }
+    ]
+   },
+   "rsids": [
+    "rs334"
+   ],
+   "variant_id": "11-5227002-T-A",
+   "vrs": {
+    "_id": "ga4gh:VA.JGrSjQEcYOJ14vlkvm7sIyYSgHfpC5UG"
+   }
+  },
+  "single": {
+   "variant_id": "1-11796321-G-A"
+  }
+ },
+ "errors": [
+  {
+   "message": "Multiple variants found, query using variant ID to select one."
+  }
+ ]
+}

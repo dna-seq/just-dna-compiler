@@ -22,6 +22,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.vocab import VALID_RESOLUTION_STATUS, check_vocab, validate_rsid
+from just_dna_format.vrs import validate_caid, validate_vrs_id
 
 # The fact columns that feed `integrity.resolution_signature` — the reproducibility-relevant facts,
 # deliberately EXCLUDING the provenance columns (`source`/`status`/`fetched_at`) so a human-filled and
@@ -75,6 +76,33 @@ class ResolutionRow(BaseModel):
         description="0 for a 1:1 resolution; 0..N-1 for a one-to-many rsid expansion",
     )
 
+    # ── cross-references (0.5; OUT of RESOLUTION_FACT_FIELDS this cycle) ──
+    # Three separate identifiers for three separate registries (Principle 5 — one column each, never
+    # one overloaded `identifier` field): `rsid` above is dbSNP's, `vrs_id` is GA4GH's content-addressed
+    # allele name, `caid` is the ClinGen Allele Registry's. They are kept out of the fact set so adding
+    # them moves no existing `resolution_signature` while the columns bed in — the identity they carry
+    # reaches the artifact through `variant_key` (which derives from the VA for a resolved
+    # substitution), so the fact set does not need them.
+    vrs_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "GA4GH VRS allele id (`ga4gh:VA.…`). Minted locally by `vrs.derive_vrs_allele_id` for a "
+            "substitution, by the enricher's [dev] normalization path for an indel, and cross-checked "
+            "against a source's own id (gnomAD serves one) where available."
+        ),
+    )
+    vrs_spec: Optional[str] = Field(
+        default=None,
+        description=(
+            "VRS spec version the id was minted under ('2.0'). Recorded to disambiguate an embedded "
+            "location id, not because the allele id drifts — a substitution's VA is identical under "
+            "1.x and 2.0."
+        ),
+    )
+    caid: Optional[str] = Field(
+        default=None, description="ClinGen Allele Registry canonical allele id (`CA<digits>`)"
+    )
+
     # ── provenance (EXCLUDED from resolution_signature; who/what/when filled this) ──
     source: Optional[str] = Field(
         default=None,
@@ -103,3 +131,13 @@ class ResolutionRow(BaseModel):
     @classmethod
     def _validate_status(cls, v: Optional[str]) -> Optional[str]:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
+
+    @field_validator("vrs_id")
+    @classmethod
+    def _validate_vrs_id(cls, v: Optional[str]) -> Optional[str]:
+        return validate_vrs_id(v)
+
+    @field_validator("caid")
+    @classmethod
+    def _validate_caid(cls, v: Optional[str]) -> Optional[str]:
+        return validate_caid(v)

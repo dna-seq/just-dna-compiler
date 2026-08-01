@@ -185,6 +185,56 @@ class Compilation(BaseModel):
     )
 
 
+class Frequency(BaseModel):
+    """Summary of a module's injected allele-frequency sidecar (0.5), out of `artifact.digest`.
+
+    A separate block rather than extra fields on `Compilation`/`Resolution`: `Resolution` is about
+    rsID↔coordinate resolution and nothing else, and a frequency table has its own producer, its own
+    release, and its own fact-hash. Absent on a module that carries no `frequencies.csv`.
+    """
+
+    signature: Optional[str] = Field(
+        default=None,
+        description="Fact-hash of frequencies.csv (integrity.frequency_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of FrequencyRow.source values that filled the table"
+    )
+    datasets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted union of FrequencyRow.dataset values, e.g. ['gnomad_v4.1_joint'] — which releases "
+            "these numbers are from. A consumer reproducing an ACMG BA1/BS1 filter needs this to know "
+            "it is filtering against the frequencies the curator saw."
+        ),
+    )
+    populations: list[str] = Field(
+        default_factory=list,
+        description="Ancestry groups present in the table, in the canonical emission order",
+    )
+    row_count: int = Field(default=0, description="Number of frequency rows")
+    variant_count: int = Field(
+        default=0, description="Distinct alleles covered (rows are one per allele × ancestry group)"
+    )
+
+
+class GeneMetrics(BaseModel):
+    """Summary of a module's injected gene-constraint sidecar (0.5), out of `artifact.digest`."""
+
+    signature: Optional[str] = Field(
+        default=None,
+        description="Fact-hash of gene_metrics.csv (integrity.gene_metrics_signature); out of artifact.digest",
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of GeneMetricsRow.source values"
+    )
+    datasets: list[str] = Field(
+        default_factory=list, description="Sorted union of GeneMetricsRow.dataset values"
+    )
+    row_count: int = Field(default=0, description="Number of gene-metrics rows (one per gene)")
+    genes: list[str] = Field(default_factory=list, description="Sorted gene symbols covered")
+
+
 class FileEntry(BaseModel):
     """One hashed file — used for both `inputs[]` and `artifact.files[]` (SPEC §5)."""
 
@@ -377,6 +427,19 @@ class ModuleManifest(BaseModel):
 
     stats: Stats = Field(default_factory=Stats)
     compilation: Compilation = Field(default_factory=Compilation)
+    frequency: Optional[Frequency] = Field(
+        default=None,
+        description=(
+            "Summary of the injected allele-frequency sidecar (0.5), when the module carries one. "
+            "The compiled `frequencies.parquet` is in `artifact.digest`; this block is not — it is "
+            "the producer-independent fact-hash plus the release/ancestry-group facets a catalog "
+            "needs without reading the artifact."
+        ),
+    )
+    gene_metrics: Optional[GeneMetrics] = Field(
+        default=None,
+        description="Summary of the injected gene-constraint sidecar (0.5), when the module carries one.",
+    )
     inputs: list[FileEntry] = Field(default_factory=list)
     content_signature: Optional[str] = Field(
         default=None,

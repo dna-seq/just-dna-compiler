@@ -249,7 +249,7 @@ class VariantRow(AuthoredModel):
     )
     trait_efo_id: Optional[str] = Field(
         default=None,
-        description="EFO/MONDO/OBA/HP trait ontology id(s), e.g. EFO_0001645 (matches just-prs).",
+        description="EFO/MONDO/OBA/HP trait ontology id(s), e.g. EFO_0004340 (matches just-prs).",
     )
     clin_sig: Optional[str] = Field(
         default=None,

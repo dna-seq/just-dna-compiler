@@ -22,14 +22,18 @@ from just_dna_format.spec import VariantRow
 from just_dna_enricher import clinvar
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
+from just_dna_enricher.sequences import RefMismatch, SequenceProxy, verify_reference_alleles
+from just_dna_enricher.vrs import VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger(__name__)
 
 _FIELDNAMES = [
     "variant_key", "rsid", "chrom", "start", "ref", "alts",
-    "genome_build", "locus_index", "source", "status", "rsid_alternates", "fetched_at",
+    "genome_build", "locus_index", "vrs_id", "vrs_spec", "caid",
+    "source", "status", "rsid_alternates", "fetched_at",
 ]
 
 
@@ -51,6 +55,9 @@ class EnrichmentResult:
     unresolved: list[str] = field(default_factory=list)  # variant_keys with no resolved position
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
+    # Authored data that disagrees with the reference genome. Reported, never repaired — see
+    # `sequences.verify_reference_alleles`. Empty when the check could not run (offline).
+    ref_mismatches: list[RefMismatch] = field(default_factory=list)
 
     @property
     def fully_resolved(self) -> bool:
@@ -65,17 +72,34 @@ def enrich(
     ensembl_cache: Optional[Path] = None,
     clinvar_cache: Optional[Path] = None,
     use_clinvar: bool = True,
+    use_gnomad: bool = True,
     download: bool = True,
     genome_build: str = "GRCh38",
     write: bool = True,
+    mint_vrs: bool = True,
+    verify_ref: bool = True,
     resolver: Optional[EnsemblResolver] = None,
+    gnomad_client: Optional["GnomadClient"] = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
 
     The chain is: existing rows → Ensembl cache → ClinVar cache (`use_clinvar`, stamps
-    `source="clinvar"`) → live Ensembl. ClinVar sits *after* the Ensembl cache so a variant both
-    caches know keeps `source="cache"` and its `alts` — no already-compiled module's `artifact.digest`
-    moves. `--offline` clamps the chain to the two local caches (zero egress).
+    `source="clinvar"`) → live Ensembl → live gnomAD (`use_gnomad`, stamps `source="gnomad"`). Each
+    later link fills only what the earlier ones missed, so whichever link *first* knows a variant
+    decides its `alts` — and since `alts` is a fact column, that decides the compiled bytes. The
+    ordering is therefore chosen so no already-compiled module's `artifact.digest` can move when a new
+    link is added. `--offline` clamps the chain to the two local caches (zero egress).
+
+    `mint_vrs` stamps a `ga4gh:VA.…` allele id onto every resolved row (see `vrs.mint_resolution_rows`).
+    Substitutions mint offline with no dependency; indels need the sequence, so they mint only when the
+    run is online.
+
+    `verify_ref` checks each authored/resolved `ref` against the actual reference sequence and reports
+    disagreements — enrichment is partly *validation* of authored data, and this tier is the only one
+    that can perform it (see `sequences.verify_reference_alleles`). It never repairs, and severity
+    follows the mode, mirroring the compiler's VRS verify pass: `strict` treats a mismatch as fatal
+    (its contract is a reproducible artifact, and a wrong `ref` can silently mint a *different* allele
+    id), while `best_effort` warns and carries on. Needs sequence access, so it is skipped offline.
     """
     spec_dir = Path(spec_dir)
     variants: list[VariantRow] = []
@@ -150,10 +174,26 @@ def enrich(
         if clinvar_ref is not None:
             cv_rsids = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
             cv_positions = [pt for pt in positions if not rev_candidates.get(pt)]
+            cv_rsid_to_loci: dict[str, list[dict]] = {}
+            cv_pos_candidates: dict[tuple, list[str]] = {}
             if cv_rsids or cv_positions:
-                cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
-                    clinvar_ref, cv_rsids, cv_positions
-                )
+                # A *located* cache can still be unusable: a stale snapshot, a hand-built parquet, or
+                # one produced by a different tool has different columns, and the query then raises
+                # rather than returning nothing. That must degrade to "this link had no answer" like
+                # every other miss — one optional link's bad data should never sink an enrichment that
+                # the Ensembl cache and the live chain can still complete. (Failing hard here was a
+                # real crash for anyone whose cache dir held a foreign ClinVar parquet.)
+                try:
+                    cv_rsid_to_loci, cv_pos_candidates, _ = clinvar.lookup_loci(
+                        clinvar_ref, cv_rsids, cv_positions
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "ClinVar reference at %s is present but not queryable (%s); continuing "
+                        "without the ClinVar link. Rebuild it with `just-dna-enricher clinvar build`.",
+                        clinvar_ref, exc,
+                    )
+            if cv_rsid_to_loci or cv_pos_candidates:
                 for rsid, loci in cv_rsid_to_loci.items():
                     if rsid not in rsid_to_loci:
                         rsid_to_loci[rsid] = loci
@@ -175,6 +215,29 @@ def enrich(
                     if loci:
                         rsid_to_loci[rsid] = loci
                         source_of_rsid[rsid] = src or "ensembl"
+            finally:
+                if owned:
+                    client.close()
+
+    # ── live gnomAD link (LAST), for what nothing else could resolve ───────────────────────────
+    # Last place is deliberate and load-bearing, for the same reason ClinVar sits after the Ensembl
+    # cache: `alts` is in RESOLUTION_FACT_FIELDS, so whichever link wins a variant decides that
+    # variant's alt list and therefore its `weights.parquet` bytes. gnomAD reports only the alleles
+    # *observed in gnomAD*, not every allele dbSNP knows, so promoting it would narrow some already-
+    # compiled module's alts and move its artifact.digest. Going last means it can only ever add
+    # variants nothing else had — a strictly additive link.
+    if use_gnomad and not offline and genome_build == "GRCh38":
+        missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
+        if missing:
+            owned = gnomad_client is None
+            client = gnomad_client or GnomadClient()
+            try:
+                for rsid, loci in client.resolve_rsids(missing).items():
+                    if loci and rsid not in rsid_to_loci:
+                        rsid_to_loci[rsid] = loci
+                        source_of_rsid[rsid] = "gnomad"
+            except GnomadError as exc:  # a last-resort link must not sink the whole enrichment
+                logger.warning("gnomAD link failed (%s); continuing without it.", exc)
             finally:
                 if owned:
                     client.close()
@@ -225,9 +288,44 @@ def enrich(
                 genome_build=genome_build, source="authored", status="resolved",
             ))
 
+    # Content-addressed allele identity, stamped after the chain has settled the coordinates (there is
+    # nothing to mint from before that). Existing ids are never overwritten.
+    # One proxy, one read cache, shared by minting and the reference check below.
+    sequences = SequenceProxy(offline=offline)
+    if mint_vrs:
+        mint_result = mint_resolution_rows(
+            out, minter=VrsMinter(offline=offline, sequences=sequences)
+        )
+        logger.info(
+            "VRS: minted %d id(s) (%d stdlib, %d normalized), %d unmintable, %d already present",
+            mint_result.minted, mint_result.minted_stdlib, mint_result.minted_normalized,
+            mint_result.skipped_unmintable, mint_result.already_present,
+        )
+
+    # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
+    ref_mismatches = (
+        verify_reference_alleles(out, sequences=sequences, offline=offline) if verify_ref else []
+    )
+    for mismatch in ref_mismatches:
+        logger.warning("Reference-allele mismatch — %s", mismatch)
+
     out.sort(key=lambda r: (r.variant_key, r.locus_index))
     sources = sorted({r.source for r in out if r.source})
-    result = EnrichmentResult(rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode)
+    result = EnrichmentResult(
+        rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
+        ref_mismatches=ref_mismatches,
+    )
+
+    if mode == "strict" and ref_mismatches:
+        # Deliberately checked BEFORE the unresolved gate: a wrong `ref` is a worse diagnosis than a
+        # missing position (it can mint a well-formed id for the wrong allele), so it should be the
+        # error the author sees first.
+        raise EnrichmentError(
+            f"strict enrichment: {len(ref_mismatches)} row(s) disagree with the {genome_build} "
+            f"reference sequence: {[str(m) for m in ref_mismatches]}. Fix the authored coordinates "
+            f"(a wrong ref length silently mints a different allele id), or enrich with "
+            f"mode='best_effort' to record them as warnings."
+        )
 
     if mode == "strict" and result.unresolved:
         raise EnrichmentError(
@@ -256,6 +354,9 @@ def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
                     "alts": r.alts or "",
                     "genome_build": r.genome_build,
                     "locus_index": r.locus_index,
+                    "vrs_id": r.vrs_id or "",
+                    "vrs_spec": r.vrs_spec or "",
+                    "caid": r.caid or "",
                     "source": r.source or "",
                     "status": r.status or "",
                     "rsid_alternates": r.rsid_alternates or "",

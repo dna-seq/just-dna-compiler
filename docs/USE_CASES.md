@@ -358,6 +358,48 @@ unimplemented" item 5 (the `reverse_module` boundary) and the SNV example in
 
 ---
 
+## 6. Population context — what the missing numbers actually block (0.5)
+
+Four use cases that the SNP core, as of 0.4, could not serve at all. None is a gap in the *annotation*
+model: every one of them needs a **reference number about a population**, which a module had nowhere to
+put. They are the reason the frequency and gene-constraint sidecars exist.
+
+**6a. "Is this variant actually rare?" — offline carrier-frequency context.** A carrier-screening module
+lists pathogenic HBB alleles. A consumer showing a positive call wants to say *how common* that allele
+is, and in **which** ancestry group — sickle-cell's HBB `11:5227002 T>A` sits near 4.8% in African
+ancestry and near zero in Finnish. Before 0.5 the module could carry the annotation but not the
+frequency, so either the consumer fetched gnomAD at query time (network at read time, and a *different*
+number than the curator saw) or it said nothing. **Closed additively:** `frequencies.csv` → one row per
+(allele, ancestry group). *Enabled.*
+
+**6b. Reproducing an ACMG BA1/BS1 filter against the frequency the curator saw.** BA1 ("allele frequency
+too high for a Mendelian disorder") and BS1 are frequency thresholds, and applying them needs the
+*filtering* allele frequency (`faf95`), not the point estimate. The blocker was never the threshold — a
+consumer can apply that — it was that a re-run months later hit a different gnomAD release and silently
+reclassified variants. **Closed additively:** `faf95` is carried on its owning ancestry group's row, and
+`dataset` names the release, so the filter is reproducible against *the numbers the curator used* rather
+than against whatever the API serves today. This is why `dataset` is inside the fact set. *Enabled.*
+
+**6c. Out-of-ancestry caveats.** A risk annotation derived from a European cohort applied to a South
+Asian sample may rest on an allele that is common in one group and absent in the other. The module
+cannot decide what to do about that — that is the consumer's disclosure policy, and the format never
+makes the call (the data-agnostic north star). What it *can* now do is **carry the per-group numbers** so
+the consumer has something to reason with. *Enabled (format supplies the table; consumer supplies the
+policy).*
+
+**6d. Gene-level triage on a cardio or cancer panel.** A forty-variant panel spanning a dozen genes:
+which genes are haploinsufficient, and which tolerate loss of function? LOEUF separates them (MYH7 at
+0.64 is constrained; a tolerant gene sits above 1), and pLI and missense-Z refine it. Repeating a
+gene-level fact on every variant row would be the wrong shape — same gene, forty copies, one axis
+smeared across another. **Closed additively:** `gene_metrics.csv`, one row per gene, a separate table
+(Principle 5). *Enabled.*
+
+**What stayed out.** Sex-stratified counts (a second axis — folding `nfe_XX` into `population` would be
+the `state`-overloading mistake again), and an offline frequency snapshot (58 GB exomes / 742 GB
+genomes — not a thing that ships; parked in [ROADMAP.md](ROADMAP.md)).
+
+---
+
 ## Roadmap items surfaced
 
 The gaps above, consolidated. Format-side items migrate into [`ROADMAP.md`](ROADMAP.md); the
@@ -378,6 +420,8 @@ consumer-side one is recorded so it is not mistaken for a format task.
 | RM11 | ✅ **shipped in 0.4** — **`doi` provenance column** on `StudyRow` (optional; validated against the DOI grammar, kept verbatim) | format (schema) | 4a | done |
 | RM12 | ✅ **shipped in 0.4** — **Provenance locator**: optional `provenance_quote` (keyword phrase) + `provenance_regex` (author-time-compiled, matched by a consumer-side linear-time engine — P1 pattern grammar) on `StudyRow` | format (schema) | 4a | done |
 | RM13 | **`just-module-validator`** — network-first source-check/enrichment library | **consumer** (new sibling), NOT the format | 4a | — (not a format task) |
+| RM18 | ✅ **shipped in 0.5** — **Population-frequency + gene-constraint sidecars** (`frequencies.csv`, `gene_metrics.csv`), produced by the enricher's gnomAD v4.1 passes, compiled to their own optional parquets and fact-hashed. Retires the planned `allele_frequency`/`af_population` axes in favour of tables. | format (schema + compiler) + enricher | 6a–6d | done |
+| RM19 | ✅ **shipped in 0.5** — **GA4GH VRS allele identity**: stdlib `derive_vrs_allele_id`, `vrs_id`/`caid` cross-reference columns, and `variant_key` deriving from the VA for a resolved substitution. Satisfies RM15's build-naming condition (GRCh38-only now; multi-build minting remains RM15). | format (schema + compiler) + enricher | build-naming identity, cross-database joins | done |
 | RM14 | ✅ **shipped in 0.4** — **Structured per-version authorship** (`authorship: [Contribution]`): `{who, role, kind, at}`; role closed {created/edited/audited/reviewed}; kind open, seed = human ladder {human, human_expert, human_certified} / {ai}+scale {agent,team,swarm} (no `hybrid` — joint = two entries). Manifest metadata → **digest-neutral**. | format (schema) | 4a validator, marketplace review | done |
 
 **Takeaway.** The two load-bearing items — **RM1 + RM2** (compiler materialization + composed

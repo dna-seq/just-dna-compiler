@@ -17,6 +17,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_format.vrs import derive_vrs_allele_id
 
 _YAML = """\
 schema_version: "1.0"
@@ -93,7 +94,12 @@ def test_expanded_rsid_roundtrips_as_position_only(tmp_path: Path, cache: Path) 
 
     w = pl.read_parquet(tmp_path / "o1" / "weights.parquet")
     assert w.height == 2  # one row per paralogous locus
-    assert set(w["variant_key"].to_list()) == {"1:1000:A:G", "16:2000:A:G"}  # coord key carries alt
+    # Each expanded locus is re-keyed to its own coordinate identity — a VRS allele id, since both
+    # paralogous loci are substitutions (0.5). Derived here, so the test pins the rule not a literal.
+    assert set(w["variant_key"].to_list()) == {
+        derive_vrs_allele_id("1", 1000, "A", "G"),
+        derive_vrs_allele_id("16", 2000, "A", "G"),
+    }
     assert set(w["rsid"].to_list()) == {"rs555"}  # rsid kept as data on every row
 
     reverse_module(tmp_path / "o1", tmp_path / "rev")

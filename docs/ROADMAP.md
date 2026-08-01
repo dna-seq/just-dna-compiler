@@ -54,6 +54,13 @@ strict/`--offline`). It **subsumes RM13** (a network-first resolution/enrichment
 the 0.4.1 *"cache authority leaves the compiler"* decoupling. The `0.4.1` items ride in folded into the
 same 0.5.0 cut (no separate patch release).
 
+**Also landed in 0.5.0:** the **gnomAD v4.1** work — a last-resort live resolver link, the
+`frequencies.csv` and `gene_metrics.csv` derived-fact sidecars, an offline gene-constraint snapshot, and
+**GA4GH VRS allele identity** (stdlib minting, `vrs_id`/`caid` columns, and `variant_key` deriving from
+the VA for a resolved substitution — the one intended `artifact.digest` re-baseline, taken inside the
+unpublished window). See [PROPOSAL_0_5.md § G1](PROPOSAL_0_5.md) for the decisions and the several
+places probing overturned the plan's assumptions.
+
 **The `RMn` schema items below are pushed to 0.6.0** — they are additive and independent of this
 rework, so they wait behind it rather than blocking it.
 
@@ -77,7 +84,7 @@ the rest are 0.6-and-beyond scope:
 | RM13 | ✅ **realized in 0.5 as `just-dna-enricher`** — the network-first resolution/enrichment tier. 0.5 builds the rsid↔coordinate resolution half (cache + Ensembl V2/V1 + tenacity, producing `resolution.csv`); the source-check half (validate `pmid` in PubMed, confirm fulltext provenance, cross-fill ids) is additional resolver links the same package can grow. Principle 2 stays intact — the enricher is a *separate tier* that fetches; format/compiler never do. | network tier (`just-dna-enricher`) | deterministic module scrutiny (§4a) | in progress |
 | RM16 | **Authored PRS weights (a scoring file, not a manifest).** 0.4 shipped `pgs.csv` as a *manifest of PGS Catalog IDs* with the ancestry-validity fields — not authored per-variant weights (just-prs resolves a `PGSxxxxxx` id to a harmonized scoring file and scores each id itself, so inlined weights would be dead data; a PRS is a Z/percentile-in-reference, a shape the format does not bin). Deferred: a distinct, digest-bearing `effect_allele`+`effect_weight` scoring table for the case a module must ship weights the PGS Catalog does not host. Build only against a real consumer that combines authored weights into a score. See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) D1. | format (schema + compiler) | authored-weight PRS modules | medium-large (on demand) |
 | RM17 | **Enforce SemVer on `module.version`** — 0.4.1 adopted `version` as a *freeform advisory* field and ships the coercion algorithm (`normalize.normalize_version`) used **read-only** to preview what a future release will read. 0.5 promotes it to an enforced `ModuleInfo.version` validator (coerce `v2`→`2.0.0`, or strict-reject — TBD). **Out of `artifact.digest`**, additive (accepts the same inputs, normalizes them). Once enforced, a clean authored SemVer flows into `Identity.version` (0.4.1 already does this for already-valid values). See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) V1. | format (schema) | pre-0.4 corpus `module.version` | low |
-| RM15 | **Build-agnostic identity & multi-build support (other-builds-support)** — today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is authored/manifest metadata, but every `chrom/start/ref`, the Ensembl resolver, and all coord-based reasoning silently assume GRCh38. Coordinates are **not absolute** — GRCh37 / GRCh38 / T2T-CHM13 disagree, and the rsid↔coordinate mapping is **build-specific**: an rsid may resolve in one build and be un-annotatable (unplaced/absent) in another, and presence/absence combinations vary per build. This item makes the build a first-class axis — coordinates tagged by (or resolved per) build, a **build-aware resolver** (the injected reference declares its build; a module/reference build mismatch degrades to *unverified* rather than a false consistency error), and cross-build rsid annotatability recorded *as data*. **Parks the "coordinate-first identity" design (option C from the rsid↔coord identity discussion): anchoring identity on the coordinate is rejected while the format is single-build, because it would bake GRCh38 into `variant_key` and make identity reference-dependent; it becomes reconsiderable only once identity can name its build.** **Generalizes one-to-many rsid expansion to multi-build:** a no-coord rsid that maps to several loci is expanded to one row per locus (a paralog/SV signal a client can count — data-agnostic), and that ships **GRCh38-only now as compiler behavior** (pinned by `compiler_version`, not a schema break). What is build-specific is *which* loci and *how many*, so RM15 tags expanded coordinates by build and records cross-build annotatability; the GRCh38 expansion itself is not deferred. Blocked by nothing external (schema-shape + resolver decision) but large — touches identity, positions, the resolver, and `artifact.digest`. Interacts with RM5 (symbolic/structural alleles differ across assemblies) and the reserved `reference_db` axis. | format (schema + compiler) | GRCh37 / T2T modules; cross-build annotatability | large |
+| RM15 | **Build-agnostic identity & multi-build support (other-builds-support)** — today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is authored/manifest metadata, but every `chrom/start/ref`, the Ensembl resolver, and all coord-based reasoning silently assume GRCh38. Coordinates are **not absolute** — GRCh37 / GRCh38 / T2T-CHM13 disagree, and the rsid↔coordinate mapping is **build-specific**: an rsid may resolve in one build and be un-annotatable (unplaced/absent) in another, and presence/absence combinations vary per build. This item makes the build a first-class axis — coordinates tagged by (or resolved per) build, a **build-aware resolver** (the injected reference declares its build; a module/reference build mismatch degrades to *unverified* rather than a false consistency error), and cross-build rsid annotatability recorded *as data*. **The "coordinate-first identity" parking is now RESOLVED, on its own stated condition.** This item parked option C because a bare coordinate "would bake GRCh38 into `variant_key`", and said it "becomes reconsiderable only once identity can name its build". A **GA4GH VRS allele id names its build**: the sequence is addressed by its refget accession — the digest of the reference sequence itself — so GRCh38 and GRCh37 mint distinct, correctly non-colliding ids. 0.5 therefore ships coordinate-first identity as the VA for a resolved substitution (see [SCHEMAS.md](SCHEMAS.md) § the identity switch). What remains of RM15 here is the **multi-build** half: a second refget table beside `REFGET_GRCh38`, per-build coordinates, and cross-build annotatability. The GRCh38-only minting ships now — the same "GRCh38-now, multi-build-later" split this item already applies to one-to-many expansion. **Generalizes one-to-many rsid expansion to multi-build:** a no-coord rsid that maps to several loci is expanded to one row per locus (a paralog/SV signal a client can count — data-agnostic), and that ships **GRCh38-only now as compiler behavior** (pinned by `compiler_version`, not a schema break). What is build-specific is *which* loci and *how many*, so RM15 tags expanded coordinates by build and records cross-build annotatability; the GRCh38 expansion itself is not deferred. Blocked by nothing external (schema-shape + resolver decision) but large — touches identity, positions, the resolver, and `artifact.digest`. Interacts with RM5 (symbolic/structural alleles differ across assemblies) and the reserved `reference_db` axis. | format (schema + compiler) | GRCh37 / T2T modules; cross-build annotatability | large |
 
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
@@ -112,6 +119,76 @@ the what-blocks lens in [USE_CASES.md](USE_CASES.md) §1. Standing dispositions:
   *symbolic* alleles themselves is RM5.
 - **3d — smaller VCF-native ideas:** callability three-state → RM6; phasing-aware panels → already
   expressible (the `phased` flag + VCF `PS`/`HP`); trio/de-novo assertion → RM10.
+
+### Parked in 0.5 (recorded so they are not re-proposed as if new)
+
+- **Enricher co-authoring** (permission-gated writes to *authored* files, not just sidecars). Attractive
+  — it would let a stale rsID or a missing DOI be fixed where it actually lives instead of only being
+  reported — and deliberately **not** taken, for a reason stronger than tidiness: `content_signature`
+  is *defined* as pre-resolution and reference-independent ("computed from the rows before resolution,
+  so recompiling against a different/complete reference does not change it"). If a network fetch could
+  edit `variants.csv`, the content-dedup identity would become network-dependent and that documented
+  property would simply be false. A secondary problem: `authorship` records who wrote the module, and
+  an enricher that edits rows either falsifies that record or must add itself as an `ai`/`agent`
+  contribution — coherent, but a much larger design than it first looks. Revisit only with both
+  answered.
+
+- **An offline allele-frequency snapshot.** The obvious symmetry with the ClinVar and gene-constraint
+  snapshots, and it does not work: gnomAD v4.1's sites VCFs are **58 GB** (exomes) and **742 GB**
+  (genomes), so there is no slice to ship at any useful coverage. Frequency is therefore the first and
+  only **online-only** link in the chain. This is not a reproducibility hole — once `frequencies.csv` is
+  written it *is* the pin, and every later compile reads it offline and deterministically. Revisit only
+  if gnomAD publishes a small pre-aggregated frequency release.
+- **HGVS string generation** (`c.`/`p.` notation). `ga4gh.vrs`'s extras pull `hgvs` transitively, so it
+  would be *available* — but HGVS generation is its own feature with its own argument (which transcript,
+  which reference, how to present ambiguity), and taking a dependency for indel normalization does not
+  commit to shipping it. Deferred as a feature, not blocked by tooling.
+- **Multi-build VRS minting.** A second refget table beside `REFGET_GRCh38`; the remaining half of RM15.
+- **dbSNP obsolescence / merge checking** (candidate, cheap). dbSNP merges and retires rsIDs, so an
+  older module can key on a label its source has since superseded. Detectable two ways, both verified:
+  Ensembl REST returns the *current* `name` for a merged query (`rs77121243` → `rs334`, with the
+  queried id in `synonyms`) — a signal the enricher **already receives and discards** in
+  `_loci_from_rest` — and NCBI `esummary db=snp` reports it batched (`merged_sort`, plus a `snp_id`
+  differing from the requested uid). The interesting part is not the lookup but what to do with it:
+  see *the stale-identifier collision* below.
+- **Sex-stratified frequency counts.** gnomAD serves `nfe_XX`/`XY`; sex is a second axis, and folding it
+  into `population` would be the `state`-overloading mistake again. A future `sex` column on
+  `FrequencyRow` is the additive shape if it is ever wanted.
+
+
+### The stale-identifier collision (design note, 0.5)
+
+An obsolete authored rsID forces a choice that Principle 7 and "keep the module current" pull opposite
+ways on, and it is worth writing down before anyone implements the lookup.
+
+`weights.parquet` carries **both** `variant_key` and `rsid`, and for an rsid-authored row both are the
+authored label. Writing the *updated* label into the artifact is not a one-time digest move — it is an
+**identity migration performed by a network lookup**: reverse would then emit the new rsID into
+`variants.csv`, the next compile would key on it, and `variant_key` itself would change. The module's
+identity would drift without any authored edit, and the round-trip would stop being a fixed point.
+
+So the rule is the one every other check here follows: **report, never repair.** Severity follows the
+mode, matching the VRS-unverifiable decision exactly — `best_effort` warns and compiles with the
+authored label (digest stable, round-trip intact), `strict` **refuses**, on the grounds that an
+all-or-nothing artifact should not be built on an identifier its own source has retired. Failing is the
+honest move because it pushes the fix to where it belongs: an authored edit.
+
+Two refinements the implementation will need:
+
+- **Merged ≠ withdrawn.** A merged rsID still resolves to the right locus, so the module is *dated*,
+  not wrong. A withdrawn one is a repudiation of the variant itself and may deserve failing in both
+  modes. Probe the withdrawn shape before deciding.
+- **The new columns are provenance, not facts.** `rsid_current` + `rsid_status` (`live|merged|
+  withdrawn`) belong **outside** `RESOLUTION_FACT_FIELDS`, beside `rsid_alternates`. They describe
+  time-varying *external* state; putting them in the fact set would make `resolution_signature` change
+  when dbSNP merges something, with no change to the module — the signature would stop being
+  reproducible from the module's own content.
+
+**The strategic reading:** this whole class of problem is *label drift*, and it exists only for
+rsid-keyed rows. A coordinate-authored row keys on a VRS allele id, which is content-addressed and
+cannot drift. The obsolescence check is therefore the standing cost of the rsID key, and the format
+already offers the escape — author coordinates and carry the rsID as data (reverse already emits
+coord-keyed rows as position-only). A strict failure is the nudge toward the drift-proof key.
 
 New ideas enter here as freeform suggestions, then graduate through the design cycle
 (feedback → USE_CASES lens → PROPOSAL → shipped or parked as an `RMn` above).
@@ -150,7 +227,12 @@ release actually commits to building them):
   Distinct from `direction` (phenotypic) and `clin_sig` (clinical). **Never repurpose the bare word
   `effect`** for it.
 - **`impact`** — VEP impact `{HIGH, MODERATE, LOW, MODIFIER}`, derived from `consequence`.
-- **`allele_frequency`** (+ **`af_population`**) — gnomAD-style MAF context.
+*(**`allele_frequency`** + **`af_population`** were listed here and are now **built in 0.5 as a
+table, not a column** — `frequencies.csv` → `FrequencyRow`, one row per (allele, ancestry group).
+A column pair could carry one number for one population; frequency is inherently per-group, and
+flattening it onto the variant row would smear two axes together. So the planned axes are retired
+rather than shipped. Gene-level constraint arrived beside it as `gene_metrics.csv`. See
+[SCHEMAS.md](SCHEMAS.md) and [USE_CASES.md §6](USE_CASES.md).)*
 
 *(`doi`, `provenance_quote`, and `provenance_regex` were reserved here for RM11/RM12 and are now **built**
 as optional `StudyRow` columns in 0.4 — so they are absent from this list. The **doi-first** flip that
@@ -194,4 +276,4 @@ release).
 | `ModuleManifest.authors: list[str]` + free-form `curator` | Flat and overloaded — no role (created/edited/audited), no kind (AI/human); `Defaults.curator` smuggles kind via its `"ai-module-creator"` default. Superseded by the structured authorship record (RM14) once it ships. | Keep both as derived projections through 0.x (P8); at 1.0 fold `authors` into the structured record and drop the kind-smuggling `curator` default. |
 | `StudyRow.pmid` required + PMID-shaped | Mandatory `pmid` (must parse to a real PubMed id) rejects DOI-only provenance — preprints (bioRxiv/medRxiv), books, theses, datasets. Demoting a required field is P8-forbidden in-major, so adding optional `doi` (RM11) alone can't unblock it. | **doi-first at 1.0**: make `pmid` optional/legacy and require **≥1 of `{doi, pmid}`** (every citation has a stable id, not necessarily a PMID; the reverse holds). Requiredness change → major-only. |
 | Compiler `ensembl_cache` deprecated shim | 0.5 already moved the whole DuckDB resolver + cache-location into `just-dna-enricher` and dropped `duckdb`/`platformdirs`/`python-dotenv` from the compiler (it is now pure-Python; resolution is the `resolution.csv` table). What remains is the `compile_module(ensembl_cache=…)` **surface**, kept as a deprecated shim that emits `DeprecationWarning` and routes to the enricher via a guarded import. | Remove the `ensembl_cache`/`resolve_with_ensembl` params outright at 1.0 (internal call, not the wire/artifact contract, so additive-within-major does not protect it). |
-| Coordinate-first identity (option C) | Minimal B+ keys on **rsid when it uniquely identifies the row, else coordinate** (expanded/one-to-many and position-only rows are coord-keyed; rsid-1:1 and rsid+coord stay rsid-keyed → build-agnostic where possible). A globally coordinate-first key is more uniform but build-baked. | Reconsider coordinate-first only under RM15, once identity can name its build. Major (identity-*semantics* change). |
+| ~~Coordinate-first identity (option C)~~ — **resolved in 0.5** | The objection was that a coordinate key is *build-baked*. A **VRS allele id is not**: it names its reference sequence by refget accession, so it satisfies RM15's own reconsideration condition. `variant_key` now derives from the VA for a resolved substitution; rsid-keyed, position-only, indel and multi-allelic rows keep their previous keys. | **Done, in 0.5.0's pre-publication window** — an identity-semantics change is major-only because `variant_key` sits in `artifact.digest`, and that gate is *publication*, not the version number: 0.4 is the published line and 0.5.0 never shipped, so it rode the same one-time re-baseline as the alt-carrying key. No published artifact moved. |

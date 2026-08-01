@@ -30,6 +30,10 @@ DUCKDB_NAME: str = "ensembl_variations.duckdb"
 # GRCh38 records, ~200 MB gz), stored under `<base>/clinvar/data/*.parquet` in the same layout so one
 # DuckDB view shape serves both.
 CLINVAR_SUBDIR: str = "clinvar"
+# gnomAD gene-constraint snapshot — the third reference, and by far the smallest (one row per gene,
+# single-digit MB as parquet, versus ClinVar's ~200 MB and an Ensembl slice). Small enough to ship
+# offline is exactly why gene constraint gets a snapshot while allele frequency cannot.
+CONSTRAINT_SUBDIR: str = "gnomad_constraint"
 
 
 def load_env(override: bool = False) -> Optional[str]:
@@ -87,6 +91,40 @@ def default_clinvar_cache_dir() -> Path:
     base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
     root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
     return root / CLINVAR_SUBDIR
+
+
+def default_constraint_cache_dir() -> Path:
+    """The `<base>/gnomad_constraint` directory (same base as the other two caches)."""
+    base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
+    root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
+    return root / CONSTRAINT_SUBDIR
+
+
+def resolve_constraint_reference(
+    constraint_cache: Optional[Path] = None, *, load_dotenv_file: bool = True
+) -> Optional[Path]:
+    """Locate a usable gnomAD constraint snapshot without downloading.
+
+    Same precedence ladder as the other two: explicit argument → ``$JUST_DNA_GNOMAD_CONSTRAINT_CACHE``
+    → ``$JUST_DNA_PIPELINES_CACHE_DIR``/platformdirs ``gnomad_constraint/``. Parquet only (like
+    ClinVar, there is no prebuilt ``.duckdb``). Never downloads.
+    """
+    if load_dotenv_file:
+        load_env()
+
+    candidate = constraint_cache or os.getenv("JUST_DNA_GNOMAD_CONSTRAINT_CACHE")
+    search_dir = Path(candidate) if candidate else default_constraint_cache_dir()
+
+    if search_dir.is_file() and search_dir.suffix == ".parquet":
+        return search_dir
+    if search_dir.is_dir():
+        data_dir = search_dir / "data"
+        has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
+            search_dir.glob("*.parquet")
+        )
+        if has_parquet:
+            return search_dir
+    return None
 
 
 def resolve_clinvar_reference(

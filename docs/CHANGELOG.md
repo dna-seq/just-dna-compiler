@@ -5,6 +5,123 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-07-31 — 0.5.0: gnomAD v4.1 (frequency + gene constraint) and GA4GH VRS identity
+
+Three roles for one source, plus the identity change the VRS work unlocked. Design thread and the
+reasoning in [PROPOSAL_0_5.md § G1](PROPOSAL_0_5.md); use cases in [USE_CASES.md §6](USE_CASES.md).
+
+**New derived-fact sidecars** (schema + compiler + enricher). `frequencies.csv` → `FrequencyRow`, one
+row per **(allele, ancestry group)** carrying AC/AN, `homozygote_count`, `faf95` and `dataset`;
+`gene_metrics.csv` → `GeneMetricsRow`, one row per gene carrying pLI/LOEUF/Z scores. Both are injected,
+machine-produced, human-overridable, hashed by **facts** (`frequency_signature` /
+`gene_metrics_signature`, sharing one `fact_signature` body with `resolution_signature`), and compiled
+into their own optional parquets with new `manifest.frequency` / `manifest.gene_metrics` blocks. They
+are deliberately **not** `_TABLE_KINDS` — a machine-produced reference-fact table is a third category
+beside authored DSL tables and the compiled artifact. `allele_frequency` is a **derived** property
+materialized only in the parquet: integers round-trip exactly through CSV, a stored float does not.
+Ancestry groups are an **open, seeded** vocabulary (the table must outlive gnomAD as its only source).
+
+**gnomAD in the enricher.** A new `gnomad.py` client — batches of 20 aliased GraphQL lookups on a 6s
+pacing gate (the stated limit is 10 requests/IP/60s), tenacity on transport/timeout/429, and per-alias
+error handling so a partial failure keeps the rest of the batch. A **last-resort resolver link**
+(`source="gnomad"`, after live Ensembl so no compiled module's `alts` or digest can move), the
+frequency pass (online only — the v4.1 sites VCFs are 58 GB / 742 GB, so no snapshot is possible), and
+the gene-constraint pass (snapshot first, live API second — the one gnomAD role that completes offline),
+with a `[dev]` builder for the 95.5 MB constraint TSV and a third HF snapshot on the existing ladder.
+
+**GA4GH VRS allele identity — minted, not merely recorded.** New stdlib `just_dna_format.vrs`:
+`derive_vrs_allele_id` computes a `ga4gh:VA.…` for a substitution with `hashlib`/`base64`/`json` and
+**no new dependency in the format tier**, against a committed GRCh38 refget table. `ResolutionRow` and
+`FrequencyRow` gain `vrs_id`/`vrs_spec`/`caid` cross-reference columns (outside the fact sets, so no
+existing `resolution_signature` moves). The enricher mints indels too, normalized against the reference.
+
+**⚠️ `variant_key` now derives from the VA for a resolved substitution — `artifact.digest` moves.**
+An rsid row keeps its rsid; an indel, MNV, multi-allelic or position-only row keeps its coordinate key.
+This is legal now, not at 1.0, because `variant_key` is *derived and frozen, never authored* — no
+authored schema, no DSL, and no human author is touched. It is major-only for one reason (the column is
+in `weights.parquet`, hence in the digest), and that gate is **publication**, not the version number:
+0.4 is the published line and 0.5.0 never shipped, so this rides the same one-time pre-publication
+re-baseline as the alt-carrying key. **No published artifact moves.** A VRS id also *names its build*
+(the refget accession is the digest of the reference sequence), which is exactly the condition RM15 set
+for reconsidering coordinate-first identity — so that parking is resolved, with multi-build minting the
+remaining RM15 half. Modules compiled on an earlier 0.5.0 dev commit must be recompiled.
+
+**Two compiler checks come with it.** A stored `vrs_id` is recomputed and verified before anything is
+written, with **three** outcomes rather than two: *verified* (silent), *mismatch* (recomputed and
+different — an error in both modes, since a substitution's id is deterministic here and a disagreement
+can only be corruption), and *unverifiable* (could not be recomputed at all — a warning in
+`best_effort`, an error in `strict`, because "unchecked" and "correct" are different things). An indel
+is never reported as a mismatch: this tier cannot recompute one, so it can only say it did not check.
+Unverifiable also covers multi-allelic, position-only, no-coordinate, off-assembly and non-GRCh38 rows;
+the last used to let `UnsupportedBuildError` escape and abort the whole compile, and the off-assembly
+case used to pass `strict` silently — both fixed, with a full matrix test. And because a VA addresses
+the *place and the alt* but not `ref`, two positioned rows sharing a key while disagreeing on `ref` are
+now an explicit error — preserving a diagnosis the old key gave for free.
+
+**New: the reference-allele check, and enrichment-as-validation stated as a goal.** `sequences.py`
+compares every authored `ref` against the actual reference bases and reports disagreements on
+`EnrichmentResult.ref_mismatches` (`--verify-ref/--no-verify-ref`; `best_effort` warns, `strict`
+refuses). This closes a gap the VRS work opened: a VA is built from *which sequence*, *which interval*
+and *what replaces it*, so the reference allele is not a component — which means minting never checks
+it, and VCF's free `REF` consistency check (liftover slips, off-by-ones, wrong assembly) had no
+equivalent. Two failure modes, separated by the claimed length: a **single-base** wrong ref is absorbed
+(the same id is minted, so nothing downstream could notice), while a **multi-base** wrong ref sets the
+wrong interval and mints a well-formed id for a *different allele*. Findings are **reported, never
+repaired** — rewriting an authored value would destroy the evidence that something upstream is broken.
+[ENRICHER.md](ENRICHER.md) now states the general principle: the enricher is the only tier that *can*
+compare authored data against reality (format and compiler are inject-only by charter), so surfacing
+discrepancies is part of its job, and every such check reports rather than repairs with severity
+following the mode.
+
+**New: the validation model is written down, limits included.** [COMPILER.md](COMPILER.md) now opens
+with *What the compiler can and cannot validate* — the trust boundary with the enricher, the three
+strengthening classes of check it performs (formal conformance → validate-by-redundancy →
+content-addressed self-verification), and an explicit table of **inescapable blind spots**. The
+compiler is an assembler/linker, not a truth oracle: it proves an artifact well-formed and
+self-consistent, never true, and several things it cannot check are permanent consequences of being a
+no-network tier or of the data-agnostic charter. What it cannot validate, the format makes *legible*
+instead (`source`, `dataset`, `status`, `authorship.kind`, the signatures). Framing the VRS work in
+those terms: it moved `vrs_id` out of "opaque cross-reference you must believe" into the
+self-verifying class, which is the strongest static guarantee available here.
+
+**New: validate-by-redundancy on the sidecars.** The new tables' numbers constrain each other, so
+violations are detectable with no reference at all: `allele_count ≤ allele_number` and
+`2 × homozygote_count ≤ allele_count` are exact integer impossibilities (**errors**), while
+`faf95 ≤` the group's own AF, `oe_lof_lower ≤ oe_lof ≤ loeuf`, and `obs_lof / exp_lof == oe_lof` are
+float relations that hold on real gnomAD output and **warn** when they break (the last catches a
+column-mapping slip in a builder). A test asserts the recorded payload trips none of them — a
+redundancy check that fires on genuine data is worse than no check.
+
+**Fixed: the canonical trait example was an obsolete ontology term.** `EFO_0001645` (used in
+`spec.py`'s `trait_efo_id` description, `vocab.py`'s CURIE comment and its author-facing error message,
+`REFERENCE_EXAMPLES.md`, and a compiler fixture) has been retired in favour of `MONDO_0005010`. The
+grammar examples now use `EFO_0004340`; the two coronary-artery-disease examples use `MONDO_0005010`.
+Found while probing the ontology-currency check drafted in [next_step.md](../next_step.md) — and worth
+recording that `EFO_0001360` is obsolete too, so replacing these by memory rather than by lookup would
+have substituted one retired term for another.
+
+**Fixed: a located-but-unusable ClinVar cache no longer crashes `enrich()`.** A cache directory holding
+parquet from another tool (or an older builder) made the DuckDB query raise and killed the whole
+enrichment, even when the Ensembl cache had the answer. It now degrades to a miss with a warning, like
+every other link. This also made a pre-existing test only pass depending on cross-file ordering.
+
+**Corrections to the plan, made under probing rather than assumed.** (i) The live `gnomad_constraint`
+API field serves **v2.1.1** constraint, not v4.1 — same gene, same MANE transcript, different numbers —
+so the two routes are labelled as the different datasets they are, and the planned "the routes agree"
+test asserts the difference instead. (ii) Indel normalization needs no local `seqrepo`/`pysam`: core
+`ga4gh.vrs` over the seqrepo REST proxy does it in 14 pure-Python packages, so complete allele identity
+is a **core** enricher capability rather than a `[dev]` extra, and `--offline` is the only thing that
+degrades it. (iii) The VRS allele serialization embeds the location's *digest*, not its content — the
+plan's stated mechanism was wrong even though its conclusion held; the shape was settled against
+recorded gnomAD ids. (iv) Indels keep the coordinate key rather than an enricher-minted VA, because
+re-keying from an optional network call would make `artifact.digest` depend on whether that call
+succeeded.
+
+**Fixtures are recorded, not fabricated** — `assets/gnomad_v4.1_variant_payload.json`,
+`gnomad_gene_constraint_payload.json`, `gnomad_v4.1_constraint_slice.tsv`. The quirks under test (a
+`"Multiple variants found"` error beside valid data, `XX`/`XY` listed twice, two `mane_select=true` rows
+per gene) are ones a hand-written fixture would have omitted, letting the naive implementations pass.
+
 ## 2026-07-30 — `variant_key` carries the alt (distinct alleles at one locus no longer collide)
 
 Second finding from the ClinVar dogfood (`reference_examples/pathogenic_clinvar/`): with the

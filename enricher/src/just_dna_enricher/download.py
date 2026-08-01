@@ -17,7 +17,11 @@ from pathlib import Path
 from typing import Optional
 
 from just_dna_enricher.clinvar import ClinVarReferenceError
-from just_dna_enricher.locations import default_clinvar_cache_dir, default_ensembl_cache_dir
+from just_dna_enricher.locations import (
+    default_clinvar_cache_dir,
+    default_constraint_cache_dir,
+    default_ensembl_cache_dir,
+)
 from just_dna_enricher.resolver import EnsemblReferenceError
 
 logger = logging.getLogger(__name__)
@@ -25,6 +29,11 @@ logger = logging.getLogger(__name__)
 _PARQUET_MAGIC = b"PAR1"
 _ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations/data"
 _CLINVAR_HF_PREFIX = "datasets/just-dna-seq/clinvar/data"
+_CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
+
+
+class ConstraintReferenceError(FileNotFoundError):
+    """Raised when the gnomAD constraint snapshot cannot be provisioned or has no usable parquet."""
 
 
 def _parquet_footer_ok(path: Path) -> bool:
@@ -106,4 +115,19 @@ def ensure_clinvar_snapshot(clinvar_cache: Optional[Path] = None) -> Path:
     cache_dir = Path(clinvar_cache) if clinvar_cache is not None else default_clinvar_cache_dir()
     return _provision_snapshot(
         cache_dir, _CLINVAR_HF_PREFIX, label="ClinVar", error_cls=ClinVarReferenceError
+    )
+
+
+def ensure_constraint_snapshot(constraint_cache: Optional[Path] = None) -> Path:
+    """Provision the gnomAD constraint parquet cache from HuggingFace Hub.
+
+    The third caller of one download body — the plumbing generalized when ClinVar landed, so this is
+    parameterization rather than new machinery.
+    """
+    cache_dir = (
+        Path(constraint_cache) if constraint_cache is not None else default_constraint_cache_dir()
+    )
+    return _provision_snapshot(
+        cache_dir, _CONSTRAINT_HF_PREFIX, label="gnomAD constraint",
+        error_cls=ConstraintReferenceError,
     )

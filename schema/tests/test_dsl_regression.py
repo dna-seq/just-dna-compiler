@@ -7,6 +7,7 @@ and these tests — are being removed from just-dna-lite.
 import pytest
 
 from just_dna_format.spec import ModuleInfo, ModuleSpecConfig, StudyRow, VariantRow
+from just_dna_format.vrs import derive_vrs_allele_id
 
 
 class TestModuleSpecConfig:
@@ -45,10 +46,13 @@ class TestVariantRow:
             weight=-0.5, state="risk", conclusion="Position-only",
         )
         assert row.rsid is None
-        # coordinate identity now carries the alt (distinct alleles at one locus don't collide)
-        assert row.variant_key == "10:94781859:G:A"
+        # A resolved substitution keys on its GA4GH VRS allele id (0.5) — content-addressed and
+        # build-naming. Computed here rather than pasted so the test pins the *rule*, not a literal.
+        assert row.variant_key == derive_vrs_allele_id("10", 94781859, "G", "A")
 
     def test_distinct_alleles_at_one_locus_get_distinct_keys(self) -> None:
+        # Indels: no VRS id can be minted offline (justification needs the reference sequence), so
+        # these keep the coordinate key — and it still carries the alt, so they stay distinct.
         common = dict(chrom="11", start=5226762, ref="C", state="risk", conclusion="x")
         ins = VariantRow(alts="CAAAG", genotype="C/CAAAG", **common)
         dele = VariantRow(alts="CA", genotype="C/CA", **common)
@@ -62,6 +66,16 @@ class TestVariantRow:
         # position-only (no alt) keeps the bare coordinate key; unchanged from before
         pos = VariantRow(chrom="1", start=100, ref="G", genotype="G/G", state="risk", conclusion="x")
         assert pos.variant_key == "1:100:G"
+
+    def test_distinct_substitutions_at_one_locus_get_distinct_keys(self) -> None:
+        # The substitution half of the same guarantee, now carried by the VA: a benign C>G beside a
+        # pathogenic C>A at one position must not collide (the same-locus allele collision 0.5 fixed).
+        common = dict(chrom="11", start=5226762, ref="C", state="risk", conclusion="x")
+        to_g = VariantRow(alts="G", genotype="C/G", **common)
+        to_a = VariantRow(alts="A", genotype="A/C", **common)
+        assert to_g.variant_key != to_a.variant_key
+        assert to_g.variant_key == derive_vrs_allele_id("11", 5226762, "C", "G")
+        assert to_a.variant_key == derive_vrs_allele_id("11", 5226762, "C", "A")
 
     def test_neither_rsid_nor_position_rejected(self) -> None:
         with pytest.raises(Exception, match="At least one identifier"):

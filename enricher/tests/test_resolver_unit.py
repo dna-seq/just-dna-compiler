@@ -14,6 +14,7 @@ import polars as pl
 import pytest
 from just_dna_enricher.resolver import resolve_variants
 from just_dna_format.spec import VariantRow
+from just_dna_format.vrs import derive_vrs_allele_id
 
 
 @pytest.fixture
@@ -143,7 +144,11 @@ def test_one_to_many_rsid_expands_to_n_rows(paralog_cache: Path) -> None:
     # each keyed by its own coordinate, plus a warning.
     patched, warnings = resolve_variants([_v(rsid="rs555")], paralog_cache)
     assert len(patched) == 2
-    assert {p.variant_key for p in patched} == {"1:1000:A:G", "16:2000:A:G"}  # coord key carries alt
+    # each keyed by its own coordinate identity — a VRS allele id, both loci being substitutions (0.5)
+    assert {p.variant_key for p in patched} == {
+        derive_vrs_allele_id("1", 1000, "A", "G"),
+        derive_vrs_allele_id("16", 2000, "A", "G"),
+    }
     assert all(p.rsid == "rs555" for p in patched)  # every row keeps the shared rsid as data
     assert any("maps to 2 loci" in w for w in warnings)
 
@@ -163,7 +168,11 @@ def test_expansion_order_is_deterministic(tmp_path: Path) -> None:
         }
     ).write_parquet(data / "chr.parquet")
     patched, _ = resolve_variants([_v(rsid="rs555")], tmp_path / "cache")
-    assert [p.variant_key for p in patched] == ["1:1000:A:G", "16:2000:A:G"]  # coord key carries alt
+    # Order, not just membership: chr1 before chr16 regardless of source row order.
+    assert [p.variant_key for p in patched] == [
+        derive_vrs_allele_id("1", 1000, "A", "G"),
+        derive_vrs_allele_id("16", 2000, "A", "G"),
+    ]
 
 
 def test_both_identifiers_consistent_no_warning(cache: Path) -> None:

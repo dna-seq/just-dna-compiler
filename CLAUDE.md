@@ -36,6 +36,9 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
    living lists the Constitution keeps out of itself.
 3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what actually shipped, newest first (shared across the
    ecosystem repos that consume these libs).
+3b. **[next_step.md](next_step.md)** — the drafted next round (validation tightening, T1–T4). Read it
+   before proposing a new check: it records which endpoints were probed and what they actually
+   returned, so the cheap wins and the traps are already mapped.
 4. **Per-package references** — [docs/SCHEMAS.md](docs/SCHEMAS.md) (the schema tier: models, the CSV
    families, conventions, the three hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
    compile pipeline, resolution precedence, reverse, the per-feature coverage table), and
@@ -44,20 +47,65 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
 
 ## 0.5 enricher — current state & gotchas (read before touching resolution)
 
-The **ClinVar snapshot** work is shipped (builder + `clinvar` link + chain + publisher; see
-[ENRICHER.md](docs/ENRICHER.md), reference example at `reference_examples/pathogenic_clinvar/`). The
-**next task** is **gnomAD v4.1** — fully specced, not started, in
-[docs/gnomad_4.1_enricher_a2c1ccca.plan.md](docs/gnomad_4.1_enricher_a2c1ccca.plan.md): 11 todos (live
-resolver link + a `frequencies.csv` pass + an offline-capable `gene_metrics.csv` pass) and **5 open
-design questions to settle first**. It already assumes the alt-carrying `variant_key` below.
+Both the **ClinVar snapshot** and the **gnomAD v4.1** work are shipped (see
+[ENRICHER.md](docs/ENRICHER.md); reference example at `reference_examples/pathogenic_clinvar/`; the
+design thread and the decisions in [PROPOSAL_0_5.md § G1](docs/PROPOSAL_0_5.md)). gnomAD landed as a
+last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_metrics.csv` pass, and
+**GA4GH VRS allele identity**. The plan file
+[docs/gnomad_4.1_enricher_a2c1ccca.plan.md](docs/gnomad_4.1_enricher_a2c1ccca.plan.md) is now history —
+**read the docs, not the plan**, since probing overturned several of its assumptions (listed in the
+CHANGELOG entry).
 
-- **`variant_key` carries the alt (0.5).** `derive_variant_key(rsid, chrom, start, ref, alts=None)` →
-  coordinate identity is `chrom:start:ref:alts` (alts sorted/normalized) **when an alt is present**;
-  rsid keys and position-only keys are unchanged. Pass `alts` **only when minting a variant identity**
-  (`VariantRow._freeze`, the one-to-many expansion re-key sites). Position-level **matching** — studies,
-  `_verify`, the reverse pos→rsid lookup, haplotype dedup — deliberately calls it **without** `alts` (a
-  study matches a variant at `chrom:start:ref` regardless of allele). Mixing these up reintroduces the
-  same-locus allele collision this fixed.
+- **`variant_key` is the VRS allele id for a resolved substitution (0.5).**
+  `derive_variant_key(rsid, chrom, start, ref, alts=None)` returns, in order: the **rsid**; else the
+  **`ga4gh:VA.…`** id when the row is a single-base substitution with a coordinate; else
+  `chrom:start:ref:alts` (alts sorted/normalized) or bare `chrom:start:ref`. Indels, MNVs,
+  multi-allelic cells and off-assembly contigs deliberately fall through to the coordinate key — a VRS
+  id is defined over the *justified* allele, and justifying an indel needs the reference sequence.
+  Pass `alts` **only when minting a variant identity** (`VariantRow._freeze`, the one-to-many expansion
+  re-key sites). Position-level **matching** — studies, `_verify`, the reverse pos→rsid lookup,
+  haplotype dedup — deliberately calls it **without** `alts`, so it never mints a VA (a study matches a
+  variant at `chrom:start:ref` regardless of allele). Mixing these up would orphan every study *and*
+  reintroduce the same-locus allele collision.
+- **A VA does not encode `ref`.** VRS names the place and the alt; the reference base is determined by
+  the accession + interval, so it is not a digest component. Two consequences, both guarded, both of
+  which must stay: the compiler has an **"inconsistent reference allele"** error (two rows sharing a key
+  while disagreeing on `ref` — internal contradiction, catchable offline), and the enricher has
+  `sequences.verify_reference_alleles` (authored `ref` vs the real bases — needs the sequence, so
+  online only). A *single-base* wrong ref still mints the correct id, so **only** the enricher check can
+  find it; a *multi-base* wrong ref mints a different allele entirely.
+- **Know the validation ceiling before adding a check.** [COMPILER.md](docs/COMPILER.md) opens with
+  *What the compiler can and cannot validate*: three strengthening classes it **can** do (formal
+  conformance → validate-by-redundancy → content-addressed self-verification, which is the class VRS
+  moved `vrs_id` into) and a table of **inescapable blind spots** that follow from what the tier is.
+  The compiler is an assembler/linker, not a truth oracle: it proves well-formed and self-consistent,
+  never *true*. When you find something it "should" catch, check that table first — several entries are
+  permanent by charter, and what cannot be validated is instead made **legible** (`source`, `dataset`,
+  `status`, `authorship.kind`, the signatures). Adding a check that needs a reference means adding it
+  to the **enricher**, not the compiler.
+- **Enrichment is partly validation, by design.** The enricher is the only tier that can compare
+  authored data against reality (format/compiler are inject-only). Every such check **reports, never
+  repairs** — rewriting an authored value destroys the evidence of an upstream bug — and severity
+  follows the mode (`best_effort` warns, `strict` refuses). Add new checks in that shape; see the table
+  at the top of [ENRICHER.md](docs/ENRICHER.md).
+- **The compiler's VRS check has THREE outcomes, not two.** *verified* (silent), *mismatch*
+  (recomputed and different — **error in both modes**, since a substitution's id is deterministic here
+  so a difference can only be corruption), and *unverifiable* (**could not be recomputed at all** —
+  warning in `best_effort`, error in `strict`). An indel is **never** a "mismatch": this tier cannot
+  recompute one, so it can only report that it did not check, and saying otherwise would claim a
+  verdict never reached. Unverifiable covers indel/MNV, multi-allelic, position-only, no-coordinate,
+  off-assembly contig, and non-GRCh38 build. Full matrix in [COMPILER.md](docs/COMPILER.md).
+- **`refget_accession` RAISES for a non-GRCh38 build** (it must — a caller asking for GRCh37 should
+  hear "not built", not get a GRCh38 answer). Every call site therefore has to catch
+  `UnsupportedBuildError`; one that didn't used to abort a whole compile over a single row.
+- **`ga4gh.vrs` is a CORE enricher dependency, not `[dev]`.** Substitution minting is stdlib in the
+  format tier; indel normalization goes over the **seqrepo REST** proxy (14 pure-Python packages — the
+  plan's `[extras]`/`pysam`/multi-GB-seqrepo assumption was wrong). `--offline` is the only thing that
+  degrades minting to substitutions-only. Never add `ga4gh.vrs` to format or compiler: the compiler's
+  verify pass is stdlib on purpose.
+- **The two gene-constraint routes are different releases.** The live `gnomad_constraint` API field
+  serves **v2.1.1**; v4.1 ships only in the bulk TSV. They carry different `dataset` labels, and
+  `dataset` is inside the fact set. Don't "fix" a test that asserts they differ.
 - **An rsID is position/multi-allelic-level, not per-allele.** One rsID (`rs33922842`) legitimately spans
   pathogenic + benign + uncertain alleles at one locus, so clinical identity keys on `variant_key`+
   genotype, never rsID. The reverse pos→rsID back-fill is therefore **allele-aware**
@@ -65,11 +113,29 @@ design questions to settle first**. It already assumes the alt-carrying `variant
   null (don't guess); 1 → attach; ≥2 (a dbSNP merge) → deterministic pick + `status="ambiguous"` +
   `ResolutionRow.rsid_alternates`.
 - **`enrich()` treats an existing `resolution.csv` beside the spec as authoritative** (merged, never
-  clobbered). To regenerate after a machinery change you MUST **delete `resolution.csv` first**, or stale
-  rows silently persist (this bit me while regenerating the reference example).
+  clobbered) — and so do the two new passes for `frequencies.csv` / `gene_metrics.csv`, and VRS minting
+  for an existing `vrs_id`. To regenerate after a machinery change you MUST **delete the sidecar first**,
+  or stale rows silently persist (this bit me while regenerating the reference example).
+- **Rate limits are load-bearing in `gnomad.py`.** 10 requests/IP/60s, so everything is batched (20
+  aliases; 29 returns HTTP 400) behind a 6s pacing gate on an **injectable clock** — tests prove the
+  interval without really sleeping. Per-alias GraphQL errors must never sink a batch; a *pathless* error
+  must raise (it's our broken query, and swallowing it looks like "nothing found").
 - **Known loose end:** the compiler's reverse writer (`_write_resolution_csv`) omits `rsid_alternates`
   from its `fieldnames`, so an `ambiguous` candidate list doesn't survive reverse→re-enrich (provenance
-  only — no digest/signature impact). See the gnomAD plan's "adjacent observation".
+  only — no digest/signature impact). Still open.
+- **For rsID merge status, NCBI is the oracle — not Ensembl.** Ensembl resolves *some* merged rsIDs
+  (`rs77121243` → `rs334`) and returns **HTTP 400 on others** (`rs3216883`, which dbSNP correctly
+  reports as merged into `rs3051860`), so Ensembl alone would misclassify a merged rsID as
+  unresolvable. `esummary db=snp` is batched and authoritative: `snp_id` != requested + `merged_sort=1`
+  means merged, an `error: "cannot get document summary"` record means absent. **There is no distinct
+  "withdrawn" state**: an rsID retracted for mapping/clustering errors (`rs11273140`) is byte-identical
+  to one never assigned (`rs2000000000`) across esummary, esearch and Ensembl, so a message about an
+  absent rsID must name *both* readings — typo vs withdrawn-and-the-annotation-may-be-worthless — and
+  assert neither. (`misc/rs_unsupported_b157.txt` looks like a withdrawn registry and is not; it is a
+  one-off build-157 ClinVar-parsing incident list.) And when picking a negative-test rsID, check it:
+  `rs999999999` looks synthetic but is a real variant at chr6:58247859.
+- **Network tests are opt-in:** `JUST_DNA_NETWORK_TESTS=1` runs the live gnomAD query, the seqrepo
+  refget re-derivation, and indel-normalization round-trips. They pass; they just aren't run by default.
 - **Dogfood data is git-ignored** (`/data/` now in `.gitignore`): local ClinVar VCF at
   `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
   is `data/interim/clinvar`. `resolution.csv` is provisional in 0.5, so `artifact.digest` changes for

@@ -44,7 +44,7 @@ VALID_CLIN_SIG: frozenset[str] = frozenset(
 # ── Identifier grammars ─────────────────────────────────────────────────────────────────────────
 RSID_PATTERN: re.Pattern[str] = re.compile(r"^rs\d+$")
 ALLELE_PATTERN: re.Pattern[str] = re.compile(r"^[ACGT]+$", re.IGNORECASE)
-# EFO/MONDO/OBA/HP-style ontology CURIE, e.g. EFO_0001645 or MONDO:0005265 (matches just-prs's
+# EFO/MONDO/OBA/HP-style ontology CURIE, e.g. EFO_0004340 or MONDO:0005265 (matches just-prs's
 # `trait_efo_id`). Multiple ids may be given, comma/semicolon/pipe-separated.
 TRAIT_ID_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z][A-Za-z]*[:_]\w+$")
 # Separators accepted inside a multi-valued CSV cell (`flags`, `trait_efo_id`, `training_ancestry`).
@@ -109,6 +109,53 @@ VALID_EVIDENCE_LEVELS: frozenset[str] = frozenset({"1A", "1B", "2A", "2B", "3", 
 # `ambiguous` marks a query that resolved to something the resolver could not disambiguate to a single
 # locus (rare — a one-to-many rsid is expanded to distinct rows instead, so it is not `ambiguous`).
 VALID_RESOLUTION_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "ambiguous"})
+
+# ── Ancestry groups for the frequency table (0.5) ───────────────────────────────────────────────
+# An OPEN, seeded vocabulary in the `RECOMMENDED_AUTHOR_KINDS` idiom — deliberately NOT a closed
+# `frozenset` + rejecting validator, even though Principle 6 makes closed the default. The reason is
+# that `frequencies.csv` must stay **source-independent**: it is shaped for allele frequencies in
+# general, and gnomAD is only the first producer. TOPMed, ALFA, and 1000G label their groups
+# differently, and a closed set would make each of those an additive vocabulary bump — turning a
+# source swap into a schema change. What makes a label interpretable is not membership here but the
+# row's `dataset` column, which names the release the label belongs to.
+#
+# Seeded with gnomAD v4's ten ancestry groups plus `global` (the whole-dataset row, which gnomAD
+# reports under a bare empty id). Unknown labels are normalized and kept, not rejected.
+RECOMMENDED_ANCESTRY_GROUPS: frozenset[str] = frozenset(
+    {
+        "global",       # the whole dataset — every source has this row, however it spells it
+        "afr",          # African / African-American
+        "ami",          # Amish
+        "amr",          # Admixed American
+        "asj",          # Ashkenazi Jewish
+        "eas",          # East Asian
+        "fin",          # Finnish
+        "mid",          # Middle Eastern
+        "nfe",          # Non-Finnish European
+        "sas",          # South Asian
+        "remaining",    # v4's name for what v2 called `oth` — individuals not assigned above
+    }
+)
+# This is NOT `pgs.VALID_TRAINING_ANCESTRY` and must never be merged with it. Those are 1000G
+# superpopulation codes describing *which cohort a PGS was trained on* — a property of a score's
+# provenance and portability. These describe *whose alleles were counted* in a reference database.
+# Two different axes that happen to share three letters; merging them would be the `state`-overloading
+# mistake in new clothing.
+
+# Emission order for the frequency table (Principle 7: deterministic ordering is load-bearing). The
+# source returns groups in an order it never promises to keep — and, probed live, returns duplicates —
+# so the writer imposes this order instead of preserving the server's. `global` leads because it is
+# the row a reader wants first; the rest are alphabetical, which needs no justification and cannot
+# drift. A label outside this list sorts after all of them, alphabetically, so an unseeded source's
+# groups are still emitted deterministically.
+POPULATION_ORDER: tuple[str, ...] = (
+    "global", "afr", "ami", "amr", "asj", "eas", "fin", "mid", "nfe", "remaining", "sas",
+)
+
+
+# A well-formed ancestry-group label: a lowercase token that survives a CSV cell and a group-by.
+POPULATION_PATTERN: re.Pattern[str] = re.compile(r"^[a-z0-9_]+$")
+
 
 # ── Module authorship (RM14; docs/USE_CASES.md §5a) ─────────────────────────────
 # A contribution's `role` is a small, stable, CLOSED vocabulary (Principle 6): what a contributor did
@@ -178,7 +225,7 @@ def validate_trait_ids(value: Optional[str], field_name: str = "trait_efo_id") -
         tok = tok.strip()
         if tok and not TRAIT_ID_PATTERN.match(tok):
             raise ValueError(
-                f"{field_name} tokens must be ontology CURIEs like EFO_0001645 / "
+                f"{field_name} tokens must be ontology CURIEs like EFO_0004340 / "
                 f"MONDO:0005265, got: {tok!r}"
             )
     return value
@@ -195,6 +242,41 @@ def validate_rsid(value: Optional[str]) -> Optional[str]:
     """Validate an optional dbSNP identifier (`rs<digits>`)."""
     if value is not None and not RSID_PATTERN.match(value):
         raise ValueError(f"rsid must match rs<digits>, got: {value!r}")
+    return value
+
+
+def population_sort_key(population: str) -> tuple[int, str]:
+    """Deterministic sort key for an ancestry group: seeded groups in `POPULATION_ORDER`, then the
+    rest alphabetically. Total and stable for any label, which is what the open vocabulary needs."""
+    try:
+        return (POPULATION_ORDER.index(population), "")
+    except ValueError:
+        return (len(POPULATION_ORDER), population)
+
+
+def normalize_population(value: str) -> str:
+    """Fold an ancestry-group label to its canonical form: stripped, lowercased, and a bare/empty
+    label mapped to `global` (which is how gnomAD reports the whole-dataset row)."""
+    token = (value or "").strip().lower()
+    return token or "global"
+
+
+def validate_population(value: str) -> str:
+    """Validate an ancestry group against the OPEN seeded vocabulary.
+
+    Enforces only that the label is a non-empty, well-formed token — membership in
+    `RECOMMENDED_ANCESTRY_GROUPS` is a recommendation, not a gate (see the comment beside it). A
+    label that is merely unfamiliar is kept, because the next source will bring its own naming; one
+    that is *malformed* (empty, padded, or carrying a separator that would break a CSV cell or a
+    group-by) is rejected, because that is a data error rather than a new source's naming.
+    """
+    if not value or value != value.strip():
+        raise ValueError(f"population must be a non-empty label without padding, got: {value!r}")
+    if not POPULATION_PATTERN.match(value):
+        raise ValueError(
+            f"population must be a lowercase token (letters, digits, underscore) — recommended: "
+            f"{sorted(RECOMMENDED_ANCESTRY_GROUPS)}, got: {value!r}"
+        )
     return value
 
 

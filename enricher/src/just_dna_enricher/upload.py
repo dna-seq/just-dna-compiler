@@ -31,6 +31,7 @@ _SNAPSHOT_ALLOW_PATTERNS = ["data/*.parquet", "release.json"]
 
 DEFAULT_REPO_ID = "just-dna-seq/annotators"
 DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
+DEFAULT_CONSTRAINT_REPO_ID = "just-dna-seq/gnomad_constraint"
 
 
 def _hf_api(repo_id: str, token: Optional[str] = None):

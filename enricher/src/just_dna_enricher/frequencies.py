@@ -1,0 +1,269 @@
+"""`enrich-frequencies` — the second pass: coordinates in, `frequencies.csv` out.
+
+Structured like `enrich()`, and deliberately a *separate pass* rather than more work inside it. The
+resolution pass answers "where is this variant"; this one answers "how common is it" — different
+question, different output file, different failure mode, and a module may want one without the other.
+
+It consumes `resolution.csv` rather than `variants.csv`, because a frequency is per *allele at a
+coordinate*: the resolution table is where an rsID has already become `chrom-pos-ref-alt`, which is
+exactly the key gnomAD wants. That also sidesteps the multi-allelic-rsID problem entirely — a problem
+the resolver link has to solve, and this pass never meets.
+
+**This is the first online-only link in the whole chain.** There is no offline snapshot to fall back
+on and there will not be one: the v4.1 sites VCFs are 58 GB (exomes) and 742 GB (genomes), so a
+frequency slice is not a thing that ships. `--offline` therefore makes this pass a no-op with a
+warning rather than a failure. That is not a hole in reproducibility: once `frequencies.csv` is
+written it *is* the pin, and every later compile reads it offline and deterministically.
+"""
+
+import csv
+import logging
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_format.base import derive_variant_key
+from just_dna_format.frequency import FrequencyRow
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.vocab import population_sort_key
+
+from just_dna_enricher.gnomad import FREQUENCY_DATASET_LABEL, GnomadClient
+
+logger = logging.getLogger(__name__)
+
+_FIELDNAMES = [
+    "variant_key", "rsid", "chrom", "start", "ref", "alt", "genome_build",
+    "population", "allele_count", "allele_number", "homozygote_count", "hemizygote_count",
+    "faf95", "dataset", "vrs_id", "caid", "source", "status", "fetched_at",
+]
+
+
+class FrequencyEnrichmentError(RuntimeError):
+    """Raised in strict mode when a resolved variant gets no frequency."""
+
+
+@dataclass
+class FrequencyResult:
+    rows: list[FrequencyRow]
+    covered: list[str] = field(default_factory=list)     # variant_keys that got at least one row
+    missing: list[str] = field(default_factory=list)     # resolved alleles gnomAD did not know
+    sources: list[str] = field(default_factory=list)
+    mode: str = "best_effort"
+    skipped_offline: bool = False
+
+
+def format_faf95(value: Optional[float]) -> str:
+    """Render `faf95` to a canonical cell — the one stored float in the table.
+
+    Every other number here is an integer count precisely so CSV round-trips are exact; `faf95` has no
+    integer form. `str()` is the right tool and a fixed `%.12g` would be a mistake: since Python 3.1,
+    `str(float)` produces the *shortest string that reloads to the identical double*, which is both
+    exactly lossless and deterministic across platforms for IEEE-754. A fixed-precision format would
+    be deterministic but would silently truncate, and it would disagree with the compiler's reverse
+    writer (`_scalar_cell`), leaving the same number spelled two ways depending on who last wrote the
+    file.
+    """
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _alleles_from_resolution(rows: list[ResolutionRow]) -> list[tuple[str, str, int, str, str]]:
+    """Expand resolved rows into `(variant_key, chrom, start, ref, alt)` — one entry per ALT.
+
+    A multi-allelic `alts` cell becomes several entries, each re-keyed to *its own* allele identity via
+    `derive_variant_key`, because that is the key the compiler's weights rows carry after expansion.
+    Emitted in first-occurrence order, de-duplicated, so the request order (and so the written table)
+    is deterministic.
+    """
+    seen: set[tuple[str, int, str, str]] = set()
+    out: list[tuple[str, str, int, str, str]] = []
+    for row in rows:
+        if row.chrom is None or row.start is None or row.ref is None or not row.alts:
+            continue
+        if row.status == "not_found":
+            continue
+        for alt in (a.strip() for a in row.alts.split(",")):
+            if not alt:
+                continue
+            coord = (row.chrom, row.start, row.ref, alt)
+            if coord in seen:
+                continue
+            seen.add(coord)
+            key = derive_variant_key(None, row.chrom, row.start, row.ref, alt)
+            out.append((key, row.chrom, row.start, row.ref, alt))
+    return out
+
+
+def _variant_id(chrom: str, start: int, ref: str, alt: str) -> str:
+    """gnomAD's `chrom-pos-ref-alt` id (its chromosomes carry no `chr` prefix, like ours)."""
+    return f"{chrom}-{start}-{ref}-{alt}"
+
+
+def enrich_frequencies(
+    spec_dir: Path,
+    *,
+    mode: str = "best_effort",
+    offline: bool = False,
+    populations: Optional[list[str]] = None,
+    dataset: str = FREQUENCY_DATASET_LABEL,
+    write: bool = True,
+    client: Optional[GnomadClient] = None,
+) -> FrequencyResult:
+    """Fill `frequencies.csv` from the coordinates already in `resolution.csv`.
+
+    `populations` restricts the emitted ancestry groups (e.g. `["global"]` keeps the table to one row
+    per allele — the human-legibility escape hatch for a module that wants the number, not the
+    breakdown). `None` keeps every group the source reports.
+
+    Existing rows are authoritative and are merged, never clobbered — the same rule `enrich()` applies
+    to `resolution.csv`, and it is what makes a hand-corrected number survive a re-run. Note the same
+    consequence, too: to regenerate after a machinery change you must delete the file first.
+    """
+    spec_dir = Path(spec_dir)
+    resolution_path = spec_dir / "resolution.csv"
+    frequencies_path = spec_dir / "frequencies.csv"
+
+    if not resolution_path.exists():
+        raise FrequencyEnrichmentError(
+            f"no resolution.csv in {spec_dir} — the frequency pass reads resolved coordinates, so run "
+            f"`just-dna-enricher enrich` first."
+        )
+    resolution_rows, errors, _ = _load_csv_rows(resolution_path, ResolutionRow, "resolution.csv")
+    if errors:
+        raise FrequencyEnrichmentError(f"resolution.csv is invalid: {errors[0]}")
+
+    existing: dict[tuple[str, str], FrequencyRow] = {}
+    if frequencies_path.exists():
+        rows, errors, _ = _load_csv_rows(frequencies_path, FrequencyRow, "frequencies.csv")
+        if errors:
+            raise FrequencyEnrichmentError(f"existing frequencies.csv is invalid: {errors[0]}")
+        for row in rows:
+            existing[(row.variant_key, row.population)] = row
+
+    alleles = _alleles_from_resolution(resolution_rows)
+    wanted_populations = {p.strip().lower() for p in populations} if populations else None
+
+    if offline:
+        logger.warning(
+            "Frequency enrichment skipped: --offline and gnomAD has no offline snapshot (the v4.1 "
+            "sites VCFs are 58 GB exomes / 742 GB genomes). Any existing frequencies.csv is kept as "
+            "the pin; compiles stay reproducible from it."
+        )
+        out = sorted(existing.values(), key=_sort_key)
+        if write and existing:
+            _write_frequencies_csv(out, frequencies_path)
+        return FrequencyResult(
+            rows=out, sources=sorted({r.source for r in out if r.source}), mode=mode,
+            skipped_offline=True,
+            missing=sorted({key for key, *_ in alleles} - {r.variant_key for r in out}),
+        )
+
+    # Only fetch what no existing row already covers — a re-run after adding two variants costs one
+    # request, not a full refetch of a table that is already right.
+    covered_keys = {key for key, _population in existing}
+    to_fetch = [a for a in alleles if a[0] not in covered_keys]
+    fetched: dict[str, dict] = {}
+    if to_fetch:
+        owned = client is None
+        gnomad = client or GnomadClient()
+        try:
+            fetched = gnomad.fetch_frequencies(
+                [_variant_id(chrom, start, ref, alt) for _, chrom, start, ref, alt in to_fetch]
+            )
+        finally:
+            if owned:
+                gnomad.close()
+
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    out: list[FrequencyRow] = list(existing.values())
+    covered: list[str] = []
+    missing: list[str] = []
+    for key, chrom, start, ref, alt in to_fetch:
+        payload = fetched.get(_variant_id(chrom, start, ref, alt))
+        if not payload or not payload.get("populations"):
+            missing.append(key)
+            # A `not_found` row is a FACT — "gnomAD was asked and does not have this allele" — and is
+            # materially different from a variant that was never queried (no row at all). Same
+            # reasoning as the resolution table's `not_found` sentinel.
+            out.append(
+                FrequencyRow(
+                    variant_key=key, chrom=chrom, start=start, ref=ref, alt=alt,
+                    population="global", dataset=dataset, source="gnomad", status="not_found",
+                    fetched_at=fetched_at,
+                )
+            )
+            continue
+        covered.append(key)
+        for entry in payload["populations"]:
+            if wanted_populations is not None and entry["population"] not in wanted_populations:
+                continue
+            out.append(
+                FrequencyRow(
+                    variant_key=key, rsid=payload.get("rsid"), chrom=chrom, start=start,
+                    ref=ref, alt=alt, dataset=dataset,
+                    vrs_id=payload.get("vrs_id"), caid=payload.get("caid"),
+                    source="gnomad", status="resolved", fetched_at=fetched_at, **entry,
+                )
+            )
+
+    out.sort(key=_sort_key)
+    result = FrequencyResult(
+        rows=out,
+        covered=sorted(set(covered)),
+        missing=sorted(set(missing)),
+        sources=sorted({r.source for r in out if r.source}),
+        mode=mode,
+    )
+    if mode == "strict" and result.missing:
+        raise FrequencyEnrichmentError(
+            f"strict frequency enrichment: {len(result.missing)} resolved allele(s) have no gnomAD "
+            f"frequency: {result.missing}. gnomAD genuinely lacks rare/private alleles, so this is "
+            f"often correct data rather than a fetch failure — add the rows by hand or use "
+            f"mode='best_effort'."
+        )
+    if write:
+        _write_frequencies_csv(out, frequencies_path)
+    return result
+
+
+def _sort_key(row: FrequencyRow) -> tuple:
+    """Deterministic emission order: by allele, then by the canonical ancestry-group order."""
+    return (row.variant_key, row.alt or "", population_sort_key(row.population))
+
+
+def _write_frequencies_csv(rows: list[FrequencyRow], output_path: Path) -> None:
+    """Write the table with a fixed column order and canonical cells (byte-stable across runs)."""
+    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    "variant_key": row.variant_key,
+                    "rsid": row.rsid or "",
+                    "chrom": row.chrom or "",
+                    "start": row.start if row.start is not None else "",
+                    "ref": row.ref or "",
+                    "alt": row.alt or "",
+                    "genome_build": row.genome_build,
+                    "population": row.population,
+                    "allele_count": row.allele_count if row.allele_count is not None else "",
+                    "allele_number": row.allele_number if row.allele_number is not None else "",
+                    "homozygote_count": (
+                        row.homozygote_count if row.homozygote_count is not None else ""
+                    ),
+                    "hemizygote_count": (
+                        row.hemizygote_count if row.hemizygote_count is not None else ""
+                    ),
+                    "faf95": format_faf95(row.faf95),
+                    "dataset": row.dataset,
+                    "vrs_id": row.vrs_id or "",
+                    "caid": row.caid or "",
+                    "source": row.source or "",
+                    "status": row.status or "",
+                    "fetched_at": row.fetched_at or "",
+                }
+            )
