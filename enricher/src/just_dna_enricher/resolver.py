@@ -9,6 +9,7 @@ caller's responsibility (the marketplace pins one reference for the whole ecosys
 """
 
 import logging
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -273,12 +274,33 @@ def _lookup_rsid_candidates(
         for rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
             if ref is not None and rref != ref:
                 continue
-            if alt is not None and ralt != alt:
+            # Membership, not equality: a multi-allelic snapshot row names several alleles in one
+            # pipe-joined cell, and `!=` against the whole cell never matched any of them.
+            if alt is not None and alt not in _snapshot_alleles(ralt):
                 continue
             if rid not in cands:  # rows already ordered by ... id
                 cands.append(rid)
         result[(chrom, start, ref, alt)] = cands
     return result
+
+
+def _snapshot_alleles(cell: object) -> list[str]:
+    """The alleles named by one snapshot `alt` cell.
+
+    The Ensembl snapshot records a multi-allelic site as a **single row whose `alt` is pipe-joined**
+    (`A|C|T`), whereas every other link in the chain — live Ensembl (`_loci_from_rest`), ClinVar,
+    gnomAD — emits a comma-separated list, and that is the shape `ResolutionRow.alts` is written in.
+    Normalizing here, at the one boundary where the snapshot is read, keeps a locus dict's `alts` in
+    exactly one canonical form no matter which link produced it.
+
+    This is load-bearing rather than cosmetic: `genotype_fits` (the shared allele-membership
+    predicate) splits on commas only, so an un-normalized `A|C|T` collapsed to a single opaque
+    "allele" and **every** genotype was judged unhostable — a cache-resolved `rs4244285` with the
+    perfectly ordinary genotype `A/G` resolved to `not_found`. The reverse back-fill had the mirror
+    bug: it compared the authored alt against the whole joined cell with `!=`, so an exact allele
+    never matched a multi-allelic site.
+    """
+    return [a for a in re.split(r"[,|]", str(cell)) if a]
 
 
 def _lookup_positions_by_rsid(
@@ -305,8 +327,11 @@ def _lookup_positions_by_rsid(
     ).fetchall()
     result: dict[str, list[dict]] = defaultdict(list)
     for row_id, chrom, start, ref, alts in rows:
+        # `string_agg` already joined the group with commas; `_snapshot_alleles` additionally splits
+        # any pipe-joined multi-allelic cell, then re-joins sorted+deduped so the order is stable (P7).
+        alleles = sorted(set(_snapshot_alleles(alts)))
         result[row_id].append(
-            {"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": str(alts)}
+            {"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": ",".join(alleles)}
         )
     for rsid in rsids:
         if rsid not in result:

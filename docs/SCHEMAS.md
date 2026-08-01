@@ -130,7 +130,15 @@ are a compile error; interior coverage gaps are warnings.
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,
 `activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
 `a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`); `PharmVariantRow` (`drug`+
-`conclusion`, single-variant, `evidence_level?` 1A…4).
+`conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`).
+
+`PharmVariantRow.genotype` (0.5) carries the axis PharmGKB actually publishes on: a clinical
+annotation is stated **per genotype**, and the calls can be opposed (rs4149056/simvastatin reads
+"decreased" for CC and CT, "increased" for TT). It is therefore in the dedup key
+`(variant_key, drug, genotype)` — without it the real corpus was rejected as duplicate rows. The
+grammar is the shared `AuthoredModel` one, so a genotype means the same thing here as on a
+`VariantRow`; a haplotype-keyed annotation (`*1`) belongs on `DiplotypeRow` instead, and a symbolic
+allele (`del/del`) stays RM5 rather than widening the nucleotide grammar.
 
 **`PgsRow` → `pgs.csv`.** Required `pgs_id` (`^PGS\d+$`). Optional `trait_efo_id`, `note`, `group`,
 `training_ancestry?` (list, `VALID_TRAINING_ANCESTRY`), `training_cohort`, `match_rate_floor?` ([0,1]),

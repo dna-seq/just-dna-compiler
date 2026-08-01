@@ -165,14 +165,34 @@ class PharmVariantRow(AuthoredModel):
     a PharmGKB **evidence level** (1A…4) — a different axis from a risk weight (why it is not a
     `VariantRow`).
 
+    **`genotype` is part of the identity, not decoration (0.5).** A PharmGKB clinical annotation is
+    published *per genotype*: the summary row names the variant and drug, and a child table gives one
+    annotation per call — 4,618 of 5,113 annotations carry exactly three. They are not variations on
+    one finding but distinct, sometimes opposed, ones: for rs4149056/simvastatin, CC and CT read
+    "decreased response" while TT reads "increased". Modelling only (variant, drug) collapsed them,
+    and the compiler's duplicate-row check rejected the real data outright — the axis is therefore in
+    the dedup key `(variant_key, drug, genotype)`, mirroring the SNP core's (variant, genotype) rule.
+    It is not derivable: nothing else on this row distinguishes the calls but free text.
+
+    The grammar is the shared one on `AuthoredModel`, so a genotype means here exactly what it means
+    on a `VariantRow`. Two shapes upstream deliberately do **not** land in this column: a
+    haplotype-keyed annotation (`*1`, `*1xN`) belongs on `DiplotypeRow`, which already models a
+    haplotype pair, and a symbolic allele (`C/del`, `del/del`) is RM5 and is skipped rather than
+    coerced. PharmGKB writes a diploid call concatenated (`CC`); the canonical form here is sorted and
+    slash-separated (`C/C`), since `CC` would otherwise read as a single two-base allele.
+
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid`/`evidence_level`/
-    `trait_efo_id` validators)."""
+    `trait_efo_id`/`genotype` validators)."""
 
     rsid: Optional[str] = Field(default=None, description="dbSNP id of the variant, e.g. rs9923231")
     chrom: Optional[str] = Field(default=None, description="Chromosome (position-only variants)")
     start: Optional[int] = Field(default=None, description="0-based position (position-only)")
     ref: Optional[str] = Field(default=None, description="Reference allele (position-only)")
     gene: Optional[str] = Field(default=None, description="Gene symbol, e.g. VKORC1")
+    genotype: Optional[str] = Field(
+        default=None,
+        description="Genotype the response applies to, canonical sorted form, e.g. C/T",
+    )
     drug: str = Field(description="Drug the response annotation is about, e.g. warfarin")
     response: Optional[str] = Field(
         default=None, description="Drug response / phenotype, free-form (e.g. 'reduced dose requirement')"

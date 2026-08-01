@@ -126,7 +126,9 @@ _TABLE_KIND_CSVS: tuple[str, ...] = tuple(csv for csv, _, _ in _TABLE_KINDS)
 # is caught as an overlap by `validate_bins`, and duplicate *unresolved* sentinels are caught
 # separately in `_validate_table_kind`. A `HaplotypeRow`'s identity is (allele, defining variant); a
 # `PgsRow`/`DiplotypeRow`/`PharmVariantRow` key includes `trait_efo_id`/`drug` so a legitimately
-# pleiotropic or multi-drug row is not a false duplicate.
+# pleiotropic or multi-drug row is not a false duplicate. `PharmVariantRow` additionally keys on
+# `genotype` (0.5): PharmGKB publishes one clinical annotation *per genotype*, so (variant, drug)
+# alone rejected the real data as duplicates — this mirrors the SNP core's (variant, genotype) rule.
 _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
     HaplotypeRow: lambda r: (
         r.haplotype_name, derive_variant_key(r.rsid, r.chrom, r.start, r.ref), r.allele,
@@ -134,7 +136,7 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
     AlleleFunctionRow: lambda r: (r.gene, r.allele),
     DiplotypeRow: lambda r: (r.gene, r.haplotype_a, r.haplotype_b, r.trait_efo_id, r.drug),
     PgsRow: lambda r: (r.pgs_id, r.trait_efo_id),
-    PharmVariantRow: lambda r: (r.variant_key, r.drug),
+    PharmVariantRow: lambda r: (r.variant_key, r.drug, r.genotype),
 }
 
 _INPUT_FILES: tuple[str, ...] = (

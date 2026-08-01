@@ -28,7 +28,7 @@ from just_dna_format.identity import validate_name
 from just_dna_format.manifest import SCHEMA_VERSION, Contribution, Display, GenePanelSpec
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
-    ALLELE_PATTERN,
+    ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
@@ -408,45 +408,8 @@ class VariantRow(AuthoredModel):
             return normalized
         return v
 
-    @field_validator("genotype")
-    @classmethod
-    def _validate_genotype(cls, v: str) -> str:
-        # Phased (order-significant): pipe-separated, exactly two alleles, NOT sorted — phase encodes
-        # which allele sits on which homolog. ROADMAP 0.3 item 5b.
-        if "|" in v:
-            parts = v.split("|")
-            if len(parts) != 2:
-                raise ValueError(
-                    f"phased genotype must be two pipe-separated alleles (e.g. A|G), got: {v!r}"
-                )
-            for allele in parts:
-                if not ALLELE_PATTERN.match(allele):
-                    raise ValueError(
-                        f"genotype alleles must be nucleotides, got: {allele!r} in {v!r}"
-                    )
-            return v
-        parts = v.split("/")
-        if len(parts) == 1:
-            # Hemizygous single allele (non-PAR X/Y in males; homoplasmic MT). ROADMAP 0.3 item 5b.
-            if not ALLELE_PATTERN.match(parts[0]):
-                raise ValueError(f"genotype allele must be nucleotides, got: {v!r}")
-            return v
-        if len(parts) == 2:
-            for allele in parts:
-                if not ALLELE_PATTERN.match(allele):
-                    raise ValueError(
-                        f"genotype alleles must be nucleotides, got: {allele!r} in {v!r}"
-                    )
-            if parts != sorted(parts):
-                raise ValueError(
-                    f"unphased genotype alleles must be alphabetically sorted: "
-                    f"expected {'/'.join(sorted(parts))!r}, got: {v!r}"
-                )
-            return v
-        raise ValueError(
-            f"genotype must be a single allele (hemizygous, e.g. A), two sorted slash-separated "
-            f"alleles (A/G), or two pipe-separated phased alleles (A|G), got: {v!r}"
-        )
+    # `genotype`'s grammar lives on `AuthoredModel` since 0.5 — `PharmVariantRow` declares the same
+    # field, and a validator shared by two models belongs on the base (see base.py).
 
     @field_validator("actionability")
     @classmethod

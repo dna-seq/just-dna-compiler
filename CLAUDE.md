@@ -183,6 +183,43 @@ CHANGELOG entry).
   `rs999999999` looks synthetic but is a real variant at chr6:58247859.
 - **Network tests are opt-in:** `JUST_DNA_NETWORK_TESTS=1` runs the live gnomAD query, the seqrepo
   refget re-derivation, and indel-normalization round-trips. They pass; they just aren't run by default.
+- **PharmGKB is now ClinPGx, and every PGx upstream is research-only.** `api.pharmgkb.org` was
+  **retired 2026-07-20** and no longer resolves; the successor is `api.clinpgx.org` with paths and
+  formats unchanged. ClinPGx is the umbrella that merged PharmGKB + CPIC + PharmCAT, so **CPIC is not
+  an unrestricted alternative** — `cpicpgx.org/license/` 302-redirects to the ClinPGx data usage
+  policy. All three sources (ClinPGx, CPIC, PharmVar) are **CC BY-SA 4.0 plus a contractual no-sale
+  clause**, so none is sellable: don't read a bare "CC BY-SA" line as permission to sell, read the
+  surrounding terms (`docs/pharmvar_lic.txt` §3 is the PharmVar one). Ensembl/dbSNP already cover
+  rsID→coordinate, so never wire ClinPGx/CPIC as a resolution link — that keeps the coordinate layer
+  unrestricted. PharmVar needs an **`Api-Key:` header** (not `X-API-KEY`) at **2 rps**, and its ToS §2
+  makes the key personal — never bake one into a module, fixture, or snapshot. API schema:
+  `docs/pharmvar_api_docs.json`.
+- **PharmGKB clinical annotations are per-genotype — `(variant_key, drug)` is not a key.** 4,618 of
+  5,113 carry exactly three genotype rows, sometimes opposed (rs4149056/simvastatin: CC/CT
+  "decreased", TT "increased"), so `PharmVariantRow.genotype` is in the dedup key. Its grammar lives
+  on `AuthoredModel` — shared with `VariantRow`, so don't re-declare it. Route haplotype-keyed
+  annotations (`*1`) to `DiplotypeRow`; skip symbolic alleles (`del/del`, 177 rows) as **RM5** rather
+  than widening the nucleotide grammar. PharmGKB writes `CC`; canonical form is `C/C`, since `CC`
+  would otherwise parse as a single two-base allele — disambiguate using the *resolved* ref/alt.
+- **The Ensembl snapshot's `alt` is PIPE-joined; every other link uses commas.** A multi-allelic site
+  is one snapshot row (`A|C|T`), not one row per alt. `resolver._snapshot_alleles` normalizes at that
+  boundary — don't remove it, and don't "fix" it by widening `genotype_fits` instead (the locus-dict
+  contract is comma-separated, and the snapshot is the deviation). This silently broke *all*
+  cache-resolved genotyped variants until 0.5: the comma-only split made `A|C|T` one opaque allele, so
+  the allele-aware filter dropped every locus and `rs4244285` with genotype `A/G` came back
+  `not_found`. Unit fixtures were comma-separated, so only a real cache showed it — when adding a
+  resolver fixture, use the pipe shape for multi-allelic sites.
+- **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
+  `enrich._collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty
+  `resolution.csv`. Subjects dedupe by `variant_key` with **`variants.csv` first** — it alone carries
+  `alts`, a fact column, so a PGx row winning would move `artifact.digest`. PGx tables key **without**
+  `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `genotype_fits`.
+- **CPIC/PharmVar coordinates are 1-based — do NOT convert.** Despite the `start` docstring saying
+  "0-based", the pipeline stores Ensembl's 1-based position (`rs1135071` → 5226799 in both), and CPIC
+  `sequence_location.position` / PharmVar `NC_……:g.` use the same convention. The instinctive `-1`
+  introduces an off-by-one. Two more CPIC traps: `variantallele` uses **IUPAC ambiguity codes** (`R`),
+  which `HaplotypeRow.allele` rejects; and activity scores are **inequality strings** (`"≥3.0"`), not
+  numbers, so they don't drop into `MeasureBinRow`'s numeric bounds.
 - **Dogfood data is git-ignored** (`/data/` now in `.gitignore`): local ClinVar VCF at
   `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
   is `data/interim/clinvar`. `resolution.csv` is provisional in 0.5, so `artifact.digest` changes for

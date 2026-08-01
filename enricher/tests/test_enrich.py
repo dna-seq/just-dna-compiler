@@ -292,3 +292,135 @@ def test_unqueryable_clinvar_cache_degrades_instead_of_crashing(
     assert resolved.chrom == "1" and resolved.source == "cache"   # the Ensembl link still answered
     assert result.unresolved == ["rs77777777"]                    # the ClinVar miss is just a miss
     assert any("not queryable" in message for message in caplog.messages)
+
+
+# ── multi-allelic snapshot rows: pipe-joined `alt` cells ─────────────────────────────────────────
+@pytest.fixture
+def multiallelic_cache(tmp_path: Path) -> Path:
+    """A cache whose multi-allelic site is stored the way the real snapshot stores it.
+
+    The shipped Ensembl snapshot records a multi-allelic locus as ONE row whose `alt` is
+    **pipe-joined** (`rs4244285` is `10:94781859 G>A|C|T`), not one row per alt. Every other link in
+    the chain emits commas, so this shape only ever appears via the cache — which is why the whole
+    unit suite missed it.
+    """
+    data = tmp_path / "mcache" / "data"
+    data.mkdir(parents=True)
+    pl.DataFrame(
+        {
+            "id": ["rs4244285", "rs12248560"],
+            "chrom": ["10", "10"],
+            "start": [94781859, 94761900],
+            "ref": ["G", "C"],
+            "alt": ["A|C|T", "A|T"],
+        }
+    ).write_parquet(data / "chr.parquet")
+    return tmp_path / "mcache"
+
+
+def test_multiallelic_snapshot_row_resolves(multiallelic_cache: Path, tmp_path: Path) -> None:
+    """Regression: a pipe-joined `alt` cell made every genotype look unhostable.
+
+    `genotype_fits` splits alts on commas, so `A|C|T` collapsed to one opaque "allele", no authored
+    genotype was ever a subset of `{ref} ∪ alts`, and the allele-aware filter dropped **every** locus
+    — a perfectly ordinary `A/G` at `rs4244285` resolved to `not_found`. Both alleles here genuinely
+    exist at the locus (`G` is ref, `A` is an alt), so the only way this fails is the separator bug.
+    """
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs4244285,A/G,risk,c\n")
+    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
+                    clinvar_cache=tmp_path / "no_clinvar")
+    assert result.unresolved == []
+    row = result.rows[0]
+    assert (row.chrom, row.start, row.ref) == ("10", 94781859, "G")
+    # Normalized to the one canonical shape every other link emits, sorted for determinism (P7).
+    assert row.alts == "A,C,T"
+
+
+def test_multiallelic_reverse_backfill_matches_one_allele(
+    multiallelic_cache: Path, tmp_path: Path
+) -> None:
+    """The mirror bug: reverse compared the authored alt to the whole joined cell with `!=`."""
+    spec = _spec(
+        tmp_path / "spec",
+        "chrom,start,ref,alts,genotype,state,conclusion\n10,94781859,G,A,A/G,risk,c\n",
+    )
+    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
+                    clinvar_cache=tmp_path / "no_clinvar")
+    assert result.rows[0].rsid == "rs4244285"
+
+
+# ── PGx tables participate in resolution (a PGx module carries no variants.csv) ──────────────────
+def _pgx_spec(d: Path, *, pharm: str | None = None, haplotypes: str | None = None) -> Path:
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    if pharm is not None:
+        (d / "pharm_variants.csv").write_text(pharm, encoding="utf-8")
+    if haplotypes is not None:
+        (d / "haplotypes.csv").write_text(haplotypes, encoding="utf-8")
+    return d
+
+
+def test_pharm_variants_resolve_without_a_variants_csv(
+    multiallelic_cache: Path, tmp_path: Path
+) -> None:
+    """A PharmGKB module composes from pharm_variants.csv alone — it must still get coordinates."""
+    spec = _pgx_spec(
+        tmp_path / "spec",
+        pharm=("rsid,gene,genotype,drug,conclusion\n"
+               "rs4244285,CYP2C19,A/G,clopidogrel,reduced activation\n"),
+    )
+    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
+                    clinvar_cache=tmp_path / "no_clinvar")
+    assert result.unresolved == []
+    assert [(r.rsid, r.chrom, r.start) for r in result.rows] == [("rs4244285", "10", 94781859)]
+
+
+def test_haplotype_defining_variants_resolve(multiallelic_cache: Path, tmp_path: Path) -> None:
+    """A star-allele module's defining variants are rsIDs too, and were equally invisible before."""
+    spec = _pgx_spec(
+        tmp_path / "spec",
+        haplotypes=("haplotype_name,rsid,allele,gene\n"
+                    "*2,rs4244285,A,CYP2C19\n*17,rs12248560,T,CYP2C19\n"),
+    )
+    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
+                    clinvar_cache=tmp_path / "no_clinvar")
+    assert result.unresolved == []
+    assert {r.rsid for r in result.rows} == {"rs4244285", "rs12248560"}
+
+
+def test_a_variant_named_by_two_tables_is_resolved_once(
+    multiallelic_cache: Path, tmp_path: Path
+) -> None:
+    """Dedup by variant_key, and `variants.csv` wins — it is the table carrying `alts`, a fact
+    column, so letting a PGx row win would move an already-compiled module's artifact.digest."""
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs4244285,A/G,risk,c\n")
+    (spec / "pharm_variants.csv").write_text(
+        "rsid,gene,genotype,drug,conclusion\nrs4244285,CYP2C19,A/G,clopidogrel,c\n",
+        encoding="utf-8",
+    )
+    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
+                    clinvar_cache=tmp_path / "no_clinvar")
+    assert len([r for r in result.rows if r.rsid == "rs4244285"]) == 1
+
+
+def test_haplotype_allele_filters_a_one_to_many_rsid(tmp_path: Path) -> None:
+    """A haplotype's defining `allele` is a one-allele membership test, so it uses the same shared
+    predicate as a genotype — a locus that cannot carry the allele is left out."""
+    data = tmp_path / "hcache" / "data"
+    data.mkdir(parents=True)
+    pl.DataFrame(   # one rsid, two loci; only the first can host allele `T`
+        {
+            "id": ["rs999", "rs999"],
+            "chrom": ["5", "6"],
+            "start": [500, 600],
+            "ref": ["A", "A"],
+            "alt": ["T", "C"],
+        }
+    ).write_parquet(data / "chr.parquet")
+    spec = _pgx_spec(
+        tmp_path / "spec",
+        haplotypes="haplotype_name,rsid,allele,gene\n*2,rs999,T,GENE\n",
+    )
+    result = enrich(spec, offline=True, ensembl_cache=tmp_path / "hcache",
+                    clinvar_cache=tmp_path / "no_clinvar")
+    assert [(r.chrom, r.start) for r in result.rows] == [("5", 500)]

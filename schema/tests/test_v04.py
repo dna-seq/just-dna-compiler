@@ -267,6 +267,33 @@ def test_pharm_variant_row() -> None:
         PharmVariantRow(rsid="rs1", drug="warfarin", evidence_level="5", conclusion="x")  # bad level
 
 
+def test_pharm_variant_genotype_uses_the_shared_grammar() -> None:
+    """`genotype` moved onto `AuthoredModel` in 0.5, so `PharmVariantRow` must enforce exactly the
+    grammar `VariantRow` does — same accepts, same rejects, from one definition."""
+    accepted = ["C/C", "C/T", "T/T", "C", "C|T"]  # hom, het, hom-alt, hemizygous, phased
+    for g in accepted:
+        assert PharmVariantRow(
+            rsid="rs4149056", drug="simvastatin", genotype=g, conclusion="x"
+        ).genotype == g
+
+    # Every rejection below is the shared grammar's, proven by asserting VariantRow agrees.
+    rejected = [
+        "T/C",        # unphased alleles must be alphabetically sorted
+        "C|T|G",      # phased must be exactly two alleles
+        "C/T/G",      # more than two alleles
+        "del/del",    # symbolic allele — RM5, deliberately NOT widened for PharmGKB
+        "*1",         # star allele belongs on DiplotypeRow, not here
+    ]
+    for g in rejected:
+        with pytest.raises(ValidationError):
+            PharmVariantRow(rsid="rs1", drug="warfarin", genotype=g, conclusion="x")
+        with pytest.raises(ValidationError):
+            VariantRow(rsid="rs1", genotype=g, state="risk", conclusion="x")
+
+    # Optional here, required on VariantRow — absence must stay legal.
+    assert PharmVariantRow(rsid="rs1", drug="warfarin", conclusion="x").genotype is None
+
+
 def test_diplotype_row_pharm_columns() -> None:
     d = DiplotypeRow(
         gene="CYP2D6", haplotype_a="*1", haplotype_b="*4", phenotype="IM",

@@ -17,6 +17,7 @@ from typing import Optional
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_compiler.resolution import genotype_fits
 from just_dna_format.base import derive_variant_key
+from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
@@ -40,7 +41,86 @@ _FIELDNAMES = [
 ]
 
 
-def _authored_alt(v: VariantRow) -> Optional[str]:
+@dataclass(frozen=True)
+class _Subject:
+    """One row asking for a coordinate, normalized across the tables allowed to ask.
+
+    Resolution used to read `variants.csv` alone, so a PGx module — which by design carries **no**
+    `variants.csv` (one CSV = one concern) — enriched to an empty `resolution.csv` and shipped with no
+    coordinates at all. The chain itself was never variant-specific; only its input was. Normalizing
+    to a subject lets `pharm_variants.csv` and `haplotypes.csv` through the *unchanged* resolver,
+    caches, ordering and back-fill.
+
+    `constraint` is whatever the row knows about which alleles must be present at the locus, fed to
+    the shared `genotype_fits` predicate so a one-to-many rsID drops the loci the row cannot be about:
+
+    - a `VariantRow`/`PharmVariantRow` supplies its **genotype** (`C/T`);
+    - a `HaplotypeRow` supplies its single defining **allele** (`G`) — the same membership question
+      asked of one allele instead of two, which is why it reuses the same predicate rather than a
+      parallel one;
+    - `None` (a `PharmVariantRow` with no authored genotype) constrains nothing and keeps every locus.
+    """
+
+    variant_key: str
+    rsid: Optional[str]
+    chrom: Optional[str]
+    start: Optional[int]
+    ref: Optional[str]
+    alts: Optional[str]
+    constraint: Optional[str]
+    origin: str
+
+
+def _subject_of_variant(v: VariantRow) -> _Subject:
+    key = v.variant_key or derive_variant_key(v.rsid, v.chrom, v.start, v.ref, v.alts)
+    return _Subject(key, v.rsid, v.chrom, v.start, v.ref, v.alts, v.genotype, "variants.csv")
+
+
+def _collect_subjects(spec_dir: Path, variants: list[VariantRow]) -> list[_Subject]:
+    """Every row in the spec that needs a coordinate, `variants.csv` first, deduped by `variant_key`.
+
+    Order and precedence are load-bearing. `variants.csv` goes first so that when the same variant is
+    named by two tables, the SNP row wins — it is the only one carrying `alts`, which is a resolution
+    *fact* and therefore decides the compiled bytes. Letting a PGx row win would move an already
+    compiled module's `artifact.digest`, the same hazard the link ordering in the chain below exists
+    to avoid. Within that, first occurrence wins, so the emitted order is the authored order.
+
+    The PGx tables key **without** `alts` (`PharmVariantRow.variant_key` is that property, and a
+    `HaplotypeRow` key is derived the same way): a pharm annotation or a haplotype junction matches a
+    variant at `chrom:start:ref` regardless of allele. Mixing that up would mint a VRS allele id for a
+    row that never named an allele.
+    """
+    subjects: list[_Subject] = [_subject_of_variant(v) for v in variants]
+
+    pharm_path = spec_dir / "pharm_variants.csv"
+    if pharm_path.exists():
+        rows, errors, _ = _load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
+        if errors:
+            raise EnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
+        subjects.extend(
+            _Subject(r.variant_key, r.rsid, r.chrom, r.start, r.ref, None, r.genotype,
+                     "pharm_variants.csv")
+            for r in rows
+        )
+
+    hap_path = spec_dir / "haplotypes.csv"
+    if hap_path.exists():
+        rows, errors, _ = _load_csv_rows(hap_path, HaplotypeRow, "haplotypes.csv")
+        if errors:
+            raise EnrichmentError(f"haplotypes.csv is invalid: {errors[0]}")
+        subjects.extend(
+            _Subject(derive_variant_key(r.rsid, r.chrom, r.start, r.ref),
+                     r.rsid, r.chrom, r.start, r.ref, None, r.allele, "haplotypes.csv")
+            for r in rows
+        )
+
+    deduped: dict[str, _Subject] = {}
+    for s in subjects:
+        deduped.setdefault(s.variant_key, s)
+    return list(deduped.values())
+
+
+def _authored_alt(v: _Subject) -> Optional[str]:
     """The single authored ALT for allele-aware reverse resolution, or None when absent or
     multi-allelic (fall back to position/ref-level matching, which may resolve as ambiguous)."""
     if v.alts and "," not in v.alts:
@@ -138,13 +218,16 @@ def enrich(
     if genome_build != genome_build.strip() or genome_build != "GRCh38":
         logger.warning("Enrichment is GRCh38-bound; genome_build=%r resolves nothing (RM15).", genome_build)
 
-    # Partition the variants that still need work (skip those an existing row already covers).
+    # Every table that can ask for a coordinate, not just variants.csv (a PGx module has none).
+    subjects = _collect_subjects(spec_dir, variants)
+
+    # Partition the subjects that still need work (skip those an existing row already covers).
     need_pos = [
-        v for v in variants
+        v for v in subjects
         if v.rsid is not None and v.chrom is None and v.variant_key not in existing
     ]
     need_rsid = [
-        v for v in variants
+        v for v in subjects
         if v.rsid is None and v.chrom is not None and v.variant_key not in existing
     ]
 
@@ -263,11 +346,11 @@ def enrich(
                 if owned:
                     client.close()
 
-    # ── assemble the table (a row for every variant; expansion → N rows) ───────────────────────
+    # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     out: list[ResolutionRow] = []
     unresolved: list[str] = []
-    for v in variants:
-        key = v.variant_key or derive_variant_key(v.rsid, v.chrom, v.start, v.ref, v.alts)
+    for v in subjects:
+        key = v.variant_key
         if key in existing:
             out.extend(existing[key])
             if not any(r.chrom is not None for r in existing[key]):
@@ -281,18 +364,22 @@ def enrich(
             # hand the compiler a locus it can only drop, which costs a reproducible `strict` compile
             # for facts the module cannot use. This selects; it does not repair: every authored value
             # is untouched, and each skipped record is reported.
+            # A subject with no constraint (a pharm annotation that named no genotype) keeps every
+            # locus: nothing is known about which allele it is about, and dropping loci for lack of
+            # evidence would invent a selection the row never made.
             all_loci = rsid_to_loci.get(v.rsid, [])
             loci = [
                 lo for lo in all_loci
-                if genotype_fits(v.genotype, lo.get("ref"), lo.get("alts"))
+                if v.constraint is None
+                or genotype_fits(v.constraint, lo.get("ref"), lo.get("alts"))
             ]
             for lo in all_loci:
                 if lo not in loci:
                     logger.warning(
-                        "%s: %s:%s %s>%s cannot host the authored genotype %s — that record is a "
+                        "%s: %s:%s %s>%s cannot host the authored %s %s — that record is a "
                         "different variant sharing the rsID, and is left out of resolution.csv.",
                         v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
-                        v.genotype,
+                        "allele" if v.origin == "haplotypes.csv" else "genotype", v.constraint,
                     )
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")

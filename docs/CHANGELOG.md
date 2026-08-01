@@ -5,6 +5,56 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-02 — 0.5.0: PGx tables join resolution, and a multi-allelic cache bug
+
+**Resolution now reads every table that can ask for a coordinate**, not just `variants.csv`. A PGx
+module carries none by design (one CSV = one concern), so it enriched to an *empty* `resolution.csv`
+and shipped with no coordinates — the chain was never variant-specific, only its input was.
+`enrich._collect_subjects` normalizes `variants.csv`, `pharm_variants.csv` and `haplotypes.csv` to a
+common subject and feeds them through the unchanged chain, caches, ordering and back-fill.
+
+A `HaplotypeRow`'s defining `allele` reuses the shared `genotype_fits` predicate — the one-allele form
+of the question a genotype asks of two — so a one-to-many rsID still drops loci that cannot carry it.
+Subjects dedupe by `variant_key` with `variants.csv` first: it is the only table carrying `alts`, a
+resolution fact, so letting a PGx row win would move an already-compiled module's `artifact.digest`.
+The PGx tables key **without** `alts`, matching at `chrom:start:ref` per the standing rule.
+
+**Bug fix (pre-existing, affected plain SNP modules too).** The Ensembl snapshot stores a
+multi-allelic site as one row whose `alt` is **pipe-joined** (`A|C|T`), while every other link emits
+commas. `genotype_fits` splits on commas, so the cell became a single opaque "allele", no genotype was
+ever a subset of `{ref} ∪ alts`, and the 0.5 allele-aware filter discarded **every** cache-resolved
+locus: `rs4244285` with the ordinary genotype `A/G` — where both alleles genuinely exist — resolved to
+`not_found`. The reverse back-fill had the mirror bug, `!=` against the whole joined cell.
+`resolver._snapshot_alleles` now normalizes at the single boundary where the snapshot is read. The
+unit suite missed it because its fixtures were comma-separated, so the shape only ever appeared with a
+real cache; the new tests use the real pipe-joined shape and fail on the pre-fix code.
+
+## 2026-08-02 — 0.5.0: PharmGKB annotations are per-genotype
+
+`PharmVariantRow` gains an optional `genotype`, and the duplicate-row key becomes
+`(variant_key, drug, genotype)`.
+
+The old key rejected real data. A PharmGKB clinical annotation is published *per genotype* — the
+summary row names the variant and the drug, a child table gives one annotation per call, and **4,618
+of the 5,113** annotations in the ClinPGx release carry exactly three. Authoring the real
+SLCO1B1/simvastatin annotation (CAID 1451356520) produced `duplicate row for key ('rs4149056',
+'simvastatin')` twice, so roughly 97% of the corpus was unauthorable.
+
+The axis is not derivable: the three calls are distinct findings and sometimes opposed ones (CC and
+CT "decreased response", TT "increased"), and nothing else on the row separates them but free text.
+The original model was drawn from PharmGKB's *summary* table and never met the per-genotype child
+table — the tell is that `VariantRow` has `genotype` and `DiplotypeRow`'s haplotype pair *is* one,
+leaving `PharmVariantRow` the only sibling without it.
+
+`genotype`'s grammar moved from `VariantRow` onto `AuthoredModel` (`check_fields=False`) now that two
+models share it, so the rule cannot drift between them. It is deliberately **not** widened for the
+symbolic alleles PharmGKB also carries (`C/del`, `del/del`, 177 rows) — those stay RM5. Haplotype-keyed
+annotations (`*1`, `*1xN`) route to `DiplotypeRow`. PharmGKB writes a diploid call concatenated
+(`CC`); the canonical form is sorted and slash-separated (`C/C`), because `CC` would otherwise read as
+a single two-base allele.
+
+Additive and optional, so existing modules validate and compile unchanged.
+
 ## 2026-08-01 — 0.5.0: validation tightening, and resolution made reversible
 
 Where the previous round *added* facts, this one *checks* them. The organising idea is the one written

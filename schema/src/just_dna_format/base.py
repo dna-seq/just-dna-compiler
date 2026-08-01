@@ -6,14 +6,20 @@ Consolidates the boilerplate that was copy-pasted across the row models into one
   a reserved name fails with a specific diagnosis and any other unknown/misspelled column fails with
   the generic message (see `vocab.reject_reserved`); and
 - the **field validators for the shared authored vocabulary** — `rsid`, `trait_efo_id`, `direction`,
-  `clin_sig`, `stat_significance`, `evidence_level`, and finite-`effect_size`.
+  `clin_sig`, `stat_significance`, `evidence_level`, finite-`effect_size`, and `genotype`.
 
 Each field validator uses `check_fields=False`, so a subclass runs it only for the fields it actually
 declares (a model without `clin_sig` simply never runs the `clin_sig` check) and a model that *adds*
 one of these fields gets the correct validation for free — the per-field rules cannot drift model to
-model, which is exactly what the previous copy-paste risked. Field-specific rules (genotype/phase,
-star-allele strings, measure bounds, PGS ancestry, the mtDNA legacy-reference guard, identifier
-completeness) stay on their own models.
+model, which is exactly what the previous copy-paste risked. Field-specific rules (star-allele
+strings, measure bounds, PGS ancestry, the mtDNA legacy-reference guard, identifier completeness)
+stay on their own models.
+
+`genotype` moved here in 0.5 when `PharmVariantRow` gained one: the grammar is the *same* grammar
+(a PharmGKB per-genotype clinical annotation describes the same diploid call a `VariantRow` does), and
+the DRY rule applies as soon as a validator is shared by two models. It is deliberately **not**
+widened for the symbolic alleles PharmGKB also carries (`C/del`, `del/del`) — those are RM5, and the
+enricher skips them rather than coercing them into a nucleotide grammar that cannot express them.
 
 Dependency-light: imports only `pydantic` + the stdlib `vocab` leaf, and nothing in the package
 imports it back, so it introduces no cycle.
@@ -24,6 +30,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from just_dna_format.vocab import (
+    ALLELE_PATTERN,
     VALID_CLIN_SIG,
     VALID_DIRECTIONS,
     VALID_EVIDENCE_LEVELS,
@@ -153,3 +160,47 @@ class AuthoredModel(BaseModel):
     @classmethod
     def _validate_effect_size(cls, v: Optional[float]) -> Optional[float]:
         return validate_finite(v, "effect_size")
+
+    @field_validator("genotype", check_fields=False)
+    @classmethod
+    def _validate_genotype(cls, v: Optional[str]) -> Optional[str]:
+        # Optional on `PharmVariantRow`, required on `VariantRow` — pydantic enforces requiredness
+        # from the annotation, so the shared grammar only has to let a genuine absence through.
+        if v is None:
+            return v
+        # Phased (order-significant): pipe-separated, exactly two alleles, NOT sorted — phase encodes
+        # which allele sits on which homolog. ROADMAP 0.3 item 5b.
+        if "|" in v:
+            parts = v.split("|")
+            if len(parts) != 2:
+                raise ValueError(
+                    f"phased genotype must be two pipe-separated alleles (e.g. A|G), got: {v!r}"
+                )
+            for allele in parts:
+                if not ALLELE_PATTERN.match(allele):
+                    raise ValueError(
+                        f"genotype alleles must be nucleotides, got: {allele!r} in {v!r}"
+                    )
+            return v
+        parts = v.split("/")
+        if len(parts) == 1:
+            # Hemizygous single allele (non-PAR X/Y in males; homoplasmic MT). ROADMAP 0.3 item 5b.
+            if not ALLELE_PATTERN.match(parts[0]):
+                raise ValueError(f"genotype allele must be nucleotides, got: {v!r}")
+            return v
+        if len(parts) == 2:
+            for allele in parts:
+                if not ALLELE_PATTERN.match(allele):
+                    raise ValueError(
+                        f"genotype alleles must be nucleotides, got: {allele!r} in {v!r}"
+                    )
+            if parts != sorted(parts):
+                raise ValueError(
+                    f"unphased genotype alleles must be alphabetically sorted: "
+                    f"expected {'/'.join(sorted(parts))!r}, got: {v!r}"
+                )
+            return v
+        raise ValueError(
+            f"genotype must be a single allele (hemizygous, e.g. A), two sorted slash-separated "
+            f"alleles (A/G), or two pipe-separated phased alleles (A|G), got: {v!r}"
+        )

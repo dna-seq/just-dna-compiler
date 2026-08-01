@@ -109,9 +109,10 @@ enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
        resolver=None, gnomad_client=None) -> EnrichmentResult
 ```
 
-Reads `variants.csv`, computes which variants still need work (`need_pos` = rsid but no coord;
-`need_rsid` = coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resolution.csv`
-(sorted by `(variant_key, locus_index)`), stamping each row's `source`/`status`. The chain:
+Reads **every table that can ask for a coordinate** — `variants.csv`, `pharm_variants.csv` and
+`haplotypes.csv` — computes which rows still need work (`need_pos` = rsid but no coord; `need_rsid` =
+coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resolution.csv` (sorted by
+`(variant_key, locus_index)`), stamping each row's `source`/`status`. The chain:
 
 1. **Existing / human rows** — a `resolution.csv` already beside the spec is authoritative and never
    clobbered; a `variant_key` it already covers is skipped by the chain.
@@ -141,6 +142,38 @@ Reads `variants.csv`, computes which variants still need work (`need_pos` = rsid
 
 After the chain settles, `vrs.mint_resolution_rows` stamps `vrs_id`/`vrs_spec` onto every mintable row
 (`mint_vrs=True`). An existing id is never overwritten.
+
+### Which tables ask for a coordinate
+
+The chain was never variant-specific; only its input was. Until 0.5 it read `variants.csv` alone, so a
+**PGx module — which by design carries none** (one CSV = one concern) — enriched to an empty
+`resolution.csv` and shipped with no coordinates at all. `enrich._collect_subjects` normalizes every
+eligible row to a `_Subject` and feeds it through the unchanged chain, caches, ordering and back-fill:
+
+| Table | Identity | Allele constraint fed to `genotype_fits` |
+|---|---|---|
+| `variants.csv` | frozen `variant_key` (**with** `alts`) | `genotype` |
+| `pharm_variants.csv` | `variant_key` property (**without** `alts`) | `genotype` (optional — `None` keeps every locus) |
+| `haplotypes.csv` | derived the same way, without `alts` | the defining `allele` |
+
+A `HaplotypeRow` reuses the *same* membership predicate rather than a parallel one: its defining
+allele is the one-allele form of the question a genotype asks of two. Subjects are deduped by
+`variant_key` with **`variants.csv` first**, so when two tables name one variant the SNP row wins — it
+is the only one carrying `alts`, a resolution fact, and letting a PGx row win would move an
+already-compiled module's `artifact.digest`. The PGx tables key **without** `alts` deliberately: a
+pharm annotation or haplotype junction matches a variant at `chrom:start:ref` regardless of allele.
+
+### Multi-allelic snapshot rows
+
+The Ensembl snapshot stores a multi-allelic site as **one row whose `alt` is pipe-joined** (`A|C|T`),
+while live Ensembl, ClinVar and gnomAD all emit comma-separated lists. `resolver._snapshot_alleles`
+normalizes at that one boundary so a locus dict's `alts` has a single canonical shape.
+
+This is load-bearing, not tidying. `genotype_fits` splits on commas, so an un-normalized `A|C|T`
+collapsed into one opaque "allele", no genotype was ever a subset of `{ref} ∪ alts`, and the
+allele-aware filter dropped **every** locus — a cache-resolved `rs4244285` with the ordinary genotype
+`A/G` resolved to `not_found`. The reverse back-fill had the mirror bug, comparing an authored alt
+against the whole joined cell with `!=`. Both are pinned by tests that fail on the pre-fix code.
 
 A **located but unusable** cache (a stale snapshot, or a parquet some other tool left in the cache
 directory) is treated as a miss, with a warning — one optional link's bad data must not sink an

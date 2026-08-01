@@ -138,6 +138,69 @@ def test_pharm_only_module_roundtrips_without_variants(tmp_path: Path) -> None:
     assert orig.equals(recompiled)
 
 
+# ── Per-genotype PharmGKB clinical annotations (0.5) ─────────────────────────────────────────────
+# Real data, not a constructed shape: PharmGKB clinical annotation 1451356520 (SLCO1B1 rs4149056→
+# simvastatin), whose three genotype rows are the norm rather than an edge case — 4,618 of 5,113
+# annotations in the ClinPGx release carry exactly three. Before `genotype` joined the dedup key
+# these were rejected as duplicate rows, so the real corpus could not be authored at all.
+_PHARM_PER_GENOTYPE = (
+    "rsid,gene,genotype,drug,response,evidence_level,conclusion\n"
+    "rs4149056,SLCO1B1,C/C,simvastatin,decreased response,3,"
+    "Patients with the rs4149056 CC genotype may have a decreased response to simvastatin.\n"
+    "rs4149056,SLCO1B1,C/T,simvastatin,decreased response,3,"
+    "Patients with the rs4149056 CT genotype may have a decreased response to simvastatin.\n"
+    "rs4149056,SLCO1B1,T/T,simvastatin,increased response,3,"
+    "Patients with the rs4149056 TT genotype may have an increased response to simvastatin.\n"
+)
+
+
+def _write_per_genotype_pharm(d: Path, csv_text: str = _PHARM_PER_GENOTYPE) -> Path:
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "module_spec.yaml").write_text(_YAML.replace("composed", "pharm_gt"), encoding="utf-8")
+    (d / "pharm_variants.csv").write_text(csv_text, encoding="utf-8")
+    return d
+
+
+def test_per_genotype_pharm_annotations_compile(tmp_path: Path) -> None:
+    """One (variant, drug) pair carrying a distinct annotation per genotype must survive."""
+    out = tmp_path / "out"
+    result = compile_module(
+        _write_per_genotype_pharm(tmp_path / "spec"), out, resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    df = pl.read_parquet(out / "pharm_variants.parquet")
+    # All three genotypes kept, and each keeps its own conclusion — the poly-genotype effect that
+    # keying on (variant, drug) alone destroyed.
+    assert set(df["genotype"].to_list()) == {"C/C", "C/T", "T/T"}
+    assert df.select("conclusion").n_unique() == 3
+    assert df.filter(pl.col("genotype") == "T/T")["response"].item() == "increased response"
+
+
+def test_duplicate_genotype_is_still_a_duplicate(tmp_path: Path) -> None:
+    """Widening the key must not disarm the check: the same genotype twice is still an error."""
+    collided = _PHARM_PER_GENOTYPE.replace(",C/T,", ",C/C,")
+    result = validate_spec(_write_per_genotype_pharm(tmp_path / "spec", collided))
+    assert not result.valid
+    assert any(
+        "duplicate row" in e and "'C/C'" in e for e in result.errors
+    ), result.errors
+
+
+def test_per_genotype_pharm_roundtrips(tmp_path: Path) -> None:
+    """Principle 7 over the new column."""
+    spec = _write_per_genotype_pharm(tmp_path / "spec")
+    orig_result = compile_module(spec, tmp_path / "orig", resolve_with_ensembl=False)
+    reverse_module(tmp_path / "orig", tmp_path / "reversed")
+    assert validate_spec(tmp_path / "reversed").valid, validate_spec(tmp_path / "reversed").errors
+    recompiled_result = compile_module(
+        tmp_path / "reversed", tmp_path / "recompiled", resolve_with_ensembl=False
+    )
+    orig = pl.read_parquet(tmp_path / "orig" / "pharm_variants.parquet")
+    recompiled = pl.read_parquet(tmp_path / "recompiled" / "pharm_variants.parquet")
+    assert orig.equals(recompiled)
+    assert orig_result.manifest.artifact.digest == recompiled_result.manifest.artifact.digest
+
+
 # ── The remaining table kinds (pgs / copynumbers / heteroplasmy / activity / haplotypes /
 # allele_function), previously covered only by the schema unit tests — now compiled + round-tripped
 # so a regression in the generic materializer is caught here too. ────────────────────────────────

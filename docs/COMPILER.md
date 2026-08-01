@@ -485,7 +485,7 @@ display-metadata overrides.
 |---|---|---|---|
 | binning primitive `MeasureBinRow` + `Activity/CopyNumber/RepeatAllele/Heteroplasmy` rows | ✅ shared vocab, inclusive `[min,max]`, mandatory `unresolved`, `extra=forbid`, `source_field` pointer, heteroplasmy `tissue` + legacy-ref guard | ✅ `*.parquet` via generic materializer | **materialized** |
 | table-level `validate_bins(rows)` | ✅ per `(key…, trait_efo_id)` group | overlap → error, gap → warning, >1 `unresolved`/group → error | **enforced** |
-| duplicate-row detection (diplotype pair, `pgs_id`, `(pharm variant, drug)`, allele-function allele, haplotype-defining variant) | ✅ per-kind natural key | error (0.4 analog of duplicate-(variant, genotype)) | **enforced** |
+| duplicate-row detection (diplotype pair, `pgs_id`, `(pharm variant, drug, genotype)`, allele-function allele, haplotype-defining variant) | ✅ per-kind natural key | error (0.4 analog of duplicate-(variant, genotype)) | **enforced** |
 | PGx `HaplotypeRow` / `AlleleFunctionRow` / `DiplotypeRow` (+ `drug`/`response`/`evidence_level`) | ✅ | ✅ | **materialized** |
 | PharmGKB `PharmVariantRow` (single-variant drug response, `evidence_level` 1A…4) | ✅ | ✅ | **materialized** |
 | `VariantRow` general axes: `requires_callable` / `acmg_sf` / `actionability` | ✅ (`actionability` vs `ACTIONABILITY_SEED`) | ✅ into `weights.parquet` (tri-state bool round-trip) | **materialized** |
