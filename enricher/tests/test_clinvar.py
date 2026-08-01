@@ -177,8 +177,10 @@ def test_clinvar_lookup_loci_rs334(tmp_path: Path) -> None:
 def test_one_to_many_clinvar_expansion(tmp_path: Path) -> None:
     cv = _synthetic_clinvar(
         tmp_path,
+        # Both loci `A>T`, so both can host the authored `A/T` — forward resolution is allele-aware
+        # since 0.5 and would otherwise drop the second, testing nothing.
         {"rsid": ["rs777", "rs777"], "chrom": ["5", "6"], "start": [500, 600],
-         "ref": ["A", "C"], "alt": ["T", "G"]},
+         "ref": ["A", "A"], "alt": ["T", "T"]},
     )
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs777,A/T,risk,c\n")
     enrich(spec, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
@@ -186,6 +188,33 @@ def test_one_to_many_clinvar_expansion(tmp_path: Path) -> None:
     assert [r.locus_index for r in rows] == [0, 1]
     assert {(r.chrom, r.start) for r in rows} == {("5", 500), ("6", 600)}
     assert all(r.source == "clinvar" for r in rows)
+
+
+def test_a_record_the_genotype_cannot_host_is_left_out_of_the_table(tmp_path: Path) -> None:
+    """Forward resolution is allele-aware, exactly as the reverse back-fill already was.
+
+    One rsID routinely names several *different* records — in the committed HBB example `rs281864532`
+    is `G>GT`, `GT>G` and `GTT>G` at one position — and the module's own genotype says which it means.
+    Recording the others hands the compiler a locus it can only drop, and a dropped locus makes the
+    compile unreproducible from the injected table, which `--strict` refuses. So the enricher selects;
+    it does not repair, and every skipped record is reported.
+    """
+    cv = _synthetic_clinvar(
+        tmp_path,
+        {"rsid": ["rs777", "rs777", "rs777"], "chrom": ["5", "5", "5"],
+         "start": [500, 500, 500], "ref": ["G", "GT", "GTT"], "alt": ["GT", "G", "G"]},
+    )
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs777,G/GT,risk,c\n")
+    enrich(spec, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
+
+    rows = [r for r in _resolution_rows(spec) if r.variant_key == "rs777"]
+    # {G,GT} hosts G>GT and GT>G; GTT>G is a two-base deletion the genotype cannot name.
+    assert {(r.ref, r.alts) for r in rows} == {("G", "GT"), ("GT", "G")}
+    assert [r.locus_index for r in rows] == [0, 1]
+
+    # ...and the module then compiles under strict, with no locus for the compiler to drop.
+    result = compile_module(spec, tmp_path / "out", strict=True)
+    assert result.success, result.errors
 
 
 # ── chain: clinvar fills, and sits AFTER the Ensembl cache (digest stability) ──────────────────

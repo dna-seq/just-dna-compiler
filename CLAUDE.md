@@ -138,8 +138,10 @@ CHANGELOG entry).
     carrying the single authored genotype — fabricating annotations for loci that genotype cannot
     describe (three such rows in `reference_examples/pathogenic_clinvar/`).
   - **A locus that cannot host the authored genotype is dropped from the expansion**
-    (`resolution.genotype_fits`), and the predicate is **shared with the enricher's deprecated DuckDB
-    path** because digest parity between the two is a documented guarantee.
+    (`resolution.genotype_fits`). The predicate is **shared three ways** — the compiler, the enricher's
+    deprecated DuckDB path (digest parity is a documented guarantee) and `enrich()`'s forward
+    rsid→loci resolution, which since this round leaves such a record out of `resolution.csv`
+    entirely. Resolution is allele-aware in BOTH directions now; the reverse back-fill always was.
   - **`withdrawn` refuses in BOTH modes**, unlike `merged`/`absent` (strict-only). Nothing automated
     emits it — the API cannot tell a retraction from a never-assigned id — but it is a real vocabulary
     member for curator-recorded retractions and for a future source. Don't drop it as dead code.

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.resolution import genotype_fits
 from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
@@ -273,7 +274,26 @@ def enrich(
                 unresolved.append(key)
             continue
         if v.rsid is not None and v.chrom is None:
-            loci = rsid_to_loci.get(v.rsid, [])
+            # Forward resolution is allele-aware, exactly as the reverse (position→rsid) back-fill
+            # already is. An rsID is a position/multi-allelic tag, so one id routinely names several
+            # records — `rs281864532` is `G>GT`, `GT>G` *and* `GTT>G` at one position in ClinVar — and
+            # the module's own genotype says which of them it is about. Recording the others would
+            # hand the compiler a locus it can only drop, which costs a reproducible `strict` compile
+            # for facts the module cannot use. This selects; it does not repair: every authored value
+            # is untouched, and each skipped record is reported.
+            all_loci = rsid_to_loci.get(v.rsid, [])
+            loci = [
+                lo for lo in all_loci
+                if genotype_fits(v.genotype, lo.get("ref"), lo.get("alts"))
+            ]
+            for lo in all_loci:
+                if lo not in loci:
+                    logger.warning(
+                        "%s: %s:%s %s>%s cannot host the authored genotype %s — that record is a "
+                        "different variant sharing the rsID, and is left out of resolution.csv.",
+                        v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
+                        v.genotype,
+                    )
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")
                 for i, locus in enumerate(loci):

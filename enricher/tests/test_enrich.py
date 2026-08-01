@@ -43,11 +43,15 @@ def cache(tmp_path: Path) -> Path:
     data.mkdir(parents=True)
     pl.DataFrame(
         {
+            # Both rs999 loci are `A>T` so both can host the authored `A/T` genotype. Deliberate:
+            # forward resolution is allele-aware since 0.5, so a locus the genotype rules out is left
+            # out of the table — a fixture with one incompatible locus would quietly stop exercising
+            # expansion at all while still passing an `is it there` assertion.
             "id": ["rs1801133", "rs429358", "rs999", "rs999"],
             "chrom": ["1", "19", "5", "6"],
             "start": [11856377, 44908683, 500, 600],
-            "ref": ["G", "T", "A", "C"],
-            "alt": ["A", "C", "T", "G"],
+            "ref": ["G", "T", "A", "A"],
+            "alt": ["A", "C", "T", "T"],
         }
     ).write_parquet(data / "chr.parquet")
     return tmp_path / "cache"

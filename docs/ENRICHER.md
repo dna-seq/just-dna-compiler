@@ -158,6 +158,21 @@ genome is a worse diagnosis than a row the chain could not find, so it should be
 sees. `EnrichmentResult` carries `rows`,
 `unresolved` (variant_keys with no position), `sources`, `mode`, and a `fully_resolved` property.
 
+### Resolution is allele-aware in **both** directions
+
+A rsID is a *position/multi-allelic* dbSNP tag, so one id routinely names several genuinely different
+records. Both directions of resolution therefore match on the allele, not just the position — and the
+forward direction only caught up in this round, which is why the asymmetry is worth naming.
+
+**Forward (rsid→loci).** A candidate locus whose `{ref} ∪ alts` cannot host the module's authored
+`genotype` is reported and **left out of `resolution.csv`**. In the committed HBB example
+`rs281864532` names `G>GT`, `GT>G` *and* `GTT>G` at one position, and `rs613985` names records at two
+positions 254 bp apart; the authored genotype says which are meant. Recording the rest would hand the
+compiler a locus it can only drop — and a dropped locus makes the compile unreproducible from the
+injected table, which `--strict` refuses. This **selects, it does not repair**: no authored value is
+touched, and every skipped record is logged. (The compiler applies the same predicate as a safety net
+for hand-authored or stale tables — `resolution.genotype_fits` is shared, so the two cannot drift.)
+
 ### Reverse (position→rsid) back-fill is allele-aware
 
 A coordinate-only variant (rsid `None`, coordinate authored) can have an rsid back-filled from the

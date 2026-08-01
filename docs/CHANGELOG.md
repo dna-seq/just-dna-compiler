@@ -126,6 +126,13 @@ before it moved on *every* one of them. Not a regression being fixed — the beh
 frozen-identity work and was tested under the name `test_expanded_rsid_roundtrips_as_position_only`;
 what changed is that canonical keys made the better answer available.
 
+**Forward resolution is now allele-aware too.** The reverse (position→rsid) back-fill has matched on
+the exact allele since 0.5; the forward (rsid→loci) direction did not, and that asymmetry is what put
+unusable loci into the table in the first place. A candidate whose alleles cannot host the authored
+genotype is now reported and left out. The compiler keeps the same check as a safety net for
+hand-authored tables (the predicate is shared, so they cannot drift), but a table the enricher produced
+no longer needs it — which is what lets the reference example compile under `--strict`.
+
 **The resolution round-trip contract, enumerated.** Five identity columns the author may or may not
 supply, crossed with what the table says about them, is a finite set — so it is enumerated in
 `compiler/tests/test_resolution_matrix.py` under one rule: **every combination is either a round-trip

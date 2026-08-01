@@ -19,30 +19,39 @@ BRCA1/2, CFTR, LDLR, TP53, HBB); the committed HBB slice reproduces every mechan
 ## Files & how to compile
 
 ```
-module_spec.yaml   variants.csv   studies.csv   resolution.csv
+module_spec.yaml   variants.csv   studies.csv   resolution.csv   literature.csv
 ```
 
-`resolution.csv` is the **enricher-produced** table (committed so this compiles with no ClinVar cache
-and no network):
+`resolution.csv` and `literature.csv` are **enricher-produced** and committed, so this compiles with no
+ClinVar cache and no network — and it compiles under **`--strict`**, which is the point: strict refuses
+anything it could not reproduce from the injected table, so passing it is a claim about the whole
+module, not just the syntax.
 
 ```bash
-just-dna-compiler compile reference_examples/pathogenic_clinvar /tmp/hbb_out   # offline, deterministic
+just-dna-compiler compile reference_examples/pathogenic_clinvar /tmp/hbb_out --strict
 ```
 
-To rebuild the whole thing from scratch (needs the local ClinVar snapshot at
-`data/interim/clinvar`, produced by `just-dna-enricher clinvar build --vcf <clinvar.vcf.gz>`):
+To rebuild from scratch (needs the local ClinVar snapshot at `data/interim/clinvar`, produced by
+`just-dna-enricher clinvar build --vcf <clinvar.vcf.gz>`):
 
 ```bash
+rm reference_examples/pathogenic_clinvar/resolution.csv   # existing rows are authoritative — delete first
 just-dna-enricher enrich reference_examples/pathogenic_clinvar \
     --offline --ensembl-cache /nonexistent --clinvar-cache data/interim/clinvar   # ClinVar-only
-just-dna-compiler compile reference_examples/pathogenic_clinvar /tmp/hbb_out
+just-dna-enricher literature reference_examples/pathogenic_clinvar                # online (PubMed/Crossref)
+just-dna-compiler compile reference_examples/pathogenic_clinvar /tmp/hbb_out --strict
 ```
+
+**Not carried, deliberately:** `frequencies.csv` (gnomAD is online-only and 337 alleles is a lot of
+committed rows for a file meant to stay human-reviewable) and `gene_metrics.csv` (no local v4.1
+constraint snapshot here, so the live route would pin the older `gnomad_v2.1.1_constraint` label into a
+reference example — correct, but it reads like an error). Both are one command away if wanted.
 
 ## Authoring model (the point of the dogfood)
 
 Variants are authored **by identity, not by baked coordinate** — the 0.5 way:
 
-- **rsid variants** (301 here): carry only `rsid` + `genotype`/`state`/`conclusion`/`gene`. The
+- **rsid variants** (301 here): carry only `rsid` + `genotype`/`state`/`conclusion`/`clin_sig`/`gene`. The
   enricher fills `chrom/start/ref/alts` into `resolution.csv` from the ClinVar snapshot
   (`source=clinvar`). Coordinates are *never* baked into `variants.csv`.
 - **coordinate-only variants** (27 here): the ~10% of ClinVar pathogenic variants that carry **no
@@ -50,7 +59,27 @@ Variants are authored **by identity, not by baked coordinate** — the 0.5 way:
   first-class `VariantRow` shape). The enricher passes them through (`source=authored`) unless a
   co-located ClinVar record lends an rsID (see finding 4).
 
+Every row also carries **`clin_sig`** — the typed ClinVar call, in the closed `VALID_CLIN_SIG`
+vocabulary — alongside the free-text `conclusion`. That is not decoration: it is what the enricher's
+ClinVar cross-check reads, so the module is checkable against the source it was built from. It agrees on
+all 328 rows, which is the expected result and therefore a real regression guard: a future change to
+allele matching or `clin_sig` normalization that starts producing conflicts here is producing them
+wrongly.
+
 ## Findings
+
+### 0. One rsID can name several *different* variants, and the genotype says which
+Three rsIDs here resolve to ClinVar records the module's own genotype rules out — `rs281864532` is
+`G>GT`, `GT>G` **and** `GTT>G` at one position; `rs613985` names records at two positions 254 bp apart.
+An rsID is a position/multi-allelic tag, so this is dbSNP behaving normally, not a data error. The
+enricher therefore resolves **allele-aware in the forward direction too** (it already did for the
+reverse position→rsid back-fill): a record the authored genotype cannot host is reported and left out
+of `resolution.csv`, because recording it would only hand the compiler a locus it must drop — and a
+dropped locus makes the compile unreproducible from the injected table, which `--strict` refuses.
+
+Before that fix this example expanded to 340 resolution rows and reverse wrote three of them back out
+as *authored* rows asserting alleles their locus does not have. It now resolves to 337, and
+`compile → reverse → compile` is a fixed point on all three signatures.
 
 ### 1. The new machinery is a strict **superset** of the v1 re-port
 Genome-wide, the snapshot's pathogenic set (**339,038** ALT-rows) vs the v1 `gene_panel` adapter run

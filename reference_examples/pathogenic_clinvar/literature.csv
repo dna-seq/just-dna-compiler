@@ -1,0 +1,2 @@
+pmid,doi,pmcid,exists,doi_exists,is_open_access,quotes_authored,quotes_found,quote_source,source,status,fetched_at
+29165669,10.1093/nar/gkx1153,PMC5753237,true,true,true,0,,,pubmed,resolved,2026-08-01T20:55:37.406184+00:00
