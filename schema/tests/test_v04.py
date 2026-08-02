@@ -31,7 +31,12 @@ from just_dna_format.pgx import (
     PharmVariantRow,
 )
 from just_dna_format.spec import StudyRow, VariantRow
-from just_dna_format.vocab import RESERVED_NAME_REASONS, RESERVED_NAMES_0_4
+from just_dna_format.vocab import (
+    RESERVED_NAME_REASONS,
+    RESERVED_NAMES_0_4,
+    VALID_EVIDENCE_LEVELS,
+    VALID_RECOMMENDATION_STRENGTH,
+)
 
 
 # ── binning primitive ───────────────────────────────────────────────────────────────────────────
@@ -208,11 +213,13 @@ def _validation_message(model, **kwargs) -> str:
 
 
 def test_reserved_set_is_the_expected_shape() -> None:
-    # Only genuine anticipated MODULE-side axes are reserved: `reference_db` (join-target DB hint) and
-    # `callable_from` (RM6). `caller`/`caller_version` were DROPPED — they name a consumer-side
-    # measurement (which tool made a call), so there is no future module axis to reserve, and barring
-    # them by name would be arbitrary; `extra="forbid"` rejects them generically like any stray column.
-    assert RESERVED_NAMES_0_4 == frozenset({"reference_db", "callable_from"})
+    # Only genuine anticipated MODULE-side axes are reserved — `reference_db` (join-target DB hint) is
+    # the last one left. `callable_from` was reserved for RM6 and is now BUILT as a `VariantRow`
+    # column, so it leaves the set: a reserved name is refused at author time, which would make the
+    # built column unwritable. `caller`/`caller_version` were DROPPED for the opposite reason — they
+    # name a consumer-side measurement (which tool made a call), so there is no future module axis to
+    # reserve, and barring them by name would be arbitrary; `extra="forbid"` rejects them generically.
+    assert RESERVED_NAMES_0_4 == frozenset({"reference_db"})
     assert set(RESERVED_NAME_REASONS) == RESERVED_NAMES_0_4  # every reserved name has a reason
 
 
@@ -306,6 +313,26 @@ def test_diplotype_row_pharm_columns() -> None:
                      evidence_level="9")
 
 
+def test_recommendation_strength_is_a_separate_axis_from_evidence_level() -> None:
+    # Two bodies grading two different things: PharmGKB says how well established the association is,
+    # CPIC says how firmly to act on it. A well-evidenced association carrying an optional action is a
+    # real and common combination, so the two must be independently settable.
+    d = DiplotypeRow(
+        gene="CYP2C19", haplotype_a="*2", haplotype_b="*17", conclusion="c", drug="clopidogrel",
+        evidence_level="1A", recommendation_strength="optional",
+    )
+    assert (d.evidence_level, d.recommendation_strength) == ("1A", "optional")
+    assert set(VALID_RECOMMENDATION_STRENGTH).isdisjoint(VALID_EVIDENCE_LEVELS)
+
+    base = dict(gene="CYP2C19", haplotype_a="*1", haplotype_b="*2", conclusion="c")
+    # Absent is a real state: CPIC's own "n/a" means it did not classify, which is an empty cell —
+    # never a member, or "unclassified" would read as a classification.
+    assert DiplotypeRow(**base).recommendation_strength is None
+    for bad in ("n/a", "Strong", "No Recommendation", "urgent"):
+        with pytest.raises(ValidationError):
+            DiplotypeRow(**base, recommendation_strength=bad)
+
+
 def test_model_level_roundtrip_is_lossless_and_idempotent() -> None:
     rows = [
         RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=36, measure_max=39,
@@ -320,6 +347,8 @@ def test_model_level_roundtrip_is_lossless_and_idempotent() -> None:
         HaplotypeRow(haplotype_name="*4", rsid="rs3892097", allele="A", gene="CYP2D6"),
         AlleleFunctionRow(gene="CYP2D6", allele="*36+*10", activity_value=0.25, suballele="10.001"),
         DiplotypeRow(gene="CYP2D6", haplotype_a="*4", haplotype_b="*1", phenotype="IM", conclusion="c"),
+        DiplotypeRow(gene="CYP2C19", haplotype_a="*2", haplotype_b="*17", conclusion="c",
+                     drug="clopidogrel", evidence_level="1A", recommendation_strength="optional"),
         PgsRow(pgs_id="PGS000135", training_ancestry="EUR", match_rate_floor=0.8,
                research_tier="research_only"),
     ]

@@ -341,6 +341,13 @@ class Sources(BaseModel):
             "separately from the forbidding ones: unknown is not permission, and not a finding either."
         ),
     )
+    nonredistributable_layers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted layers whose source forbids passing the data on at all (academic-use-only terms). "
+            "Read WITH `redistribution`, the same way noncommercial_layers pairs with commercial_use."
+        ),
+    )
     declared_uses: list[str] = Field(
         default_factory=list, description="Sorted union of SourceRow.declared_use values"
     )
@@ -350,6 +357,15 @@ class Sources(BaseModel):
             "Derived module-wide verdict, most-restrictive-wins: false when ANY annotation-layer "
             "source forbids sale, else null when any source's terms are unknown, else true. Null "
             "means undetermined, never permitted."
+        ),
+    )
+    redistribution: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Derived module-wide verdict on whether the module may be passed on at all, on the same "
+            "most-restrictive-wins ladder as `commercial_use`. Distinct from it: a module can be "
+            "freely shareable but unsellable (CC BY-NC), or sellable-in-principle but unshareable "
+            "under an academic-use-only source. Null means undetermined, never permitted."
         ),
     )
     row_count: int = Field(default=0, description="Number of (source, layer) rows")

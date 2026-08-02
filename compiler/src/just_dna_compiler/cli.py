@@ -9,13 +9,18 @@ Exit codes are CI/registry-gateable: `0` success, `1` failure (invalid spec / fa
     just-dna-compiler validate spec/
     just-dna-compiler compile spec/ out/ --strict --ensembl-cache ref.duckdb
     just-dna-compiler reverse parquet_dir/ spec_out/ --version 1.2.3
+    just-dna-compiler verify out/ --no-require-marketplace --public-key <base64>
+    just-dna-compiler sign out/ --private-key key.pem
 """
 
 from pathlib import Path
 from typing import Optional
 
 import typer
+from just_dna_format.integrity import IntegrityError, verify_manifest
+from just_dna_format.manifest import read_manifest, write_manifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
+from just_dna_format.signing import sign_digest
 
 from just_dna_compiler.compiler import (
     compile_module,
@@ -131,6 +136,90 @@ def signature(
     Name- and reference-independent, so a client can compute it and dedup against a registry without
     recompiling (surviving metadata-strip and a recompile against a different reference)."""
     typer.echo(content_signature(spec_dir))
+
+
+@app.command()
+def verify(
+    module_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Compiled module directory (holding manifest.json)"
+    ),
+    require_marketplace: bool = typer.Option(
+        True,
+        "--require-marketplace/--no-require-marketplace",
+        help="Demand compile_success and compiled_by=marketplace-server. Off for a local artifact.",
+    ),
+    public_key: Optional[str] = typer.Option(
+        None, "--public-key", help="Base64 raw Ed25519 key the manifest signature MUST verify against."
+    ),
+    check_inputs: bool = typer.Option(False, "--check-inputs", help="Also hash the declared inputs[]."),
+    check_logs: bool = typer.Option(False, "--check-logs", help="Also hash any logs[] present on disk."),
+    check_provenance: bool = typer.Option(
+        False, "--check-provenance", help="Also hash the provenance document, if declared and present."
+    ),
+    check_logo: bool = typer.Option(False, "--check-logo", help="Also hash the logo, if declared."),
+) -> None:
+    """Verify a compiled module against its manifest (SPEC §5 verify-then-install). Exit 1 on failure.
+
+    The verify-only path the format has always specified and never exposed: `verify_manifest` and the
+    signature check live in `just-dna-format`, which ships no CLI of its own (Typer would breach its
+    pydantic-plus-cryptography dependency floor), so until now a consumer had to write Python to check
+    a download. It re-hashes every artifact file, recomputes `artifact.digest` over the set, and — when
+    a key is pinned — verifies the Ed25519 signature over that digest.
+    """
+    manifest_path = module_dir / "manifest.json"
+    if not manifest_path.is_file():
+        typer.secho(f"no manifest.json in {module_dir}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    manifest = read_manifest(manifest_path)
+    try:
+        verify_manifest(
+            module_dir,
+            manifest,
+            require_marketplace=require_marketplace,
+            check_inputs=check_inputs,
+            check_logs=check_logs,
+            check_provenance=check_provenance,
+            check_logo=check_logo,
+            public_key=public_key,
+        )
+    except IntegrityError as exc:
+        typer.secho(f"VERIFY FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"verified: {module_dir}", fg=typer.colors.GREEN)
+    typer.echo(f"digest: {manifest.artifact.digest}  files: {len(manifest.artifact.files)}")
+    # Say which of the three trust questions were actually answered — an unsigned artifact that
+    # verifies is a weaker statement than a signed one, and reporting them alike would blur that.
+    typer.echo(
+        f"signature: {'verified against the pinned key' if public_key else
+                      ('present, self-consistent only' if manifest.signature else 'absent')}"
+    )
+
+
+@app.command()
+def sign(
+    module_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Compiled module directory (holding manifest.json)"
+    ),
+    private_key: Path = typer.Option(
+        ..., "--private-key", exists=True, dir_okay=False, help="Ed25519 private key PEM."
+    ),
+) -> None:
+    """Sign a compiled module's `artifact.digest` and write the signature into its manifest.json.
+
+    Signs the digest, never the files directly: the digest is already a Merkle root over the whole
+    file set, so one signature covers every artifact byte, and re-signing after any edit is impossible
+    to forget — the digest moves and the old signature stops verifying.
+    """
+    manifest_path = module_dir / "manifest.json"
+    if not manifest_path.is_file():
+        typer.secho(f"no manifest.json in {module_dir}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    manifest = read_manifest(manifest_path)
+    manifest.signature = sign_digest(manifest.artifact.digest, private_key.read_bytes())
+    write_manifest(manifest, manifest_path)
+    typer.secho(f"signed: {manifest_path}", fg=typer.colors.GREEN)
+    typer.echo(f"digest: {manifest.artifact.digest}")
+    typer.echo(f"public key: {manifest.signature.public_key}")
 
 
 @app.command()

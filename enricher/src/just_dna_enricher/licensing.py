@@ -57,6 +57,7 @@ class SourceTerms:
     notice: Optional[str] = None
     share_alike: Optional[bool] = None
     commercial_use: Optional[bool] = None
+    redistribution: Optional[bool] = None
 
     def row(
         self,
@@ -85,6 +86,7 @@ class SourceTerms:
             notice=self.notice,
             share_alike=self.share_alike,
             commercial_use=self.commercial_use,
+            redistribution=self.redistribution,
             declared_use=declared_use,
             dataset=dataset,
             fetched_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -97,6 +99,13 @@ class SourceTerms:
 # `commercial_use=False` for each. Do not read a bare "CC BY-SA 4.0" line as permission to sell — the
 # CC grant covers the content while the surrounding terms restrict the use, and PharmVar in particular
 # states the licence and the restriction in adjacent sentences.
+#
+# **All five permit redistribution**, so `redistribution=True` throughout — CC BY-SA and CC0 both grant
+# it explicitly, and Apache-2.0 does too. It is recorded rather than left null because null means "the
+# terms could not be established", which is a different and weaker statement than "they allow it". The
+# axis exists for the sources this workspace does NOT yet reach: OMIM and dbNSFP are academic-use-only,
+# which bars passing the data on at all — something `commercial_use=False` alone understates, since
+# CC BY-NC forbids sale while expressly allowing sharing.
 CLINPGX_TERMS = SourceTerms(
     source="clinpgx",
     license="CC-BY-SA-4.0",
@@ -105,6 +114,7 @@ CLINPGX_TERMS = SourceTerms(
     notice="ShareAlike; ClinPGx data may not be sold for private or commercial use.",
     share_alike=True,
     commercial_use=False,
+    redistribution=True,
 )
 
 # CPIC merged into ClinPGx, and `cpicpgx.org/license/` now 302-redirects to the ClinPGx data usage
@@ -117,6 +127,7 @@ CPIC_TERMS = SourceTerms(
     notice="ShareAlike; CPIC/ClinPGx data may not be sold for private or commercial use.",
     share_alike=True,
     commercial_use=False,
+    redistribution=True,
 )
 
 # PharmVar terms-and-conditions §3: the database content is CC BY-SA 4.0, and in the preceding
@@ -134,6 +145,26 @@ PHARMVAR_TERMS = SourceTerms(
     ),
     share_alike=True,
     commercial_use=False,
+    redistribution=True,
+)
+
+# ClinGen's terms-of-use page states that all curated content is "available free of restriction under
+# the CC0 1.0 Universal (CC0 1.0) Public Domain Dedication", and then *requests* — does not require —
+# attribution with the date accessed. So attribution is recorded (it is the right thing to do and the
+# column exists to carry it) while `share_alike` stays False: a request is not a licence condition,
+# and recording it as one would overstate the obligation the module is under.
+#
+# Worth stating plainly because it is the exception in this file: ClinGen is the one annotation-layer
+# source here that a module can be *sold* on. Every PGx upstream above forbids it.
+CLINGEN_TERMS = SourceTerms(
+    source="clingen",
+    license="CC0-1.0",
+    license_url="https://clinicalgenome.org/docs/terms-of-use/",
+    attribution="ClinGen (https://clinicalgenome.org), accessed via the gene-curation list",
+    notice="CC0 public-domain dedication; attribution requested but not required.",
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
 )
 
 # Already in the chain and unrestricted — recorded so a module's licence picture is complete rather
@@ -145,6 +176,7 @@ ENSEMBL_TERMS = SourceTerms(
     attribution="Ensembl (https://www.ensembl.org)",
     share_alike=False,
     commercial_use=True,
+    redistribution=True,
 )
 
 

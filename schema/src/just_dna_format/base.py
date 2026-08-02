@@ -27,7 +27,7 @@ imports it back, so it introduces no cycle.
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator, model_validator
 
 from just_dna_format.vocab import (
     ALLELE_PATTERN,
@@ -37,6 +37,7 @@ from just_dna_format.vocab import (
     VALID_SIGNIFICANCE,
     check_vocab,
     reject_reserved,
+    validate_field_token,
     validate_finite,
     validate_rsid,
     validate_trait_ids,
@@ -160,6 +161,13 @@ class AuthoredModel(BaseModel):
     @classmethod
     def _validate_effect_size(cls, v: Optional[float]) -> Optional[float]:
         return validate_finite(v, "effect_size")
+
+    @field_validator("source_field", "callable_from", check_fields=False)
+    @classmethod
+    def _validate_vcf_field_pointer(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+        # Two columns point into a VCF the same way: `source_field` (where the measured quantity is,
+        # on the binning tables) and `callable_from` (where the callability signal is, on VariantRow).
+        return validate_field_token(v, info.field_name or "source_field")
 
     @field_validator("genotype", check_fields=False)
     @classmethod

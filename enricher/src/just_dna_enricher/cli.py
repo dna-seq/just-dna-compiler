@@ -17,6 +17,7 @@ from just_dna_compiler.compiler import compile_module
 
 from just_dna_format.vocab import VALID_DECLARED_USE
 
+from just_dna_compiler.draft import DraftError, blank_template, required_fields
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.clinpgx_build import (
     DEFAULT_CLINPGX_URL,
@@ -25,8 +26,15 @@ from just_dna_enricher.clinpgx_build import (
 )
 from just_dna_enricher.licensing import CLINPGX_TERMS, LicenseRefusal, check_declared_use
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
+from just_dna_enricher.cpic import CpicError
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
+from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
+from just_dna_enricher.clingen import (
+    DEFAULT_CLINGEN_URL,
+    ClinGenError,
+    enrich_dosage_sensitivity,
+)
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
 
@@ -158,6 +166,25 @@ def gene_metrics_(
     typer.echo(f"rows: {len(result.rows)}  genes covered: {len(result.covered)}  sources: {result.sources}")
     if result.missing:
         typer.secho(f"  no gnomAD constraint: {result.missing}", fg=typer.colors.YELLOW, err=True)
+
+
+@app.command("dosage")
+def dosage_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every gene is ClinGen-curated."),
+    url: str = typer.Option(DEFAULT_CLINGEN_URL, "--url", help="ClinGen gene-curation list URL."),
+) -> None:
+    """Add ClinGen dosage-sensitivity rows to gene_metrics.csv (haploinsufficiency/triplosensitivity)."""
+    try:
+        result = enrich_dosage_sensitivity(spec_dir, mode=_mode(strict), url=url)
+    except ClinGenError as exc:
+        typer.secho(f"DOSAGE FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"dosage sensitivity: {spec_dir / 'gene_metrics.csv'}", fg=typer.colors.GREEN)
+    typer.echo(f"dataset: {result.dataset}  genes curated: {len(result.covered)}")
+    if result.missing:
+        # ClinGen curates a subset by design, so this is information rather than a problem.
+        typer.secho(f"  not in the ClinGen curation list: {result.missing}", fg=typer.colors.YELLOW)
 
 
 @app.command("literature")
@@ -300,6 +327,62 @@ def clinpgx_check_(
         typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
     for conflict in result.conflicts:
         typer.secho(f"  evidence-level difference: {conflict}", fg=typer.colors.YELLOW, err=True)
+
+
+@app.command("draft")
+def draft_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    gene: list[str] = typer.Option(..., "--gene", help="Gene to draft from CPIC (repeatable)."),
+    use: str = typer.Option(
+        "unstated", "--use",
+        help=(
+            "Declared use: unstated | non-commercial | commercial. CPIC forbids sale, so a draft is "
+            "SKIPPED when unstated and REFUSED when commercial."
+        ),
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
+) -> None:
+    """Draft PGx tables for one or more genes from CPIC — appends rows, never overwrites one.
+
+    Re-runnable and additive, so a multi-gene module is built up a gene at a time. A row whose key is
+    already in the file is reported, never replaced: what CPIC now says about a row you already wrote
+    is a finding for `pgx`, not an edit for this command to make.
+    """
+    declared = _use(use)
+    total_added = 0
+    for name in gene:
+        try:
+            result = draft_gene(spec_dir, name, declared_use=declared, dry_run=dry_run)
+        except (CpicError, DraftError) as exc:
+            typer.secho(f"DRAFT FAILED ({name}): {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
+        if result.skipped:
+            for warning in result.warnings:
+                typer.secho(f"  skipped: {warning}", fg=typer.colors.YELLOW, err=True)
+            continue
+        typer.secho(f"{name}:", fg=typer.colors.GREEN)
+        for report in result.reports:
+            typer.echo(f"  {report}")
+            for outcome in report.differs:
+                typer.secho(f"    {outcome}", fg=typer.colors.YELLOW)
+        for warning in result.warnings:
+            typer.secho(f"  warning: {warning}", fg=typer.colors.YELLOW, err=True)
+        total_added += result.added
+    verb = "would add" if dry_run else "added"
+    typer.echo(f"{verb} {total_added} row(s) across {len(gene)} gene(s) in {spec_dir}")
+
+
+@app.command("template")
+def template_(
+    kind: str = typer.Argument(..., help="Authored CSV to emit a header for, e.g. repeat_alleles.csv"),
+) -> None:
+    """Print a header-only CSV for one authored table kind, generated from the live models."""
+    try:
+        typer.echo(blank_template(kind), nl=False)
+    except DraftError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"required: {', '.join(required_fields(kind))}", fg=typer.colors.BLUE, err=True)
 
 
 @app.command("check-identifiers")

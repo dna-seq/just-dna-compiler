@@ -13,6 +13,7 @@ The DSL/manifest schema comes from `just-dna-format`; this package is the transf
 """
 
 import csv
+import math
 import re
 import shutil
 import types
@@ -43,8 +44,8 @@ from just_dna_format.integrity import (
 )
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.sources import SourceRow, taints_commercial_use
-from just_dna_format.normalize import normalize_version, strip_authority_keys
+from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
+from just_dna_format.normalize import parse_p_value, strip_authority_keys
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     Compilation,
@@ -654,6 +655,42 @@ def _check_allele_membership(
     return errors, warnings_out
 
 
+def _check_p_value_num(
+    studies: list[StudyRow], *, strict: bool
+) -> tuple[list[str], list[str]]:
+    """Does the typed `p_value_num` agree with the free-form `p_value` string beside it?
+
+    Validate-by-redundancy on two encodings of one number, so it is exactly the tier's own kind of
+    check: pure computation over injected data, no reference required. A transcription slip between
+    the verbatim cell and the queryable one is otherwise invisible — the module compiles, and a
+    consumer thresholding on the number silently reads a different p-value than the row displays.
+
+    **A string that does not denote one definite value is skipped in silence.** `"<0.001"`, `"NS"` and
+    `"5e-8 (adjusted)"` are all legitimate things to have written in a free-form column, and none of
+    them disagrees with anything — see `normalize.parse_p_value`, which is anchored on the whole cell
+    rather than reading a leading number out of commentary.
+
+    The comparison is relative, at 1%: the string is the record and the number is a transcription of
+    it, so `p_value="5.23e-8"` beside `5.2e-8` is a rounding rather than a contradiction, while a
+    wrong digit or a wrong power of ten is neither. Severity is the mode ladder — warning in
+    `best_effort`, error in `strict`."""
+    errors: list[str] = []
+    warnings_out: list[str] = []
+    for row in studies:
+        if row.p_value_num is None:
+            continue
+        parsed = parse_p_value(row.p_value)
+        if parsed is None or math.isclose(parsed, row.p_value_num, rel_tol=0.01):
+            continue
+        (errors if strict else warnings_out).append(
+            f"{row.variant_key} pmid {row.pmid}: p_value {row.p_value!r} reads as {parsed:g}, but "
+            f"p_value_num says {row.p_value_num:g} — two encodings of one number disagree, so one of "
+            f"them is a transcription slip (the string is the record; the number is what a consumer "
+            f"filters on)."
+        )
+    return errors, warnings_out
+
+
 def _verify_vrs_ids(
     resolution_rows: list[ResolutionRow], *, strict: bool
 ) -> tuple[list[str], list[str]]:
@@ -870,17 +907,16 @@ def validate_spec(
             f"dropped injected authority keys from module: block (registry-stamped, not authored): "
             f"{dropped_authority}"
         )
-    # `module.version` is advisory (the registry stamps the canonical Identity.version). Preview what
-    # 0.5's SemVer coercion will read, warning only when it differs from the authored value — a clean
-    # MAJOR.MINOR.PATCH stays silent (docs/PROPOSAL_0_5.md).
-    if config is not None and config.module.version:
-        authored = config.module.version
-        coerced = normalize_version(authored)
-        if coerced != authored:
-            all_warnings.append(
-                f"module.version {authored!r} is advisory; 0.5 SemVer parsing will read it as "
-                f"{coerced!r}. The registry stamps the canonical version on publish."
-            )
+    # `module.version` is advisory (the registry stamps the canonical Identity.version) and is COERCED
+    # to SemVer by `ModuleInfo` since 0.5 (RM17). Report the rewrite rather than performing it here:
+    # the model already did it, and `version_coerced_from` is how it says so. A clean
+    # MAJOR.MINOR.PATCH coerces to itself and stays silent.
+    if config is not None and config.module.version_coerced_from:
+        all_warnings.append(
+            f"module.version {config.module.version_coerced_from!r} was read as SemVer "
+            f"{config.module.version!r}. It is advisory either way — the registry stamps the "
+            f"canonical version on publish — but the module now compiles under the coerced value."
+        )
 
     # A module composes from optional table kinds (RM2): variants.csv is no longer mandatory — a PGx /
     # PharmGKB / PRS module carries only its own table(s). Load whatever is present.
@@ -1122,6 +1158,11 @@ def compile_module(
     all_warnings.extend(allele_warnings)
     if allele_errors:
         return CompilationResult(success=False, errors=allele_errors, warnings=all_warnings)
+
+    p_value_errors, p_value_warnings = _check_p_value_num(studies, strict=strict)
+    all_warnings.extend(p_value_warnings)
+    if p_value_errors:
+        return CompilationResult(success=False, errors=p_value_errors, warnings=all_warnings)
 
     resolution_mode: Optional[str] = None
     resolution_sources: list[str] = []
@@ -1542,14 +1583,16 @@ def _sources_block(rows: list[SourceRow]) -> Optional[Sources]:
     """
     if not rows:
         return None
-    forbidden = any(taints_commercial_use(r) for r in rows)
+    def _verdict(taints, is_unknown) -> Optional[bool]:
+        # Most-restrictive-first: a forbidding source makes it False; failing that, an unknown makes
+        # it None (undetermined, never permitted); only an all-known, none-forbidding set makes True.
+        if any(taints(r) for r in rows):
+            return False
+        return None if any(is_unknown(r) for r in rows) else True
+
     unknown = sorted({r.source for r in rows if r.commercial_use is None})
-    if forbidden:
-        verdict: Optional[bool] = False
-    elif unknown:
-        verdict = None
-    else:
-        verdict = True
+    verdict = _verdict(taints_commercial_use, lambda r: r.commercial_use is None)
+    redistribution_verdict = _verdict(taints_redistribution, lambda r: r.redistribution is None)
     return Sources(
         signature=_source_signature(rows),
         sources=sorted({r.source for r in rows if r.source}),
@@ -1559,9 +1602,11 @@ def _sources_block(rows: list[SourceRow]) -> Optional[Sources]:
         notices=sorted({r.notice for r in rows if r.notice}),
         share_alike_layers=sorted({r.layer for r in rows if r.share_alike}),
         noncommercial_layers=sorted({r.layer for r in rows if r.commercial_use is False}),
+        nonredistributable_layers=sorted({r.layer for r in rows if r.redistribution is False}),
         unknown_terms_sources=unknown,
         declared_uses=sorted({r.declared_use for r in rows if r.declared_use}),
         commercial_use=verdict,
+        redistribution=redistribution_verdict,
         row_count=len(rows),
     )
 
@@ -1737,6 +1782,8 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
                 "clin_sig": v.clin_sig,
                 # ── 0.4 general annotation axes (materialized passthrough). ──
                 "requires_callable": v.requires_callable,
+                # 0.5 (RM6): where a consumer proves callability — the pointer half of the flag above.
+                "callable_from": v.callable_from,
                 "acmg_sf": v.acmg_sf,
                 "actionability": v.actionability,
             }
@@ -1774,6 +1821,7 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
         "trait_efo_id": pl.Utf8,
         "clin_sig": pl.Utf8,
         "requires_callable": pl.Boolean,
+        "callable_from": pl.Utf8,
         "acmg_sf": pl.Boolean,
         "actionability": pl.Utf8,
     }
@@ -2114,6 +2162,12 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "doi": s.doi,
                 "provenance_quote": s.provenance_quote,
                 "provenance_regex": s.provenance_regex,
+                # ── 0.5: the queryable p-value. The authored number passes through; `neg_log10_p` is
+                # DERIVED on write and absent from `StudyRow`'s fields, so `_write_studies_csv` cannot
+                # emit it and the next compile re-derives the identical column (the `allele_frequency`
+                # pattern — see `_build_frequencies`).
+                "p_value_num": s.p_value_num,
+                "neg_log10_p": s.neg_log10_p,
             }
         )
     schema = {
@@ -2134,6 +2188,8 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "doi": pl.Utf8,
         "provenance_quote": pl.Utf8,
         "provenance_regex": pl.Utf8,
+        "p_value_num": pl.Float64,
+        "neg_log10_p": pl.Float64,
     }
     return pl.DataFrame(records, schema=schema)
 
@@ -2396,6 +2452,8 @@ def _write_variants_csv(
         "flags", "trait_efo_id", "clin_sig",
         # 0.4 general annotation axes
         "requires_callable", "acmg_sf", "actionability",
+        # 0.5 general annotation axis
+        "callable_from",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -2513,6 +2571,7 @@ def _write_variants_csv(
                     "requires_callable": _scalar_cell(row.get("requires_callable")),
                     "acmg_sf": _scalar_cell(row.get("acmg_sf")),
                     "actionability": _scalar_cell(row.get("actionability")),
+                    "callable_from": _scalar_cell(row.get("callable_from")),
                 }
             )
 
@@ -2526,6 +2585,9 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         "stat_significance", "effect_size", "effect_measure", "trait_efo_id",
         # 0.4 provenance columns (RM11/RM12, from the 0.5 scope)
         "doi", "provenance_quote", "provenance_regex",
+        # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
+        # write, so re-emitting it would author a value the next compile recomputes anyway.
+        "p_value_num",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -2553,5 +2615,6 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "doi": _scalar_cell(row.get("doi")),
                     "provenance_quote": _scalar_cell(row.get("provenance_quote")),
                     "provenance_regex": _scalar_cell(row.get("provenance_regex")),
+                    "p_value_num": _scalar_cell(row.get("p_value_num")),
                 }
             )

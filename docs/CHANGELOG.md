@@ -5,6 +5,108 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-02 — 0.5.0: the pre-cut batch — columns that need the window, tooling that doesn't
+
+A survey of five candidate annotation-source groups (splice predictors, ClinGen/GenCC/ACMG SF,
+PharmCAT+CPIC, HPO/MONDO/Orphanet, missense predictors) split cleanly along one line, and that line
+set this batch's scope. The groundwork each group needs is either a **new table** or a **new column**,
+and `integrity.file_entries` skips missing files — so a new optional table never moves the digest of a
+module that does not carry it (additive any time), while a new column moves every module's digest
+(major-only once 0.5 ships). The columns therefore landed now; the tables are roadmapped (RM23–RM27).
+
+**`StudyRow` gets a queryable p-value.** `p_value` is a free-form string, so nothing could sort or
+threshold it; `p_value_num` is the same number typed, constrained to (0, 1]. `neg_log10_p` is
+**derived** into `studies.parquet` — the `allele_frequency` = AC/AN split, applied again — because it
+is the scale a consumer filters and plots on, while authoring it would make the human compute a
+logarithm to write a row down.
+
+*Considered and rejected: a mantissa/exponent pair* (the GWAS Catalog's own representation). It
+survives p-values past what float64 holds — subnormal below ~1e-308, flatly `0.0` below ~5e-324 — but
+that range is a problem for a catalogue of millions of associations, not for a curated module citing
+tens of studies. Two columns and a both-or-neither rule is a real cost paid by every author to insure
+against a case none of them will meet. A p-value that small reads as *indefinite* rather than as zero:
+`parse_p_value` returns `None` for it, since the column could not hold it either and reporting a
+mismatch would be a finding about float64 rather than about the module.
+
+A compiler check compares the number against the verbatim string (relative, at 1%, so a rounding is
+not a contradiction) and reports a disagreement — warning, error in `strict` — skipping in silence any
+cell that does not denote one definite value (`"<0.001"`, `"NS"`, `"5e-8 (adjusted)"`).
+
+**`VariantRow.callable_from`** (RM6's second half) — `requires_callable` says a negative must be
+proven, this says where the proof lives. It reuses `source_field`'s pointer grammar, which moved to
+`vocab.validate_field_token` and onto `AuthoredModel` now that two models share it. `callable_from`
+leaves the reserved namespace: a built column must not also be reserved, or the author cannot write it.
+
+**`DiplotypeRow.recommendation_strength`** — CPIC grades how firmly to act; PharmGKB's `evidence_level`
+grades how well established the association is. Different bodies, different questions, and a
+well-evidenced association routinely carries an optional action, so folding them into one column would
+be the `state`-overloading mistake again. Members are CPIC's own five, lowercased; its `n/a` is
+deliberately not a member (that is CPIC declining to classify, which is an empty cell).
+
+**ClinGen dosage sensitivity** — `haploinsufficiency` / `triplosensitivity` on `GeneMetricsRow` (gene-
+keyed, so columns on the existing sidecar rather than a new table), plus `clingen.py` and
+`just-dna-enricher dosage` to fill them. **Ratings are stored as terms, not ClinGen's numeric codes**,
+which is a deliberate departure from the usual keep-it-verbatim rule: probing the live file showed the
+codes are an ordinal-looking scale that is not ordinal — `30` means "autosomal recessive" and `40`
+means "dosage sensitivity unlikely", so sorting raw codes ranks `40` above `3` (sufficient evidence),
+the exact inversion of the meaning. Two more shapes found by reading the file rather than its docs: a
+literal `"Not yet evaluated"` in 210 of 1,520 rows (an absence, and what makes `int(cell)` crash), and
+a six-line comment block whose last line is the header. ClinGen is CC0 — the one annotation-layer
+source here a module can be **sold** on, which `sources.csv` now records rather than leaving implied.
+The gnomAD pass's `existing` map was re-keyed on `(gene, dataset)`: keyed on the gene alone, a ClinGen
+row looked like that pass's own work and suppressed the constraint fetch.
+
+**`SourceRow.redistribution`** — a third tri-state axis, recorded and summarized, not gated. An
+academic-use-only source (OMIM, dbNSFP) permits neither sale nor redistribution, while CC BY-NC forbids
+sale and expressly allows sharing; recording the first as merely non-commercial understates it. All five
+current sources permit redistribution, so this is the window's cheap insurance. The **gate** is
+deliberately deferred (RM27): a distribution right is not a *use*, so `declared_use` is the wrong axis
+to resolve it against, and that needs design rather than a branch.
+
+**RM17: `module.version` is enforced, coercing.** `v2` → `2.0.0`, reported once. Coerce rather than
+reject because the pre-0.4 corpus is full of `v2`, and rejecting would break those modules to gain a
+stricter spelling of an advisory field. One behaviour change worth noting for consumers: a non-SemVer
+version used to be dropped from `Identity.version` entirely, so such a module published with no version
+at all; it now reaches the manifest coerced.
+
+**A generic drafting helper — `just_dna_compiler.draft` + `just-dna-enricher draft`.** Started as a
+PGx scaffold and generalized, because the mechanism (append rows into an authored CSV without
+clobbering) is table-kind-agnostic and useful to a human on its own. The compiler owns the pure half
+(it already writes authored CSVs in `reverse_module`, and already defines what makes two rows the same
+row); the enricher owns the network providers, of which CPIC is the first.
+
+*Append-only at **row** granularity, never file granularity* — a file-level "refuse if it exists" rule
+self-defuses after the first gene and makes a multi-gene module unbuildable. A row whose natural key is
+new is appended; a row whose key exists is reported (`already_present`, or `differs` with the cells
+named) and **never rewritten**. Dedup keys on the compiler's own `_TABLE_DUPE_KEYS`, so an append
+cannot produce a row the compiler would then reject as a duplicate; rows go at the end, because
+authored row order is preserved through compile → reverse and parquet bytes depend on it. That word —
+*mutate* — is the line between this and the parked enricher-co-authoring item: appending leaves
+`content_signature` a function of the authored bytes, editing a cell a human wrote would not.
+`just-dna-enricher template <kind>` emits a header from the live models for starting a table by hand.
+
+**`just-dna-compiler verify` and `sign`.** `verify_manifest` and `sign_digest` were fully built and
+reachable from no command line — `just-dna-format` ships no CLI (Typer would breach its
+pydantic-plus-cryptography floor), so the README's "verify-only client" path meant writing Python, and
+nothing in the workspace could sign a module.
+
+**Orphanet joins the trait-currency check**, and exposed a latent trap while doing it: the IRI was
+composed as `stem + PREFIX + "_" + local`, but `ORPHA:558` is a term at `…/ORDO/Orphanet_558`. The
+composed `ORPHA_558` returns HTTP 200 with zero terms — indistinguishable from "this id does not
+exist" — so the bug would have surfaced as a false finding about the module. `_ONTOLOGY_IRI` now stores
+the full IRI prefix instead of assembling it.
+
+**`reference_examples/htt_repeat_expansion/`** — the binning family's first real compiled module
+(§4–§8 of REFERENCE_EXAMPLES.md were sketches). No variants, no studies, no coordinates: the locus is
+named by `(gene, repeat_unit)`, `source_field=REPCN` binds it to an ExpansionHunter VCF, and the
+mandatory `unresolved` sentinel is the row that stops an unspanned expansion reading as "normal".
+
+**The ACMG SF check was probed and deferred, not skipped.** `acmg_sf` is validated against nothing and
+deserves a check, but the probe found no machine-readable list: NCBI carries SF v3.2 as an HTML table
+and ClinGen's FTP publishes no secondary-findings file. A guarded scrape is possible and is recorded in
+0.5.1 rather than rushed — a hand-transcribed gene list in the enricher is the un-injected-reference
+mistake RM21 already taught.
+
 ## 2026-08-02 — 0.5.0: the ClinPGx snapshot, and a PGx reference example
 
 **`clinpgx_build` + pass 6.** `clinicalAnnotations.zip` → a parquet snapshot the cross-check reads

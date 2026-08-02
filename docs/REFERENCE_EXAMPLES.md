@@ -5,11 +5,13 @@ These are **hand-authored sketches** of how modules are expressed with the 0.3/0
 authors and consumers** — a picture of the intended shapes. The 0.4 shapes are now shipped and frozen;
 rsIDs / coordinates / effect sizes are illustrative.
 
-**Two examples are not sketches but real, compiled modules** under `reference_examples/`, built from
-real upstream data and rebuilt by documented commands: `pathogenic_clinvar/` (the SNP core) and
+**Three examples are not sketches but real, compiled modules** under `reference_examples/`, rebuilt by
+documented commands: `pathogenic_clinvar/` (the SNP core, from a real ClinVar snapshot),
 `pgx_slco1b1_simvastatin/` (the pharmacogenomics path — nine per-genotype rows from three real ClinPGx
-annotations, no `variants.csv`, and a `sources.csv` recording that the module is not sellable). Read
-those when you want the authored shape that actually passes the compiler, rather than an illustration.
+annotations, no `variants.csv`, and a `sources.csv` recording that the module is not sellable), and
+**`htt_repeat_expansion/`** (the binning path — §7 below, built for real: no variants, no studies, no
+coordinates, and the mandatory `unresolved` sentinel doing the job it exists for). Read those when you
+want the authored shape that actually passes the compiler, rather than an illustration.
 
 This doc is the **"conclusion" stage of the feedback → schema cycle** (see
 [`USE_CASES.md`](USE_CASES.md) → *The feedback → schema cycle*): where a use case, once its blockers
@@ -191,6 +193,9 @@ diplotype + CN/SV. The `unresolved` row is the safety property: no diplotype ⇒
 ---
 
 ## 7. HTT — repeat expansion (0.4 `repeat_alleles.csv`)
+
+> **Built for real** at `reference_examples/htt_repeat_expansion/` — the sketch below is the shape; that
+> directory is a module that compiles, verifies and round-trips to a fixed-point digest.
 
 `RepeatAlleleRow`, keyed on `(gene, repeat_unit)` — the motif is part of the identity (T3): a repeat
 count is only comparable within its motif definition. The count is a **consumer** call

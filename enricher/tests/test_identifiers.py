@@ -25,6 +25,7 @@ from just_dna_enricher.identifiers import (
     classify_rsid,
     module_trait_ids,
 )
+from just_dna_enricher.identifiers import _ONTOLOGY_IRI
 from just_dna_enricher.net import PacingGate
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
@@ -286,6 +287,43 @@ def test_an_unknown_prefix_abstains_rather_than_reporting_absent() -> None:
     status = _ontology().trait("SNOMED:12345")
     assert status.state == "unchecked"
     assert "does not know how to resolve" in str(status)
+
+
+def test_orphanet_terms_resolve_under_both_spellings() -> None:
+    """Orphanet is written `ORPHA:558` and `Orphanet:558` in the wild; both name one term."""
+    client = _ontology()
+    for curie in ("ORPHA:558", "Orphanet:558", "ORPHA_558"):
+        status = client.trait(curie)
+        assert status.state == "current", curie
+        assert status.label == "Marfan syndrome"
+
+
+def test_the_orphanet_iri_is_not_composed_from_the_curie_prefix() -> None:
+    """The trap ORDO exposed: `ORPHA:558` lives at `…/ORDO/Orphanet_558`, so building the IRI as
+    `stem + PREFIX + "_" + local` queries `ORPHA_558` — which OLS4 answers 200-with-zero-terms, i.e.
+    indistinguishable from "this id does not exist". The bug would have surfaced as a false finding
+    about the module rather than as an error here, so the requested IRI itself is asserted."""
+    requested: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(request.url.params.get("iri", ""))
+        return httpx.Response(200, json=_OLS4.get("Orphanet_558", {}))
+
+    client = OntologyClient()
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+    client.trait("ORPHA:558")
+    assert requested == ["http://www.orpha.net/ORDO/Orphanet_558"]
+    assert "ORPHA_558" not in requested[0]
+
+
+def test_every_registered_ontology_composes_a_reachable_iri() -> None:
+    """Each route's IRI prefix must end in the term separator, or the composed IRI silently loses it
+    and every lookup in that ontology reports `absent`."""
+    for prefix, (ontology, iri_prefix) in _ONTOLOGY_IRI.items():
+        assert iri_prefix.endswith("_"), prefix
+        assert iri_prefix.startswith("http"), prefix
+        assert ontology.islower(), prefix
 
 
 def test_multi_valued_trait_cells_fan_out() -> None:

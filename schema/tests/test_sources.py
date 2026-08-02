@@ -10,7 +10,12 @@ import pytest
 from pydantic import ValidationError
 
 from just_dna_format.integrity import source_signature
-from just_dna_format.sources import SOURCE_FACT_FIELDS, SourceRow, taints_commercial_use
+from just_dna_format.sources import (
+    SOURCE_FACT_FIELDS,
+    SourceRow,
+    taints_commercial_use,
+    taints_redistribution,
+)
 from just_dna_format.vocab import VALID_DECLARED_USE, VALID_SOURCE_LAYERS
 
 
@@ -56,6 +61,31 @@ def test_only_the_annotation_layer_taints() -> None:
     for layer in sorted(VALID_SOURCE_LAYERS - {"annotation"}):
         assert taints_commercial_use(_row(layer=layer, commercial_use=False)) is False
     assert taints_commercial_use(_row(layer="annotation", commercial_use=False)) is True
+
+
+def test_redistribution_is_a_third_axis_not_a_shade_of_commercial_use() -> None:
+    """The two answer different questions, so they must be independently settable and separately
+    tainting. CC BY-NC forbids sale while expressly ALLOWING sharing; an academic-use-only source
+    (OMIM, dbNSFP) forbids both. Collapsing them would record the second as merely the first."""
+    non_commercial = _row(commercial_use=False, redistribution=True)   # CC BY-NC
+    academic_only = _row(commercial_use=False, redistribution=False)   # OMIM / dbNSFP class
+    assert source_signature([non_commercial]) != source_signature([academic_only])
+
+    assert taints_redistribution(academic_only) is True
+    assert taints_redistribution(non_commercial) is False
+    # …and the commercial verdict cannot tell them apart, which is exactly why the axis exists.
+    assert taints_commercial_use(academic_only) == taints_commercial_use(non_commercial) is True
+
+
+def test_redistribution_unknown_is_not_permission() -> None:
+    assert taints_redistribution(_row(redistribution=None)) is False  # unknown does not taint…
+    assert source_signature([_row(redistribution=None)]) != source_signature(
+        [_row(redistribution=False)]
+    )  # …but it is a different fact from a refusal
+    for layer in sorted(VALID_SOURCE_LAYERS - {"annotation"}):
+        # Same layer rule as the other axes: a coordinate looked up from a restricted service is
+        # still just a coordinate.
+        assert taints_redistribution(_row(layer=layer, redistribution=False)) is False
 
 
 def test_signature_is_producer_independent_but_fact_sensitive() -> None:

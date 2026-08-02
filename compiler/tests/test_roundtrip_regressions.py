@@ -14,6 +14,7 @@ Covered:
 
 All run with resolve_with_ensembl=False (no reference/network)."""
 
+import math
 from pathlib import Path
 
 import polars as pl
@@ -171,3 +172,124 @@ def _read_csv(path: Path) -> list[dict]:
 
     with open(path, encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+# ── 0.5: callable_from (RM6) ────────────────────────────────────────────────────────────────────
+
+
+def test_callable_from_survives_roundtrip(tmp_path: Path) -> None:
+    # `requires_callable` says a negative must be proven; `callable_from` says where the proof is.
+    # Both are on the same row, so a consumer can act on the pair without a second lookup.
+    variants = (
+        "rsid,genotype,state,conclusion,requires_callable,callable_from\n"
+        "rs1,A/G,risk,c,true,DP|GQ\n"
+        "rs2,A/G,risk,c,true,FT\n"
+        "rs3,A/G,risk,c,,\n"
+    )
+    studies = "rsid,pmid\nrs1,12345678\nrs2,12345678\nrs3,12345678\n"
+    orig, recompiled = _roundtrip(tmp_path, variants, studies)
+
+    for d in (orig, recompiled):
+        w = pl.read_parquet(d / "weights.parquet").sort("rsid")
+        assert w["callable_from"].to_list() == ["DP|GQ", "FT", None]
+    # An absent pointer stays absent rather than being fabricated as a default field name.
+    assert pl.read_parquet(orig / "weights.parquet").equals(
+        pl.read_parquet(recompiled / "weights.parquet")
+    )
+
+
+def test_callable_from_is_a_pointer_not_an_expression(tmp_path: Path) -> None:
+    # Principle 1: the column names *where* the signal lives; it can never become a computation.
+    variants = (
+        "rsid,genotype,state,conclusion,callable_from\n"
+        "rs1,A/G,risk,c,DP > 10\n"
+    )
+    studies = "rsid,pmid\nrs1,12345678\n"
+    spec = _write(tmp_path / "spec", variants, studies)
+    result = validate_spec(spec)
+    assert not result.valid
+    assert any("pointer, not an expression" in e for e in result.errors), result.errors
+
+
+# ── 0.5: the queryable p-value (authored number in, derived neg_log10_p out) ────────────────────
+
+# Coordinates + alts are carried so a `strict=True` compile has nothing left to resolve and the
+# allele-membership check has a locus to check `A/G` against — neither is what these tests are about.
+_P_VARIANTS = (
+    "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
+    "rs1,1,100,A,G,A/G,risk,c\n"
+)
+
+
+def test_p_value_num_survives_roundtrip_and_neg_log10_is_derived(tmp_path: Path) -> None:
+    # The number is authored and must come back unchanged; neg_log10_p is derived on write, so it must
+    # be IN the parquet and ABSENT from the reversed CSV (the `allele_frequency` contract).
+    studies = (
+        "rsid,pmid,p_value,p_value_num\n"
+        "rs1,12345678,5e-8,5e-8\n"
+        "rs1,22222222,0.03,0.03\n"
+    )
+    orig, recompiled = _roundtrip(tmp_path, _P_VARIANTS, studies)
+
+    for d in (orig, recompiled):
+        rows = pl.read_parquet(d / "studies.parquet").sort("pmid").to_dicts()
+        assert [r["p_value_num"] for r in rows] == [5e-8, 0.03]
+        # -log10 of each, computed here rather than hardcoded off a data dump.
+        assert [round(r["neg_log10_p"], 9) for r in rows] == [
+            round(-math.log10(5e-8), 9),
+            round(-math.log10(0.03), 9),
+        ]
+
+    reversed_studies = _read_csv(tmp_path / "reversed" / "studies.csv")
+    assert "neg_log10_p" not in reversed_studies[0]
+    assert [float(r["p_value_num"]) for r in reversed_studies] == [5e-8, 0.03]
+
+
+def test_neg_log10_p_ranks_by_strength(tmp_path: Path) -> None:
+    # What the derived column is for: a consumer sorts on it to rank associations.
+    studies = (
+        "rsid,pmid,p_value,p_value_num\n"
+        "rs1,11111111,0.05,0.05\n"
+        "rs1,22222222,5e-8,5e-8\n"
+        "rs1,33333333,1e-30,1e-30\n"
+    )
+    spec = _write(tmp_path / "spec", _P_VARIANTS, studies)
+    result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+    assert result.success, result.errors
+
+    rows = pl.read_parquet(tmp_path / "out" / "studies.parquet").to_dicts()
+    by_strength = [r["pmid"] for r in sorted(rows, key=lambda r: r["neg_log10_p"], reverse=True)]
+    assert by_strength == ["33333333", "22222222", "11111111"]
+
+
+def test_p_value_string_and_number_are_cross_checked(tmp_path: Path) -> None:
+    # Two encodings of one number: a transcription slip between them is otherwise invisible.
+    studies = "rsid,pmid,p_value,p_value_num\nrs1,12345678,5e-8,5e-6\n"
+    spec = _write(tmp_path / "spec", _P_VARIANTS, studies)
+
+    lenient = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+    assert lenient.success
+    assert any("p_value" in w and "disagree" in w for w in lenient.warnings), lenient.warnings
+
+    strict_run = compile_module(spec, tmp_path / "out_strict", resolve_with_ensembl=False, strict=True)
+    assert not strict_run.success
+    assert any("disagree" in e for e in strict_run.errors), strict_run.errors
+
+
+def test_p_value_cross_check_stays_silent_on_indefinite_and_rounded_strings(tmp_path: Path) -> None:
+    # A bound, a word, and a rounding are all legitimate; none of them is a disagreement, and
+    # reporting them would drown the real finding above in noise.
+    studies = (
+        "rsid,pmid,p_value,p_value_num\n"
+        "rs1,11111111,<0.001,5e-8\n"
+        "rs1,22222222,NS,0.03\n"
+        "rs1,33333333,5.23e-8,5.2e-8\n"
+        "rs1,44444444,,1e-4\n"
+    )
+    spec = _write(tmp_path / "spec", _P_VARIANTS, studies)
+    for strict in (False, True):
+        result = compile_module(
+            spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict
+        )
+        assert result.success, result.errors
+        assert not [m for m in result.warnings + result.errors if "disagree" in m]

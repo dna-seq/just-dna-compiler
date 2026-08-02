@@ -74,3 +74,89 @@ def test_reverse_roundtrips(tmp_path: Path) -> None:
     result = runner.invoke(app, ["reverse", str(tmp_path / "out"), str(tmp_path / "rev"), "--version", "1.2.3"])
     assert result.exit_code == 0, result.output
     assert "version: 1.2.3" in (tmp_path / "rev" / "module_spec.yaml").read_text(encoding="utf-8")
+
+
+# ── verify / sign: the verify-then-install path (SPEC §5) ───────────────────────────────────────
+
+
+def _compiled(tmp_path: Path) -> Path:
+    spec = _spec(tmp_path / "spec", _POSITIONED)
+    out = tmp_path / "out"
+    assert runner.invoke(app, ["compile", str(spec), str(out)]).exit_code == 0
+    return out
+
+
+def test_verify_passes_on_a_freshly_compiled_module(tmp_path: Path) -> None:
+    out = _compiled(tmp_path)
+    result = runner.invoke(app, ["verify", str(out), "--no-require-marketplace"])
+    assert result.exit_code == 0, result.output
+    assert "verified" in result.stdout
+    assert "signature: absent" in result.stdout  # unsigned verifies, and says so
+
+
+def test_verify_rejects_a_locally_compiled_module_under_the_trust_gate(tmp_path: Path) -> None:
+    # The default demands the marketplace stamp; a local build must not pass as a published one.
+    result = runner.invoke(app, ["verify", str(_compiled(tmp_path))])
+    assert result.exit_code == 1
+    assert "VERIFY FAILED" in result.output
+
+
+def test_verify_catches_a_tampered_artifact(tmp_path: Path) -> None:
+    out = _compiled(tmp_path)
+    target = out / "weights.parquet"
+    target.write_bytes(target.read_bytes() + b"\x00")  # one byte is enough
+    result = runner.invoke(app, ["verify", str(out), "--no-require-marketplace"])
+    assert result.exit_code == 1
+    assert "hash mismatch" in result.output and "weights.parquet" in result.output
+
+
+def test_sign_then_verify_round_trips_and_a_wrong_key_fails(tmp_path: Path) -> None:
+    from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem
+
+    out = _compiled(tmp_path)
+    pem = generate_private_key_pem()
+    key_path = tmp_path / "key.pem"
+    key_path.write_bytes(pem)
+
+    signed = runner.invoke(app, ["sign", str(out), "--private-key", str(key_path)])
+    assert signed.exit_code == 0, signed.output
+
+    good = runner.invoke(app, [
+        "verify", str(out), "--no-require-marketplace",
+        "--public-key", public_key_b64_from_pem(pem),
+    ])
+    assert good.exit_code == 0, good.output
+    assert "verified against the pinned key" in good.stdout
+
+    other = runner.invoke(app, [
+        "verify", str(out), "--no-require-marketplace",
+        "--public-key", public_key_b64_from_pem(generate_private_key_pem()),
+    ])
+    assert other.exit_code == 1
+    assert "VERIFY FAILED" in other.output
+
+
+def test_a_signature_does_not_survive_editing_the_artifact(tmp_path: Path) -> None:
+    # The signature covers `artifact.digest`, which covers every file — so tampering after signing
+    # cannot be papered over: the file hash fails first, and the digest would have moved anyway.
+    from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem
+
+    out = _compiled(tmp_path)
+    pem = generate_private_key_pem()
+    (tmp_path / "key.pem").write_bytes(pem)
+    runner.invoke(app, ["sign", str(out), "--private-key", str(tmp_path / "key.pem")])
+    target = out / "studies.parquet"
+    target.write_bytes(target.read_bytes() + b"\x00")
+
+    result = runner.invoke(app, [
+        "verify", str(out), "--no-require-marketplace", "--public-key", public_key_b64_from_pem(pem),
+    ])
+    assert result.exit_code == 1
+
+
+def test_verify_without_a_manifest_is_a_clean_failure(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = runner.invoke(app, ["verify", str(empty)])
+    assert result.exit_code == 1
+    assert "no manifest.json" in result.output

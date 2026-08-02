@@ -18,8 +18,17 @@ what already shipped (0.1.0 → 0.4.0) and the rationale behind it now live wher
 Code comments that cite "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs for
 already-shipped features — follow them to CHANGELOG.md / COMPILER.md.
 
-**Status:** **0.4.0 released** (packages at `0.4.0`; `schema_version` `"1.0"`). The next patch is
-**0.4.1** — implemented, pending a release the user cuts (see [PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md)):
+**Status:** **0.4.0 is the published line** (tags stop at `v0.4.0`; `dist/` holds only 0.4.0 wheels).
+All three packages are at **`0.5.0`, unpublished**, on `enricher-0.5`; `schema_version` stays `"1.0"`.
+
+**The unpublished window is load-bearing while it lasts.** `integrity.file_entries` skips missing
+files, so a **new optional table** never moves the digest of a module that does not carry it (additive
+any time), while a **new column on an existing parquet** moves every module's digest — major-only once
+0.5 ships. Anything digest-moving is therefore cheap now and expensive after the cut, which is why the
+0.5 pre-cut batch is columns-plus-tooling and everything heavier is deferred below.
+
+The **0.4.1** items below were implemented and **fold into the 0.5.0 cut** (no separate patch release);
+see [PROPOSAL_0_4_1.md](PROPOSAL_0_4_1.md):
 
 - **Inject the authority-key list (not hardcode it).** The format owns a reference stripper
   (`normalize.strip_authority_keys`) and a documented convenience set
@@ -64,6 +73,55 @@ places probing overturned the plan's assumptions.
 **The `RMn` schema items below are pushed to 0.6.0** — they are additive and independent of this
 rework, so they wait behind it rather than blocking it.
 
+### The pre-cut batch — what rides the closing window
+
+A survey of five candidate annotation-source groups (splice predictors, ClinGen/GenCC/ACMG SF,
+PharmCAT+CPIC, HPO/MONDO/Orphanet, missense predictors) produced a clean split: the groundwork each
+needs is either a **new table** (no window pressure — deferred below) or a **new column** (window
+pressure). So the last 0.5 work is columns plus tooling that carries no schema risk:
+
+- **`StudyRow` queryable p-value** — a single `p_value_num` in (0, 1], with `neg_log10_p` **derived**
+  into `studies.parquet`, mirroring `allele_frequency` = AC/AN. A mantissa/exponent pair (the GWAS
+  Catalog's representation) was drafted and then dropped: it buys p-values past float64's range
+  (subnormal below ~1e-308, zero below ~5e-324), which is a catalogue-scale problem rather than a
+  module-scale one, at the price of two columns and a both-or-neither rule every author pays. An
+  authored `-log10` was rejected for the opposite reason: it makes the human compute a logarithm.
+- **`VariantRow.callable_from`** (the built half of RM6) — the `source_field` pointer grammar, reused
+  rather than re-derived.
+- **`DiplotypeRow.recommendation_strength`** — CPIC's recommendation strength has nowhere to live;
+  folding it into `evidence_level` (PharmGKB 1A–4) would be the `state`-overloading mistake again.
+- **ClinGen dosage sensitivity** on `GeneMetricsRow` — gene-keyed, so columns on the existing sidecar
+  rather than a new table. Planned as "store ClinGen's integer codes verbatim"; **probing the real file
+  overturned that**. The codes look ordinal and are not (`30` = autosomal recessive, `40` = dosage
+  sensitivity unlikely), so a consumer sorting them ranks `40` above `3` — the reverse of the meaning.
+  They are decoded to terms at the enricher boundary instead. Two more shapes the file has and its
+  documentation does not mention: a literal `"Not yet evaluated"` (210 of 1,520 rows) and a comment
+  block whose last line is the header.
+- **`SourceRow.redistribution`** — tri-state, legibility only. `share_alike` + `commercial_use` cannot
+  express "may not be redistributed at all", which is what OMIM- and dbNSFP-class academic-only terms
+  actually say; recording that as `commercial_use=False` understates it.
+- **RM17** SemVer enforcement (coercing), the `verify`/`sign` CLI, the generic drafting helper with its
+  first CPIC provider, an `ORDO` ontology route, and the `htt_repeat_expansion` reference example — all
+  digest-neutral. The ACMG SF cross-check was scoped here too and is **deferred to 0.5.1**: the probe
+  found no machine-readable list to check against (see below).
+
+## 0.5.1 — queued behind the cut (nothing here needs the window)
+
+Small, additive, and digest-neutral, so waiting costs nothing:
+
+- **Drafting providers beyond CPIC** (RM26 below) — the generic helper ships in the pre-cut batch with
+  one provider; the rest are pure additions to it.
+- **The ACMG SF cross-check.** `VariantRow.acmg_sf` is materialized and validated against nothing, so
+  the check is worth having — but the pre-cut probe went looking for something to validate it against
+  and **did not find a data file**. What exists (2026-08-02): NCBI's ClinVar ACMG page
+  (`/clinvar/docs/acmg/`) carries the **SF v3.2** list as a 91-row *HTML table*, and ClinGen's FTP
+  publishes gene-curation and region-curation lists but no secondary-findings list. Scraping the HTML
+  is possible and would need the same guards `clingen.parse_curation_list` has (refuse on a changed
+  layout rather than return a short list, since a silently-truncated gene list makes correctly
+  authored `acmg_sf=true` rows look wrong). Deferred rather than rushed, on the standing rule that a
+  hand-transcribed gene list inside the enricher is the un-injected-reference mistake RM21 already
+  taught. Revisit if ACMG or ClinGen publishes the list as data, or accept the guarded scrape.
+
 ## 0.6.0 scope — deferred roadmap items (`RMn`)
 
 Derived in [USE_CASES.md](USE_CASES.md) ("Roadmap items surfaced") by running each real/desired use
@@ -79,7 +137,7 @@ marking an item shipped, check what it was validated against.
 |---|---|---|---|---|
 | RM4 | **Native ClinVar gene-panel materialization** — compile a `GenePanelSpec` (gene set + significance predicate) into `weights.parquet` at compile time, gated on a **content-pinned ClinVar reference mixin**. The 0.2 `GenePanelSpec` *interface* ships and is recorded verbatim; the app-level `gene_panel` adapter in just-dna-lite is the interim reference implementation. Blocked only by Constitution P2 (no network) — the reference must be *injected*, not fetched. **0.5 update:** the content-pinned reference now exists as an injectable artifact — `just-dna-enricher`'s ClinVar snapshot (`clinvar build` → `data/*.parquet` + `release.json` carrying `source_sha256`/`clinvar_file_date`, feeding `GenePanelSpec.reference`/`reference_sha256`). What stays parked is the *compile-time materialization* of a `GenePanelSpec` into `weights.parquet`; the injectable reference half is unblocked. | format (compiler) + consumer-provided reference | gene-panel modules (cardio / cancer / pathogenic) | medium |
 | RM5 | **Symbolic / structural alleles** — a representation beyond `^[ACGT]+$`: `<S>`/`<L>`, `<DEL>`/`<INS>`/`<DUP>`, `<STR n>`, and large indels. **Motivating cases: 5-HTTLPR** (a biallelic ~43 bp structural indel → Short/Long, *not* a repeat count; rejected by today's nucleotide grammar and a category error in `repeat_alleles.csv`) **and ClinPGx's `del`/`ins` genotypes** (177 rows in the release, e.g. `C/del`, `del/del`), which the PGx passes skip rather than coerce. Also unblocks SV-scale variation and consuming symbolic VCF alleles (round-2 §1b/3c). | format (schema) | 5-HTTLPR, SNP+SV modules, symbolic-VCF consume | medium |
-| RM6 | **Callability as first-class state** — promote `requires_callable` from an optional flag to a queryable typed column, and build the reserved **`callable_from`** (the DP,GQ,FT three-state signal from round-2 §3d). The consumer's own oracle enum (`CONFIRMED_NEGATIVE`/`LOW_DP_NEG`/`UNCOVERED`) is why "a named negative is assertable only where proof is `CONFIRMED_NEGATIVE`" — consumers *will* filter on it. | format (schema) | callability / no-call ≠ hom-ref | low-medium |
+| RM6 | ✅ **shipped in 0.5** — **Callability as first-class state.** Both halves are now built: `requires_callable` was already a materialized tri-state column, and **`callable_from`** ships as the pointer beside it — the VCF field(s) a consumer establishes callability from (`DP`, `GQ`, `FT`, `DP\|GQ`), reusing `source_field`'s bare-token grammar rather than inventing a second one. It left the reserved namespace on being built: a reserved name is refused at author time, which would make the column unwritable. The consumer's own oracle enum (`CONFIRMED_NEGATIVE`/`LOW_DP_NEG`/`UNCOVERED`) is why this matters — a named negative is assertable only where the proof is, and now the module says where to look. | format (schema) | callability / no-call ≠ hom-ref | done |
 | RM10 | **Declarative inheritance-expectation field** — an optional trio / de-novo / Mendelian-consistency assertion carried *as data* (the panel says what it expects; a consumer checks it). Only if a real module needs it. | format (schema) | trio / multi-sample panels | low (on demand) |
 | RM14 | ✅ **shipped in 0.4** — **Structured per-version authorship**: an optional `authorship: [Contribution]` on `module_spec.yaml`/`ModuleManifest`, unbundling the flat `authors` + free-form `curator` (which smuggled kind via the `"ai-module-creator"` default) into three orthogonal axes (P5): **identity** (`who`), **role** (closed vocab created/edited/audited/reviewed), **kind** (open, multi-valued: human ladder `human`→`human_expert`→`human_certified`, or `ai`+scale `agent`/`team`/`swarm`; no `hybrid` — a joint contribution is two entries). Motivating case: **AI and human error-spectra overlap but differ**, so a consumer (the RM13 validator, a marketplace review queue, a human auditor) routes scrutiny by author-kind — the format carries the kind, the consumer picks the profile (north star). **Digest-neutral** (manifest metadata, out of `artifact.digest`); like `panel`, not reconstructed by the lossy `reverse_module`. Folding the flat `authors`/`curator` in is a 1.0-cleanup candidate. | format (schema) | authorship-aware scrutiny (§5a) | done |
 | RM7 | **Evaluation-output / report-card schema** for the verification harness — **NOT a format task.** Per-sample results are a *measurement*, so by the data-agnostic north star this is a **consumer** contract (`just-dna-lite`), listed here only so it is not mistaken for format scope. | consumer (`just-dna-lite`) | verification harness (§1a) | — |
@@ -90,8 +148,14 @@ marking an item shipped, check what it was validated against.
 | RM21 | ✅ **shipped in 0.5** — **Data-source licensing as data.** `sources.csv`/`SourceRow` per (source, layer): licence, pinned `license_sha256`, attribution, notice, tri-state `share_alike`/`commercial_use`, and the acquirer's `declared_use`; summarized into `manifest.sources`. The compiler refuses annotation-layer content that forbids sale when no declaration is recorded — **data-driven, not a CLI flag**, because a flag cannot round-trip (P7). Motivated by every PGx upstream being CC BY-SA *plus* a bar on sale. | format (schema + compiler) + enricher | 2c, marketplace redistribution | done |
 | RM22 | ✅ **shipped in 0.5** — **PGx tables join resolution.** `enrich()` reads `pharm_variants.csv` and `haplotypes.csv` as well as `variants.csv`, so a PGx module (which carries no `variants.csv` by design) gets coordinates instead of an empty `resolution.csv`. | enricher | 2c, 3c | done |
 | RM16 | **Authored PRS weights (a scoring file, not a manifest).** 0.4 shipped `pgs.csv` as a *manifest of PGS Catalog IDs* with the ancestry-validity fields — not authored per-variant weights (just-prs resolves a `PGSxxxxxx` id to a harmonized scoring file and scores each id itself, so inlined weights would be dead data; a PRS is a Z/percentile-in-reference, a shape the format does not bin). Deferred: a distinct, digest-bearing `effect_allele`+`effect_weight` scoring table for the case a module must ship weights the PGS Catalog does not host. Build only against a real consumer that combines authored weights into a score. See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) D1. | format (schema + compiler) | authored-weight PRS modules | medium-large (on demand) |
-| RM17 | **Enforce SemVer on `module.version`** — 0.4.1 adopted `version` as a *freeform advisory* field and ships the coercion algorithm (`normalize.normalize_version`) used **read-only** to preview what a future release will read. 0.5 promotes it to an enforced `ModuleInfo.version` validator (coerce `v2`→`2.0.0`, or strict-reject — TBD). **Out of `artifact.digest`**, additive (accepts the same inputs, normalizes them). Once enforced, a clean authored SemVer flows into `Identity.version` (0.4.1 already does this for already-valid values). See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) V1. | format (schema) | pre-0.4 corpus `module.version` | low |
+| RM17 | ✅ **shipped in 0.5** — **SemVer on `module.version`, coercing.** The 0.4.1 read-only preview became enforcement on `ModuleInfo`: `v2` → `2.0.0`, with the rewrite reported once via `version_coerced_from` (silently editing an authored value is the thing this codebase does not do). **Coerce rather than strict-reject**, decided against the corpus: the pre-0.4 modules are full of `v2`/`3`, and rejecting them would break every one to gain a stricter spelling of an advisory field. Digest-neutral. One consumer-visible change: a non-SemVer version used to be dropped from `Identity.version` entirely, so such a module published with no version at all — it now reaches the manifest coerced. | format (schema) | pre-0.4 corpus `module.version` | done |
 | RM15 | **Build-agnostic identity & multi-build support (other-builds-support)** — today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is authored/manifest metadata, but every `chrom/start/ref`, the Ensembl resolver, and all coord-based reasoning silently assume GRCh38. Coordinates are **not absolute** — GRCh37 / GRCh38 / T2T-CHM13 disagree, and the rsid↔coordinate mapping is **build-specific**: an rsid may resolve in one build and be un-annotatable (unplaced/absent) in another, and presence/absence combinations vary per build. This item makes the build a first-class axis — coordinates tagged by (or resolved per) build, a **build-aware resolver** (the injected reference declares its build; a module/reference build mismatch degrades to *unverified* rather than a false consistency error), and cross-build rsid annotatability recorded *as data*. **The "coordinate-first identity" parking is now RESOLVED, on its own stated condition.** This item parked option C because a bare coordinate "would bake GRCh38 into `variant_key`", and said it "becomes reconsiderable only once identity can name its build". A **GA4GH VRS allele id names its build**: the sequence is addressed by its refget accession — the digest of the reference sequence itself — so GRCh38 and GRCh37 mint distinct, correctly non-colliding ids. 0.5 therefore ships coordinate-first identity as the VA for a resolved substitution (see [SCHEMAS.md](SCHEMAS.md) § the identity switch). What remains of RM15 here is the **multi-build** half: a second refget table beside `REFGET_GRCh38`, per-build coordinates, and cross-build annotatability. The GRCh38-only minting ships now — the same "GRCh38-now, multi-build-later" split this item already applies to one-to-many expansion. **Generalizes one-to-many rsid expansion to multi-build:** a no-coord rsid that maps to several loci is expanded to one row per locus (a paralog/SV signal a client can count — data-agnostic), and that ships **GRCh38-only now as compiler behavior** (pinned by `compiler_version`, not a schema break). What is build-specific is *which* loci and *how many*, so RM15 tags expanded coordinates by build and records cross-build annotatability; the GRCh38 expansion itself is not deferred. Blocked by nothing external (schema-shape + resolver decision) but large — touches identity, positions, the resolver, and `artifact.digest`. Interacts with RM5 (symbolic/structural alleles differ across assemblies) and the reserved `reference_db` axis. | format (schema + compiler) | GRCh37 / T2T modules; cross-build annotatability | large |
+
+| RM23 | **Computational predictor scores as a table** (`predictions.csv`) — the groundwork every predictor source needs, built **once**: one row per `(variant, predictor, score_kind)` with `score`, `dataset`, `source`, and an optional `transcript`. Long-form, not wide, is the load-bearing choice — SpliceAI is four deltas plus positions, CADD is one number, AlphaMissense is one plus a class, so wide columns would make every new predictor a schema bump while long form makes it *data*. A predictor score is the same class of object as an allele frequency or a LOEUF (a per-variant number from a named dataset, no measurement), so the 0.5 sidecar precedent covers it. Deferred on two unsettled questions, neither of which is code: the **grain** (per-transcript scores; how to name the four splice deltas without inventing a predictor-specific column set) and the **acquisition** — precomputed splice scores need the *masked vs raw* file sizes measured and the Broad lookup API's terms read, which is the same measure-first question that correctly parked the frequency snapshot. Licensing is already solved rather than blocking: SpliceAI/Pangolin, dbNSFP, AlphaMissense, REVEL, CADD and PrimateAI are all non-commercial or academic-only, and `sources.csv` + the compile gate already confine that to the modules that use them, while phyloP/phastCons/GERP (UCSC, free — and queryable per-range rather than a bulk download) keep a module sellable. | format (schema + compiler) + enricher | pathogenicity triage; splice-impact panels | medium |
+| RM24 | **Gene–disease validity as a table** (`gene_validity.csv`) — one row per `(gene, disease term, classification, source, dataset)`, serving **ClinGen** gene-disease validity, **GenCC** aggregate validity and **HPO** gene→phenotype from one shape. This is a *different grain* from `gene_metrics.csv` (gene × term, not gene), which is why it is a table rather than more columns; dosage sensitivity went the other way for the same reason. The cost is the design (getting one shape to fit three submitters' vocabularies), not the code. All three sources are free, so unlike RM23 this one leaves a module sellable — worth remembering if the marketplace ever sells modules, since every PGx upstream forbids it. | format (schema + compiler) + enricher | gene-panel triage; lay-language disease naming | medium |
+| RM25 | **ClinVar assertion tier as artifact data** — a facts sidecar carrying `clin_sig` + `review_status` + `review_stars` + `variation_id` per variant, so a consumer can route scrutiny by assertion tier at query time (a 1-star submitter and a practice guideline are not the same claim). Nothing is lost today: `clinical.ClinSigFinding` **already** reports both fields via its `confidence` property, so this is about persisting the tier, not discovering it. Deferred as a new table. **Do not confuse this with escalating the check's severity** — see *Parked in 0.5*. | format (schema + compiler) + enricher | authorship/assertion-aware scrutiny | medium |
+| RM26 | **Drafting providers beyond CPIC** — the generic drafting helper (compiler-side mechanism, enricher-side network providers) ships in the pre-cut batch with a CPIC provider. The additive ones: a **ClinVar-snapshot → `variants.csv`** provider (gene + significance + minimum review stars), which *partially dissolves RM4* by making a gene panel authorable — it drafts rows the human then owns, with no compile-time reference materialization; and a **ClinPGx → `pharm_variants.csv`** provider, since that snapshot is already built and read. Both are pure additions to an existing interface, which is why they wait. | enricher | gene-panel authoring; PGx authoring | low-medium |
+| RM27 | **A redistribution compile gate** — RM21's gate keys on `commercial_use` + `declared_use`; the 0.5 `redistribution` column is recorded but **not** gated. Deferred because it is a genuine design question rather than a missing branch: a redistribution bar is not a *use*, so `declared_use` (`unstated`/`non-commercial`/`commercial`) is the wrong axis to resolve it against — a module may be built legitimately and still not be shippable, which is a different verdict from the ones the gate currently issues. Needs the third axis thought through before code. | format (compiler) + enricher | OMIM-/dbNSFP-class sources | low (after the design) |
 
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
@@ -99,6 +163,27 @@ marking an item shipped, check what it was validated against.
   magnitude for ordering; the `full.partial` allele *name* is a distinct string (a candidate for the
   reserved repeat motif-path / allele-string escape hatch), never smuggled into the float bound
   (CONSUMER_ROUND2 C2). Pathogenic-threshold loci (HTT CAG) are unaffected.
+
+### Annotating core, not format scope (the 0.5 source assessment)
+
+RM7 and RM13 are listed above so they are not mistaken for format scope. The same needs saying about
+roughly half of every annotation source assessed in 0.5 — the half that **calls or interprets**. A
+module supplies annotation tables; the measurement arrives from the consumer at query time, so none of
+the following can land in these libs no matter how useful it is:
+
+- **Star-allele callers** — PharmCAT, and Cyrius / PyPGx for the CYP2D6 case PharmCAT punts on. These
+  turn a VCF or a BAM into a diplotype call: measurement. What *does* belong here is their **data** —
+  the CPIC allele definitions PharmCAT ships — which is why the drafting helper reads them. Note that
+  routing through PharmCAT does not launder the terms: its definitions are CPIC's, so the ClinPGx
+  no-sale clause still applies.
+- **Running splice or missense predictors**, and choosing their thresholds. A SpliceAI delta of 0.2 vs
+  0.5 is an interpretation policy, not an annotation; RM23 carries the score and the dataset, never a
+  verdict.
+- **ACMG rule application and incidental-findings reporting policy.** The format carries `acmg_sf` as a
+  flag and (with the pre-cut check) validates it against the published list; deciding what to report to
+  whom is the consumer's.
+- **Lay-language rendering.** A module already carries the ontology CURIE and a human `conclusion`;
+  turning a MONDO term into patient-facing prose is a presentation concern.
 
 **Cross-repo (tracked elsewhere):** **just-dna-marketplace** — take `just-dna-compiler` as the M4
 publish dependency; serve `logs` via the files endpoint; render the cross-version provenance union
@@ -139,6 +224,27 @@ the what-blocks lens in [USE_CASES.md](USE_CASES.md) §1. Standing dispositions:
   an enricher that edits rows either falsifies that record or must add itself as an `ai`/`agent`
   contribution — coherent, but a much larger design than it first looks. Revisit only with both
   answered.
+
+  **The drafting helper is not this item, and the line between them is one word: *mutate*.** The 0.5
+  helper appends rows a source publishes into an authored CSV; it never rewrites a cell that is already
+  there. Appending happens at authoring time and leaves `content_signature` a function of the authored
+  bytes exactly as before — the property that would break is the one where a *fetch* changes the meaning
+  of rows the author already wrote. So a row whose natural key is already present is **reported, never
+  overwritten** (drift on existing rows is the cross-check pass's job, `pgx.enrich_pgx`), and the helper
+  stamps no `authorship`: it transcribes a published table, and the human owns the module. Dedup keys on
+  the compiler's own `_TABLE_DUPE_KEYS`, so an append can never produce a row the compiler would then
+  reject as a duplicate, and rows are appended **at the end** — authored row order is preserved through
+  compile → reverse → recompile, so re-sorting an existing file would move a compiled module's digest.
+
+- **Escalating the ClinVar `clin_sig` cross-check when the disagreement is with an expert panel.**
+  Tempting, because a VCEP or practice-guideline assertion genuinely is a different kind of claim from a
+  one-star submitter's, and the snapshot already carries `review_status`/`review_stars` to tell them
+  apart. Not taken: this is the one check that warns in **both** modes on purpose, because failing a
+  compile over a clinical disagreement makes the format arbitrate a clinical dispute, which the
+  data-agnostic charter forbids — and a curator who has read the primary literature and disagrees with a
+  submission is doing their job. The tier is already *surfaced* (`clinical.ClinSigFinding.confidence`
+  puts it in the message), and persisting it as queryable data is RM25. Surface it, let the consumer
+  route on it, do not decide for them.
 
 - **An offline allele-frequency snapshot.** The obvious symmetry with the ClinVar and gene-constraint
   snapshots, and it does not work: gnomAD v4.1's sites VCFs are **58 GB** (exomes) and **742 GB**
@@ -265,8 +371,10 @@ column gets the generic "extra inputs not permitted":
 - **`reference_db`** — a module-side hint naming *which* reference database the app should join this
   annotation against when several exist (implicit Ensembl for variants / ClinVar for `clin_sig` today;
   a module may pin it, e.g. a specific PharmVar release). Annotation-side addressing, a real future axis.
-- **`callable_from`** — the callability signal a consumer establishes a negative from (DP, GQ, FT);
-  reserved for RM6/round-2 §3d as the typed successor to the built `requires_callable` flag.
+
+*(**`callable_from` was reserved here through 0.4 and is now BUILT** as a `VariantRow` column in 0.5
+(RM6). A built name must leave this list: `reject_reserved` refuses a reserved column at author time,
+so leaving it would make the very column the release added unwritable.)*
 
 *(`caller` / `caller_version` were reserved through the 0.4 draft as a "provenance triple" (round-2 Q2)
 but are **dropped**: they name which tool produced a *call* — a consumer-side measurement, never module
@@ -324,8 +432,8 @@ release).
 | `state` values `alt` / `ref` | Genotype-relative descriptors that never belonged; recoverable from `ref`/`alts`/`genotype`; not emitted since 0.3. | Drop from the accepted read-vocabulary at 1.0. |
 | `VariantRow.pathogenic` / `benign` booleans | Lossy (can't express `likely_*`/`uncertain`); derived aliases of `clin_sig` since 0.3 (now materialized tri-state). | Deprecate at 1.0 → remove at 2.0. (`clinvar` provenance boolean stays.) |
 | `StudyRow.p_value: str` | Untyped string holding a number; can't be compared/sorted numerically. | Add a numeric companion in 0.x if needed; retype/remove the string at 1.0 (breaking). |
-| `weights.parquet` `end` column | Always set equal to `start` — no source column feeds it. | Remove outright at 1.0 (artifact-digest change, major-only) or wire it to a real end coordinate. |
-| `weights.parquet` `likely_pathogenic` / `likely_benign` | Always `False`; no CSV column feeds them — dead output. | Remove at 1.0, or wire to the `clin_sig` tier. |
+| `weights.parquet` `end` column | Always set equal to `start` — no source column feeds it. | Remove outright at 1.0 (artifact-digest change, major-only) or wire it to a real end coordinate. **Re-examined in 0.5 and deliberately left here** rather than wired inside the window: an end coordinate needs the 0-based/1-based convention settled first, and the repo currently has that inconsistency in the open (`start`'s docstring says 0-based while the pipeline stores Ensembl's 1-based position, per the CPIC/PharmVar gotcha). Wiring a second coordinate onto an unsettled first one buys an off-by-one, not a feature. |
+| `weights.parquet` `likely_pathogenic` / `likely_benign` | Always `False`; no CSV column feeds them — dead output. | Remove at 1.0, or wire to the `clin_sig` tier. **Re-examined in 0.5: removal is the answer, and wiring was rejected.** `clin_sig` is itself materialized into `weights.parquet` and `derive.pathogenic_from_clin_sig` already maps `likely_pathogenic → True`, so a wired column would tell a consumer nothing it cannot already read — it would spend the window's one free digest move on redundancy. |
 | `VariantRow.weight` vs `effect_size` | Potential confusion — module-local score vs published magnitude (both kept, documented). | Review at 1.0 whether `weight` stays or is subsumed by `effect_size`. |
 | Deprecated flag/vocab aliases | Any transitional vocab kept for 0.x compat (e.g. the trimmed-vs-full `state` set). | Collapse to the canonical vocab at 1.0. |
 | `ModuleManifest.authors: list[str]` + free-form `curator` | Flat and overloaded — no role (created/edited/audited), no kind (AI/human); `Defaults.curator` smuggles kind via its `"ai-module-creator"` default. Superseded by the structured authorship record (RM14) once it ships. | Keep both as derived projections through 0.x (P8); at 1.0 fold `authors` into the structured record and drop the kind-smuggling `curator` default. |

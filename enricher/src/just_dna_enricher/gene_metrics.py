@@ -45,7 +45,11 @@ logger = logging.getLogger(__name__)
 _FIELDNAMES = [
     "gene", "gene_id", "transcript", "mane_select",
     "pli", "loeuf", "oe_lof", "oe_lof_lower", "lof_z", "mis_z", "syn_z", "oe_mis",
-    "obs_lof", "exp_lof", "constraint_flags", "dataset", "source", "status", "fetched_at",
+    "obs_lof", "exp_lof", "constraint_flags",
+    # 0.5: ClinGen's columns. This pass never fills them, but it REWRITES THE WHOLE TABLE, so leaving
+    # them out of the field list would silently strip every row `clingen.py` wrote.
+    "haploinsufficiency", "triplosensitivity",
+    "dataset", "source", "status", "fetched_at",
 ]
 # The metric columns the snapshot and the live route both fill, so one writer serves both.
 _METRIC_FIELDS = (
@@ -143,16 +147,22 @@ def enrich_gene_metrics(
     spec_dir = Path(spec_dir)
     output_path = spec_dir / "gene_metrics.csv"
 
-    existing: dict[str, GeneMetricsRow] = {}
+    # Keyed by (gene, dataset), not by gene: one gene legitimately carries a row per authority — a
+    # gnomAD constraint row and a ClinGen dosage row make different statements about it. Keying on the
+    # gene alone made a second authority's row look like this pass's own work and suppressed the fetch.
+    existing: dict[tuple[str, str], GeneMetricsRow] = {}
     if output_path.exists():
         rows, errors, _ = _load_csv_rows(output_path, GeneMetricsRow, "gene_metrics.csv")
         if errors:
             raise GeneMetricsEnrichmentError(f"existing gene_metrics.csv is invalid: {errors[0]}")
         for row in rows:
-            existing[row.gene] = row
+            existing[(row.gene, row.dataset)] = row
 
     genes = module_genes(spec_dir)
-    wanted = [g for g in genes if g not in existing]
+    # "Already done" means done *by this pass*, judged on the route that wrote the row rather than on
+    # the dataset label (which differs between the snapshot and the API routes).
+    done = {row.gene for row in existing.values() if (row.source or "").startswith("gnomad")}
+    wanted = [g for g in genes if g not in done]
     fetched_at = datetime.now(timezone.utc).isoformat()
     out: list[GeneMetricsRow] = list(existing.values())
     covered: list[str] = []
@@ -221,7 +231,7 @@ def enrich_gene_metrics(
             len(from_api), API_CONSTRAINT_DATASET_LABEL,
         )
 
-    out.sort(key=lambda r: r.gene)
+    out.sort(key=lambda r: (r.gene, r.dataset))
     result = GeneMetricsResult(
         rows=out,
         covered=sorted(set(covered)),

@@ -107,7 +107,10 @@ Annotation: `weight?`, `negatives?`, `priority?`, `gene?`, `phenotype?`, `catego
 `clinvar?/pathogenic?/benign?` (tri-state bool). 0.3 axes: `direction?`, `stat_significance?`,
 `effect_size?`, `effect_measure?`, `effect_allele?`, `flags?` (open list; reserved
 `conditional|phased|pleiotropic`), `trait_efo_id?`, `clin_sig?`. 0.4 axes: `requires_callable?`,
-`acmg_sf?`, `actionability?` (`ACTIONABILITY_SEED`). Genotype grammar: phased `A|G` (order kept),
+`acmg_sf?`, `actionability?` (`ACTIONABILITY_SEED`). 0.5: `callable_from?` — the VCF field(s) a consumer
+establishes callability from (`DP`, `GQ`, `FT`, or `DP|GQ`), the RM6 pointer half of
+`requires_callable`; same bare-token grammar as `source_field`, validated on `AuthoredModel` since the
+two share it. Genotype grammar: phased `A|G` (order kept),
 unphased `A/G` (must be sorted), or a single allele (hemizygous/homoplasmic). Read-time upgrade aliases:
 `effective_direction`/`effective_stat_significance`/`effective_clin_sig`/`effective_pathogenic`/
 `effective_benign`, `needs_upgrade`, and a materializing `upgraded()`.
@@ -116,7 +119,21 @@ unphased `A/G` (must be sorted), or a single allele (hemizygous/homoplasmic). Re
 `rsid`/`chrom`/`start`/`ref` (needs rsid or chrom), `population`, `p_value`, `conclusion`,
 `study_design`, `stat_significance`, `effect_size`, `effect_measure`, `trait_efo_id`, and the RM11/RM12
 provenance columns `doi?` (DOI grammar), `provenance_quote?`, `provenance_regex?` (must `re.compile` at
-author time — a declarative pattern grammar, Principle 1).
+author time — a declarative pattern grammar, Principle 1). 0.5 adds the **queryable p-value**:
+`p_value_num?`, the same number typed, constrained to (0, 1] — an exact `0` is a source's own
+underflow rather than a probability, so it is rejected instead of stored as a confident zero.
+
+- **`neg_log10_p` is derived, not authored.** It is materialized into `studies.parquet` (the scale a
+  consumer filters and plots on — `7.3` is genome-wide significance) and absent from the CSV, the same
+  "store the number, materialize the convenience" split as `allele_frequency` = AC/AN. Authoring it
+  would make the human compute a logarithm to write a row down.
+- **A mantissa/exponent pair was drafted and dropped.** It is the GWAS Catalog's own representation and
+  it survives p-values past float64's range (subnormal below ~1e-308, exactly `0.0` below ~5e-324) —
+  but that is a catalogue-of-millions problem, not a curated-module one, and two columns plus a
+  both-or-neither rule is a cost every author pays for it. A value that small now reads as
+  *indefinite*, not as zero.
+- The verbatim `p_value` string stays (retyping or removing it is a 1.0 item), and the compiler
+  cross-checks the two at 1% relative tolerance, skipping any cell that is not one definite value.
 
 **Binning rows** (`binning.py`, all subclass `MeasureBinRow`). Shared: `measure_kind` (must match the
 row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` carries no bounds — the
@@ -248,10 +265,21 @@ outside the fact set.
 **`GeneMetricsRow` — one row per gene.** `gene` (matching `variants.csv`'s column), `gene_id?` (`ENSG…`,
 the stable identity behind the mutable symbol), `transcript?`, `mane_select?`, `pli?`, `loeuf?`, `oe_lof?`,
 `oe_lof_lower?`, `lof_z?`, `mis_z?`, `syn_z?`, `oe_mis?`, `obs_lof?`, `exp_lof?`, `constraint_flags?`,
-`dataset`. `loeuf` is stored under that name rather than `oe_lof_upper` because it is the number clinical
+`haploinsufficiency?`, `triplosensitivity?` (`VALID_DOSAGE_SENSITIVITY`), `dataset`. `loeuf` is stored under that name rather than `oe_lof_upper` because it is the number clinical
 readers ask for by name, with `oe_lof`/`oe_lof_lower` beside it so the interval is not lost. Gene-level
 and variant-level facts are **separate tables** rather than gene metrics repeated on every variant row
 (Principle 5, and one CSV = one concern).
+
+- **Two authorities, two rows, one gene (0.5).** gnomAD says how intolerant of variation a gene looks
+  in a population sample; ClinGen says whether a curated panel found evidence that losing or gaining a
+  copy causes disease. Different questions, so a gene carries a row per `dataset` rather than one row
+  with both — merging them would put a statistical estimate and a curated verdict under one provenance.
+- **Dosage ratings are stored as TERMS, not ClinGen's numeric codes**, and this is a deliberate
+  exception to the keep-the-source-value-verbatim rule. The codes look ordinal and are not: `0`–`3`
+  grade increasing evidence, but `30` means "gene associated with autosomal recessive phenotype" and
+  `40` means "dosage sensitivity unlikely", so sorting the raw number ranks `40` above `3` — the
+  reverse of the meaning. Verbatim is right for an identity; it is wrong for a code that lies about its
+  own order. `vocab.DOSAGE_SENSITIVITY_BY_CODE` holds the total, lossless mapping.
 
 **`LiteratureRow` — one row per cited article, keyed by `pmid`.** The first sidecar not keyed on a
 variant, and deliberately so: a DOI, a PMCID and "does PubMed have this record" are properties of the
@@ -295,16 +323,22 @@ three letters.
 
 **`SourceRow` — one row per (data source, layer).** Facts: `source`, `layer`
 (`VALID_SOURCE_LAYERS`), `license?`, `license_url?`, `license_sha256?`, `attribution?`, `notice?`,
-`share_alike?`, `commercial_use?`, `declared_use?` (`VALID_DECLARED_USE`), `dataset?`. Provenance
-(excluded): `fetched_at?`.
+`share_alike?`, `commercial_use?`, `redistribution?`, `declared_use?` (`VALID_DECLARED_USE`),
+`dataset?`. Provenance (excluded): `fetched_at?`.
 
 - **`source` is INSIDE this fact set, inverting the other tables.** Everywhere else `source` is
   provenance — which link happened to answer — and is excluded so a human-filled and a machine-filled
   table hash equal. Here the source *is* the subject: "ClinPGx, at the annotation layer, is CC BY-SA
   and forbids sale" is the fact. Drop it and the row loses its key.
-- **`share_alike` / `commercial_use` are tri-state.** `None` means the terms could not be established,
-  never "does not forbid". A source not shown to permit anything must not read as permissive, so
-  `None` and `False` hash differently and are handled differently everywhere they are consumed.
+- **`share_alike` / `commercial_use` / `redistribution` are tri-state.** `None` means the terms could
+  not be established, never "does not forbid". A source not shown to permit anything must not read as
+  permissive, so `None` and `False` hash differently and are handled differently everywhere.
+- **`redistribution` is a third axis, not a shade of `commercial_use` (0.5).** CC BY-NC forbids sale
+  and expressly allows sharing; an academic-use-only source (OMIM, dbNSFP) permits neither, and a
+  module embedding one cannot be published at all, free or not. Recording the second as merely
+  non-commercial understates it. Summarized module-wide on the same most-restrictive-wins ladder
+  (`sources.taints_redistribution`) but **not gated at compile** — how a distribution bar interacts
+  with `declared_use` is a design question, since a distribution right is not a use (RM27).
 - **`layer` decides what taints.** Only `annotation` — the module's own authored tables, where curated
   prose is embedded — carries a derivative-work obligation. A source consulted purely for a coordinate
   contributed a fact that Ensembl reports identically, so it is recorded without marking the module.

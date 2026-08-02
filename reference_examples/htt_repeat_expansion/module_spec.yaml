@@ -1,0 +1,16 @@
+schema_version: "1.0"
+module:
+  name: htt_repeat_expansion
+  title: HTT CAG Repeat Expansion
+  description: >-
+    Huntington disease CAG repeat-length interpretation for HTT. A lookup table only: the repeat
+    count is measured by the consumer (ExpansionHunter or another span genotyper) and supplied at
+    query time; this module never sees a sample and carries no measurement.
+  report_title: HTT CAG Repeat
+  version: 1.0.0
+  icon: dna
+  color: "#a333c8"
+genome_build: GRCh38
+defaults:
+  curator: reference-example
+  method: literature-thresholds

@@ -16,13 +16,18 @@ set. The validator itself stays strict — if a stripper is skipped or a key sli
 - `normalize_version` — coerce an informal version string to SemVer `MAJOR.MINOR.PATCH`. Built now,
   used **read-only** in 0.4.1 to *preview* what a future release will read; slated to become the
   enforced `version` validator in 0.5 (see docs/PROPOSAL_0_5.md).
+- `parse_p_value` — read a free-form authored `p_value` string as a number, or `None` when it does not
+  denote a definite value. Same shape as the two above: a pure, total, re-runnable read of informal
+  authored text, used by the compiler to cross-check the typed `p_value_num` against the string
+  beside it (0.5).
 
 Dependency-light (stdlib only), like `vocab` — it is a leaf usable by any consumer without the
 compiler.
 """
 
 import re
-from typing import Iterable, Mapping
+from decimal import Decimal, InvalidOperation
+from typing import Iterable, Mapping, Optional
 
 # ── Registry/authority-owned identity keys (inject-only) ────────────────────────────────────────
 # Identity keys the format *knows about* (they map onto `manifest.Identity` / `manifest.owner`) but
@@ -46,6 +51,15 @@ IDENTITY_AUTHORITY_REASONS: dict[str, str] = {
 # A version part is a run of digits; parts are separated by dots. Everything else (a leading `v`, a
 # `-beta` pre-release tag, stray spaces) is noise the coercion drops.
 _VERSION_NOISE: re.Pattern[str] = re.compile(r"[^\d.]")
+
+# The p-value forms a curator actually writes. Two accepted spellings of scientific notation — `5e-8`
+# and the typeset `5 × 10^-8` (also `x`/`X`, with or without the caret) — plus a plain decimal. The
+# match is deliberately **anchored on the whole string**: a cell like `5e-8 (adjusted)` or `p<0.001`
+# is not a definite value, and half-reading it would invent a precision the author did not state.
+_P_VALUE_SCIENTIFIC: re.Pattern[str] = re.compile(
+    r"^([0-9]*\.?[0-9]+)\s*(?:[eE]|[×xX]\s*10\s*\^?)\s*([+-]?[0-9]+)$"
+)
+_P_VALUE_DECIMAL: re.Pattern[str] = re.compile(r"^[0-9]*\.?[0-9]+$")
 
 
 def strip_authority_keys(
@@ -88,3 +102,38 @@ def normalize_version(raw: str) -> str:
     while len(nums) < 3:
         nums.append("0")
     return ".".join(nums)
+
+
+def parse_p_value(raw: Optional[str]) -> Optional[float]:
+    """Read a free-form `p_value` string as a number.
+
+    Returns `None` whenever the string does not denote one definite value — an unreadable cell is not
+    a disagreement, and treating it as one would turn every `"<0.001"`, `"NS"` or `"p = 5e-8, adj."`
+    into a false finding. `None` therefore covers: absent/blank, a bound or a word rather than a
+    number, trailing commentary, and an exact `0` (a p-value written as zero is the source's own
+    underflow, so it is not comparable to anything).
+
+    A value too small for a float (below ~5e-324) reads as `None` for the same reason: it underflows
+    to zero here, `p_value_num` could not hold it either, and reporting "the string says 1e-350 but
+    the column says nothing" would be a finding about float64 rather than about the module.
+
+    Accepts `5e-8`, `5E-8`, `5 × 10^-8` / `5x10-8`, and plain decimals like `0.03`."""
+    if raw is None:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+
+    scientific = _P_VALUE_SCIENTIFIC.match(text)
+    if scientific:
+        literal = f"{scientific.group(1)}E{scientific.group(2)}"
+    elif _P_VALUE_DECIMAL.match(text):
+        literal = text
+    else:
+        return None
+
+    try:
+        value = float(Decimal(literal))
+    except (InvalidOperation, ValueError, OverflowError):
+        return None
+    return value or None

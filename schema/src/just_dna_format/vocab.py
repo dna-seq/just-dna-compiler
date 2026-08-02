@@ -49,6 +49,13 @@ ALLELE_PATTERN: re.Pattern[str] = re.compile(r"^[ACGT]+$", re.IGNORECASE)
 TRAIT_ID_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z][A-Za-z]*[:_]\w+$")
 # Separators accepted inside a multi-valued CSV cell (`flags`, `trait_efo_id`, `training_ancestry`).
 MULTI_SEP: re.Pattern[str] = re.compile(r"[,;|]")
+# A VCF field-name pointer: one bare token, optionally `|`-alternated (`CN|DS`). Lives here rather
+# than on `binning` because two models now point into a VCF this way — `source_field` names where the
+# measured quantity is, `callable_from` names where the callability signal is — and a grammar shared
+# by two models belongs on the leaf both can import (see `validate_field_token` below).
+SOURCE_FIELD_PATTERN: re.Pattern[str] = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(\|[A-Za-z_][A-Za-z0-9_]*)*$"
+)
 
 # ── Reserved namespace (0.4) ──────────────────────────────────────────────────────────────────
 # Names reserved because they are **genuine anticipated module-side axes** (CONSTITUTION Principle 5:
@@ -73,13 +80,12 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
         # module may pin it explicitly, e.g. a specific PharmVar release). Annotation-side addressing,
         # not a measurement — a real future axis.
         "reference_db",
-        # The callability signal a consumer establishes a negative from (DP/GQ/FT); reserved for RM6 as
-        # the typed successor to the built `requires_callable` flag (round-2 §3d).
-        "callable_from",
     }
 )
 # NOTE: `requires_callable`, `acmg_sf`, `actionability` were reserved here and are now BUILT as
-# optional `VariantRow` columns. PharmGKB `drug`/`response`/`evidence_level` are built on
+# optional `VariantRow` columns — and `callable_from` joined them in 0.5 (RM6's second half: a
+# declarative pointer at the VCF field a consumer establishes callability from). A built column must
+# not also be reserved, or `reject_reserved` would refuse the very name the author is meant to write. PharmGKB `drug`/`response`/`evidence_level` are built on
 # `PharmVariantRow`/`DiplotypeRow`. And `caller`/`caller_version` were dropped from the reserved set
 # entirely (round-2 Q2 origin): they name which tool produced a *call* — a consumer-side measurement,
 # never module annotation — so there is no future module axis to reserve, and barring them by name
@@ -93,14 +99,67 @@ RESERVED_NAME_REASONS: dict[str, str] = {
         "names which reference database the app should join this annotation against — reserved so a "
         "module can pin its join target explicitly instead of relying on the implicit default"
     ),
-    "callable_from": (
-        "the callability signal a consumer establishes negatives from (DP/GQ/FT) — reserved for RM6 as "
-        "the typed successor to requires_callable"
-    ),
 }
 
 # PharmGKB clinical-annotation evidence levels (item 9). Closed vocabulary (Principle 6).
 VALID_EVIDENCE_LEVELS: frozenset[str] = frozenset({"1A", "1B", "2A", "2B", "3", "4"})
+
+# How strongly CPIC recommends the prescribing action for a diplotype (0.5). Closed (Principle 6).
+#
+# **A different axis from `evidence_level`, and folding them together would be the `state`-overloading
+# mistake again.** PharmGKB's 1A…4 grades *how well established the association is*; CPIC's
+# classification grades *how firmly it tells a prescriber to act* — two bodies answering two
+# questions, and they routinely disagree (a well-evidenced association can carry an optional action).
+#
+# Members are CPIC's own five, lowercased into the format's token style (its other vocabularies are
+# `likely_pathogenic`-shaped, and these terms have clean lowercase forms — unlike ClinPGx's
+# `Metabolism/PK`, which is why THAT one keeps source spelling). Live counts over CPIC's
+# `recommendation` table on 2026-08-02: Optional 982, Strong 577, Moderate 340, No Recommendation 89,
+# n/a 12. `n/a` is deliberately **absent**: it is CPIC recording that it did not classify, which is an
+# empty cell here — `None` already means unknown, and inventing a member for it would let "unclassified"
+# read as a classification.
+VALID_RECOMMENDATION_STRENGTH: frozenset[str] = frozenset(
+    {"strong", "moderate", "optional", "no_recommendation"}
+)
+
+# ClinGen dosage-sensitivity ratings, for `gene_metrics.csv` (0.5). Closed vocabulary (Principle 6).
+#
+# **These are stored as terms, not as ClinGen's numeric codes, and that is a deliberate departure
+# from this repo's usual "keep the source value verbatim" rule.** Probing the live gene-curation list
+# (1,520 genes, 2026-08-01) showed the codes are `{0, 1, 2, 3, 30, 40}` — an *ordinal-looking scale
+# that is not ordinal*: 0–3 grade increasing evidence, but 30 means "gene associated with autosomal
+# recessive phenotype" and 40 means "dosage sensitivity unlikely". A consumer sorting or thresholding
+# on the raw number ranks `40` (unlikely) above `3` (sufficient evidence) — the exact inversion of the
+# meaning — and the format would have handed it that trap. Verbatim is right for an *identity* (a star
+# allele, an accession); it is wrong for a code whose numeric form lies about its own order.
+#
+# The mapping is total and lossless in both directions, so nothing is destroyed by carrying the term:
+#   0 → no_evidence            1 → little_evidence     2 → some_evidence
+#   3 → sufficient_evidence    30 → autosomal_recessive    40 → dosage_sensitivity_unlikely
+#
+# ClinGen also writes a literal `"Not yet evaluated"` in the triplosensitivity column (210 of 1,520
+# genes). That is an absence, not a rating, so it maps to `None` — and it is why a naive `int(cell)`
+# reader crashes on this file.
+VALID_DOSAGE_SENSITIVITY: frozenset[str] = frozenset(
+    {
+        "no_evidence",
+        "little_evidence",
+        "some_evidence",
+        "sufficient_evidence",
+        "autosomal_recessive",
+        "dosage_sensitivity_unlikely",
+    }
+)
+# ClinGen's numeric code → the term above. Lives here beside the vocabulary so the enricher's reader
+# and any consumer decoding a legacy column resolve the same mapping.
+DOSAGE_SENSITIVITY_BY_CODE: dict[int, str] = {
+    0: "no_evidence",
+    1: "little_evidence",
+    2: "some_evidence",
+    3: "sufficient_evidence",
+    30: "autosomal_recessive",
+    40: "dosage_sensitivity_unlikely",
+}
 
 # PharmGKB/ClinPGx clinical-annotation phenotype categories. Closed vocabulary (Principle 6), and
 # multi-valued via `MULTI_SEP` — ClinPGx writes `Efficacy;Toxicity` for an annotation that is about
@@ -291,6 +350,24 @@ def reject_reserved(data: object) -> object:
                 f"them into a module. (Reserved now: {sorted(RESERVED_NAMES_0_4)}.)"
             )
     return data
+
+
+def validate_field_token(value: Optional[str], field_name: str) -> Optional[str]:
+    """Validate a **VCF field-name pointer**: one bare token, optionally `|`-alternated (`CN|DS`).
+
+    The grammar is what keeps such a column a *pointer* and not an expression — no operators, no
+    whitespace, no code — which is what lets Principle 1 (declarative, data-not-code) hold while a
+    module still says where in a VCF its quantity or its callability signal lives.
+
+    Shared by `binning.MeasureBinRow.source_field` (the measured quantity) and
+    `spec.VariantRow.callable_from` (the callability signal), so it lives on `AuthoredModel` rather
+    than being copied per model."""
+    if value is not None and not SOURCE_FIELD_PATTERN.match(value):
+        raise ValueError(
+            f"{field_name} must be a bare VCF field-name token, optionally |-alternated "
+            f"(e.g. REPCN, CN|DS) — a pointer, not an expression, got: {value!r}"
+        )
+    return value
 
 
 def check_vocab(value: Optional[str], vocab: frozenset[str], field_name: str) -> Optional[str]:

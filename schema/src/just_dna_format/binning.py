@@ -35,7 +35,6 @@ holds no measurement.
 """
 
 import math
-import re
 from collections import defaultdict
 from typing import ClassVar, Optional, Sequence
 
@@ -50,9 +49,6 @@ VALID_MEASURE_KINDS: frozenset[str] = frozenset(
     {"activity_score", "copy_number", "repeat_count", "allele_fraction", "prs_percentile"}
 )
 
-# A `source_field` is one VCF field-name token, optionally `|`-alternated (`CN|DS`). This grammar is
-# what keeps the binding a *pointer* and not an expression — no operators, no whitespace, no code.
-SOURCE_FIELD_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\|[A-Za-z_][A-Za-z0-9_]*)*$")
 
 # Which measure kinds have a meaningful numeric coverage gap. Integer counts are contiguous when
 # bins are adjacent (`[27,35]`,`[36,39]`); truly continuous fractions are not. `activity_score` is a
@@ -106,15 +102,8 @@ class MeasureBinRow(AuthoredModel):
         ),
     )
 
-    @field_validator("source_field")
-    @classmethod
-    def _validate_source_field(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and not SOURCE_FIELD_PATTERN.match(v):
-            raise ValueError(
-                f"source_field must be a bare VCF field-name token, optionally |-alternated "
-                f"(e.g. REPCN, CN|DS) — a pointer, not an expression, got: {v!r}"
-            )
-        return v
+    # `source_field`'s pointer grammar is validated on `AuthoredModel` — it is shared with
+    # `VariantRow.callable_from`, and a validator used by two models lives on the base.
 
     @field_validator("measure_min", "measure_max")
     @classmethod

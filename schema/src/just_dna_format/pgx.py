@@ -25,6 +25,7 @@ from pydantic import Field, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, derive_variant_key
 from just_dna_format.vocab import (
+    VALID_RECOMMENDATION_STRENGTH,
     check_vocab,
     validate_allele,
     validate_finite,
@@ -150,6 +151,22 @@ class DiplotypeRow(AuthoredModel):
     evidence_level: Optional[str] = Field(
         default=None, description="PharmGKB clinical-annotation evidence level (1A..4)"
     )
+    # ── 0.5: CPIC's own grading of the prescribing action, a THIRD axis beside `response` (what to
+    # do) and `evidence_level` (how well established the association is). CPIC classifies the
+    # strength of the recommendation itself, and a well-evidenced association can still carry an
+    # optional action — so the two grades are not interchangeable and must not share a column. ──
+    recommendation_strength: Optional[str] = Field(
+        default=None,
+        description=(
+            "How firmly the guideline recommends the action: strong|moderate|optional|"
+            "no_recommendation (CPIC's classification). Empty when the source did not classify."
+        ),
+    )
+
+    @field_validator("recommendation_strength")
+    @classmethod
+    def _validate_recommendation_strength(cls, v: Optional[str]) -> Optional[str]:
+        return check_vocab(v, VALID_RECOMMENDATION_STRENGTH, "recommendation_strength")
 
     @model_validator(mode="after")
     def _canonicalize_pair(self) -> "DiplotypeRow":

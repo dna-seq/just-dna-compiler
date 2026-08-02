@@ -81,18 +81,22 @@ def test_authority_keys_do_not_leak_into_manifest(tmp_path: Path) -> None:
 # ── Genuine `module.version` adoption ────────────────────────────────────────────
 
 
-def test_version_freeform_warns_with_semver_preview(tmp_path: Path) -> None:
+def test_informal_version_is_coerced_and_the_rewrite_is_reported(tmp_path: Path) -> None:
+    # RM17 (0.5): what was a read-only preview in 0.4.1 is now enforcement. The rewrite is still
+    # announced — coercing silently would be the one place this codebase edits an authored value
+    # without saying so.
     spec = _write_spec(tmp_path / "spec", _module_yaml(version_line="  version: v2\n"))
     result = validate_spec(spec)
     assert result.valid, result.errors
-    assert any("2.0.0" in w and "advisory" in w for w in result.warnings)
+    assert any("'v2'" in w and "2.0.0" in w for w in result.warnings)
 
 
 def test_clean_semver_version_is_silent(tmp_path: Path) -> None:
+    # Coercion is idempotent, so an already-clean value is not "rewritten" and says nothing.
     spec = _write_spec(tmp_path / "spec", _module_yaml(version_line="  version: 1.2.3\n"))
     result = validate_spec(spec)
     assert result.valid, result.errors
-    assert not any("advisory" in w for w in result.warnings)
+    assert not any("module.version" in w for w in result.warnings)
 
 
 def test_authored_semver_flows_into_manifest_identity(tmp_path: Path) -> None:
@@ -102,12 +106,25 @@ def test_authored_semver_flows_into_manifest_identity(tmp_path: Path) -> None:
     assert result.manifest.identity.version == "1.2.3"
 
 
-def test_freeform_version_left_out_of_manifest_identity(tmp_path: Path) -> None:
-    # A non-SemVer advisory value stays None in Identity (the registry stamps the canonical version).
+def test_informal_version_now_reaches_manifest_identity(tmp_path: Path) -> None:
+    # Changed by RM17, and the point of it: in 0.4.1 a non-SemVer `v2` was left out of Identity
+    # entirely, so a module carrying the pre-0.4 corpus's spelling published with no version at all.
+    # Coercion means the author's intent survives into the manifest instead of being dropped.
     spec = _write_spec(tmp_path / "spec", _module_yaml(version_line="  version: v2\n"))
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert result.success, result.errors
-    assert result.manifest.identity.version is None
+    assert result.manifest.identity.version == "2.0.0"
+
+
+def test_version_coercion_is_idempotent_across_a_roundtrip(tmp_path: Path) -> None:
+    # A coerced value must be a fixed point, or every recompile would report the rewrite again and
+    # `Identity.version` would drift (Principle 7).
+    spec = _write_spec(tmp_path / "spec", _module_yaml(version_line="  version: v2\n"))
+    first = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+    again = _write_spec(tmp_path / "spec2", _module_yaml(version_line="  version: 2.0.0\n"))
+    second = compile_module(again, tmp_path / "out2", resolve_with_ensembl=False)
+    assert first.manifest.identity.version == second.manifest.identity.version == "2.0.0"
+    assert not any("module.version" in w for w in second.warnings)
 
 
 def test_version_is_digest_neutral(tmp_path: Path) -> None:

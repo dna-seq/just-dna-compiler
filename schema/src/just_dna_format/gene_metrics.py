@@ -19,7 +19,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.vocab import validate_finite
+from just_dna_format.vocab import VALID_DOSAGE_SENSITIVITY, check_vocab, validate_finite
 
 # Fact columns feeding `integrity.gene_metrics_signature` — everything but `source`/`status`/
 # `fetched_at`. `dataset` is inside the set for the same reason it is in `FREQUENCY_FACT_FIELDS`: a
@@ -42,6 +42,8 @@ GENE_METRICS_FACT_FIELDS: tuple[str, ...] = (
     "obs_lof",
     "exp_lof",
     "constraint_flags",
+    "haploinsufficiency",
+    "triplosensitivity",
     "dataset",
 )
 
@@ -118,6 +120,25 @@ class GeneMetricsRow(BaseModel):
             "warning away would be the format editorializing over its source."
         ),
     )
+    # ── 0.5: ClinGen dosage sensitivity. Gene-keyed like everything else here, so it is columns on
+    # this sidecar rather than a table of its own — the grain is the same question ("what does a
+    # reference say about this gene?"), only a second authority answering it. A ClinGen row and a
+    # gnomAD row are separate rows sharing the gene, each naming its own `dataset`. ──
+    haploinsufficiency: Optional[str] = Field(
+        default=None,
+        description=(
+            "ClinGen haploinsufficiency rating: no_evidence|little_evidence|some_evidence|"
+            "sufficient_evidence|autosomal_recessive|dosage_sensitivity_unlikely. NOT an ordinal — "
+            "see VALID_DOSAGE_SENSITIVITY. A FACT."
+        ),
+    )
+    triplosensitivity: Optional[str] = Field(
+        default=None,
+        description=(
+            "ClinGen triplosensitivity rating, same vocabulary. Empty where ClinGen says 'Not yet "
+            "evaluated' — an absence, not a rating. A FACT."
+        ),
+    )
     dataset: str = Field(
         description="Which release these metrics are from, e.g. 'gnomad_v4.1_constraint'. A FACT."
     )
@@ -130,6 +151,11 @@ class GeneMetricsRow(BaseModel):
         default=None, description="Outcome: resolved|not_found (the ResolutionRow vocabulary)"
     )
     fetched_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp, advisory")
+
+    @field_validator("haploinsufficiency", "triplosensitivity")
+    @classmethod
+    def _check_dosage(cls, v: Optional[str], info) -> Optional[str]:
+        return check_vocab(v, VALID_DOSAGE_SENSITIVITY, info.field_name or "dosage sensitivity")
 
     @field_validator("gene")
     @classmethod

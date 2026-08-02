@@ -65,6 +65,7 @@ SOURCE_FACT_FIELDS: tuple[str, ...] = (
     "notice",
     "share_alike",
     "commercial_use",
+    "redistribution",
     "declared_use",
     "dataset",
 )
@@ -129,7 +130,7 @@ class SourceRow(BaseModel):
         ),
     )
 
-    # ── the two orthogonal permissions, tri-state ──
+    # ── the three orthogonal permissions, tri-state ──
     share_alike: Optional[bool] = Field(
         default=None,
         description=(
@@ -147,12 +148,23 @@ class SourceRow(BaseModel):
         ),
     )
 
+    redistribution: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Whether the terms permit passing the data on to a third party at all. A THIRD axis, not "
+            "a shade of `commercial_use`: an academic-use-only source (OMIM, dbNSFP) permits neither "
+            "sale nor redistribution, while CC BY-NC forbids sale and expressly allows sharing — "
+            "recording the first as merely non-commercial understates it, and a module that embeds it "
+            "cannot be published at all, free or not. None means UNKNOWN, never false."
+        ),
+    )
+
     # ── what the acquirer declared ──
     declared_use: Optional[str] = Field(
         default=None,
         description=(
             "The use declared when the data was fetched (VALID_DECLARED_USE). A claim about the "
-            "user, not about the licence — which is why it is a separate axis from the two flags."
+            "user, not about the licence — which is why it is a separate axis from the three flags."
         ),
     )
 
@@ -191,3 +203,19 @@ def taints_commercial_use(row: SourceRow) -> bool:
     Shared so the compiler's gate and the manifest summary cannot drift apart.
     """
     return row.commercial_use is False and row.layer == "annotation"
+
+
+def taints_redistribution(row: SourceRow) -> bool:
+    """Whether this row alone makes the module non-redistributable.
+
+    Same two conditions and the same reasoning as `taints_commercial_use`, on the third axis: only an
+    `annotation`-layer source can taint (a coordinate looked up from a restricted service is still
+    just a coordinate), and an *unknown* does not taint.
+
+    **Recorded and summarized in 0.5, but deliberately NOT gated at compile.** How a redistribution
+    bar should interact with `declared_use` is a real design question rather than a missing branch —
+    a distribution right is not a use, so the three-state `unstated|non-commercial|commercial` axis
+    does not answer it — and shipping a gate on an axis nothing yet sets would be guessing. See the
+    RM27 row in docs/ROADMAP.md.
+    """
+    return row.redistribution is False and row.layer == "annotation"

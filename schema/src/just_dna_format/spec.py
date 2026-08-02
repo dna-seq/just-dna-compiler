@@ -10,10 +10,18 @@ Identity/display rules reuse the shared helpers in `identity` and `manifest`, so
 manifest enforce exactly the same constraints.
 """
 
+import math
 import re
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 from just_dna_format.derive import (
     benign_from_clin_sig,
@@ -26,6 +34,7 @@ from just_dna_format.derive import (
 from just_dna_format.base import AuthoredModel, derive_variant_key
 from just_dna_format.identity import validate_name
 from just_dna_format.manifest import SCHEMA_VERSION, Contribution, Display, GenePanelSpec
+from just_dna_format.normalize import normalize_version
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
@@ -93,20 +102,51 @@ class ModuleInfo(Display):
 
     model_config = ConfigDict(extra="forbid")
 
+    _version_coerced_from: Optional[str] = PrivateAttr(default=None)
+
     name: str = Field(description="Machine name: lowercase, underscores, no spaces")
     version: Optional[str] = Field(
         default=None,
         description=(
             "Authored **advisory** version — a human marker (informal `v2`/`3` or SemVer). The "
             "publishing registry stamps and overrides the canonical SemVer `Identity.version` on "
-            "publish, so this is not load-bearing for identity. Freeform in 0.4.1 (the compiler warns "
-            "with a SemVer preview when it isn't already `MAJOR.MINOR.PATCH`); slated to become "
-            "coerced-SemVer in 0.5 (docs/PROPOSAL_0_5.md). Genuinely accepted (not stripped) so the "
+            "publish, so this is not load-bearing for identity. **Coerced to SemVer since 0.5** "
+            "(RM17): an informal `v2`/`3` is read as `2.0.0`/`3.0.0` and the rewrite is reported "
+            "once. Genuinely accepted (not stripped) so the "
             "whole pre-0.4 corpus that carries `module.version` validates — unlike the "
             "registry-stamped identity keys (namespace/owner/canonical_id), which a consumer strips "
             "via just_dna_format.normalize.strip_authority_keys before validation."
         ),
     )
+
+    @model_validator(mode="after")
+    def _enforce_semver(self) -> "ModuleInfo":
+        """Coerce `version` to SemVer, recording what it was coerced *from* (RM17).
+
+        **Coerce rather than reject**, decided in 0.5: the pre-0.4 corpus is full of `v2` and `3`, and
+        rejecting them would break every one of those modules to gain a stricter spelling of a field
+        that is advisory anyway — the registry stamps the canonical `Identity.version` on publish. The
+        coercion is total, idempotent and lossless in the only direction that matters (`v2` → `2.0.0`
+        reads the author's intent; nothing else could).
+
+        The pre-coercion string is kept on `version_coerced_from` so a caller can *report* the rewrite.
+        Silently changing an authored value is the thing this codebase does not do — the rule is
+        report-never-repair, and this is the narrow exception where the repair is the documented
+        behaviour of the field, so it must at least be said out loud."""
+        if self.version:
+            coerced = normalize_version(self.version)
+            if coerced != self.version:
+                self._version_coerced_from = self.version
+                self.version = coerced
+        return self
+
+    @property
+    def version_coerced_from(self) -> Optional[str]:
+        """The authored `version` before SemVer coercion, or `None` if it was already SemVer.
+
+        Not a field: it describes what happened during validation, not module content, so it stays out
+        of `model_dump()` and never reaches the manifest or a CSV."""
+        return self._version_coerced_from
 
     @field_validator("name")
     @classmethod
@@ -297,6 +337,19 @@ class VariantRow(AuthoredModel):
             "preventable|pharmacogenomic|incurable|reproductive|descriptive|modifiable). A property "
             "of the gene–condition–intervention triad a consumer's disclosure policy may read; the "
             "format never decides disclosure."
+        ),
+    )
+
+    # ── 0.5: the second half of RM6 (retired from the reserved namespace on build) ──
+    # `requires_callable` above says a negative *must be proven*; this says where the proof lives.
+    # Same declarative-pointer grammar as `source_field` — validated on `AuthoredModel`, shared.
+    callable_from: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional VCF FORMAT/INFO field(s) a consumer establishes callability from (e.g. DP, "
+            "GQ, FT, or DP|GQ). A declarative pointer, never an expression: it names where the "
+            "evidence for 'this position was actually callable' lives, so a consumer can tell a "
+            "confirmed negative from an uncovered one instead of reading both as reference."
         ),
     )
 
@@ -538,11 +591,39 @@ class StudyRow(AuthoredModel):
         ),
     )
 
+    # ── 0.5 additive column: the queryable form of `p_value` above ──
+    # `p_value` stays the verbatim record (free-form, and kept by P8 — retyping or removing it is a
+    # 1.0 item). This carries the same number in a form that sorts and thresholds.
+    p_value_num: Optional[float] = Field(
+        default=None,
+        gt=0.0,
+        le=1.0,
+        description=(
+            "The p-value as a number, so it can be sorted and thresholded — `p_value` above is a "
+            "free-form string and cannot be. In (0, 1]: a p-value of exactly 0 is a source's own "
+            "underflow, not a probability, so it is rejected rather than stored as a confident zero."
+        ),
+    )
+
     @property
     def variant_key(self) -> str:
         """Stable key matching VariantRow.variant_key. StudyRow is never resolved/expanded, so its
         key stays a derived property (no freezing needed)."""
         return derive_variant_key(self.rsid, self.chrom, self.start, self.ref)
+
+    @property
+    def neg_log10_p(self) -> Optional[float]:
+        """−log10(p) — derived on write, never stored. `None` when `p_value_num` is unset.
+
+        The scale a consumer actually filters and plots on (`7.3` is genome-wide significance),
+        materialized into `studies.parquet` so nobody recomputes it per query. It is deliberately not
+        *authored* in this form: that would make the human compute a logarithm to write a row down,
+        and the DSL exists for the human — the parquet absorbs the convenience, the CSV keeps the
+        number the paper printed."""
+        if self.p_value_num is None:
+            return None
+        # `+ 0.0` normalizes the -0.0 that p == 1 would otherwise produce.
+        return -math.log10(self.p_value_num) + 0.0
 
     @field_validator("pmid")
     @classmethod

@@ -251,6 +251,49 @@ CHANGELOG entry).
   introduces an off-by-one. Two more CPIC traps: `variantallele` uses **IUPAC ambiguity codes** (`R`),
   which `HaplotypeRow.allele` rejects; and activity scores are **inequality strings** (`"≥3.0"`), not
   numbers, so they don't drop into `MeasureBinRow`'s numeric bounds.
+- **The digest asymmetry decides what is urgent while 0.5 is unpublished.** `integrity.file_entries`
+  **skips missing files**, so a **new optional table** never moves the digest of a module that does not
+  carry it (additive any time), while a **new column on an existing parquet** moves every module's
+  digest (major-only once 0.5 ships). That is why the pre-cut batch is columns and the heavy items
+  (`predictions.csv`, `gene_validity.csv` — RM23/RM24) are roadmapped rather than rushed.
+- **Adding an authored column is exactly three touch points, and the third is the one that gets
+  missed.** The pydantic model; the compile-side row dict + polars schema in `compiler.py`; and the
+  **reverse-side `fieldnames` list + `_scalar_cell` mapping**. A column missing from the reverse list
+  round-trips as silent data loss, which is why every new column gets a round-trip test. Table kinds
+  under `_TABLE_KINDS` are exempt — `_build_table`/`_write_table_csv` are generic over `model_fields`,
+  so `DiplotypeRow.recommendation_strength` needed no compiler change at all.
+- **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
+  CSV, materialize the derived value into parquet as a `@property`, and let it fall away on reverse
+  because it is not a model field. `FrequencyRow.allele_frequency` (AC/AN) and
+  `StudyRow.neg_log10_p` (mantissa/exponent) both do this. For p-values it is load-bearing rather than
+  cosmetic: float64 goes subnormal below ~1e-308 and is flatly `0.0` below ~5e-324, so a single float
+  column would render a panel's strongest association as its weakest.
+- **Store a source's value verbatim — EXCEPT when the encoding lies about its own order.** ClinGen's
+  dosage codes are `{0,1,2,3,30,40}` where `30` = "autosomal recessive" and `40` = "dosage sensitivity
+  unlikely", so sorting the raw numbers ranks `40` above `3` (sufficient evidence). They are decoded to
+  `VALID_DOSAGE_SENSITIVITY` terms at the enricher boundary (`vocab.DOSAGE_SENSITIVITY_BY_CODE` holds
+  the total mapping). Verbatim is right for an *identity* (a star allele, an accession); it is wrong
+  for a code a consumer will sort. Also: that file writes `"Not yet evaluated"` in the
+  triplosensitivity column for 210 of 1,520 genes — an absence, and what makes `int(cell)` crash.
+- **`redistribution` is a third licensing axis, recorded but NOT gated.** CC BY-NC forbids sale and
+  allows sharing; academic-use-only (OMIM, dbNSFP) forbids both. The compile gate deliberately keys
+  only on `commercial_use` — a distribution right is not a *use*, so `declared_use` is the wrong axis
+  to resolve it against (RM27). Don't "finish" the gate without doing that design.
+- **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
+  appends rows into an authored CSV at **row** granularity (a file-level "refuse if it exists" rule
+  self-defuses after the first gene and makes a multi-gene module unbuildable). A row whose key exists
+  is reported (`already_present` / `differs`), never rewritten; drift on existing rows is
+  `pgx.enrich_pgx`'s job. Dedup keys on the compiler's own `_TABLE_DUPE_KEYS` so an append cannot
+  create a row the compiler then rejects, and rows go **at the end** because authored row order is
+  load-bearing for the digest. This is *not* the parked enricher-co-authoring item: appending leaves
+  `content_signature` a function of the authored bytes; editing a cell a human wrote would not.
+- **Probe a source's real file before modelling it; the docs lie by omission.** Every non-obvious
+  decision in this round came from a probe, not from a spec: CPIC's recommendation classifications
+  (five values, `n/a` among them), ClinGen's non-ordinal codes, the ACMG SF list existing only as an
+  HTML table (so the check was deferred rather than built on a scrape), and Orphanet's IRI — `ORPHA:558`
+  is a term at `…/ORDO/Orphanet_558`, so composing `stem + PREFIX + "_" + local` queries `ORPHA_558`
+  and gets **HTTP 200 with zero terms**, which is indistinguishable from "this id does not exist". That
+  last one is the shape to watch for: a lookup bug that surfaces as a false finding about the module.
 - **Dogfood data is git-ignored** (`/data/` now in `.gitignore`): local ClinVar VCF at
   `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
   is `data/interim/clinvar`. `resolution.csv` is provisional in 0.5, so `artifact.digest` changes for

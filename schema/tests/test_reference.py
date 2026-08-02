@@ -30,16 +30,19 @@ def test_authoring_reference_is_generated_not_hardcoded() -> None:
     assert {"match_rate_floor", "training_cohort"} <= {f["name"] for f in ref["models"]["PgsRow"]}
     # the vocab is the live frozenset, not a copy that could drift
     assert ref["vocabularies"]["measure_kind"] == sorted(VALID_MEASURE_KINDS)
-    assert "callable_from" in ref["reserved_names"]
+    assert "reference_db" in ref["reserved_names"]
     assert "descriptive" in ref["open_recommended"]["actionability_seed"]
     # adoption pass: PharmVariantRow + evidence_level + the VariantRow axes appear (generated)
     assert "PharmVariantRow" in ref["models"]
     assert ref["vocabularies"]["evidence_level"] == ["1A", "1B", "2A", "2B", "3", "4"]
-    assert {"requires_callable", "acmg_sf", "actionability"} <= {
+    assert {"requires_callable", "acmg_sf", "actionability", "callable_from"} <= {
         f["name"] for f in ref["models"]["VariantRow"]
     }
-    # retired names are no longer reserved (they became VariantRow columns)
-    assert not ({"requires_callable", "acmg_sf", "actionability"} & set(ref["reserved_names"]))
+    # retired names are no longer reserved (they became VariantRow columns — `callable_from` in 0.5)
+    assert not (
+        {"requires_callable", "acmg_sf", "actionability", "callable_from"}
+        & set(ref["reserved_names"])
+    )
     # RM14 authorship: the Contribution model + role vocab + open kind seed all surface (generated)
     assert {"who", "role", "kind", "at"} == {f["name"] for f in ref["models"]["Contribution"]}
     assert ref["vocabularies"]["author_role"] == ["audited", "created", "edited", "reviewed"]

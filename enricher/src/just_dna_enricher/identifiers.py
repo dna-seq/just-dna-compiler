@@ -52,14 +52,22 @@ logger = logging.getLogger(__name__)
 DEFAULT_OLS4_BASE = "https://www.ebi.ac.uk/ols4/api"
 DEFAULT_HGNC_BASE = "https://rest.genenames.org"
 
-# CURIE prefix → the IRI stem the ontology publishes its terms under. EFO mints its own namespace;
-# everything else this format accepts lives on an OBO PURL. Kept as data rather than string surgery
-# because getting it wrong yields a 200 with zero terms, which reads exactly like "does not exist".
+# CURIE prefix → (OLS4 ontology id, the FULL IRI prefix its terms sit under, local id appended).
+#
+# The IRI prefix is stored whole rather than assembled from the CURIE prefix, because those two are
+# not the same string in general — Orphanet is the counter-example that forced this: `ORPHA:558` is a
+# term at `…/ORDO/Orphanet_558`, so composing `stem + PREFIX + "_" + local` would have queried
+# `…/ORDO/ORPHA_558`. That yields HTTP 200 with zero terms, which is indistinguishable from "this id
+# does not exist" — the failure would have looked like a finding about the module rather than a bug
+# here. EFO mints its own namespace, the OBO ontologies share a PURL, Orphanet has its own.
 _ONTOLOGY_IRI: dict[str, tuple[str, str]] = {
-    "EFO": ("efo", "http://www.ebi.ac.uk/efo/"),
-    "MONDO": ("mondo", "http://purl.obolibrary.org/obo/"),
-    "HP": ("hp", "http://purl.obolibrary.org/obo/"),
-    "OBA": ("oba", "http://purl.obolibrary.org/obo/"),
+    "EFO": ("efo", "http://www.ebi.ac.uk/efo/EFO_"),
+    "MONDO": ("mondo", "http://purl.obolibrary.org/obo/MONDO_"),
+    "HP": ("hp", "http://purl.obolibrary.org/obo/HP_"),
+    "OBA": ("oba", "http://purl.obolibrary.org/obo/OBA_"),
+    # Both spellings are in real use for Orphanet; neither matches the IRI's own `Orphanet_`.
+    "ORPHA": ("ordo", "http://www.orpha.net/ORDO/Orphanet_"),
+    "ORPHANET": ("ordo", "http://www.orpha.net/ORDO/Orphanet_"),
 }
 _CURIE = re.compile(r"^([A-Za-z]+)[:_](\w+)$")
 
@@ -307,10 +315,10 @@ class OntologyClient:
         route = _ONTOLOGY_IRI.get(prefix)
         if route is None:
             return TraitStatus(curie=curie, state="unchecked")
-        ontology, stem = route
+        ontology, iri_prefix = route
         response = self._get(
             f"{self.ols4_base.rstrip('/')}/ontologies/{ontology}/terms",
-            {"iri": f"{stem}{prefix}_{local}"},
+            {"iri": f"{iri_prefix}{local}"},
         )
         if response.status_code == 404:
             return TraitStatus(curie=curie, state="absent")

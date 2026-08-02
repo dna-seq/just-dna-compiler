@@ -6,10 +6,13 @@ independent of the compiler. Wiring into `validate_spec`/`compile_module` is cov
 `compiler/tests/test_authority_keys.py`.
 """
 
+from decimal import Decimal
+
 from just_dna_format.normalize import (
     IDENTITY_AUTHORITY_KEYS,
     IDENTITY_AUTHORITY_REASONS,
     normalize_version,
+    parse_p_value,
     strip_authority_keys,
 )
 
@@ -66,3 +69,37 @@ def test_normalize_version_is_idempotent_on_clean_semver() -> None:
     for v in ("1.2.3", "0.0.0", "10.20.30"):
         assert normalize_version(v) == v
         assert normalize_version(normalize_version(v)) == v
+
+
+# ── parse_p_value ───────────────────────────────────────────────────────────────────────────────
+
+
+def test_parse_p_value_reads_every_spelling_a_curator_writes() -> None:
+    # All five spell the same number, so all five must read as one value.
+    for text in ("5e-8", "5E-8", "5 × 10^-8", "5x10-8", "0.00000005"):
+        assert parse_p_value(text) == 5e-8, text
+
+
+def test_parse_p_value_round_trips_the_authored_number() -> None:
+    for text in ("5e-8", "7.7e-4", "0.03", "1"):
+        assert parse_p_value(text) == float(Decimal(text)), text
+
+
+def test_parse_p_value_returns_none_for_anything_not_a_definite_value() -> None:
+    # An unreadable cell is not a disagreement — reading one would manufacture false findings.
+    for text in ("<0.001", "> 0.05", "NS", "not significant", "5e-8 (adjusted)", "p=5e-8", "", "  ",
+                 "0", "0.0", "1e", "e-8", "5e-8, 3e-4"):
+        assert parse_p_value(text) is None, text
+    assert parse_p_value(None) is None
+
+
+def test_a_value_below_float_range_reads_as_indefinite_not_as_zero() -> None:
+    # `p_value_num` could not hold 1e-350 either, so reporting a disagreement between the string and
+    # the column would be a finding about float64 rather than about the module.
+    assert parse_p_value("1e-350") is None
+    assert float("1e-350") == 0.0
+
+
+def test_parse_p_value_orders_by_magnitude() -> None:
+    written = ["0.05", "5e-8", "1.24e-320"]
+    assert sorted(written, key=parse_p_value) == sorted(written, key=lambda t: float(Decimal(t)))

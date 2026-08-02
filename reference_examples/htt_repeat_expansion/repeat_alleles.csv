@@ -1,0 +1,6 @@
+gene,repeat_unit,source_field,measure_kind,measure_min,measure_max,direction,clin_sig,phenotype,trait_efo_id,conclusion,unresolved
+HTT,CAG,REPCN,repeat_count,6,26,neutral,benign,Normal range,MONDO_0007739,"≤26 CAG — normal; not associated with Huntington disease and stable through meiosis",false
+HTT,CAG,REPCN,repeat_count,27,35,neutral,uncertain_significance,Intermediate allele,MONDO_0007739,"27–35 CAG — intermediate; the carrier is not at risk, but the allele is meiotically unstable and may expand in offspring",false
+HTT,CAG,REPCN,repeat_count,36,39,risk,pathogenic,Huntington disease (reduced penetrance),MONDO_0007739,"36–39 CAG — reduced penetrance; disease may or may not develop in a normal lifespan",false
+HTT,CAG,REPCN,repeat_count,40,,risk,pathogenic,Huntington disease (full penetrance),MONDO_0007739,"≥40 CAG — fully penetrant; earlier onset with longer repeats",false
+HTT,CAG,REPCN,repeat_count,,,,,,,"repeat length not determined — the locus was not spanned or the caller returned no confident count; no interpretation is made",true
