@@ -28,7 +28,6 @@ is the naming authority for CYP star alleles. It is *not* a licensing preference
 with a bar on sale, and neither makes a module sellable.
 """
 
-import csv
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,15 +44,11 @@ from just_dna_enricher.licensing import (
     LicenseRefusal,
     SourceTerms,
     check_declared_use,
+    write_sources_csv,
 )
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError
 
 logger = logging.getLogger(__name__)
-
-_SOURCES_FIELDNAMES = [
-    "source", "layer", "license", "license_url", "license_sha256", "attribution", "notice",
-    "share_alike", "commercial_use", "declared_use", "dataset", "fetched_at",
-]
 
 
 class PgxEnrichmentError(RuntimeError):
@@ -255,30 +250,11 @@ def enrich_pgx(
         logger.warning("PGx allele-function difference — %s", conflict)
 
     # Merge, never clobber: an existing row for the same (source, layer) wins.
-    merged = dict(existing)
+    merged: dict[tuple[str, str], SourceRow] = dict(existing)
     for row in emitted:
         merged.setdefault((row.source, row.layer), row)
     result.rows = [merged[key] for key in sorted(merged)]
 
     if write and result.rows:
-        _write_sources_csv(result.rows, spec_dir / "sources.csv")
+        write_sources_csv(result.rows, spec_dir / "sources.csv")
     return result
-
-
-def _write_sources_csv(rows: list[SourceRow], output_path: Path) -> None:
-    with output_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=_SOURCES_FIELDNAMES)
-        writer.writeheader()
-        for row in rows:
-            dumped = row.model_dump()
-            writer.writerow(
-                {
-                    name: (
-                        ""
-                        if dumped.get(name) is None
-                        else ("true" if dumped[name] is True else
-                              "false" if dumped[name] is False else dumped[name])
-                    )
-                    for name in _SOURCES_FIELDNAMES
-                }
-            )

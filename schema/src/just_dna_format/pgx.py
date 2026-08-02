@@ -24,7 +24,12 @@ from typing import Optional
 from pydantic import Field, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, derive_variant_key
-from just_dna_format.vocab import check_vocab, validate_allele, validate_finite
+from just_dna_format.vocab import (
+    check_vocab,
+    validate_allele,
+    validate_finite,
+    validate_phenotype_categories,
+)
 
 # Star-allele string, stored verbatim as the canonical identity. Permissive by design (the string
 # is truth): a leading `*` then digits/letters and the sub-allele/duplication/tandem punctuation
@@ -194,6 +199,22 @@ class PharmVariantRow(AuthoredModel):
         description="Genotype the response applies to, canonical sorted form, e.g. C/T",
     )
     drug: str = Field(description="Drug the response annotation is about, e.g. warfarin")
+    phenotype_category: Optional[str] = Field(
+        default=None,
+        description=(
+            "What kind of effect this is (VALID_PHENOTYPE_CATEGORIES; multi-valued via [,;|]). "
+            "Part of the identity — one variant+drug carries separate efficacy, toxicity and "
+            "metabolism annotations."
+        ),
+    )
+    annotation_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "The source's own accession for this annotation, e.g. a PharmGKB clinical-annotation id. "
+            "Optional, and the tie-break of last resort in the duplicate key — like `PgsRow.pgs_id`, "
+            "a source accession is a legitimate identity for a curated record."
+        ),
+    )
     response: Optional[str] = Field(
         default=None, description="Drug response / phenotype, free-form (e.g. 'reduced dose requirement')"
     )
@@ -204,6 +225,11 @@ class PharmVariantRow(AuthoredModel):
         default=None, description="Optional trait ontology id(s), for cross-module join"
     )
     conclusion: str = Field(description="Human-readable interpretation")
+
+    @field_validator("phenotype_category")
+    @classmethod
+    def _validate_phenotype_category(cls, v: Optional[str]) -> Optional[str]:
+        return validate_phenotype_categories(v)
 
     @property
     def variant_key(self) -> str:

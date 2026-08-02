@@ -1,0 +1,10 @@
+rsid,gene,genotype,drug,phenotype_category,annotation_id,evidence_level,response,conclusion
+rs4149056,SLCO1B1,C/C,simvastatin,Metabolism/PK,1449556772,1A,increased exposure,Increased serum concentrations of simvastatin acid compared with CT or TT.
+rs4149056,SLCO1B1,C/T,simvastatin,Metabolism/PK,1449556772,1A,increased exposure,Increased serum concentrations of simvastatin acid compared with TT.
+rs4149056,SLCO1B1,T/T,simvastatin,Metabolism/PK,1449556772,1A,reference exposure,Decreased serum concentrations of simvastatin acid compared with CC or CT.
+rs4149056,SLCO1B1,C/C,simvastatin,Efficacy,1451356520,3,decreased response,Decreased response to simvastatin compared with TT; conflicting evidence reported.
+rs4149056,SLCO1B1,C/T,simvastatin,Efficacy,1451356520,3,decreased response,Decreased response to simvastatin compared with TT; conflicting evidence reported.
+rs4149056,SLCO1B1,T/T,simvastatin,Efficacy,1451356520,3,increased response,Increased response to simvastatin compared with CC or CT; conflicting evidence reported.
+rs4149056,SLCO1B1,C/C,simvastatin,Toxicity,655384011,1A,higher myopathy risk,Higher risk of simvastatin-related myopathy compared with CT or TT.
+rs4149056,SLCO1B1,C/T,simvastatin,Toxicity,655384011,1A,higher myopathy risk,Higher risk of simvastatin-related myopathy compared with TT.
+rs4149056,SLCO1B1,T/T,simvastatin,Toxicity,655384011,1A,lower myopathy risk,Lower risk of simvastatin-related myopathy compared with CC or CT.

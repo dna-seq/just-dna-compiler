@@ -131,7 +131,7 @@ are a compile error; interior coverage gaps are warnings.
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,
 `activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
 `a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`); `PharmVariantRow` (`drug`+
-`conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`).
+`conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`, `annotation_id?`).
 
 `PharmVariantRow.genotype` (0.5) carries the axis PharmGKB actually publishes on: a clinical
 annotation is stated **per genotype**, and the calls can be opposed (rs4149056/simvastatin reads
@@ -140,6 +140,14 @@ annotation is stated **per genotype**, and the calls can be opposed (rs4149056/s
 grammar is the shared `AuthoredModel` one, so a genotype means the same thing here as on a
 `VariantRow`; a haplotype-keyed annotation (`*1`) belongs on `DiplotypeRow` instead, and a symbolic
 allele (`del/del`) stays RM5 rather than widening the nucleotide grammar.
+
+`phenotype_category` and `annotation_id` complete the key, and both were earned by real data. One
+variant and one drug carry **several distinct annotations**: rs4149056 + simvastatin is
+Metabolism/PK at level 1A, Efficacy at 3 *and* Toxicity at 1A, each with its own three genotypes.
+1,199 of 17,380 (variant, drug, genotype) triples in the release map to more than one annotation —
+839 separated by category, and 283 by neither category nor level, which is what `annotation_id` is
+for. A source accession as identity is not novel here: `PgsRow` keys on `pgs_id` the same way. The
+full duplicate key is `(variant_key, drug, genotype, phenotype_category, annotation_id)`.
 
 **`PgsRow` → `pgs.csv`.** Required `pgs_id` (`^PGS\d+$`). Optional `trait_efo_id`, `note`, `group`,
 `training_ancestry?` (list, `VALID_TRAINING_ANCESTRY`), `training_cohort`, `match_rate_floor?` ([0,1]),

@@ -99,6 +99,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
 | `pgx` | pass 5: cross-check star-allele tables, write `sources.csv` | the three above |
+| `clinpgx_build` | `[dev]`: `clinicalAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt` | `polars`, `httpx` |
+| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `polars` |
 | `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `_load_csv_rows`, format |
@@ -693,6 +695,37 @@ separate step.
   into `MeasureBinRow`'s numeric bounds; the raw string is carried and the parsing left to a human.
 - **Coordinates are 1-based** in both (verified against Ensembl for rs4244285 → chr10:94781859, which
   PharmVar, CPIC and our own resolution all agree on). Do not convert.
+
+### Pass 6 — ClinPGx clinical annotations (`clinpgx.py`, offline capable)
+
+`pgx.py` asks the nomenclature authorities about star alleles over the network; this pass asks
+ClinPGx about *clinical annotations* — which variant, which drug, at what evidence level — from a
+local snapshot, exactly as the ClinVar cross-check does. `clinpgx_build` is the `[dev]` builder.
+
+**The snapshot pins its own licence.** ClinPGx ships a `LICENSE.txt` inside `clinicalAnnotations.zip`,
+so the builder extracts it, records its sha256 in `release.json`, and the pass stamps that hash onto
+the `SourceRow`. The recorded terms are provably the ones shipped with the recorded data — the
+property a static source→licence map cannot offer.
+
+**The snapshot's grain is (annotation, genotype)**, joining `clinical_annotations.tsv` to its
+per-genotype child `clinical_ann_alleles.tsv`. `CREATED_<date>.txt` is the release id, because
+ClinPGx publishes no version number and does not refresh its archives in lockstep —
+`relationships.zip` was a year newer than `clinicalAnnotations.zip` when this was written.
+
+**The cross-check keys on the annotation, not the triple, and that is a bug fix rather than a
+nicety.** `(rsid, drug, genotype)` is *not* unique: rs4149056 + simvastatin is Metabolism/PK at 1A,
+Efficacy at 3 and Toxicity at 1A. The first implementation indexed on the triple and reported all
+three of the reference example's correctly-authored levels as stale. The lookup is now
+`annotation_id` → `(rsid, drug, genotype, category)` → the bare triple, and when the bare triple
+matches several annotations at *different* levels the row is reported as **unchecked** rather than
+compared against an arbitrary one.
+
+Severity follows the **mode ladder**, unlike the allele-function check beside it. An evidence level
+is ClinPGx's own metadata about its own annotation, so a difference means the module is stale — not
+that two expert panels disagree.
+
+The declared-use gate still applies even though nothing is fetched: the terms were accepted when the
+snapshot was *built*, and using it is the same act.
 
 ## CLI
 

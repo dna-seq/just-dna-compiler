@@ -201,6 +201,13 @@ CHANGELOG entry).
   annotations (`*1`) to `DiplotypeRow`; skip symbolic alleles (`del/del`, 177 rows) as **RM5** rather
   than widening the nucleotide grammar. PharmGKB writes `CC`; canonical form is `C/C`, since `CC`
   would otherwise parse as a single two-base allele — disambiguate using the *resolved* ref/alt.
+- **`(variant_key, drug, genotype)` is STILL not a PharmGKB key** — one variant+drug carries several
+  distinct annotations (rs4149056+simvastatin is Metabolism/PK 1A, Efficacy 3 AND Toxicity 1A). 1,199
+  of 17,380 triples collide; 839 separate by `phenotype_category`, 283 only by `annotation_id`. The key
+  is `(variant_key, drug, genotype, phenotype_category, annotation_id)`. **Any code that indexes
+  ClinPGx by the bare triple has this bug** — the first cross-check did, and reported correctly-authored
+  levels as stale. Look it up by `annotation_id`, then category, and report ambiguity rather than
+  comparing against an arbitrary candidate.
 - **Licensing lives as DATA in `sources.csv`, never as a table in the compiler.** A source→licence map
   in `just_dna_compiler` would give it a source convention (Principle 2, tightened in 0.5) and an
   un-injected reference — and it goes stale (both halves of one did inside 0.5). The enricher reads the

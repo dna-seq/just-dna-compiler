@@ -18,7 +18,13 @@ from just_dna_compiler.compiler import compile_module
 from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_enricher.enrich import EnrichmentError, enrich
-from just_dna_enricher.licensing import LicenseRefusal
+from just_dna_enricher.clinpgx_build import (
+    DEFAULT_CLINPGX_URL,
+    build_snapshot as build_clinpgx_snapshot,
+    download_clinpgx_zip,
+)
+from just_dna_enricher.licensing import CLINPGX_TERMS, LicenseRefusal, check_declared_use
+from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
@@ -231,6 +237,69 @@ def pgx_(
     # disagree, so failing would make the format arbitrate between its own authorities.
     for conflict in result.conflicts:
         typer.secho(f"  allele-function difference: {conflict}", fg=typer.colors.YELLOW, err=True)
+
+
+clinpgx_app = typer.Typer(
+    add_completion=False,
+    help="Build the ClinPGx clinical-annotation snapshot, and cross-check against it.",
+    no_args_is_help=True,
+)
+app.add_typer(clinpgx_app, name="clinpgx")
+
+
+@clinpgx_app.command("build")
+def clinpgx_build_(
+    out_dir: Path = typer.Option(..., "--out", help="Snapshot output directory."),
+    zip_path: Optional[Path] = typer.Option(None, "--zip", help="Existing clinicalAnnotations.zip (else downloaded)."),
+    url: str = typer.Option(DEFAULT_CLINPGX_URL, "--url", help="ClinPGx bulk download URL."),
+    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+) -> None:
+    """Download + build the ClinPGx snapshot (dev surface; needs polars)."""
+    declared = _use(use)
+    try:
+        # The terms are accepted when the data is TAKEN, so the gate runs before the download.
+        reason = check_declared_use(CLINPGX_TERMS, declared)
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if reason is not None:
+        typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(code=1)
+    source_sha: Optional[str] = None
+    if zip_path is None:
+        zip_path, source_sha = download_clinpgx_zip(Path(out_dir) / "clinicalAnnotations.zip", url)
+    result = build_clinpgx_snapshot(zip_path, out_dir, source_url=url, source_sha256=source_sha)
+    typer.secho(f"clinpgx snapshot: {result.parquet_path}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"rows: {result.row_count}  annotations: {result.annotation_count}  "
+        f"genes: {len(result.genes)}  release: {result.created_date}"
+    )
+    typer.echo(f"licence pinned: {result.license_sha256}")
+
+
+@clinpgx_app.command("check")
+def clinpgx_check_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    snapshot: Optional[Path] = typer.Option(None, "--snapshot", help="ClinPGx snapshot directory."),
+    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail on a stale evidence level."),
+    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+) -> None:
+    """Cross-check pharm_variants.csv against the ClinPGx snapshot (offline-capable)."""
+    try:
+        result = enrich_clinpgx(
+            spec_dir, mode=_mode(strict), declared_use=_use(use), snapshot=snapshot,
+        )
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except ClinPgxEnrichmentError as exc:
+        typer.secho(f"CLINPGX FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"dataset: {result.dataset}  sources recorded: {len(result.rows)}")
+    for warning in result.warnings:
+        typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
+    for conflict in result.conflicts:
+        typer.secho(f"  evidence-level difference: {conflict}", fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("check-identifiers")

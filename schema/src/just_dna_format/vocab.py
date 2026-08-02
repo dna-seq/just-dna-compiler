@@ -102,6 +102,45 @@ RESERVED_NAME_REASONS: dict[str, str] = {
 # PharmGKB clinical-annotation evidence levels (item 9). Closed vocabulary (Principle 6).
 VALID_EVIDENCE_LEVELS: frozenset[str] = frozenset({"1A", "1B", "2A", "2B", "3", "4"})
 
+# PharmGKB/ClinPGx clinical-annotation phenotype categories. Closed vocabulary (Principle 6), and
+# multi-valued via `MULTI_SEP` — ClinPGx writes `Efficacy;Toxicity` for an annotation that is about
+# both, which is a real combination rather than a data error.
+#
+# This is part of a clinical annotation's *identity*, not decoration: one variant and one drug
+# routinely carry several annotations that differ only by category. rs4149056 + simvastatin has three
+# — Metabolism/PK at level 1A, Efficacy at 3, Toxicity at 1A — each with its own per-genotype rows.
+# Without the category they collapse onto one another.
+VALID_PHENOTYPE_CATEGORIES: frozenset[str] = frozenset(
+    {"efficacy", "toxicity", "dosage", "metabolism_pk", "pd", "other"}
+)
+
+
+def validate_phenotype_categories(
+    value: Optional[str], field_name: str = "phenotype_category"
+) -> Optional[str]:
+    """Validate a multi-valued phenotype-category cell against `VALID_PHENOTYPE_CATEGORIES`.
+
+    Accepts ClinPGx's own spellings (`Metabolism/PK`) case-insensitively and normalizes them to the
+    vocabulary member (`metabolism_pk`), because the authored DSL should not make a human transcribe
+    a slash-and-caps token exactly.
+    """
+    if value is None:
+        return value
+    normalized: list[str] = []
+    for token in MULTI_SEP.split(value):
+        token = token.strip()
+        if not token:
+            continue
+        canonical = token.lower().replace("/", "_").replace(" ", "_").replace("-", "_")
+        if canonical not in VALID_PHENOTYPE_CATEGORIES:
+            raise ValueError(
+                f"{field_name} tokens must be one of "
+                f"{sorted(VALID_PHENOTYPE_CATEGORIES)}, got: {token!r}"
+            )
+        normalized.append(canonical)
+    return ";".join(normalized) if normalized else None
+
+
 # ── Data-source licensing (0.5; the `sources.csv` fact table) ───────────────────────────────────
 # Which layer of a module a source contributed to. Closed vocabulary (Principle 6).
 #

@@ -1,0 +1,18 @@
+schema_version: "1.0"
+module:
+  name: slco1b1_simvastatin
+  title: SLCO1B1 and simvastatin
+  report_title: SLCO1B1 simvastatin response
+  description: >-
+    Pharmacogenomic annotation for SLCO1B1 rs4149056 (*5, c.521T>C) and simvastatin, transcribed
+    from the ClinPGx clinical annotations. One variant and one drug, three separate findings:
+    a pharmacokinetic one, an efficacy one, and a toxicity one.
+  icon: pills
+  color: "#6435c9"
+  version: 0.1.0
+license: CC-BY-SA-4.0
+genome_build: GRCh38
+authorship:
+  - who: just-dna-format reference examples
+    role: created
+    kind: [human]

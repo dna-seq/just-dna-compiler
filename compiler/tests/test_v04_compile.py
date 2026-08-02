@@ -176,6 +176,49 @@ def test_per_genotype_pharm_annotations_compile(tmp_path: Path) -> None:
     assert df.filter(pl.col("genotype") == "T/T")["response"].item() == "increased response"
 
 
+# Real ClinPGx data: rs4149056 + simvastatin carries THREE distinct annotations at three phenotype
+# categories, each stated per genotype. 1,199 of 17,380 (variant, drug, genotype) triples in the
+# release map to more than one annotation, so (variant, drug, genotype) is not a key either.
+_PHARM_THREE_CATEGORIES = (
+    "rsid,gene,genotype,drug,phenotype_category,annotation_id,evidence_level,conclusion\n"
+    "rs4149056,SLCO1B1,C/C,simvastatin,Metabolism/PK,1449556772,1A,higher simvastatin-acid exposure\n"
+    "rs4149056,SLCO1B1,C/C,simvastatin,Efficacy,1451356520,3,decreased response\n"
+    "rs4149056,SLCO1B1,C/C,simvastatin,Toxicity,655384011,1A,higher myopathy risk\n"
+)
+
+
+def test_one_variant_drug_genotype_carries_several_annotations(tmp_path: Path) -> None:
+    """Three distinct findings about one call must all survive, distinguished by category."""
+    out = tmp_path / "out"
+    result = compile_module(
+        _write_per_genotype_pharm(tmp_path / "spec", _PHARM_THREE_CATEGORIES), out,
+        resolve_with_ensembl=False,
+    )
+    assert result.success, result.errors
+    df = pl.read_parquet(out / "pharm_variants.parquet")
+    assert set(df["phenotype_category"].to_list()) == {"metabolism_pk", "efficacy", "toxicity"}
+    assert df.select("conclusion").n_unique() == 3
+    # The two 1A rows differ only by category — without it they would have collapsed.
+    assert df.filter(pl.col("evidence_level") == "1A").height == 2
+
+
+def test_annotation_id_is_the_last_resort_tie_break(tmp_path: Path) -> None:
+    """283 triples in the release differ by neither category nor level; the accession separates them."""
+    same_category = (
+        "rsid,gene,genotype,drug,phenotype_category,annotation_id,evidence_level,conclusion\n"
+        "rs1045642,ABCB1,A/A,rifampin,Efficacy,111,3,first curation\n"
+        "rs1045642,ABCB1,A/A,rifampin,Efficacy,222,3,second curation\n"
+    )
+    result = compile_module(
+        _write_per_genotype_pharm(tmp_path / "spec", same_category), tmp_path / "out",
+        resolve_with_ensembl=False,
+    )
+    assert result.success, result.errors
+    # ...and dropping the ids makes them genuine duplicates again.
+    collided = same_category.replace(",111,", ",,").replace(",222,", ",,")
+    assert not validate_spec(_write_per_genotype_pharm(tmp_path / "spec2", collided)).valid
+
+
 def test_duplicate_genotype_is_still_a_duplicate(tmp_path: Path) -> None:
     """Widening the key must not disarm the check: the same genotype twice is still an error."""
     collided = _PHARM_PER_GENOTYPE.replace(",C/T,", ",C/C,")

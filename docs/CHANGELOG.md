@@ -5,6 +5,43 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-02 — 0.5.0: the ClinPGx snapshot, and a PGx reference example
+
+**`clinpgx_build` + pass 6.** `clinicalAnnotations.zip` → a parquet snapshot the cross-check reads
+offline, following the ClinVar builder. The snapshot's grain is (annotation, genotype), joining the
+summary table to its per-genotype child. `CREATED_<date>.txt` is the release id — ClinPGx publishes
+no version and does not refresh its archives in lockstep.
+
+The builder extracts the `LICENSE.txt` ClinPGx ships **inside the archive** and records its sha256 in
+`release.json`; the pass stamps that hash onto the emitted `SourceRow`. That is the licensing design's
+payoff: the recorded terms are provably the ones shipped with the recorded data, not a lookup that was
+true once. Pass 6 is offline-capable but still honours the declared-use gate — the terms were accepted
+when the snapshot was built, and using it is the same act. Severity follows the mode ladder, unlike
+the allele-function check: an evidence level is ClinPGx's own metadata, so a difference means the
+module is stale rather than that two panels disagree.
+
+**Two collision bugs, both found by dogfooding real data.**
+
+*Schema.* `(variant_key, drug, genotype)` is still not a key. One variant and one drug carry several
+*distinct* annotations — rs4149056 + simvastatin is Metabolism/PK at 1A, Efficacy at 3 **and**
+Toxicity at 1A, each with its own three genotypes. 1,199 of 17,380 triples in the release map to more
+than one annotation: 839 separated by phenotype category, and 283 by neither category nor level.
+`PharmVariantRow` therefore gains `phenotype_category` (closed vocabulary `VALID_PHENOTYPE_CATEGORIES`,
+multi-valued, accepting ClinPGx's own `Metabolism/PK` spelling) and `annotation_id` (a source
+accession as identity, the same shape as `PgsRow.pgs_id`). The key is now
+`(variant_key, drug, genotype, phenotype_category, annotation_id)`.
+
+*The checker had the same bug.* Its first implementation indexed the snapshot on `(rsid, drug,
+genotype)` and compared each authored row against whichever annotation was indexed first — which
+reported all three of the new reference example's correctly-authored levels as stale. The lookup is
+now `annotation_id` → `(rsid, drug, genotype, category)` → the bare triple, and an ambiguous bare
+triple is reported as **unchecked** rather than compared against an arbitrary candidate.
+
+**`reference_examples/pgx_slco1b1_simvastatin/`.** The PGx reference example: nine rows transcribed
+from the three real ClinPGx annotations, no `variants.csv`, resolution driven by
+`pharm_variants.csv`, and a `sources.csv` recording that the module is not sellable. Its README walks
+the four commands that rebuild it.
+
 ## 2026-08-02 — 0.5.0: data-source licensing as data, and the PGx cross-check
 
 **`sources.csv` — the fifth fact table.** One row per (data source, layer), recording what a module

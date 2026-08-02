@@ -5,6 +5,12 @@ These are **hand-authored sketches** of how modules are expressed with the 0.3/0
 authors and consumers** — a picture of the intended shapes. The 0.4 shapes are now shipped and frozen;
 rsIDs / coordinates / effect sizes are illustrative.
 
+**Two examples are not sketches but real, compiled modules** under `reference_examples/`, built from
+real upstream data and rebuilt by documented commands: `pathogenic_clinvar/` (the SNP core) and
+`pgx_slco1b1_simvastatin/` (the pharmacogenomics path — nine per-genotype rows from three real ClinPGx
+annotations, no `variants.csv`, and a `sources.csv` recording that the module is not sellable). Read
+those when you want the authored shape that actually passes the compiler, rather than an illustration.
+
 This doc is the **"conclusion" stage of the feedback → schema cycle** (see
 [`USE_CASES.md`](USE_CASES.md) → *The feedback → schema cycle*): where a use case, once its blockers
 are resolved into a settled shape, becomes *how to do it now, with these bricks*. For the

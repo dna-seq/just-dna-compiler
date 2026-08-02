@@ -130,8 +130,13 @@ _TABLE_KIND_CSVS: tuple[str, ...] = tuple(csv for csv, _, _ in _TABLE_KINDS)
 # separately in `_validate_table_kind`. A `HaplotypeRow`'s identity is (allele, defining variant); a
 # `PgsRow`/`DiplotypeRow`/`PharmVariantRow` key includes `trait_efo_id`/`drug` so a legitimately
 # pleiotropic or multi-drug row is not a false duplicate. `PharmVariantRow` additionally keys on
-# `genotype` (0.5): PharmGKB publishes one clinical annotation *per genotype*, so (variant, drug)
-# alone rejected the real data as duplicates — this mirrors the SNP core's (variant, genotype) rule.
+# `genotype`, `phenotype_category` and `annotation_id` (0.5) — each earned by real ClinPGx data.
+# PharmGKB publishes one annotation *per genotype*, so (variant, drug) alone rejected the corpus
+# outright. One variant+drug then carries several *distinct* annotations: 1,199 of 17,380
+# (variant, drug, genotype) triples map to more than one, 839 of them differing by category
+# (rs4149056+simvastatin is Metabolism/PK, Efficacy AND Toxicity). `annotation_id` is the
+# last-resort tie-break for the 283 that differ by neither — a source accession as identity, the
+# same shape as `PgsRow.pgs_id`.
 _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
     HaplotypeRow: lambda r: (
         r.haplotype_name, derive_variant_key(r.rsid, r.chrom, r.start, r.ref), r.allele,
@@ -139,7 +144,9 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
     AlleleFunctionRow: lambda r: (r.gene, r.allele),
     DiplotypeRow: lambda r: (r.gene, r.haplotype_a, r.haplotype_b, r.trait_efo_id, r.drug),
     PgsRow: lambda r: (r.pgs_id, r.trait_efo_id),
-    PharmVariantRow: lambda r: (r.variant_key, r.drug, r.genotype),
+    PharmVariantRow: lambda r: (
+        r.variant_key, r.drug, r.genotype, r.phenotype_category, r.annotation_id,
+    ),
 }
 
 _INPUT_FILES: tuple[str, ...] = (

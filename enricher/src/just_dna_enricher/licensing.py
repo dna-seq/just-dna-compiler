@@ -23,10 +23,12 @@ release: `api.pharmgkb.org` was retired on 2026-07-20, and CPIC's licence page m
 policy when the two merged. A recorded `license_sha256` turns the next such change into a finding.
 """
 
+import csv
 import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from just_dna_format.sources import SourceRow
@@ -182,3 +184,47 @@ def check_declared_use(terms: SourceTerms, declared_use: str) -> Optional[str]:
         f"{terms.source} forbids sale and no use was declared, so it was skipped. Re-run with "
         f"--use non-commercial to record a declaration ({terms.license_url})."
     )
+
+
+SOURCES_FIELDNAMES = [
+    "source", "layer", "license", "license_url", "license_sha256", "attribution", "notice",
+    "share_alike", "commercial_use", "declared_use", "dataset", "fetched_at",
+]
+
+
+def _cell(value: object) -> str:
+    """Render one `SourceRow` value to a CSV cell, tri-state intact.
+
+    `None` → empty and `False` → `"false"` must stay distinguishable: the whole permission model
+    turns on unknown not collapsing into forbidden, and an empty cell reloads as `None`.
+    """
+    if value is None:
+        return ""
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return str(value)
+
+
+def write_sources_csv(rows: list[SourceRow], path: Path) -> None:
+    """Write `sources.csv` in a fixed column order (normalized, like every reverse writer)."""
+    with Path(path).open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SOURCES_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            dumped = row.model_dump()
+            writer.writerow({name: _cell(dumped.get(name)) for name in SOURCES_FIELDNAMES})
+
+
+def merge_sources_csv(rows: list[SourceRow], path: Path, existing: list[SourceRow]) -> list[SourceRow]:
+    """Merge emitted rows into whatever is already recorded, never clobbering (as `enrich()` does).
+
+    Sorted by (source, layer) so the emitted order is deterministic (Principle 7).
+    """
+    merged: dict[tuple[str, str], SourceRow] = {(r.source, r.layer): r for r in existing}
+    for row in rows:
+        merged.setdefault((row.source, row.layer), row)
+    out = [merged[key] for key in sorted(merged)]
+    write_sources_csv(out, path)
+    return out
