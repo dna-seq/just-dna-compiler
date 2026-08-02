@@ -37,7 +37,7 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
 3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what actually shipped, newest first (shared across the
    ecosystem repos that consume these libs).
 4. **Per-package references** — [docs/SCHEMAS.md](docs/SCHEMAS.md) (the schema tier: models, the CSV
-   families, conventions, the six hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
+   families, conventions, the seven hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
    compile pipeline, the Resolution section + its round-trip matrix, reverse, the coverage table), and
    [docs/ENRICHER.md](docs/ENRICHER.md) (the network tier: the resolver chain, Ensembl V2→V1, snapshot
    download + module upload). Read the tier your task touches.
@@ -208,6 +208,11 @@ CHANGELOG entry).
   ClinPGx by the bare triple has this bug** — the first cross-check did, and reported correctly-authored
   levels as stale. Look it up by `annotation_id`, then category, and report ambiguity rather than
   comparing against an arbitrary candidate.
+- **A runtime pass may not depend on a `[dev]` package — read snapshots with duckdb, not polars.**
+  `polars` is `[dev]` in the enricher (builders only); `duckdb` is core. `clinpgx.py` first read its
+  snapshot with polars, which made a *runtime* cross-check unusable on a plain
+  `pip install just-dna-enricher`. `clinvar.py` had it right: builder in polars, pass in duckdb. Check
+  which side of that line new code sits on.
 - **Licensing lives as DATA in `sources.csv`, never as a table in the compiler.** A source→licence map
   in `just_dna_compiler` would give it a source convention (Principle 2, tightened in 0.5) and an
   un-injected reference — and it goes stale (both halves of one did inside 0.5). The enricher reads the

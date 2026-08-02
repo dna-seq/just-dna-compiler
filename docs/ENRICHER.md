@@ -100,7 +100,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
 | `pgx` | pass 5: cross-check star-allele tables, write `sources.csv` | the three above |
 | `clinpgx_build` | `[dev]`: `clinicalAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt` | `polars`, `httpx` |
-| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `polars` |
+| `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
 | `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `_load_csv_rows`, format |
@@ -701,6 +701,11 @@ separate step.
 `pgx.py` asks the nomenclature authorities about star alleles over the network; this pass asks
 ClinPGx about *clinical annotations* — which variant, which drug, at what evidence level — from a
 local snapshot, exactly as the ClinVar cross-check does. `clinpgx_build` is the `[dev]` builder.
+
+The snapshot is read with **duckdb**, not polars, and that is deliberate: polars is a `[dev]`
+dependency here (only the builders need it) while duckdb is core, so reading with polars would leave
+this runtime pass unusable on a plain `pip install just-dna-enricher`. `clinvar.py` reads its snapshot
+the same way for the same reason — the builder may be dev-only, the pass may not.
 
 **The snapshot pins its own licence.** ClinPGx ships a `LICENSE.txt` inside `clinicalAnnotations.zip`,
 so the builder extracts it, records its sha256 in `release.json`, and the pass stamps that hash onto

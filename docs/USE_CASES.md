@@ -152,6 +152,38 @@ a variant panel and its PRS companion sit in one content-addressed unit. The com
 every present table kind to parquet (round-trip lossless) and treats `variants.csv` as optional, so
 composed and single-domain modules both compile. No blocker.
 
+**0.5 revisit: the 0.4 shape was modelled at the wrong grain, and real data proved it.** RM3 was
+declared shipped against a *hand-authored sample*. Run against the actual ClinPGx corpus it does not
+hold, in two stages:
+
+1. A clinical annotation is published **per genotype** — the summary table names the variant and drug,
+   a child table gives one row per call, and 4,618 of 5,113 carry exactly three. `PharmVariantRow` had
+   no `genotype`, and the compiler deduped on `(variant_key, drug)`, so authoring the real
+   SLCO1B1/simvastatin annotation produced `duplicate row for key ('rs4149056', 'simvastatin')`. ~97%
+   of the corpus was unauthorable.
+2. Adding `genotype` was not enough. One variant and one drug carry **several distinct annotations** —
+   rs4149056 + simvastatin is Metabolism/PK at 1A, Efficacy at 3 *and* Toxicity at 1A. 1,199 of 17,380
+   triples collide; 839 separate by phenotype category, 283 by neither category nor level.
+
+Closed additively with `genotype`, `phenotype_category` (closed vocabulary) and `annotation_id` (a
+source accession as identity, like `PgsRow.pgs_id`) → **RM20**. The lesson is the dogfood rule in
+CLAUDE.md read from the other side: a shape validated against a sample rather than a corpus is not
+validated. See `reference_examples/pgx_slco1b1_simvastatin/`.
+
+### 2c. Star alleles and drug response from the live authorities (0.5)
+
+**Verdict: ENABLED, with the licensing made legible (RM21).** The enricher can now cross-check a
+module's `allele_function.csv` against PharmVar and CPIC and its `pharm_variants.csv` against a
+ClinPGx snapshot, and resolution reaches `pharm_variants.csv`/`haplotypes.csv` so a PGx module gets
+coordinates without carrying a `variants.csv`.
+
+The blocker that turned up was not technical. **Every pharmacogenomics upstream is copyleft and none
+is sellable**: ClinPGx, CPIC and PharmVar are each CC BY-SA 4.0 *plus* a separate contractual bar on
+sale. `api.pharmgkb.org` was retired 2026-07-20, and CPIC sits inside the ClinPGx merger with its
+licence page redirecting to the ClinPGx policy — so swapping sources does not escape the terms. That
+is *consumer-relevant* rather than a format gap, but it is unrepresentable in a 0.4 module, so it was
+closed additively as `sources.csv` (RM21) rather than left to a README nobody can query.
+
 *Composition principle (settled during the PharmGKB decision, now in CLAUDE.md): a module composes
 from **optional** table kinds — one CSV = one concern — so the SNP core (`variants.csv`+`studies.csv`)
 stays minimal and no module ever carries an empty `variants.csv` or a foreign domain's columns just to
@@ -410,6 +442,9 @@ consumer-side one is recorded so it is not mistaken for a format task.
 | RM1 | ✅ **shipped** — compiler materializes all 0.4 tables → parquet with lossless round-trip (generic `_build_table`/`_write_table_csv` over `_TABLE_KINDS`) | format (compiler) | 3a, 3c, harness on binned loci | done |
 | RM2 | ✅ **shipped** — composed modules: `variants.csv` optional, a module carries only the kinds it uses (no empty `variants.csv`); `studies.csv` required iff variants present | format (compiler) | SNP+PRS, personal panels | done |
 | RM3 | ✅ **shipped in 0.4 sample** — `PharmVariantRow` (`pharm_variants.csv`) + `drug`/`response`/`evidence_level` on `DiplotypeRow` | format (schema) | 2b | done |
+| RM20 | ✅ **shipped in 0.5** — **PharmGKB annotations are per-genotype and per-category**: `genotype`, `phenotype_category` (closed vocab) and `annotation_id` on `PharmVariantRow`; duplicate key `(variant_key, drug, genotype, phenotype_category, annotation_id)`. Corrects RM3, which was validated against a sample rather than the corpus. | format (schema + compiler) | 2b, the real ClinPGx corpus | done |
+| RM21 | ✅ **shipped in 0.5** — **Data-source licensing as data** (`sources.csv` + `manifest.sources`): per (source, layer) licence, attribution, pinned `license_sha256`, tri-state `share_alike`/`commercial_use`, and the acquirer's `declared_use`. Compiler refuses annotation-layer content that forbids sale when no declaration is recorded; enricher refuses at acquisition. | format (schema + compiler) + enricher | 2c, marketplace redistribution | done |
+| RM22 | ✅ **shipped in 0.5** — **PGx tables join resolution**: `enrich()` reads `pharm_variants.csv` and `haplotypes.csv`, so a module with no `variants.csv` gets coordinates (it previously enriched to an empty `resolution.csv`). | enricher | 2c, 3c | done |
 | RM4 | **Native ClinVar gene-panel materialization** + content-pinned reference mixin (item 7 follow-up) | format (compiler) + consumer ref | 2a (native path) | medium |
 | RM5 | **Symbolic/structural alleles** (`<S>`/`<L>`/`<DEL>`/`<INS>`/`<DUP>`/`<STR>`; large indels) — a representation beyond `^[ACGT]+$`. **Motivating case: 5-HTTLPR** (S/L not nucleotides → rejected today) | format (schema) | 3b (SV), 1b (symbolic consume), 5-HTTLPR | medium |
 | RM6 | Promote `requires_callable` to a typed boolean column; reserve/build `callable_from` (DP,GQ,FT three-state) | format (schema) | 1c callability | low-medium |

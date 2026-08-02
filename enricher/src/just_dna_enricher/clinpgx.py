@@ -33,13 +33,10 @@ from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
+import duckdb
+
 from just_dna_enricher.clinpgx_build import RELEASE_FILENAME
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_csv
-
-try:  # polars reads the snapshot; the builder-only import stays optional
-    import polars as pl
-except ImportError:  # pragma: no cover
-    pl = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -105,17 +102,32 @@ def _normalize_category(value: Optional[str]) -> Optional[str]:
         return None
 
 
-def load_snapshot(reference: Path):
-    """Read the snapshot parquet + its `release.json`. Returns `(frame, release)`."""
-    if pl is None:  # pragma: no cover
-        raise ClinPgxEnrichmentError("polars is required to read the ClinPGx snapshot")
+def load_snapshot(reference: Path) -> tuple[list[dict], dict]:
+    """Read the snapshot parquet + its `release.json`. Returns `(rows, release)`.
+
+    Read with **duckdb**, not polars, and that matters: polars is a `[dev]` dependency here (only the
+    builder needs it) while duckdb is core, so reading with polars would make this runtime pass
+    unusable on a plain `pip install just-dna-enricher`. `clinvar.py` reads its snapshot the same way
+    for the same reason.
+    """
     reference = Path(reference)
     parquet = reference / "data" / "annotations.parquet"
     if not parquet.is_file():
         raise ClinPgxEnrichmentError(f"no ClinPGx snapshot at {parquet}")
     release_path = reference / RELEASE_FILENAME
     release = json.loads(release_path.read_text()) if release_path.is_file() else {}
-    return pl.read_parquet(parquet), release
+    # Single-quote-escape defensively; the path comes from our own cache resolution, not user input.
+    pattern = str(parquet).replace("'", "''")
+    con = duckdb.connect(":memory:")
+    try:
+        cursor = con.execute(
+            f"SELECT annotation_id, rsid, genotype, evidence_level, phenotype_category, drugs "
+            f"FROM read_parquet('{pattern}')"
+        )
+        columns = [d[0] for d in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()], release
+    finally:
+        con.close()
 
 
 def enrich_clinpgx(
@@ -158,7 +170,7 @@ def enrich_clinpgx(
         )
         return result
 
-    frame, release = load_snapshot(snapshot)
+    snapshot_rows, release = load_snapshot(snapshot)
     result.dataset = release.get("dataset")
 
     # Index the snapshot. Drugs are `;`-separated upstream, so the cell is exploded — a row about
@@ -174,7 +186,7 @@ def enrich_clinpgx(
     by_annotation: dict[tuple[str, Optional[str]], str] = {}
     by_category: dict[tuple[str, str, Optional[str], Optional[str]], str] = {}
     by_triple: dict[tuple[str, str, Optional[str]], set[str]] = {}
-    for row in frame.iter_rows(named=True):
+    for row in snapshot_rows:
         rsid, level = row["rsid"], row["evidence_level"]
         if not rsid or not level:
             continue

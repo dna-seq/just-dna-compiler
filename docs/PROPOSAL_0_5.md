@@ -162,6 +162,82 @@ byte-reproducibility, so an unverifiable identity has no place in it).
 Multi-build VRS minting (a second refget table — the remaining half of RM15), HGVS *generation* as a
 feature, and an offline frequency snapshot (58 GB / 742 GB — parked, not scheduled).
 
+## G2 — Pharmacogenomics: per-genotype annotations and source licensing → **built in 0.5**
+
+The design thread behind RM20/RM21/RM22. It began as "add a PharmGKB fetch pass to the enricher" and
+grew twice, both times because real data contradicted a shape that had been validated against a
+hand-authored sample.
+
+### What probing overturned
+
+**`api.pharmgkb.org` is dead.** Retired 2026-07-20; the successor is `api.clinpgx.org`, paths and
+formats unchanged. ClinPGx is the umbrella that merged PharmGKB, CPIC and PharmCAT.
+
+**PharmGKB annotations are per-genotype, and per-category on top of that.** RM3 modelled
+`PharmVariantRow` on the *summary* table (variant → drug → level) and never met the per-genotype child
+table. Two rounds of correction were needed — first `genotype`, then `phenotype_category` +
+`annotation_id` — and the second round only surfaced because the reference example was built from the
+real corpus. Numbers and the argument are in [`USE_CASES.md` § 2b](USE_CASES.md).
+
+**No PGx source is sellable, and CPIC is not an escape hatch.** All three are CC BY-SA 4.0 *plus* a
+contractual bar on sale, so a bare "CC BY-SA" line must not be read as permission to sell. CPIC's
+licence page 302-redirects to the ClinPGx policy. PharmVar's API also became key-gated
+(`Api-Key` header, 2 rps, personal key).
+
+### The shape
+
+`sources.csv` → `SourceRow`, one row per **(source, layer)**, carrying the licence, a pinned
+`license_sha256`, attribution, notice, tri-state `share_alike`/`commercial_use`, and the acquirer's
+`declared_use`. Compiled to `sources.parquet`, fact-hashed by `source_signature`, summarized into
+`manifest.sources`. Enricher passes 5 (`pgx.py`, live PharmVar/CPIC) and 6 (`clinpgx.py`, offline
+snapshot) produce it.
+
+### Charter check
+
+- **Principle 2 (inject-only).** A source→licence map in the compiler would give it a source
+  convention — the exact thing the 0.5 tightening removed — and would be an un-injected reference. The
+  licence therefore travels as data, read by the enricher from the bytes it downloaded. Not a
+  hypothetical: two halves of such a map went stale inside this release.
+- **Principle 3/8 (additive).** Every new column is optional and `sources.parquet` enters
+  `artifact.digest` only for modules that carry the table, so no existing module's digest moves.
+- **Principle 5 (orthogonal axes).** `declared_use` is a third axis, never folded into `mode`: `mode`
+  grades how hard to fail on a *finding*, `declared_use` states who is using the data. Likewise the
+  licensing gate does not escalate under `strict`, whose single meaning is a reproducible artifact.
+- **Principle 6 (vocabulary idiom).** `VALID_SOURCE_LAYERS`, `VALID_DECLARED_USE` and
+  `VALID_PHENOTYPE_CATEGORIES` are `frozenset` + validator, never `Enum`/`Literal`.
+- **Principle 7 (round-trip).** The reason the gate is data-driven — see below.
+
+### The rejected alternative: a `--non-commercial` compiler flag
+
+The first proposal was a EULA-style flag on `compile_module` that refuses unless passed. It is
+**charter-illegal**, for a mechanical reason rather than a philosophical one: a flag cannot be
+recorded in the artifact, and `reverse_module` rebuilds `module_spec.yaml` from parquet alone, so
+`compile → reverse → compile` would refuse on the third step. Principle 7's fixed point, broken by a
+policy flag — the same lesson that demoted the allele-membership check to the mode ladder one round
+earlier.
+
+Keying the refusal on **data carried by the module** keeps everything the flag was for. `sources.csv`
+round-trips, so the declaration travels with the module and the cycle reproduces; the compiler still
+refuses, and it does so reading only injected facts. No amendment needed.
+
+### Two decisions that look wrong until you know why
+
+**Only the `annotation` layer taints.** A source consulted purely to look up a coordinate contributed
+a fact Ensembl reports identically; marking that module viral would be a false positive. This is why
+`manifest.sources` keeps per-layer *lists* rather than a single `share_alike` boolean, and why
+ClinPGx/CPIC are deliberately never wired as resolution links.
+
+**`None` is not `False`.** A source whose terms could not be established has not been shown to permit
+anything. Unknown skips with a warning, and the module-wide verdict is `None` (undetermined), never
+`True`.
+
+### Still deferred
+
+Scaffolding the PGx tables from CPIC/PharmVar (they are *authored* `_TABLE_KINDS`, so generation stays
+an explicit human-owned step); ClinPGx `variantAnnotations`/`relationships`; CPIC's prescribing
+recommendations; and the `activity_phenotype.csv` bins, which CPIC publishes as inequality strings
+(`"≥3.0"`) that do not map onto `MeasureBinRow`'s numeric bounds.
+
 ## The rest of 0.5 scope
 
 Everything else that was open at the end of the 0.4 round is tracked as `RMn` in
