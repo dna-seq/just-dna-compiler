@@ -1,0 +1,14 @@
+schema_version: '1.0'
+module:
+  title: HFE haemochromatosis (type 1)
+  description: Pathogenic and likely-pathogenic HFE alleles from ClinVar (2★ and above),
+    with the zygosity each finding is about decided by a curator.
+  report_title: HFE haemochromatosis (type 1)
+  icon: heartbeat
+  icon_set: fomantic
+  color: '#00b5ad'
+  name: hfe_hemochromatosis
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38

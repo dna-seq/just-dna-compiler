@@ -36,6 +36,10 @@ except ImportError:  # pragma: no cover - exercised only where the [dev] extra i
 logger = logging.getLogger(__name__)
 
 DEFAULT_CLINVAR_URL = "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz"
+#: ClinVar publishes its literature links separately from the VCF: one row per
+#: (VariationID, citation source, citation id). Ingested as its own artifact beside the snapshot
+#: rather than folded into it, so an existing snapshot stays byte-identical and keeps its digest.
+DEFAULT_CITATIONS_URL = "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/var_citations.txt"
 
 # Longest ref/alt allele kept. SNVs and short indels (in VCF anchor-base form, which is still ACGT)
 # are what a consumer's small-variant VCF can carry and match; ClinVar's multi-kb structural variants
@@ -243,6 +247,10 @@ def _builder_version() -> str:
 # ── public API ──────────────────────────────────────────────────────────────────────────────────
 
 
+class ClinVarBuildError(RuntimeError):
+    """A ClinVar artifact could not be built from the file given."""
+
+
 @dataclass
 class BuildResult:
     """Outcome of a snapshot build (paths + provenance + skip stats)."""
@@ -278,6 +286,79 @@ def download_clinvar_vcf(dest: Path, url: str = DEFAULT_CLINVAR_URL) -> Path:
     tmp.replace(dest)
     logger.info("Downloaded %s (sha256 %s)", dest, hasher.hexdigest())
     return dest
+
+
+def download_var_citations(dest: Path, url: str = DEFAULT_CITATIONS_URL) -> Path:
+    """Stream ClinVar's `var_citations.txt` to `dest`, the same way the VCF is fetched.
+
+    A *separate* download because ClinVar publishes it separately — the VCF carries no PMIDs. That
+    absence is why a drafted gene panel could not compile: `studies.csv` is mandatory ("grounding
+    evidence is mandatory") and the provider had nothing to ground rows with.
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    hasher = hashlib.sha256()
+    logger.info("Downloading ClinVar citations from %s ...", url)
+    with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
+        resp.raise_for_status()
+        with open(tmp, "wb") as fh:
+            for chunk in resp.iter_bytes():
+                fh.write(chunk)
+                hasher.update(chunk)
+    tmp.replace(dest)
+    logger.info("Downloaded %s (sha256 %s)", dest, hasher.hexdigest())
+    return dest
+
+
+#: Where the citations table lives. A **sibling of** `data/`, never inside it: `clinvar._connect`
+#: builds its view from `data/*.parquet`, so a two-column citations file dropped in there unions with
+#: the 17-column variant parquet and every query breaks. (Learned the direct way.)
+CITATIONS_DIRNAME = "citations"
+
+
+def build_citations(citations_txt: Path, out_dir: Path) -> int:
+    """`var_citations.txt` → `out_dir/citations/citations.parquet`, PubMed rows only.
+
+    Written **beside** an existing snapshot rather than into it: the per-chromosome parquet keeps its
+    bytes, so adding citations to a cache someone already built does not invalidate it. Only PubMed
+    sources are kept — the format's `StudyRow.pmid` is a PMID, and a curated module citing a source
+    the schema cannot express would be a row nobody can check.
+
+    Sorted by `(variation_id, pmid)` so a rebuild is byte-identical (Principle 7).
+    """
+    if pl is None:  # pragma: no cover - exercised only where the [dev] extra is absent
+        raise ImportError(
+            "polars is required to build the ClinVar citations table; install the publisher/dev "
+            "surface with `pip install 'just-dna-enricher[dev]'` (or `uv sync --group dev`)."
+        )
+    frame = pl.read_csv(
+        citations_txt, separator="\t", has_header=True, infer_schema_length=0,
+        truncate_ragged_lines=True,
+    )
+    columns = {name.lstrip("#").strip(): name for name in frame.columns}
+    variation = columns.get("VariationID")
+    source = columns.get("citation_source")
+    citation = columns.get("citation_id")
+    if not (variation and source and citation):
+        raise ClinVarBuildError(
+            f"unexpected var_citations.txt columns: {frame.columns}. Refusing rather than guessing — "
+            f"a silently mis-parsed citations table would ground module rows in the wrong papers."
+        )
+    kept = (
+        frame.filter(pl.col(source) == "PubMed")
+        .select(
+            pl.col(variation).cast(pl.Utf8).alias("variation_id"),
+            pl.col(citation).cast(pl.Utf8).alias("pmid"),
+        )
+        .unique()
+        .sort(["variation_id", "pmid"])
+    )
+    target = Path(out_dir) / CITATIONS_DIRNAME
+    target.mkdir(parents=True, exist_ok=True)
+    kept.write_parquet(target / "citations.parquet")
+    logger.info("Wrote %s PubMed citation link(s)", kept.height)
+    return kept.height
 
 
 def build_snapshot(

@@ -37,10 +37,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence
 
-from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
-from just_dna_format.spec import VariantRow
+from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows, append_rows
+from just_dna_format.spec import StudyRow, VariantRow
 
-from just_dna_enricher.clinvar import select_by_gene
+from just_dna_enricher.clinvar import citations_for, select_by_gene
 from just_dna_enricher.licensing import CLINVAR_TERMS, check_declared_use, merge_sources_file
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,15 @@ class ClinVarDraftResult:
 
     @property
     def added(self) -> int:
+        """Rows added across **every** table this run wrote — variants *and* their studies.
+
+        Ask `added_for` when you mean one of them: since the provider began drafting grounding
+        evidence too, a bare total no longer answers "how many variants did I get"."""
         return sum(len(r.added) for r in self.reports)
+
+    def added_for(self, csv_name: str) -> int:
+        """Rows added to one table."""
+        return sum(len(r.added) for r in self.reports if r.csv_name == csv_name)
 
     @property
     def already_present(self) -> int:
@@ -85,13 +93,33 @@ class ClinVarDraftResult:
         return sum(len(r.invalid) for r in self.reports)
 
 
-def _identity_cells(record: dict) -> Optional[dict]:
+def multi_allelic_rsids(records: Sequence[dict]) -> set[str]:
+    """rsIDs that name more than one alt at one position in this selection.
+
+    An rsID is a **position/multi-allelic-level** tag, not a per-allele one: ClinVar lists
+    `rs773443949` in HFE as both `G>A` and `G>T`. An rsid-only row cannot say which, so drafting one
+    row per record would write two identical rows — and de-duplicating them would silently drop a real
+    allele. Found by drafting an actual panel; these records take the coordinate identity instead."""
+    alts_by_site: dict[tuple, set[str]] = {}
+    for record in records:
+        rsid = (record.get("rsid") or "").strip()
+        if not rsid:
+            continue
+        site = (rsid, record.get("chrom"), record.get("start"), record.get("ref"))
+        alts_by_site.setdefault(site, set()).add((record.get("alt") or "").strip())
+    return {site[0] for site, alts in alts_by_site.items() if len(alts) > 1}
+
+
+def _identity_cells(record: dict, *, force_coordinate: bool = False) -> Optional[dict]:
     """The identity half of a row: the rsID, else the whole coordinate. Never a mixture.
+
+    `force_coordinate` is set for an rsID that names several alts here — the rsID is true of the row
+    but cannot *identify* it, and an identity that does not identify is worse than a longer one.
 
     Returns `None` when the record carries neither, which the caller reports rather than writing a
     row that cannot be keyed."""
     rsid = (record.get("rsid") or "").strip()
-    if rsid:
+    if rsid and not force_coordinate:
         return {"rsid": rsid}
     chrom, start = record.get("chrom"), record.get("start")
     ref, alt = (record.get("ref") or "").strip(), (record.get("alt") or "").strip()
@@ -100,9 +128,9 @@ def _identity_cells(record: dict) -> Optional[dict]:
     return None
 
 
-def _row_cells(record: dict) -> Optional[dict]:
+def _row_cells(record: dict, *, force_coordinate: bool = False) -> Optional[dict]:
     """One ClinVar record → the authored cells this provider is willing to state."""
-    identity = _identity_cells(record)
+    identity = _identity_cells(record, force_coordinate=force_coordinate)
     if identity is None:
         return None
     clin_sig = (record.get("clin_sig") or "").strip() or None
@@ -132,6 +160,56 @@ def _row_cells(record: dict) -> Optional[dict]:
     return cells
 
 
+#: How many of a variant's ClinVar-linked papers to draft. `rs1800562` alone carries 84 — a panel
+#: does not need them all, and an author drowning in study rows will not read any. Capped rather than
+#: sampled, and the number dropped is always reported: a silent cap reads as "this is everything".
+DEFAULT_MAX_CITATIONS = 3
+
+
+def _study_rows(
+    records: Sequence[dict],
+    links: dict[str, list[str]],
+    limit: int,
+    coordinate_only: set[str],
+) -> tuple[list[StudyRow], int]:
+    """ClinVar's own literature links → `studies.csv` rows, deduplicated per (variant, pmid).
+
+    These are **real** rows, not partial ones: `StudyRow` needs a PMID and an identifier, and ClinVar
+    supplies both. That is the difference from `variants.csv`, where the missing piece — zygosity —
+    is a judgement rather than a datum.
+    """
+    rows: list[StudyRow] = []
+    seen: set[tuple] = set()
+    dropped = 0
+    for record in records:
+        pmids = links.get(str(record.get("variation_id") or ""), [])
+        if not pmids:
+            continue
+        # A study must carry the SAME identity its variant row got, or it is an orphan. When the
+        # variant was written with a coordinate because its rsID names several alleles, the study has
+        # to be too — the compiler's orphan check found this the first time a real panel was drafted.
+        rsid = (record.get("rsid") or "").strip() or None
+        if rsid in coordinate_only:
+            rsid = None
+        coordinate = (
+            {}
+            if rsid
+            else {
+                "chrom": str(record.get("chrom") or "") or None,
+                "start": record.get("start"),
+                "ref": (record.get("ref") or "").strip() or None,
+            }
+        )
+        for pmid in pmids[:limit]:
+            key = (rsid, coordinate.get("chrom"), coordinate.get("start"), pmid)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(StudyRow(rsid=rsid, pmid=pmid, **coordinate))
+        dropped += max(0, len(pmids) - limit)
+    return rows, dropped
+
+
 def draft_gene_panel(
     spec_dir: Path,
     genes: Sequence[str],
@@ -139,6 +217,7 @@ def draft_gene_panel(
     snapshot: Path,
     clin_sig: frozenset[str] = DEFAULT_CLIN_SIG,
     min_review_stars: int = 2,
+    max_citations: int = DEFAULT_MAX_CITATIONS,
     declared_use: str = "unstated",
     dry_run: bool = False,
 ) -> ClinVarDraftResult:
@@ -162,8 +241,15 @@ def draft_gene_panel(
     warnings: list[str] = []
     partials: list[PartialRow] = []
     unkeyable = 0
+    ambiguous = multi_allelic_rsids(records)
+    if ambiguous:
+        warnings.append(
+            f"{len(ambiguous)} rsID(s) name more than one allele here "
+            f"({', '.join(sorted(ambiguous))}) — written with their full coordinate, since an rsID "
+            f"alone cannot say which allele the row is about."
+        )
     for record in records:
-        cells = _row_cells(record)
+        cells = _row_cells(record, force_coordinate=(record.get("rsid") or "").strip() in ambiguous)
         if cells is None:
             unkeyable += 1
             continue
@@ -174,7 +260,9 @@ def draft_gene_panel(
                 stubbed=("genotype",),
                 # Identity, not the natural key: the key runs through `genotype`, which is the stub.
                 # Matching here means "this variant is already in the panel, however it was written".
-                match_on=("rsid", "chrom", "start", "ref"),
+                # `alts` is in the set because without it two rows of a multi-allelic site collapse
+                # into one and a real allele is lost — which is exactly what drafting HFE did.
+                match_on=("rsid", "chrom", "start", "ref", "alts"),
             )
         )
     if unkeyable:
@@ -188,6 +276,27 @@ def draft_gene_panel(
     report = append_partial_rows(
         spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run
     )
+    reports = [report]
+
+    # Grounding evidence, from ClinVar's own literature links. Without this a drafted panel could not
+    # compile at all — `studies.csv` is mandatory and the VCF carries no PMIDs — so the provider
+    # produced a module that needed evidence nobody could supply. Build it with `clinvar citations`.
+    links = citations_for(Path(snapshot), [str(r.get("variation_id") or "") for r in records])
+    if not links:
+        warnings.append(
+            "no citations table in the snapshot, so no studies.csv rows were drafted — grounding "
+            "evidence is mandatory, so add it by hand or run `just-dna-enricher clinvar citations`."
+        )
+    else:
+        studies, dropped = _study_rows(records, links, max_citations, ambiguous)
+        if studies:
+            reports.append(
+                append_rows(spec_dir, "studies.csv", studies, group_by=("rsid",), dry_run=dry_run)
+            )
+        if dropped:
+            warnings.append(
+                f"{dropped} further ClinVar citation(s) not drafted (--max-citations {max_citations})."
+            )
     warnings.extend(f"row not drafted — {o.differences['errors'][1]}" for o in report.invalid)
     if report.added:
         warnings.append(
@@ -202,4 +311,4 @@ def draft_gene_panel(
             spec_dir / "sources.csv",
             error=ClinVarDraftError,
         )
-    return ClinVarDraftResult(reports=[report], warnings=warnings)
+    return ClinVarDraftResult(reports=reports, warnings=warnings)

@@ -270,6 +270,39 @@ A PharmGKB module carries `pharm_variants.csv` (+ the diplotype tables if star-a
 
 ---
 
+## 9b. HFE — a gene panel drafted from ClinVar, with the zygosity left to a curator
+
+Compiled example: [`reference_examples/hfe_hemochromatosis/`](../reference_examples/hfe_hemochromatosis/).
+The first module authored end-to-end with the 0.5 authoring surface — `scaffold` → `draft-panel` →
+curate → `enrich` → `compile` — and the one that shows where the tooling stops.
+
+`draft-panel` wrote 12 variant rows and 33 study rows and then refused to finish, because
+`VariantRow.genotype` is required and **ClinVar publishes alleles, not genotypes**. Whether carrying
+a pathogenic HFE allele once is informative follows from the condition's inheritance mode, not from
+the allele, so every drafted row arrived carrying `vocab.TEMPLATE_PLACEHOLDER` and nothing compiled
+until a human replaced it. The curation rule is one line — haemochromatosis type 1 is autosomal
+recessive, so the informative call is homozygous — and it is stated in the example's README rather
+than buried in the rows.
+
+The thirteenth row is the argument for the whole design. `rs1800562` (C282Y) appears twice:
+
+| genotype | `clin_sig` | `state` | meaning |
+|---|---|---|---|
+| `A/A` | `pathogenic` | `risk` | two pathogenic alleles — the genotype the disease is described for |
+| `A/G` | `pathogenic` | `neutral` | one pathogenic allele: a carrier |
+
+Same variant, same ClinVar call, opposite clinical meaning — `clin_sig` describes the **allele**,
+`state`/`direction` describe the **finding for that genotype** (Principle 5's orthogonal axes doing
+real work). Any provider that derived a genotype from an alt would have picked one of these rows and
+been wrong half the time.
+
+Two things drafting a *real* panel taught the provider, both fixed there rather than papered over
+here: an rsID can name two alleles (`rs773443949` is both `G>A` and `G>T`, so those rows are carried
+by full coordinate instead), and a study row must carry the identity its variant row got, or the
+compiler's orphan check fires. Grounding evidence comes from ClinVar's own literature links, ingested
+with `just-dna-enricher clinvar citations` — without it a drafted panel could not compile at all,
+since `studies.csv` is mandatory and the VCF carries no PMIDs.
+
 ## 10. General annotation axes on `VariantRow` (optional, sparse)
 
 Three optional refinements apply to *any* variant finding, so they live on `VariantRow` (not a domain

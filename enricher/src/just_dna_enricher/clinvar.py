@@ -206,3 +206,44 @@ def select_by_gene(
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
     finally:
         con.close()
+
+
+#: Sibling of `data/`, never inside it — `_connect` globs `data/*.parquet` and a two-column citations
+#: file dropped in there unions with the variant parquet and breaks every query.
+CITATIONS_DIRNAME = "citations"
+
+
+def citations_for(reference: Path, variation_ids: list[str]) -> dict[str, list[str]]:
+    """`variation_id -> [pmid, ...]` from the optional citations table, or `{}` when absent.
+
+    Optional on purpose: a snapshot built before `clinvar citations` existed is still a perfectly good
+    resolver and cross-check reference, and refusing to read it would strand every existing cache. An
+    absent table means "no citations available", which the caller reports — never "this variant has no
+    literature", which would be a claim about ClinVar rather than about the file on disk.
+
+    Ordered by pmid so a re-draft emits the same rows in the same order (Principle 7).
+    """
+    parquet = Path(reference) / CITATIONS_DIRNAME / "citations.parquet"
+    if not parquet.is_file() or not variation_ids:
+        return {}
+    wanted = list(dict.fromkeys(v for v in variation_ids if v))
+    if not wanted:
+        return {}
+    pattern = str(parquet).replace("'", "''")
+    con = duckdb.connect(":memory:")
+    try:
+        placeholders = ", ".join("?" for _ in wanted)
+        rows = con.execute(
+            f"""
+            SELECT variation_id, pmid FROM read_parquet('{pattern}')
+            WHERE variation_id IN ({placeholders})
+            ORDER BY variation_id, pmid
+            """,
+            wanted,
+        ).fetchall()
+    finally:
+        con.close()
+    found: dict[str, list[str]] = defaultdict(list)
+    for variation_id, pmid in rows:
+        found[str(variation_id)].append(str(pmid))
+    return dict(found)

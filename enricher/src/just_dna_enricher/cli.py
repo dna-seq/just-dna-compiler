@@ -39,6 +39,12 @@ from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.clinpgx_draft import draft_pharm_variants
 from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
+from just_dna_enricher.clinvar_build import (
+    CITATIONS_DIRNAME,
+    DEFAULT_CITATIONS_URL,
+    build_citations,
+    download_var_citations,
+)
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
@@ -795,6 +801,8 @@ def hint_variant_(
     ambiguity: bool = typer.Option(False, "--ambiguity", help="Warn when the answer is not unique."),
     frequencies: bool = typer.Option(False, "--frequencies", help="Add gnomAD populations (paced: ~6s)."),
     offline: bool = typer.Option(False, "--offline", help="Snapshots only; never touch the network."),
+    ensembl_cache: Optional[Path] = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache."),
+    clinvar_cache: Optional[Path] = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot."),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
 ) -> None:
     """Validity, coordinates, alleles, populations and clinical calls for one variant.
@@ -809,6 +817,7 @@ def hint_variant_(
     hint = lookup_variant(
         rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alts,
         ambiguity=ambiguity, frequencies=frequencies, offline=offline,
+        ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
     )
     if as_json:
         typer.echo(json.dumps({
@@ -933,6 +942,10 @@ def draft_panel_(
         2, "--min-review-stars", min=0, max=4,
         help="Review-status floor. 2 = multiple submitters, no conflicts.",
     ),
+    max_citations: int = typer.Option(
+        3, "--max-citations", min=0,
+        help="Study rows to draft per variant from ClinVar's literature links. 0 disables.",
+    ),
     use: str = typer.Option("unstated", "--use", help="Declared use (ClinVar is public domain)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
 ) -> None:
@@ -951,7 +964,8 @@ def draft_panel_(
         result = draft_gene_panel(
             spec_dir, gene, snapshot=snapshot,
             **({"clin_sig": calls} if calls else {}),
-            min_review_stars=min_review_stars, declared_use=_use(use), dry_run=dry_run,
+            min_review_stars=min_review_stars, max_citations=max_citations,
+            declared_use=_use(use), dry_run=dry_run,
         )
     except (ClinVarDraftError, DraftError) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -969,3 +983,31 @@ def draft_panel_(
         f"{verb} {result.added} row(s), {result.already_present} already present, in {spec_dir}",
         fg=typer.colors.GREEN,
     )
+
+
+@clinvar_app.command("citations")
+def clinvar_citations_(
+    out: Path = typer.Option(..., "--out", file_okay=False, help="Existing ClinVar snapshot dir."),
+    citations_txt: Optional[Path] = typer.Option(
+        None, "--citations", exists=True, dir_okay=False, help="Local var_citations.txt."
+    ),
+    download: bool = typer.Option(False, "--download", help="Fetch var_citations.txt first."),
+    url: str = typer.Option(DEFAULT_CITATIONS_URL, "--url", help="Source for --download."),
+) -> None:
+    """Add ClinVar's literature links to a snapshot: `data/citations.parquet` ([dev], needs polars).
+
+    Separate from `clinvar build` because ClinVar publishes citations separately from the VCF — which
+    is precisely why a drafted gene panel could not compile without this: `studies.csv` is mandatory
+    and the VCF carries no PMIDs. Written beside the snapshot, so an existing cache keeps its bytes.
+    """
+    if citations_txt is None and not download:
+        typer.secho("give --citations, or --download", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    path = citations_txt or download_var_citations(out / "var_citations.txt", url=url)
+    try:
+        written = build_citations(path, out)
+    except (ImportError, RuntimeError) as exc:
+        typer.secho(f"CITATIONS BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"wrote {written} PubMed citation link(s) under {out / CITATIONS_DIRNAME}",
+                fg=typer.colors.GREEN)

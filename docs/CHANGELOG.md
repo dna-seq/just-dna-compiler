@@ -59,7 +59,39 @@ panel that silently mixes a 0-star submission with a 3-star expert-panel review 
 that says which floor it drew from. `licensing.CLINVAR_TERMS` is new — public domain, and recorded
 anyway, because attribution is asked for even where permission is not required.
 
-890 passed, 6 skipped (from 870). Reference examples still compile to byte-identical digests.
+**Then the provider was dogfooded against a real panel, and it did not survive contact.** Authoring
+`reference_examples/hfe_hemochromatosis/` — scaffold → draft-panel → curate → enrich → compile —
+produced four findings, each fixed in the product rather than worked around in the example:
+
+* **An rsID can name two alleles.** ClinVar lists `rs773443949` at 6:26091590 as both `G>A` and
+  `G>T`. Both drafted to the same rsid-only row, the second was reported `already_present`, and a
+  real allele vanished. Such rsIDs now take the **coordinate** identity, and `alts` joined `match_on`
+  — without it the two coordinate rows collapsed in exactly the same way.
+* **A drafted panel could not compile at all.** `studies.csv` is mandatory and the ClinVar VCF
+  carries no PMIDs, so the provider produced a module needing evidence nothing could supply. ClinVar
+  publishes its literature links separately, so `clinvar_build` gained `download_var_citations` /
+  `build_citations` and the CLI gained `clinvar citations` (3.9M PubMed links); `clinvar.citations_for`
+  reads them and `draft-panel` now drafts `studies.csv` alongside. Capped at three per variant —
+  `rs1800562` alone carries 84 — with the dropped count always reported.
+* **The citations table broke the snapshot view**, because it landed in `data/` and
+  `clinvar._connect` globs `data/*.parquet`: a two-column file unioned with the 17-column variant
+  parquet and every query failed. It lives in a `citations/` sibling now, with the reason recorded
+  where the path is defined.
+* **A study must carry the identity its variant row got.** The study rows for the multi-allelic
+  variant were still keyed by rsID while the variant had moved to a coordinate, so they referenced
+  nothing — caught by the compiler's own orphan warning.
+
+Two smaller gaps the same run exposed: `hint variant` had no way to point at a specific snapshot
+(the shipped Ensembl cache is a popular-rsID slice and has none of these rare variants), so it gained
+`--ensembl-cache`/`--clinvar-cache`; and `ClinVarDraftResult.added` became ambiguous once two tables
+were written, so `added_for(csv_name)` answers the question callers actually have.
+
+The example itself is the argument for the design: `rs1800562` appears as `A/A` (risk) and `A/G`
+(carrier) — same variant, same ClinVar call, opposite clinical meaning, because `clin_sig` describes
+the allele and `state`/`direction` describe the finding for a genotype. A provider deriving a
+genotype from an alt would have been wrong half the time.
+
+895 passed, 6 skipped. Reference examples still compile to byte-identical digests.
 
 ## 2026-08-03 — 0.5.0: the authoring surface — options as data, stubs that cannot compile, hints that never write
 

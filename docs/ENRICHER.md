@@ -101,6 +101,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
+| `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` | `polars`, `httpx` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, citation existence. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
@@ -809,6 +810,7 @@ just-dna-enricher template repeat_alleles.csv       # header + required/one-of/n
 just-dna-enricher draft spec/ --gene CYP2C19        # CPIC → haplotypes/allele_function/diplotypes
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
 just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1 --snapshot cv/  # ClinVar gene panel
+just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 
 # Authoring — lookups. These WRITE NOTHING: every answer comes back advisory, with a reason.
 just-dna-enricher hint variant --rsid rs1801133              # validity, loci, ref/alts

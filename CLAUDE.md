@@ -490,6 +490,25 @@ cycle* in `USE_CASES.md`.
   demoted; anything that changes `artifact.digest` bytes (parquet column set/types) is major-only —
   *except* while a version is still unpublished, where the digest is not yet frozen.
 - **Round-trip must stay lossless and idempotent** (Principle 7) — prove it with tests, don't assume.
+- **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is
+  the result, not an obstacle to route around.** The moment you reach for an ad-hoc script, a raw
+  `httpx` call, or a hand-written query to get past something the product cannot do, the exercise has
+  stopped producing its signal: you have proven the task is possible with *general* tooling, which was
+  never in question, and learned nothing about the product. When the tool cannot do the step, that is
+  the finding — record it (roadmap / field notes) and, if it blocks the work, **build it into the
+  product and carry on with the product**. This happened for real: drafting an HFE panel needed
+  citations, the enricher turned out to *check* an authored PMID but have no way to *find* one, and
+  the reflex was to script PubMed esearch directly. That script would have produced a
+  reference example while hiding the actual result — grounding evidence is mandatory for a module, the
+  ClinVar snapshot carries no PMIDs, so `draft-panel` cannot produce a compilable panel on its own.
+  (The same round's *good* dogfooding went the other way: drafting a real panel exposed that one rsID
+  naming two alts collapsed to a single row and silently lost an allele, and that got fixed in
+  `clinvar_draft`.)
+- **Dogfooding is not validation.** Validation is what tests do — real fixtures, computed
+  expectations, adversarial cases. Dogfooding asks a different question: *is this usable, and what is
+  missing?* So do not "verify the tool's answers" with a second, independent implementation while
+  dogfooding; that is a test, and it belongs in the suite. Use the tool, notice the friction, and
+  write down what was not there.
 - **Dogfood a P7/dedup finding before you report it — construct a *real, sensible* example against
   the actual code paths, or it is not a finding.** A round-trip/dedup "loss" that is mechanically
   possible but has no real instantiation is noise; walk the data model with a biologist's eye before

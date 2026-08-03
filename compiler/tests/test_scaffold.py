@@ -155,3 +155,64 @@ def test_the_module_spec_template_round_trips_through_its_own_model() -> None:
     # an empty `authorship: []` would claim the module has no contributors — it is omitted instead
     assert "authorship" not in spec
     assert set(spec) <= set(ModuleSpecConfig.model_fields)
+
+
+# ── The HFE reference example (0.5.1) ───────────────────────────────────────────────────────────
+# The first module authored end-to-end with the authoring surface: scaffold → draft-panel → curate →
+# enrich → compile. It is pinned here rather than in the enricher suite because the committed
+# `resolution.csv` makes it compilable by the compiler alone.
+
+_HFE = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
+
+
+def test_the_hfe_example_compiles_and_is_a_fixed_point(tmp_path: Path) -> None:
+    assert validate_spec(_HFE).valid, validate_spec(_HFE).errors
+    first = compile_module(_HFE, tmp_path / "out1").manifest
+    reverse_module(tmp_path / "out1", tmp_path / "back")
+    second = compile_module(tmp_path / "back", tmp_path / "out2").manifest
+    assert first.artifact.digest == second.artifact.digest
+
+
+def test_no_drafted_stub_survived_into_the_example() -> None:
+    """A shipped module must not carry a placeholder — that is the point of the sentinel."""
+    for path in sorted(_HFE.glob("*.csv")) + [_HFE / MODULE_SPEC]:
+        assert TEMPLATE_PLACEHOLDER not in path.read_text(), path.name
+
+
+def test_the_c282y_pair_is_what_makes_the_genotype_a_human_decision() -> None:
+    """One allele, one ClinVar call, two genotypes, opposite meaning — the reason `draft-panel`
+    stubs `genotype` instead of deriving it from the alt."""
+    rows = [
+        row
+        for row in csv.DictReader(io.StringIO((_HFE / "variants.csv").read_text()))
+        if row["rsid"] == "rs1800562"
+    ]
+    by_genotype = {row["genotype"]: row for row in rows}
+    assert set(by_genotype) == {"A/A", "A/G"}
+    assert {row["clin_sig"] for row in rows} == {"pathogenic"}   # the allele's call is the same
+    assert by_genotype["A/A"]["state"] == "risk"                 # the finding's is not
+    assert by_genotype["A/G"]["state"] == "neutral"
+
+
+def test_a_multi_allelic_rsid_is_carried_by_coordinate_not_by_rsid() -> None:
+    """`rs773443949` is both G>A and G>T at 6:26091590; an rsid-only row could name neither, and
+    de-duplicating them lost an allele. Both survive here, identified by coordinate."""
+    rows = list(csv.DictReader(io.StringIO((_HFE / "variants.csv").read_text())))
+    site = [r for r in rows if r["chrom"] == "6" and r["start"] == "26091590"]
+    assert {r["alts"] for r in site} == {"A", "T"}
+    assert all(r["rsid"] == "" for r in site)
+
+
+def test_every_study_row_grounds_a_variant_the_module_carries() -> None:
+    """The orphan bug this example found: a study must carry the identity its variant row got."""
+    from just_dna_format.base import derive_variant_key
+
+    def key(row: dict) -> str:
+        return derive_variant_key(
+            row["rsid"] or None, row["chrom"] or None,
+            int(row["start"]) if row["start"] else None, row["ref"] or None,
+        )
+
+    variants = {key(r) for r in csv.DictReader(io.StringIO((_HFE / "variants.csv").read_text()))}
+    studies = {key(r) for r in csv.DictReader(io.StringIO((_HFE / "studies.csv").read_text()))}
+    assert studies <= variants, studies - variants
