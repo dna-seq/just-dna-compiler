@@ -210,6 +210,18 @@ would report `*4` against `e4` as used-but-undefined, a mismatch the author has 
 APOE carries no allele-function table (an ε allele has no CPIC activity value), which is honest for
 APOE and not a fix.
 
+**RM30 fixed in the same round: one rule for a haplotype name.** The asymmetry was real and
+narrow — `STAR_ALLELE_PATTERN` had exactly one schema-side use, on `AlleleFunctionRow.allele`, while
+`HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`_b` had no validator at all. So one of
+three tables imposed a star-allele convention on what the other two treated as a plain name, and the
+0.5.1 cross-table check turned the workaround into a dead end: `*4` in one table and `e4` in another
+reports "used but not defined", and no spelling satisfies both. All three now share
+`validate_haplotype_name` — non-empty, no whitespace, nothing else, because **a name is an identity,
+not a grammar**. `STAR_ALLELE_PATTERN` stays exported and `pgx_draft` still checks it at four sites,
+so the CPIC provider is exactly as strict as before; only the schema stopped enforcing one gene
+family's convention on all of them. Two tests that pinned the old behaviour were updated — they were
+pinning the defect.
+
 916 passed, 6 skipped. Reference examples still compile to byte-identical digests.
 
 ## 2026-08-03 — 0.5.0: the authoring surface — options as data, stubs that cannot compile, hints that never write

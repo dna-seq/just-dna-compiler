@@ -21,7 +21,7 @@ multiplies by *total* CN gets it wrong.
 import re
 from typing import ClassVar, Optional
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, derive_variant_key, vocabulary
 from just_dna_format.vocab import (
@@ -37,6 +37,34 @@ from just_dna_format.vocab import (
 # is truth): a leading `*` then digits/letters and the sub-allele/duplication/tandem punctuation
 # PharmVar uses (`.`, `+`, `x`/`×`), e.g. `*4`, `*4.001`, `*1x2`, `*36+*10`.
 STAR_ALLELE_PATTERN: re.Pattern[str] = re.compile(r"^\*[0-9A-Za-z][0-9A-Za-z.\-+x×*]*$")
+# A haplotype **name**. Deliberately permissive: a name is an identity, not a grammar.
+#
+# `STAR_ALLELE_PATTERN` below is the *star-allele* spelling and stays available for providers that
+# genuinely draft star alleles (`pgx_draft` checks it at four sites). It is **not** the rule for
+# naming a haplotype, and using it as one was an inconsistency rather than a policy: it was enforced
+# on `AlleleFunctionRow.allele` and on neither `HaplotypeRow.haplotype_name` nor
+# `DiplotypeRow.haplotype_a`/`haplotype_b`, so `e4` was legal in two of the three PGx tables and
+# illegal in the third. APOE is the case that exposes it — ε2/ε3/ε4 are haplotypes by every meaning
+# of the word and carry no `*` — and the 0.5.1 cross-table check made it worse: an author working
+# around it with `*4` in one table and `e4` in another gets "used but not defined", with no legal
+# spelling that satisfies both.
+#
+# The floor is only what a name cannot do without: be empty, or contain whitespace that would make
+# two spellings of one allele look distinct. Rejecting those is a tightening on the two columns that
+# had no rule at all, and a negligible one — neither could ever have named a real haplotype.
+HAPLOTYPE_NAME_PATTERN: re.Pattern[str] = re.compile(r"^\S+$")
+
+
+def validate_haplotype_name(value: str, field_name: str) -> str:
+    """One rule for a haplotype name, shared by all three PGx tables so they cannot disagree."""
+    if not HAPLOTYPE_NAME_PATTERN.match(value or ""):
+        raise ValueError(
+            f"{field_name} must be a non-empty haplotype name without whitespace (e.g. *4, e4, "
+            f"\u03b54), got: {value!r}"
+        )
+    return value
+
+
 # CPIC/PharmVar allele function categories (closed vocabulary, Principle 6).
 VALID_FUNCTION_STATUS: frozenset[str] = frozenset(
     {
@@ -82,6 +110,11 @@ class HaplotypeRow(AuthoredModel):
         validate_allele(v, "allele")  # raises on a non-nucleotide; the value is a required str
         return v
 
+    @field_validator("haplotype_name")
+    @classmethod
+    def _validate_haplotype_name(cls, v: str) -> str:
+        return validate_haplotype_name(v, "haplotype_name")
+
     @model_validator(mode="after")
     def _validate_identification(self) -> "HaplotypeRow":
         if self.rsid is None and (self.chrom is None or self.start is None):
@@ -125,9 +158,10 @@ class AlleleFunctionRow(AuthoredModel):
     @field_validator("allele")
     @classmethod
     def _validate_allele(cls, v: str) -> str:
-        if not STAR_ALLELE_PATTERN.match(v):
-            raise ValueError(f"allele must be a star-allele string like *4 or *36+*10, got: {v!r}")
-        return v
+        # A name, not a star-allele grammar — see `HAPLOTYPE_NAME_PATTERN`. This column used to be the
+        # only one of the three that demanded a leading `*`, which made APOE's ε alleles unstateable
+        # here while being perfectly legal in the other two tables.
+        return validate_haplotype_name(v, "allele")
 
     @field_validator("activity_value")
     @classmethod
@@ -183,6 +217,11 @@ class DiplotypeRow(AuthoredModel):
     @classmethod
     def _validate_recommendation_strength(cls, v: Optional[str]) -> Optional[str]:
         return check_vocab(v, VALID_RECOMMENDATION_STRENGTH, "recommendation_strength")
+
+    @field_validator("haplotype_a", "haplotype_b")
+    @classmethod
+    def _validate_haplotype_names(cls, v: str, info: ValidationInfo) -> str:
+        return validate_haplotype_name(v, info.field_name or "haplotype")
 
     @model_validator(mode="after")
     def _canonicalize_pair(self) -> "DiplotypeRow":

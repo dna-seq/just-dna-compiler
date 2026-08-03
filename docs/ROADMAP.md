@@ -210,17 +210,18 @@ cofactor-as-column with explicitly tissue-conditional bins. Recorded rather than
 column on an existing parquet moves every module's digest. | format (schema) | PGx; call-confidence
 gating | low (after the digest window decision) |
 
-**RM30 — the three PGx tables disagree about what a haplotype name is (found by the APOE probe):**
-`AlleleFunctionRow.allele` enforces `STAR_ALLELE_PATTERN` (a leading `*`), while
-`HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` accept any string. So `e4`
-is legal in two of the three tables and illegal in the third, and a non-star haplotype gene can never
-carry allele function. Worse, the 0.5.1 cross-table check would report `*4` (function) against `e4`
-(definition) as used-but-undefined — a real mismatch the author has no legal way to fix.
-`reference_examples/apoe_epsilon/` routes around it by carrying no allele-function table, which is
-honest for APOE (an ε allele has no CPIC activity value) and not a fix. Widening the pattern is
-additive and cheap; the question worth answering first is whether `allele` should be a *grammar* at
-all or simply a name, given the other two columns already treat it as one. | format (schema) |
-non-star haplotype genes (APOE, HLA) | low |
+**RM30 — ✅ fixed (0.5.1): one rule for a haplotype name across all three PGx tables.**
+`AlleleFunctionRow.allele` enforced `STAR_ALLELE_PATTERN` (a leading `*`) while
+`HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` had no rule at all, so
+`e4` was legal in two of three tables and illegal in the third — and an author working around it
+with `*4` in one and `e4` in another hit the 0.5.1 cross-table check's "used but not defined",
+with no spelling that satisfied both. Found by `reference_examples/apoe_epsilon/`. The three now
+share `validate_haplotype_name`: non-empty, no whitespace, and nothing else — **a name is an
+identity, not a grammar**. `STAR_ALLELE_PATTERN` stays exported and is still what `pgx_draft`
+checks at its four sites, so loosening the schema did not loosen CPIC drafting. Net effect is a
+loosening (previously-valid data stays valid, P3-safe) plus a negligible tightening on the two
+columns that had no floor: an empty or whitespace-split name could never have identified a real
+haplotype.
 
 **RM28 — meta-conclusions and injected cofactors (starter shape recorded, deliberately unbuilt):**
 A module is rarely one axis, and what a curator wants is to pair them — a CVD module that also says

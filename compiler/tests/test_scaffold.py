@@ -360,14 +360,14 @@ def test_the_opposing_diplotype_declares_unknown_rather_than_averaging() -> None
     assert rows[("e2", "e3")]["direction"] == "protective"
 
 
-def test_epsilon_names_are_legal_where_apoe_needs_them() -> None:
-    """The defect the probe found: `AlleleFunctionRow.allele` demands a leading `*` while the other
-    two PGx tables accept any name, so a non-star haplotype gene can never carry allele function.
-    APOE routes around it by carrying no such table — asserted so the day the rule changes is loud."""
+def test_epsilon_names_are_legal_in_every_pgx_table_now() -> None:
+    """The defect this probe found (RM30) and its fix: `AlleleFunctionRow.allele` demanded a leading
+    `*` while the other two tables accepted any name, so `e4` was legal in two of three. All three
+    now share one rule. APOE still carries no allele-function table — an ε allele has no CPIC
+    activity value — but that is now a curation choice rather than something the schema forbade."""
     from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 
     HaplotypeRow(haplotype_name="e4", rsid="rs429358", allele="C", gene="APOE")
     DiplotypeRow(gene="APOE", haplotype_a="e3", haplotype_b="e4", conclusion="c")
-    with pytest.raises(Exception, match="star-allele"):
-        AlleleFunctionRow(gene="APOE", allele="e4")
+    AlleleFunctionRow(gene="APOE", allele="e4")
     assert not (_APOE / "allele_function.csv").exists()

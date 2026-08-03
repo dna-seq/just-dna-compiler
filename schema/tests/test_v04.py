@@ -134,8 +134,13 @@ def test_allele_function_star_string_verbatim_and_conveniences() -> None:
     assert dup.allele == "*1x2"
     tandem = AlleleFunctionRow(gene="CYP2D6", allele="*36+*10", activity_value=0.25, suballele="10.001")
     assert tandem.allele == "*36+*10" and tandem.suballele == "10.001"
+    # A bare `4` is now accepted: this column names a haplotype, and demanding a leading `*` made
+    # APOE's ε alleles unstateable here while being legal in the other two PGx tables (RM30). The
+    # star spelling is still what CPIC drafting checks — the schema simply stopped enforcing one
+    # table's convention on all of them. What a *name* cannot be is empty or split by whitespace.
+    assert AlleleFunctionRow(gene="APOE", allele="e4").allele == "e4"
     with pytest.raises(ValidationError):
-        AlleleFunctionRow(gene="CYP2D6", allele="4")  # missing leading *
+        AlleleFunctionRow(gene="CYP2D6", allele="")
     with pytest.raises(ValidationError):
         AlleleFunctionRow(gene="CYP2D6", allele="*1", function_status="bogus")
 
@@ -455,3 +460,43 @@ def test_validate_bins_differentiates_by_modifier_and_trait() -> None:
         RepeatAlleleRow(gene="HTT", repeat_unit="CAG", unresolved=True,
                         trait_efo_id="MONDO_0007739", conclusion="CI")
     ]) == []
+
+
+# ── RM30: one rule for a haplotype name, across all three PGx tables (0.5.1) ─────────────────────
+
+def test_the_three_pgx_tables_agree_on_what_a_haplotype_name_is() -> None:
+    """`AlleleFunctionRow.allele` used to demand a leading `*` while the other two accepted anything,
+    so `e4` was legal in two tables and illegal in the third — and an author working around it with
+    `*4` here and `e4` there got the cross-table check's "used but not defined", with no spelling
+    that satisfied both. Asserted as a property over the three, so a future divergence fails here."""
+    from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
+
+    def accepts(name: str) -> set[str]:
+        taken = set()
+        for label, build in (
+            ("allele_function", lambda: AlleleFunctionRow(gene="APOE", allele=name)),
+            ("haplotypes", lambda: HaplotypeRow(haplotype_name=name, rsid="rs429358", allele="C")),
+            ("diplotypes", lambda: DiplotypeRow(
+                gene="APOE", haplotype_a=name, haplotype_b="e3", conclusion="c")),
+        ):
+            try:
+                build()
+                taken.add(label)
+            except Exception:
+                pass
+        return taken
+
+    every_table = {"allele_function", "haplotypes", "diplotypes"}
+    for name in ("*4", "e4", "ε4", "*36+*10", "*1x2", "A"):
+        assert accepts(name) == every_table, f"{name!r} is not spellable everywhere"
+    for name in ("", "   ", "e 4"):
+        assert accepts(name) == set(), f"{name!r} should be a name nowhere"
+
+
+def test_the_star_pattern_survives_for_providers_that_really_draft_star_alleles() -> None:
+    """Loosening the *schema* does not loosen the CPIC provider: it checks star-ness itself, so a
+    non-star string still never becomes a drafted star allele."""
+    from just_dna_format.pgx import STAR_ALLELE_PATTERN
+
+    assert STAR_ALLELE_PATTERN.match("*4") and STAR_ALLELE_PATTERN.match("*36+*10")
+    assert not STAR_ALLELE_PATTERN.match("e4")

@@ -46,15 +46,21 @@ about:
 So the feasibility signal is positive: the highest-profile meta case needs nothing new, and RM28 stays
 parked until a module appears that genuinely cannot be written.
 
-## The defect it did find
+## The defect it did find — since fixed
 
-`AlleleFunctionRow.allele` enforces `STAR_ALLELE_PATTERN` — a leading `*` — while
-`HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` accept any string. So `e4`
-is a legal haplotype name in two of the three PGx tables and illegal in the third. APOE is not
-blocked by this (it carries no allele-function table: an ε allele has no CPIC activity value, and
-inventing `*4` for it would misname the nomenclature), but a non-star haplotype gene can never carry
-allele function, and the cross-table check added in 0.5.1 would report `*4` and `e4` as a
-used-but-undefined mismatch the author has no legal way to fix. Recorded in the roadmap.
+`AlleleFunctionRow.allele` enforced `STAR_ALLELE_PATTERN` (a leading `*`) while
+`HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` had no rule at all, so
+`e4` was legal in two of the three PGx tables and illegal in the third. Worse, the cross-table check
+added in 0.5.1 turned the obvious workaround into a dead end: write `*4` in one table and `e4` in the
+other and it reports "used but not defined", with no spelling that satisfies both.
+
+All three tables now share one rule (`validate_haplotype_name`): non-empty, no whitespace, nothing
+else — a name is an identity, not a grammar. `STAR_ALLELE_PATTERN` is still what the CPIC provider
+checks, so drafting is as strict as it was.
+
+This module still carries no `allele_function.csv`, but that is now a curation choice rather than a
+prohibition: an ε allele has no CPIC activity value or function category, and inventing one to fill
+a table would be worse than leaving it out.
 
 ## Honest limits of the content
 
