@@ -5,6 +5,32 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-04 — the citations table travels with the snapshot
+
+**A downloaded ClinVar snapshot was second-class.** `citations/` was built and published nowhere, so a
+consumer who *provisioned* the snapshot had no PMIDs while one who *built* it did — and `draft-panel`
+cannot produce a compilable module without them, because `studies.csv` is mandatory ("grounding evidence
+is mandatory"). `publish_reference_snapshot` now uploads the parquet sidecars beside `data/`, and
+`ensure_*_snapshot` fetches them.
+
+The layout moved into `locations` — `SNAPSHOT_DATA_DIRNAME`, `SNAPSHOT_SIDECAR_DIRNAMES`,
+`CITATIONS_DIRNAME`, `RELEASE_FILENAME` — because **four** parties have to agree on those names (builder,
+publisher, provisioner, reader) and every disagreement so far has been silent: `release.json` uploaded and
+never fetched, `citations/` built and never published, and `CITATIONS_DIRNAME` declared twice. A sidecar
+stays a **sibling** of `data/`: the readers glob `data/*.parquet`, so a two-column citations table inside
+it is the same poisoning a stale single-file `clinvar.parquet` causes. Absence stays normal at both ends —
+only ClinVar has a sidecar, and only after `clinvar citations`.
+
+**And publishing it made the snapshot's provenance a real question.** ClinVar publishes
+`var_citations.txt` on its own cadence, so an artifact can carry records from one release and citations
+from another; shipping both while `release.json` documented only the VCF would be mixed-vintage and silent
+about it — the same confusion `dataset` is inside the fact set to prevent for the two gene-constraint
+routes. `build_citations` now merges a `citations` block (source URL, sha256, row count, built_at) into
+`release.json`, read-modify-write so the records' provenance survives; it hashes the input itself when the
+caller has no digest, because recording "unknown" with the bytes on disk is an unknown we chose not to
+establish; and an unreadable `release.json` is reported and left alone rather than overwritten — the
+citations table is still written, since a provenance failure is not a data failure.
+
 ## 2026-08-04 — the published snapshots are wired in, and a published dataset accumulates
 
 The ClinVar and gnomAD-constraint snapshots are published as HF datasets, so the enricher now *uses*

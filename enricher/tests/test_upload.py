@@ -111,6 +111,28 @@ def test_plan_reference_snapshot_lists_files(tmp_path: Path) -> None:
     assert plan.files == ["data/clinvar-chr1.parquet", "release.json"]
 
 
+def test_plan_reference_snapshot_carries_the_citations_sidecar(tmp_path: Path) -> None:
+    """ClinVar's `citations/` was built and never published, so a consumer who downloaded the snapshot
+    got no PMIDs — and a drafted gene panel cannot compile without them (`studies.csv` is mandatory).
+
+    It rides in its own directory, never in `data/`: the readers glob `data/*.parquet`, so a two-column
+    citations table there breaks every query.
+    """
+    snap = _snapshot(tmp_path / "snap")
+    (snap / "citations").mkdir()
+    (snap / "citations" / "citations.parquet").write_bytes(b"PAR1payloadPAR1")
+    plan = plan_reference_snapshot(snap)
+    assert plan.files == [
+        "data/clinvar-chr1.parquet", "citations/citations.parquet", "release.json",
+    ]
+
+
+def test_a_snapshot_without_citations_publishes_as_before(tmp_path: Path) -> None:
+    """Only ClinVar has a sidecar, and only after `clinvar citations` — absence is normal."""
+    plan = plan_reference_snapshot(_snapshot(tmp_path / "plain"))
+    assert plan.files == ["data/clinvar-chr1.parquet", "release.json"]
+
+
 def test_plan_reference_snapshot_rejects_empty(tmp_path: Path) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -135,7 +157,7 @@ def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) ->
     assert kwargs["path_in_repo"] == ""
     assert kwargs["repo_id"] == "just-dna-seq/clinvar"
     assert kwargs["repo_type"] == "dataset"
-    assert kwargs["allow_patterns"] == ["data/*.parquet", "release.json"]
+    assert kwargs["allow_patterns"] == ["data/*.parquet", "citations/*.parquet", "release.json"]
     assert plan.repo_id == "just-dna-seq/clinvar"
 
 

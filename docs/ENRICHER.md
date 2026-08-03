@@ -102,7 +102,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
-| `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` | `polars`, `httpx` |
+| `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, citation existence. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
@@ -460,10 +460,22 @@ publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_messag
 
 `upload_module` uploads `weights/annotations/studies.parquet` (required) + `manifest.json` + optional
 logo to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
-just-dna-lite's discovery layout. `publish_reference_snapshot` uploads a built `data/*.parquet` +
-`release.json` to the **root** of a dataset repo (default `just-dna-seq/clinvar`), matching the
-`download.ensure_*_snapshot` layout. Both go through `ensure_repo` — one create-or-update-then-upload
-pathway (`create_repo` was added here; the origin `v1_port.publish` assumed the repo pre-existed).
+just-dna-lite's discovery layout. `publish_reference_snapshot` uploads a built `data/*.parquet` + its
+parquet **sidecars** + `release.json` to the **root** of a dataset repo (default `just-dna-seq/clinvar`),
+matching the `download.ensure_*_snapshot` layout. Both go through `ensure_repo` — one
+create-or-update-then-upload pathway (`create_repo` was added here; the origin `v1_port.publish` assumed
+the repo pre-existed).
+
+> **The sidecar was the gap, and it made downloaded snapshots second-class.** ClinVar's `citations/` was
+> built and published nowhere, so a consumer who *provisioned* the snapshot had no PMIDs while one who
+> *built* it did — and `draft-panel` cannot produce a compilable module without them, because
+> `studies.csv` is mandatory. The layout lives once in `locations`
+> (`SNAPSHOT_DATA_DIRNAME` / `SNAPSHOT_SIDECAR_DIRNAMES` / `CITATIONS_DIRNAME` / `RELEASE_FILENAME`)
+> because four parties have to agree on those names — builder, publisher, provisioner, reader — and every
+> disagreement so far has been silent. A sidecar stays a **sibling** of `data/`: the readers glob
+> `data/*.parquet`, so a two-column citations table inside it is the same poisoning a stale
+> single-file `clinvar.parquet` causes. Absence is normal (only ClinVar has one, only after
+> `clinvar citations`), so neither end treats it as an error.
 Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`;
 `huggingface_hub` is a guarded lazy import.
 
@@ -1011,6 +1023,7 @@ just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --population NVI
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
 just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1 --snapshot cv/  # ClinVar gene panel
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
+just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
 
 # Authoring — lookups. These WRITE NOTHING: every answer comes back advisory, with a reason.
 just-dna-enricher hint variant --rsid rs1801133              # validity, loci, ref/alts

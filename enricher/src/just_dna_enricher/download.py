@@ -20,6 +20,7 @@ from typing import Optional
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
+    SNAPSHOT_SIDECAR_DIRNAMES,
     default_clinvar_cache_dir,
     default_constraint_cache_dir,
     default_ensembl_cache_dir,
@@ -151,14 +152,47 @@ def _provision_snapshot(
             raise error_cls(f"Downloaded {filename} is incomplete (missing parquet footer magic)")
         tmp_path.replace(local_path)
 
+    repo_root = hf_repo_prefix.rsplit("/", 1)[0]
+
+    # The optional parquet **sidecars** beside `data/` — ClinVar's `citations/` today. Fetched here so a
+    # provisioned snapshot is the same artifact a built one is: without the citations table a consumer has
+    # no PMIDs, and `draft-panel` cannot produce a compilable module because `studies.csv` is mandatory.
+    # They go in their own directory, never into `data/`, which is the whole reason the layout has a
+    # sibling: the readers glob `data/*.parquet` and a two-column table there breaks every query.
+    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+        try:
+            remote_sidecar = [
+                f for f in fs.ls(f"{repo_root}/{sidecar}", detail=False) if f.endswith(".parquet")
+            ]
+        except Exception as exc:
+            logger.debug("No %s/ in the %s repo (%s).", sidecar, label, type(exc).__name__)
+            continue
+        target_dir = cache_dir / sidecar
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for remote_path in remote_sidecar:
+            filename = remote_path.rsplit("/", 1)[-1]
+            local_path = target_dir / filename
+            if _parquet_footer_ok(local_path):
+                continue
+            tmp_path = local_path.with_suffix(".part")
+            logger.info("  Downloading %s/%s ...", sidecar, filename)
+            fs.get(remote_path, str(tmp_path))
+            if not _parquet_footer_ok(tmp_path):
+                tmp_path.unlink(missing_ok=True)
+                raise error_cls(
+                    f"Downloaded {sidecar}/{filename} is incomplete (missing parquet footer magic)"
+                )
+            tmp_path.replace(local_path)
+
     # `release.json` too, when the repo has one: the publisher uploads it and this only ever fetched
     # parquet, so a *provisioned* snapshot could not say which release it was while a *built* one could.
     # That is the difference between a cache and a pinnable reference — `source_sha256` is what
     # `GenePanelSpec.reference_sha256` pins against (RM4), and it cannot pin a file that was never
-    # fetched. Absence is not an error: a repo published before the builder wrote one is still usable.
-    release_remote = f"{hf_repo_prefix.rsplit('/', 1)[0]}/{RELEASE_FILENAME}"
+    # fetched. It also describes the sidecars (the citations builder merges its own block in), which is
+    # what keeps a two-release artifact from being silent about it. Absence is not an error: a repo
+    # published before the builder wrote one is still usable.
     try:
-        fs.get(release_remote, str(cache_dir / RELEASE_FILENAME))
+        fs.get(f"{repo_root}/{RELEASE_FILENAME}", str(cache_dir / RELEASE_FILENAME))
     except Exception as exc:
         logger.info("No %s in the %s repo (%s); the cache carries data only.",
                     RELEASE_FILENAME, label, type(exc).__name__)

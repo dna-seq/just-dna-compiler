@@ -455,6 +455,21 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `download._{ENSEMBL,CLINVAR,CONSTRAINT}_FILES` is the glob each `ensure_*` filters on; don't widen one
   to `*.parquet`. The same failure arrives locally from an **old builder** — if a cache errors with
   "present but not queryable", check `data/` for a file the current builder would not write, and rebuild.
+- **The snapshot layout lives in `locations`, because FOUR parties must agree on it.** Builder writes,
+  publisher uploads, provisioner fetches, reader queries — `SNAPSHOT_DATA_DIRNAME`,
+  `SNAPSHOT_SIDECAR_DIRNAMES`, `CITATIONS_DIRNAME`, `RELEASE_FILENAME`. Every disagreement so far was
+  silent: `release.json` was uploaded and never fetched, `citations/` was built and never published (so a
+  *downloaded* snapshot had no PMIDs and `draft-panel` could not produce a compilable module for its
+  users), and `CITATIONS_DIRNAME` was declared twice. A sidecar is a **sibling** of `data/`, never inside
+  it — the readers glob `data/*.parquet`. Absence is normal at both ends: only ClinVar has a sidecar, and
+  only after `clinvar citations`.
+- **Publishing a second artifact makes provenance a question — answer it in `release.json`.** ClinVar
+  publishes `var_citations.txt` on its own cadence, so a snapshot can carry records and citations from
+  different releases; `build_citations` merges its own block (read-modify-write, so the VCF's keys
+  survive) and hashes the input when no caller supplied a digest. Recording `null` with the bytes on disk
+  is an unknown you chose not to establish, and `source_sha256` is what RM4's `reference_sha256` pins
+  against. An unreadable `release.json` is reported and left alone — a provenance failure is not a data
+  failure, so the table is still written.
 - **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.**
   `ensure_constraint_snapshot` shipped with the ClinVar generalization and had no caller for a whole
   release, so `gene-metrics` on a plain install skipped the v4.1 snapshot entirely and recorded the live

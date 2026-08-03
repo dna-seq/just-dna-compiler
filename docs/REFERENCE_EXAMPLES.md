@@ -301,7 +301,9 @@ here: an rsID can name two alleles (`rs773443949` is both `G>A` and `G>T`, so th
 by full coordinate instead), and a study row must carry the identity its variant row got, or the
 compiler's orphan check fires. Grounding evidence comes from ClinVar's own literature links, ingested
 with `just-dna-enricher clinvar citations` — without it a drafted panel could not compile at all,
-since `studies.csv` is mandatory and the VCF carries no PMIDs.
+since `studies.csv` is mandatory and the VCF carries no PMIDs. That table now **travels with the
+published snapshot**, so a provisioned cache can ground a panel too; before, only someone who built the
+snapshot themselves could, which made a downloaded one quietly unable to do this.
 
 ## 2b. APOE ε2/ε3/ε4 — compiled, and the meta-conclusion feasibility probe
 

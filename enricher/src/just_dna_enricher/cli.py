@@ -41,11 +41,11 @@ from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.clinpgx_draft import draft_pharm_variants
 from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
 from just_dna_enricher.clinvar_build import (
-    CITATIONS_DIRNAME,
     DEFAULT_CITATIONS_URL,
     build_citations,
     download_var_citations,
 )
+from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
@@ -1143,11 +1143,27 @@ def clinvar_citations_(
     if citations_txt is None and not download:
         typer.secho("give --citations, or --download", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    path = citations_txt or download_var_citations(out / "var_citations.txt", url=url)
+    source_sha: Optional[str] = None
+    if citations_txt is None:
+        path, source_sha = download_var_citations(out / "var_citations.txt", url=url)
+    else:
+        path = citations_txt
     try:
-        written = build_citations(path, out)
+        result = build_citations(path, out, source_url=url, source_sha256=source_sha)
     except (ImportError, RuntimeError) as exc:
         typer.secho(f"CITATIONS BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"wrote {written} PubMed citation link(s) under {out / CITATIONS_DIRNAME}",
-                fg=typer.colors.GREEN)
+    typer.secho(
+        f"wrote {result.row_count} PubMed citation link(s) under {out / CITATIONS_DIRNAME}",
+        fg=typer.colors.GREEN,
+    )
+    if result.release_updated:
+        # ClinVar publishes citations on its own cadence, so a snapshot can carry two releases — the
+        # block says which, and `clinvar publish` now ships the table with the data.
+        typer.echo(f"  recorded the citations provenance in {out / RELEASE_FILENAME}")
+    else:
+        typer.secho(
+            f"  could not record the citations provenance in {out / RELEASE_FILENAME} — the snapshot "
+            f"will not say which citations release it carries",
+            fg=typer.colors.YELLOW, err=True,
+        )

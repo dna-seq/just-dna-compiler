@@ -25,11 +25,34 @@ from platformdirs import user_cache_dir
 
 APPNAME: str = "just-dna-pipelines"
 
-#: The provenance file beside a snapshot's `data/` directory. Each builder writes it and names it
-#: inline, which is fine — but the *publisher* and the *provisioner* have to agree on the name for the
-#: file to survive a round trip through HuggingFace, and they did not: `upload` uploaded it and
-#: `download` never fetched it, so a provisioned snapshot could not say which release it was. Both
-#: import it from here now, so a rename cannot break the transfer silently.
+# ── the snapshot layout ─────────────────────────────────────────────────────────────────────────
+#
+# A reference snapshot is `data/*.parquet` + optional parquet **sidecars** beside it + `release.json`.
+# Four parties have to agree on those names — the builder writes them, the publisher uploads them, the
+# provisioner fetches them, the reader queries them — and every disagreement so far has been silent:
+# `release.json` was uploaded and never fetched (so a provisioned snapshot could not say which release
+# it was), and `citations/` was built and never published (so anyone who downloaded rather than built
+# had no PMIDs, and a drafted gene panel could not compile for them — `studies.csv` is mandatory).
+# One definition, imported by all four.
+
+#: The records: what the readers glob.
+SNAPSHOT_DATA_DIRNAME = "data"
+
+#: ClinVar's literature links. A **sibling of** `data/`, never inside it: the readers build their view
+#: from `data/*.parquet`, so a two-column citations file dropped in there unions with the 17-column
+#: variant parquet and every query breaks. (Learned the direct way — and again, from the other end, when
+#: a stale single-file `clinvar.parquet` in a published repo did the same thing.)
+CITATIONS_DIRNAME = "citations"
+
+#: Optional parquet sidecars a snapshot may carry. Shared by the publisher (which takes a directory and
+#: cannot know which snapshot kind it is) and the provisioner, so a sidecar cannot be publishable but
+#: unfetchable. Absent is normal: only ClinVar has one, and only when `clinvar citations` was run.
+SNAPSHOT_SIDECAR_DIRNAMES: tuple[str, ...] = (CITATIONS_DIRNAME,)
+
+#: The provenance beside the data. It describes **every** part of the snapshot, which is why the
+#: citations builder merges its own block in rather than leaving a mixed-vintage artifact whose
+#: `release.json` documents half of it: ClinVar publishes `var_citations.txt` on its own cadence, so the
+#: records and the citations in one snapshot need not come from the same release.
 RELEASE_FILENAME = "release.json"
 ENSEMBL_SUBDIR: str = "ensembl_variations"
 DUCKDB_NAME: str = "ensembl_variations.duckdb"

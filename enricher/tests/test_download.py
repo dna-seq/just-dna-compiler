@@ -17,6 +17,7 @@ import duckdb
 import pytest
 
 from just_dna_enricher import download as dl
+from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
 
 
 def _write_parquet(path: Path, column: str) -> None:
@@ -31,33 +32,38 @@ def _write_parquet(path: Path, column: str) -> None:
 
 
 class _FakeFS:
-    """Minimal `HfFileSystem`: lists a fixed set of remote names and 'downloads' real parquet.
+    """Minimal `HfFileSystem` over a repo *tree*: `{dirname: {filename: column}}`.
 
-    `ls` lists the `data/` prefix only, and asking for a file the repo does not have **raises** — both
-    of which mirror the real thing, and the second is what makes the optional `release.json` fetch
-    testable at all (an older repo simply has none).
+    Modelling directories rather than one flat listing is what lets the sidecar (`citations/`) be tested
+    at all — and listing or fetching a path the repo does not have **raises**, as the real one does,
+    which is what makes "an older repo has no `citations/` and no `release.json`" a real case here.
     """
 
-    def __init__(self, remote: dict[str, str], release: Optional[str] = None) -> None:
-        self.remote = remote                 # filename -> column name (its schema)
+    def __init__(self, tree: dict[str, dict[str, str]], release: Optional[str] = None) -> None:
+        self.tree = tree                     # dirname -> {filename: column name (its schema)}
         self.release = release               # the repo-root release.json body, or None
         self.fetched: list[str] = []
 
     def ls(self, prefix: str, detail: bool = True):
-        return [f"{prefix}/{name}" for name in self.remote]
+        dirname = prefix.rstrip("/").rsplit("/", 1)[-1]
+        if dirname not in self.tree:
+            raise FileNotFoundError(prefix)
+        return [f"{prefix}/{name}" for name in self.tree[dirname]]
 
     def get(self, remote_path: str, local_path: str) -> None:
-        name = remote_path.rsplit("/", 1)[-1]
-        if name == "release.json":
+        parts = remote_path.rstrip("/").split("/")
+        name = parts[-1]
+        if name == RELEASE_FILENAME:
             if self.release is None:
                 raise FileNotFoundError(remote_path)
             self.fetched.append(name)
             Path(local_path).write_text(self.release, encoding="utf-8")
             return
-        if name not in self.remote:
+        dirname = parts[-2]
+        if name not in self.tree.get(dirname, {}):
             raise FileNotFoundError(remote_path)
-        self.fetched.append(name)
-        _write_parquet(Path(local_path), self.remote[name])
+        self.fetched.append(f"{dirname}/{name}")
+        _write_parquet(Path(local_path), self.tree[dirname][name])
 
 
 @pytest.fixture
@@ -67,8 +73,15 @@ def fake_hub(monkeypatch, tmp_path: Path):
 
     holder: dict[str, _FakeFS] = {}
 
-    def factory(remote: dict[str, str], release: Optional[str] = None) -> _FakeFS:
-        fs = _FakeFS(remote, release)
+    def factory(
+        data: dict[str, str],
+        release: Optional[str] = None,
+        citations: Optional[dict[str, str]] = None,
+    ) -> _FakeFS:
+        tree = {"data": data}
+        if citations is not None:
+            tree[CITATIONS_DIRNAME] = citations
+        fs = _FakeFS(tree, release)
         holder["fs"] = fs
         monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: fs)
         monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
@@ -96,7 +109,7 @@ def test_a_stale_remote_file_is_not_downloaded(fake_hub, tmp_path: Path) -> None
     dl.ensure_clinvar_snapshot(cache)
 
     assert sorted(f for f in fs.fetched if f.endswith(".parquet")) == [
-        "clinvar-chr1.parquet", "clinvar-chr2.parquet",
+        "data/clinvar-chr1.parquet", "data/clinvar-chr2.parquet",
     ]
     assert not (cache / "data" / "clinvar.parquet").exists()
     # …and the cache is queryable as one relation, which is the property that actually matters.
@@ -145,7 +158,7 @@ def test_each_snapshot_asks_for_its_own_files(fake_hub, tmp_path: Path) -> None:
     ):
         fs = fake_hub(remote)
         ensure(tmp_path / expected)          # a distinct cache dir per snapshot
-        assert [f for f in fs.fetched if f.endswith(".parquet")] == [expected]
+        assert [f for f in fs.fetched if f.endswith(".parquet")] == [f"data/{expected}"]
 
 
 # ── the cache side ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +195,7 @@ def test_a_truncated_file_is_removed_and_refetched(fake_hub, tmp_path: Path) -> 
     (cache / "data").mkdir(parents=True)
     (cache / "data" / "clinvar-chr1.parquet").write_bytes(b"PAR1truncated")
     dl.ensure_clinvar_snapshot(cache)
-    assert [f for f in fs.fetched if f.endswith(".parquet")] == ["clinvar-chr1.parquet"]
+    assert [f for f in fs.fetched if f.endswith(".parquet")] == ["data/clinvar-chr1.parquet"]
     assert dl._parquet_footer_ok(cache / "data" / "clinvar-chr1.parquet")
 
 
@@ -210,3 +223,55 @@ def test_a_repo_without_release_json_still_provisions(fake_hub, tmp_path: Path) 
     dl.ensure_clinvar_snapshot(cache)
     assert (cache / "data" / "clinvar-chr1.parquet").is_file()
     assert not (cache / "release.json").exists()
+
+
+# ── the sidecar: ClinVar's citations table ──────────────────────────────────────────────────────
+
+
+def test_citations_are_provisioned_into_their_own_directory(fake_hub, tmp_path: Path) -> None:
+    """The gap this closes: `citations/` was built and published-nowhere, so anyone who *downloaded* the
+    snapshot had no PMIDs — and `draft-panel` cannot produce a compilable module without them, because
+    `studies.csv` is mandatory.
+
+    It must land in `citations/`, never in `data/`: the readers glob `data/*.parquet`, so a two-column
+    citations table there is the same poisoning that the stale `clinvar.parquet` causes.
+    """
+    fs = fake_hub(
+        {"clinvar-chr1.parquet": "clin_sig"},
+        citations={"citations.parquet": "variation_id"},
+    )
+    cache = tmp_path / "cv"
+    dl.ensure_clinvar_snapshot(cache)
+
+    assert "citations/citations.parquet" in fs.fetched
+    assert (cache / CITATIONS_DIRNAME / "citations.parquet").is_file()
+    assert not (cache / "data" / "citations.parquet").exists()
+    # The records view still binds — one schema under the glob, which is the invariant at stake.
+    con = duckdb.connect(":memory:")
+    try:
+        assert con.sql(f"SELECT * FROM read_parquet('{cache}/data/*.parquet')").columns == ["clin_sig"]
+    finally:
+        con.close()
+
+
+def test_a_repo_without_citations_still_provisions(fake_hub, tmp_path: Path) -> None:
+    """Ensembl and constraint have no sidecar, and a ClinVar snapshot built without running
+    `clinvar citations` has none either. Absence is normal, not an error — `citations_for` already
+    reads it as "no citations available" rather than "no literature exists"."""
+    fake_hub({"clinvar-chr1.parquet": "clin_sig"})          # no citations dir
+    cache = tmp_path / "cv"
+    dl.ensure_clinvar_snapshot(cache)
+    assert (cache / "data" / "clinvar-chr1.parquet").is_file()
+    assert not (cache / CITATIONS_DIRNAME).exists()
+
+
+def test_a_present_citations_file_is_not_refetched(fake_hub, tmp_path: Path) -> None:
+    """Same footer-checked skip the data files get: re-provisioning costs nothing."""
+    fs = fake_hub(
+        {"clinvar-chr1.parquet": "clin_sig"},
+        citations={"citations.parquet": "variation_id"},
+    )
+    cache = tmp_path / "cv"
+    _write_parquet(cache / CITATIONS_DIRNAME / "citations.parquet", "variation_id")
+    dl.ensure_clinvar_snapshot(cache)                        # data/ is empty, so it does provision
+    assert "citations/citations.parquet" not in fs.fetched

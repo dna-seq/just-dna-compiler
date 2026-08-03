@@ -23,14 +23,25 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from just_dna_enricher.locations import RELEASE_FILENAME
+from just_dna_enricher.locations import (
+    RELEASE_FILENAME,
+    SNAPSHOT_DATA_DIRNAME,
+    SNAPSHOT_SIDECAR_DIRNAMES,
+)
 
 # weights/annotations/studies are what discovery needs; manifest.json + logo are additive.
 _REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
 _ALLOW_PATTERNS = [*_REQUIRED, "manifest.json", "logo.png", "logo.jpg"]
-# A reference snapshot is `data/*.parquet` + `release.json` (the ensure_*_snapshot layout). The
-# filename comes from `download` so the publisher and the provisioner cannot disagree about it.
-_SNAPSHOT_ALLOW_PATTERNS = ["data/*.parquet", RELEASE_FILENAME]
+# A reference snapshot is `data/*.parquet` + its optional parquet sidecars + `release.json` — the
+# `ensure_*_snapshot` layout, defined once in `locations` so the publisher and the provisioner cannot
+# disagree about it. **The sidecars were the gap this closes:** ClinVar's `citations/` was built and
+# never published, so anyone who *downloaded* the snapshot instead of building it had no PMIDs — and a
+# drafted gene panel cannot compile without them, because `studies.csv` is mandatory.
+_SNAPSHOT_ALLOW_PATTERNS = [
+    f"{SNAPSHOT_DATA_DIRNAME}/*.parquet",
+    *(f"{name}/*.parquet" for name in SNAPSHOT_SIDECAR_DIRNAMES),
+    RELEASE_FILENAME,
+]
 
 DEFAULT_REPO_ID = "just-dna-seq/annotators"
 DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
@@ -138,14 +149,20 @@ class SnapshotPlan(BaseModel):
 def plan_reference_snapshot(snapshot_dir: Path, repo_id: Optional[str] = None) -> SnapshotPlan:
     """Resolve a snapshot publish plan and validate the built artifacts are present."""
     resolved_repo = repo_id or DEFAULT_CLINVAR_REPO_ID
-    data_dir = snapshot_dir / "data"
+    data_dir = snapshot_dir / SNAPSHOT_DATA_DIRNAME
     parquet = sorted(p.name for p in data_dir.glob("*.parquet")) if data_dir.is_dir() else []
     if not parquet:
         raise FileNotFoundError(
-            f"no data/*.parquet in {snapshot_dir} — build the snapshot first "
+            f"no {SNAPSHOT_DATA_DIRNAME}/*.parquet in {snapshot_dir} — build the snapshot first "
             f"(e.g. `just-dna-enricher clinvar build`)"
         )
-    files = [f"data/{name}" for name in parquet]
+    files = [f"{SNAPSHOT_DATA_DIRNAME}/{name}" for name in parquet]
+    # Sidecars, when the snapshot has them. Only ClinVar does, and only when `clinvar citations` was
+    # run, so absence is normal rather than a reason to refuse.
+    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+        directory = snapshot_dir / sidecar
+        if directory.is_dir():
+            files.extend(f"{sidecar}/{p.name}" for p in sorted(directory.glob("*.parquet")))
     if (snapshot_dir / RELEASE_FILENAME).is_file():
         files.append(RELEASE_FILENAME)
     return SnapshotPlan(repo_id=resolved_repo, files=files)
@@ -159,7 +176,9 @@ def publish_reference_snapshot(
 ) -> SnapshotPlan:
     """Create-or-update a dataset repo and upload a built reference snapshot to its root.
 
-    Uploads ``data/*.parquet`` + ``release.json`` so the tree matches ``download.ensure_*_snapshot``.
+    Uploads ``data/*.parquet`` + any parquet sidecars (ClinVar's ``citations/``) + ``release.json``, so
+    the tree matches ``download.ensure_*_snapshot`` and a provisioned snapshot is the same artifact a
+    built one is — PMIDs included, which is what a drafted gene panel needs to compile.
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
     """
     plan = plan_reference_snapshot(snapshot_dir, repo_id)

@@ -24,6 +24,7 @@ from typing import Optional
 
 import duckdb
 
+from just_dna_enricher.locations import CITATIONS_DIRNAME
 from just_dna_enricher.resolver import _lookup_rsid_candidates
 
 logger = logging.getLogger(__name__)
@@ -208,9 +209,10 @@ def select_by_gene(
         con.close()
 
 
-#: Sibling of `data/`, never inside it — `_connect` globs `data/*.parquet` and a two-column citations
-#: file dropped in there unions with the variant parquet and breaks every query.
-CITATIONS_DIRNAME = "citations"
+# `CITATIONS_DIRNAME` comes from `locations`, where the snapshot layout lives so the builder, publisher,
+# provisioner and reader cannot disagree about it. It is a sibling of `data/`, never inside it — `_connect`
+# globs `data/*.parquet`, so a two-column citations file dropped in there unions with the variant parquet
+# and breaks every query. Re-exported here because callers of this reader import it from here.
 
 
 def citations_for(reference: Path, variation_ids: list[str]) -> dict[str, list[str]]:

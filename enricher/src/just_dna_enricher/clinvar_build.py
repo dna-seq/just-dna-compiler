@@ -17,9 +17,11 @@ record (this is a resolution reference, not a pathogenic gene panel).
 
 import gzip
 import hashlib
+import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Iterator, Optional
@@ -27,6 +29,8 @@ from typing import Iterator, Optional
 import httpx
 
 from just_dna_format.vocab import VALID_CLIN_SIG
+
+from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -288,12 +292,18 @@ def download_clinvar_vcf(dest: Path, url: str = DEFAULT_CLINVAR_URL) -> Path:
     return dest
 
 
-def download_var_citations(dest: Path, url: str = DEFAULT_CITATIONS_URL) -> Path:
+def download_var_citations(
+    dest: Path, url: str = DEFAULT_CITATIONS_URL
+) -> tuple[Path, str]:
     """Stream ClinVar's `var_citations.txt` to `dest`, the same way the VCF is fetched.
 
     A *separate* download because ClinVar publishes it separately — the VCF carries no PMIDs. That
     absence is why a drafted gene panel could not compile: `studies.csv` is mandatory ("grounding
     evidence is mandatory") and the provider had nothing to ground rows with.
+
+    Returns `(path, sha256)`. The hash was already being computed and then only logged; now that the
+    citations table is *published* with the snapshot, its provenance has to be recordable — otherwise
+    the artifact carries two ClinVar releases and `release.json` describes one of them.
     """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -307,17 +317,27 @@ def download_var_citations(dest: Path, url: str = DEFAULT_CITATIONS_URL) -> Path
                 fh.write(chunk)
                 hasher.update(chunk)
     tmp.replace(dest)
-    logger.info("Downloaded %s (sha256 %s)", dest, hasher.hexdigest())
-    return dest
+    digest = hasher.hexdigest()
+    logger.info("Downloaded %s (sha256 %s)", dest, digest)
+    return dest, digest
 
 
-#: Where the citations table lives. A **sibling of** `data/`, never inside it: `clinvar._connect`
-#: builds its view from `data/*.parquet`, so a two-column citations file dropped in there unions with
-#: the 17-column variant parquet and every query breaks. (Learned the direct way.)
-CITATIONS_DIRNAME = "citations"
+@dataclass(frozen=True)
+class CitationsResult:
+    """What a citations build produced, and whether the snapshot now says so."""
+
+    row_count: int
+    source_sha256: Optional[str] = None
+    release_updated: bool = False
 
 
-def build_citations(citations_txt: Path, out_dir: Path) -> int:
+def build_citations(
+    citations_txt: Path,
+    out_dir: Path,
+    *,
+    source_url: str = DEFAULT_CITATIONS_URL,
+    source_sha256: Optional[str] = None,
+) -> CitationsResult:
     """`var_citations.txt` → `out_dir/citations/citations.parquet`, PubMed rows only.
 
     Written **beside** an existing snapshot rather than into it: the per-chromosome parquet keeps its
@@ -326,6 +346,13 @@ def build_citations(citations_txt: Path, out_dir: Path) -> int:
     the schema cannot express would be a row nobody can check.
 
     Sorted by `(variation_id, pmid)` so a rebuild is byte-identical (Principle 7).
+
+    **The provenance is merged into `release.json`, and that matters now that this table is published
+    with the snapshot.** ClinVar publishes `var_citations.txt` on its own cadence, so the records and
+    the citations in one snapshot need not come from the same release — an artifact that ships both while
+    documenting only the VCF is mixed-vintage and silent about it. The block is merged, never
+    overwritten, so the VCF's own provenance survives; a snapshot from a builder that wrote no
+    `release.json` gets one with just this block, because partial provenance beats none.
     """
     if pl is None:  # pragma: no cover - exercised only where the [dev] extra is absent
         raise ImportError(
@@ -358,7 +385,62 @@ def build_citations(citations_txt: Path, out_dir: Path) -> int:
     target.mkdir(parents=True, exist_ok=True)
     kept.write_parquet(target / "citations.parquet")
     logger.info("Wrote %s PubMed citation link(s)", kept.height)
-    return kept.height
+    # Hash the input when the caller did not already have it (the downloader computes it in-stream, so
+    # it passes one in and this re-read is skipped). Recording `null` while the bytes sit on disk would
+    # be an unknown we chose not to establish — and `source_sha256` is what RM4's `reference_sha256`
+    # pins against, so an unhashed citations table is not pinnable.
+    digest = source_sha256 or _sha256_file(Path(citations_txt))
+    updated = _merge_release_block(
+        Path(out_dir),
+        "citations",
+        {
+            "source_url": source_url,
+            "source_sha256": digest,
+            "row_count": kept.height,
+            "built_at": datetime.now(timezone.utc).isoformat(),
+            "builder_version": _builder_version(),
+        },
+    )
+    return CitationsResult(row_count=kept.height, source_sha256=digest, release_updated=updated)
+
+
+def _sha256_file(path: Path) -> Optional[str]:
+    """sha256 of a file, or `None` if it cannot be read (provenance is best-effort, never fatal)."""
+    hasher = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                hasher.update(chunk)
+    except OSError as exc:
+        logger.warning("Could not hash %s (%s); recording an unknown source_sha256.", path, exc)
+        return None
+    return hasher.hexdigest()
+
+
+def _merge_release_block(out_dir: Path, name: str, block: dict) -> bool:
+    """Merge one provenance block into `release.json`, preserving whatever else is in it.
+
+    Read-modify-write rather than rewrite: `build_snapshot` owns the VCF's keys and this owns its own,
+    and a citations build must never erase the records' provenance. An unparseable existing file is left
+    alone and reported — overwriting it would destroy the only statement of where the data came from.
+    """
+    path = out_dir / RELEASE_FILENAME
+    release: dict = {}
+    if path.is_file():
+        try:
+            release = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            logger.warning(
+                "%s is present but unreadable (%s); leaving it alone rather than overwriting the "
+                "snapshot's provenance. The %s block was not recorded.", path, exc, name,
+            )
+            return False
+        if not isinstance(release, dict):
+            logger.warning("%s is not a JSON object; not recording the %s block.", path, name)
+            return False
+    release[name] = block
+    path.write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return True
 
 
 def build_snapshot(
@@ -484,9 +566,6 @@ def _write_release_json(
 ) -> Path:
     """Write ``release.json`` — the provenance that feeds `GenePanelSpec.reference`/`reference_sha256`
     (RM4). `built_at` is deliberately outside the parquet so the parquet stays byte-reproducible."""
-    from datetime import datetime, timezone
-    import json
-
     release = {
         "clinvar_file_date": clinvar_file_date,
         "source_url": source_url,
@@ -495,6 +574,6 @@ def _write_release_json(
         "built_at": datetime.now(timezone.utc).isoformat(),
         "builder_version": _builder_version(),
     }
-    path = out_dir / "release.json"
+    path = out_dir / RELEASE_FILENAME
     path.write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path

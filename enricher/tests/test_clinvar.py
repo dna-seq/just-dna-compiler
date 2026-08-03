@@ -347,3 +347,98 @@ def test_build_real_vcf(tmp_path: Path) -> None:
     reference = resolve_clinvar_reference(tmp_path / "cv")
     rsid_to_loci, _pos, _warn = clinvar.lookup_loci(reference, ["rs334"], [])
     assert rsid_to_loci["rs334"][0]["start"] == 5227002  # same coordinate convention as the slice
+
+
+# ── the citations sidecar and its provenance ────────────────────────────────────────────────────
+#
+# ClinVar publishes `var_citations.txt` separately from the VCF and on its own cadence, so a snapshot
+# can legitimately carry records from one release and citations from another. Now that the table is
+# *published with the snapshot*, an artifact whose `release.json` documented only the VCF would be
+# mixed-vintage and silent about it — the same class of confusion `dataset` is inside the fact set to
+# prevent for the two gene-constraint routes.
+
+_CITATIONS_TSV = (
+    "#AlleleID\tVariationID\trs\tnsv\tcitation_source\tcitation_id\torganization_ids\n"
+    "15041\t2\t397704705\t\tPubMed\t20613862\t1,3\n"
+    "15041\t2\t397704705\t\tPubMed\t20613861\t1\n"
+    "15042\t3\t\t\tPubMedBookArticle\t99999999\t1\n"   # not PubMed → dropped
+)
+
+
+def _citations_txt(tmp_path: Path) -> Path:
+    path = tmp_path / "var_citations.txt"
+    path.write_text(_CITATIONS_TSV, encoding="utf-8")
+    return path
+
+
+def test_citations_build_writes_the_sidecar_and_keeps_only_pubmed(tmp_path: Path) -> None:
+    from just_dna_enricher.clinvar_build import build_citations
+
+    snapshot = tmp_path / "cv"
+    build_snapshot(FIXTURE, snapshot)
+    result = build_citations(_citations_txt(tmp_path), snapshot)
+
+    assert result.row_count == 2                      # the PubMedBookArticle row is not a PMID
+    # The input is hashed even when no caller supplied a digest: the bytes are on disk, so recording
+    # "unknown" would be an unknown we chose not to establish.
+    assert result.source_sha256 and len(result.source_sha256) == 64
+    table = pl.read_parquet(snapshot / clinvar.CITATIONS_DIRNAME / "citations.parquet")
+    assert table.columns == ["variation_id", "pmid"]
+    assert set(table["pmid"].to_list()) == {"20613862", "20613861"}
+    # Beside `data/`, never inside it — a two-column table under the reader's glob breaks every query.
+    assert not (snapshot / "data" / "citations.parquet").exists()
+
+
+def test_citations_provenance_is_merged_not_overwritten(tmp_path: Path) -> None:
+    """The records' provenance must survive: `build_snapshot` owns the VCF keys, this owns its own."""
+    import json
+
+    from just_dna_enricher.clinvar_build import build_citations
+
+    snapshot = tmp_path / "cv"
+    built = build_snapshot(FIXTURE, snapshot)
+    before = json.loads((snapshot / "release.json").read_text())
+
+    result = build_citations(
+        _citations_txt(tmp_path), snapshot, source_url="http://example/var_citations.txt",
+        source_sha256="abc123",
+    )
+    after = json.loads((snapshot / "release.json").read_text())
+
+    assert result.release_updated
+    assert after["source_sha256"] == before["source_sha256"] == built.source_sha256
+    assert after["record_count"] == before["record_count"]
+    citations = after["citations"]
+    assert citations["row_count"] == 2
+    assert citations["source_sha256"] == "abc123"
+    assert citations["source_url"] == "http://example/var_citations.txt"
+
+
+def test_citations_beside_a_snapshot_with_no_release_json_starts_one(tmp_path: Path) -> None:
+    """Partial provenance beats none: `build_citations` is documented as usable beside an existing
+    snapshot, including one from a builder that wrote no `release.json`."""
+    import json
+
+    from just_dna_enricher.clinvar_build import build_citations
+
+    snapshot = tmp_path / "cv"
+    build_snapshot(FIXTURE, snapshot)
+    (snapshot / "release.json").unlink()
+    assert build_citations(_citations_txt(tmp_path), snapshot).release_updated
+    assert set(json.loads((snapshot / "release.json").read_text())) == {"citations"}
+
+
+def test_an_unreadable_release_json_is_left_alone_and_reported(tmp_path: Path, caplog) -> None:
+    """Report, never repair: overwriting it would destroy the only statement of where the data is from."""
+    from just_dna_enricher.clinvar_build import build_citations
+
+    snapshot = tmp_path / "cv"
+    build_snapshot(FIXTURE, snapshot)
+    (snapshot / "release.json").write_text("{not json", encoding="utf-8")
+    with caplog.at_level("WARNING"):
+        result = build_citations(_citations_txt(tmp_path), snapshot)
+    assert not result.release_updated
+    assert (snapshot / "release.json").read_text() == "{not json"       # untouched
+    assert "unreadable" in "\n".join(r.getMessage() for r in caplog.records)
+    # …and the citations table itself was still written: the provenance failure is not a data failure.
+    assert (snapshot / clinvar.CITATIONS_DIRNAME / "citations.parquet").is_file()
