@@ -56,10 +56,12 @@ unfindable.
    deciding them. Exploring wide (which files touch X, where does Y live) is what agents are for;
    reading the charter, the principle you are invoking, or the exact test that pins a behaviour is
    first-hand work.
-2. **[docs/ROADMAP.md](docs/ROADMAP.md)** — forward-only, revised often. Holds the 0.5 scope (`RMn`
-   items), the freeform idea-book, **the reserved-namespace tracker** (Constitution Principle 5), and
-   **the 1.0-cleanup candidate tracker** (Principles 3 and 8). These two trackers are the concrete,
-   living lists the Constitution keeps out of itself.
+2. **[docs/ROADMAP.md](docs/ROADMAP.md)** — forward-only and **active-only**: one `## RMn — name`
+   section per open item, each with a severity/status/owner line. Also holds the freeform idea-book,
+   **the reserved-namespace tracker** (Constitution Principle 5), and **the 1.0-cleanup candidate
+   tracker** (Principles 3 and 8) — the two concrete lists the Constitution keeps out of itself.
+   Shipped items moved to **[docs/ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md)** with their rationale;
+   [docs/RM_TOC.md](docs/RM_TOC.md) indexes both.
 3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what actually shipped, newest first (shared across the
    ecosystem repos that consume these libs).
 4. **Per-package references** — [docs/SCHEMAS.md](docs/SCHEMAS.md) (the schema tier: models, the CSV
