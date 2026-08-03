@@ -51,10 +51,13 @@ error; do not delete rows to suppress it.
 An existing `resolution.csv` / `frequencies.csv` / `gene_metrics.csv` is authoritative and merged.
 **Delete the file** and re-run, or stale rows persist silently.
 
-**`sources.csv has no row for … ['ensembl', 'ensembl-rest']`**
-Known and harmless: `resolution.csv`'s `source` names *which link answered* while `sources.csv`'s names
-*a licensed source*. Two vocabularies, one column name — **RM33**. Do not hand-write rows for the link
-names to silence it.
+**`sources.csv has no row for … ['gnomad']`**
+A real finding now, not noise: a source contributed facts and the module records no terms for it. Fixed
+by **re-running the pass that consulted it** — `enrich`, `frequencies` and `gene-metrics` each write
+their own `sources.csv` row, and merging never clobbers a row you wrote by hand.
+It used to fire for link names (`ensembl-rest`), which are not sources at all; `resolution.csv` now
+records an `authority` beside the link and the check reads that (**RM33**, shipped). An older
+`resolution.csv` written before the column existed simply says nothing here — re-enrich to fill it.
 
 ## Validation and compile
 

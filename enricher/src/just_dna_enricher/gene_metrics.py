@@ -38,6 +38,7 @@ from just_dna_enricher.gnomad import (
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
 )
+from just_dna_enricher.licensing import record_source_terms
 from just_dna_enricher.locations import resolve_constraint_reference
 
 logger = logging.getLogger(__name__)
@@ -199,10 +200,16 @@ def enrich_gene_metrics(
         # The label follows the ROUTE, never the caller's `dataset` argument alone — the snapshot and
         # the API are different releases (see the module docstring), so one label for both would put
         # two different facts under one name.
-        source, row_dataset = "gnomad-constraint", dataset
+        # `source` names the **licensed source**, not the route: `gnomad-constraint`/`gnomad-api` were
+        # link names, and the compiler compares this column against `sources.csv` by string, so a route
+        # here made every gene-metrics module warn that a source with no terms recorded had contributed
+        # (RM33, the same overloading found in `resolution.csv`). The route is not lost — it is what
+        # `dataset` carries, which is where this file already says the release distinction lives, and
+        # `dataset` is inside the fact set while `source` is provenance.
+        source, row_dataset = "gnomad", dataset
         if payload is None:
             payload = from_api.get(gene)
-            source, row_dataset = "gnomad-api", API_CONSTRAINT_DATASET_LABEL
+            row_dataset = API_CONSTRAINT_DATASET_LABEL
         if payload is None:
             missing.append(gene)
             # A `not_found` row is a fact — the gene was looked up and gnomAD has no constraint for
@@ -248,6 +255,14 @@ def enrich_gene_metrics(
         )
     if write:
         _write_gene_metrics_csv(out, output_path)
+        # As above: the pass consulted gnomAD, so the module records gnomAD's terms. `clingen.py` writes
+        # its own row for the dosage columns it adds to this same table.
+        record_source_terms(
+            {row.source for row in out if row.source},
+            "gene_metrics",
+            spec_dir / "sources.csv",
+            error=GeneMetricsEnrichmentError,
+        )
     return result
 
 

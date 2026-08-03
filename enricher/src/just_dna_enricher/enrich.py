@@ -27,6 +27,7 @@ from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.identifiers import RsidStatus, check_rsids
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
+from just_dna_enricher.licensing import record_source_terms, resolution_authority
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 from just_dna_enricher.sequences import RefMismatch, SequenceProxy, verify_reference_alleles
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 _FIELDNAMES = [
     "variant_key", "rsid", "chrom", "start", "ref", "alts",
     "genome_build", "locus_index", "vrs_id", "vrs_spec", "caid",
-    "source", "status", "rsid_alternates", "rsid_current", "rsid_status", "fetched_at",
+    "source", "authority", "status", "rsid_alternates", "rsid_current", "rsid_status", "fetched_at",
 ]
 
 
@@ -477,6 +478,14 @@ def enrich(
     elif verify_rsids:
         logger.info("rsID currency check skipped: --offline (dbSNP has no offline merge table).")
 
+    # Which licensed source each link speaks for (RM33). **Derived, never fetched** — read off the
+    # row's own `source` — and filled only where empty, so a hand-written authority survives exactly as
+    # a hand-written `vrs_id` does. A link with no mapping (`authored`, `reversed`, `manual`) keeps
+    # `None`, which is the answer rather than a gap: there is no external source to declare.
+    for row in out:
+        if row.authority is None:
+            row.authority = resolution_authority(row.source)
+
     out.sort(key=lambda r: (r.variant_key, r.locus_index))
     sources = sorted({r.source for r in out if r.source})
     result = EnrichmentResult(
@@ -527,6 +536,15 @@ def enrich(
 
     if write:
         _write_resolution_csv(out, resolution_path)
+        # `enrich()` was the only pass that consulted sources and recorded none — the reason
+        # `VALID_SOURCE_LAYERS` reserves a `"resolution"` member nothing ever wrote. Keyed on the
+        # authority rather than the link, so the row joins `sources.csv` (RM33).
+        record_source_terms(
+            {row.authority for row in out if row.authority},
+            "resolution",
+            spec_dir / "sources.csv",
+            error=EnrichmentError,
+        )
     return result
 
 
@@ -549,6 +567,7 @@ def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
                     "vrs_spec": r.vrs_spec or "",
                     "caid": r.caid or "",
                     "source": r.source or "",
+                    "authority": r.authority or "",
                     "status": r.status or "",
                     "rsid_alternates": r.rsid_alternates or "",
                     "rsid_current": r.rsid_current or "",

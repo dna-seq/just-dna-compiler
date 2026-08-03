@@ -243,9 +243,10 @@ and supplements do not exist yet — because fixing a shape against four table k
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
 
 
-The five below were found by **dogfooding** on 2026-08-03 rather than derived from a use case, so each
+The items below were found by **dogfooding** on 2026-08-03 rather than derived from a use case, so each
 carries the probe that produced it and a refutation of every obvious repair. **Do not work around any
-of them in module data** — the workaround would be the thing that hides the defect.
+of them in module data** — the workaround would be the thing that hides the defect. (RM33 of that batch
+has since shipped; its rationale is in [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md).)
 
 ## RM31 — One indel spelled two ways defeats allele-aware resolution
 
@@ -289,28 +290,6 @@ alleles. The expansion is also *correct* for the case it was built for (paralogs
 distinct loci). So this is not a bug to patch but a question to answer: does a module say something
 about a *place in the genome* or about a *contig coordinate*, and if the former, what is the identity
 of a locus present on two contigs? Recording it with the evidence rather than guessing.
-
-## RM33 — `source` names two different things in two tables
-
-**Severity** medium · **Status** open, found 2026-08-03 · **Owner** format (schema) + enricher ·
-**Motivating case** every enriched module
-
-**`source` names two different things in two tables, and the compiler compares them.**
-`_source_checks` warns when a fact table cites a source with no `sources.csv` row, by exact string
-set difference. But `resolution.csv`'s `source` column names **which link answered** (`ensembl-rest`,
-`ensembl-graphql`, `cache`, `authored`, `reversed`, `clinvar`, `gnomad`) while `sources.csv`'s names a
-**licensed data source** (`ensembl`, `clinvar`, `clingen`, …). They are different vocabularies under
-one name — the overloaded-axis anti-pattern (P5) — spread across two tables, which is why every
-enriched module warns that `ensembl-rest` has no terms recorded.
-
-Both obvious repairs are wrong. Writing a `SourceRow` per link makes `ensembl-rest` and
-`ensembl-graphql` two "sources" with identical terms. Teaching the compiler a link→source map gives it
-a **source convention**, which is exactly what P2's 0.5 tightening removed and what
-`licensing.py` says in as many words ("the compiler holds no source→licence map — that would give it
-a source convention and an un-injected reference"). What is missing is a third thing: the resolution
-table recording *both* the link and the source it stands for, which is additive but is a schema change
-to `ResolutionRow`. Note `VALID_SOURCE_LAYERS` already reserves `"resolution"` for the row nobody
-writes — `enrich()` is the only pass that records no source at all.
 
 ## RM34 — The CPIC provider has no filter
 

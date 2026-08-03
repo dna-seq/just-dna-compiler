@@ -5,6 +5,42 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — RM33: a resolution link is not a licensed source
+
+**Every enriched module warned that `ensembl-rest` has no terms recorded**, because `resolution.csv`'s
+`source` names *which link answered* while `sources.csv`'s names *a licensed source*, and
+`_source_checks` compared the two by string equality. Fixed with the third thing the roadmap entry said
+was missing rather than either repair it rejected: **`ResolutionRow.authority`**, naming the licensed
+source a link speaks for, with the link→authority map in the **enricher**
+(`licensing.RESOLUTION_AUTHORITY_BY_LINK`) — the only tier permitted a source convention (P2). It is
+provenance, outside `RESOLUTION_FACT_FIELDS`, so no `resolution_signature` moved; reverse does not
+re-emit it, because a reversed table's facts came from parquet and no source answered for them.
+
+Implementing it turned up four more, all in the same family:
+
+- **`sources.csv` had been dropping `redistribution` on every write.** `SOURCES_FIELDNAMES` was a
+  hand-kept literal that omitted it, so all four reference examples recorded *unknown* for an axis the
+  terms constants state as `True` — and RM27 is a gate designed to read a column that had never reached
+  a single file. The list is now derived from `SourceRow.model_fields`, and the test asserts field-by-field
+  equality across a write→read cycle so the next column cannot be lost either.
+- **Three passes consulted sources and recorded none.** `enrich`, `frequencies` and `gene_metrics` now
+  write their `SourceRow`s through one shared `licensing.record_source_terms`, filling the
+  `resolution`/`frequency`/`gene_metrics` layers that `VALID_SOURCE_LAYERS` had reserved and nothing had
+  ever written. None can taint a module (only `annotation` does), so what they carry is the
+  **attribution** those sources request — as much the table's job as the prohibitions are.
+- **`GNOMAD_TERMS`, read from gnomAD's own policy page**: CC0 for the primary exome/genome data,
+  attribution requested but not required, the no-reidentification undertaking, and a notice that layered
+  annotations keep their own terms (SpliceAI is CC BY-NC) — which is why "gnomAD is CC0" must not be read
+  as covering everything gnomAD serves.
+- **`gene_metrics.csv` had the same overloading**, and was fixed the other way: `source` recorded
+  `gnomad-constraint`/`gnomad-api`, two *routes* for one source, and now records `gnomad` with the route
+  left in `dataset` — where the v2.1.1-vs-v4.1 distinction already lived, and which is inside the fact
+  set where `source` is not.
+- **An `annotation`-layer row could never be corroborated**, so the orphan check called it stale on
+  every drafted module: "no table used it" is decided from fact tables' `source` columns, and the
+  annotation layer *is* `variants.csv`/`diplotypes.csv`, which carry none by design. Those rows are now
+  exempt — and they are the rows the licence gate keys on, so calling them unused was backwards.
+
 ## 2026-08-03 — the ACMG SF check was answering against a list a year out of date
 
 **`check-acmg` called correctly authored rows wrong, and passed every guard doing it.** ACMG published

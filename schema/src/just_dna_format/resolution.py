@@ -113,6 +113,27 @@ class ResolutionRow(BaseModel):
         default=None,
         description="Which link filled this: cache|ensembl-graphql|ensembl-rest|manual|reversed (open)",
     )
+    # **Two vocabularies were living under one name** (P5, across two tables). `source` here answers
+    # *which link answered* and `sources.csv`'s `source` answers *which licensed source this is* — and
+    # `compiler._source_checks` set-differences the two, so every enriched module warned that
+    # `ensembl-rest` has no terms recorded. Neither obvious repair works: a `SourceRow` per link makes
+    # `ensembl-rest` and `ensembl-graphql` two "sources" with identical terms, and teaching the compiler
+    # a link→source map hands it a source convention, which is exactly what P2's 0.5 tightening took
+    # away. The missing thing was a third column recording *both*.
+    #
+    # `source` deliberately keeps its meaning rather than being repurposed as the authority: every
+    # `resolution.csv` already written carries link values there, so re-pointing the name would silently
+    # change what existing data says. The map from link to authority lives in the enricher, the only
+    # tier permitted to know one.
+    authority: Optional[str] = Field(
+        default=None,
+        description=(
+            "The licensed data source the link speaks for — `ensembl` for `ensembl-rest`/"
+            "`ensembl-graphql`/`cache`, `clinvar` for the snapshot, `gnomad` for the last-resort link. "
+            "Joins `sources.csv.source`. Empty when there is no external authority to declare "
+            "(`authored`, `reversed`, `manual`: the module's own bytes or a human)."
+        ),
+    )
     status: Optional[str] = Field(
         default=None, description="Resolution outcome: resolved|not_found|ambiguous"
     )

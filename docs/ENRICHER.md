@@ -783,6 +783,32 @@ next such change into a finding.
 The compiler holds **no** source→licence map — that would give it a source convention (Principle 2)
 and an un-injected reference. It reads only what the enricher recorded.
 
+### Every pass records what it consulted — and a link is not a source (RM33)
+
+`licensing.record_source_terms(names, layer, path)` is the one place that turns "this pass consulted
+these sources" into `sources.csv` rows. Three passes were missing it entirely, which is why
+`VALID_SOURCE_LAYERS` had members nothing ever wrote:
+
+| Pass | Layer | Sources recorded |
+|---|---|---|
+| `enrich` (resolution) | `resolution` | whichever of `ensembl` / `clinvar` / `gnomad` answered |
+| `frequencies` | `frequency` | `gnomad` |
+| `gene_metrics` | `gene_metrics` | `gnomad` (and `clingen` writes its own dosage row) |
+
+None of these layers can taint a module — only `annotation` does, because a coordinate or an AC/AN is a
+fact the source *reports* rather than expression it owns. So what these rows carry is **attribution**,
+which gnomAD, Ensembl and ClinVar each request and none enforces, and that is as much what the table is
+for as the prohibitions are. `declared_use` is `unstated`: none of them forbids sale, so these passes
+never have to ask.
+
+**`resolution.csv` records both a link and an authority.** `source` names *which link answered*
+(`ensembl-rest`, `cache`, …) and `authority` names the licensed source it speaks for (`ensembl`), which
+is what `sources.csv` joins on. `RESOLUTION_AUTHORITY_BY_LINK` is that map, and it lives here rather than
+in the compiler for the reason stated one paragraph above. A link with no entry — `authored`, `reversed`,
+`manual` — keeps an empty authority, because the module's own bytes are not a licensed source.
+`gene_metrics.csv` had the same overloading and was fixed the other way: it records `gnomad`, and which
+release answered stays in `dataset`, where the two-constraint-routes distinction already lived.
+
 ### A gene panel is drafted, never decided
 
 `clinvar_draft.draft_gene_panel` is the provider RM4 waited for, in the shape the charter allows: it

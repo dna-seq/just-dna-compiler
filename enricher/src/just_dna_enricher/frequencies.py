@@ -30,6 +30,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import population_sort_key
 
 from just_dna_enricher.gnomad import FREQUENCY_DATASET_LABEL, GnomadClient
+from just_dna_enricher.licensing import record_source_terms
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,14 @@ def enrich_frequencies(
         )
     if write:
         _write_frequencies_csv(out, frequencies_path)
+        # Same rule as every other pass that consults a source: record its terms, or the module cannot
+        # account for it. gnomAD is CC0 and asks for attribution, which is what this row carries.
+        record_source_terms(
+            {row.source for row in out if row.source},
+            "frequency",
+            spec_dir / "sources.csv",
+            error=FrequencyEnrichmentError,
+        )
     return result
 
 

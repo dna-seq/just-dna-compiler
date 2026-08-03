@@ -304,6 +304,46 @@ on load, because three of CPIC's sixteen live values carry a trailing space and 
 key. | format (schema) | PGx; call-confidence gating | **done** |
 
 
+## RM33 — `source` names two different things in two tables
+
+**Severity** — · **Status** ✅ shipped in 0.5 (found by dogfooding 2026-08-03, fixed in the same
+window) · **Owner** format (schema) + enricher · **Motivating case** every enriched module
+
+`resolution.csv`'s `source` names **which link answered** (`ensembl-rest`, `cache`, `clinvar`, …) while
+`sources.csv`'s names a **licensed data source** (`ensembl`, `clinvar`, …), and `_source_checks`
+compared the two by string equality — so every enriched module warned that `ensembl-rest` has no terms
+recorded. Two vocabularies under one name (P5), spread across two tables.
+
+**What shipped is the third thing the original entry said was missing:** `ResolutionRow.authority`, a
+provenance column naming the licensed source the link speaks for, with the link→authority map in the
+**enricher** (`licensing.RESOLUTION_AUTHORITY_BY_LINK`) because that is the only tier permitted to hold
+a source convention. It cost nothing in identity terms — `authority` sits outside
+`RESOLUTION_FACT_FIELDS`, so no `resolution_signature` moved, and `resolution.csv` is fact-hashed rather
+than byte-hashed. Reverse does not re-emit it: a reversed table's facts came from parquet, so there is
+no authority to name, which is the accurate statement rather than an empty column.
+
+Both repairs the entry rejected stayed rejected: a `SourceRow` per link would make `ensembl-rest` and
+`ensembl-graphql` two sources with identical terms, and a link→source map in the compiler would hand it
+the source convention P2's 0.5 tightening removed.
+
+Three things came out of implementing it that the entry had not seen:
+
+- **`enrich()` now writes its `SourceRow`s**, at the reserved `"resolution"` layer that nothing had ever
+  written — as do the frequency and gene-metrics passes, via one shared `licensing.record_source_terms`.
+  None of these layers can taint a module (only `annotation` does), so what they carry is the
+  **attribution** gnomAD, Ensembl and ClinVar each request, which is exactly what the table is for.
+  `GNOMAD_TERMS` was read from gnomAD's own policy page for this (CC0, attribution requested, and a
+  notice that layered annotations like SpliceAI keep their own CC BY-NC terms).
+- **`gene_metrics.csv` had the same overloading**: `source` was `gnomad-constraint`/`gnomad-api`, two
+  *routes* for one licensed source. It now records `gnomad`, and the route stays in `dataset`, which is
+  where this codebase already says the release distinction lives — and `dataset` is inside the fact set
+  while `source` is not, so the v2.1.1-vs-v4.1 distinction the tests pin is untouched.
+- **An `annotation`-layer row could never be corroborated**, so the orphan half of the check called it
+  stale on every drafted module. "No table used it" is decided by reading fact tables' `source` columns,
+  and the annotation layer *is* `variants.csv`/`diplotypes.csv`, which carry none by design. Those rows
+  are now exempt — they are also the rows the licence gate keys on, so reporting them as unused was
+  precisely backwards.
+
 ## RM30 — One rule for a haplotype name across all three PGx tables
 
 **Severity** — · **Status** ✅ fixed in 0.5.1 · **Owner** format (schema) · **Motivating case**

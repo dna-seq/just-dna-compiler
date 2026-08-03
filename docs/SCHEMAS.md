@@ -436,11 +436,21 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
 - **Join key:** `variant_key` (the frozen authored identity). **Facts** (feed `resolution_signature`):
   `rsid?`, `chrom?`, `start? (ge=0)`, `ref?`, `alts?`, `genome_build="GRCh38"` (the RM15 forward hook),
   `locus_index=0` (0 for 1:1; `0..N-1` for a one-to-many rsid expansion). **Provenance** (excluded from
-  the signature): `source?`, `status?` (`VALID_RESOLUTION_STATUS = {resolved, not_found, ambiguous}`;
+  the signature): `source?`, `authority?`, `status?` (`VALID_RESOLUTION_STATUS = {resolved, not_found, ambiguous}`;
   `not_found` = "looked, genuinely absent"; `ambiguous` = a reverse position→rsid back-fill hit several
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
   `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
   (`VALID_RSID_STATUS = {live, merged, absent}` — what dbSNP says about `rsid` today), `fetched_at?`.
+- **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
+  `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
+  answered*, which matters for diagnosing a compile and has no other home. `authority` is the thing
+  `sources.csv.source` joins on (`ensembl`, `clinvar`, `gnomad`), and it is **empty** where there is no
+  external source to name: `authored` is the module's own bytes, `reversed` is the compiler, `manual` is a
+  human. Before the split, the compiler compared the link against `sources.csv` by string and every
+  enriched module was told `ensembl-rest` has no terms recorded. The link→authority map lives in the
+  **enricher**, the only tier permitted a source convention (P2) — never in the compiler.
+  Every *other* fact table's `source` already names the licensed source directly, so only this table
+  needs the second column; where a route needs distinguishing there, `dataset` does it.
 - **`rsid_current`/`rsid_status` are provenance, and the exclusion is load-bearing.** They describe
   *time-varying external state*: inside the fact set, `resolution_signature` would change the day dbSNP
   merged something, with no change to the module, and would stop being reproducible from the module's
@@ -451,8 +461,10 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
   so a fourth vocabulary member would be a value nothing could legitimately produce.
 - **Reverse emits facts and drops provenance, by design.** `reverse_module` rebuilds this table from
   `weights.parquet`, which holds no provenance at all — it resets `source` to `reversed`, `status` to
-  `resolved`, blanks `fetched_at`, and cannot emit `rsid_alternates`/`rsid_current`/`rsid_status`
-  because those columns are kept out of the artifact on purpose. Recovering them after a round-trip
+  `resolved`, blanks `fetched_at`, and cannot emit `authority`/`rsid_alternates`/`rsid_current`/`rsid_status`
+  because those columns are kept out of the artifact on purpose. (For `authority` there is a second reason
+  and it is not a limitation: a reversed table's facts came out of parquet, so no licensed source answered
+  for them.) Recovering them after a round-trip
   means re-running the enricher, which is where a statement about a reference at a moment belongs.
 - It is a **standalone `BaseModel`** (not `AuthoredModel`) with `extra="forbid"` — a resolution fact is
   not an annotation and must not inherit VariantRow's annotation validators; it reuses only the shared

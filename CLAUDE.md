@@ -248,12 +248,36 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   reports identically, so marking it viral is a false positive); **most-restrictive-wins module-wide**
   (a permissive source can't launder a restricted one); and **`None` ≠ `False`** on
   `share_alike`/`commercial_use` (unknown terms are undetermined, never permitted).
-- **A pass that consults a source must WRITE its `SourceRow`, via `licensing.merge_sources_file`.**
+- **A pass that consults a source must WRITE its `SourceRow` — use `licensing.record_source_terms`.**
   Building the row is half the job; the compile gate and `manifest.sources` read `sources.csv` and
   nothing else, so a row that is only returned is a source the module cannot account for. `clingen.py`
   returned one and never wrote it — permissive terms (CC0) made it look harmless, but CC0 still asks
-  for attribution and the table exists to carry it. The helper does the load-merge-write in one place
-  and takes the caller's own error type; don't grow a third private copy of that wrapper.
+  for attribution and the table exists to carry it — and then `enrich`/`frequencies`/`gene_metrics`
+  turned out to write nothing at all, which is why `VALID_SOURCE_LAYERS` had reserved members no file
+  ever carried. `record_source_terms(names, layer, path, error=…)` maps source names → terms → rows and
+  does the load-merge-write (over `merge_sources_file`) in one place; don't grow a private copy.
+  Corollary: **a fact-layer row cannot taint a module**, so what it carries is *attribution*, which is
+  as much the table's purpose as the prohibitions are.
+- **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
+  was a literal and omitted `redistribution`, so every `sources.csv` ever written recorded *unknown* for
+  an axis the terms constants state as `True`, and `merge_sources_file` dropped it again on each merge —
+  RM27 is a gate designed to read a column that had reached no file. `SourceRow` has no
+  compiler-stamped fields, so `list(SourceRow.model_fields)` is exactly right there. Where a model
+  *does* have stamped fields, that is what `base.authored_field_names` and the `COMPILER_MANAGED` marker
+  are for — the rule is the same one, never hand-keep a list of a model's columns.
+- **`source` names the licensed source in every fact table; only `resolution.csv` also records the
+  link.** `resolution.csv`'s `source` is *which link answered* (`ensembl-rest`, `cache`, `clinvar`) and
+  `authority` is what `sources.csv` joins on (`ensembl`, `clinvar`, `gnomad`), empty for
+  `authored`/`reversed`/`manual` because the module's own bytes are not a licensed source. The
+  link→authority map (`licensing.RESOLUTION_AUTHORITY_BY_LINK`) lives in the **enricher**; the same map
+  in the compiler is the un-injected-reference mistake one bullet up. `gene_metrics.csv` had the same
+  overloading (`gnomad-constraint`/`gnomad-api` are routes, not sources) and was fixed the other way —
+  it records `gnomad`, and the route stays in `dataset`, which is inside the fact set where `source` is
+  not. This was RM33.
+- **An `annotation`-layer source is exempt from the orphan check, structurally.** "No table used it" is
+  decided by reading fact tables' `source` columns, and the annotation layer *is*
+  `variants.csv`/`diplotypes.csv`, which carry none — so the check reported the one row the licence gate
+  keys on as probably stale, on every drafted module. Don't "restore" it.
 - **The compile gate is data-driven; a `--non-commercial` CLI flag would be charter-illegal.** It
   refuses when an annotation-layer source forbids sale and the module records no declaration, reading
   only injected `sources.csv`. A *flag* cannot be recorded in the artifact — `reverse_module` rebuilds

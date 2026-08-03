@@ -145,7 +145,13 @@ class GeneMetricsRow(BaseModel):
 
     # ── provenance (EXCLUDED from gene_metrics_signature) ──
     source: Optional[str] = Field(
-        default=None, description="Which link filled this: gnomad-constraint|gnomad-api|manual|reversed (open)"
+        default=None,
+        description=(
+            "The licensed data source these metrics came from: gnomad|clingen|manual|reversed (open). "
+            "Joins `sources.csv.source`. It names the SOURCE, not the route — which release and which "
+            "route answered is `dataset`'s job, and a v2.1.1 API figure and a v4.1 bulk figure are "
+            "different facts precisely because `dataset` is inside the fact set and this column is not."
+        ),
     )
     status: Optional[str] = Field(
         default=None, description="Outcome: resolved|not_found (the ResolutionRow vocabulary)"

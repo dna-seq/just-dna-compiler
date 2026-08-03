@@ -29,7 +29,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
 
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.sources import SourceRow
@@ -198,6 +198,109 @@ ENSEMBL_TERMS = SourceTerms(
     commercial_use=True,
     redistribution=True,
 )
+
+
+# gnomAD, read from `browser/about/policies/terms.md` in broadinstitute/gnomad-browser on 2026-08-03:
+# "The primary data from the gnomAD exomes and genomes are available free of restrictions under the
+# Creative Commons Zero Public Domain Dedication. This means that you can use it for any purpose
+# without legally having to give attribution. However, we request that you actively acknowledge and
+# give attribution to the gnomAD project". So the shape is ClinGen's: CC0, `share_alike=False`,
+# attribution recorded because it is asked for and the column exists to carry it, not because it binds.
+#
+# Two things from the same page ride in `notice` rather than being dropped, because a consumer needs
+# them and no flag expresses them: the no-reidentification undertaking every user of the data accepts,
+# and the fact that **layered annotations carry their own terms** — SpliceAI in the browser is CC BY-NC
+# 4.0. That second one is exactly RM23's territory, and it is the reason "gnomAD is CC0" must not be
+# read as covering everything gnomAD serves.
+GNOMAD_TERMS = SourceTerms(
+    source="gnomad",
+    license="CC0-1.0",
+    license_url="https://gnomad.broadinstitute.org/policies",
+    attribution="gnomAD, Broad Institute (https://gnomad.broadinstitute.org)",
+    notice=(
+        "CC0 public-domain dedication for the primary exome/genome data; attribution requested but "
+        "not required. Users agree not to attempt to reidentify participants. Some layered "
+        "annotations carry their own terms (SpliceAI is CC BY-NC 4.0, academic/non-commercial)."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
+#: Which **licensed source** each resolution **link** speaks for.
+#:
+#: `resolution.csv`'s `source` names the link that answered (`ensembl-rest`, `cache`, …) while
+#: `sources.csv`'s names a licensed source (`ensembl`, `clinvar`, …). Two vocabularies under one name,
+#: which is why `ResolutionRow.authority` exists and why this map lives **here**: the enricher is the
+#: only tier permitted to hold a source convention (P2, tightened in 0.5), and `licensing.py` already
+#: says in as many words that the same map in the compiler would be an un-injected reference.
+#:
+#: A link with **no entry** has no external authority to declare, and that is a real answer rather than
+#: a gap: `authored` is the module's own bytes, `reversed` is the compiler rebuilding the table from
+#: parquet, and `manual` is a human. Recording a licensed source for any of those would invent one.
+RESOLUTION_AUTHORITY_BY_LINK: dict[str, str] = {
+    "cache": "ensembl",          # the Ensembl snapshot — same data, offline
+    "ensembl": "ensembl",
+    "ensembl-rest": "ensembl",
+    "ensembl-graphql": "ensembl",
+    "clinvar": "clinvar",
+    "gnomad": "gnomad",
+}
+
+#: Every source whose terms this tier can state, by the identifier that joins `sources.csv.source`.
+TERMS_BY_SOURCE: dict[str, SourceTerms] = {
+    terms.source: terms
+    for terms in (
+        CLINPGX_TERMS,
+        CPIC_TERMS,
+        PHARMVAR_TERMS,
+        CLINGEN_TERMS,
+        CLINVAR_TERMS,
+        ENSEMBL_TERMS,
+        GNOMAD_TERMS,
+    )
+}
+
+
+def resolution_authority(link: Optional[str]) -> Optional[str]:
+    """The licensed source a resolution link speaks for, or `None` when there is no external one."""
+    return RESOLUTION_AUTHORITY_BY_LINK.get(link or "")
+
+
+def record_source_terms(
+    source_names: Iterable[str],
+    layer: str,
+    path: Path,
+    *,
+    error: type[Exception],
+    declared_use: str = "unstated",
+) -> list[SourceRow]:
+    """Record the terms of every licensed source a pass consulted, at `layer`.
+
+    **A pass that consults a source must write its `SourceRow`** — the rule `clingen.py` and then
+    `pgx_draft.py` each shipped without. The compile gate and `manifest.sources` read `sources.csv` and
+    nothing else, so a source that is only *used* is a source the module cannot account for. The three
+    machine-fact passes (resolution, frequency, gene metrics) all skipped it, which is why
+    `VALID_SOURCE_LAYERS` has reserved members nothing ever wrote.
+
+    None of these layers can taint a module: `taints_commercial_use` requires the `annotation` layer,
+    because a coordinate or an AC/AN is a fact the source *reports* rather than expression it *owns*. So
+    what this records is **attribution** — which gnomAD, Ensembl and ClinVar all request and none of
+    them enforces — and that is precisely the case the table exists to carry, not only prohibitions.
+    `declared_use` defaults to `unstated` because no fact-layer source here forbids sale, so these
+    passes never have to ask the author for a declaration.
+
+    A name with no terms constant is skipped rather than guessed at: `TERMS_BY_SOURCE` is what this tier
+    can state, and inventing a row for the rest would be worse than the compiler's honest warning that
+    the terms are unrecorded. Existing rows are never clobbered (`merge_sources_file`), so a human's
+    hand-written terms survive a re-run.
+    """
+    terms = [TERMS_BY_SOURCE[name] for name in sorted(set(source_names)) if name in TERMS_BY_SOURCE]
+    if not terms:
+        return []
+    return merge_sources_file(
+        [t.row(layer, declared_use=declared_use) for t in terms], path, error=error
+    )
 
 
 def check_declared_use(terms: SourceTerms, declared_use: str) -> Optional[str]:

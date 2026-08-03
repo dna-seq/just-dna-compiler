@@ -1699,7 +1699,13 @@ def compile_module(
         # `SourceRow` is excluded from the "used" set: the loop stores each model's rows into
         # `fact_rows` *before* calling its check, so including it would let sources.csv vouch for
         # itself and no orphan could ever be reported.
-        used = {r.source for r in resolution_rows if r.source}
+        # Resolution contributes its **authority**, not its `source`: that column names which *link*
+        # answered (`ensembl-rest`, `cache`) while every other table's names a licensed source, so
+        # comparing them by string made every enriched module warn that `ensembl-rest` has no terms
+        # recorded (RM33). A row with no authority contributes nothing — `authored`/`reversed` have no
+        # external source to declare, and an older `resolution.csv` written before the column existed
+        # simply says nothing rather than saying the wrong thing.
+        used = {r.authority for r in resolution_rows if r.authority}
         for model, parsed in fact_rows.items():
             if model is SourceRow:
                 continue
@@ -1878,10 +1884,19 @@ def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
 
     The second is emitted **only when `sources.csv` exists at all**, so a module without one warns
     exactly as it does today (Principle 3).
+
+    **`annotation`-layer rows are exempt from the orphan half, and that is structural rather than a
+    softening.** "No table used it" is decided by reading the fact tables' `source` columns, and the
+    annotation layer *is* `variants.csv`/`diplotypes.csv`/…, which carry no such column by design (a
+    curated annotation's provenance is the module's, not a per-row link). So an annotation-layer row can
+    never be corroborated and was reported as stale on **every** drafted module — `clinvar_draft` and
+    `pgx_draft` both write exactly one such row, and it is the row that makes the licence gate work.
+    Warning that the load-bearing row looks unused is the opposite of useful.
     """
     warnings: list[str] = []
     declared = {r.source for r in rows}
-    orphans = sorted(declared - used_sources)
+    corroborable = {r.source for r in rows if r.layer != "annotation"}
+    orphans = sorted(corroborable - used_sources)
     if orphans:
         warnings.append(
             f"sources.csv declares {len(orphans)} source(s) no table in this module uses: {orphans}"
@@ -2715,7 +2730,12 @@ def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
     so the information does not exist in the artifact this function reads — emitting the column names
     would produce a header with permanently empty cells and change nothing. Recovering an ambiguous
     candidate list after a round-trip means re-running the enricher, which is the correct place for it:
-    the candidate list is a statement about a reference at a moment, not a property of the module."""
+    the candidate list is a statement about a reference at a moment, not a property of the module.
+
+    `authority` (RM33) joins that list for the same reason and one of its own: `source` is `reversed`
+    here, and a reversed table's facts came out of parquet rather than from any licensed source, so
+    there is no authority to name. The column is absent, loads as `None`, and contributes nothing to the
+    compiler's `sources.csv` coherence check — which is the accurate statement."""
     fieldnames = [
         "variant_key", "rsid", "chrom", "start", "ref", "alts",
         "genome_build", "locus_index", "source", "status", "fetched_at",

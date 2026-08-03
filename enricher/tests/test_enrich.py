@@ -8,13 +8,15 @@ error; strict failing on an unresolved variant; one-to-many expansion written as
 """
 
 import csv
+import shutil
 from pathlib import Path
 
 import httpx
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module
+from just_dna_compiler.compiler import _load_csv_rows, compile_module
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.sources import SourceRow, taints_commercial_use
 from just_dna_format.vrs import derive_vrs_allele_id
 
 from just_dna_enricher.enrich import EnrichmentError, enrich
@@ -83,20 +85,67 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
         ",19,44908683,T,C/T,risk,c2,APOE\n"
         "rs999,,,,A/T,risk,c3,X\n"
     )
-    # Direct DuckDB compile (path 2) for the reference digest.
-    spec2 = _spec(tmp_path / "spec2", variants)
-    d2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache).manifest.artifact.digest
-
-    # Enrich offline against the same synthetic cache → resolution.csv, then compile path 1 (no cache).
+    # Enrich offline against the synthetic cache → resolution.csv, then compile path 1 (no cache).
     spec1 = _spec(tmp_path / "spec1", variants)
     result = enrich(spec1, offline=True, ensembl_cache=cache)
     assert result.fully_resolved
     assert (spec1 / "resolution.csv").is_file()
+
+    # Direct DuckDB compile (path 2) for the reference digest, handed the **same non-resolution
+    # inputs** — including the `sources.csv` the enricher now records for the links it consulted
+    # (RM33). Parity is a claim about resolution: a module that carries an extra fact table genuinely
+    # has a different content identity, because `sources.parquet` is an artifact file. Copying it is
+    # what isolates the claim instead of quietly weakening it to a weights-only comparison.
+    spec2 = _spec(tmp_path / "spec2", variants)
+    shutil.copy(spec1 / "sources.csv", spec2 / "sources.csv")
+    d2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache).manifest.artifact.digest
     r1 = compile_module(spec1, tmp_path / "o1", ensembl_cache=None)
     assert r1.success, r1.errors
     assert r1.manifest.artifact.digest == d2
     # every variant needed resolution, so the cache filled all of them
     assert r1.manifest.compilation.resolution_sources == ["cache"]
+
+
+def test_each_link_records_the_authority_it_speaks_for(cache: Path, tmp_path: Path) -> None:
+    """RM33: the row keeps the link that answered *and* names the licensed source behind it.
+
+    `cache` is the Ensembl snapshot, so its authority is `ensembl` — the two columns are not synonyms
+    and the point is that the row now carries both. `authored` has none, because the module's own bytes
+    are not a licensed source.
+    """
+    variants = (
+        "rsid,chrom,start,ref,genotype,state,conclusion,gene\n"
+        "rs1801133,,,,A/G,risk,c1,MTHFR\n"
+        ",19,44908683,T,C/T,risk,c2,APOE\n"
+    )
+    spec = _spec(tmp_path / "spec", variants)
+    enrich(spec, offline=True, ensembl_cache=cache)
+    by_key = _rows_by_key(spec)
+    filled = by_key["rs1801133"][0]
+    assert (filled.source, filled.authority) == ("cache", "ensembl")
+
+    # The pass that consulted a source records its terms — at the `resolution` layer, the member of
+    # VALID_SOURCE_LAYERS that nothing used to write.
+    rows, errors, _ = _load_csv_rows(spec / "sources.csv", SourceRow, "sources.csv")
+    assert not errors
+    recorded = {(r.source, r.layer) for r in rows}
+    assert ("ensembl", "resolution") in recorded
+    ensembl = next(r for r in rows if r.source == "ensembl")
+    assert ensembl.attribution and ensembl.commercial_use is True
+    # A fact layer cannot taint a module: a coordinate is not expression.
+    assert not taints_commercial_use(ensembl)
+
+
+def test_a_hand_written_authority_is_never_overwritten(cache: Path, tmp_path: Path) -> None:
+    """Same rule as an existing `vrs_id`: the enricher fills what is empty, never what is stated."""
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n")
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,authority,status\n"
+        "rs1801133,rs1801133,1,11796321,G,A,GRCh38,0,manual,ensembl,resolved\n"
+    )
+    enrich(spec, offline=True, ensembl_cache=cache)
+    row = _rows_by_key(spec)["rs1801133"][0]
+    assert (row.source, row.authority) == ("manual", "ensembl")
 
 
 def test_expansion_written_as_multiple_rows(cache: Path, tmp_path: Path) -> None:

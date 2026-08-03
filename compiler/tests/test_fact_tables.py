@@ -16,6 +16,7 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_format.frequency import FrequencyRow
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.integrity import frequency_signature, source_signature
 from just_dna_format.vrs import derive_vrs_allele_id
@@ -954,7 +955,9 @@ def test_declared_license_conflict_warns_in_both_modes(tmp_path: Path) -> None:
 
 
 def test_undeclared_and_orphan_sources_warn(tmp_path: Path) -> None:
-    csv_text = _SRC_HDR + "notused,annotation,CC0,,false,true,unstated\n"
+    # The orphan is declared at a **fact** layer: that is the case the check can actually decide, by
+    # reading the fact tables' own `source` columns.
+    csv_text = _SRC_HDR + "notused,frequency,CC0,,false,true,unstated\n"
     result = compile_module(
         _spec(tmp_path, frequencies=True, sources=csv_text), tmp_path / "o",
         resolve_with_ensembl=False,
@@ -963,6 +966,120 @@ def test_undeclared_and_orphan_sources_warn(tmp_path: Path) -> None:
     warnings = result.manifest.compilation.warnings
     assert any("no table in this module uses" in w for w in warnings)   # orphan: notused
     assert any("has no row for" in w and "gnomad" in w for w in warnings)  # undeclared: gnomad
+
+
+def test_an_annotation_layer_source_is_never_called_an_orphan(tmp_path: Path) -> None:
+    """The annotation tables carry no `source` column, so "unused" is undecidable there.
+
+    Every drafted module hit this: `clinvar_draft`/`pgx_draft` write exactly one annotation-layer row —
+    the row the licence gate keys on — and the check reported that load-bearing row as probably stale.
+    """
+    result = compile_module(
+        _spec(tmp_path, sources=_CLINPGX_DECLARED), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    assert not any(
+        "no table in this module uses" in w for w in result.manifest.compilation.warnings
+    )
+    # …and it still governs the gate, which is the reason not to let it look ignorable.
+    assert result.manifest.sources.commercial_use is False
+
+
+_RESOLUTION_HDR = (
+    "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,authority,status\n"
+)
+
+
+def _with_links(spec: Path, rows: str) -> Path:
+    """Drop a `resolution.csv` carrying explicit `source`/`authority` cells into an existing spec."""
+    (spec / "resolution.csv").write_text(_RESOLUTION_HDR + rows)
+    return spec
+
+
+def test_a_resolution_link_is_not_a_source_name(tmp_path: Path) -> None:
+    """RM33: `resolution.csv`'s `source` names the LINK, `sources.csv`'s names the licensed source.
+
+    Compared by string, every enriched module warned that `ensembl-rest` has no terms recorded — a
+    finding about a name that is not a source at all. The first half of this test is the old shape (no
+    `authority`), and it must produce **no** claim about `ensembl-rest`; the second half is what the
+    enricher writes now, and the declared `ensembl` row must satisfy it.
+    """
+    rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,ensembl-rest,{{authority}},resolved\n"
+    declared = _SRC_HDR + "ensembl,resolution,Apache-2.0,Ensembl,false,true,unstated\n"
+
+    # Old shape: the link is recorded, the authority is not. Nothing may be said about `ensembl-rest`.
+    legacy = _with_links(_spec(tmp_path, sources=declared), rows.format(authority=""))
+    result = compile_module(legacy, tmp_path / "o_legacy")
+    assert result.success, result.errors
+    legacy_warnings = result.manifest.compilation.warnings
+    assert not any("ensembl-rest" in w for w in legacy_warnings)
+    # …and the declared row is not called an orphan either: the module did use Ensembl, and a table
+    # that cannot say so is exactly the gap the column closes. (This is the residual honest cost of an
+    # old resolution.csv: it says nothing rather than something wrong.)
+    assert any("no table in this module uses" in w and "ensembl" in w for w in legacy_warnings)
+
+    # New shape: the authority joins `sources.csv`, so neither warning fires.
+    current = _with_links(
+        _spec(tmp_path, sources=declared, license="MIT"), rows.format(authority="ensembl")
+    )
+    result = compile_module(current, tmp_path / "o_current")
+    assert result.success, result.errors
+    warnings = result.manifest.compilation.warnings
+    assert not any("ensembl-rest" in w for w in warnings)
+    assert not any("no table in this module uses" in w for w in warnings)
+    assert not any("has no row for" in w for w in warnings)
+
+
+def test_a_resolution_authority_with_no_terms_row_still_warns(tmp_path: Path) -> None:
+    """The check keeps its teeth: an authority the module never declared is a real finding."""
+    rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,gnomad,gnomad,resolved\n"
+    spec = _with_links(_spec(tmp_path, sources=_CLINPGX_DECLARED), rows)
+    result = compile_module(spec, tmp_path / "o")
+    assert result.success, result.errors
+    assert any(
+        "has no row for" in w and "gnomad" in w for w in result.manifest.compilation.warnings
+    )
+
+
+def test_authored_and_reversed_links_declare_no_authority(tmp_path: Path) -> None:
+    """`authored`/`reversed` have no external source, and `None` must contribute nothing.
+
+    Otherwise the module would be told to record terms for its own bytes — and after a round-trip,
+    where every row's `source` is `reversed`, for the compiler itself.
+    """
+    rows = (
+        f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,authored,,resolved\n"
+        f"{_MTHFR},rs1801133,1,11796321,G,A,GRCh38,0,reversed,,resolved\n"
+    )
+    spec = _with_links(_spec(tmp_path, sources=None), rows)
+    result = compile_module(spec, tmp_path / "o")
+    assert result.success, result.errors
+    assert not any("has no row for" in w for w in result.manifest.compilation.warnings)
+
+
+def test_authority_is_outside_the_resolution_fact_set(tmp_path: Path) -> None:
+    """Provenance, like `rsid_status`: adding it must not move `resolution_signature`."""
+    rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,ensembl-rest,{{authority}},resolved\n"
+    without = _with_links(_spec(tmp_path, sources=None), rows.format(authority=""))
+    with_it = _with_links(_spec(tmp_path, license="MIT"), rows.format(authority="ensembl"))
+    a = compile_module(without, tmp_path / "o_a")
+    b = compile_module(with_it, tmp_path / "o_b")
+    assert a.success and b.success, (a.errors, b.errors)
+    assert (
+        a.manifest.compilation.resolution_signature
+        == b.manifest.compilation.resolution_signature
+    )
+
+
+def test_reverse_does_not_re_emit_the_authority_column(tmp_path: Path) -> None:
+    """Reverse emits facts and discards provenance — a reversed table has no authority to name."""
+    rows = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,0,ensembl-rest,ensembl,resolved\n"
+    spec = _with_links(_spec(tmp_path, sources=None), rows)
+    assert compile_module(spec, tmp_path / "orig").success
+    reverse_module(tmp_path / "orig", tmp_path / "rev")
+    header = (tmp_path / "rev" / "resolution.csv").read_text().splitlines()[0]
+    assert "authority" not in header and "source" in header
+    assert ResolutionRow(variant_key="x").authority is None
 
 
 def test_sources_roundtrip_is_lossless(tmp_path: Path) -> None:

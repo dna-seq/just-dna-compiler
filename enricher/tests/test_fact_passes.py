@@ -190,7 +190,9 @@ def test_gene_metrics_from_the_snapshot_offline(tmp_path: Path, constraint_cache
     )
     result = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
     assert [r.gene for r in result.rows] == ["BRCA1", "MYH7"]
-    assert {r.source for r in result.rows} == {"gnomad-constraint"}
+    # `source` names the licensed source, not the route the row came in by (RM33); the route is
+    # `dataset`'s job and the assertion below is the one that carries the meaning.
+    assert {r.source for r in result.rows} == {"gnomad"}
     assert {r.dataset for r in result.rows} == {CONSTRAINT_DATASET_LABEL}
     brca1 = next(r for r in result.rows if r.gene == "BRCA1")
     assert brca1.gene_id == "ENSG00000012048"
@@ -219,8 +221,8 @@ def test_snapshot_and_api_are_labelled_as_the_different_releases_they_are(
     from_api = enrich_gene_metrics(
         spec, constraint_cache=tmp_path / "absent", client=_mock_client(handler)
     ).rows[0]
-    assert from_api.source == "gnomad-api"
     assert from_api.dataset == API_CONSTRAINT_DATASET_LABEL
+    assert from_api.source == "gnomad"        # one licensed source, two releases
 
     (spec / "gene_metrics.csv").unlink()
     from_snapshot = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache).rows[0]
