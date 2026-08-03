@@ -866,6 +866,18 @@ What it does not fill is as deliberate as what it does — no `weight`, `directi
 (ClinVar publishes none), no `trait_efo_id` (its `condition` is free text and MedGen, not EFO), no
 `acmg_sf`, and no `curator`/`method` (the spec's `defaults:` block owns those).
 
+**The snapshot is found, then provisioned — `--snapshot` used to be required (0.5).** `_resolve_snapshot`
+runs the ladder `enrich()` uses: an explicit path is taken as given (the inject-only escape hatch, and
+what an air-gapped run passes), else the cache locations, else the published snapshot is downloaded unless
+`--offline`. Until this, the published snapshot could not reach an author at all — they had to build 4.4M
+records from a 200 MB VCF or already know the cache path — which mattered most for the **citations**,
+since they are what makes a drafted panel compilable and they only started travelling with the snapshot in
+the same release. Verified end to end from an empty cache: `draft-panel --gene HFE` provisions
+`data/` + `citations/` + `release.json` and drafts 12 variant rows with **33 grounded study rows carrying
+real PMIDs**, then refuses to compile on the genotype placeholders — which is the designed state, not a
+failure. No snapshot and `--offline` **raises** rather than drafting nothing: an empty draft would read as
+"ClinVar has nothing for this gene".
+
 ### Lookups answer, they never fill
 
 `lookup.py` is the authoring counterpart to the passes above: same clients, same offline-capable
@@ -1021,7 +1033,8 @@ just-dna-enricher draft spec/ --gene CYP2D6 --allele '*1' --allele '*4' --allele
 just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel   # + every clinical context, as rows
 just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --population NVI  # one context only
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
-just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1 --snapshot cv/  # ClinVar gene panel
+just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1   # ClinVar gene panel (snapshot auto)
+just-dna-enricher draft-panel spec/ --gene MTHFR --snapshot cv/ --offline   # a snapshot you built
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
 

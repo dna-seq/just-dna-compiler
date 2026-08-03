@@ -2,7 +2,10 @@
 
 The provider that RM4 has been waiting for, in the shape the charter allows: it **drafts rows a human
 then owns**, with no compile-time reference materialization and no injected reference in the compile
-path. Inject-only — `snapshot` is a path this function reads, never downloads.
+path. The *compiler* stays inject-only; this is the network tier, so the snapshot it reads is found on
+the usual cache ladder and provisioned from HuggingFace when absent (`--offline` forbids that, and an
+explicit `--snapshot` is taken as given). It used to be a required argument, which meant the published
+snapshot could not reach an author at all: they had to build 4.4M records from a 200 MB VCF first.
 
 **Why these rows are partial, and why that is the honest answer rather than a limitation.**
 `VariantRow.genotype` is required and ClinVar publishes **alleles, not genotypes**. Whether carrying a
@@ -41,7 +44,9 @@ from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.spec import StudyRow, VariantRow
 
 from just_dna_enricher.clinvar import citations_for, select_by_gene
+from just_dna_enricher.download import ensure_clinvar_snapshot
 from just_dna_enricher.licensing import CLINVAR_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.locations import resolve_clinvar_reference
 
 logger = logging.getLogger(__name__)
 
@@ -242,15 +247,51 @@ def _study_rows(
     return rows, dropped
 
 
+def _resolve_snapshot(
+    snapshot: Optional[Path], *, offline: bool, download: bool
+) -> tuple[Path, list[str]]:
+    """Find a ClinVar snapshot to draft from, provisioning the published one if there is none.
+
+    The ladder `enrich()` already uses — explicit path → the cache locations → HuggingFace — so an
+    author does not have to build 4.4M records from a 200 MB VCF before they can draft a panel. An
+    explicit `snapshot` is taken as given and never second-guessed (it is the inject-only escape hatch,
+    and it is what a test or an air-gapped run passes).
+
+    Returns `(reference, warnings)`; raises `ClinVarDraftError` when there is nothing to read, because
+    drafting from no snapshot is not a degraded result, it is no result.
+    """
+    if snapshot is not None:
+        return Path(snapshot), []
+    warnings: list[str] = []
+    reference = resolve_clinvar_reference()
+    if reference is None and not offline and download:
+        try:
+            reference = ensure_clinvar_snapshot()
+        except Exception as exc:
+            warnings.append(
+                f"could not provision the published ClinVar snapshot ({exc}); pass --snapshot with a "
+                f"locally built one, or build it with `just-dna-enricher clinvar build`."
+            )
+    if reference is None:
+        raise ClinVarDraftError(
+            "no ClinVar snapshot found. Drop --offline to download the published one, pass "
+            "--snapshot PATH, or build it yourself with `just-dna-enricher clinvar build --download`."
+            + (f" ({warnings[0]})" if warnings else "")
+        )
+    return Path(reference), warnings
+
+
 def draft_gene_panel(
     spec_dir: Path,
     genes: Sequence[str],
     *,
-    snapshot: Path,
+    snapshot: Optional[Path] = None,
     clin_sig: frozenset[str] = DEFAULT_CLIN_SIG,
     min_review_stars: int = 2,
     max_citations: int = DEFAULT_MAX_CITATIONS,
     declared_use: str = "unstated",
+    offline: bool = False,
+    download: bool = True,
     dry_run: bool = False,
 ) -> ClinVarDraftResult:
     """Draft `variants.csv` rows for one or more genes, leaving `genotype` for the human.
@@ -262,15 +303,24 @@ def draft_gene_panel(
     `min_review_stars` defaults to 2 (multiple submitters, no conflicts). A panel that silently mixes
     a 0-star "no assertion criteria" submission with a 3-star expert-panel review is worse than one
     that says which floor it drew from, and the floor belongs in the author's hands.
+
+    **The snapshot is found, then provisioned — it used to be a required argument.** `snapshot=None`
+    resolves the usual cache ladder and, unless `offline`, downloads the published one
+    (`download.ensure_clinvar_snapshot`), the same shape `enrich()` and the gene-metrics pass use. Before
+    this, the published snapshot could not reach an author: they had to build 4.4M records from a 200 MB
+    VCF themselves, or already know the cache path. That matters most for the *citations*, which are what
+    make a drafted panel compilable at all (`studies.csv` is mandatory and the VCF carries no PMIDs) and
+    which now travel with the published snapshot.
     """
     skip_reason = check_declared_use(CLINVAR_TERMS, declared_use)
     if skip_reason:
         return ClinVarDraftResult(warnings=[skip_reason], skipped=True)
 
+    reference, provisioning_warnings = _resolve_snapshot(snapshot, offline=offline, download=download)
     records = select_by_gene(
-        Path(snapshot), list(genes), clin_sig=clin_sig, min_review_stars=min_review_stars
+        reference, list(genes), clin_sig=clin_sig, min_review_stars=min_review_stars
     )
-    warnings: list[str] = []
+    warnings: list[str] = list(provisioning_warnings)
     partials: list[PartialRow] = []
     unkeyable = 0
     ambiguous = multi_allelic_rsids(records)
@@ -313,11 +363,12 @@ def draft_gene_panel(
     # Grounding evidence, from ClinVar's own literature links. Without this a drafted panel could not
     # compile at all — `studies.csv` is mandatory and the VCF carries no PMIDs — so the provider
     # produced a module that needed evidence nobody could supply. Build it with `clinvar citations`.
-    links = citations_for(Path(snapshot), [str(r.get("variation_id") or "") for r in records])
+    links = citations_for(reference, [str(r.get("variation_id") or "") for r in records])
     if not links:
         warnings.append(
             "no citations table in the snapshot, so no studies.csv rows were drafted — grounding "
-            "evidence is mandatory, so add it by hand or run `just-dna-enricher clinvar citations`."
+            "evidence is mandatory, so add it by hand, or run `just-dna-enricher clinvar citations` "
+            "(a published snapshot now carries the table, so re-provisioning an empty cache also gets it)."
         )
     else:
         studies, dropped = _study_rows(records, links, max_citations, ambiguous)

@@ -5,6 +5,27 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-04 — `draft-panel` finds its own snapshot, so the published citations reach an author
+
+`draft_gene_panel(spec_dir, genes, *, snapshot: Path, …)` **required** the snapshot, with no resolution
+and no provisioning — the third instance of the same gap as `ensure_constraint_snapshot` having no caller.
+So the published snapshot could not reach an author at all: they had to build 4.4M records from a 200 MB
+VCF, or already know the cache path. That mattered most for the **citations**, which are what make a
+drafted panel compilable (`studies.csv` is mandatory, the VCF carries no PMIDs) and which had just started
+travelling with the published snapshot.
+
+`snapshot` is now optional and `_resolve_snapshot` runs the ladder `enrich()` uses: an explicit path is
+taken as given (the inject-only escape hatch, and what an air-gapped run passes), else the cache
+locations, else the published snapshot is downloaded unless `--offline`. No snapshot with `--offline`
+**raises** rather than drafting nothing, because an empty draft would read as "ClinVar has nothing for
+this gene". A provisioning failure raises with the reason attached, not a bare "not found".
+
+Verified from a genuinely empty cache: `draft-panel --gene HFE` provisioned `data/` + `citations/` +
+`release.json` and drafted 12 variant rows with **33 grounded study rows carrying real PMIDs**, then
+refused to compile on the genotype placeholders — the designed state, not a failure. The module docstring
+claimed "Inject-only — `snapshot` is a path this function reads, never downloads", which is exactly the
+kind of claim this repo fixes rather than leaves: the *compiler* is inject-only, this is the network tier.
+
 ## 2026-08-04 — the citations table travels with the snapshot
 
 **A downloaded ClinVar snapshot was second-class.** `citations/` was built and published nowhere, so a

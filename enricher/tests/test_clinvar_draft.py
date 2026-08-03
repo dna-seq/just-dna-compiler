@@ -138,3 +138,77 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert not (tmp_path / "variants.csv").exists()
     assert not (tmp_path / "studies.csv").exists()
     assert not (tmp_path / "sources.csv").exists()
+
+
+# ── finding the snapshot (0.5) ───────────────────────────────────────────────────────────────────
+#
+# `snapshot` used to be a required argument, so the published snapshot could not reach an author: they
+# had to build 4.4M records from a 200 MB VCF, or already know the cache path. Since the citations table
+# is what makes a drafted panel compilable — `studies.csv` is mandatory and the VCF carries no PMIDs —
+# and that table now travels with the published snapshot, the drafting path has to be able to get it.
+
+
+def test_an_explicit_snapshot_is_taken_as_given(monkeypatch, tmp_path: Path) -> None:
+    """The inject-only escape hatch: an explicit path is never second-guessed and nothing is resolved."""
+    from just_dna_enricher import clinvar_draft
+
+    def explode(*_a, **_k):
+        raise AssertionError("an explicit --snapshot must not consult the cache or the network")
+
+    monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", explode)
+    monkeypatch.setattr(clinvar_draft, "ensure_clinvar_snapshot", explode)
+    reference, warnings = clinvar_draft._resolve_snapshot(
+        tmp_path / "explicit", offline=False, download=True
+    )
+    assert reference == tmp_path / "explicit" and warnings == []
+
+
+def test_a_cached_snapshot_is_used_without_downloading(monkeypatch, tmp_path: Path) -> None:
+    from just_dna_enricher import clinvar_draft
+
+    monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: tmp_path / "cached")
+    monkeypatch.setattr(
+        clinvar_draft, "ensure_clinvar_snapshot",
+        lambda *_a, **_k: pytest.fail("provisioned despite a usable cache"),
+    )
+    reference, warnings = clinvar_draft._resolve_snapshot(None, offline=False, download=True)
+    assert reference == tmp_path / "cached" and warnings == []
+
+
+def test_no_cache_provisions_the_published_snapshot(monkeypatch, tmp_path: Path) -> None:
+    from just_dna_enricher import clinvar_draft
+
+    monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
+    monkeypatch.setattr(clinvar_draft, "ensure_clinvar_snapshot", lambda: tmp_path / "fetched")
+    reference, warnings = clinvar_draft._resolve_snapshot(None, offline=False, download=True)
+    assert reference == tmp_path / "fetched" and warnings == []
+
+
+def test_offline_without_a_snapshot_refuses_and_says_how_to_get_one(monkeypatch) -> None:
+    """Drafting from no snapshot is not a degraded result, it is no result — so it raises rather than
+    returning an empty draft that looks like "ClinVar has nothing for this gene"."""
+    from just_dna_enricher import clinvar_draft
+    from just_dna_enricher.clinvar_draft import ClinVarDraftError
+
+    monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
+    monkeypatch.setattr(
+        clinvar_draft, "ensure_clinvar_snapshot",
+        lambda *_a, **_k: pytest.fail("--offline reached the network"),
+    )
+    with pytest.raises(ClinVarDraftError, match="no ClinVar snapshot found"):
+        clinvar_draft._resolve_snapshot(None, offline=True, download=True)
+
+
+def test_a_failed_provisioning_refuses_with_the_reason_attached(monkeypatch) -> None:
+    """HF has gone dark mid-demo; the refusal has to say that is what happened, not just "not found"."""
+    from just_dna_enricher import clinvar_draft
+    from just_dna_enricher.clinvar_draft import ClinVarDraftError
+
+    monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
+
+    def boom():
+        raise RuntimeError("HF unreachable")
+
+    monkeypatch.setattr(clinvar_draft, "ensure_clinvar_snapshot", boom)
+    with pytest.raises(ClinVarDraftError, match="HF unreachable"):
+        clinvar_draft._resolve_snapshot(None, offline=False, download=True)

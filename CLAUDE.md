@@ -470,12 +470,18 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   is an unknown you chose not to establish, and `source_sha256` is what RM4's `reference_sha256` pins
   against. An unreadable `release.json` is reported and left alone — a provenance failure is not a data
   failure, so the table is still written.
-- **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.**
-  `ensure_constraint_snapshot` shipped with the ClinVar generalization and had no caller for a whole
-  release, so `gene-metrics` on a plain install skipped the v4.1 snapshot entirely and recorded the live
-  API's **v2.1.1** numbers while warning about the difference. The shape to copy is `enrich()`'s: provision
-  when the local resolve returns `None` and the run is not `offline`, degrade to the next link on failure,
-  and add no second CLI flag — `--offline` is the switch. And `release.json` travels with the parquet
+- **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.** Three
+  instances so far, all the same shape. `ensure_constraint_snapshot` shipped with the ClinVar
+  generalization and had no caller for a whole release, so `gene-metrics` on a plain install skipped the
+  v4.1 snapshot entirely and recorded the live API's **v2.1.1** numbers while warning about the
+  difference. `draft_gene_panel` *required* `snapshot=`, so the published ClinVar snapshot could not reach
+  an author at all — they had to build 4.4M records from a 200 MB VCF first, which is why the published
+  citations were useless to anyone who had not. And `citations/` itself was built, never published. When
+  a resource becomes fetchable, grep for who asks. The shape to copy is `enrich()`'s: provision when the
+  local resolve returns `None` and the run is not `offline`, degrade to the next link on failure (or raise
+  where there is no next link — an empty draft reads as "the source has nothing for this gene"), and add
+  no second CLI flag — `--offline` is the switch. An explicit path stays the inject-only escape hatch and
+  is never second-guessed. And `release.json` travels with the parquet
   (`locations.RELEASE_FILENAME`, shared by `upload` and `download`) because `source_sha256` is what RM4's
   `reference_sha256` pins against; a cache that cannot state its release is not a pinnable reference.
 - **A row is stamped before the module is known — so anything build-dependent must be re-derived by

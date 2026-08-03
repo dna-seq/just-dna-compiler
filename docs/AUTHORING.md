@@ -66,7 +66,8 @@ and each README says what it was built to exercise.
 ## 2 — Draft from a source, if one publishes the table
 
 ```bash
-just-dna-enricher draft-panel spec/ --gene HFE --snapshot cv/ --use non-commercial   # ClinVar → variants.csv
+just-dna-enricher draft-panel spec/ --gene HFE --use non-commercial   # ClinVar → variants.csv
+#   the snapshot is downloaded if you have none; add --snapshot cv/ --offline to use one you built
 just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --use non-commercial # CPIC → the 3 PGx tables
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
 ```

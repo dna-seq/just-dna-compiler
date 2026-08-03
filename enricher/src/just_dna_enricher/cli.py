@@ -1070,9 +1070,16 @@ def draft_clinpgx_(
 def draft_panel_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     gene: list[str] = typer.Option(..., "--gene", help="Gene to draft from ClinVar (repeatable)."),
-    snapshot: Path = typer.Option(
-        ..., "--snapshot", exists=True, file_okay=False,
-        help="Built ClinVar snapshot (see `clinvar build`). Inject-only; nothing is downloaded.",
+    snapshot: Optional[Path] = typer.Option(
+        None, "--snapshot", exists=True, file_okay=False,
+        help=(
+            "Built ClinVar snapshot (see `clinvar build`). Omit it and the cache is used, or the "
+            "published snapshot downloaded — the citations table comes with it, which is what a panel "
+            "needs to compile."
+        ),
+    ),
+    offline: bool = typer.Option(
+        False, "--offline", help="Use a local snapshot only: never download one.",
     ),
     clin_sig: Optional[str] = typer.Option(
         None, "--clin-sig",
@@ -1102,7 +1109,7 @@ def draft_panel_(
     )
     try:
         result = draft_gene_panel(
-            spec_dir, gene, snapshot=snapshot,
+            spec_dir, gene, snapshot=snapshot, offline=offline,
             **({"clin_sig": calls} if calls else {}),
             min_review_stars=min_review_stars, max_citations=max_citations,
             declared_use=_use(use), dry_run=dry_run,
