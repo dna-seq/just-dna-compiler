@@ -305,9 +305,23 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 - **CPIC/PharmVar coordinates are 1-based — do NOT convert.** Despite the `start` docstring saying
   "0-based", the pipeline stores Ensembl's 1-based position (`rs1135071` → 5226799 in both), and CPIC
   `sequence_location.position` / PharmVar `NC_……:g.` use the same convention. The instinctive `-1`
-  introduces an off-by-one. Two more CPIC traps: `variantallele` uses **IUPAC ambiguity codes** (`R`),
-  which `HaplotypeRow.allele` rejects; and activity scores are **inequality strings** (`"≥3.0"`), not
-  numbers, so they don't drop into `MeasureBinRow`'s numeric bounds.
+  introduces an off-by-one. Two more CPIC traps: `variantallele` carries values `HaplotypeRow.allele`
+  rejects, in **two different kinds** that must not be conflated — **IUPAC ambiguity codes** (`R`), an
+  uncertainty CPIC recorded and never expressible, and **deletion/repeat notations** (`DELTCT`,
+  `AAAGGGGCG(2)`, 23 in CYP2D6), a grammar gap (RM5) a release could widen; `cpic.unusable_allele_reason`
+  names which, and calling the second an ambiguity code was a false claim that survived until a real
+  CYP2D6 draft. And activity scores are **inequality strings** (`"≥3.0"`), not numbers, so they don't drop
+  into `MeasureBinRow`'s numeric bounds.
+- **A large star-allele gene is drafted with `draft --allele`, and the filter covers all three tables.**
+  Unfiltered CYP2D6 is 16,290 diplotype rows (73% `Indeterminate`); the author's real bound is the allele
+  set their caller emits, and *n* alleles is *n(n+1)/2* pairs. Filtering `diplotypes.csv` alone would
+  leave a module naming alleles `haplotypes.csv` never defines — the thing
+  `_cross_validate_haplotype_definitions` warns about — so `_selected_alleles` gates the defining
+  variants and the function rows too. `*1` is always kept (defined by carrying no variants; without it
+  `*1/*2` is undraftable), an unknown name refuses with CPIC's list, and the flag takes a single `--gene`
+  because a star name is gene-scoped. This was RM34. When counting what a filter dropped, count over the
+  rows the filter actually judged: tallying the copy-number rows it deliberately passes through read
+  "567 of 16836" for a six-allele set.
 - **The digest asymmetry decides what is urgent while 0.5 is unpublished.** `integrity.file_entries`
   **skips missing files**, so a **new optional table** never moves the digest of a module that does not
   carry it (additive any time), while a **new column on an existing parquet** moves every module's
@@ -606,7 +620,11 @@ cycle* in `USE_CASES.md`.
   aggregate repeated warnings.** CPIC's `n/a` means *not scored* (an absence → an empty cell);
   `≥3.0` is a real bound the numeric columns cannot express. Both were reported as "an inequality
   rather than a number", one line per row — ~600 lines for CYP2C19 and 2,184 for CYP2C9, which
-  buries every other finding a run produces. Say which case it is, once, with the count.
+  buries every other finding a run produces. Say which case it is, once, with the count. **This has
+  now been needed four times in the same provider** (activity scores, copy-number diplotypes, unusable
+  defining alleles, and variants with no locus): when a warning is emitted inside a per-row loop over a
+  source table, assume it needs collapsing before you ship it, and group by *reason* rather than by row —
+  two reasons under one message is the other half of the same mistake.
 - **A star allele can be *used* without being *defined*.** `allele_function.csv`/`diplotypes.csv`
   name alleles that `haplotypes.csv` may never define, and a consumer's caller can then never emit
   one — every row about it is dead. `_cross_validate_haplotype_definitions` warns (Class 2), only

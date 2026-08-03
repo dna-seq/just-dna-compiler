@@ -171,8 +171,8 @@ The two `content_signature` values must match — that is Principle 7's fixed po
 code; most of those entries are traps that cost someone a day already.
 
 Known limitations you may hit and should **not** try to work around in your data — the open ones are
-`RM31`, `RM32` and `RM34` in [ROADMAP.md](ROADMAP.md): one indel spelled two ways failing to resolve, a
-pseudoautosomal variant becoming two rows, and a large star-allele gene drafting unusably many rows.
-(Two of that batch have shipped: `sources.csv` now understands that a resolution *link* is not a source
-name, and a continuous binning table can be tiled — write bounds that **touch**, e.g. `0.0–0.1` then
-`0.1–0.3`, and the higher bin owns the shared endpoint.)
+`RM31` and `RM32` in [ROADMAP.md](ROADMAP.md): one indel spelled two ways failing to resolve, and a
+pseudoautosomal variant becoming two rows. (Three of that batch have shipped: `sources.csv` now
+understands that a resolution *link* is not a source name; a continuous binning table can be tiled — write
+bounds that **touch**, e.g. `0.0–0.1` then `0.1–0.3`, and the higher bin owns the shared endpoint; and a
+large star-allele gene is drafted with `draft --allele`.)

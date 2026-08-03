@@ -27,7 +27,12 @@ splitting on commas — several `conclusion` values contain commas.
 **`must be a non-empty haplotype name without whitespace`**
 A haplotype name is an identity, not a grammar — `*4`, `e4`, `ε4` are all fine. This fires on an empty
 cell or one with a space. Note CPIC's `x≥3` copy-number notation is *not* accepted by the star-allele
-pattern the CPIC provider checks, so those rows are skipped and counted (RM34).
+pattern the CPIC provider checks, so those rows are skipped and counted (RM5's notation gap).
+
+**`draft --gene CYP2D6` produced thousands of diplotype rows**
+Expected without a filter, and the fix is `--allele`: name the star alleles your consumer's caller can
+emit and every table is drafted to that set (`*1` is kept automatically). Six alleles turn CYP2D6's 16,290
+diplotypes into 21. One `--gene` at a time, because `*2` means a different allele in each gene.
 
 ## Resolution and enrichment
 

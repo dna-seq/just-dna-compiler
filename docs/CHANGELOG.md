@@ -5,6 +5,30 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — RM34: `draft --allele`, and three defects the filter's own dogfood found
+
+**`draft --gene CYP2D6` produced 16,290 diplotype rows, 73% `Indeterminate`** — every row a faithful
+transcription, and a module no human can read, with no way to take a subset (`--drug` *adds* rows).
+
+`--allele` is the filter because the author already knows the answer: a caller emits a bounded allele set,
+and *n* alleles is *n(n+1)/2* pairs. Six alleles turn CYP2D6 into **21 diplotypes**, verified against live
+CPIC, and the result compiles. It applies to **all three** tables — filtering one and not the others
+leaves a module naming alleles it never defines. `*1` is always kept (defined by carrying no variants, and
+without it `*1/*2` would be undraftable for an author who asked for `*2`), an unknown allele refuses with
+the list CPIC publishes, and `--allele` needs a single `--gene` because a star name is gene-scoped.
+
+**Then the filter was turned on real CYP2D6, and found three more:**
+
+- **its own count was misleading** — "567 of 16836 drafted" for six alleles, because the 546 copy-number
+  rows (`*4x≥3/*95`) the filter deliberately leaves alone were counted as kept and then skipped by the
+  notation rule. Two findings, neither visible. Now counted over parsable pairs: "21 of 16290".
+- **`DELTCT` and `AAAGGGGCG(2)` are not IUPAC ambiguity codes**, and the message said they were — a false
+  claim that sends an author after the wrong thing. `cpic.unusable_allele_reason` separates an *ambiguity*
+  (an uncertainty CPIC recorded, never expressible) from a *notation* (a grammar gap, RM5, a release could
+  widen), and reports them as two findings.
+- **two more walls of un-aggregated warnings** — 67 unusable-allele lines and 10 "no rsID and no
+  chromosome" lines in one run — collapsed to one line per reason with the count and examples.
+
 ## 2026-08-03 — RM35: a shared bin endpoint is a boundary, and the higher bin owns it
 
 **A continuous binning table could not be tiled without a finding**, and that was a check nobody could

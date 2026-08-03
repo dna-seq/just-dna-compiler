@@ -363,6 +363,14 @@ def draft_(
         [], "--drug",
         help="Also draft CPIC's prescribing recommendations for this drug (repeatable).",
     ),
+    allele: list[str] = typer.Option(
+        [], "--allele",
+        help=(
+            "Draft only these star alleles, in all three tables (repeatable; `*1` is always kept). "
+            "A caller emits a bounded allele set, and n alleles is n(n+1)/2 pairs — CYP2D6 is 16,290 "
+            "diplotypes unfiltered. Requires a single --gene, since a star name is gene-scoped."
+        ),
+    ),
     population: Optional[str] = typer.Option(
         None, "--population",
         help="Draft only this CPIC clinical context (e.g. 'NVI'). Default: every context, as rows.",
@@ -383,11 +391,21 @@ def draft_(
     is a finding for `pgx`, not an edit for this command to make.
     """
     declared = _use(use)
+    if allele and len(gene) != 1:
+        # `*2` in CYP2C9 and `*2` in CYP2C19 are different alleles of different genes, so one set
+        # applied across several genes would filter each by a name that means something else there.
+        # Drafting is per-gene and re-runnable by design — run the command once per gene.
+        typer.secho(
+            f"--allele needs exactly one --gene (got {len(gene)}): a star-allele name means a "
+            f"different allele in each gene. Draft one gene at a time; the command is additive.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=2)
     total_added = 0
     for name in gene:
         try:
             result = draft_gene(
-                spec_dir, name, drugs=drug, population=population,
+                spec_dir, name, drugs=drug, alleles=allele, population=population,
                 declared_use=declared, dry_run=dry_run,
             )
         except (CpicError, DraftError) as exc:

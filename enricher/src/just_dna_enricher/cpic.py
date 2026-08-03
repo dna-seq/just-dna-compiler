@@ -10,13 +10,18 @@ PharmVar's fifteen.
 on sale. Preferring PharmVar for star alleles is a *data-authority* choice (PharmVar is the naming
 authority), not a licensing one — neither source is sellable.
 
-**Two shapes here do not map cleanly onto this workspace's models, and are surfaced rather than
+**Three shapes here do not map cleanly onto this workspace's models, and are surfaced rather than
 coerced:**
 
 * `allele_location_value.variantallele` uses IUPAC ambiguity codes (`R` for A-or-G at CYP2C19
   rs58973490). `HaplotypeRow.allele` requires plain nucleotides, so an ambiguous definition is
   reported and skipped — expanding `R` to two rows would invent two defining variants where CPIC
   recorded one uncertainty.
+* The same column also carries **deletion/insertion and repeat notations** — `DELTCT`,
+  `AAAGGGGCG(2)`, `GGA(1)` in CYP2D6 — which are *not* ambiguity codes, and were reported as if they
+  were until a real CYP2D6 draft showed them. They are a grammar gap (RM5) rather than an uncertainty
+  CPIC recorded, so `unusable_allele_reason` names which of the two a value is and the two are
+  reported separately.
 * `gene_result.activityscore` is an inequality *string* (`"≥3.0"`, `"n/a"`), not a number, so it does
   not drop into `MeasureBinRow`'s numeric `measure_min`/`measure_max`. The raw string is carried and
   the parsing left to a human, because guessing a bound from `≥3.0` means inventing the upper one.
@@ -41,12 +46,58 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CPIC_ENDPOINT = "https://api.cpicpgx.org/v1"
 CPIC_SOURCE = "cpic"
-# Plain nucleotides only. Anything else from `variantallele` is an IUPAC ambiguity code.
+# Plain nucleotides — what `HaplotypeRow.allele` accepts.
 _NUCLEOTIDES = frozenset("ACGT")
+# The IUPAC ambiguity codes, so a genuinely ambiguous base can be named as one.
+_IUPAC_AMBIGUITY = frozenset("RYSWKMBDHVN")
 
 
 class CpicError(RuntimeError):
     """A CPIC request failed in a way the caller must see."""
+
+
+def unusable_allele_reason(value: str) -> Optional[str]:
+    """Why `variantallele` cannot become a `HaplotypeRow.allele`, or `None` when it can.
+
+    **Two distinct reasons, and calling both "an IUPAC ambiguity code" was wrong.** Drafting real CYP2D6
+    turned up `DELTCT`, `AAAGGGGCG(2)` and `GGA(1)` beside the genuine codes (`R`, `S`), and the message
+    announced all of them as ambiguity codes — a claim about the data that is simply false for a deletion
+    or a repeat, and it points an author at the wrong thing. The distinction matters for what happens
+    next, too: an ambiguous base is an *uncertainty CPIC recorded* and will never be expressible, while a
+    structural notation is a **grammar gap** (RM5) that a future release may widen to hold.
+
+    * `"ambiguity"` — every character is a nucleotide or an IUPAC ambiguity code (`R` = A or G).
+    * `"notation"` — a deletion/insertion or repeat notation, not a nucleotide string at all.
+    """
+    if not value or set(value) <= _NUCLEOTIDES:
+        return None
+    return "ambiguity" if set(value) <= (_NUCLEOTIDES | _IUPAC_AMBIGUITY) else "notation"
+
+
+#: What each `unusable_allele_reason` means, in the author's terms: what CPIC said, and what follows.
+_UNUSABLE_EXPLANATION: dict[str, str] = {
+    "ambiguity": (
+        "an IUPAC ambiguity code rather than a definite nucleotide (`R` is A-or-G) — an uncertainty it "
+        "recorded, and expanding it would invent defining variants it never stated"
+    ),
+    "notation": (
+        "a deletion/insertion or repeat notation rather than a nucleotide string — a grammar gap (RM5) "
+        "rather than an ambiguity, and a future release may widen to hold it"
+    ),
+}
+
+
+def _unusable_warnings(gene: str, by_reason: dict[str, list[str]]) -> list[str]:
+    """One aggregated line per reason, with the count and a few real examples."""
+    lines: list[str] = []
+    for reason, entries in sorted(by_reason.items()):
+        shown = ", ".join(entries[:3])
+        rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
+        lines.append(
+            f"{gene}: {len(entries)} defining allele(s) skipped — CPIC records "
+            f"{_UNUSABLE_EXPLANATION[reason]}. e.g. {shown}{rest}."
+        )
+    return lines
 
 
 @dataclass
@@ -80,7 +131,9 @@ class CpicDefiningVariant:
     chrom: Optional[str]
     start: Optional[int]
     variant_allele: Optional[str]
-    ambiguous: bool = False
+    #: Why the allele cannot be held (`unusable_allele_reason`), or None when it can. Was a bare
+    #: `ambiguous: bool`, which named only one of the two real cases — a `DELTCT` row is not ambiguous.
+    unusable: Optional[str] = None
 
 
 @dataclass
@@ -274,7 +327,8 @@ class CpicClient:
 
         Two requests rather than a nested select, because PostgREST embedding across
         `allele_definition → allele_location_value → sequence_location` needs the definition ids
-        first. Returns `(variants, warnings)`; an IUPAC-ambiguous allele is reported, never coerced.
+        first. Returns `(variants, warnings)`; an allele the format cannot hold is reported by *which*
+        of the two reasons applies (`unusable_allele_reason`), aggregated, and never coerced.
         """
         definitions = self._get(
             "allele_definition",
@@ -295,17 +349,18 @@ class CpicClient:
             },
         )
         out: list[CpicDefiningVariant] = []
-        warnings: list[str] = []
+        # Aggregated per reason, not one line per row: a real CYP2D6 draft hits 67 of these, which buries
+        # every other finding in the run — the same collapse already applied to the activity scores and
+        # the copy-number diplotypes. Grouped by *reason* because the two are different findings with
+        # different fixes (an ambiguity is permanent, a notation is RM5).
+        unusable: dict[str, list[str]] = {}
         for r in rows:
             location = r.get("sequence_location") or {}
             allele_value = (r.get("variantallele") or "").strip().upper()
-            ambiguous = bool(allele_value) and not set(allele_value) <= _NUCLEOTIDES
-            if ambiguous:
-                warnings.append(
-                    f"{gene} {by_id.get(r['alleledefinitionid'])}: CPIC records the defining allele "
-                    f"as {allele_value!r}, an IUPAC ambiguity code rather than a definite "
-                    f"nucleotide — skipped rather than guessed."
-                )
+            reason = unusable_allele_reason(allele_value)
+            if reason is not None:
+                label = by_id.get(r["alleledefinitionid"], "")
+                unusable.setdefault(reason, []).append(f"{label}={allele_value}")
             out.append(
                 CpicDefiningVariant(
                     gene=location.get("genesymbol") or gene,
@@ -319,7 +374,7 @@ class CpicClient:
                     chrom=None,
                     start=location.get("position"),
                     variant_allele=allele_value or None,
-                    ambiguous=ambiguous,
+                    unusable=reason,
                 )
             )
-        return out, warnings
+        return out, _unusable_warnings(gene, unusable)

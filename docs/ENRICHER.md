@@ -896,9 +896,22 @@ separate step.
 - **2 rps**, enforced by the shared `net.PacingGate` on an injectable clock. The unfiltered `/alleles`
   collection is ~25 MB and silently ignores a `geneSymbol` parameter it does not define; use
   `/genes/{symbol}`.
-- **CPIC `variantallele` uses IUPAC ambiguity codes** (`R` at CYP2C19 `*2`, `Y` at `*4`).
-  `HaplotypeRow.allele` requires definite nucleotides, so an ambiguous definition is reported and
-  skipped — expanding `R` would invent two defining variants where CPIC recorded one uncertainty.
+- **CPIC `variantallele` carries two shapes the allele grammar cannot hold, and they are different
+  findings.** IUPAC ambiguity codes (`R` at CYP2C19 `*2`, `Y` at `*4`) are an *uncertainty CPIC
+  recorded* — expanding `R` would invent two defining variants where CPIC recorded one — and will never
+  be expressible. Deletion/insertion and repeat notations (`DELTCT`, `AAAGGGGCG(2)`, `GGA(1)`, 23 of them
+  in CYP2D6) are a **grammar gap** (RM5) a release could widen to cover. Both are skipped, never coerced;
+  `cpic.unusable_allele_reason` names which, and they are reported as two aggregated lines with counts.
+  Calling the second kind an ambiguity code — which the message did until a real CYP2D6 draft — is a false
+  claim that points an author at the wrong fix.
+- **A large star-allele gene needs `--allele` (RM34).** `draft --gene CYP2D6` unfiltered is 16,290
+  diplotype rows, 73% `Indeterminate`: faithful, and unreadable. `--allele` takes the set the consumer's
+  caller can actually emit (*n* alleles is *n(n+1)/2* pairs, so six make 21 diplotypes) and applies it to
+  **all three** tables at once, because a module that names an allele it never defines is what
+  `_cross_validate_haplotype_definitions` exists to warn about. `*1` is always kept — it is defined by
+  carrying no variants, so it costs nothing, and without it `*1/*2` could not be drafted. An unknown
+  allele refuses with the list CPIC publishes; the flag needs a single `--gene`, since `*2` in CYP2C9 and
+  `*2` in CYP2C19 are different alleles.
 - **CPIC activity scores are inequality strings** (`"≥3.0"`, `"n/a"`), not numbers, so they do not drop
   into `MeasureBinRow`'s numeric bounds; the raw string is carried and the parsing left to a human.
 - **Coordinates are 1-based** in both (verified against Ensembl for rs4244285 → chr10:94781859, which
@@ -974,6 +987,7 @@ just-dna-enricher check-acmg spec/ --sf-list acmg/  # acmg_sf vs the ACMG SF gen
 # Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)
 just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults
 just-dna-enricher draft spec/ --gene CYP2C19        # CPIC → haplotypes/allele_function/diplotypes
+just-dna-enricher draft spec/ --gene CYP2D6 --allele '*1' --allele '*4' --allele '*10'  # 21 not 16,290
 just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel   # + every clinical context, as rows
 just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --population NVI  # one context only
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial

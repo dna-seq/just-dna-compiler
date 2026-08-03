@@ -72,8 +72,12 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
     """CPIC's defining variants → `haplotypes.csv` rows, skipping what the grammar cannot hold."""
     rows: list[HaplotypeRow] = []
     warnings: list[str] = []
+    # Aggregated for the third time in this file, and the same reason each time: a real CYP2D6 draft
+    # emits ten of these for `*1` alone, one line apiece, which buries the licence row and the allele
+    # skips underneath them.
+    no_locus: list[str] = []
     for variant in variants:
-        if variant.ambiguous or not variant.variant_allele:
+        if variant.unusable or not variant.variant_allele:
             continue  # already reported by the client; nothing definite to write
         if not STAR_ALLELE_PATTERN.match(variant.allele or ""):
             warnings.append(
@@ -88,11 +92,7 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
         # variants are shaped that way, 14 TPMT, 4 NUDT15; CYP2C19 has none, which is why the
         # provider looked fine. A guard that does not match the model it builds is not a guard.
         if variant.rsid is None and (variant.chrom is None or variant.start is None):
-            warnings.append(
-                f"{variant.gene} {variant.allele}: CPIC gives no rsID and no complete coordinate "
-                f"(position {variant.start}, chromosome not published) — skipped, since a haplotype "
-                f"row with no locus resolves to nothing."
-            )
+            no_locus.append(f"{variant.allele}@{variant.start}")
             continue
         rows.append(
             HaplotypeRow(
@@ -109,6 +109,15 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
                 gene=variant.gene,
             )
         )
+    if no_locus:
+        gene = variants[0].gene if variants else "?"
+        shown = ", ".join(no_locus[:3])
+        rest = f" (+{len(no_locus) - 3} more)" if len(no_locus) > 3 else ""
+        warnings.append(
+            f"{gene}: {len(no_locus)} defining variant(s) skipped — CPIC gives no rsID and publishes "
+            f"no chromosome, and a haplotype row with a bare position resolves to nothing. "
+            f"e.g. {shown}{rest}."
+        )
     return rows, warnings
 
 
@@ -117,6 +126,48 @@ def _split_diplotype(diplotype: str) -> Optional[tuple[str, str]]:
     if len(parts) != 2 or not all(STAR_ALLELE_PATTERN.match(p) for p in parts):
         return None
     return parts[0], parts[1]
+
+
+#: The reference allele, always kept by an `--allele` filter. It is *defined* by carrying no variants, so
+#: including it costs no rows, and leaving it out would make `*1/*2` — the commonest real diplotype —
+#: undraftable while the author was asking for `*2`.
+_REFERENCE_ALLELE = "*1"
+
+
+def _selected_alleles(
+    requested: Sequence[str], published: Sequence[str], gene: str
+) -> Optional[frozenset[str]]:
+    """The allele set to draft, or `None` for "everything CPIC publishes" (no filter).
+
+    **Why a filter exists at all.** `draft --gene CYP2D6` produces 16,290 diplotype rows, 73% of them
+    `Indeterminate` — every row a faithful transcription, and a module no human can read (RM34). The
+    author's own bound is the allele set their caller can emit, and *n* alleles is *n(n+1)/2* pairs, so
+    naming six collapses CYP2D6 to something authorable.
+
+    **An unknown name refuses.** A typo silently yields a smaller module, which is the failure mode a
+    filter must not introduce — and `--population` already set the precedent that a value the source does
+    not have is reported rather than quietly drafting nothing.
+    """
+    if not requested:
+        return None
+    wanted = {a.strip() for a in requested if a.strip()}
+    unknown = sorted(wanted - set(published))
+    if unknown:
+        raise CpicError(
+            f"{gene}: CPIC publishes no allele(s) {unknown}. Available: "
+            f"{', '.join(sorted(published)) or '(none)'}."
+        )
+    return frozenset(wanted | {_REFERENCE_ALLELE})
+
+
+def _pair_in(diplotype: str, selected: frozenset[str]) -> bool:
+    """Whether both halves of a diplotype are in the selected set (an unparsable pair is left alone).
+
+    Unparsable means the copy-number/`≥` notation the provider already skips and reports; deciding it
+    here too would report it twice and, worse, would hide it behind a filter message.
+    """
+    pair = _split_diplotype(diplotype)
+    return pair is None or (pair[0] in selected and pair[1] in selected)
 
 
 def _recommendation_rows(
@@ -194,6 +245,7 @@ def draft_gene(
     gene: str,
     *,
     drugs: Sequence[str] = (),
+    alleles: Sequence[str] = (),
     population: Optional[str] = None,
     declared_use: str = "unstated",
     dry_run: bool = False,
@@ -203,6 +255,12 @@ def draft_gene(
 
     Re-runnable and additive: call it once per gene, in any order, as a module grows. Rows already in
     the files are left exactly as they are.
+
+    `alleles` restricts the draft to a set of star alleles (RM34) and is applied to **all three** tables:
+    the defining variants of those alleles, their function rows, and only the diplotypes whose *both*
+    halves are in the set. Filtering one table and not the others would leave a module naming alleles it
+    never defines, which is precisely what `_cross_validate_haplotype_definitions` warns about. `*1` is
+    always kept; empty means everything CPIC publishes, exactly as before.
     """
     skip_reason = check_declared_use(CPIC_TERMS, declared_use)
     if skip_reason:
@@ -212,7 +270,7 @@ def draft_gene(
     owned = client is None
     cpic = client or CpicClient()
     try:
-        alleles = cpic.alleles_for_gene(gene)
+        published = cpic.alleles_for_gene(gene)
         diplotypes = cpic.diplotypes_for_gene(gene)
         defining, defining_warnings = cpic.defining_variants(gene)
         by_drug = {drug: cpic.recommendations(gene, drug) for drug in drugs}
@@ -221,11 +279,31 @@ def draft_gene(
             cpic.close()
 
     warnings = list(defining_warnings)
+    selected = _selected_alleles(alleles, [a.allele for a in published], gene)
+    if selected is not None:
+        # Filtered once, here, so the three tables and the drug rows all see the same set — the drug rows
+        # are joined onto these same diplotypes below.
+        kept = [d for d in diplotypes if _pair_in(d.diplotype, selected)]
+        # Counted over the **parsable** pairs only, which is what the filter actually decided. Counting
+        # every row instead read "567 of 16836 drafted" for a set of six alleles, because the 546
+        # copy-number rows `_pair_in` deliberately leaves alone were tallied as kept and then skipped by
+        # the notation rule below — two different findings, and the reader could not see either.
+        parsable = [d for d in diplotypes if _split_diplotype(d.diplotype) is not None]
+        kept_parsable = [d for d in kept if _split_diplotype(d.diplotype) is not None]
+        warnings.append(
+            f"{gene}: --allele kept {len(selected)} allele(s) {sorted(selected)} (`*1` is always kept, "
+            f"since it is defined by carrying no variants) — {len(kept_parsable)} of {len(parsable)} "
+            f"diplotype(s) drafted; the rest name an allele outside the set."
+        )
+        diplotypes = kept
+        published = [a for a in published if a.allele in selected]
+        defining = [v for v in defining if v.allele in selected]
+
     haplotypes, haplotype_warnings = _haplotype_rows(defining)
     warnings.extend(haplotype_warnings)
 
     function_rows: list[AlleleFunctionRow] = []
-    for allele in alleles:
+    for allele in published:
         if not STAR_ALLELE_PATTERN.match(allele.allele or ""):
             warnings.append(f"{gene}: allele {allele.allele!r} is not a star-allele string — skipped.")
             continue

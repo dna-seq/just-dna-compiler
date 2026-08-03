@@ -1,9 +1,11 @@
 """The CPIC drafting provider (`just_dna_enricher.pgx_draft`, 0.5).
 
-Payloads are trimmed from the real CPIC PostgREST responses, including the two shapes that do not map
-onto this format — an IUPAC ambiguity code where a nucleotide is expected, and an activity score
-written as an inequality — because coercing either of them is the mistake the provider exists to not
-make. Nothing here opens a socket.
+Payloads are trimmed from the real CPIC PostgREST responses, including the shapes that do not map onto
+this format — an IUPAC ambiguity code where a nucleotide is expected, and an activity score written as an
+inequality — because coercing either of them is the mistake the provider exists to not make. The third
+such shape (CYP2D6's `DELTCT` / `AAAGGGGCG(2)` notations, which are *not* ambiguity codes) is exercised
+against its classifier with the real values rather than invented into a CYP2C19 fixture. Nothing here
+opens a socket.
 """
 
 from pathlib import Path
@@ -13,7 +15,7 @@ import pytest
 from just_dna_compiler.compiler import _load_csv_rows, validate_spec
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 
-from just_dna_enricher.cpic import CpicClient
+from just_dna_enricher.cpic import CpicClient, CpicError
 from just_dna_enricher.licensing import LicenseRefusal
 from just_dna_enricher.pgx_draft import draft_gene
 
@@ -197,7 +199,7 @@ from just_dna_enricher.pgx_draft import _haplotype_rows
 
 def _variant(**kw) -> CpicDefiningVariant:
     base = dict(gene="CYP2C9", allele="*57", rsid=None, chrom=None, start=None,
-                variant_allele="T", ambiguous=False)
+                variant_allele="T", unusable=None)
     base.update(kw)
     return CpicDefiningVariant(**base)
 
@@ -208,7 +210,7 @@ def test_a_position_without_a_chromosome_is_skipped_not_written() -> None:
     variants are shaped this way (also 14 in TPMT, 4 in NUDT15); CYP2C19 has none."""
     rows, warnings = _haplotype_rows([_variant(start=94947907)])
     assert rows == []
-    assert warnings and "no complete coordinate" in warnings[0]
+    assert warnings and "no rsID and publishes no chromosome" in warnings[0]
 
 
 def test_the_guard_matches_the_models_own_rule() -> None:
@@ -234,9 +236,57 @@ def test_the_guard_matches_the_models_own_rule() -> None:
         assert kept == model_accepts, f"guard and model disagree for {case}"
 
 
-def test_an_ambiguous_iupac_allele_is_still_skipped() -> None:
-    rows, _ = _haplotype_rows([_variant(rsid="rs1799853", variant_allele="R", ambiguous=True)])
+def test_an_allele_the_format_cannot_hold_is_still_skipped() -> None:
+    for value, reason in (("R", "ambiguity"), ("DELTCT", "notation")):
+        rows, _ = _haplotype_rows(
+            [_variant(rsid="rs1799853", variant_allele=value, unusable=reason)]
+        )
+        assert rows == [], value
+
+
+def test_the_two_unusable_shapes_are_named_for_what_they_are() -> None:
+    """`DELTCT` and `AAAGGGGCG(2)` are not ambiguity codes, and saying so was a false claim.
+
+    Real CYP2D6 values, and the distinction decides what an author does next: an ambiguity is an
+    uncertainty CPIC recorded and will never be expressible, while a deletion or repeat notation is a
+    grammar gap a release could widen (RM5).
+    """
+    from just_dna_enricher.cpic import unusable_allele_reason
+
+    assert unusable_allele_reason("A") is None
+    assert unusable_allele_reason("AT") is None
+    assert unusable_allele_reason("") is None
+    assert unusable_allele_reason("R") == "ambiguity"      # A or G
+    assert unusable_allele_reason("S") == "ambiguity"      # C or G
+    assert unusable_allele_reason("DELTCT") == "notation"
+    assert unusable_allele_reason("AAAGGGGCG(2)") == "notation"
+    assert unusable_allele_reason("GGA(1)") == "notation"
+
+
+def test_the_unusable_alleles_are_reported_once_per_reason_with_a_count() -> None:
+    """A real CYP2D6 draft hits 67 of these; one line each buries every other finding in the run."""
+    from just_dna_enricher.cpic import _unusable_warnings
+
+    lines = _unusable_warnings(
+        "CYP2D6",
+        {"ambiguity": [f"*{i}=R" for i in range(5)], "notation": ["*180=DELTCT"]},
+    )
+    assert len(lines) == 2
+    ambiguity = next(line for line in lines if "IUPAC" in line)
+    assert "5 defining allele(s) skipped" in ambiguity and "(+2 more)" in ambiguity
+    notation = next(line for line in lines if "RM5" in line)
+    assert "1 defining allele(s) skipped" in notation and "DELTCT" in notation
+    assert "IUPAC" not in notation      # the claim that was wrong
+
+
+def test_variants_with_no_locus_are_reported_once_with_the_count() -> None:
+    """Ten lines for CYP2D6 `*1` alone, before this — the third aggregation in this provider."""
+    rows, warnings = _haplotype_rows(
+        [_variant(rsid=None, chrom=None, start=42126625 + i) for i in range(4)]
+    )
     assert rows == []
+    assert len(warnings) == 1
+    assert "4 defining variant(s) skipped" in warnings[0] and "(+1 more)" in warnings[0]
 
 
 # ── CPIC prescribing recommendations (0.5.1) ────────────────────────────────────────────────────
@@ -317,6 +367,88 @@ def test_a_phenotype_cpic_does_not_cover_gets_no_drug_row_and_is_reported() -> N
     rows, warnings = _recommendation_rows(dips, [_rec("Poor Metabolizer", "general")], population=None)
     assert len(rows) == 1
     assert warnings and "Indeterminate" in warnings[0]
+
+
+# ── the allele filter (RM34) ────────────────────────────────────────────────────────────────────
+
+
+def test_the_allele_filter_applies_to_all_three_tables(tmp_path: Path) -> None:
+    """RM34: filtering one table and not the others leaves a module naming alleles it never defines.
+
+    `*17` is dropped here, so its function row goes, its defining variant (`rs12248560`) goes, and every
+    diplotype naming it goes — while `*1/*2` survives because `*1` is always kept.
+    """
+    spec = _spec(tmp_path)
+    result = draft_gene(
+        spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client()
+    )
+    assert result.added > 0
+
+    assert {r.allele for r in _rows(spec, "allele_function.csv", AlleleFunctionRow)} == {"*1", "*2"}
+    assert {r.rsid for r in _rows(spec, "haplotypes.csv", HaplotypeRow)} == {"rs4244285"}
+    pairs = {(r.haplotype_a, r.haplotype_b) for r in _rows(spec, "diplotypes.csv", DiplotypeRow)}
+    assert pairs == {("*1", "*1"), ("*1", "*2")}
+    # The module must still be coherent: nothing names an allele `haplotypes.csv`/`allele_function.csv`
+    # does not cover, which is the cross-check that would otherwise fire.
+    assert validate_spec(spec).valid, validate_spec(spec).errors
+
+
+def test_the_reference_allele_is_kept_even_when_not_asked_for(tmp_path: Path) -> None:
+    """`*1` carries no defining variants, so keeping it costs nothing — and dropping it would make
+    `*1/*2`, the commonest real diplotype, undraftable for an author who asked for `*2`."""
+    spec = _spec(tmp_path)
+    result = draft_gene(
+        spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client()
+    )
+    assert "*1" in {r.allele for r in _rows(spec, "allele_function.csv", AlleleFunctionRow)}
+    assert any("`*1` is always kept" in w for w in result.warnings)
+
+
+def test_what_the_filter_dropped_is_stated_with_the_count(tmp_path: Path) -> None:
+    """No silent caps: a filtered draft says how much of the source it left out."""
+    spec = _spec(tmp_path)
+    result = draft_gene(
+        spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client()
+    )
+    line = next(w for w in result.warnings if "--allele" in w)
+    assert "2 of 3 diplotype(s) drafted" in line
+    assert "['*1', '*2']" in line
+
+
+def test_an_unknown_allele_refuses_and_lists_what_cpic_publishes(tmp_path: Path) -> None:
+    """A typo must not quietly produce a smaller module."""
+    with pytest.raises(CpicError, match=r"publishes no allele"):
+        draft_gene(
+            _spec(tmp_path), "CYP2C19", alleles=["*2A"],
+            declared_use="non_commercial", client=_client(),
+        )
+    try:
+        draft_gene(_spec(tmp_path), "CYP2C19", alleles=["*2A"],
+                   declared_use="non_commercial", client=_client())
+    except CpicError as exc:
+        assert "*17" in str(exc) and "*2" in str(exc)
+
+
+def test_no_filter_drafts_everything_exactly_as_before(tmp_path: Path) -> None:
+    """P3: the parameter is additive, so an unfiltered call is byte-identical to the old behaviour."""
+    filtered = _spec(tmp_path / "with_arg")
+    draft_gene(filtered, "CYP2C19", alleles=[], declared_use="non_commercial", client=_client())
+    plain = _spec(tmp_path / "without")
+    draft_gene(plain, "CYP2C19", declared_use="non_commercial", client=_client())
+    for name in ("haplotypes.csv", "allele_function.csv", "diplotypes.csv"):
+        assert (filtered / name).read_text() == (plain / name).read_text()
+
+
+def test_an_unparsable_diplotype_is_reported_by_its_own_rule_not_hidden_by_the_filter() -> None:
+    """CYP2D6's `*4x≥3/*95` is skipped and counted by the provider; the filter must not swallow it.
+
+    Otherwise a run with `--allele` would report "outside the set" for rows whose real problem is
+    notation the format cannot hold (RM5) — a different finding with a different fix.
+    """
+    from just_dna_enricher.pgx_draft import _pair_in
+
+    assert _pair_in("*4x≥3/*95", frozenset({"*1"})) is True
+    assert _pair_in("*1/*17", frozenset({"*1"})) is False
 
 
 def test_classification_maps_onto_the_vocabulary_and_drops_unclassified() -> None:

@@ -306,6 +306,46 @@ on load, because three of CPIC's sixteen live values carry a trailing space and 
 key. | format (schema) | PGx; call-confidence gating | **done** |
 
 
+## RM34 — The CPIC provider has no filter
+
+**Severity** — · **Status** ✅ shipped in 0.5 (found by dogfooding 2026-08-03, fixed in the same
+window) · **Owner** enricher (CLI) · **Motivating case** CYP2D6, and any large star-allele gene
+
+`draft --gene CYP2D6` produced a module nobody could use: **16,290 diplotype rows, 73% of them
+`Indeterminate`**. Every row a faithful transcription, and it compiled — but not human-authorable in the
+sense the charter gates on, and the author had no way to draft a subset (`--drug` *adds* rows).
+
+**`--allele` shipped, and the reason it is the right filter is that the author already knows the answer:**
+a consumer's caller emits a bounded allele set, and *n* alleles is *n(n+1)/2* pairs. Six alleles collapse
+CYP2D6 to 21 diplotypes — verified against live CPIC, and it compiles. It filters **all three** tables
+(defining variants, function rows, and only diplotypes whose *both* halves are selected), because
+filtering one and not the others leaves a module naming alleles it never defines, which is exactly what
+`_cross_validate_haplotype_definitions` warns about. `*1` is always kept and the message says so: it is
+defined by carrying no variants, so it costs nothing, and dropping it would make `*1/*2` — the commonest
+real diplotype — undraftable for an author who asked for `*2`. An unknown allele name refuses and lists
+what CPIC publishes, since a typo would otherwise yield a quietly smaller module. `--allele` requires a
+single `--gene`: a star name is gene-scoped, so one set across several genes would filter each by a name
+meaning something else there, and drafting is per-gene and re-runnable by design.
+
+The alternatives considered and not taken: `--skip-indeterminate` / `--phenotype` (filtering on CPIC's own
+call is cheaper, but an absent row cannot then be told from "CPIC declined to call", and it does not
+address scale), and an activity-score threshold (the same objection, plus CPIC writes some scores as
+inequalities).
+
+**Dogfooding the filter on real CYP2D6 immediately found three more defects, all fixed here:**
+
+- **The filter's own count was misleading.** It read "567 of 16836 diplotype(s) drafted" for six alleles,
+  because the 546 copy-number rows (`*4x≥3/*95`) that the filter deliberately leaves alone were tallied as
+  kept and then skipped by the notation rule — two findings, and the reader could see neither. It now
+  counts over parsable pairs: "21 of 16290".
+- **`DELTCT` and `AAAGGGGCG(2)` are not IUPAC ambiguity codes**, and the message announced them as such —
+  a false claim about the data that points an author at the wrong thing. `cpic.unusable_allele_reason`
+  now separates an *ambiguity* (an uncertainty CPIC recorded, never expressible) from a *notation* (a
+  grammar gap, RM5, that a release may widen), and reports them as two findings.
+- **Two more walls of un-aggregated warnings**: 67 unusable-allele lines and 10 "no rsID and no
+  chromosome" lines in one CYP2D6 run, each one line per row. Both collapsed to one line per reason with
+  a count and examples — the third and fourth time this file has needed that.
+
 ## RM35 — A continuous binning table cannot be tiled without a finding
 
 **Severity** — · **Status** ✅ shipped in 0.5 (proved by construction 2026-08-03, fixed in the same
