@@ -498,6 +498,17 @@ cycle* in `USE_CASES.md`.
   choices when several exist. Drug rows sit **beside** the phenotype rows (the key includes `drug`),
   they do not replace them. And `recommendation_strength` is CPIC's; `evidence_level` is PharmGKB's;
   they are different axes and a provider must fill only its own.
+- **The house algebra is THREE-valued: true / false / unknown — and `None` is never `False`.** This
+  is the single rule behind a dozen separate-looking ones: `SourceTerms.share_alike`/`commercial_use`
+  (unknown terms are undetermined, never permitted), `CrossrefClient.exists` (`Optional[bool]`, so
+  "could not ask" ≠ "no such work"), `LiteratureRow.quotes_found` (null, not zero, when no text could
+  be read), `--offline` reporting `unchecked` rather than `absent`, `unresolved` for a missing
+  measurement (never the lowest bin), `requires_callable` for an absence nobody called, and
+  `hints`/`lookup` returning findings rather than verdicts. When adding anything that answers a
+  question, give it three outcomes, not two — and when the answer is unknown, **withhold**: never
+  report, never negate. The one place this gets subtle is combining them: use **Kleene** semantics,
+  not withhold-on-any-unknown, because `unknown AND false` really is `false` (an ε4-gated conclusion
+  is decidably false at ref/ref whatever the call quality was) and collapsing that loses real answers.
 - **A drafting provider's skip guard must be DERIVED from the model's rule, not restated beside it.**
   `pgx_draft` skipped a CPIC variant when "no rsID *and* no position", while `HaplotypeRow` requires
   an rsID **or** chrom AND start — and CPIC publishes no chromosome (`sequence_location` carries

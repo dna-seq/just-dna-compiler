@@ -107,10 +107,16 @@ pressure). So the last 0.5 work is columns plus tooling that carries no schema r
 
 ## 0.5.1 — queued behind the cut (nothing here needs the window)
 
-Small, additive, and digest-neutral, so waiting costs nothing:
+Small, additive, and digest-neutral, so waiting costs nothing.
 
-- **Drafting providers beyond CPIC** (RM26 below) — the generic helper ships in the pre-cut batch with
-  one provider; the rest are pure additions to it.
+**Shipped in 0.5.1** (see [CHANGELOG](CHANGELOG.md) for the detail): the whole authoring surface —
+templating (`stub`/`scaffold`), offline hints, the enricher lookup surface, **delegated insertion**
+and **partial rows**; **RM26**'s remaining two drafting providers (ClinPGx → `pharm_variants.csv`,
+ClinVar → `variants.csv`) plus CPIC prescribing recommendations; **RM30**; a cross-table check for
+star alleles used but never defined; and three reference examples authored end to end with the
+surface (`hfe_hemochromatosis`, `cyp2c19_star_alleles`, `apoe_epsilon`).
+
+**Still queued:**
 - **The ACMG SF cross-check.** `VariantRow.acmg_sf` is materialized and validated against nothing, so
   the check is worth having — but the pre-cut probe went looking for something to validate it against
   and **did not find a data file**. What exists (2026-08-02): NCBI's ClinVar ACMG page
@@ -228,8 +234,16 @@ A module is rarely one axis, and what a curator wants is to pair them — a CVD 
 something about aspirin or warfarin *given* what the rest of the module found. The format cannot
 state that today: every table keys on one subject and `conclusion` is prose about it alone.
 CONSTITUTION P1 already sanctions the mechanism (a non-Turing-complete boolean predicate, drafted
-since 0.1 and never wired because nothing demanded it). The full design thread, the starter shape and
-what is deliberately left open are in [PROPOSAL_0_5.md § G3](PROPOSAL_0_5.md). In brief: a new
+since 0.1 and never wired because nothing demanded it). **The algebra is three-valued, not boolean** — true/false/**unknown**, Kleene operators, with
+`unknown` a first-class value. That is not new here, it is the rule this codebase already follows
+everywhere (`None` ≠ `False` in `SourceTerms`, `CrossrefClient.exists`, `quotes_found`, `--offline`
+reporting `unchecked`, `unresolved` for a missing measurement, `requires_callable` for an uncalled
+absence) finally stated as an algebra rather than as separate cases. It matters concretely: with
+Kleene `AND`, a conclusion gated on "ε4 present AND QUAL ≥ 60" is decidably **false** at ref/ref
+whatever the quality was, so a blanket withhold-on-any-unknown would be strictly worse than the
+tables it replaces. A predicate evaluating to `unknown` is withheld — never reported, never negated.
+The full design thread, the starter shape and what is deliberately left open are in
+[PROPOSAL_0_5.md § G3](PROPOSAL_0_5.md). In brief: a new
 **optional** table, a predicate that **never blocks** (an unresolvable reference warns), a grammar
 kept to the smallest thing that covers the motivating case — conjunction **plus one relational
 notion, in-cis/in-trans**, because the case that most justifies the table is compound

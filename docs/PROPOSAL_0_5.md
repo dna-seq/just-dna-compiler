@@ -473,6 +473,46 @@ So the DSL's case rests on economy and on open-world absence, not on missing ope
 weaker case than "we cannot express it", and a more precise one — and it is why the demand has to
 come from a module somebody actually failed to write, rather than from the shape of boolean algebra.
 
+### Boolean is the wrong algebra — it has to be three-valued
+
+Everything above talks about a *boolean* predicate, because Principle 1 does. That is round one, and
+it is not sufficient: the algebra has to be **true / false / unknown**, with `unknown` a first-class
+value rather than an error or a silent `false`.
+
+This is not a new idea in this codebase — it is the rule it already follows everywhere, finally
+stated as an algebra instead of as a list of special cases. `None` is not `False` in
+`SourceTerms.share_alike`/`commercial_use` (unknown terms are undetermined, never permitted);
+`CrossrefClient.exists` returns `Optional[bool]` so "could not ask" is distinct from "no such work";
+`LiteratureRow.quotes_found` is null rather than zero when no text could be read; `--offline` reports
+`unchecked`, never `absent`; a missing measurement selects `unresolved` and never the lowest bin; and
+`requires_callable` forbids asserting an absence in a region nobody called. Each was argued
+separately. They are one rule.
+
+So the operators are **Kleene three-valued**, and the interesting cells are the ones that are not
+`unknown`:
+
+| | `A ∧ B` | `A ∨ B` |
+|---|---|---|
+| `unknown` with `false` | **false** | unknown |
+| `unknown` with `true` | unknown | **true** |
+
+`¬unknown` is `unknown`. The two bold cells are why this is worth having rather than just refusing on
+any missing input: a conclusion gated on "ε4 present AND *QUAL* ≥ 60" is decidably **false** when the
+genotype is ref/ref, whatever the quality was — you do not need the cofactor to rule it out. Blanket
+"withhold if anything is unknown" would throw that away and make the predicate far less useful than
+the tables it is meant to improve on.
+
+Where `unknown` comes from, all of them already real: a no-call; a region without callability
+evidence; unphased data for a term that asks about strand; an injected cofactor the consumer did not
+supply; a quality value below the floor *or* absent. And the safety rule falls out of the algebra
+instead of being bolted on — a conclusion whose predicate evaluates to `unknown` is **withheld**, not
+reported and not negated, exactly as `unresolved` and `requires_callable` already behave.
+
+One consequence worth stating before anyone writes a parser: **`unknown` must be representable in the
+consumer contract too.** A predicate that can return three values is useless if the surface that
+carries the answer only has two, so the evaluation result is `Optional[bool]` end to end — the
+`Optional[bool]` discipline this package applies to every network answer, applied to inference.
+
 ### What is deliberately not decided
 
 The column set, the reference syntax for a module-internal term, and the cofactor namespace. Those
