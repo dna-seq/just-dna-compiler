@@ -99,6 +99,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
+| `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
+| `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, citation existence. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
 | `pgx` | pass 5: cross-check star-allele tables, write `sources.csv` | the three above |
@@ -672,6 +674,32 @@ next such change into a finding.
 The compiler holds **no** source→licence map — that would give it a source convention (Principle 2)
 and an un-injected reference. It reads only what the enricher recorded.
 
+### Lookups answer, they never fill
+
+`lookup.py` is the authoring counterpart to the passes above: same clients, same offline-capable
+snapshots, and **no writes at all** — not a sidecar, not a cell. It answers what an author actually
+asks. For an rsID: is it live, merged or absent (dbSNP is the oracle; Ensembl returns HTTP 400 on
+some merged ids and would misclassify them), which coordinates it maps to, and — **on demand** —
+whether that answer is ambiguous. For a coordinate: `ref`, `alts`, gnomAD populations with the
+frequency computed as `allele_count / allele_number` (the API deliberately exposes no `af`), and
+ClinVar's own call. For a citation: whether PubMed has the record, plus the DOI and PMC id that
+arrive free in the same response, with Crossref covering what PubMed does not index at all.
+
+Every one of those comes back as an `Alteration` with `applied=False` and a `refusal` naming why the
+value is the author's to type. That is not fastidiousness. `resolution._verify` compares an authored
+coordinate against the table, `sequences.verify_reference_alleles` compares an authored `ref` against
+the genome, `literature._doi_conflicts` compares an authored DOI against the registry — each has
+force only because the human wrote the value independently of the oracle. Filling the cell from the
+same source the checker consults makes the check vacuous, and for an rsid-only row `_verify` does not
+run at all, so the row would move from honestly unverified to apparently verified. This package had
+already made the argument for one field: Crossref is asked about the **authored** DOI because a
+derived one "exists by construction".
+
+Two operational notes. Clients are **injected and reused** (`LookupClients`) because each owns its
+own `PacingGate` — gnomAD is one request per six seconds — and a fresh client per question discards
+both the pacing state and the connection pool. And `--offline` yields `unchecked`, never `absent`:
+a check that could not run is not a check that passed, and `None` is not `False` anywhere in the file.
+
 ### Generation is not automatic
 
 The PGx tables are *authored* `_TABLE_KINDS`, not fact sidecars: they carry `AuthoredModel` semantics,
@@ -747,6 +775,20 @@ just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdr
 just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC)
+
+# Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)
+just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults
+just-dna-enricher draft spec/ --gene CYP2C19        # CPIC → haplotypes/allele_function/diplotypes
+just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
+
+# Authoring — lookups. These WRITE NOTHING: every answer comes back advisory, with a reason.
+just-dna-enricher hint variant --rsid rs1801133              # validity, loci, ref/alts
+just-dna-enricher hint variant --rsid rs334 --ambiguity      # warn when the answer is not unique
+just-dna-enricher hint variant --rsid rs1801133 --frequencies  # + gnomAD populations (paced ~6s)
+just-dna-enricher hint variant --rsid rs1801133 --offline --json
+just-dna-enricher hint citation --pmid 9545397               # existence + the DOI/PMC id it carries
+just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent
+just-dna-enricher hint gene MTHFR                            # approved | retired | unknown
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
 just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev])
 just-dna-enricher upload out/coronary              # push compiled artifacts to the HF collection

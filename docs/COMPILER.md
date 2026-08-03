@@ -141,7 +141,23 @@ The through-line: **what the compiler cannot validate, the format makes *legible
 produced a fact, from which release, under which policy, and hashes it so it cannot drift silently —
 then leaves the judgement to a consumer. That is the data-agnostic north star applied to trust.
 
-### And what is not the compiler's job at all
+### Hints are not a fourth validation class
+
+`hints.py` computes nothing the compiler does not already compute — it reuses `validate_bins`,
+`_TABLE_DUPE_KEYS` and the models' own validators — and it **never fails a build**. It has no mode
+ladder, because the checks that do have one already exist here and in the enricher, each with the
+severity the charter assigns it (including the two deliberate exceptions that warn in both modes). A
+hint that could fail a compile would be a third copy of a rule that already lives in two places.
+
+What hints add is *when*: the same verdict, before the author has written the file, plus the allowed
+values and the reason a cell is deliberately left empty. That last part is the load-bearing one — see
+`hints.REDUNDANCY_BEARING`. Class 2 works because two independently-authored things must agree, so a
+tool that fills one of them from the source the checker consults does not merely make the check
+tautological; for an rsid-only row `resolution._verify` never runs at all, and the row would go from
+honestly unverified to apparently verified. Every looked-up fact is therefore reported with
+`applied=False` and a refusal reason, and the enricher's `lookup.py` answers in the same shape.
+
+## And what is not the compiler's job at all
 
 Static checking has an upper bound here, and the analogue of dynamic analysis lives elsewhere. The
 compiler is not a runtime verifier: it never runs a module against a genotype, because a module carries
@@ -481,6 +497,8 @@ display-metadata overrides.
 | **dosage sensitivity (0.5)** | ✅ `haploinsufficiency`/`triplosensitivity` against `VALID_DOSAGE_SENSITIVITY` | ✅ `gene_metrics.parquet` (in digest, fact-hashed) | — | complete (ClinGen route in the enricher) |
 | **`redistribution` (0.5)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete (recorded, **not** gated — RM27) |
 | **drafting (0.5)** | ✅ appended rows are validated rows; keys reuse `_TABLE_DUPE_KEYS` | — (writes authored CSVs, not parquet) | ✅ append / already-present / differs report | complete (`draft.append_rows`, `blank_template`) |
+| **templating (0.5)** | ✅ a stub carries `TEMPLATE_PLACEHOLDER`, which no mode compiles | — (writes authored CSVs, not parquet) | ✅ created / kept-untouched plan | complete (`draft.stub_template`, `scaffold.scaffold_module`) |
+| **hints (0.5)** | ✅ per-cell validation, bin coverage, duplicate keys — all offline | — (writes nothing at all) | ✅ alterations + findings + options | complete (`hints.inspect_rows`, `hints.describe_table`) |
 | genotype widening: hemizygous single allele | ✅ | ✅ (1-element list) | — | complete |
 | genotype widening: phased `A\|G` | ✅ (order kept) | ✅ `phased` bit → lossless round-trip | ✅ | complete |
 | `state` (legacy) | ✅ (stays required — P8) | ✅ | ✅ read alias via `effective_direction`; trimmed to {protective,risk,neutral} on `upgraded()` | complete |

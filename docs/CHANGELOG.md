@@ -5,6 +5,119 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.0: the authoring surface — options as data, stubs that cannot compile, hints that never write
+
+The 0.5 drafting helper shipped a mechanism with one provider and one accessory (`blank_template`, a
+bare header). This round builds the surface around it, along one line: **templating and lookup are
+built; filling a cell for the author is not.** The second half is a mechanical rule rather than a
+preference, and it is worth stating once because it decides the shape of everything below.
+
+COMPILER.md's Class 2 — validate-by-redundancy — is "where most real authoring bugs are caught", and
+every check in it compares two **independently-authored** things. Fill `chrom`/`start` from Ensembl
+and the compiler's rsid↔coordinate check compares Ensembl with Ensembl; fill `doi` from PubMed and
+`literature._doi_conflicts` compares PubMed with PubMed. It is worse than tautological: for an
+rsid-only row `resolution._verify` never runs at all, so the row would move from *honestly
+unverified* to *apparently verified* and the compile would report success. `literature` already
+reasoned this way about one field — it asks Crossref about the **authored** DOI because the derived
+one "exists by construction" — and `hints.REDUNDANCY_BEARING` now generalizes it to every cell.
+
+**Two shipped bugs surfaced on the way**, both reproduced before being fixed:
+
+* **`blank_template` emitted a header the compiler then refused.** `MeasureBinRow.measure_kind` and
+  `unresolved` have defaults but are not `Optional`, and `_load_csv_rows` turns an empty cell into
+  `None` *and keeps the key* — so the model received `None`, never its default. `required_fields`
+  never named them (they are not required), so an author who filled exactly what they were told to
+  fill got `Input should be a valid string` about a column nobody had mentioned. Requiredness has
+  **three** shapes here, not two: `field_category` splits `required` / `defaulted` / `optional`, and
+  `authoring_requirements` reports all three plus the identity groups.
+* **`actionability` was advertised open while being enforced closed.** `_validate_actionability`
+  calls `check_vocab`, but the authoring reference filed it under `open_recommended`, so a tool
+  offering a novel value got a rejection it had been told to expect to work. A drift in *closedness*
+  rather than in membership — which is why the new marker carries that flag and not just the members.
+  An existing test was pinning the wrong side.
+
+**Schema — the vocabulary binding.** `base.vocabulary(name, options, closed=)` plus
+`field_vocabularies()`, mirroring `COMPILER_MANAGED`. The marker carries the **members**, not a name
+to look up: a registry in `vocab` cannot import `pgx` (the cycle `base`'s dependency note exists to
+avoid), and a registry anywhere else is a second hand-kept list, which is the failure being fixed.
+`SHARED_VOCABULARIES` holds the four the base class validates, so the set a tool offers an author is
+the same object the validator rejects against. `authoring_reference()["vocabularies"]` is now
+generated from the markers — **13 entries to 22**, picking up `recommendation_strength` and
+`phenotype_category`, which 0.5 added and the hand-kept dict never learned about — and each field
+carries its options inline. The guard tests discover the binding by **behaviour** (feed a non-member,
+see whether it rejects), in both directions, so neither an unlisted vocabulary nor a marker for a
+vocabulary nothing enforces can recur. Consumer note: `open_recommended.actionability_seed` is gone;
+the same members are at `vocabularies.actionability`, where enforcement actually puts them.
+
+**Schema — requiredness that is not field-local.** `AuthoredModel.REQUIRED_ANY_OF` declares "rsid, or
+chrom+start" as data on the four models whose validators enforce it. `is_required()` cannot express
+it, so every tool listing required columns had been telling authors a `variants.csv` row needs no
+identifier. A `ClassVar` because the rule is a property of the model (`{chrom, start}` is one group
+meaning "both together"), the same shape as `MeasureBinRow._KEY_FIELDS`; a test derives its cases
+from the declaration and checks them against the real validator, so the two cannot diverge.
+
+**Schema — a stub that cannot compile.** `vocab.TEMPLATE_PLACEHOLDER` (`<<REPLACE>>`) with a
+recursive `mode="before"` guard on every authored row and on `module_spec.yaml`. Running before
+coercion is the whole trick: an unreplaced stub in `start: int` is diagnosed as an unfilled template
+naming the column and row, not as "Input should be a valid integer". Deliberately **not**
+`MeasureBinRow.unresolved` — that sentinel means "no measurement at read time" and is designed to
+*compile*, and two opposite lifecycles on one field is the overloaded-axis anti-pattern (P5). This
+tightens validation: a module carrying the literal `<<REPLACE>>` in free text becomes invalid.
+Recorded here rather than slipped in.
+
+**Compiler — templating.** `stub_template` writes the placeholder where a human must decide, the
+**default** where a column has one (the bug above), and blank elsewhere; a binning kind also gets its
+mandatory `unresolved` companion row, so that contract is met as a template rather than as a compile
+error about a row the author never wrote. It offers **one** identity group, not the union — the
+groups are alternatives, and stubbing both would ask for two identities.
+
+**Compiler — scaffolding.** `scaffold.py` creates `module_spec.yaml` plus stub tables. Refusal is
+**file**-level here and **row**-level in `draft`, and the difference is derivable rather than
+stipulated: you scaffold once (so nothing self-defuses) and a stub row has no natural key to merge on
+— its key columns *are* the placeholder. Refusal is per file, not per run, or a module could never
+gain a second table kind. `COMPANION_KINDS` is symmetric, and **both halves were found by the test
+that pins it to the compiler's real rules**: `variants.csv` needs `studies.csv` ("grounding evidence
+is mandatory") and `studies.csv` alone is "no recognized table".
+
+**Compiler — hints.** `hints.py` takes CSV text and returns a report; it **writes nothing**, asserted
+by hashing the directory rather than by review. Only `normalized` alterations are applied, and those
+are changes the model already makes silently on load — `DiplotypeRow` swaps its haplotype pair, and
+surfacing that before the author is surprised by it adds no external information. Redundancy-bearing
+columns are explained once per report and never filled. Bin overlap and coverage gaps come from the
+schema's own `validate_bins`; duplicate keys from the compiler's own `_TABLE_DUPE_KEYS`.
+
+**Enricher — lookups.** `lookup.py` answers the questions an author actually has: an rsID's validity
+(dbSNP is the oracle — Ensembl 400s on some merged ids), its coordinate list with ambiguity reported
+**on demand** and never resolved for you, ref/alts, gnomAD populations with the frequency computed as
+`ac/an` (the API exposes no `af`), ClinVar's own call, and citation existence with the DOI and PMC id
+that arrive free in the same response. Every answer comes back as an `Alteration` with
+`applied=False` and a `refusal`. Clients are injected and reused, because each owns a `PacingGate`
+and a fresh one per question throws away the rate-limit state. Offline is a first-class answer:
+`unchecked`, never `absent` — `None` is not `False` anywhere in the file.
+
+**Enricher — RM26's second provider.** `clinpgx_draft.draft_pharm_variants` appends ClinPGx
+annotations into `pharm_variants.csv`. The clean contrast to `pgx_draft`: every column the model
+requires is published, so nothing is stubbed. One annotation naming several drugs (`drugs` is
+`;`-joined) becomes one row per drug — they share an `annotation_id` and key distinctly, which is
+what PharmGKB is actually saying. `CC` becomes `C/C`, and only for an unambiguous two-base call; a
+star allele is routed to `diplotypes.csv` and a `del/del` is RM5, both skipped with a reason rather
+than coerced. It writes its `SourceRow` through `licensing.merge_sources_file`, because a source that
+is consulted and not recorded is one the module cannot account for.
+
+**CLI.** `just-dna-compiler` gains `template`, `stub`, `requirements`, `scaffold`, `describe` and
+`hint` — all offline, so they belong on the tier that owns the CSV shape; `template` had shipped only
+on the enricher, which meant an author who installed just the compiler had the API and no command.
+`just-dna-enricher` gains `hint variant|citation|trait|gene` and `draft-clinpgx`, and its `template`
+now reports the never-leave-empty defaults too.
+
+Also: `_write_table_csv` reads `authored_field_names` rather than `model_fields` — identical output
+today, but it was the third place the authored surface is derived and the two before it both drifted.
+
+870 passed, 6 skipped (from 792). All three reference examples compile to byte-identical
+`artifact.digest` and `content_signature` against a clean HEAD worktree, so the whole batch is
+digest-neutral; the compile → reverse → recompile fixed point is proven for a module built entirely
+by `scaffold` plus fill.
+
 ## 2026-08-02 — 0.5.0: the pre-cut batch — columns that need the window, tooling that doesn't
 
 A survey of five candidate annotation-source groups (splice predictors, ClinGen/GenCC/ACMG SF,

@@ -102,6 +102,33 @@ the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literat
   exclusion lists that preceded it both drifted — one named only `variant_key` and never learned
   about `authored_ident`; the other did not exist at all, so `draft.append_rows` wrote a
   `variants.csv` the compiler then refused to load.
+- **Vocabulary binding (`base.vocabulary` / `field_vocabularies`, 0.5).** A field drawn from a
+  constrained vocabulary carries its **members** on its own `json_schema_extra`, the same way
+  `COMPILER_MANAGED` rides on the field. The marker holds the options rather than a name to look up,
+  because the vocabularies live in the leaves that own them (`vocab`, `spec`, `binning`, `pgx`,
+  `pgs`, `manifest`) and a central registry would either need `vocab` to import `pgx` — the cycle
+  `base`'s dependency note exists to avoid — or be a second hand-kept list, which is the thing being
+  fixed. `authoring_reference()["vocabularies"]` is generated from these markers, so a vocabulary
+  cannot be added and forgotten; it grew from 13 hand-listed entries to 22 the moment it was.
+  `closed=False` marks a *recommended* set, and that flag is load-bearing: `actionability` was
+  published as an open seed while `VariantRow` rejected non-members, so a tool offering a novel value
+  got a rejection it had been told to expect. Keyed by **vocabulary name**, not field name, which is
+  what keeps `PgsRow.training_ancestry` (1000G superpopulations) from merging with gnomAD's
+  population list — two ancestry vocabularies `vocab.py` explicitly forbids folding together.
+- **`REQUIRED_ANY_OF` (`AuthoredModel`, 0.5).** Alternative identity groups, any one of which
+  satisfies the row: `VariantRow` is `({rsid}, {chrom, start})`. Pydantic's `is_required()` is
+  field-local and cannot say this — the rule is a `model_validator` — so a tool listing required
+  columns used to report that a `variants.csv` row needs no identifier at all. A `ClassVar` rather
+  than a per-field marker because `{chrom, start}` is one group meaning "both together", which no
+  annotation on `chrom` alone expresses; a test derives cases from the declaration and checks them
+  against the validator, so the two cannot drift.
+- **`vocab.TEMPLATE_PLACEHOLDER` (`<<REPLACE>>`, 0.5).** The cell a generated template writes where a
+  human must decide. Refused by a recursive `mode="before"` guard on every authored row and on
+  `module_spec.yaml`, so an unreplaced stub is diagnosed by column and row instead of surfacing as a
+  type error, and can never reach a compiled module. A *value* sentinel rather than a marker column,
+  so replacement happens one row at a time; and deliberately not `MeasureBinRow.unresolved`, which
+  means "no measurement at read time" and is designed to compile — two opposite lifecycles on one
+  field would be the overloaded-axis anti-pattern (P5).
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
   columns later (P5) — today `{reference_db, callable_from}`, each with a reason in
   `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already rejects

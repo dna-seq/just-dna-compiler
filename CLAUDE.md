@@ -292,6 +292,46 @@ CHANGELOG entry).
   reload as a `list[str]`). The bug survived a green suite because every drafting test used a PGx or
   binning table, and no model but `VariantRow` has a stamped field. **When adding a drafting provider
   or any new model-driven generator, test it against `variants.csv` specifically.**
+- **A vocabulary binding lives on the FIELD, and it carries the members — `base.vocabulary`.** The
+  authoring reference's vocabulary block used to be a hand-kept dict and drifted twice: it never
+  learned about `recommendation_strength`/`phenotype_category` (0.5), and it filed `actionability`
+  under `open_recommended` while `VariantRow` *rejects* a non-member — a drift in **closedness**, not
+  membership, which is why the marker carries a `closed` flag and not just a list. The marker holds
+  the frozenset's members rather than a name to look up, because a registry in `vocab` cannot import
+  `pgx` (the cycle `base`'s dependency note exists to avoid) and a registry elsewhere is a second
+  hand-kept list. Rule for where a binding goes: **wherever its validator is** — shared validator →
+  `base.SHARED_VOCABULARIES`; model-specific validator → that model's `Field(...)`. Never mark a
+  field nothing enforces: `StudyRow.chrom` and the PGx `chrom`s run no chrom validator, so they carry
+  no marker, and the guard test catches it in both directions.
+- **Requiredness has THREE shapes, and the middle one is invisible to pydantic.** `is_required()` is
+  false for `MeasureBinRow.measure_kind` and `unresolved` — they have defaults — but they are not
+  `Optional`, and `_load_csv_rows` turns an empty cell into `None` **and keeps the key**, so the model
+  gets `None` instead of its default and fails on type. `blank_template` + `required_fields` therefore
+  told an author to fill three columns and produced a file the compiler refused, naming a fourth.
+  Use `draft.field_category` (`required` / `defaulted` / `optional`) and `draft.authoring_requirements`
+  — which also reports `REQUIRED_ANY_OF`, the "rsid **or** chrom+start" rule that is a model validator
+  and which no per-field flag can express.
+- **A generated stub must be unable to compile — `vocab.TEMPLATE_PLACEHOLDER`, guarded before
+  coercion.** The guard is `mode="before"` on purpose: an unreplaced stub in `start: int` then reads
+  as "unreplaced template placeholder in column start", not "Input should be a valid integer". Do
+  **not** reuse `MeasureBinRow.unresolved` for this — that sentinel means "no measurement at read
+  time" and is designed to *compile*; two opposite lifecycles on one field is the overloaded-axis
+  anti-pattern (P5).
+- **Scaffolding refuses per FILE; drafting refuses per ROW — and the difference is derivable.** A
+  file-level rule self-defuses for `draft` (you re-run it per gene), but you scaffold a module once,
+  and a stub row has no natural key to merge on because its key columns *are* the placeholder.
+  Refusal is per file, not per run, or a module could never gain a second table kind. Both use the
+  same definition of absent — a zero-byte file counts as missing.
+- **A hint may not fill a cell a Class-2 check cross-examines — `hints.REDUNDANCY_BEARING`.** Class 2
+  works because two *independently-authored* things must agree. Fill `chrom`/`start` from Ensembl and
+  `resolution._verify` compares Ensembl with Ensembl; worse, for an rsid-only row that check never
+  runs at all, so the row moves from honestly unverified to apparently verified and the compile
+  reports success. Same for `doi` vs `literature._doi_conflicts` and `ref` vs
+  `verify_reference_alleles`. `literature` already argued this for one field (Crossref is asked about
+  the **authored** DOI, since a derived one "exists by construction"). So a looked-up value comes back
+  `applied=False` with a refusal; the only thing `hints` applies is a `normalized` rewrite the model
+  already performs silently on load (`DiplotypeRow` swaps its haplotype pair). A `--apply` flag on a
+  lookup would ship the parked enricher-co-authoring item without deciding to.
 - **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
   CSV, materialize the derived value into parquet as a `@property`, and let it fall away on reverse
   because it is not a model field. `FrequencyRow.allele_frequency` (AC/AN) and

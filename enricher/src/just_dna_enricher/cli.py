@@ -9,6 +9,7 @@
     just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            # [dev]
 """
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +20,13 @@ from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_enricher.enrich import EnrichmentError, enrich
+from just_dna_enricher.lookup import (
+    as_report_rows,
+    lookup_citation,
+    lookup_gene,
+    lookup_trait,
+    lookup_variant,
+)
 from just_dna_enricher.clinpgx_build import (
     DEFAULT_CLINPGX_URL,
     build_snapshot as build_clinpgx_snapshot,
@@ -29,6 +37,7 @@ from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
 from just_dna_enricher.cpic import CpicError
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
+from just_dna_enricher.clinpgx_draft import draft_pharm_variants
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
@@ -759,3 +768,149 @@ def vrs_mint_(
 
 if __name__ == "__main__":
     app()
+
+
+# ── Authoring lookups (0.5): questions about a value, never an edit to one ───────────────────────
+hint_app = typer.Typer(help="Look up what is known about a variant or citation. Writes nothing.")
+app.add_typer(hint_app, name="hint")
+
+
+def _echo_hint(hint: object) -> None:
+    """Findings to stderr, advisory answers to stdout — so a pipe carries the answers alone."""
+    colours = {"error": typer.colors.RED, "warning": typer.colors.YELLOW, "info": typer.colors.BLUE}
+    for row in as_report_rows(hint):
+        typer.echo(f"{row['column']}\t{row['value']}\t[{row['refusal']}, from {row['source']}]")
+    for finding in getattr(hint, "findings", []):
+        typer.secho(f"  {finding.level}: {finding.message}", fg=colours[finding.level], err=True)
+
+
+@hint_app.command("variant")
+def hint_variant_(
+    rsid: Optional[str] = typer.Option(None, "--rsid", help="dbSNP id to look up."),
+    chrom: Optional[str] = typer.Option(None, "--chrom", help="Chromosome (with --start)."),
+    start: Optional[int] = typer.Option(None, "--start", help="1-based position (with --chrom)."),
+    ref: Optional[str] = typer.Option(None, "--ref", help="Reference allele, for an allele-exact lookup."),
+    alts: Optional[str] = typer.Option(None, "--alts", help="Alt allele(s), comma-separated."),
+    ambiguity: bool = typer.Option(False, "--ambiguity", help="Warn when the answer is not unique."),
+    frequencies: bool = typer.Option(False, "--frequencies", help="Add gnomAD populations (paced: ~6s)."),
+    offline: bool = typer.Option(False, "--offline", help="Snapshots only; never touch the network."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
+) -> None:
+    """Validity, coordinates, alleles, populations and clinical calls for one variant.
+
+    Nothing is decided for you: a one-to-many rsID returns every locus and a position matching
+    several rsIDs returns every candidate. The coordinate is reported, never written into
+    `variants.csv` — resolution puts it in `resolution.csv`, which is where it belongs.
+    """
+    if rsid is None and (chrom is None or start is None):
+        typer.secho("give --rsid, or --chrom and --start", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    hint = lookup_variant(
+        rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alts,
+        ambiguity=ambiguity, frequencies=frequencies, offline=offline,
+    )
+    if as_json:
+        typer.echo(json.dumps({
+            "rsid": hint.rsid,
+            "rsid_status": str(hint.rsid_status) if hint.rsid_status else None,
+            "loci": hint.loci,
+            "rsid_candidates": hint.rsid_candidates,
+            "populations": hint.populations,
+            "clin_sig": hint.clin_sig,
+            "vrs_id": hint.vrs_id,
+            "ambiguous": hint.ambiguous,
+            "advisory": as_report_rows(hint),
+            "findings": [f"{f.level}: {f.message}" for f in hint.findings],
+        }, indent=2, default=str))
+        return
+    for locus in hint.loci:
+        typer.echo(f"locus\t{locus['chrom']}:{locus['start']}\t{locus.get('ref')}>{locus.get('alts')}")
+    for candidate in hint.rsid_candidates:
+        typer.echo(f"rsid_candidate\t{candidate}")
+    for population in hint.populations:
+        af = population.get("allele_frequency")
+        typer.echo(
+            f"population\t{population.get('population')}\tAC={population.get('allele_count')}"
+            f"\tAN={population.get('allele_number')}\tAF={'' if af is None else f'{af:.6g}'}"
+        )
+    _echo_hint(hint)
+
+
+@hint_app.command("citation")
+def hint_citation_(
+    pmid: Optional[str] = typer.Option(None, "--pmid", help="PubMed id to check."),
+    doi: Optional[str] = typer.Option(None, "--doi", help="DOI to check (the one you authored)."),
+    offline: bool = typer.Option(False, "--offline", help="Skip the check and say so."),
+) -> None:
+    """Does this citation exist, and what is its other identifier?
+
+    A paywall hides the fulltext, never the PubMed record, so existence is answerable for paywalled
+    work; Crossref covers what PubMed does not index at all. Every answer is tri-state — `unknown`
+    means the registry could not be asked, which is not the same as "no such paper".
+    """
+    if pmid is None and doi is None:
+        typer.secho("give --pmid or --doi", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    hint = lookup_citation(pmid=pmid, doi=doi, offline=offline)
+    for label, value in (("pmid_exists", hint.pmid_exists), ("doi_exists", hint.doi_exists)):
+        typer.echo(f"{label}\t{'unknown' if value is None else value}")
+    if hint.pmcid:
+        typer.echo(f"pmcid\t{hint.pmcid}")
+    _echo_hint(hint)
+
+
+@hint_app.command("trait")
+def hint_trait_(curie: str = typer.Argument(..., help="Trait CURIE, e.g. EFO_0004340")) -> None:
+    """Is this trait id current, obsolete, or unknown?"""
+    typer.echo(str(lookup_trait(curie)))
+
+
+@hint_app.command("gene")
+def hint_gene_(symbol: str = typer.Argument(..., help="Gene symbol, e.g. MTHFR")) -> None:
+    """Is this gene symbol approved or retired?"""
+    typer.echo(str(lookup_gene(symbol)))
+
+
+@app.command("draft-clinpgx")
+def draft_clinpgx_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    snapshot: Path = typer.Option(
+        ..., "--snapshot", exists=True, file_okay=False,
+        help="Built ClinPGx snapshot (see `clinpgx build`). Inject-only; nothing is downloaded.",
+    ),
+    drug: list[str] = typer.Option([], "--drug", help="Only annotations naming this drug (repeatable)."),
+    gene: list[str] = typer.Option([], "--gene", help="Reserved; the annotation snapshot has no gene column."),
+    min_evidence_level: Optional[str] = typer.Option(
+        None, "--min-evidence-level", help="Keep annotations at least this strong: 1A|1B|2A|2B|3|4."
+    ),
+    use: str = typer.Option(
+        "unstated", "--use",
+        help="Declared use: unstated | non-commercial | commercial. ClinPGx forbids sale.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
+) -> None:
+    """Draft pharm_variants.csv rows from the ClinPGx snapshot — appends, never overwrites a row.
+
+    Narrow with --drug and re-run as the module grows. A row already in the file is reported, never
+    replaced: drift against ClinPGx is `clinpgx check`'s finding, not this command's edit to make.
+    """
+    try:
+        result = draft_pharm_variants(
+            spec_dir, snapshot=snapshot, genes=gene, drugs=drug,
+            min_evidence_level=min_evidence_level, declared_use=_use(use), dry_run=dry_run,
+        )
+    except (ClinPgxEnrichmentError, DraftError) as exc:
+        typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped:
+        for warning in result.warnings:
+            typer.secho(f"  skipped: {warning}", fg=typer.colors.YELLOW, err=True)
+        return
+    for report in result.reports:
+        typer.echo(f"  {report}")
+        for outcome in report.differs:
+            typer.secho(f"    {outcome}", fg=typer.colors.YELLOW)
+    for warning in result.warnings:
+        typer.secho(f"  warning: {warning}", fg=typer.colors.YELLOW, err=True)
+    verb = "would add" if dry_run else "added"
+    typer.secho(f"{verb} {result.added} row(s) in {spec_dir}", fg=typer.colors.GREEN)
