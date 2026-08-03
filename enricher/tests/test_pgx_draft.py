@@ -256,14 +256,39 @@ def _rec(phenotype: str, population: str, classification: str = "strong") -> Cpi
 _DIPS = [CpicDiplotype(gene="CYP2C19", diplotype="*2/*2", phenotype="Poor Metabolizer")]
 
 
-def test_several_populations_with_no_choice_drafts_nothing_and_lists_them() -> None:
-    """CPIC scopes a recommendation to a clinical context and the contexts disagree; `DiplotypeRow`
-    has no population column, so writing them all collides and picking one asserts a context the
-    author never chose."""
+def test_every_clinical_context_becomes_its_own_row() -> None:
+    """RM29b (0.5.1) dissolved the refusal this test used to pin.
+
+    CPIC scopes a recommendation to a clinical context and the contexts disagree. Without a column
+    for it, drafting all of them collided on the duplicate-row key and drafting one asserted a
+    context the author never chose, so `draft --drug` refused. `clinical_context` makes them distinct
+    rows and hands the choice to the consumer, where it belongs — which indication a patient is being
+    treated for is knowable at query time, not at authoring time.
+    """
     recs = [_rec("Poor Metabolizer", p) for p in ("NVI", "CVI ACS PCI")]
     rows, warnings = _recommendation_rows(_DIPS, recs, population=None)
-    assert rows == []
-    assert warnings and "CVI ACS PCI" in warnings[0] and "NVI" in warnings[0]
+    assert {r.clinical_context for r in rows} == {"NVI", "CVI ACS PCI"}
+    assert warnings == []
+
+
+def test_the_contexts_are_distinct_rows_under_the_compilers_own_key() -> None:
+    """The point of the column: these must not be duplicates, and the compiler decides that."""
+    from just_dna_compiler.compiler import _TABLE_DUPE_KEYS
+
+    recs = [_rec("Poor Metabolizer", "NVI", "moderate"),
+            _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
+    rows, _ = _recommendation_rows(_DIPS, recs, population=None)
+    key = _TABLE_DUPE_KEYS[DiplotypeRow]
+    assert len({key(r) for r in rows}) == len(rows) == 2
+    # And they really disagree — which is why collapsing them would have lost a clinical statement.
+    assert {r.recommendation_strength for r in rows} == {"strong", "moderate"}
+
+
+def test_population_still_filters_for_an_author_who_wants_one_context() -> None:
+    recs = [_rec("Poor Metabolizer", "NVI", "moderate"),
+            _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
+    rows, _ = _recommendation_rows(_DIPS, recs, population="NVI")
+    assert [(r.clinical_context, r.recommendation_strength) for r in rows] == [("NVI", "moderate")]
 
 
 def test_a_single_population_needs_no_choice() -> None:

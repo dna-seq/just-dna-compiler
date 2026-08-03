@@ -387,6 +387,57 @@ class VariantRow(AuthoredModel):
         ),
     )
 
+    # ── 0.5.1: RM29(a), the call-confidence cofactor. Two columns, not a predicate. ──
+    #
+    # `requires_callable` says a negative must be proven and `callable_from` says where the proof
+    # lives; both are about whether the position was *seen*. This pair is the orthogonal question of
+    # whether what was seen is good enough to act on — an annotation stating where it stops being
+    # reliable. RM29 records why it is columns rather than an expression: **a row's columns already
+    # conjoin**, so a pointer plus a bound needs no grammar, no evaluator and no sandbox (P1).
+    #
+    # Deliberately *not* the dropped `caller`/`caller_version` names. Those recorded which tool made a
+    # call — consumer-side measurement provenance with no module-side meaning. This states an
+    # applicability bound the annotation itself carries, the same kind of thing `MeasureBinRow`'s
+    # `[min, max]` states, and like those bounds it is inclusive.
+    quality_from: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional VCF FORMAT/INFO field the `min_quality` floor is stated against (e.g. GQ, "
+            "QUAL, DP). Same bare-token pointer grammar as `source_field`/`callable_from`; a pointer, "
+            "never an expression."
+        ),
+    )
+    min_quality: Optional[float] = Field(
+        default=None,
+        description=(
+            "Inclusive floor on `quality_from`: withhold this row's conclusion where the consumer's "
+            "value is below it. A consumer that cannot read the field withholds rather than "
+            "asserting — an unevaluable floor is unknown, never satisfied."
+        ),
+    )
+
+    @field_validator("min_quality")
+    @classmethod
+    def _validate_min_quality(cls, v: Optional[float]) -> Optional[float]:
+        return validate_finite(v, "min_quality")
+
+    @model_validator(mode="after")
+    def _require_quality_pair(self) -> "VariantRow":
+        """Both or neither — half a floor states nothing a consumer can act on.
+
+        A bound with no field does not say *what* must clear it, and a field with no bound states no
+        threshold at all. Either half alone reads as a configured gate and is not one, which is worse
+        than an empty cell: a consumer would have to guess the missing half, and every guess is a
+        clinical policy the module did not write.
+        """
+        if (self.quality_from is None) != (self.min_quality is None):
+            missing = "min_quality" if self.min_quality is None else "quality_from"
+            raise ValueError(
+                f"quality_from and min_quality are both-or-neither; {missing} is empty. A floor "
+                f"needs a field to be measured against, and a field needs a floor to be a floor."
+            )
+        return self
+
     @model_validator(mode="after")
     def _freeze_identity(self) -> "VariantRow":
         """Stamp the frozen identity *and the authored shape* at load, ignoring authored values for

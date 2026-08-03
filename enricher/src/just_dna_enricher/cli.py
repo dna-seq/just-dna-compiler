@@ -365,7 +365,7 @@ def draft_(
     ),
     population: Optional[str] = typer.Option(
         None, "--population",
-        help="CPIC clinical population for --drug (e.g. 'NVI'). Required when CPIC scopes several.",
+        help="Draft only this CPIC clinical context (e.g. 'NVI'). Default: every context, as rows.",
     ),
     use: str = typer.Option(
         "unstated", "--use",

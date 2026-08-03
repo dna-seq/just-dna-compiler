@@ -147,7 +147,14 @@ Annotation: `weight?`, `negatives?`, `priority?`, `gene?`, `phenotype?`, `catego
 `acmg_sf?`, `actionability?` (`ACTIONABILITY_SEED`). 0.5: `callable_from?` — the VCF field(s) a consumer
 establishes callability from (`DP`, `GQ`, `FT`, or `DP|GQ`), the RM6 pointer half of
 `requires_callable`; same bare-token grammar as `source_field`, validated on `AuthoredModel` since the
-two share it. Genotype grammar: phased `A|G` (order kept),
+two share it. 0.5.1 (RM29a): `quality_from?` + `min_quality?` — the call-confidence cofactor, a
+pointer at the VCF confidence field plus an **inclusive** floor below which the row's conclusion is
+withheld. **Both-or-neither** (a model validator): a bound with no field does not say what must clear
+it, and a field with no bound is no threshold at all, so either half alone reads as a gate that is not
+one. `quality_from` shares the same pointer validator as the two above — three columns, one grammar.
+Orthogonal to `requires_callable`/`callable_from`, which ask whether the position was *seen*; this
+asks whether what was seen is good enough to act on. A consumer that cannot read the field
+**withholds** — an unevaluable floor is unknown, never satisfied. Genotype grammar: phased `A|G` (order kept),
 unphased `A/G` (must be sorted), or a single allele (hemizygous/homoplasmic). Read-time upgrade aliases:
 `effective_direction`/`effective_stat_significance`/`effective_clin_sig`/`effective_pathogenic`/
 `effective_benign`, `needs_upgrade`, and a materializing `upgraded()`.
@@ -184,7 +191,8 @@ are a compile error; interior coverage gaps are warnings.
 **PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction, nucleotide allele);
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,
 `activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
-`a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`); `PharmVariantRow` (`drug`+
+`a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`, CPIC `recommendation_strength?`
+and `clinical_context?`); `PharmVariantRow` (`drug`+
 `conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`, `annotation_id?`).
 
 `PharmVariantRow.genotype` (0.5) carries the axis PharmGKB actually publishes on: a clinical
@@ -194,6 +202,17 @@ annotation is stated **per genotype**, and the calls can be opposed (rs4149056/s
 grammar is the shared `AuthoredModel` one, so a genotype means the same thing here as on a
 `VariantRow`; a haplotype-keyed annotation (`*1`) belongs on `DiplotypeRow` instead, and a symbolic
 allele (`del/del`) stays RM5 rather than widening the nucleotide grammar.
+
+`DiplotypeRow.clinical_context` (0.5.1, RM29b) is the same shape of fix one table over: CPIC scopes a
+gene/drug recommendation to a **setting**, and the settings disagree. Clopidogrel carries three
+(`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI`) where the same Poor Metabolizer diplotype is graded
+`strong` in one and `moderate` in the others. It is in the dedup key
+`(gene, haplotype_a, haplotype_b, trait_efo_id, drug, clinical_context)`, so the settings coexist as
+distinct rows and the consumer selects its own. Deliberately **not** called `population`:
+`FrequencyRow.population` is an ancestry group, and CPIC's real values are indication, age band,
+prior-treatment status and dose band — one name for two axes across two tables is the P5 mistake.
+Open rather than a vocabulary (every guideline body scopes differently) and whitespace-stripped on
+load, since three of CPIC's live values carry a trailing space and the column is part of the key.
 
 `phenotype_category` and `annotation_id` complete the key, and both were earned by real data. One
 variant and one drug carry **several distinct annotations**: rs4149056 + simvastatin is

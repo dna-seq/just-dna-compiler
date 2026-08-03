@@ -260,11 +260,12 @@ class AuthoredModel(BaseModel):
     def _validate_effect_size(cls, v: Optional[float]) -> Optional[float]:
         return validate_finite(v, "effect_size")
 
-    @field_validator("source_field", "callable_from", check_fields=False)
+    @field_validator("source_field", "callable_from", "quality_from", check_fields=False)
     @classmethod
     def _validate_vcf_field_pointer(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
-        # Two columns point into a VCF the same way: `source_field` (where the measured quantity is,
-        # on the binning tables) and `callable_from` (where the callability signal is, on VariantRow).
+        # Three columns point into a VCF the same way: `source_field` (where the measured quantity is,
+        # on the binning tables), `callable_from` (where the callability signal is, on VariantRow) and
+        # `quality_from` (which confidence field the row's `min_quality` floor is stated against).
         return validate_field_token(v, info.field_name or "source_field")
 
     @field_validator("genotype", check_fields=False)

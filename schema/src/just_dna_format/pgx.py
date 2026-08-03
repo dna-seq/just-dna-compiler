@@ -213,10 +213,49 @@ class DiplotypeRow(AuthoredModel):
         ),
     )
 
+    # ── 0.5.1: RM29(b), the clinical-context cofactor. In `_TABLE_DUPE_KEYS`, so contexts coexist. ──
+    #
+    # **CPIC scopes a recommendation to a setting, and the settings disagree.** Clopidogrel carries
+    # three (`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI`) and the same Poor Metabolizer diplotype is
+    # graded `strong` in one and `moderate` in another. Without a column for it, drafting all three
+    # collided on the duplicate-row key and picking one asserted a clinical setting the author never
+    # chose — which is why `draft --drug` used to refuse and list the choices. With the column, all
+    # three are distinct rows and the *consumer* selects its setting at query time.
+    #
+    # **Not `population`, and the name matters.** `FrequencyRow.population` is an ancestry group with
+    # its own validated vocabulary; this is not ancestry in any sense. Probed against CPIC's live
+    # `recommendation` table (2,115 rows, 2026-08-03), the real values are indication (`CVI ACS PCI`,
+    # `NVI`), age band (`pediatrics`, `adults`, `child >40kg_adult`), prior-treatment status
+    # (`PHT naive`, `CBZ use >3mos`, `OXC naive`) and dose band (`<= 1g per day`) — with `general` on
+    # 1,912 of them. Reusing `population` would put two unrelated axes under one name across two
+    # tables, and would spend the name ancestry will want on `DiplotypeRow` later (P5).
+    #
+    # Open, not a vocabulary: CPIC's own set is open-ended and every other guideline body (DPWG, CPNDS)
+    # scopes differently. A closed set here would reject the next authority's contexts.
+    clinical_context: Optional[str] = Field(
+        default=None,
+        description=(
+            "Clinical setting this row applies to — indication, age band, prior treatment, dose "
+            "(e.g. 'CVI ACS PCI', 'pediatrics', 'PHT naive'). Empty means the row is unscoped. "
+            "Free text: guideline bodies scope differently and a closed set would reject the next "
+            "one. Part of the row key, so contexts that disagree coexist and the consumer picks."
+        ),
+    )
+
     @field_validator("recommendation_strength")
     @classmethod
     def _validate_recommendation_strength(cls, v: Optional[str]) -> Optional[str]:
         return check_vocab(v, VALID_RECOMMENDATION_STRENGTH, "recommendation_strength")
+
+    @field_validator("clinical_context")
+    @classmethod
+    def _normalize_clinical_context(cls, v: Optional[str]) -> Optional[str]:
+        # CPIC ships trailing whitespace in three of its sixteen values (`'CVI ACS PCI '`,
+        # `'CBZ use >3mos '`, `'OXC use >3 mos'`), and the column is part of the row key: unstripped,
+        # `'CVI ACS PCI '` and `'CVI ACS PCI'` are two rows describing one setting.
+        if v is None:
+            return None
+        return v.strip() or None
 
     @field_validator("haplotype_a", "haplotype_b")
     @classmethod

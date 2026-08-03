@@ -208,18 +208,33 @@ makes the diff legible.
 Still a hard **no**: a `sort`/`canonicalize` command. It moves every row at once for no authoring
 gain, and unlike a grouped append there is no local reason for any individual move.
 
-**RM29 — cofactor columns (candidate, digest-moving so major-only once 0.5 ships):** two optional
-columns that would carry single-subject cofactors without any predicate language, because **a row's
-columns already conjoin**. (a) A **quality floor** on `VariantRow` — "assert this only where the call
-is at least this good" — in the `requires_callable`/`source_field` declarative-pointer idiom, and
-distinct from the dropped `caller` names (those recorded which tool made a call; this states where an
-annotation stops being reliable). (b) A **clinical population/indication** column on `DiplotypeRow`,
-inside `_TABLE_DUPE_KEYS`: CPIC scopes recommendations to contexts that disagree, and a column would
-let all three coexist as distinct rows with the consumer selecting its setting — dissolving the
-`draft --population` refusal built in 0.5.1. Both mirror `HeteroplasmyRow.tissue`, which is already a
-cofactor-as-column with explicitly tissue-conditional bins. Recorded rather than slipped in: a new
-column on an existing parquet moves every module's digest. | format (schema) | PGx; call-confidence
-gating | low (after the digest window decision) |
+**RM29 — ✅ shipped (0.5.1): cofactor columns, taken inside the unpublished-digest window.** Three
+optional columns carrying single-subject cofactors with **no predicate language at all**, because a
+row's columns already conjoin. Both halves mirror `HeteroplasmyRow.tissue`, already a
+cofactor-as-column.
+
+(a) **`VariantRow.quality_from` + `min_quality`** — "assert this only where the call is at least this
+good", in the `source_field`/`callable_from` declarative-pointer idiom (`quality_from` joined that
+shared validator rather than growing a third private one). Two columns rather than one expression:
+the pointer says which VCF field, the number says the inclusive floor, and neither needs a grammar,
+an evaluator or a sandbox (P1). A **both-or-neither** model rule, because half a floor reads as a
+configured gate and is not one — a consumer would have to guess the missing half, and every guess is
+a clinical policy the module did not write. Still not the dropped `caller` names: those recorded
+which tool made a call (consumer-side measurement provenance); this is an applicability bound the
+annotation carries, the same kind of thing a `MeasureBinRow` bound states.
+
+(b) **`DiplotypeRow.clinical_context`**, in `_TABLE_DUPE_KEYS` — which dissolves the
+`draft --population` refusal rather than resolving it. Drafted live against CPIC, clopidogrel now
+yields 1,998 rows over three contexts instead of a refusal, and the disagreement the refusal was
+protecting is visible in the data: `*2/*2` Poor Metabolizer is `strong` in `CVI ACS PCI` and
+`moderate` in the other two, with different prescribing text for `NVI`. `--population` survives as a
+*filter*. **Not named `population`**: `FrequencyRow.population` is an ancestry group with its own
+validated vocabulary, and probing CPIC's live table (2,115 rows, 2026-08-03) showed these values are
+indication, age band, prior-treatment status and dose band — reusing the name would put two unrelated
+axes under one label across two tables and spend the name ancestry will want on `DiplotypeRow` later
+(P5). Open rather than a vocabulary, since every guideline body scopes differently; whitespace-stripped
+on load, because three of CPIC's sixteen live values carry a trailing space and the column is in the
+key. | format (schema) | PGx; call-confidence gating | **done** |
 
 **RM30 — ✅ fixed (0.5.1): one rule for a haplotype name across all three PGx tables.**
 `AlleleFunctionRow.allele` enforced `STAR_ALLELE_PATTERN` (a leading `*`) while

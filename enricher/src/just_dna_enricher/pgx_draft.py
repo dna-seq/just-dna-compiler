@@ -127,62 +127,64 @@ def _recommendation_rows(
 ) -> tuple[list[DiplotypeRow], list[str]]:
     """CPIC recommendations → drug-carrying `DiplotypeRow`s, joined on the phenotype.
 
-    **The population is the author's to choose, not this function's to guess.** CPIC scopes a
-    recommendation to a clinical context — clopidogrel has three (`CVI ACS PCI`, `CVI non-ACS
-    non-PCI`, `NVI`) and they disagree — while `DiplotypeRow` has no population column, so writing
-    all of them would produce rows the compiler rejects as duplicates and picking one silently would
-    assert a clinical context nobody chose. With more than one available and none named, nothing is
-    drafted and the choices are reported.
+    **Every clinical context is drafted, and `--population` filters rather than decides (0.5.1).**
+    This used to refuse whenever CPIC scoped a gene/drug pair to more than one setting: clopidogrel
+    has three (`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI`) whose recommendations disagree, and with
+    no column to hold the distinction, writing them all produced rows the compiler rejected as
+    duplicates while writing one asserted a setting the author never chose. `DiplotypeRow.clinical_context`
+    (RM29b) removes the dilemma rather than resolving it: the settings become distinct rows, keyed
+    apart, and the *consumer* selects its own at query time. That is the right owner — which
+    indication a patient is being treated for is knowable at query time and not at authoring time.
+
+    `population` is kept as a filter for an author who genuinely wants one setting only, and an
+    unknown value is still an error: silently drafting nothing because of a typo would look like
+    "CPIC has no recommendations here".
     """
     populations = sorted({r.population for r in recommendations if r.population})
     warnings: list[str] = []
     if not recommendations:
         return [], warnings
-    if population is None and len(populations) > 1:
-        return [], [
-            f"{recommendations[0].drug}: CPIC scopes its recommendations to "
-            f"{len(populations)} clinical populations ({', '.join(populations)}) and they differ. "
-            f"Choose one with --population; drafting them all would collide, and picking one for you "
-            f"would assert a clinical context you did not."
-        ]
-    chosen = population or (populations[0] if populations else "")
     if population is not None and population not in populations:
         return [], [
             f"{recommendations[0].drug}: no CPIC recommendations for population {population!r}. "
             f"Available: {', '.join(populations) or '(none)'}."
         ]
-    by_phenotype = {
-        r.phenotype: r for r in recommendations if not r.population or r.population == chosen
-    }
+    wanted = [r for r in recommendations if population is None or r.population == population]
+    # `(phenotype, context)` — the pair a row is now keyed on. One phenotype legitimately carries
+    # several rows, one per setting, which is the whole point of the column.
+    by_key = {(r.phenotype, r.population): r for r in wanted}
     rows: list[DiplotypeRow] = []
     unmatched: set[str] = set()
     for entry in diplotypes:
         pair = _split_diplotype(entry.diplotype)
         if pair is None or entry.phenotype is None:
             continue
-        rec = by_phenotype.get(entry.phenotype)
-        if rec is None:
+        matched = [rec for (phenotype, _), rec in by_key.items() if phenotype == entry.phenotype]
+        if not matched:
             unmatched.add(entry.phenotype)
             continue
-        rows.append(
-            DiplotypeRow(
-                gene=entry.gene,
-                haplotype_a=pair[0],
-                haplotype_b=pair[1],
-                phenotype=entry.phenotype,
-                drug=rec.drug,
-                recommendation_strength=rec.classification,
-                # CPIC's own words. The implication says what the genotype does, the recommendation
-                # says what to do about it; both are transcribed, neither is summarized.
-                conclusion=" ".join(
-                    part for part in (rec.implication, rec.recommendation) if part
-                ) or f"{entry.gene} {entry.diplotype} and {rec.drug}: {entry.phenotype}",
+        for rec in matched:
+            rows.append(
+                DiplotypeRow(
+                    gene=entry.gene,
+                    haplotype_a=pair[0],
+                    haplotype_b=pair[1],
+                    phenotype=entry.phenotype,
+                    drug=rec.drug,
+                    recommendation_strength=rec.classification,
+                    clinical_context=rec.population or None,
+                    # CPIC's own words. The implication says what the genotype does, the recommendation
+                    # says what to do about it; both are transcribed, neither is summarized.
+                    conclusion=" ".join(
+                        part for part in (rec.implication, rec.recommendation) if part
+                    ) or f"{entry.gene} {entry.diplotype} and {rec.drug}: {entry.phenotype}",
+                )
             )
-        )
     if unmatched:
+        scope = f" in population {population!r}" if population else ""
         warnings.append(
             f"{recommendations[0].drug}: no CPIC recommendation for phenotype(s) "
-            f"{sorted(unmatched)} in population {chosen!r} — those diplotypes carry no drug row."
+            f"{sorted(unmatched)}{scope} — those diplotypes carry no drug row."
         )
     return rows, warnings
 

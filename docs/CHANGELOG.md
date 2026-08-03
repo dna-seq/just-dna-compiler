@@ -5,6 +5,57 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: RM29 cofactors, and a refusal dissolved rather than resolved
+
+Three optional columns carrying single-subject cofactors with **no predicate language at all** —
+because a row's columns already conjoin, which is the whole reason RM29 was ever separable from RM28.
+Taken now because the digest window is still open: new columns on an existing parquet move every
+module's digest, and 0.5 is unpublished. Nothing in the repo pins a digest, so there was nothing to
+re-baseline.
+
+**(a) `VariantRow.quality_from` + `min_quality`** — "assert this only where the call is at least this
+good". `requires_callable`/`callable_from` ask whether the position was *seen*; this asks whether what
+was seen is good enough to act on. Two columns rather than one expression: a pointer at the VCF
+confidence field plus an inclusive numeric floor, so there is no grammar to specify, no evaluator to
+write and nothing to sandbox (P1). `quality_from` joined the *existing* shared pointer validator on
+`AuthoredModel` beside `source_field` and `callable_from` — three columns, one grammar, not a third
+private rule.
+
+**Both-or-neither**, enforced by a model validator. Half a floor is worse than no floor: a bound with
+no field does not say what must clear it, a field with no bound is no threshold at all, and either
+alone reads as a configured gate. A consumer would have to guess the missing half, and every guess is
+a clinical policy the module did not write. An absent floor materializes as **null, never `0.0`** — a
+zero floor is a gate everything clears, which is a different statement from "no gate". This is still
+not the dropped `caller`/`caller_version` names: those recorded which tool made a call (consumer-side
+measurement provenance); this is an applicability bound the annotation itself carries, the same kind of
+thing a `MeasureBinRow` bound states, and inclusive for the same reason.
+
+**(b) `DiplotypeRow.clinical_context`**, in `_TABLE_DUPE_KEYS` — which **dissolves** the
+`draft --population` refusal built two entries below rather than resolving it. That refusal was
+correct given the schema at the time: CPIC scopes a gene/drug recommendation to a setting, the
+settings disagree, and with nowhere to record which was which, drafting all of them collided on the
+duplicate-row key while drafting one asserted a clinical setting nobody chose. The column removes the
+dilemma. Every setting is a distinct row and the **consumer** selects — which indication a patient is
+being treated for is knowable at query time, not at authoring time, so the consumer is the right owner.
+
+Dogfooded live rather than argued: `draft --gene CYP2C19 --drug clopidogrel` now writes 1,998 rows
+across `CVI ACS PCI`, `CVI non-ACS non-PCI` and `NVI`, compiles clean, and the disagreement the
+refusal was protecting is visible in the data — `*2/*2` Poor Metabolizer is `strong` in the first and
+`moderate` in the other two, with different prescribing text for `NVI`. `--population` survives as a
+filter; an unknown value is still an error, because drafting nothing on a typo would look like "CPIC
+has no recommendations here". A test demonstrates the collision on the buggy shape (strip the column,
+the same three CPIC rows are rejected as duplicates) rather than asserting it.
+
+**Not named `population`, and that was a probe rather than a preference.** `FrequencyRow.population`
+is an ancestry group with its own validated vocabulary. CPIC's live `recommendation` table (2,115
+rows, 2026-08-03) turns out to carry indication (`CVI ACS PCI`, `NVI`), age band (`pediatrics`,
+`adults`, `child >40kg_adult`), prior-treatment status (`PHT naive`, `CBZ use >3mos`, `OXC naive`) and
+dose band (`<= 1g per day`), with `general` on 1,912 of them — no sense of ancestry anywhere. One name
+for two axes across two tables is the P5 mistake, and it would have spent the name ancestry will want
+on `DiplotypeRow` later. Open rather than a closed vocabulary, since CPIC's own set is open-ended and
+DPWG/CPNDS scope differently; whitespace-stripped on load, because three of CPIC's sixteen values ship
+a trailing space and the column is part of the key.
+
 ## 2026-08-03 — 0.5.1: the ACMG SF cross-check, and what a "simple scrape" actually cost
 
 `VariantRow.acmg_sf` has been materialized into `weights.parquet` since 0.4 and checked against

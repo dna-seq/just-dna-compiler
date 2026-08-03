@@ -143,7 +143,12 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
         r.haplotype_name, derive_variant_key(r.rsid, r.chrom, r.start, r.ref), r.allele,
     ),
     AlleleFunctionRow: lambda r: (r.gene, r.allele),
-    DiplotypeRow: lambda r: (r.gene, r.haplotype_a, r.haplotype_b, r.trait_efo_id, r.drug),
+    # `clinical_context` joined the key in 0.5.1 (RM29b): CPIC scopes one gene/drug pair to several
+    # settings whose recommendations disagree, so without it the three clopidogrel rows are duplicates
+    # of each other and only one survives — the collision that made `draft --drug` refuse.
+    DiplotypeRow: lambda r: (
+        r.gene, r.haplotype_a, r.haplotype_b, r.trait_efo_id, r.drug, r.clinical_context,
+    ),
     PgsRow: lambda r: (r.pgs_id, r.trait_efo_id),
     PharmVariantRow: lambda r: (
         r.variant_key, r.drug, r.genotype, r.phenotype_category, r.annotation_id,
@@ -1846,6 +1851,10 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
                 "callable_from": v.callable_from,
                 "acmg_sf": v.acmg_sf,
                 "actionability": v.actionability,
+                # 0.5.1 (RM29a): the call-confidence cofactor — where the floor is measured, and the
+                # floor. Both-or-neither is a model rule, so the pair is always whole here.
+                "quality_from": v.quality_from,
+                "min_quality": v.min_quality,
             }
         )
     schema = {
@@ -1884,6 +1893,8 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
         "callable_from": pl.Utf8,
         "acmg_sf": pl.Boolean,
         "actionability": pl.Utf8,
+        "quality_from": pl.Utf8,
+        "min_quality": pl.Float64,
     }
     return pl.DataFrame(records, schema=schema)
 
@@ -2514,6 +2525,8 @@ def _write_variants_csv(
         "requires_callable", "acmg_sf", "actionability",
         # 0.5 general annotation axis
         "callable_from",
+        # 0.5.1 general annotation axes (RM29a)
+        "quality_from", "min_quality",
     ]
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -2632,6 +2645,8 @@ def _write_variants_csv(
                     "acmg_sf": _scalar_cell(row.get("acmg_sf")),
                     "actionability": _scalar_cell(row.get("actionability")),
                     "callable_from": _scalar_cell(row.get("callable_from")),
+                    "quality_from": _scalar_cell(row.get("quality_from")),
+                    "min_quality": _scalar_cell(row.get("min_quality")),
                 }
             )
 

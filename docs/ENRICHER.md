@@ -826,6 +826,22 @@ separate step.
   into `MeasureBinRow`'s numeric bounds; the raw string is carried and the parsing left to a human.
 - **Coordinates are 1-based** in both (verified against Ensembl for rs4244285 → chr10:94781859, which
   PharmVar, CPIC and our own resolution all agree on). Do not convert.
+- **CPIC recommendations are keyed by (gene phenotype, drug, clinical context) and the contexts
+  disagree** — and since 0.5.1 (RM29b) that is no longer a refusal. `draft --drug` used to stop and
+  list the choices when CPIC scoped a pair to several settings, because `DiplotypeRow` had nowhere to
+  put the distinction: writing all of them collided on the duplicate-row key, and writing one asserted
+  a clinical setting the author never chose. `DiplotypeRow.clinical_context` is now part of that key,
+  so every setting is drafted as its own row and the **consumer** picks — which indication a patient
+  is being treated for is knowable at query time and not at authoring time. Drafted live,
+  `--gene CYP2C19 --drug clopidogrel` yields 1,998 rows across `CVI ACS PCI`,
+  `CVI non-ACS non-PCI` and `NVI`, and the disagreement is visible in them: `*2/*2` Poor Metabolizer
+  is `strong` in the first and `moderate` in the other two, with different prescribing text for `NVI`.
+  `--population` survives as a **filter** for an author who wants one setting; an unknown value is
+  still an error, since drafting nothing on a typo would look like "CPIC has no recommendations here".
+  Three of CPIC's sixteen live context values carry trailing whitespace, so the column strips on load
+  — unstripped, `'CVI ACS PCI '` and `'CVI ACS PCI'` are two rows describing one setting.
+  `recommendation_strength` is still CPIC's and `evidence_level` still PharmGKB's; a provider fills
+  only its own.
 
 ### Pass 6 — ClinPGx clinical annotations (`clinpgx.py`, offline capable)
 
@@ -880,6 +896,8 @@ just-dna-enricher check-acmg spec/                 # acmg_sf vs the ACMG SF gene
 # Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)
 just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults
 just-dna-enricher draft spec/ --gene CYP2C19        # CPIC → haplotypes/allele_function/diplotypes
+just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel   # + every clinical context, as rows
+just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --population NVI  # one context only
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
 just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1 --snapshot cv/  # ClinVar gene panel
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
