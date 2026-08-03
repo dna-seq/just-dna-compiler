@@ -121,13 +121,18 @@ spec you must **delete the file first**, or stale rows silently persist.
 
 ```bash
 just-dna-enricher check-identifiers spec/   # rsIDs, trait CURIEs, gene symbols still current
-just-dna-enricher check-acmg spec/          # acmg_sf vs the ACMG SF list
+just-dna-enricher check-acmg spec/ --sf-list acmg/   # acmg_sf vs the ACMG SF list (v3.3)
 just-dna-enricher pgx spec/                 # function_status vs PharmVar and CPIC
 just-dna-enricher clinpgx check spec/ --snapshot cp/
 ```
 Every check **reports, never repairs**. `--strict` escalates a finding to a refusal; `best_effort`
 warns and carries on. Two deliberately never escalate — the `clin_sig` and allele-function
 cross-checks — because failing would make the format arbitrate between expert panels.
+
+`check-acmg` needs `--sf-list` to give a real answer: NCBI's page serves SF **v3.2** and ACMG published
+**v3.3**, so without a snapshot every disagreement comes back `unverifiable` rather than as a finding.
+Build it once from the committed workbook — `just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx
+--out acmg/` — and the check also stops needing the network.
 
 ## 6 — Compile, verify, publish
 

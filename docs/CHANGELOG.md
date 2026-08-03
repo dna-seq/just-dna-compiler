@@ -5,6 +5,53 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — the ACMG SF check was answering against a list a year out of date
+
+**`check-acmg` called correctly authored rows wrong, and passed every guard doing it.** ACMG published
+**SF v3.3** in June 2025 (`10.1016/j.gim.2025.101454`) — 84 genes over 100 gene-condition rows, adding
+`ABCD1`, `CYP27A1` and `PLN`. NCBI still serves its adaptation of **v3.2** (81/94), which is the only
+form `acmg.py` could read. So a module flagging `acmg_sf=true` on ABCD1 got
+`acmg_sf=true but ABCD1 is not on ACMG SF v3.2`.
+
+That is the exact *short list* failure `parse_acmg_page`'s five guards were built to prevent, and none
+of them could see it: the page is well-formed, complete, and simply a release behind. The guards defend
+against a list that is **broken**; nothing defended against a list that is **old**. Demonstrated rather
+than asserted — `test_a_v33_gene_is_reported_as_wrong_against_the_v32_page` runs the pre-fix path on the
+real v3.2 fixture and shows the three mismatches.
+
+Two halves, and the first is the real fix:
+
+- **The list is injectable now, and the check works offline.** ACMG publishes v3.3 as a supplementary
+  **workbook**, which beats the page on every axis: version-pinned behind a DOI instead of
+  hand-maintained, content-hashable, and carrying four columns the page lacks (`Inheritance`,
+  `Phenotype Category`, the release that first listed each gene, and ACMG's scope-of-reporting text —
+  recorded, never applied, since reporting policy is out of format scope). `acmg build` writes
+  `acmg_sf.csv` + `release.json` (`sf_version`, `source_sha256`, DOI, counts); `check-acmg --sf-list`
+  reads it. Same split as ClinVar: **builder in `openpyxl` (`[dev]`), pass in the standard library**, so
+  a plain `pip install just-dna-enricher` can still run the check — the rule `clinpgx.py` learned by
+  reading its snapshot with polars. Only MedGen ids go the other way (NCBI has them, ACMG's sheet does
+  not); no verdict reads them.
+- **The scrape path admits when it is stale.** `KNOWN_LATEST_SF_VERSION` is **one version string**, and
+  when the list actually read is older every disagreement is demoted to a new `unverifiable` verdict:
+  warned in both modes, never a `strict` refusal. Both directions are demoted, not just the observed one
+  — ACMG can remove entries as well as add them, so a `denied` against a stale list is equally
+  unsettled. This is the house tri-state doing its job: a mismatch against a superseded list is a
+  question, and answering it is worse than withholding. The hand-kept constant is acceptable where a
+  hand-kept gene list would not be, and the asymmetry is the reason: when v3.4 ships the constant
+  under-warns (degrading to the previous release's behaviour), whereas a transcribed list would make
+  confident wrong claims about named genes.
+
+Three existing tests asserted `not_listed` against the v3.2 fixture and had to move to a `current_list`
+fixture built from the workbook — the demotion working as intended, and the reason both fixtures are
+kept side by side in `assets/`: the page tests the *parser*, the workbook tests the *check*.
+
+The workbook parse earned one guard of its own shape. ACMG's trailing **disclaimer sits in the Gene
+column** — ~1,200 characters of prose that a naive read counts as an 85th gene, with a symbol no
+authored row will ever match. It is skipped only when every other cell in its row is empty; an
+unreadable symbol on a *populated* row refuses, because that is the `<tr>` failure again. Headers are
+matched by prefix and resolved **by name to a column index** (ACMG misspells one — `Disease/Phentyope` —
+and pads another), so a reordered column moves the reader instead of shifting every value left.
+
 ## 2026-08-03 — 0.5.1: a GRCh37 module minted GRCh38 identities, silently
 
 The sharpest finding of the dogfooding round, and the shortest to state. **A module declaring

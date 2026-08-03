@@ -21,11 +21,28 @@ from just_dna_enricher.acmg import (
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _PAGE = (_ASSETS / "ncbi_acmg_sf_v3.2.html").read_text(encoding="utf-8")
+_WORKBOOK = _ASSETS / "acmg_sf_v3.3.xlsx"
 
 
 @pytest.fixture(scope="module")
 def sf_list():
+    """NCBI's page — v3.2, which this package now knows is superseded.
+
+    Right for every parse test and for the outcomes that do not depend on membership (`unstated`,
+    `blank`, `unchecked`). **Wrong** for the disagreement outcomes, which against a superseded list are
+    deliberately demoted to `unverifiable` — those use `current_list`. Keeping both fixtures is what
+    stops the demotion from quietly hollowing out the check: three tests here asserted `not_listed`
+    against this page and had to move, which is the demotion doing its job.
+    """
     return parse_acmg_page(_PAGE)
+
+
+@pytest.fixture(scope="module")
+def current_list():
+    """ACMG's own v3.3 supplement — the newest release, so a disagreement against it is a real one."""
+    from just_dna_enricher.acmg_build import parse_acmg_workbook
+
+    return parse_acmg_workbook(_WORKBOOK)
 
 
 def _variant(gene, acmg_sf=None, rsid="rs1800562"):
@@ -131,14 +148,14 @@ def test_a_truncated_response_trips_the_floor():
 # ── the check ──────────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_four_stated_outcomes(sf_list):
+def test_the_four_stated_outcomes(current_list):
     variants = [
         _variant("HFE", True),  # listed, claimed  -> agree
         _variant("HBB", False),  # unlisted, denied -> agree
         _variant("HBB", True),  # unlisted, claimed -> not_listed
         _variant("BRCA1", False),  # listed, denied   -> denied
     ]
-    report = check_acmg_sf(variants, sf_list)
+    report = check_acmg_sf(variants, current_list)
     assert [v.verdict for v in report.verdicts] == ["agree", "agree", "not_listed", "denied"]
     assert [v.row for v in report.mismatches] == [3, 4]
     assert not report.clean
@@ -172,12 +189,16 @@ def test_offline_reports_unchecked_rather_than_not_on_the_list():
     assert report.warnings and "offline" in report.warnings[0]
 
 
-def test_strict_refuses_on_a_mismatch_and_best_effort_does_not():
+def test_strict_refuses_on_a_mismatch_and_best_effort_does_not(tmp_path):
+    """Against a **current** list. The stale-page variant of this is in `test_acmg_build.py`."""
+    from just_dna_enricher.acmg_build import build_acmg_snapshot
+
+    build_acmg_snapshot(_WORKBOOK, tmp_path / "snap")
     variants = [_variant("HBB", True)]
-    report = verify_acmg_sf(variants, mode="best_effort", page_text=_PAGE)
+    report = verify_acmg_sf(variants, mode="best_effort", snapshot_dir=tmp_path / "snap")
     assert len(report.mismatches) == 1
     with pytest.raises(AcmgSfError, match="strict acmg_sf check"):
-        verify_acmg_sf(variants, mode="strict", page_text=_PAGE)
+        verify_acmg_sf(variants, mode="strict", snapshot_dir=tmp_path / "snap")
 
 
 def test_strict_does_not_refuse_on_a_note(sf_list):
@@ -186,12 +207,12 @@ def test_strict_does_not_refuse_on_a_note(sf_list):
     assert report.notes and report.clean
 
 
-def test_findings_group_by_gene_because_that_is_what_they_are_about(sf_list):
+def test_findings_group_by_gene_because_that_is_what_they_are_about(current_list):
     """One sentence per gene, not per row — found by running the real HFE example through the CLI."""
     from just_dna_enricher.acmg import AcmgReport
 
     variants = [_variant("HBB", True) for _ in range(12)] + [_variant("APOE", True)]
-    report = check_acmg_sf(variants, sf_list)
+    report = check_acmg_sf(variants, current_list)
     assert len(report.mismatches) == 13
     grouped = AcmgReport.by_gene(report.mismatches)
     assert [(gene, len(rows)) for gene, rows, _ in grouped] == [("HBB", 12), ("APOE", 1)]

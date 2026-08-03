@@ -475,10 +475,14 @@ def check_identifiers_(
 def check_acmg_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Exit 1 if any acmg_sf disagrees."),
-    offline: bool = typer.Option(False, "--offline", help="No-op with a warning: the SF list is live-only."),
-    url: str = typer.Option(DEFAULT_ACMG_URL, "--url", help="ACMG secondary-findings page URL."),
+    offline: bool = typer.Option(False, "--offline", help="No network. Needs --sf-list, else nothing is checked."),
+    url: str = typer.Option(DEFAULT_ACMG_URL, "--url", help="ACMG secondary-findings page URL (fallback)."),
+    sf_list: Optional[Path] = typer.Option(
+        None, "--sf-list", exists=True, file_okay=False,
+        help="Built ACMG SF snapshot (see `acmg build`). Preferred: NCBI's page still serves v3.2.",
+    ),
 ) -> None:
-    """Check each row's `acmg_sf` against the ACMG secondary-findings list (online, reports only).
+    """Check each row's `acmg_sf` against the ACMG secondary-findings list (reports only).
 
     Writes nothing, for the same reason `check-identifiers` writes nothing: `acmg_sf` is an authored
     cell this asks a registry about, not a fact this pass contributes. Filling it here would break the
@@ -497,7 +501,9 @@ def check_acmg_(
         raise typer.Exit(code=1)
 
     try:
-        report = verify_acmg_sf(variants, mode=_mode(strict), offline=offline, url=url)
+        report = verify_acmg_sf(
+            variants, mode=_mode(strict), offline=offline, url=url, snapshot_dir=sf_list
+        )
     except AcmgSfError as exc:
         typer.secho(f"ACMG CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -505,6 +511,11 @@ def check_acmg_(
     typer.echo(f"{version}: {report.checked}/{len(report.verdicts)} row(s) checked")
     for warning in report.warnings:
         typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
+    # Unverifiable disagreements are printed like mismatches and excluded from the exit code: the
+    # module may be right and the list old. They are the loud half of the stale-list fix.
+    for gene, rows, message in AcmgReport.by_gene(report.unverifiable):
+        typer.secho(f"  unverifiable: {gene} ({len(rows)} row(s), first at {rows[0]}): {message}",
+                    fg=typer.colors.YELLOW, err=True)
     # Grouped by gene: every verdict is a statement about a gene, so a per-row list prints one
     # sentence once per variant in it.
     for gene, rows, message in AcmgReport.by_gene(report.notes):
@@ -617,6 +628,54 @@ def upload_(
 
 
 # ── clinvar reference snapshot (build + publish, publisher/dev surface) ─────────────────────────
+
+acmg_app = typer.Typer(
+    add_completion=False,
+    help="Build the ACMG secondary-findings snapshot from ACMG's published workbook (dev surface).",
+    no_args_is_help=True,
+)
+app.add_typer(acmg_app, name="acmg")
+
+
+@acmg_app.command("build")
+def acmg_build_(
+    workbook: Path = typer.Argument(
+        ..., exists=True, dir_okay=False, help="ACMG SF supplementary workbook (.xlsx), downloaded by you.",
+    ),
+    out: Path = typer.Option(
+        Path("acmg_sf"), "--out", file_okay=False,
+        help="Output snapshot directory (writes acmg_sf.csv + release.json).",
+    ),
+    source_url: Optional[str] = typer.Option(
+        None, "--source-url", help="Where the workbook came from, recorded in release.json.",
+    ),
+    doi: Optional[str] = typer.Option(
+        None, "--doi", help="DOI of the statement the workbook accompanies, recorded in release.json.",
+    ),
+) -> None:
+    """Convert ACMG's SF workbook into the snapshot `check-acmg --sf-list` reads.
+
+    Why this exists: NCBI's page serves **v3.2** and ACMG published **v3.3** in June 2025, so the live
+    scrape reports correctly authored rows as wrong. Nothing is downloaded here — the workbook is
+    ACMG/Elsevier supplementary material and the author supplies their own copy, which is the same
+    inject-only shape every other reference in this repo uses.
+    """
+    from just_dna_enricher.acmg_build import build_acmg_snapshot
+
+    try:
+        sf_list = build_acmg_snapshot(workbook, out, source_url=source_url, doi=doi)
+    except (AcmgSfError, ImportError) as exc:
+        typer.secho(f"BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"built: {out}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"ACMG SF v{sf_list.version}: {len(sf_list.genes)} genes over {len(sf_list.findings)} "
+        f"gene-condition rows"
+    )
+    added = sorted({f.gene for f in sf_list.findings if f.since_version == sf_list.version})
+    if added:
+        typer.echo(f"  first listed in v{sf_list.version}: {', '.join(added)}")
+
 
 clinvar_app = typer.Typer(
     add_completion=False,

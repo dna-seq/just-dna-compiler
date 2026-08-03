@@ -27,7 +27,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` |
-| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list | `acmg.check_acmg_sf` |
+| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` |
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
@@ -615,18 +615,48 @@ compile would key on it, and `variant_key` would change with no authored edit an
 usual ladder (warn / fail in `strict`), and `strict` failing is the nudge toward the drift-proof key:
 author the coordinate, and the VRS allele id cannot drift at all.
 
-## ACMG secondary findings (`acmg.py`, online) — `just-dna-enricher check-acmg`
+## ACMG secondary findings (`acmg.py` + `acmg_build.py`) — `just-dna-enricher check-acmg`
 
 `VariantRow.acmg_sf` has been materialized into `weights.parquet` since 0.4 and checked against
 nothing. The compiler cannot hold a gene list (that is the un-injected reference RM21 taught), and no
 pass here had one, so the column was assertable and unfalsifiable. This closes it.
 
-**There is still no data file, and the list is scraped.** Probed 2026-08-03: ClinGen's FTP publishes
+**Read this part first: the scraped list is a release behind, and the check now says so.** ACMG
+published **SF v3.3** in June 2025 — 84 genes over 100 gene-condition rows, adding `ABCD1`, `CYP27A1`
+and `PLN` — and NCBI still serves its adaptation of **v3.2** (81/94). The five guards below all pass on
+that page, because it is neither truncated nor re-laid-out; it is simply old. So the check reported
+`acmg_sf=true but ABCD1 is not on ACMG SF v3.2` about a row that is right, which is precisely the
+*short list* failure the guards exist to prevent, arriving where no guard could see it.
+
+Two things changed, and the `--sf-list` half is the one to use:
+
+```bash
+# once, from ACMG's supplementary workbook (assets/acmg_sf_v3.3.xlsx, or your own download)
+just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx --out data/interim/acmg
+just-dna-enricher check-acmg spec/ --sf-list data/interim/acmg --offline
+```
+
+* **The list can be injected.** `acmg build` turns ACMG's workbook into `acmg_sf.csv` + `release.json`
+  (declared `sf_version`, `source_sha256`, DOI, counts), and `load_acmg_snapshot` reads it with the
+  standard library — so `check-acmg` is the first check here that works **`--offline`**. The workbook is
+  the better artifact in every way that matters: version-pinned behind a DOI rather than
+  hand-maintained, content-hashable, and carrying four columns the page does not (`Inheritance`,
+  `Phenotype Category`, the release that first listed the gene, and ACMG's scope-of-reporting text).
+  Only MedGen concept ids go the other way — they are on NCBI's page and not in ACMG's sheet, and no
+  verdict reads them.
+* **The scrape path carries a staleness tripwire.** `KNOWN_LATEST_SF_VERSION` is **one version string**,
+  not a gene list. When the list actually read is older, every disagreement — both directions, since
+  ACMG can remove entries as well as add them — is demoted to `unverifiable`: reported as a warning,
+  never a `strict` refusal. A mismatch against a superseded list is a question, and answering it anyway
+  is worse than saying nothing. The stale-constant risk is asymmetric on purpose: when v3.4 ships the
+  constant under-warns, i.e. degrades to the previous release's behaviour, whereas a hand-kept gene list
+  would make confident wrong claims about specific genes.
+
+**The scrape stays, because it is the only zero-setup path.** Probed 2026-08-03: ClinGen's FTP publishes
 gene-curation, region-curation, dosage and recurrent-CNV lists and **no secondary-findings list**;
-ClinVar's FTP tree carries no ACMG flag (`gene_condition_source_id`, 13,478 rows, zero mentions). The
-only machine-reachable form of SF v3.2 is NCBI's adaptation of ACMG's Table 1 at
-`/clinvar/docs/acmg/`, as HTML. So this is the "accept the guarded scrape" branch the roadmap left
-open — taken with the guards that branch was conditional on.
+ClinVar's FTP tree carries no ACMG flag (`gene_condition_source_id`, 13,478 rows, zero mentions). NCBI's
+adaptation of ACMG's Table 1 at `/clinvar/docs/acmg/` is still the only *fetchable* form of the list, so
+it remains the fallback with the guards that branch was conditional on — now with its version checked.
 
 **The guards are load-bearing, and the naive parse really is wrong.** Splitting the table on `<tr>`
 returns **78 of the 81 genes, silently**. The page is hand-maintained and shows it: two rows open with
@@ -646,7 +676,12 @@ works in **cells**, not rows, and refuses rather than returning a short list:
 | at least `MIN_GENES` distinct genes survive | a truncated response, a JS shell, an error page |
 
 `MIN_GENES` is a floor, not the real count. Hard-coding 81 would be the hand-transcribed gene list this
-module exists to avoid, and it would go stale the day ACMG publishes v3.3.
+module exists to avoid, and it would go stale the day ACMG publishes v3.3 — **which it since has**, and
+the version tripwire above is the answer that a count would not have been. The workbook parse reuses the
+same floor and adds one guard of its own shape: ACMG's trailing **disclaimer sits in the Gene column**,
+~1,200 characters of prose that a naive read counts as an 85th gene. It is skipped only when every other
+cell in its row is empty; a symbol that cannot be read on a *populated* row refuses, because that is the
+`<tr>` failure again.
 
 **The list is richer than a set of symbols, and cells hold more than one of things.** Each row is a
 gene–condition pair (94 pairs over 81 genes; `TRDN` is listed for two conditions), and a cell can carry
@@ -657,11 +692,12 @@ family as the `<tr>` split.
 
 **The verdicts are the house tri-state, and a blank cell is never a defect.** `agree` (either way
 round) and `blank` are silent; `not_listed` (claimed true, gene absent) and `denied` (claimed false,
-gene present) are findings that warn in `best_effort` and refuse in `strict`; `unstated` (blank, gene
+gene present) are findings that warn in `best_effort` and refuse in `strict`; `unverifiable` is either
+of those two **against a superseded list**, which warns in both modes; `unstated` (blank, gene
 listed) is a **note**, because blank means "not stated" and turning that into a defect is the
 `None`-means-`False` collapse this codebase refuses everywhere else; `unchecked` covers a row naming no
-gene and the whole of `--offline`, which reports that nothing was asked rather than that nothing was
-found.
+gene and `--offline` *without* a `--sf-list`, which reports that nothing was asked rather than that
+nothing was found.
 
 **Findings group by gene, because that is what they are about.** Found by running the real thing: the
 HFE reference example is 13 variants in one gene, and a per-row report printed the same 220-character
@@ -906,7 +942,8 @@ just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdr
 just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC)
-just-dna-enricher check-acmg spec/                 # acmg_sf vs the ACMG SF gene list (online)
+just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx --out acmg/   # once: the SF v3.3 snapshot
+just-dna-enricher check-acmg spec/ --sf-list acmg/  # acmg_sf vs the ACMG SF gene list (offline-capable)
 
 # Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)
 just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults
@@ -959,6 +996,7 @@ directly to compose passes, inject clients, or run in-process.
 | `pgx` | `pgx.enrich_pgx` |
 | `check-identifiers` | `identifiers.check_identifiers` |
 | `check-acmg` | `acmg.verify_acmg_sf` (+ `AcmgReport.by_gene` for the grouped view) |
+| `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
 | `draft-panel` | `clinvar_draft.draft_gene_panel` |

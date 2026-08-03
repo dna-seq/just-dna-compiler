@@ -50,6 +50,10 @@ just-dna-enricher = "just_dna_enricher.cli:app"
 dev = [
     "pytest>=9.0.3",
     "polars>=1.42.0",
+    # Builder-only, for `just-dna-enricher acmg build`: ACMG publishes the SF v3.3 list as a
+    # supplementary **workbook**, and the page NCBI serves is a release behind it. The runtime check
+    # reads the built CSV snapshot with the standard library, so this never enters a check's install.
+    "openpyxl>=3.1.5",
 ]
 
 [build-system]

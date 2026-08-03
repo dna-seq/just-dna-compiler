@@ -111,10 +111,17 @@ compiler flag for this by design — a flag cannot survive `reverse`, so the thi
 
 ## Checks
 
-**`acmg_sf=false but <GENE> is on ACMG SF v3.2`**
+**`acmg_sf=false but <GENE> is on ACMG SF v3.3`**
 The column is gene-level list membership. If the row is about a variant in a listed gene that is not
 itself a reportable finding, leave the cell **blank** — blank means "not stated". ACMG scopes some
 entries more narrowly than the gene (HFE is *"c.845G>A; p.C282Y homozygotes only"*).
+
+**`unverifiable: …` and `the list read is ACMG SF v3.2 but v3.3 is published`**
+**Not a finding about your module.** You ran `check-acmg` without `--sf-list`, so it fell back to NCBI's
+page, which is a release behind — it does not carry `ABCD1`, `CYP27A1` or `PLN`, all of which v3.3 lists.
+Every disagreement is withheld rather than reported, and `--strict` will not fail on one. To get an
+answer: `just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx --out acmg/`, then re-run with
+`--sf-list acmg/` (which also works `--offline`).
 
 **A note saying a gene is listed and `acmg_sf` is blank**
 Informational, never a defect, and `--strict` does not escalate it. Blank is a legitimate answer.

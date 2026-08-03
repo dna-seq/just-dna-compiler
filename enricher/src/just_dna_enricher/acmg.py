@@ -36,13 +36,37 @@ documented as "True when the **gene** is on the ACMG secondary-findings list", s
 compared; the conditions are parsed and kept on `SecondaryFinding` so a caller can say which entry
 matched, but they are not part of the verdict. Reading the column as per-variant reportability would
 make the format decide disclosure policy, which it explicitly does not.
+
+**And the page turned out to be a version behind, which no guard above can see.** ACMG published
+**SF v3.3** in June 2025 (84 genes over 100 gene-condition rows, adding `ABCD1`, `CYP27A1` and `PLN`);
+NCBI still serves its adaptation of **v3.2** (81/94). The scrape's five guards all pass — the page is
+neither truncated nor re-laid-out, it is simply old — so the check reported `acmg_sf=true but ABCD1 is
+not on ACMG SF v3.2` about a row that is right. That is the same *short list* failure the guards were
+built for, and this is the fix, in two halves:
+
+* the list can now be **injected** — `acmg_build` turns ACMG's supplementary workbook into a snapshot
+  and `load_acmg_snapshot` reads it with the standard library, which also makes the check the first one
+  here that works `--offline`; and
+* the scrape path carries a **staleness tripwire**, `KNOWN_LATEST_SF_VERSION`. When the list actually
+  read is older than a version this package knows was published, every disagreement is demoted to
+  `unverifiable` and no longer refuses under `strict`. A mismatch against a superseded list is a
+  question, not an answer, and answering it anyway is worse than saying nothing (the house tri-state
+  rule: unknown withholds — it never reports and never negates).
+
+One constant is deliberately hand-kept, and its failure mode is why that is acceptable: a *version
+string* is not the transcribed gene list this module exists to avoid. When ACMG ships v3.4 the constant
+says 3.3 and the tripwire under-warns — i.e. degrades to the behaviour of the release before this one —
+whereas a hand-kept gene list would make specific, confident, wrong claims about specific genes.
 """
 
+import csv
 import html
+import json
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -51,6 +75,17 @@ from just_dna_format.spec import VariantRow
 logger = logging.getLogger(__name__)
 
 DEFAULT_ACMG_URL = "https://www.ncbi.nlm.nih.gov/clinvar/docs/acmg/"
+
+#: The newest SF release this package knows exists. **Not** a gene list — one string, whose only job is
+#: to stop a scrape of a superseded page from being silently authoritative. See the module docstring for
+#: why the stale-constant risk is acceptable here and would not be for the list itself.
+KNOWN_LATEST_SF_VERSION = "3.3"
+
+#: The snapshot layout, owned by the **reader** rather than the builder: `load_acmg_snapshot` is the
+#: contract a snapshot has to satisfy, and `acmg_build` imports these to conform. The other direction
+#: would make the runtime module import the `[dev]` builder to learn its own file names.
+SNAPSHOT_CSV = "acmg_sf.csv"
+SNAPSHOT_RELEASE = "release.json"
 
 #: The four column labels the table has carried since NCBI adapted it. A change here means the page
 #: was re-laid-out and every offset below is suspect, so it is a refusal rather than a best guess.
@@ -61,7 +96,9 @@ EXPECTED_HEADERS = ("Disease name and MIM number", "MedGen", "Gene via GTR", "Va
 #: JavaScript shell, a truncated response, an error page that happens to contain a table.
 MIN_GENES = 50
 
-_VERSION_RE = re.compile(r"ACMG\s+SF\s+v(\d+(?:\.\d+)*)")
+# Both spellings the publishers use: NCBI's page says "ACMG SF v3.2", ACMG's own workbook says "ACMG
+# Secondary Findings v3.3" in its title cell and "ACMG SF v3.3" on the tab.
+_VERSION_RE = re.compile(r"ACMG\s+(?:SF|Secondary\s+Findings)\s+v(\d+(?:\.\d+)*)")
 # Three link shapes, all seen on the live page: /gtr/genes/324, /gtr/genes/4089/, /gene/3949.
 _GENE_LINK_RE = re.compile(r'href="/(?:gtr/)?genes?/(\d+)/?"\s*>\s*([A-Za-z0-9_.\-]+)\s*</a>')
 _MIM_RE = re.compile(r"MIM\s+(\d+)")
@@ -93,6 +130,27 @@ class SecondaryFinding:
     disease_mims: tuple[str, ...] = ()
     medgen_ids: tuple[str, ...] = ()
 
+    # ── workbook-only columns (v3.3 supplement; blank when the list came from the page) ──
+    # Carried because they are published facts about the entry and cost nothing to keep, and *not*
+    # consulted by any verdict. `variants_to_report` in particular is ACMG's scope-of-reporting text
+    # ("All P and LP", "p.C282Y homozygotes only") — reporting policy, which the roadmap files as
+    # explicitly outside format scope. It is recorded so an author can read it, never applied.
+    phenotype_category: Optional[str] = None
+    inheritance: Optional[str] = None
+    since_version: Optional[str] = None
+    variants_to_report: Optional[str] = None
+
+
+def parse_sf_version(text: str) -> Optional[str]:
+    """`ACMG SF v3.3` / `ACMG Secondary Findings v3.3` in `text` → `"3.3"`, else None."""
+    match = _VERSION_RE.search(text)
+    return match.group(1) if match else None
+
+
+def _version_tuple(version: str) -> tuple[int, ...]:
+    """`"3.3"` → `(3, 3)`, for ordering the releases ACMG has actually published (1, 2, 3, 3.1–3.3)."""
+    return tuple(int(part) for part in version.split(".") if part.isdigit())
+
 
 @dataclass
 class AcmgSfList:
@@ -116,6 +174,17 @@ class AcmgSfList:
         """The label a caller reports this check against, e.g. `acmg_sf_v3.2`."""
         return f"acmg_sf_v{self.version}"
 
+    @property
+    def superseded_by(self) -> Optional[str]:
+        """The newer SF version this package knows about, or None when this list is the newest known.
+
+        Drives the demotion of every disagreement to `unverifiable`: a list that is a release behind
+        cannot answer whether an authored flag is right, only whether it matches an old answer.
+        """
+        if _version_tuple(self.version) < _version_tuple(KNOWN_LATEST_SF_VERSION):
+            return KNOWN_LATEST_SF_VERSION
+        return None
+
 
 @dataclass(frozen=True)
 class AcmgVerdict:
@@ -124,6 +193,11 @@ class AcmgVerdict:
     * `agree` — the authored value matches the list, either way round. Silent.
     * `not_listed` — authored True, gene is **not** listed. A finding.
     * `denied` — authored False, gene **is** listed. A finding, and the message names the entry.
+    * `unverifiable` — a disagreement (either of the two above) against a list this package knows is
+      **superseded**. A warning, never a `strict` refusal: ACMG SF v3.3 added three genes NCBI's v3.2
+      page does not carry, so `not_listed` against v3.2 is exactly as likely to be the *list* being old
+      as the module being wrong. Reporting it as a defect made the check confidently wrong about
+      correctly authored rows, which is worse than not checking.
     * `unstated` — blank, gene is listed. A note, never a finding: blank means "not stated", and
       turning that into a defect is exactly the `None`-means-`False` collapse this codebase refuses.
     * `blank` — blank, gene is not listed. Nothing was asserted and nothing contradicts it.
@@ -148,6 +222,11 @@ class AcmgReport:
     def mismatches(self) -> list[AcmgVerdict]:
         """The verdicts that are defects — what `strict` refuses on."""
         return [v for v in self.verdicts if v.verdict in {"not_listed", "denied"}]
+
+    @property
+    def unverifiable(self) -> list[AcmgVerdict]:
+        """Disagreements against a superseded list — reported, never refused. See `AcmgVerdict`."""
+        return [v for v in self.verdicts if v.verdict == "unverifiable"]
 
     @property
     def notes(self) -> list[AcmgVerdict]:
@@ -314,16 +393,16 @@ def check_acmg_sf(variants: list[VariantRow], sf_list: AcmgSfList) -> AcmgReport
             continue
         if variant.acmg_sf and not on_list:
             verdicts.append(
-                AcmgVerdict(
-                    index, gene, True, "not_listed",
+                _disagreement(
+                    sf_list, index, gene, True, "not_listed",
                     f"acmg_sf=true but {gene} is not on ACMG SF v{sf_list.version} "
                     f"({len(listed)} genes)",
                 )
             )
         elif not variant.acmg_sf and on_list:
             verdicts.append(
-                AcmgVerdict(
-                    index, gene, False, "denied",
+                _disagreement(
+                    sf_list, index, gene, False, "denied",
                     f"acmg_sf=false but {gene} is on ACMG SF v{sf_list.version} "
                     f"({_conditions(sf_list, gene)}); the column is a gene-level list-membership "
                     f"fact, so leave it blank rather than false if this row is about a variant that "
@@ -335,9 +414,90 @@ def check_acmg_sf(variants: list[VariantRow], sf_list: AcmgSfList) -> AcmgReport
     return AcmgReport(version=sf_list.version, verdicts=verdicts)
 
 
+def _disagreement(
+    sf_list: AcmgSfList, index: int, gene: str, authored: bool, verdict: str, message: str
+) -> AcmgVerdict:
+    """A disagreement, demoted to `unverifiable` when the list read is a superseded release.
+
+    Both directions are demoted, not just `not_listed`. `not_listed` is the observed case (v3.3 added
+    `ABCD1`, `CYP27A1`, `PLN`, so a v3.3-authored module trips it against v3.2), but ACMG has removed
+    entries before and the same argument applies in reverse: a `denied` verdict against a stale list
+    could equally be the list still carrying a gene since dropped. Neither can be settled by the list
+    in hand, so neither is asserted.
+    """
+    newer = sf_list.superseded_by
+    if newer is None:
+        return AcmgVerdict(index, gene, authored, verdict, message)
+    return AcmgVerdict(
+        index, gene, authored, "unverifiable",
+        f"{message} — but the list read is v{sf_list.version} and ACMG SF v{newer} is published, so "
+        f"this disagreement may be the list rather than the module. Build a snapshot from ACMG's "
+        f"supplementary workbook and pass it with --sf-list to get an answer",
+    )
+
+
 def _conditions(sf_list: AcmgSfList, gene: str) -> str:
     names = [entry.disease for entry in sf_list.entries_for(gene) if entry.disease]
     return "; ".join(names) if names else "no condition named"
+
+
+def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
+    """An `acmg build` snapshot directory → the list, read with the standard library only.
+
+    Deliberately `csv` and `json` rather than the workbook reader: this is the **runtime** half, and a
+    runtime pass may not depend on a `[dev]` package (the rule `clinpgx.py` learned by reading its own
+    snapshot with polars). `openpyxl` stays in `acmg_build`, where it is a builder dependency.
+
+    The `release.json` version is authoritative and must agree with nothing else — the CSV carries no
+    version column, precisely so the two cannot drift.
+    """
+    release_path = snapshot_dir / SNAPSHOT_RELEASE
+    csv_path = snapshot_dir / SNAPSHOT_CSV
+    if not release_path.exists() or not csv_path.exists():
+        raise AcmgSfError(
+            f"{snapshot_dir} is not an ACMG SF snapshot ({SNAPSHOT_RELEASE} + {SNAPSHOT_CSV} "
+            f"expected) — build one with `just-dna-enricher acmg build <workbook.xlsx> <dir>`"
+        )
+    release = json.loads(release_path.read_text(encoding="utf-8"))
+    version = release.get("sf_version")
+    if not version:
+        raise AcmgSfError(f"{release_path} records no sf_version — the snapshot cannot be reported against")
+
+    findings: list[SecondaryFinding] = []
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            gene = (row.get("gene") or "").strip()
+            if not gene:
+                continue
+            findings.append(
+                SecondaryFinding(
+                    gene=gene,
+                    gene_id=int(row["gene_id"]) if (row.get("gene_id") or "").strip().isdigit() else 0,
+                    gene_mim=(row.get("gene_mim") or "").strip() or None,
+                    disease=(row.get("disease") or "").strip() or None,
+                    disease_mims=tuple(p for p in (row.get("disease_mims") or "").split(",") if p),
+                    medgen_ids=tuple(p for p in (row.get("medgen_ids") or "").split(",") if p),
+                    phenotype_category=(row.get("phenotype_category") or "").strip() or None,
+                    inheritance=(row.get("inheritance") or "").strip() or None,
+                    since_version=(row.get("since_version") or "").strip() or None,
+                    variants_to_report=(row.get("variants_to_report") or "").strip() or None,
+                )
+            )
+    if len({f.gene for f in findings}) < MIN_GENES:
+        raise AcmgSfError(
+            f"{csv_path}: {len({f.gene for f in findings})} distinct genes, below the {MIN_GENES} "
+            f"floor — the snapshot is truncated"
+        )
+    logger.info(
+        "ACMG SF v%s snapshot: %d genes over %d rows (source %s)",
+        version, len({f.gene for f in findings}), len(findings), release.get("source_sha256", "?"),
+    )
+    return AcmgSfList(
+        version=str(version),
+        findings=findings,
+        retrieved_at=release.get("built_at", ""),
+        source_url=release.get("source_url", str(snapshot_dir)),
+    )
 
 
 def verify_acmg_sf(
@@ -347,28 +507,49 @@ def verify_acmg_sf(
     offline: bool = False,
     url: str = DEFAULT_ACMG_URL,
     page_text: Optional[str] = None,
+    snapshot_dir: Optional[Path] = None,
 ) -> AcmgReport:
-    """Fetch (or accept) the list and check `variants` against it.
+    """Read the list — injected snapshot first, then the live page — and check `variants` against it.
 
-    `offline` returns a report of nothing checked rather than a report of nothing found — the same
-    `unchecked` ≠ `absent` distinction every other pass in this tier draws. `strict` escalates a
-    mismatch to a refusal; list membership is a published fact, not a clinical judgement, so unlike
-    the `clin_sig` cross-check there is no reason to hold this one at a warning.
+    An injected `snapshot_dir` wins over the network unconditionally, which is the whole point: it is
+    both the newer list and the one that works `--offline`. With no snapshot, `offline` reports nothing
+    checked rather than nothing found — the same `unchecked` ≠ `absent` distinction every other pass in
+    this tier draws.
+
+    `strict` escalates a mismatch to a refusal; list membership is a published fact, not a clinical
+    judgement, so unlike the `clin_sig` cross-check there is no reason to hold this one at a warning.
+    It does **not** escalate an `unverifiable` — see `_disagreement`.
     """
-    if offline and page_text is None:
+    if snapshot_dir is not None:
+        sf_list = load_acmg_snapshot(snapshot_dir)
+    elif offline and page_text is None:
         report = AcmgReport(
             version=None,
             verdicts=[
                 AcmgVerdict(index, (v.gene or None), v.acmg_sf, "unchecked", "offline")
                 for index, v in enumerate(variants, start=1)
             ],
-            warnings=["--offline: the ACMG SF list is live-only, so acmg_sf went unchecked"],
+            warnings=[
+                "--offline with no --sf-list: acmg_sf went unchecked. Build a snapshot from ACMG's "
+                "supplementary workbook to check it without the network"
+            ],
         )
-        logger.warning(report.warnings[0])
+        # Not logged. `report.warnings` IS the return value and every caller prints it, so logging it
+        # here too emitted the same sentence twice under the default root handler — the mistake the
+        # comment below `check_acmg_sf` already names for findings, which applies equally to warnings.
         return report
+    else:
+        sf_list = parse_acmg_page(
+            page_text if page_text is not None else fetch_acmg_page(url), source_url=url
+        )
 
-    sf_list = parse_acmg_page(page_text if page_text is not None else fetch_acmg_page(url), source_url=url)
     report = check_acmg_sf(variants, sf_list)
+    newer = sf_list.superseded_by
+    if newer is not None:
+        report.warnings.append(
+            f"the list read is ACMG SF v{sf_list.version} ({sf_list.source_url}) but v{newer} is "
+            f"published — {len(report.unverifiable)} disagreement(s) could not be settled against it"
+        )
     # Findings are the return value, not log output — the tier's convention is that a caller decides
     # how to present them and `logger` carries only what went wrong operationally. Logging them here
     # too would print every mismatch twice under the default root handler.
