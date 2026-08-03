@@ -38,6 +38,7 @@ from just_dna_enricher.gnomad import (
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
 )
+from just_dna_enricher.download import ensure_constraint_snapshot
 from just_dna_enricher.licensing import record_source_terms
 from just_dna_enricher.locations import resolve_constraint_reference
 
@@ -136,6 +137,7 @@ def enrich_gene_metrics(
     offline: bool = False,
     constraint_cache: Optional[Path] = None,
     dataset: str = CONSTRAINT_DATASET_LABEL,
+    download: bool = True,
     write: bool = True,
     client: Optional[GnomadClient] = None,
 ) -> GeneMetricsResult:
@@ -144,6 +146,10 @@ def enrich_gene_metrics(
     Existing rows are authoritative and merged, never clobbered — the same rule the other two passes
     apply. `offline` restricts the chain to the snapshot, which (unlike the frequency pass) can still
     produce a complete table when one is provisioned.
+
+    `download` provisions the published v4.1 snapshot when no local one is found, exactly as `enrich()`
+    does for the Ensembl and ClinVar snapshots — `--offline` is the switch that turns it off, and there
+    is deliberately no separate CLI flag for the same reason there is none there.
     """
     spec_dir = Path(spec_dir)
     output_path = spec_dir / "gene_metrics.csv"
@@ -169,10 +175,25 @@ def enrich_gene_metrics(
     covered: list[str] = []
     missing: list[str] = []
 
-    # ── snapshot link (offline, first) ─────────────────────────────────────────────────────────
+    # ── snapshot link (offline-capable, first) ─────────────────────────────────────────────────
     from_snapshot: dict[str, dict] = {}
     if wanted:
         reference = resolve_constraint_reference(constraint_cache)
+        if reference is None and not offline and download:
+            # **Provisioning, wired the same way `enrich()` wires the other two snapshots.**
+            # `download.ensure_constraint_snapshot` existed from the day the download body was
+            # generalized and had no caller, so a plain install fell straight through to the live API —
+            # which serves **v2.1.1** constraint where the snapshot serves **v4.1**. The pass then
+            # warned about the release difference, correctly, for a snapshot it had never tried to get.
+            # Best-effort like the others: a failure degrades to the API rather than sinking the pass.
+            try:
+                ensure_constraint_snapshot(constraint_cache)
+                reference = resolve_constraint_reference(constraint_cache)
+            except Exception as exc:
+                logger.warning(
+                    "gnomAD constraint snapshot provisioning failed (%s); continuing with the live "
+                    "API, which serves v2.1.1 rather than v4.1.", exc,
+                )
         if reference is not None:
             from_snapshot = lookup_snapshot(reference, wanted)
         elif offline:

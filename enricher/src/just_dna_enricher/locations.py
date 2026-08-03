@@ -24,6 +24,13 @@ from dotenv import find_dotenv, load_dotenv
 from platformdirs import user_cache_dir
 
 APPNAME: str = "just-dna-pipelines"
+
+#: The provenance file beside a snapshot's `data/` directory. Each builder writes it and names it
+#: inline, which is fine — but the *publisher* and the *provisioner* have to agree on the name for the
+#: file to survive a round trip through HuggingFace, and they did not: `upload` uploaded it and
+#: `download` never fetched it, so a provisioned snapshot could not say which release it was. Both
+#: import it from here now, so a rename cannot break the transfer silently.
+RELEASE_FILENAME = "release.json"
 ENSEMBL_SUBDIR: str = "ensembl_variations"
 DUCKDB_NAME: str = "ensembl_variations.duckdb"
 # ClinVar reference snapshot — a second, complementary reference beside Ensembl (clinically-curated

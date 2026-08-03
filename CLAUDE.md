@@ -447,6 +447,22 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
   is `data/interim/clinvar`. `resolution.csv` is provisional in 0.5, so `artifact.digest` changes for
   alt-bearing coordinate modules are acceptable pre-freeze.
+- **A PUBLISHED snapshot accumulates — provisioning must fetch only its own files.** The publisher adds
+  and never deletes, so `just-dna-seq/clinvar/data` still carries a 159 MB `clinvar.parquet` from the
+  single-file era beside the 25 `clinvar-chr*.parquet`; its columns are the raw VCF INFO fields
+  (`clnsig`, `clnrevstat`), the readers glob `data/*.parquet`, and one foreign file therefore puts two
+  schemas under one DuckDB relation and kills every query with `Referenced column "clin_sig" not found`.
+  `download._{ENSEMBL,CLINVAR,CONSTRAINT}_FILES` is the glob each `ensure_*` filters on; don't widen one
+  to `*.parquet`. The same failure arrives locally from an **old builder** — if a cache errors with
+  "present but not queryable", check `data/` for a file the current builder would not write, and rebuild.
+- **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.**
+  `ensure_constraint_snapshot` shipped with the ClinVar generalization and had no caller for a whole
+  release, so `gene-metrics` on a plain install skipped the v4.1 snapshot entirely and recorded the live
+  API's **v2.1.1** numbers while warning about the difference. The shape to copy is `enrich()`'s: provision
+  when the local resolve returns `None` and the run is not `offline`, degrade to the next link on failure,
+  and add no second CLI flag — `--offline` is the switch. And `release.json` travels with the parquet
+  (`locations.RELEASE_FILENAME`, shared by `upload` and `download`) because `source_sha256` is what RM4's
+  `reference_sha256` pins against; a cache that cannot state its release is not a pinnable reference.
 - **A row is stamped before the module is known — so anything build-dependent must be re-derived by
   the compiler.** `VariantRow._freeze_identity` runs at construction, where `module_spec.yaml` is not
   in scope, so it always took `derive_variant_key`'s GRCh38 default. A `genome_build: GRCh37` module

@@ -171,7 +171,13 @@ def gene_metrics_(
     offline: bool = typer.Option(False, "--offline", help="Snapshot only: never touch the network."),
     constraint_cache: Optional[Path] = typer.Option(None, "--constraint-cache", help="Explicit gnomAD constraint snapshot dir."),
 ) -> None:
-    """Fill gene_metrics.csv for the genes variants.csv mentions (pass 3, snapshot then live API)."""
+    """Fill gene_metrics.csv for the genes variants.csv mentions (pass 3, snapshot then live API).
+
+    With no local snapshot the v4.1 one is downloaded from HuggingFace first, exactly as `enrich`
+    provisions the Ensembl and ClinVar snapshots — `--offline` is what turns that off, and then the pass
+    is snapshot-only. Reaching the live API instead means **v2.1.1** numbers, which the row's `dataset`
+    records; provisioning is what keeps a plain install on v4.1.
+    """
     try:
         result = enrich_gene_metrics(
             spec_dir, mode=_mode(strict), offline=offline, constraint_cache=constraint_cache,

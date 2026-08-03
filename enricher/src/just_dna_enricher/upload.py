@@ -23,11 +23,14 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from just_dna_enricher.locations import RELEASE_FILENAME
+
 # weights/annotations/studies are what discovery needs; manifest.json + logo are additive.
 _REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
 _ALLOW_PATTERNS = [*_REQUIRED, "manifest.json", "logo.png", "logo.jpg"]
-# A reference snapshot is `data/*.parquet` + `release.json` (the ensure_*_snapshot layout).
-_SNAPSHOT_ALLOW_PATTERNS = ["data/*.parquet", "release.json"]
+# A reference snapshot is `data/*.parquet` + `release.json` (the ensure_*_snapshot layout). The
+# filename comes from `download` so the publisher and the provisioner cannot disagree about it.
+_SNAPSHOT_ALLOW_PATTERNS = ["data/*.parquet", RELEASE_FILENAME]
 
 DEFAULT_REPO_ID = "just-dna-seq/annotators"
 DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
@@ -143,8 +146,8 @@ def plan_reference_snapshot(snapshot_dir: Path, repo_id: Optional[str] = None) -
             f"(e.g. `just-dna-enricher clinvar build`)"
         )
     files = [f"data/{name}" for name in parquet]
-    if (snapshot_dir / "release.json").is_file():
-        files.append("release.json")
+    if (snapshot_dir / RELEASE_FILENAME).is_file():
+        files.append(RELEASE_FILENAME)
     return SnapshotPlan(repo_id=resolved_repo, files=files)
 
 

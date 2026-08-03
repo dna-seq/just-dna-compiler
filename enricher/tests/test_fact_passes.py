@@ -20,6 +20,7 @@ from just_dna_format.vrs import derive_vrs_allele_id
 
 from just_dna_enricher.constraint_build import build_snapshot
 from just_dna_enricher.frequencies import enrich_frequencies, format_faf95
+from just_dna_enricher import gene_metrics
 from just_dna_enricher.gene_metrics import enrich_gene_metrics
 from just_dna_enricher.gnomad import (
     API_CONSTRAINT_DATASET_LABEL,
@@ -217,9 +218,11 @@ def test_snapshot_and_api_are_labelled_as_the_different_releases_they_are(
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
-    # No snapshot → the live-API fallback.
+    # No snapshot and no provisioning → the live-API fallback. `download=False` is what keeps this
+    # network-free now that an absent snapshot is fetched from HuggingFace rather than shrugged at.
     from_api = enrich_gene_metrics(
-        spec, constraint_cache=tmp_path / "absent", client=_mock_client(handler)
+        spec, constraint_cache=tmp_path / "absent", download=False,
+        client=_mock_client(handler),
     ).rows[0]
     assert from_api.dataset == API_CONSTRAINT_DATASET_LABEL
     assert from_api.source == "gnomad"        # one licensed source, two releases
@@ -239,6 +242,80 @@ def test_gene_metrics_offline_without_a_snapshot_records_not_found(tmp_path: Pat
     result = enrich_gene_metrics(spec, offline=True, constraint_cache=tmp_path / "absent")
     assert result.missing == ["BRCA1"]
     assert [r.status for r in result.rows] == ["not_found"]
+
+
+def test_a_missing_snapshot_is_provisioned_before_falling_back_to_the_api(
+    tmp_path: Path, monkeypatch, constraint_cache: Path
+) -> None:
+    """The wiring: `ensure_constraint_snapshot` existed with no caller, so a plain install never got the
+    v4.1 snapshot and silently used the live API's **v2.1.1** numbers instead.
+
+    Provisioning is faked to the built fixture snapshot — the point under test is that the pass *asks*,
+    and then reads what it was given rather than reaching for the API.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+
+    asked: list[Path] = []
+
+    def fake_ensure(cache=None):
+        asked.append(cache)
+        return constraint_cache
+
+    monkeypatch.setattr(gene_metrics, "ensure_constraint_snapshot", fake_ensure)
+    monkeypatch.setattr(
+        gene_metrics, "resolve_constraint_reference",
+        lambda cache=None: constraint_cache if asked else None,
+    )
+
+    def explode(*_args, **_kwargs):  # the API must not be reached at all
+        raise AssertionError("fell through to the live API despite a provisionable snapshot")
+
+    monkeypatch.setattr(gene_metrics.GnomadClient, "fetch_gene_constraint", explode)
+    result = enrich_gene_metrics(spec, constraint_cache=None)
+
+    assert asked == [None]
+    assert [r.dataset for r in result.rows] == [CONSTRAINT_DATASET_LABEL]   # v4.1, not the API's v2.1.1
+
+
+def test_offline_never_provisions(tmp_path: Path, monkeypatch) -> None:
+    """`--offline` is the switch that turns provisioning off — there is no separate flag, exactly as
+    for the Ensembl and ClinVar snapshots in `enrich()`."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+
+    def explode(cache=None):
+        raise AssertionError("--offline provisioned a snapshot over the network")
+
+    monkeypatch.setattr(gene_metrics, "ensure_constraint_snapshot", explode)
+    result = enrich_gene_metrics(spec, offline=True, constraint_cache=tmp_path / "absent")
+    assert [r.status for r in result.rows] == ["not_found"]
+
+
+def test_a_failed_provisioning_degrades_to_the_api_and_says_which_release(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    """HuggingFace has gone dark mid-demo before. A provisioning failure must not sink the pass — and
+    the warning has to name the consequence, which is *older numbers*, not "no numbers"."""
+    gene_payload = json.loads((_ASSETS / "gnomad_gene_constraint_payload.json").read_text())
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+
+    def boom(cache=None):
+        raise RuntimeError("HF unreachable")
+
+    monkeypatch.setattr(gene_metrics, "ensure_constraint_snapshot", boom)
+    with caplog.at_level("WARNING"):
+        result = enrich_gene_metrics(
+            spec, constraint_cache=tmp_path / "absent",
+            client=_mock_client(lambda request: httpx.Response(200, json=gene_payload)),
+        )
+    assert [r.dataset for r in result.rows] == [API_CONSTRAINT_DATASET_LABEL]
+    message = "\n".join(r.getMessage() for r in caplog.records)
+    assert "provisioning failed" in message and "v2.1.1" in message
 
 
 def test_gene_metrics_round_trips_through_its_csv(tmp_path: Path, constraint_cache: Path) -> None:

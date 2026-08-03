@@ -284,13 +284,22 @@ the fallback triggers.
   (explicit arg → `$JUST_DNA_CLINVAR_CACHE` → `$JUST_DNA_PIPELINES_CACHE_DIR`/platformdirs, under a
   `clinvar/` subdir), also **never downloading**. The ClinVar snapshot ships as parquet only (no prebuilt
   `.duckdb`).
-- **`download.py`** — `ensure_snapshot(ensembl_cache=None)` and `ensure_clinvar_snapshot(clinvar_cache=None)`
-  pull the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations` /
-  `just-dna-seq/clinvar`) via one shared footer-checked/atomic body. A complete parquet begins/ends with
-  the `PAR1` magic; downloads go to a `.part` temp and rename only after the footer verifies, and a
-  corrupt/truncated file is removed and refetched rather than skipped forever. `huggingface_hub` is a
-  **guarded lazy import** — a missing wheel fails with a clear diagnosis pointing at the install or the
-  `--*-cache` flag.
+- **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
+  the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations` / `just-dna-seq/clinvar` /
+  `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body. A complete parquet
+  begins/ends with the `PAR1` magic; downloads go to a `.part` temp and rename only after the footer
+  verifies, and a corrupt/truncated file is removed and refetched rather than skipped forever.
+  `huggingface_hub` is a **guarded lazy import** — a missing wheel fails with a clear diagnosis pointing
+  at the install or the `--*-cache` flag. Every pass that wants a snapshot provisions through these:
+  `enrich` for Ensembl + ClinVar, `gene_metrics` for constraint. **A published dataset accumulates**, so
+  each `ensure_*` fetches only the files its snapshot is *made of* — `clinvar-*.parquet` and not the
+  159 MB `clinvar.parquet` the repo still carries from the single-file era, whose columns are the raw VCF
+  INFO fields. The reader globs `data/*.parquet`, so importing that one file would put two schemas under
+  one DuckDB relation and every query would die on `Referenced column "clin_sig" not found`. A foreign
+  file *already* in a local cache is reported, never deleted, and the message names it and the fix.
+  `release.json` comes down with the data, so a provisioned snapshot can state its own release — it is
+  what `GenePanelSpec.reference_sha256` pins against (RM4), and a cache that cannot state its
+  `source_sha256` is only a cache. A repo without one still provisions; absence is not an error.
 
 ## gnomAD v4.1 — three roles, one endpoint (`gnomad.py`)
 
@@ -337,12 +346,21 @@ a no-op with a warning rather than a failure — and that is not a reproducibili
 
 ### Pass 3 — gene constraint (`gene_metrics.py`, offline capable)
 
-`enrich_gene_metrics(spec_dir, *, mode, offline, constraint_cache, dataset, write, client)` takes the
-`gene` column of `variants.csv` (deduplicated in first-occurrence order) and writes `gene_metrics.csv`:
-pLI, LOEUF, missense Z and friends, one row per gene. Snapshot first, live API second.
+`enrich_gene_metrics(spec_dir, *, mode, offline, constraint_cache, dataset, download, write, client)`
+takes the `gene` column of `variants.csv` (deduplicated in first-occurrence order) and writes
+`gene_metrics.csv`: pLI, LOEUF, missense Z and friends, one row per gene. Snapshot first, live API second.
 
 This is the one gnomAD role that works with **zero egress**, and the difference from frequency is
 purely size: gene-level constraint is one row per gene, single-digit MB as parquet.
+
+**The snapshot is provisioned, not merely hoped for.** With no local snapshot and not `offline`, the pass
+calls `download.ensure_constraint_snapshot` before it considers the API — the same shape `enrich()` uses
+for the Ensembl and ClinVar snapshots, with `--offline` as the only switch (there is deliberately no
+second flag). That wiring was missing until 0.5: `ensure_constraint_snapshot` had existed since the
+download body was generalized and **had no caller**, so a plain install fell straight through to the live
+API and quietly recorded **v2.1.1** numbers — then warned about the release difference for a snapshot it
+had never tried to fetch. A provisioning failure degrades to the API rather than sinking the pass (HF has
+gone dark mid-demo), and the warning names the consequence: older numbers, not no numbers.
 
 > **The two routes are different releases, and the table says so.** Checked against both: for BRCA1 the
 > bulk v4.1 file gives pLI 1.55e-34 / LOEUF 0.885 / mis_z 2.338, while the live API gives 5.52e-38 /

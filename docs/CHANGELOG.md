@@ -5,6 +5,38 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-04 — the published snapshots are wired in, and a published dataset accumulates
+
+The ClinVar and gnomAD-constraint snapshots are published as HF datasets, so the enricher now *uses*
+them. Three things were in the way, and the middle one is the interesting one.
+
+**`ensure_constraint_snapshot` had no caller.** It was written when the download body was generalized for
+ClinVar, and nothing ever invoked it — so a plain install running `gene-metrics` fell straight through to
+the live gnomAD API, recorded its **v2.1.1** constraint numbers, and then warned about the
+v2.1.1-vs-v4.1 difference for a snapshot it had never tried to fetch. `enrich_gene_metrics` now provisions
+first, in the shape `enrich()` already used for the other two snapshots: `--offline` is the only switch,
+a failure degrades to the API rather than sinking the pass, and the warning names the consequence (older
+numbers, not no numbers). Verified against the live upload: the pass fetched
+`gnomad_constraint.parquet` into the default cache and wrote a `gnomad_v4.1_constraint` row.
+
+**A published dataset accumulates, and `just-dna-seq/clinvar/data` proves it.** It carries a 159 MB
+`clinvar.parquet` from the single-file era beside today's 25 `clinvar-chr*.parquet` — the publisher adds
+and never deletes. Its columns are the raw VCF INFO fields (`clnsig`, `clnrevstat`, …), the reader globs
+`data/*.parquet`, and provisioning everything would therefore put two schemas under one DuckDB relation
+and fail every query on `Referenced column "clin_sig" not found`. That is not a hypothesis: it is exactly
+how a locally-built old snapshot broke the `clin_sig` cross-check the day before. So each `ensure_*` now
+fetches only the files its snapshot is *made of* (`clinvar-*.parquet`, `homo_sapiens-*.parquet`,
+`gnomad_constraint.parquet`); a repo with none of them is a clear error naming what it did have; and a
+foreign file *already* in a local cache is reported, never deleted, with the fix in the message.
+Confirmed end to end — provisioning ClinVar from the live repo pulled 25 files, skipped the 26th, and the
+HFE example then enriched fully offline.
+
+**`release.json` was uploaded and never fetched**, so a *built* snapshot could say which release it was
+and a *provisioned* one could not. It comes down with the data now. That is the difference between a cache
+and a pinnable reference: `source_sha256` is what `GenePanelSpec.reference_sha256` pins against (RM4), and
+it cannot pin a file that was never fetched. The filename moved to `locations.RELEASE_FILENAME` so the
+publisher and the provisioner cannot disagree about it again; a repo without one still provisions.
+
 ## 2026-08-03 — RM31: one indel spelled two ways, reconciled without a reference
 
 **ClinVar publishes a SHOX deletion as `X:634689 CAG>C` and Ensembl publishes the same 2 bp AG deletion as

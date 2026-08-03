@@ -13,11 +13,13 @@ just-dna-lite's pipelines byte-for-byte so no drift is born.
 """
 
 import logging
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional
 
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
+    RELEASE_FILENAME,
     default_clinvar_cache_dir,
     default_constraint_cache_dir,
     default_ensembl_cache_dir,
@@ -30,6 +32,23 @@ _PARQUET_MAGIC = b"PAR1"
 _ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations/data"
 _CLINVAR_HF_PREFIX = "datasets/just-dna-seq/clinvar/data"
 _CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
+
+# What each snapshot is *made of*, so provisioning fetches its own files and nothing else.
+#
+# **A published dataset accumulates.** The publisher adds files and never deletes, so a repo carries
+# whatever any earlier layout put there — and `just-dna-seq/clinvar/data` really does still hold a
+# 159 MB `clinvar.parquet` from the single-file era beside today's 25 `clinvar-chr*.parquet`. Its
+# columns are the raw VCF INFO fields (`clnsig`, `clnrevstat`, …), and the reader globs
+# `data/*.parquet`, so provisioning everything hands DuckDB two schemas under one relation and every
+# query dies on `Referenced column "clin_sig" not found`. Not hypothetical: that is exactly how a
+# local cache built by the old builder broke the clin_sig cross-check.
+#
+# Naming a snapshot's files is knowledge this tier legitimately has — it is the tier that *builds*
+# them (`clinvar_build`, `constraint_build`) — and it is the cheapest place to stop a stale remote file
+# from becoming a local one.
+_ENSEMBL_FILES = "homo_sapiens-*.parquet"
+_CLINVAR_FILES = "clinvar-*.parquet"          # deliberately excludes the flat `clinvar.parquet`
+_CONSTRAINT_FILES = "gnomad_constraint.parquet"
 
 
 class ConstraintReferenceError(FileNotFoundError):
@@ -50,19 +69,39 @@ def _parquet_footer_ok(path: Path) -> bool:
 
 
 def _provision_snapshot(
-    cache_dir: Path, hf_repo_prefix: str, *, label: str, error_cls: type[Exception]
+    cache_dir: Path,
+    hf_repo_prefix: str,
+    *,
+    label: str,
+    error_cls: type[Exception],
+    filename_glob: str,
 ) -> Path:
     """Provision a parquet cache from HuggingFace Hub, returning the cache directory.
 
     A non-empty cache with no truncated files is trusted without touching the network. Only an empty
     or corrupt cache (re-)downloads — a corrupt file left by an interrupted download is removed and
     refetched rather than skipped forever. The returned directory holds `data/*.parquet`, which the
-    resolver reads directly (no prebuilt `.duckdb` required). Shared by the Ensembl and ClinVar
-    snapshots; the two differ only in `hf_repo_prefix`, `label`, and the error type raised.
+    resolver reads directly (no prebuilt `.duckdb` required). Shared by all three snapshots; they
+    differ only in `hf_repo_prefix`, `label`, `filename_glob`, and the error type raised.
+
+    `filename_glob` names the files this snapshot consists of, and it is load-bearing rather than
+    tidiness — see the constants above: a published dataset keeps files from every earlier layout, and
+    downloading a foreign one puts two schemas under the reader's `data/*.parquet` glob.
     """
     data_dir = cache_dir / "data"
 
     existing = list(data_dir.glob("*.parquet")) if data_dir.exists() else []
+    foreign = [p for p in existing if not fnmatch(p.name, filename_glob)]
+    for path in foreign:
+        # Reported, never removed: this is someone's cache directory, and a file we did not put there
+        # is not ours to delete. But it *will* break the reader, so say which file and what fixes it —
+        # a bare DuckDB binder error names a column, not a cause.
+        logger.warning(
+            "%s cache holds %s, which is not part of this snapshot (expected %s). The reader globs "
+            "data/*.parquet, so a file with another schema makes every query fail — move it aside, or "
+            "rebuild the snapshot from source.",
+            label, path.name, filename_glob,
+        )
     corrupt = [p for p in existing if not _parquet_footer_ok(p)]
     if existing and not corrupt:
         return cache_dir
@@ -82,7 +121,20 @@ def _provision_snapshot(
 
     data_dir.mkdir(parents=True, exist_ok=True)
     fs = HfFileSystem(token=get_token())
-    remote_files = [f for f in fs.ls(hf_repo_prefix, detail=False) if f.endswith(".parquet")]
+    remote_parquet = [f for f in fs.ls(hf_repo_prefix, detail=False) if f.endswith(".parquet")]
+    remote_files = [f for f in remote_parquet if fnmatch(f.rsplit("/", 1)[-1], filename_glob)]
+    ignored = sorted(f.rsplit("/", 1)[-1] for f in remote_parquet if f not in remote_files)
+    if ignored:
+        logger.info(
+            "Ignoring %d remote parquet file(s) outside this snapshot (%s): %s",
+            len(ignored), filename_glob, ", ".join(ignored),
+        )
+    if not remote_files:
+        raise error_cls(
+            f"no {filename_glob} in {hf_repo_prefix} — the published snapshot carries "
+            f"{len(remote_parquet)} parquet file(s), none of them this snapshot's "
+            f"({', '.join(ignored) or 'none at all'})"
+        )
     logger.info("Found %d remote parquet files", len(remote_files))
     for remote_path in remote_files:
         filename = remote_path.rsplit("/", 1)[-1]
@@ -98,6 +150,18 @@ def _provision_snapshot(
             tmp_path.unlink(missing_ok=True)
             raise error_cls(f"Downloaded {filename} is incomplete (missing parquet footer magic)")
         tmp_path.replace(local_path)
+
+    # `release.json` too, when the repo has one: the publisher uploads it and this only ever fetched
+    # parquet, so a *provisioned* snapshot could not say which release it was while a *built* one could.
+    # That is the difference between a cache and a pinnable reference — `source_sha256` is what
+    # `GenePanelSpec.reference_sha256` pins against (RM4), and it cannot pin a file that was never
+    # fetched. Absence is not an error: a repo published before the builder wrote one is still usable.
+    release_remote = f"{hf_repo_prefix.rsplit('/', 1)[0]}/{RELEASE_FILENAME}"
+    try:
+        fs.get(release_remote, str(cache_dir / RELEASE_FILENAME))
+    except Exception as exc:
+        logger.info("No %s in the %s repo (%s); the cache carries data only.",
+                    RELEASE_FILENAME, label, type(exc).__name__)
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 
@@ -106,7 +170,8 @@ def ensure_snapshot(ensembl_cache: Optional[Path] = None) -> Path:
     """Provision the Ensembl parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
     return _provision_snapshot(
-        cache_dir, _ENSEMBL_HF_PREFIX, label="Ensembl", error_cls=EnsemblReferenceError
+        cache_dir, _ENSEMBL_HF_PREFIX, label="Ensembl", error_cls=EnsemblReferenceError,
+        filename_glob=_ENSEMBL_FILES,
     )
 
 
@@ -114,7 +179,8 @@ def ensure_clinvar_snapshot(clinvar_cache: Optional[Path] = None) -> Path:
     """Provision the ClinVar parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(clinvar_cache) if clinvar_cache is not None else default_clinvar_cache_dir()
     return _provision_snapshot(
-        cache_dir, _CLINVAR_HF_PREFIX, label="ClinVar", error_cls=ClinVarReferenceError
+        cache_dir, _CLINVAR_HF_PREFIX, label="ClinVar", error_cls=ClinVarReferenceError,
+        filename_glob=_CLINVAR_FILES,
     )
 
 
@@ -129,5 +195,5 @@ def ensure_constraint_snapshot(constraint_cache: Optional[Path] = None) -> Path:
     )
     return _provision_snapshot(
         cache_dir, _CONSTRAINT_HF_PREFIX, label="gnomAD constraint",
-        error_cls=ConstraintReferenceError,
+        error_cls=ConstraintReferenceError, filename_glob=_CONSTRAINT_FILES,
     )
