@@ -18,6 +18,14 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
 **no app and no orchestration here** — those live in `just-dna-pipelines` / `just-dna-lite` /
 `just-dna-marketplace`.
 
+## Authoring a module? Use the skill
+
+`.claude/skills/write-module/` is the workflow for *using* this format rather than changing it — which
+table kind a finding belongs in, the order the commands must run in (and the one place deviating from it
+deadlocks), what only a human may decide, and a symptom→cause→action index for the messages that cost
+someone a day. Every command in it was run end to end. Prefer it over re-deriving the flow from the
+package docs; come back here when you are changing the schema rather than authoring against it.
+
 ## Read these first, in this order
 
 1. **[docs/CONSTITUTION.md](docs/CONSTITUTION.md) — the durable charter. READ IT BEFORE JUDGING OR
