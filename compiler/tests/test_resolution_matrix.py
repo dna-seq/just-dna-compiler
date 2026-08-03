@@ -85,6 +85,33 @@ CASES: list[Case] = [
          _row("rs777", "rs777", 7, 700, "C", "G"),
          stable=True, strict_refuses=False),
 
+    # ── the indel row (RM31): the table spells one event differently from the genotype ─────────
+    # ClinVar drafts `X:634689 CAG>C`, so the author writes `C/CAG`; Ensembl publishes the same 2 bp AG
+    # deletion as `X:634690 AGAG>AG`. Both loci reconcile, so the expansion is complete and the whole
+    # cycle is a fixed point — where before this pair produced no usable locus at all.
+    Case("rsid-only indel, table carries the other published spelling",
+         "rs1569493663,,,,,C/CAG,risk,c\n",
+         _row("rs1569493663", "rs1569493663", "X", 634690, "AGAG", "AG", 0)
+         + _row("rs1569493663", "rs1569493663", "Y", 634690, "AGAG", "AG", 1),
+         stable=True, strict_refuses=False),
+    # The same deletion written one base further right (the reference reads `C A G A G` from 634689, so
+    # `634691 GAG>G` is that AG deletion again) reduces to the event `GA` where the genotype's reduces to
+    # `AG`: same size, different content, which is what a repeat-region disagreement looks like and what
+    # string algebra cannot settle. So the locus is KEPT — nothing is dropped, nothing is unreproducible,
+    # `strict` has no complaint — and the compile says out loud that it did not decide.
+    Case("rsid-only indel, spelling the tier cannot reconcile (kept, reported)",
+         "rs1569493663,,,,,C/CAG,risk,c\n",
+         _row("rs1569493663", "rs1569493663", "X", 634691, "GAG", "G", 0)
+         + _row("rs1569493663", "rs1569493663", "Y", 634691, "GAG", "G", 1),
+         stable=True, strict_refuses=False),
+    # And the decidable negative still drops the locus, so this stays unstable + strict-refusing: the
+    # event sizes differ (1 bp inserted vs 2 bp deleted), which re-anchoring cannot change.
+    Case("expansion drops a locus whose indel is a different size",
+         "rs281864532,,,,,G/GT,risk,c\n",
+         _row("rs281864532", "rs281864532", 11, 5226675, "G", "GT", 0)
+         + _row("rs281864532", "rs281864532", 11, 5226676, "GTT", "G", 1),
+         stable=False, strict_refuses=True),
+
     # ── stable, but resting on something strict will not build on ─────────────────────────────
     Case("ambiguous: several rsIDs for one allele, deterministic pick recorded",
          ",7,700,C,G,C/G,risk,c\n",

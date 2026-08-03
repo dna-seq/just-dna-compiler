@@ -45,18 +45,32 @@ provider deliberately chose, and `alts` is redundancy-bearing: the compiler's al
 keeps its force only because the human's genotype and the source's alleles were authored
 independently.
 
-## 3. One indel, two spellings, no match (surfaced — [RM31](../../docs/ROADMAP.md))
+## 3. One indel, two spellings, no match (fixed — [RM31](../../docs/ROADMAP_HISTORY.md))
 
-`rs1569493663` does not resolve. ClinVar publishes it as `X:634689 CAG>C`; Ensembl publishes the same
+`rs1569493663` used not to resolve. ClinVar publishes it as `X:634689 CAG>C`; Ensembl publishes the same
 2 bp AG deletion as `X:634690 AGAG>AG`, anchored one base earlier with a padding base.
-`genotype_fits` compares allele strings, so the two spellings do not match and the locus is dropped.
+`genotype_fits` compared allele strings, so the two spellings did not match and the locus was dropped —
+and the message *asserted* the wrong reason ("a different variant sharing the rsID"), sending an author to
+hunt a dbSNP merge that does not exist.
 
-The message used to *assert* the wrong reason — "that record is a different variant sharing the
-rsID" — sending an author to hunt a dbSNP merge that does not exist. It now names both readings, which
-is all this layer can honestly do. Reconciling them needs indel normalization, and that is a real
-design decision rather than an oversight: a reference-free parsimony trim fixes this pair but cannot
-left-align inside a repeat, while a reference-backed one can only run in the enricher — and
-`genotype_fits` is shared with the compiler, which by charter holds no reference.
+It resolves now, on both contigs, with no authored edit. `alleles.parsimony_reduce` strips the flank a
+collection of alleles shares, so `{C, CAG}` and `{AGAG, AG}` both reduce to `{'', 'AG'}` — the event, which
+is what the two spellings have in common. **The reduction needs no position, and that turned out to be
+forced rather than clever:** this row records no coordinate at all (the provider chose the rsID identity),
+so there was never an authored anchor to normalize against. What carries the frame is the genotype naming
+*two* alleles.
+
+`hosting_verdict` has three answers, so the residual is named rather than swallowed: differing event
+**sizes** are a confident negative (re-anchoring never changes how many bases an event adds or removes),
+while same-size different-content spellings — one indel rotated inside the repeat, or two variants — are
+**undecided**, and the locus is kept with a message that says so.
+
+**What is still true of this module, and worth knowing before copying it.** The compiled row carries the
+authored genotype `C/CAG` (ClinVar's frame) beside the resolved `ref=AGAG, alts=AG,AGAGAG` (Ensembl's). The
+variant is located and the module is coherent, but a consumer matching that genotype against a VCF call by
+string equality will still miss, because the VCF is in the reference's frame. `just_dna_format.alleles` is
+public and dependency-free so the consumer can apply the same reduction; having the enricher rewrite the
+authored cell is the parked co-authoring item, since it would make `content_signature` depend on a fetch.
 
 ## 4. Nine findings became eighteen rows (surfaced — [RM32](../../docs/ROADMAP.md))
 

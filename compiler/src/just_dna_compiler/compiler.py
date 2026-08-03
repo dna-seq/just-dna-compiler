@@ -94,6 +94,7 @@ from just_dna_format.vrs import (
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.models import CompilationResult, ValidationResult
+from just_dna_compiler.resolution import hosting_verdict, resolve_from_table
 
 # Genotype allele separators: `/` (unphased), `|` (phased). See ROADMAP 0.3 item 5b. Splitting on
 # both yields the allele list; this function discards the `|` vs `/` distinction. Phase itself is
@@ -678,6 +679,36 @@ def _allowed_alleles(
     return None, "unknown"
 
 
+def _allele_verdict(
+    call: str, variant: VariantRow, resolution_table: dict[str, list[ResolutionRow]]
+) -> Optional[bool]:
+    """Can any locus this row is about host `call`? The shared tri-state predicate, Kleene-OR'd.
+
+    **This must be the same question resolution asked, or the compiler contradicts itself.** The two
+    checks are string comparisons of the same kind, and while membership did its own exact-set difference
+    the halves disagreed the moment one indel was spelled two ways: `resolve_from_table` reconciled
+    ClinVar's `C/CAG` with Ensembl's `AGAG>AG` and expanded onto the locus, and then membership refused
+    the compile in `strict` because the literal strings `C` and `CAG` were not in the resolved set. Found
+    by adding the case to `test_resolution_matrix.py`, which is what that file is for.
+
+    Kleene semantics over the loci, matching `_allowed_alleles`' union reading: one locus that *can* host
+    it settles the question (a one-to-many rsid carries one genotype onto N loci, and exactly one is
+    expected to match), an undecidable spelling anywhere withholds, and only all-False is a finding.
+    """
+    if variant.ref and variant.alts:
+        return hosting_verdict(call, variant.ref, variant.alts)
+    verdicts = [
+        hosting_verdict(call, row.ref, row.alts)
+        for row in resolution_table.get(variant.variant_key or "", [])
+        if row.ref and row.alts
+    ]
+    if not verdicts:
+        return None
+    if any(verdict is True for verdict in verdicts):
+        return True
+    return None if any(verdict is None for verdict in verdicts) else False
+
+
 def _check_allele_membership(
     variants: list[VariantRow],
     resolution_table: dict[str, list[ResolutionRow]],
@@ -738,13 +769,16 @@ def _check_allele_membership(
         missing = sorted(
             {a.upper() for a in _split_genotype(variant.genotype)} - allowed
         )
-        if missing:
+        if _allele_verdict(variant.genotype, variant, resolution_table) is False:
             findings.append(
                 f"{variant.variant_key} genotype {variant.genotype}: allele(s) "
                 f"{', '.join(missing)} are not among the {provenance} alleles at this locus "
                 f"({shown}) — {because}"
             )
-        if variant.effect_allele and variant.effect_allele.upper() not in allowed:
+        if (
+            variant.effect_allele
+            and _allele_verdict(variant.effect_allele, variant, resolution_table) is False
+        ):
             findings.append(
                 f"{variant.variant_key} genotype {variant.genotype}: effect_allele "
                 f"{variant.effect_allele!r} is not among the {provenance} alleles at this locus "
@@ -1514,8 +1548,6 @@ def compile_module(
         resolve_warnings: list[str] = []
         resolve_strict_errors: list[str] = []
         if resolution_table:
-            from just_dna_compiler.resolution import resolve_from_table
-
             outcome = resolve_from_table(
                 variants, resolution_table, genome_build=config.genome_build
             )

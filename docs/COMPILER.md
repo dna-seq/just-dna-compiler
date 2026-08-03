@@ -341,16 +341,42 @@ Pure, and mirrors the DuckDB resolver's semantics from the injected table:
   out, so the resolved allele reaches the artifact and survives being written back.
 - **expand (1:N)** — an rsid with N usable loci becomes N coord-keyed rows, each re-keyed by
   `derive_variant_key`. A locus whose `{ref} ∪ alts` **cannot host the authored genotype** is not
-  expanded onto (`genotype_fits`): one authored genotype is copied to every locus, so a locus that
+  expanded onto (`hosting_verdict`): one authored genotype is copied to every locus, so a locus that
   lacks those alleles would be emitted as a row asserting an allele it does not have.
 - **verify** — a row carrying both rsid and coordinate is checked against the table; a disagreement
   warns in `best_effort` and refuses in `strict`.
 
 GRCh38-bound (a non-GRCh38 module is skipped with a warning; `not_found`/wrong-build rows are ignored).
 
-`genotype_fits` is public and **shared with the deprecated DuckDB path in `just-dna-enricher`**, because
-digest parity between the two is a documented guarantee and a filter applied on one side only would
-break it silently.
+#### Hosting is a three-valued question (RM31)
+
+`hosting_verdict(genotype, ref, alts)` answers *can this locus host that genotype* with `True` / `False` /
+`None`, because an indel has several valid spellings and a string comparison reporting "does not fit" was
+asserting a verdict it had not reached. ClinVar publishes a SHOX deletion as `X:634689 CAG>C` and Ensembl
+publishes the same event as `X:634690 AGAG>AG`.
+
+| Situation | Verdict | What the compile does |
+|---|---|---|
+| No `ref`/`alts` recorded | `True` | keeps the locus (lack of evidence never rejects) |
+| The raw allele strings match | `True` | keeps it — checked **first**, so normalization can only ever *add* acceptances |
+| The reduced allele sets match (`alleles.parsimony_reduce` strips the shared flank) | `True` | keeps it; this is what reconciles the two spellings |
+| The locus is a substitution or MNV and the alleles differ | `False` | drops it — no flank, so no spelling freedom; a strand-flipped genotype stays a hard finding |
+| The genotype names fewer than two distinct alleles at an indel locus | `None` | keeps it, reports that it did not decide (a homozygous call carries no frame) |
+| The event **sizes** differ | `False` | drops it — re-anchoring never changes how many bases an event adds or removes |
+| Same sizes, different content | `None` | keeps it, reports that it did not decide (a rotation inside a repeat, or two variants) |
+
+`None` is the residual only a reference sequence can settle, which this tier does not have (P2) — the
+enricher does, and reports it the same way. `genotype_fits` remains as the boolean face
+(`hosting_verdict(...) is not False`): it is public and **shared with the deprecated DuckDB path in
+`just-dna-enricher`**, because digest parity between the two is a documented guarantee and a filter applied
+on one side only would break it silently. `_check_allele_membership` asks the same predicate rather than
+comparing strings itself — while it did, the two halves of the compiler disagreed the moment a spelling was
+reconciled, and `strict` refused a module resolution had just accepted.
+
+One thing the reconciliation does **not** do: the authored `genotype` keeps the frame its source published
+it in, so a compiled row can legitimately carry `genotype=C/CAG` beside `ref=AGAG`. A consumer joining the
+two applies the same reduction (`just_dna_format.alleles` is public and dependency-free); rewriting the
+authored cell is the parked enricher-co-authoring item.
 
 ### The authored shape is recorded, not inferred
 

@@ -173,7 +173,7 @@ The chain was never variant-specific; only its input was. Until 0.5 it read `var
 `resolution.csv` and shipped with no coordinates at all. `enrich._collect_subjects` normalizes every
 eligible row to a `_Subject` and feeds it through the unchanged chain, caches, ordering and back-fill:
 
-| Table | Identity | Allele constraint fed to `genotype_fits` |
+| Table | Identity | Allele constraint fed to `hosting_verdict` |
 |---|---|---|
 | `variants.csv` | frozen `variant_key` (**with** `alts`) | `genotype` |
 | `pharm_variants.csv` | `variant_key` property (**without** `alts`) | `genotype` (optional — `None` keeps every locus) |
@@ -192,7 +192,7 @@ The Ensembl snapshot stores a multi-allelic site as **one row whose `alt` is pip
 while live Ensembl, ClinVar and gnomAD all emit comma-separated lists. `resolver._snapshot_alleles`
 normalizes at that one boundary so a locus dict's `alts` has a single canonical shape.
 
-This is load-bearing, not tidying. `genotype_fits` splits on commas, so an un-normalized `A|C|T`
+This is load-bearing, not tidying. The hosting predicate splits alleles on commas, so an un-normalized `A|C|T`
 collapsed into one opaque "allele", no genotype was ever a subset of `{ref} ∪ alts`, and the
 allele-aware filter dropped **every** locus — a cache-resolved `rs4244285` with the ordinary genotype
 `A/G` resolved to `not_found`. The reverse back-fill had the mirror bug, comparing an authored alt
@@ -227,7 +227,7 @@ positions 254 bp apart; the authored genotype says which are meant. Recording th
 compiler a locus it can only drop — and a dropped locus makes the compile unreproducible from the
 injected table, which `--strict` refuses. This **selects, it does not repair**: no authored value is
 touched, and every skipped record is logged. (The compiler applies the same predicate as a safety net
-for hand-authored or stale tables — `resolution.genotype_fits` is shared, so the two cannot drift.)
+for hand-authored or stale tables — `resolution.hosting_verdict` is shared, so the two cannot drift.)
 
 ### Reverse (position→rsid) back-fill is allele-aware
 

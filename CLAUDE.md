@@ -165,7 +165,7 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
     carrying the single authored genotype — fabricating annotations for loci that genotype cannot
     describe (three such rows in `reference_examples/pathogenic_clinvar/`).
   - **A locus that cannot host the authored genotype is dropped from the expansion**
-    (`resolution.genotype_fits`). The predicate is **shared three ways** — the compiler, the enricher's
+    (`resolution.hosting_verdict`). The predicate is **shared three ways** — the compiler, the enricher's
     deprecated DuckDB path (digest parity is a documented guarantee) and `enrich()`'s forward
     rsid→loci resolution, which since this round leaves such a record out of `resolution.csv`
     entirely. Resolution is allele-aware in BOTH directions now; the reverse back-fill always was.
@@ -291,7 +291,7 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   and *refused* on `commercial`, at acquisition (nothing is fetched), in both modes.
 - **The Ensembl snapshot's `alt` is PIPE-joined; every other link uses commas.** A multi-allelic site
   is one snapshot row (`A|C|T`), not one row per alt. `resolver._snapshot_alleles` normalizes at that
-  boundary — don't remove it, and don't "fix" it by widening `genotype_fits` instead (the locus-dict
+  boundary — don't remove it, and don't "fix" it by widening the hosting predicate instead (the locus-dict
   contract is comma-separated, and the snapshot is the deviation). This silently broke *all*
   cache-resolved genotyped variants until 0.5: the comma-only split made `A|C|T` one opaque allele, so
   the allele-aware filter dropped every locus and `rs4244285` with genotype `A/G` came back
@@ -301,7 +301,7 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `enrich._collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty
   `resolution.csv`. Subjects dedupe by `variant_key` with **`variants.csv` first** — it alone carries
   `alts`, a fact column, so a PGx row winning would move `artifact.digest`. PGx tables key **without**
-  `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `genotype_fits`.
+  `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `hosting_verdict`.
 - **CPIC/PharmVar coordinates are 1-based — do NOT convert.** Despite the `start` docstring saying
   "0-based", the pipeline stores Ensembl's 1-based position (`rs1135071` → 5226799 in both), and CPIC
   `sequence_location.position` / PharmVar `NC_……:g.` use the same convention. The instinctive `-1`
@@ -465,12 +465,27 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   assembly constants of the same class as `REFGET_GRCh38`, not an un-injected reference. A PAR rsID
   (`rs6603251` → X:359845 **and** Y:359845) also expands to two rows the author never chose — one
   place, two contigs, tracked as RM32.
-- **`genotype_fits` compares allele STRINGS, so one indel spelled two ways does not match.** ClinVar's
-  `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion; the row resolves to
-  `not_found`. The message names both readings now and must keep doing so — it used to assert "a
-  different variant sharing the rsID", sending an author after a dbSNP merge that does not exist.
-  Normalization is RM31 and is not a small change: the predicate is shared with the reference-less
-  compiler.
+- **Hosting is a THREE-valued question — `hosting_verdict`, not `genotype_fits` (RM31, shipped).** One
+  indel has several valid spellings: ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the
+  same 2 bp deletion, and comparing allele *strings* resolved it to `not_found` while asserting a dbSNP
+  merge that does not exist. `alleles.parsimony_reduce` (format tier, stdlib) strips the flank a
+  *collection* shares, so both reduce to `{'', 'AG'}`. Four things about it that must not be "simplified":
+  - **No position is passed in, and none can be.** The row records *no coordinate* — `clinvar_draft`
+    prefers the rsID and the model forbids `ref`/`alts` without a coordinate — so the authored genotype is
+    spelled in a frame the row never states. A genotype naming *two* alleles carries the frame instead.
+  - **The raw comparison runs FIRST.** Normalization may only ever *add* acceptances, which is what keeps
+    every compiled digest and expansion stable; a property test over the reference examples pins it.
+  - **The confident negative is about event SIZE.** Re-anchoring moves an indel, it never changes how many
+    bases it adds or removes, so differing sizes prove different variants (`rs281864532`: 1 bp insertion
+    *and* 2 bp deletion under one rsID). Same size, different content → `None`, and the locus is **kept**
+    with a message saying nothing was decided. A substitution/MNV locus has no flank, so a mismatch there
+    is `False`, not `None` — that is what keeps the strand-flip check sharp.
+  - **`_check_allele_membership` must ask the same predicate.** It did its own exact set difference, so
+    once resolution reconciled a spelling and expanded onto the locus, membership refused the same module
+    under `strict` — the compiler contradicting itself. Kleene-OR over the loci, matching the union reading.
+  Residual: the authored `genotype` keeps its source's frame, so a row can carry `genotype=C/CAG` beside
+  `ref=AGAG`. A consumer applies the same reduction (`just_dna_format.alleles` is public for that);
+  rewriting the authored cell is the parked co-authoring item.
 - **Before adding a table-level check, ask whether its rules are jointly satisfiable.** Inclusive
   bounds + overlap-is-an-error + any-hole-is-a-warning cannot all hold on a continuous measure, so
   every `allele_fraction` table warned forever (RM35, now fixed). Integer kinds tile cleanly, which is

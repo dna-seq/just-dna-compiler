@@ -245,32 +245,10 @@ the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "sh
 
 The items below were found by **dogfooding** on 2026-08-03 rather than derived from a use case, so each
 carries the probe that produced it and a refutation of every obvious repair. **Do not work around any
-of them in module data** — the workaround would be the thing that hides the defect. (RM33 of that batch
-has since shipped; its rationale is in [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md).)
-
-## RM31 — One indel spelled two ways defeats allele-aware resolution
-
-**Severity** medium · **Status** open, found 2026-08-03 · **Owner** format + enricher ·
-**Motivating case** any indel-bearing panel
-
-**indel representation mismatch defeats allele-aware resolution (found 2026-08-03, real).**
-`resolution.genotype_fits` compares **allele strings**, so two valid spellings of one indel do not
-match and the locus is dropped. Confirmed end to end while drafting
-`reference_examples/shox_par1/`: `rs1569493663` is drafted from ClinVar as `X:634689 CAG>C` and
-Ensembl publishes the same 2 bp AG deletion as `X:634690 AGAG>AG` — anchored one base earlier with a
-padding base — so the authored genotype "cannot host" Ensembl's alleles and the variant resolves to
-`not_found`. Nothing about it is a merge or a paralog; it is one deletion written two ways. The
-message that reported it *asserted* the wrong reading ("a different variant sharing the rsID"), which
-is now corrected to name both — that part is shipped.
-
-The fix is not. A reference-free **parsimony trim** (strip the shared suffix, then the shared prefix)
-reconciles this particular pair, but it does **not** left-align inside a repeat, which genuinely needs
-the reference sequence — and `genotype_fits` is deliberately **shared three ways**, including with the
-compiler, which by charter holds no reference (P2). So the options are a bounded reference-free
-normalization in the shared predicate (helps many real cases, silently misses others, and changes
-which loci survive expansion → digest-visible), or a reference-backed normalization that can only run
-in the enricher and would make the two callers disagree about what fits. Neither is a small change,
-and picking one is the decision. | format + enricher | any indel-bearing panel | **medium** |
+of them in module data** — the workaround would be the thing that hides the defect. Four of the five
+have since shipped (RM31, RM33, RM34, RM35); their rationale is in
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md), and what is left below is the one that is a *question* rather
+than a defect.
 
 ## RM32 — A pseudoautosomal locus is one place on two contigs
 

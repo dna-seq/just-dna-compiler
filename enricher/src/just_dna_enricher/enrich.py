@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from just_dna_compiler.compiler import _load_csv_rows
-from just_dna_compiler.resolution import genotype_fits
+from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
@@ -53,7 +53,8 @@ class _Subject:
     caches, ordering and back-fill.
 
     `constraint` is whatever the row knows about which alleles must be present at the locus, fed to
-    the shared `genotype_fits` predicate so a one-to-many rsID drops the loci the row cannot be about:
+    the shared `hosting_verdict` predicate so a one-to-many rsID drops the loci the row cannot be
+    about (and reports, rather than drops, the ones it cannot decide):
 
     - a `VariantRow`/`PharmVariantRow` supplies its **genotype** (`C/T`);
     - a `HaplotypeRow` supplies its single defining **allele** (`G`) — the same membership question
@@ -369,29 +370,38 @@ def enrich(
             # locus: nothing is known about which allele it is about, and dropping loci for lack of
             # evidence would invent a selection the row never made.
             all_loci = rsid_to_loci.get(v.rsid, [])
-            loci = [
-                lo for lo in all_loci
-                if v.constraint is None
-                or genotype_fits(v.constraint, lo.get("ref"), lo.get("alts"))
-            ]
+            loci = []
+            subject = "allele" if v.origin == "haplotypes.csv" else "genotype"
             for lo in all_loci:
-                if lo not in loci:
-                    # **Two readings, and this cannot tell them apart — so it names both.** The
-                    # message used to assert "that record is a different variant sharing the rsID",
-                    # which is often true and was flatly wrong for the case that found it: a SHOX
-                    # deletion drafted from ClinVar as `X:634689 CAG>C` is the *same* 2 bp AG deletion
-                    # Ensembl publishes as `X:634690 AGAG>AG`, anchored one base earlier with a
-                    # padding base. `genotype_fits` compares allele strings, so two spellings of one
-                    # indel do not match — and an author sent looking for a dbSNP merge would find
-                    # nothing, because there is none. Reconciling them needs indel normalization,
-                    # which needs the reference sequence; see ROADMAP RM31.
+                verdict = (
+                    True if v.constraint is None
+                    else hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts"))
+                )
+                if verdict is not False:
+                    loci.append(lo)
+                if verdict is None:
+                    # **Kept, and named for what it is.** The predicate reconciles the two common
+                    # spellings of one indel by stripping the flank they share — a SHOX deletion drafted
+                    # from ClinVar as `X:634689 CAG>C` now matches the `X:634690 AGAG>AG` Ensembl
+                    # publishes, which is the same 2 bp AG deletion anchored one base earlier. What it
+                    # cannot do is re-anchor inside a repeat, so a same-size different-content pair is
+                    # reported as undecided rather than as a contradiction. This tier *can* settle it —
+                    # `vrs.py` has seqrepo — and doing that automatically is the remaining half of RM31.
+                    logger.warning(
+                        "%s: whether %s:%s %s>%s can host the authored %s %s could not be decided from "
+                        "the allele strings — the two spellings describe events of the same size but "
+                        "different content, so it is either one indel re-anchored inside a repeat or two "
+                        "different variants. The locus is KEPT; check it against the reference.",
+                        v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
+                        subject, v.constraint,
+                    )
+                elif verdict is False:
                     logger.warning(
                         "%s: %s:%s %s>%s cannot host the authored %s %s, and is left out of "
-                        "resolution.csv. Either it is a different variant sharing the rsID, or the "
-                        "two sources spell one indel differently (padding base, repeat alignment) — "
-                        "this compares allele strings and cannot tell those apart.",
+                        "resolution.csv. The event sizes differ, which re-anchoring cannot change, so "
+                        "this is a different variant sharing the rsID rather than another spelling.",
                         v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
-                        "allele" if v.origin == "haplotypes.csv" else "genotype", v.constraint,
+                        subject, v.constraint,
                     )
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")

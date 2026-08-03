@@ -40,12 +40,20 @@ diplotypes into 21. One `--gene` at a time, because `*2` means a different allel
 The local snapshot does not contain it — **not** a claim that Ensembl does not. Online, the live link
 runs next. Offline, that is the end of the road and the row stays unresolved.
 
-**`cannot host the authored genotype … Either it is a different variant sharing the rsID, or the two
-sources spell one indel differently`**
-Two readings and the tier cannot separate them. For an indel, suspect the second: ClinVar's
-`X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion, differently anchored, and
-`genotype_fits` compares allele **strings**. Tracked as **RM31**; there is no data-side workaround, so
-leave the row unresolved rather than editing an allele to make it match.
+**`cannot host the authored genotype … The event sizes differ`**
+A real contradiction, and a decidable one: re-anchoring an indel never changes how many bases it adds or
+removes, so this is a different variant sharing the rsID rather than another spelling of yours. One rsID
+legitimately covers several records at a locus (`rs281864532` is `G>GT`, `GT>G` *and* `GTT>G`), so check
+which record your genotype was written from. Two spellings of *one* indel now reconcile automatically —
+ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion and both resolve
+(**RM31**, shipped).
+
+**`could not be decided here … the same size but different content`**
+Not a contradiction and not your mistake: the two spellings describe an event of the same size in different
+bases, which is either one indel re-anchored inside a repeat or two different variants, and telling those
+apart needs the reference sequence. **The locus is kept** — nothing is dropped and `strict` still compiles.
+Run the enricher (it has sequence access) if you want the ambiguity resolved; do not edit an allele to
+silence it.
 
 **`maps to N loci in the resolution table; expanded to N rows`**
 Normal for a paralogous or pseudoautosomal rsID. For a PAR variant the two rows are one physical place

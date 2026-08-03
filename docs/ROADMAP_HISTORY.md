@@ -306,6 +306,58 @@ on load, because three of CPIC's sixteen live values carry a trailing space and 
 key. | format (schema) | PGx; call-confidence gating | **done** |
 
 
+## RM31 — One indel spelled two ways defeats allele-aware resolution
+
+**Severity** — · **Status** ✅ shipped in 0.5 (found by dogfooding 2026-08-03, fixed in the same window;
+one residual, stated below) · **Owner** format + enricher · **Motivating case** any indel-bearing panel
+
+`genotype_fits` compared **allele strings**, so two valid spellings of one indel did not match and the
+locus was dropped. Confirmed end to end while drafting `reference_examples/shox_par1/`: `rs1569493663` is
+drafted from ClinVar as `X:634689 CAG>C` while Ensembl publishes the same 2 bp AG deletion as
+`X:634690 AGAG>AG`, so the authored genotype "could not host" Ensembl's alleles and the variant resolved
+to `not_found`.
+
+**What shipped is the bounded reference-free normalization, and two things the entry had wrong made it
+smaller than it looked.**
+
+*First*, the entry assumed the trim would need the authored row's anchor. It does not, and it could not
+have: the row records **no coordinate at all** (`clinvar_draft` prefers the rsID, and the model forbids
+`ref`/`alts` without a coordinate), so the genotype `C/CAG` is spelled in ClinVar's frame in a row that
+never stated that frame. A genotype naming two alleles nevertheless *carries* its frame, because the two
+strings share whatever flank their record used — so `alleles.parsimony_reduce` strips the flank a
+*collection* shares and needs no position. `{C, CAG}` and `{AGAG, AG}` both reduce to `{'', 'AG'}`.
+
+*Second*, the entry framed the choice as "bounded normalization that silently misses cases" vs
+"reference-backed normalization the compiler cannot run". The third option is the house algebra:
+`hosting_verdict` returns **three** values, so nothing is missed silently. The confident negative has a
+real invariant behind it — re-anchoring moves an indel but never changes how many bases the event adds or
+removes — so differing event **sizes** prove different variants (`rs281864532`'s 1 bp insertion vs its
+2 bp deletion), while same-size different-content pairs are reported as **undecided** and the locus is
+*kept*. That is the residual the reference would settle, named rather than swallowed, and the enricher can
+still settle it with seqrepo (not yet wired — see the residual below).
+
+**Monotonicity is what made it safe to ship inside the window.** The raw string comparison runs *first*,
+so normalization can only ever add acceptances: every locus that was hostable is hostable, byte for byte,
+with the same expansion. Pinned by a property test over every real (genotype, ref, alts) triple in the
+reference examples.
+
+**Adding the case to `test_resolution_matrix.py` immediately found a second defect, in the other half of
+the compiler.** `_check_allele_membership` was a string comparison of the same kind, doing its own exact
+set difference — so once resolution reconciled the spellings and expanded onto the locus, membership
+refused the same module under `strict` because the literal `C` and `CAG` were not in the resolved set. The
+compiler contradicting itself. It now asks the shared predicate, Kleene-OR'd over the loci (one locus that
+can host it settles the question; an undecidable spelling withholds; only all-False is a finding).
+
+**The residual, and it is worth being precise about.** `reference_examples/shox_par1/` now resolves
+fully — 20 rows, 10 findings, `rs1569493663` located on both PAR contigs — but the compiled row carries
+`genotype ["C","CAG"]` (ClinVar's frame) beside `ref=AGAG, alts=["AG","AGAGAG"]` (Ensembl's). The module
+is located and coherent, and a consumer joining the genotype against a VCF's alleles by string equality
+will still miss, because the VCF is in the reference's frame. Two ways out, and only one is legal today:
+the consumer applies the same reduction (`just_dna_format.alleles` is public and dependency-free for
+exactly this), or the enricher rewrites the authored genotype into the resolved frame — which is the
+parked **enricher co-authoring** item, since editing an authored cell would make `content_signature`
+depend on a network fetch. So the reduction is offered to the consumer, and the rewrite stays parked.
+
 ## RM34 — The CPIC provider has no filter
 
 **Severity** — · **Status** ✅ shipped in 0.5 (found by dogfooding 2026-08-03, fixed in the same

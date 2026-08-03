@@ -5,6 +5,46 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — RM31: one indel spelled two ways, reconciled without a reference
+
+**ClinVar publishes a SHOX deletion as `X:634689 CAG>C` and Ensembl publishes the same 2 bp AG deletion as
+`X:634690 AGAG>AG`**, and `genotype_fits` compared allele *strings*, so `rs1569493663` resolved to
+`not_found` in `reference_examples/shox_par1/`. It now resolves — 20 rows, 10 findings, both PAR contigs —
+with no authored edit.
+
+`alleles.parsimony_reduce` (new, format tier, stdlib) strips the flank a *collection* of alleles shares,
+which leaves the event: `{C, CAG}` and `{AGAG, AG}` both reduce to `{'', 'AG'}`. **No position is passed
+in and none could be** — the row records no coordinate at all, because `clinvar_draft` prefers the rsID and
+the model forbids `ref`/`alts` without one, so the authored genotype is spelled in a frame the row never
+stated. A genotype naming two alleles carries its own frame regardless, since both strings share whatever
+flank their record used.
+
+`hosting_verdict` replaces the boolean with **three** answers, so nothing is missed silently:
+
+- **reconciled** → the locus hosts the genotype;
+- **different event size** → a confident negative, because re-anchoring moves an indel but never changes
+  how many bases it adds or removes (`rs281864532` really does file a 1 bp insertion and a 2 bp deletion
+  under one rsID);
+- **same size, different content** → **undecided**, the repeat-region residual, and the locus is *kept*
+  with a message saying what was not decided. The previous message asserted "a different variant sharing
+  the rsID", which was flatly wrong for the case that found the item.
+
+`genotype_fits` remains as the boolean face (`is not False`), so all three call sites and the documented
+digest parity with the DuckDB resolver are unchanged. **The raw string comparison runs first**, so
+normalization can only ever *add* acceptances — pinned by a property test over every real
+(genotype, ref, alts) triple in the reference examples, and the reason this was safe to ship in the window.
+
+**Adding the case to the resolution matrix found a second defect in the other half of the compiler.**
+`_check_allele_membership` did its own exact set difference, so once resolution reconciled the spellings
+and expanded onto the locus, membership refused the same module under `strict` — the compiler contradicting
+itself. It now asks the shared predicate, Kleene-OR'd over the loci.
+
+**One residual, stated rather than hidden:** the compiled row carries the authored genotype in ClinVar's
+frame beside the resolved alleles in Ensembl's, so a consumer joining them by string equality still misses.
+`just_dna_format.alleles` is public and dependency-free so a consumer can apply the same reduction; having
+the enricher rewrite the authored cell is the parked co-authoring item, because it would make
+`content_signature` depend on a network fetch.
+
 ## 2026-08-03 — RM34: `draft --allele`, and three defects the filter's own dogfood found
 
 **`draft --gene CYP2D6` produced 16,290 diplotype rows, 73% `Indeterminate`** — every row a faithful

@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from just_dna_format.alleles import parsimony_reduce
 from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
@@ -96,7 +97,20 @@ def resolve_from_table(
             elif len(loci) == 1:
                 patched.append(v.model_copy(update=_coord_update(loci[0])))
             else:
-                usable, rejected = _hostable_loci(loci, v.genotype)
+                usable, rejected, undecided = _hostable_loci(loci, v.genotype)
+                for locus in undecided:
+                    # Kept, and said out loud. This tier cannot re-anchor an indel (that needs the
+                    # reference sequence, which P2 keeps out of the compiler), so the row is carried and
+                    # the reader is told the comparison did not reach a verdict — never that the locus is
+                    # a different variant, which is what the old message asserted.
+                    warnings.append(
+                        f"{v.rsid}: whether {locus.chrom}:{locus.start} {locus.ref}>{locus.alts} can "
+                        f"host the authored genotype {v.genotype} could not be decided here — the two "
+                        f"spellings describe events of the same size but different content, which is "
+                        f"either one indel re-anchored inside a repeat or two different variants, and "
+                        f"telling those apart needs the reference sequence (run the enricher). The locus "
+                        f"is kept."
+                    )
                 for locus in rejected:
                     # Dropping a locus makes the emitted table smaller than the injected one, so the
                     # round-trip cannot reproduce it — strict must refuse rather than silently prune.
@@ -221,43 +235,116 @@ def _coord_update(row: ResolutionRow) -> dict[str, object]:
 _GENOTYPE_SEP = re.compile(r"[/|]")
 
 
-def genotype_fits(genotype: str, ref: Optional[str], alts: Optional[str]) -> bool:
-    """Whether every allele in `genotype` is present among `{ref} ∪ alts`.
+def hosting_verdict(genotype: str, ref: Optional[str], alts: Optional[str]) -> Optional[bool]:
+    """Can a locus spelling `{ref} ∪ alts` host `genotype`? **Three-valued** (RM31).
+
+    `True` it can, `False` it positively cannot, `None` this tier cannot tell — the house algebra, and
+    the third value is the whole point: an indel has several valid spellings, so a string comparison
+    reporting "does not fit" was asserting a verdict it had not reached.
+
+    The ladder, in order, and the order is load-bearing:
+
+    1. **No `ref`/`alts` recorded → `True`.** Nothing is known about the locus's alleles and rejecting
+       for lack of evidence is worse than accepting. Unchanged.
+    2. **The raw strings match → `True`.** Checked *before* any normalization so this function can only
+       ever gain acceptances: whatever passed before still passes, byte for byte, which is what keeps the
+       expansion (and every module's digest) stable except where a genuine reconciliation happens.
+    3. **The reduced allele sets match → `True`.** `alleles.parsimony_reduce` strips the flank each
+       collection shares, leaving the event; ClinVar's `C/CAG` and Ensembl's `AGAG>AG` both reduce to
+       `{'', 'AG'}`, the SHOX 2 bp deletion that used to resolve to `not_found`.
+    4. **The locus is a substitution or MNV → `False`.** No flank, so no spelling freedom: an `A/G`
+       genotype at a `C>T` locus is a real contradiction, and must stay one (a strand flip is exactly
+       what that check catches).
+    5. **The genotype names fewer than two distinct alleles → `None`.** A homozygous `C/C` carries no
+       frame — one string has nothing to be relative to — so against an indel locus there is genuinely
+       nothing to compare. Reported as undecided, never as a contradiction.
+    6. **An event length the locus does not offer → `False`.** The confident negative:
+       left-alignment moves an indel, it never changes how many bases the event adds or removes, so a
+       1 bp insertion cannot be a 2 bp deletion however it is spelled.
+    7. **Otherwise → `None`.** Same lengths, different content: one variant rotated inside a repeat, or
+       two different variants, and only the reference sequence can say which. The enricher can settle
+       it (seqrepo); the compiler holds no reference by charter (P2), so it withholds.
 
     Public because **both** resolvers must agree on it: this module's injected-table path and the
     deprecated DuckDB path in `just-dna-enricher`. Digest parity between the two is a documented
     guarantee, so a filter applied on one side only would silently break it.
-
-    A locus with no `ref`/`alts` recorded returns True — nothing is known about its alleles, and
-    rejecting for lack of evidence would be worse than accepting. Only a positive contradiction fails.
     """
     if not ref or not alts:
         return True
-    available = {ref.upper()} | {a.strip().upper() for a in alts.split(",") if a.strip()}
-    return {a.upper() for a in _GENOTYPE_SEP.split(genotype) if a} <= available
+    locus = {ref.strip().upper()} | {a.strip().upper() for a in alts.split(",") if a.strip()}
+    called = {a.upper() for a in _GENOTYPE_SEP.split(genotype) if a}
+    if called <= locus:
+        return True
+
+    called_events = parsimony_reduce(called)
+    locus_events = parsimony_reduce(locus)
+    if len(called_events) > 1 and called_events <= locus_events:
+        return True
+    if not _indel_shaped(locus_events):
+        return False
+    if len(called) < 2:
+        return None
+    if not _indel_shaped(called_events):
+        return False
+    lengths = {len(event) for event in locus_events}
+    if any(len(event) not in lengths for event in called_events - locus_events):
+        return False
+    return None
+
+
+def _indel_shaped(events: frozenset[str]) -> bool:
+    """Whether a reduced allele set describes an indel — i.e. its members differ in length.
+
+    A substitution or MNV reduces to same-length members, and same-length members cannot be re-anchored:
+    there is no shared flank to move. That is what separates "this is a different variant" from "this
+    might be the same variant spelled differently", and it is why a strand-flipped SNV genotype stays a
+    hard contradiction rather than becoming undecidable.
+    """
+    return len({len(event) for event in events}) > 1
+
+
+def genotype_fits(genotype: str, ref: Optional[str], alts: Optional[str]) -> bool:
+    """Whether a locus can host `genotype`, collapsing "cannot tell" into "keep it".
+
+    The boolean face of `hosting_verdict`, kept because both resolvers and three call sites read it, and
+    because the collapse it performs is the module's existing doctrine: **only a positive contradiction
+    rejects.** An undecidable spelling is therefore kept, exactly as a locus with no recorded alleles is.
+    A caller that needs to *report* the difference asks `hosting_verdict` instead.
+    """
+    return hosting_verdict(genotype, ref, alts) is not False
 
 
 def _hostable_loci(
     loci: list[ResolutionRow], genotype: str
-) -> tuple[list[ResolutionRow], list[ResolutionRow]]:
-    """Split candidate loci into those whose alleles can host `genotype`, and those that cannot.
+) -> tuple[list[ResolutionRow], list[ResolutionRow], list[ResolutionRow]]:
+    """Split candidate loci into those that can host `genotype`, those that cannot, and the undecidable.
 
-    A one-to-many rsid carries **one** authored genotype onto **N** loci, and those loci are not
-    interchangeable: dbSNP tags reciprocal indel spellings at one position with a single rsid (in
-    `reference_examples/pathogenic_clinvar/`, `rs1554917888` is both `T>TA` and `TA>T`), and a
-    genotype written for one of them names an allele the other does not have. Emitting every locus
-    produced rows asserting an allele that is not there — three of them in that example — and reverse
-    then wrote those fabrications out as authored data.
+    A one-to-many rsid carries **one** authored genotype onto **N** loci, and those loci need not be
+    interchangeable: dbSNP tags several records at one position with a single rsid — in
+    `reference_examples/pathogenic_clinvar/`, `rs281864532` is `G>GT`, `GT>G` *and* `GTT>G` — and a
+    genotype written for one of them can name an allele another does not have. Emitting every locus
+    produced rows asserting an allele that is not there, and reverse then wrote those fabrications out as
+    authored data.
 
-    A locus with no `ref`/`alts` recorded is *kept*: nothing is known about its alleles, and dropping
-    a locus for lack of evidence would be worse than carrying it. Only a positive contradiction
-    rejects.
+    Three channels, because `hosting_verdict` has three answers. A locus with no `ref`/`alts` recorded
+    and one whose spelling cannot be reconciled without the reference are both **kept** — the doctrine is
+    that only a positive contradiction rejects — but the undecided ones are returned separately so the
+    caller can say which it is. Silently keeping them under the same label as a clean match is how the
+    original message came to assert "a different variant sharing the rsID" about a SHOX deletion that was
+    simply spelled two ways.
     """
     usable: list[ResolutionRow] = []
     rejected: list[ResolutionRow] = []
+    undecided: list[ResolutionRow] = []
     for locus in loci:
-        (usable if genotype_fits(genotype, locus.ref, locus.alts) else rejected).append(locus)
-    return usable, rejected
+        verdict = hosting_verdict(genotype, locus.ref, locus.alts)
+        if verdict is False:
+            rejected.append(locus)
+            continue
+        usable.append(locus)
+        if verdict is None:
+            undecided.append(locus)
+    return usable, rejected, undecided
 
 
 def _sorted_loci(loci: list[ResolutionRow]) -> list[ResolutionRow]:

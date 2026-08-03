@@ -20,6 +20,7 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 | `derive` | Legacy→0.3 column derivations + read-time aliases | — (stdlib leaf) |
 | `normalize` | Inject-only authority-key stripper, `normalize_version` | — (stdlib leaf) |
 | `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table (stdlib only) | — (stdlib leaf) |
+| `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) | — (stdlib leaf) |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
 | `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |

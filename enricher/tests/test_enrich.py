@@ -148,6 +148,58 @@ def test_a_hand_written_authority_is_never_overwritten(cache: Path, tmp_path: Pa
     assert (row.source, row.authority) == ("manual", "ensembl")
 
 
+#: The SHOX deletion at the heart of RM31, and every spelling in play is a spelling of *this* deletion.
+#: The reference reads `C A G A G` from X:634689, so ClinVar publishes `634689 CAG>C`, Ensembl publishes
+#: `634690 AGAG>AG`, and writing the same 2 bp AG deletion one base further right gives `634691 GAG>G`.
+#: A drafted module carries ClinVar's frame in its genotype (`C/CAG`) and no coordinate at all.
+_SHOX_RSID = "rs1569493663"
+
+
+def _indel_cache(tmp_path: Path, name: str, start: int, ref: str, alt: str) -> Path:
+    data = tmp_path / name / "data"
+    data.mkdir(parents=True)
+    pl.DataFrame(
+        {"id": [_SHOX_RSID], "chrom": ["X"], "start": [start], "ref": [ref], "alt": [alt]}
+    ).write_parquet(data / "chr.parquet")
+    return tmp_path / name
+
+
+def test_one_indel_spelled_two_ways_now_resolves(tmp_path: Path) -> None:
+    """RM31 end to end: the pair that used to come back `not_found` resolves, with no authored edit.
+
+    Ensembl's spelling of the deletion against ClinVar's spelling of the genotype — the exact pair from
+    `reference_examples/shox_par1/`, where this resolved to `not_found` and the message blamed a dbSNP
+    merge that does not exist.
+    """
+    cache = _indel_cache(tmp_path, "ensembl_spelling", 634690, "AGAG", "AG")
+    spec = _spec(tmp_path / "spec", f"rsid,genotype,state,conclusion\n{_SHOX_RSID},C/CAG,risk,c\n")
+    result = enrich(spec, offline=True, ensembl_cache=cache)
+    assert result.fully_resolved, result.unresolved
+    row = _rows_by_key(spec)[_SHOX_RSID][0]
+    assert (row.chrom, row.start, row.ref, row.alts) == ("X", 634690, "AGAG", "AG")
+    assert row.status == "resolved"
+
+
+def test_a_spelling_that_cannot_be_reconciled_is_kept_and_reported(tmp_path: Path, caplog) -> None:
+    """Undecidable is not a contradiction: the locus is kept, and the message says what was not decided.
+
+    The right-shifted spelling (`634691 GAG>G`) is the same deletion again, and reduces to the event `GA`
+    where ClinVar's reduces to `AG` — same size, different content, which is exactly what a repeat-region
+    disagreement looks like and exactly what string algebra cannot settle. The old message asserted "a
+    different variant sharing the rsID", which was flatly wrong for the case that found the item, so
+    nothing here may assert either reading.
+    """
+    cache = _indel_cache(tmp_path, "right_shifted", 634691, "GAG", "G")
+    spec = _spec(tmp_path / "rot", f"rsid,genotype,state,conclusion\n{_SHOX_RSID},C/CAG,risk,c\n")
+    with caplog.at_level("WARNING"):
+        result = enrich(spec, offline=True, ensembl_cache=cache)
+    assert result.fully_resolved                       # kept, not dropped
+    assert _rows_by_key(spec)[_SHOX_RSID][0].start == 634691
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    assert "could not be decided" in message and "KEPT" in message
+    assert "different variant sharing the rsID" not in message
+
+
 def test_expansion_written_as_multiple_rows(cache: Path, tmp_path: Path) -> None:
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs999,A/T,risk,c\n")
     enrich(spec, offline=True, ensembl_cache=cache)
