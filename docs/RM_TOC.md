@@ -38,6 +38,13 @@ grepping.
 - **[RM21](ROADMAP_HISTORY.md#rm21--data-source-licensing-as-data)** — data-source licensing as data: `sources.csv` + the compile gate. · *also in* USE_CASES, COMPILER, ENRICHER, CHANGELOG, PROPOSAL_0_5
 - **[RM22](ROADMAP_HISTORY.md#rm22--pgx-tables-join-resolution)** — PGx tables join resolution (`enrich()` reads the PGx CSVs too). · *also in* USE_CASES, PROPOSAL_0_5
 
+*Found by dogfooding on 2026-08-03 and fixed in the same window — the batch of five that produced RM31–RM35. Each entry keeps the probe, the repairs that stayed rejected, and (for two of them) the part of the original argument that turned out to be wrong.*
+
+- **[RM31](ROADMAP_HISTORY.md#rm31--one-indel-spelled-two-ways-defeats-allele-aware-resolution)** — ✅ **shipped in 0.5**: ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion, and string comparison called it `not_found`. Closed by a frame-free parsimony reduction with a tri-state verdict; one residual (the authored genotype keeps its source's frame) is stated there. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
+- **[RM33](ROADMAP_HISTORY.md#rm33--source-names-two-different-things-in-two-tables)** — ✅ **shipped in 0.5**: `source` named a *link* in `resolution.csv` and a *licensed source* in `sources.csv`, compared by string equality. Closed by `ResolutionRow.authority` + the link→authority map in the enricher; the two repairs the entry rejected stayed rejected. · *also in* CLAUDE.md, SCHEMAS, ENRICHER, CHANGELOG
+- **[RM34](ROADMAP_HISTORY.md#rm34--the-cpic-provider-has-no-filter)** — ✅ **shipped in 0.5**: CYP2D6 drafted 16,290 rows, 73% `Indeterminate`, with no way to take a subset. Closed by `draft --allele`, applied to all three tables; six alleles make CYP2D6 21 diplotypes. · *also in* ENRICHER, CHANGELOG
+- **[RM35](ROADMAP_HISTORY.md#rm35--a-continuous-binning-table-cannot-be-tiled-without-a-finding)** — ✅ **shipped in 0.5**: inclusive bounds + overlap-is-error + hole-is-warning were jointly unsatisfiable on a continuous measure. Resolved as *a shared endpoint is a boundary and the higher bin owns it*; half-open bounds lost on authorship. · *also in* CLAUDE.md, SCHEMAS, AUTHORING_SYMPTOMS, CHANGELOG
+
 **0.5.1**
 
 - **[RM26](ROADMAP_HISTORY.md#rm26--all-three-drafting-providers)** — all three drafting providers: CPIC, ClinPGx, ClinVar. Partially dissolves RM4. · *also in* ENRICHER, CHANGELOG
@@ -57,14 +64,10 @@ grepping.
 - **[RM27](ROADMAP.md#rm27--a-redistribution-compile-gate)** — a redistribution compile gate. A distribution right is not a *use*, so `declared_use` is the wrong axis; needs the third axis designed first. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
 - **[RM28](ROADMAP.md#rm28--meta-conclusions-and-injected-cofactors)** — meta-conclusions + injected cofactors. **Parked and now smaller**: RM29 moved two of three cofactor classes into columns, and the cis/trans motivation closed as a compiler check. What survives is cross-*subject* pairing, economy, and open-world negation. · *also in* COMPILER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5 § G3
 
-**Found by dogfooding, 2026-08-03** — each carries the probe that produced it and a refutation of every
-obvious repair. Do not work around these in data.
+**Found by dogfooding, 2026-08-03** — one of that batch of five is still open; the other four shipped
+in the same window and are listed under Shipped above. Do not work around this one in data.
 
-- **[RM31](ROADMAP_HISTORY.md#rm31--one-indel-spelled-two-ways-defeats-allele-aware-resolution)** — ✅ **shipped in 0.5**: ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion, and string comparison called it `not_found`. Closed by a frame-free parsimony reduction with a tri-state verdict; one residual (the authored genotype keeps its source's frame) is stated there. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
 - **[RM32](ROADMAP.md#rm32--a-pseudoautosomal-locus-is-one-place-on-two-contigs)** — **the one still open**, and a question rather than a defect: a pseudoautosomal locus is one place on two contigs, modelled as two variants (10 SHOX findings → 20 rows; GRCh38 analysis sets hard-mask the Y copy). Countability turned out to be already answered; what is missing is a *place identity*. Deferred to its own run, with the candidates and the objection deciding each written out. · *also in* CLAUDE.md, CHANGELOG
-- **[RM33](ROADMAP_HISTORY.md#rm33--source-names-two-different-things-in-two-tables)** — ✅ **shipped in 0.5**: `source` named a *link* in `resolution.csv` and a *licensed source* in `sources.csv`, compared by string equality. Closed by `ResolutionRow.authority` + the link→authority map in the enricher; the two repairs the entry rejected stayed rejected. · *also in* CLAUDE.md, SCHEMAS, ENRICHER, CHANGELOG
-- **[RM34](ROADMAP_HISTORY.md#rm34--the-cpic-provider-has-no-filter)** — ✅ **shipped in 0.5**: CYP2D6 drafted 16,290 rows, 73% `Indeterminate`, with no way to take a subset. Closed by `draft --allele`, applied to all three tables; six alleles make CYP2D6 21 diplotypes. · *also in* ENRICHER, CHANGELOG
-- **[RM35](ROADMAP_HISTORY.md#rm35--a-continuous-binning-table-cannot-be-tiled-without-a-finding)** — ✅ **shipped in 0.5**: inclusive bounds + overlap-is-error + hole-is-warning were jointly unsatisfiable on a continuous measure. Resolved as *a shared endpoint is a boundary and the higher bin owns it*; half-open bounds lost on authorship. · *also in* CLAUDE.md, SCHEMAS, AUTHORING_SYMPTOMS, CHANGELOG
 
 ## — Not format scope
 

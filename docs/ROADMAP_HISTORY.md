@@ -113,9 +113,12 @@ reference), and four adversarial reference examples with the defects each expose
 the non-diploid guardrail made coordinate-aware and PAR-aware in both directions; `variant_key`
 re-derived against the module's declared build (a GRCh37 module was minting GRCh38 VRS ids);
 `HeteroplasmyRow` gaining a variant identity; live Ensembl reaching `hint variant`; and three walls of
-un-aggregated warnings collapsed. What they surfaced rather than fixed was **RM31–RM35**; **RM33** and
-**RM35** were then fixed in the same window (their entries are below), leaving RM31, RM32 and RM34 open
-in [ROADMAP.md](ROADMAP.md).
+un-aggregated warnings collapsed. What they surfaced rather than fixed was **RM31–RM35**; four of those
+five — **RM31**, **RM33**, **RM34**, **RM35** — were then fixed in the same window, and their entries are
+below. Two of the four had been argued to be undecidable, and in both cases part of the argument turned out
+to be wrong (RM31's trim did not need an anchor the row does not have; RM33's third column cost no
+signature). Only **RM32** is still open, in [ROADMAP.md](ROADMAP.md), because it is a question about
+identity rather than a defect.
 
 **The ACMG SF cross-check — ✅ shipped (0.5.1), as the guarded scrape.** Re-probed 2026-08-03 and the
 data file still does not exist: ClinGen's FTP publishes gene-curation, region-curation, dosage and
