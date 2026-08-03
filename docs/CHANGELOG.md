@@ -5,6 +5,33 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — RM35: a shared bin endpoint is a boundary, and the higher bin owns it
+
+**A continuous binning table could not be tiled without a finding**, and that was a check nobody could
+satisfy rather than one that was failing: bounds inclusive at both ends, overlap an error, any positive
+hole a warning — so two adjacent `allele_fraction` bins either shared an endpoint (error) or left a hole
+(warning), at any epsilon. `reference_examples/mt_heteroplasmy/` was authored `0.0–0.099` / `0.1–0.299`
+to dodge the error and warned anyway, four times.
+
+`validate_bins` now treats a shared endpoint on a **dense** kind (`allele_fraction`, `prs_percentile`) as
+a boundary rather than an overlap, with the lookup rule stated where a consumer will read it: *select the
+row with the greatest `measure_min ≤ x`*. The example migrated to touching bounds — `0.0–0.1`,
+`0.1–0.3`, `0.3–1.0` — and compiles clean.
+
+**Why not half-open `[min, max)` for continuous kinds**, which is the formally cleaner option: it makes
+`measure_max` mean two different things depending on `measure_kind` (P5), the number written in the cell
+is then not in the bin while the same column stays inclusive on integer tables, and a bounded domain's
+top value — AF `1.0` is homoplasmy, a real measurement — becomes unreachable unless the last bin is
+authored open, which is a new convention plus a new finding class. Both options produce identical
+authored bytes in the interior and need the same check predicate; they differ in one cell and in what an
+author must remember, and the charter's gate is the author.
+
+Discrete kinds are untouched: `repeat_count`/`copy_number` tile cleanly under inclusive bounds — which is
+where the convention came from and why this was missed — so a shared endpoint there is still a real
+overlap and still an error. Two bins sharing a **lower** bound now refuse on any kind, since the
+tie-break selects the greatest `measure_min` and equals do not sort. The original bind stays demonstrable
+in the suite by running the same bounds through `copy_number`.
+
 ## 2026-08-03 — RM33: a resolution link is not a licensed source
 
 **Every enriched module warned that `ensembl-rest` has no terms recorded**, because `resolution.csv`'s
@@ -147,7 +174,8 @@ epsilon escapes it, `[0, 0.0999999]` and `[0.1, 1.0]` still warn. Every `allele_
 missed: HTT `[6,35]`, `[36,39]`, `[40,∞)` is genuinely gapless because the domain is discrete, and the
 inclusive convention was generalized from those. Proved by construction in the tests. Every candidate
 resolution is a semantic decision — half-open intervals for continuous kinds, dropping the continuous
-gap check, or treating a shared endpoint as a boundary — so it is recorded.
+gap check, or treating a shared endpoint as a boundary — so it is recorded. *(Resolved later the same
+day as the third of those; see the RM35 entry above.)*
 
 **What the module gets right, and is worth copying.** Each variant/tissue group carries its own
 `unresolved` sentinel, and the conclusions state the consequence: an absent heteroplasmy read is not a

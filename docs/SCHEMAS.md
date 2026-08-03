@@ -205,10 +205,18 @@ separated them by giving one disease two ontology ids. The row therefore carries
 `variant_key` property; optional means a single-variant table groups exactly as before (P3/P8), and
 `alts` is in the derivation because MT-ATP6 m.8993T>G and m.8993T>C are one base with two alleles.
 
-**A continuous kind cannot satisfy `validate_bins` at all — [RM35](ROADMAP.md).** Inclusive bounds +
-overlap-is-an-error + any-hole-is-a-warning are jointly unsatisfiable on `allele_fraction` /
-`prs_percentile`: adjacent bins either share an endpoint (error) or leave a hole (warning), for any
-epsilon. Integer kinds tile cleanly, which is where the inclusive convention came from.
+**On a continuous kind two bins may share an endpoint, and the higher one owns it (RM35, 0.5).** The
+lookup rule a consumer implements once: *select the row with the greatest `measure_min ≤ x`* within the
+group. So `allele_fraction` bins `0.0–0.1`, `0.1–0.3`, `0.3–1.0` tile exactly, a measurement of `0.1`
+selects the middle row, and `1.0` selects the top one. Before this, inclusive bounds +
+overlap-is-an-error + any-hole-is-a-warning were jointly **unsatisfiable** on `allele_fraction` /
+`prs_percentile` — adjacent bins either shared an endpoint (error) or left a hole (warning), for any
+epsilon — so every such table carried a finding forever. `measure_max` stays inclusive on **every**
+kind: half-open for continuous kinds only would make one column's meaning depend on `measure_kind` (P5)
+and would put the domain's top value (AF `1.0` is homoplasmy) out of reach of a closed top bin.
+Discrete kinds are unchanged — `repeat_count`/`copy_number` tile cleanly under inclusive bounds, which
+is where the convention came from, so for them a shared endpoint is still a real overlap and an error.
+Two bins sharing a *lower* bound refuse on any kind: the tie-break has nothing to order.
 
 **PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction, nucleotide allele);
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,

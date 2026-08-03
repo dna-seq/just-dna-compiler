@@ -64,7 +64,7 @@ obvious repair. Do not work around these in data.
 - **[RM32](ROADMAP.md#rm32--a-pseudoautosomal-locus-is-one-place-on-two-contigs)** — a pseudoautosomal locus is one place on two contigs, modelled as two variants. 10 SHOX findings became 19 rows, and GRCh38 analysis sets hard-mask the Y copy. · *also in* CLAUDE.md, CHANGELOG
 - **[RM33](ROADMAP_HISTORY.md#rm33--source-names-two-different-things-in-two-tables)** — ✅ **shipped in 0.5**: `source` named a *link* in `resolution.csv` and a *licensed source* in `sources.csv`, compared by string equality. Closed by `ResolutionRow.authority` + the link→authority map in the enricher; the two repairs the entry rejected stayed rejected. · *also in* CLAUDE.md, SCHEMAS, ENRICHER, CHANGELOG
 - **[RM34](ROADMAP.md#rm34--the-cpic-provider-has-no-filter)** — the CPIC provider has no filter: CYP2D6 drafts 16,290 rows, 73% `Indeterminate`. `draft-panel` filters, `draft` does not. · *also in* CHANGELOG
-- **[RM35](ROADMAP.md#rm35--a-continuous-binning-table-cannot-be-tiled-without-a-finding)** — a continuous binning table cannot be tiled without a finding. Inclusive bounds + overlap-is-error + hole-is-warning are jointly unsatisfiable; proved by construction. · *also in* CLAUDE.md, SCHEMAS, CHANGELOG
+- **[RM35](ROADMAP_HISTORY.md#rm35--a-continuous-binning-table-cannot-be-tiled-without-a-finding)** — ✅ **shipped in 0.5**: inclusive bounds + overlap-is-error + hole-is-warning were jointly unsatisfiable on a continuous measure. Resolved as *a shared endpoint is a boundary and the higher bin owns it*; half-open bounds lost on authorship. · *also in* CLAUDE.md, SCHEMAS, AUTHORING_SYMPTOMS, CHANGELOG
 
 ## — Not format scope
 

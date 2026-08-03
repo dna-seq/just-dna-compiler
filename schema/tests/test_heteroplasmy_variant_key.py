@@ -81,24 +81,69 @@ def test_tissue_still_separates_bins_for_one_variant() -> None:
     assert not [w for w in validate_bins(rows) if "overlap" in w]
 
 
-# ── the continuous-tiling problem (RM35, recorded not fixed) ───────────────────────────────────
+# ── the continuous-tiling problem (RM35, fixed: a shared endpoint is a boundary) ───────────────
 
 
-def test_a_continuous_measure_cannot_be_tiled_without_a_finding() -> None:
-    """Proof, not opinion: three rules that are jointly unsatisfiable on a continuous scale.
+def test_a_continuous_table_can_now_be_tiled_with_no_finding() -> None:
+    """The whole point of the fix: touching bins on a dense measure are legal and complete.
 
-    Bounds are inclusive at both ends, overlaps are an **error**, and any positive hole is a
-    **warning**. So adjacent bins either share an endpoint (overlap → error) or do not (hole →
-    warning), and no epsilon escapes it. Every `allele_fraction` and `prs_percentile` table must
-    therefore emit a finding forever. Integer kinds are fine — `[36,39]` and `[40,None]` are gapless
-    because the domain is discrete — which is where the inclusive convention was generalized from.
+    Three rules used to be jointly unsatisfiable — inclusive at both ends, overlap-is-an-error,
+    any-positive-hole-is-a-warning — so adjacent continuous bins either shared an endpoint (error) or
+    did not (warning). A shared endpoint is now a *boundary* owned by the higher bin, so a real
+    heteroplasmy table tiles [0, 0.1], [0.1, 0.3], [0.3, 1.0] and reports nothing at all.
     """
-    with pytest.raises(ValueError, match="overlapping bins"):
-        validate_bins([_bin(0.0, 0.1), _bin(0.1, 1.0)])
+    rows = [_bin(0.0, 0.1, "low"), _bin(0.1, 0.3, "MIDD"), _bin(0.3, 1.0, "MELAS")]
+    assert validate_bins(rows) == []
+    # …and the top of the domain stays reachable, which is why the bound was not made exclusive: a
+    # heteroplasmy of 1.0 is homoplasmy, a real measurement, and it selects the top bin.
+    assert rows[-1].measure_max == 1.0
 
+
+def test_the_old_convention_could_not_be_satisfied_and_here_is_that_proof() -> None:
+    """Demonstrated on the old rule rather than asserted, using the kind that still obeys it.
+
+    The unsatisfiability argument was never about continuity as such — it was about
+    `lo <= prev_hi` being the overlap test on a domain where the only alternative to touching is a
+    gap. `copy_number` still uses that test (correctly: two integer bins sharing an endpoint really do
+    both claim it), so running the same pair through a discrete kind reproduces the original bind
+    exactly: touching errors, and any epsilon short of touching leaves a hole.
+    """
+    from just_dna_format.binning import CopyNumberRow
+
+    def _cn(lo, hi):
+        return CopyNumberRow(gene="SMN1", conclusion="c", measure_min=lo, measure_max=hi)
+
+    with pytest.raises(ValueError, match="overlapping bins"):
+        validate_bins([_cn(0.0, 1.0), _cn(1.0, 3.0)])
+    assert [w for w in validate_bins([_cn(0.0, 1.0), _cn(2.5, 3.0)]) if "coverage gap" in w]
+
+
+def test_a_real_overlap_on_a_continuous_measure_still_refuses() -> None:
+    """The check keeps its teeth: touching is legal, crossing is not."""
+    with pytest.raises(ValueError, match="overlapping bins"):
+        validate_bins([_bin(0.0, 0.3), _bin(0.2, 1.0)])
+
+
+def test_a_gap_on_a_continuous_measure_still_warns() -> None:
+    """The other half is unchanged — a hole is still a hole, at any epsilon."""
     for epsilon in (0.001, 0.0000001):
         gaps = validate_bins([_bin(0.0, 0.1 - epsilon), _bin(0.1, 1.0)])
         assert [w for w in gaps if "coverage gap" in w], epsilon
+
+
+def test_two_bins_sharing_a_lower_bound_refuse_because_nothing_can_break_the_tie() -> None:
+    """The boundary rule selects the greatest `measure_min` ≤ the measurement, and equals do not sort.
+
+    Reachable only as a single point beside a wider bin — anything wider would already be a crossing
+    overlap — and a measurement of exactly 0.1 would then have two answers.
+    """
+    with pytest.raises(ValueError, match="same lower bound"):
+        validate_bins([_bin(0.1, 0.1, "sharp"), _bin(0.1, 0.3, "range")])
+
+
+def test_a_point_bin_below_a_boundary_is_fine() -> None:
+    """The mirror case, and it must stay legal: distinct minima are always separable."""
+    assert validate_bins([_bin(0.0, 0.1, "below"), _bin(0.1, 0.1, "exactly 0.1")]) == []
 
 
 def test_an_integer_kind_tiles_cleanly_which_is_why_this_was_missed() -> None:

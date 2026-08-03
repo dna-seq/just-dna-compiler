@@ -170,8 +170,9 @@ The two `content_signature` values must match — that is Principle 7's fixed po
 [AUTHORING_SYMPTOMS.md](AUTHORING_SYMPTOMS.md) maps the actual message text → cause → what to do. Start there before reading
 code; most of those entries are traps that cost someone a day already.
 
-Known limitations you may hit and should **not** try to work around in your data — they are tracked as
-`RM31`–`RM35` in [ROADMAP.md](ROADMAP.md): one indel spelled two ways failing to resolve,
-a pseudoautosomal variant becoming two rows, `sources.csv` not recognising a resolution link name, a
-large star-allele gene drafting unusably many rows, and a continuous binning table that cannot be tiled
-without a warning.
+Known limitations you may hit and should **not** try to work around in your data — the open ones are
+`RM31`, `RM32` and `RM34` in [ROADMAP.md](ROADMAP.md): one indel spelled two ways failing to resolve, a
+pseudoautosomal variant becoming two rows, and a large star-allele gene drafting unusably many rows.
+(Two of that batch have shipped: `sources.csv` now understands that a resolution *link* is not a source
+name, and a continuous binning table can be tiled — write bounds that **touch**, e.g. `0.0–0.1` then
+`0.1–0.3`, and the higher bin owns the shared endpoint.)

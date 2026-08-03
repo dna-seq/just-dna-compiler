@@ -41,24 +41,34 @@ and different phenotypes.
 The documented example in `REFERENCE_EXAMPLES.md` §4 only ever showed one variant per gene, which is
 why the limitation was invisible rather than decided — the schema generalized from a one-variant case.
 
-## 2. A continuous measure cannot be tiled at all (surfaced — [RM35](../../docs/ROADMAP.md))
+## 2. A continuous measure could not be tiled at all (fixed — [RM35](../../docs/ROADMAP_HISTORY.md))
 
-Compiling this module emits four coverage-gap warnings, and **no authoring fixes them**. Three rules
-are jointly unsatisfiable on a continuous scale:
+This module used to emit four coverage-gap warnings that **no authoring could fix**. Three rules were
+jointly unsatisfiable on a continuous scale:
 
 - bounds are inclusive at both ends,
 - overlapping bins are an **error**,
 - any positive hole is a **warning**.
 
-So two adjacent bins either share an endpoint — an overlap, and a measurement of exactly `0.1` would
-select two phenotypes — or they do not, leaving a hole. No epsilon escapes it; `[0, 0.0999999]` and
-`[0.1, 1.0]` still warn. Every `allele_fraction` and `prs_percentile` table must therefore carry a
-finding forever.
+Two adjacent bins either shared an endpoint — an overlap, so a measurement of exactly `0.1` would select
+two phenotypes — or they did not, leaving a hole. No epsilon escaped it: `[0, 0.0999999]` and
+`[0.1, 1.0]` still warned, which is why this table was authored `0.0–0.099`, `0.1–0.299` and warned
+anyway. Every `allele_fraction`/`prs_percentile` table carried a finding forever — a check that could
+not be satisfied rather than one that was failing.
 
-Integer kinds are fine: HTT `[6,35]`, `[36,39]`, `[40,∞)` is genuinely gapless because the domain is
-discrete — which is where the inclusive convention was generalized from, and why this was missed. The
-fix is a semantic decision (half-open intervals for continuous kinds, or dropping the continuous gap
-check), so it is recorded rather than guessed at.
+**A shared endpoint is now a boundary on a dense measure, and the higher bin owns it.** The lookup rule
+is *the row with the greatest `measure_min ≤ x`*, so this table tiles `0.0–0.1`, `0.1–0.3`, `0.3–1.0`
+and reports nothing. Two properties made that the choice over half-open `[min, max)`: `measure_max`
+keeps **one** meaning on every `measure_kind` (half-open would make it depend on a second column, and
+the number in the cell would not be in the bin), and the top bin stays **closed** — heteroplasmy of
+`1.0` is homoplasmy, a real measurement, which half-open would have made unreachable unless the last
+bin were authored open.
+
+Integer kinds are unaffected and are why this was missed: HTT `[6,35]`, `[36,39]`, `[40,∞)` is genuinely
+gapless because the domain is discrete — which is where the inclusive convention was generalized from —
+so for `repeat_count`/`copy_number` a shared endpoint is still a real overlap and still an error.
+`schema/tests/test_heteroplasmy_variant_key.py` keeps the original bind demonstrable by running the same
+pair of bounds through `copy_number`, which still obeys the old test.
 
 ## What the module says, and what it refuses to say
 

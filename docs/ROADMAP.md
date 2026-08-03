@@ -315,31 +315,6 @@ copy number as `x≥3` and `≥` is not a star-string character (RM5 territory �
 biology), and those skips were emitted one line each until they were aggregated like the activity
 scores beside them. | enricher (CLI) | CYP2D6, and any large star-allele gene | **medium** |
 
-## RM35 — A continuous binning table cannot be tiled without a finding
-
-**Severity** medium · **Status** open, proved 2026-08-03 · **Owner** format (binning semantics) ·
-**Motivating case** heteroplasmy, PRS percentile
-
-**a continuous binning table cannot be tiled without a finding (proved 2026-08-03).**
-Three rules that are individually right and jointly unsatisfiable on a continuous measure: bounds are
-**inclusive at both ends**, an overlap is an **error**, and any positive hole is a **warning**. Two
-adjacent `allele_fraction` bins therefore either share an endpoint (a measurement of exactly `0.1`
-selects two phenotypes → error) or do not (a hole → warning). No epsilon escapes it — `[0, 0.0999999]`
-and `[0.1, 1.0]` still warn. So every `allele_fraction` and `prs_percentile` table must carry a
-finding forever, which is a check that cannot be satisfied rather than a check that is failing.
-
-Integer kinds are unaffected and that is why it was missed: HTT `[6,35]`, `[36,39]`, `[40,∞)` is
-genuinely gapless because the domain is discrete, and the inclusive convention was generalized from
-those. Proved by construction in `schema/tests/test_heteroplasmy_variant_key.py`; visible on
-`reference_examples/mt_heteroplasmy/`.
-
-The candidate resolutions are all semantic decisions, which is why this is recorded rather than
-patched: **half-open `[min, max)` for continuous kinds** (correct, but changes the meaning of every
-already-authored continuous bound), **drop the interior-gap check for continuous kinds** (what
-`activity_score` already does, but it throws away a real check), or **treat a shared endpoint as a
-boundary rather than an overlap** (implicit and easy to misread). | format (binning semantics) |
-heteroplasmy, PRS percentile | **medium** |
-
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
   `TCAT` repeats + 3 extra bases), which is *not* the decimal 9.3. A binning bound stays a plain

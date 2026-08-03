@@ -18,6 +18,26 @@ item that doesn't fit is a schema gap to widen additively.
 0 copies), `min < max` is a range (HTT 36–39 CAG), and `measure_max = None` is open-ended (≥40 CAG,
 3+ copies). There is no `copy_number` column — a sharp copy number is `measure_min == measure_max`.
 
+**On a continuous measure, two adjacent bins may share an endpoint, and the higher bin owns it.**
+The lookup rule, which a consumer implements once: *select the row with the greatest `measure_min ≤ x`*
+(within the group). Written out for `allele_fraction` bins `0.0–0.1`, `0.1–0.3`, `0.3–1.0`, a
+heteroplasmy of exactly `0.1` selects the MIDD bin and `1.0` selects the top one.
+
+This is a rule about *tiling*, not a second meaning for `measure_max`, and it exists because the
+alternative was unsatisfiable (RM35). Inclusive-at-both-ends, overlap-is-an-error and
+any-positive-hole-is-a-warning cannot all hold on a dense domain: two adjacent continuous bins either
+share an endpoint or leave a gap, so **every** `allele_fraction`/`prs_percentile` table carried a finding
+forever — a check that could not be satisfied rather than one that was failing. No epsilon escapes it
+(`[0, 0.0999999]` + `[0.1, 1.0]` still warns). Half-open `[min, max)` for continuous kinds was the other
+candidate and lost on authorship: it makes one column mean two things depending on `measure_kind`, the
+number written in the cell is then not in the bin, and a bounded domain's top value (AF = 1.0 is
+homoplasmy, and real) becomes unreachable unless the last bin is authored open. Here `measure_max` means
+the same thing on every kind and the top bin stays closed.
+
+**Discrete kinds are unaffected, which is why this was missed.** `repeat_count`/`copy_number` tile
+exactly under inclusive bounds — HTT `[6,35]`, `[36,39]`, `[40,∞)` is genuinely gapless because the
+domain is integral — so for them a shared endpoint remains a real **overlap** and stays an error.
+
 **`unresolved` (T1) is mandatory.** A table can state the outcome for *measurement absent / not
 callable*, and the consumer contract is that a missing measurement selects the `unresolved` row,
 **never the lowest/reference bin** (no activity score ⇒ not "Normal Metabolizer"; no CN ⇒ not "2
@@ -56,6 +76,14 @@ VALID_MEASURE_KINDS: frozenset[str] = frozenset(
 _INTEGER_KINDS: frozenset[str] = frozenset({"repeat_count", "copy_number"})
 _CONTINUOUS_GAP_KINDS: frozenset[str] = frozenset({"allele_fraction", "prs_percentile"})
 
+# Which kinds are **dense**, i.e. where a shared endpoint between adjacent bins is a *boundary* rather
+# than an overlap (see the module docstring, RM35). Deliberately the same set as the gap kinds and
+# deliberately spelled separately: they answer two different questions about a measure — "can a hole be
+# arbitrarily small?" and "can two bins touch?" — and a future kind could plausibly answer them
+# differently (a quantized-but-fine measure). `activity_score` is in neither: it is consumer-summed onto
+# a coarse grid, so bins do not touch and interior holes are not meaningful.
+_DENSE_KINDS: frozenset[str] = _CONTINUOUS_GAP_KINDS
+
 
 class MeasureBinRow(AuthoredModel):
     """Base row of a binning table: a measured quantity range → the same orthogonal axes a
@@ -76,10 +104,18 @@ class MeasureBinRow(AuthoredModel):
         description="Measured quantity; one of VALID_MEASURE_KINDS",
     )
     measure_min: Optional[float] = Field(
-        default=None, description="Inclusive lower bound; None = open below"
+        default=None,
+        description=(
+            "Inclusive lower bound; None = open below. On a continuous measure this is also the "
+            "tie-break: a value two bins share belongs to the one with the greater measure_min."
+        ),
     )
     measure_max: Optional[float] = Field(
-        default=None, description="Inclusive upper bound; None = open above"
+        default=None,
+        description=(
+            "Inclusive upper bound; None = open above. Inclusive on every measure_kind — on a "
+            "continuous measure the next bin may start on it, and then that bin owns the value."
+        ),
     )
     direction: Optional[str] = Field(
         default=None, description="Effect direction: protective|risk|neutral|unknown"
@@ -346,6 +382,13 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
     `trait_efo_id` is allowed (pleiotropy — the same measurement legitimately binning to two traits).
     `unresolved` sentinel rows carry no range and are ignored.
 
+    **What counts as an overlap depends on whether the measure is dense** (RM35, see the module
+    docstring). On a discrete kind, adjacent bins sharing an endpoint really do both claim that integer,
+    so `lo <= prev_hi` is the error. On a dense kind the two bins are *touching*, which is the only way
+    to tile a dense domain at all, so the error is `lo < prev_hi` and the shared value belongs to the
+    higher bin. Two bins sharing a *lower* bound refuse on every kind: the boundary rule picks the
+    greatest `measure_min` at or below the measurement, and there is nothing to pick between equals.
+
     Returns a list of **warnings** for interior coverage gaps (a value between two authored bins that
     matches no row): for integer kinds a hole spanning ≥1 uncovered integer, for continuous fractions
     any positive hole. `activity_score` is consumer-summed/quantized, so interior gaps are not
@@ -373,13 +416,26 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
             key=lambda t: (t[0], t[1]),
         )
         kind = grp[0].measure_kind
+        dense = kind in _DENSE_KINDS
         for i in range(1, len(spans)):
             prev_lo, prev_hi = spans[i - 1]
             lo, hi = spans[i]
-            if lo <= prev_hi:  # inclusive overlap
+            if lo < prev_hi or (lo == prev_hi and not dense):
                 raise ValueError(
                     f"overlapping bins for key {group_key}: [{prev_lo}, {prev_hi}] and "
                     f"[{lo}, {hi}] both select a phenotype for a measurement in the overlap"
+                )
+            if lo == prev_lo:
+                # Equal *lower* bounds, which the boundary rule cannot resolve: it selects the greatest
+                # `measure_min` at or below the measurement, and these two are the same. Only reachable
+                # on a dense kind and only when the earlier bin is a single point (anything wider would
+                # have tripped `lo < prev_hi` above) — e.g. `[0.1, 0.1]` beside `[0.1, 0.3]`, where a
+                # measurement of exactly 0.1 has two answers and no rule to pick between them. That is
+                # an ambiguous selection, so it refuses like any other overlap rather than warning.
+                raise ValueError(
+                    f"bins with the same lower bound for key {group_key}: [{prev_lo}, {prev_hi}] and "
+                    f"[{lo}, {hi}] both start at {lo}, so a measurement of {lo} selects two phenotypes "
+                    f"and the shared-endpoint rule (the higher bin owns it) cannot separate them"
                 )
             hole = lo - prev_hi
             is_gap = (kind in _INTEGER_KINDS and hole > 1 + 1e-9) or (

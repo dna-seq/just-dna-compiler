@@ -68,9 +68,17 @@ two different variants are colliding in a heteroplasmy table, give each its vari
 (`chrom`/`start`/`ref`/`alts`) — that is what the key is for.
 
 **`coverage gap … no bin covers (0.099, 0.1)`** on a fraction or percentile
-Unfixable by authoring, and not your mistake: inclusive bounds, overlap-is-an-error and
-any-hole-is-a-warning cannot all hold on a continuous measure — touching endpoints error, any epsilon
-gap warns. **RM35**. Integer kinds tile cleanly; continuous ones always warn.
+Now fixable, and the fix is to **make the bounds touch**: write `0.0–0.1` and `0.1–0.3` rather than
+`0.0–0.099`. On a continuous measure two bins may share an endpoint and the higher bin owns it, so a
+measurement of exactly `0.1` selects the second row. Author the top bin **closed** (`0.3–1.0`) — the
+top of the domain is a real measurement. This used to be unfixable (**RM35**, shipped in 0.5); on
+`repeat_count`/`copy_number` a shared endpoint is still an overlap and still an error, because there the
+bins genuinely both claim that integer.
+
+**`bins with the same lower bound for key (…)`** — an **error**
+Two bins in one group start at the same number, so the shared-endpoint rule has nothing to order and a
+measurement at that number has two answers. Usually a sharp bin (`0.1–0.1`) written beside the range
+that begins there; drop the sharp row or move the range's start.
 
 **`chrom=MT is not diploid here`** / **`chrom=Y is not diploid here`**
 A two-allele genotype on a non-diploid contig. Use a single allele (`G`) for a homoplasmic or

@@ -113,7 +113,9 @@ reference), and four adversarial reference examples with the defects each expose
 the non-diploid guardrail made coordinate-aware and PAR-aware in both directions; `variant_key`
 re-derived against the module's declared build (a GRCh37 module was minting GRCh38 VRS ids);
 `HeteroplasmyRow` gaining a variant identity; live Ensembl reaching `hint variant`; and three walls of
-un-aggregated warnings collapsed. What they surfaced rather than fixed is **RM31–RM35** below.
+un-aggregated warnings collapsed. What they surfaced rather than fixed was **RM31–RM35**; **RM33** and
+**RM35** were then fixed in the same window (their entries are below), leaving RM31, RM32 and RM34 open
+in [ROADMAP.md](ROADMAP.md).
 
 **The ACMG SF cross-check — ✅ shipped (0.5.1), as the guarded scrape.** Re-probed 2026-08-03 and the
 data file still does not exist: ClinGen's FTP publishes gene-curation, region-curation, dosage and
@@ -303,6 +305,45 @@ axes under one label across two tables and spend the name ancestry will want on 
 on load, because three of CPIC's sixteen live values carry a trailing space and the column is in the
 key. | format (schema) | PGx; call-confidence gating | **done** |
 
+
+## RM35 — A continuous binning table cannot be tiled without a finding
+
+**Severity** — · **Status** ✅ shipped in 0.5 (proved by construction 2026-08-03, fixed in the same
+window) · **Owner** format (binning semantics) · **Motivating case** heteroplasmy, PRS percentile
+
+Three rules, individually right and jointly unsatisfiable on a continuous measure: bounds **inclusive at
+both ends**, an overlap an **error**, any positive hole a **warning**. Two adjacent `allele_fraction`
+bins therefore either shared an endpoint (a measurement of exactly `0.1` selecting two phenotypes) or
+did not (a hole), and no epsilon escaped it — `[0, 0.0999999]` + `[0.1, 1.0]` still warned. Every
+`allele_fraction`/`prs_percentile` table carried a finding forever: a check that could not be satisfied
+rather than one that was failing.
+
+**Resolved as "a shared endpoint is a boundary, and the higher bin owns it".** The lookup rule is *select
+the row with the greatest `measure_min ≤ x`*, so a real heteroplasmy table tiles `0.0–0.1`, `0.1–0.3`,
+`0.3–1.0` and reports nothing. The overlap test becomes `lo < prev_hi` on a dense kind and stays
+`lo <= prev_hi` on a discrete one, where two integer bins sharing an endpoint really do both claim it.
+
+**Half-open `[min, max)` for continuous kinds was the other serious candidate and lost on authorship,
+which is the charter's own gate.** It is formally cleaner — each row's coverage is self-contained — but
+it makes one column mean two things depending on another column's value (P5), the number written in the
+cell is then *not* in the bin while the same column stays inclusive on integer tables, and a bounded
+domain's top value (AF `1.0` is homoplasmy, and real) becomes unreachable unless the last bin is
+authored open, which is a new convention and a new finding class. Both candidates produce *identical
+authored bytes* in a table's interior and need the *same* check predicate; they differ in one cell (the
+last bin's upper bound) and in what an author has to remember. Dropping the interior-gap check for
+continuous kinds — the third candidate — was rejected for throwing away a real check while leaving the
+shared-endpoint error in place, so an exactly-tiling table would still have refused.
+
+One case the design turned up that the entry had not: two bins sharing a **lower** bound refuse on every
+kind, because the tie-break selects the greatest `measure_min` and equals do not sort. It is reachable
+only as a sharp `[0.1, 0.1]` beside a range starting at `0.1` (anything wider is already a crossing
+overlap), and there a measurement of `0.1` genuinely has two answers — an ambiguous selection, so it
+refuses rather than warning.
+
+`reference_examples/mt_heteroplasmy/` migrated from `0.099`/`0.299`/`0.399`/`0.149` to touching bounds
+and now compiles clean; its digest moved, inside the unpublished window. The original bind stays
+demonstrable in `schema/tests/test_heteroplasmy_variant_key.py` by running the same pair of bounds
+through `copy_number`, which still obeys the old rule.
 
 ## RM33 — `source` names two different things in two tables
 

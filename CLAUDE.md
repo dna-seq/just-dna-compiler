@@ -459,8 +459,19 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   compiler.
 - **Before adding a table-level check, ask whether its rules are jointly satisfiable.** Inclusive
   bounds + overlap-is-an-error + any-hole-is-a-warning cannot all hold on a continuous measure, so
-  every `allele_fraction` table warns forever (RM35). Integer kinds tile cleanly, which is why nobody
-  noticed.
+  every `allele_fraction` table warned forever (RM35, now fixed). Integer kinds tile cleanly, which is
+  why nobody noticed.
+- **A shared bin endpoint is a BOUNDARY on a dense measure, and the higher bin owns it** — the lookup
+  rule is *the row with the greatest `measure_min ≤ x`* (`binning._DENSE_KINDS`: `allele_fraction`,
+  `prs_percentile`). So the overlap test is `lo < prev_hi` there and stays `lo <= prev_hi` on
+  `repeat_count`/`copy_number`, where two integer bins sharing an endpoint really do both claim it.
+  `measure_max` is inclusive on **every** kind: half-open for continuous kinds only was the other
+  candidate and lost on authorship, which is the charter's gate — it makes one column's meaning depend
+  on `measure_kind` (P5), the number in the cell is then not in the bin, and a closed top bin can no
+  longer reach a bounded domain's top value (AF `1.0` is homoplasmy, and real). Both spellings produce
+  identical authored bytes in the interior and need the same predicate. Also: two bins sharing a
+  **lower** bound refuse on any kind — the tie-break has nothing to order — which is reachable only as
+  a sharp `[0.1, 0.1]` beside a range starting there.
 
 ## The design cycle (the order of things)
 
