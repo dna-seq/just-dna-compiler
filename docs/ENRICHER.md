@@ -944,6 +944,45 @@ for a module-level identifier — the report is the whole output); `upload` take
 strict=…)`, so compilation consumes the just-written `resolution.csv` (path 1) with no reference and
 no network.
 
+### Command → Python API
+
+Every command is a thin shell over a library function; nothing here is CLI-only logic. Use the API
+directly to compose passes, inject clients, or run in-process.
+
+| Command | Python API |
+|---|---|
+| `enrich` | `enrich.enrich` |
+| `frequencies` | `frequencies.enrich_frequencies` |
+| `gene-metrics` | `gene_metrics.enrich_gene_metrics` |
+| `dosage` | `clingen.enrich_dosage_sensitivity` |
+| `literature` | `literature.enrich_literature` |
+| `pgx` | `pgx.enrich_pgx` |
+| `check-identifiers` | `identifiers.check_identifiers` |
+| `check-acmg` | `acmg.verify_acmg_sf` (+ `AcmgReport.by_gene` for the grouped view) |
+| `draft` | `pgx_draft.draft_gene` |
+| `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
+| `draft-panel` | `clinvar_draft.draft_gene_panel` |
+| `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
+| `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |
+| `gnomad constraint build` / `publish` | `constraint_build.download_constraint_tsv` + `build_snapshot` / `upload.publish_reference_snapshot` |
+| `vrs mint` | `vrs.mint_resolution_rows` |
+| `hint variant` / `citation` / `trait` / `gene` | `lookup.lookup_variant` / `lookup_citation` / `lookup_trait` / `lookup_gene` |
+| `upload` | `upload.plan_upload` / `upload_module` |
+| `template` | `just_dna_compiler.draft.blank_template` (cross-package convenience) |
+| `enrich-and-compile` | `enrich.enrich` → `just_dna_compiler.compiler.compile_module` |
+
+**Two library functions have no command, on purpose.** `clinical.verify_clin_sig` and
+`sequences.verify_reference_alleles` are checks that run *inside* `enrich` (`--verify-clinsig`,
+`--verify-ref`), because their verdicts land on `resolution.csv` and on the enrichment report. Running
+either standalone would compute a finding with nowhere to put it.
+
+**`template` is the one command that duplicates the compiler's**, and the other four offline authoring
+commands (`stub`, `requirements`, `describe`, `hint`, `scaffold`) are deliberately *not* mirrored. The
+offline authoring surface has an owner — `just-dna-compiler` — and the single mirror exists so a PGx
+author working through this binary does not have to switch tools for a CSV header. See
+[COMPILER.md § CLI](COMPILER.md) for the compiler's own table, including the three schema-tier
+functions (`keygen`, `sign`, `reference`) that surface there because `just-dna-format` ships no CLI.
+
 ## `resolution.csv` is provisional (0.5)
 
 The table's shape (`ResolutionRow` — columns, keying, the `status` vocabulary, how one-to-many expansion

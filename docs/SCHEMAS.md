@@ -503,8 +503,27 @@ Everything else in `manifest.py` is manifest-only, never authored into a CSV.
 
 - **`reference.authoring_reference()` / `json_schemas()`** (RM8) — the field-lists, vocabularies,
   reserved names, and recommended palette generated *from the live models*, so an MCP server / authoring
-  agent renders the current schema instead of a hand-maintained summary that drifts. `variant_key` is
-  excluded (`_COMPILER_MANAGED_FIELDS`).
+  agent renders the current schema instead of a hand-maintained summary that drifts. Compiler-managed
+  columns are excluded via the fields' own `COMPILER_MANAGED` marker (`base.authored_field_names`),
+  never a name list — the list this replaced named `variant_key` and never learned about
+  `authored_ident`.
+
+  **Reachable from the CLI since 0.5.1: `just-dna-compiler reference [--summary|--schemas]`.** This
+  package ships no CLI of its own (Typer would breach the pydantic-plus-cryptography floor), so the
+  consumer that most needs the reference had to import this module and write Python. Same reasoning
+  put `verify`, `sign` and now `keygen` on the compiler's command list.
+
+  Each field carries **`category`** (`required` / `defaulted` / `optional`) beside pydantic's two-way
+  `required`. The middle one is the trap: `MeasureBinRow.measure_kind` and `unresolved` have defaults
+  so `is_required()` is `False`, but `_load_csv_rows` turns an empty cell into `None` and keeps the
+  key, so the model receives `None` instead of its default and fails on type. `just_dna_compiler.draft`
+  was fixed to the three-way split; this surface was not, until both were pointed at one definition in
+  **`base.field_category`** — which lives here because the format tier is the only one both can import
+  from. `required` stays beside it: it is insufficient on its own, not wrong, and removing a published
+  key would break consumers.
+- **`signing.generate_private_key_pem()` / `public_key_b64_from_pem()`** — key bootstrap, surfaced as
+  `just-dna-compiler keygen`. Unencrypted PKCS#8, which is what `sign_digest` reads; this bootstraps a
+  key rather than managing one.
 - **`aggregate.aggregate_logs` / `aggregate_provenance`** — the deduplicated union of logs/provenance
   across a set of version manifests ("v3 provenance = v1+v2+v3"), first-occurrence order.
 

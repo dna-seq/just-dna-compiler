@@ -5,6 +5,47 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: CLI/API parity — signing was never CLI-complete
+
+An audit of every command against every public function across the three packages. Most of it was
+already level; three gaps were not, and they clustered in one place, for one reason.
+
+**`just-dna-format` ships no CLI** — Typer would breach its pydantic-plus-cryptography dependency
+floor (Goal 2) — so anything the schema tier owns that a *user* needs has to surface through
+`just-dna-compiler`. `verify` was added on exactly that argument. Three siblings were still
+Python-only:
+
+- **`keygen`** (new). `sign --private-key` demanded a key file the toolchain had no way to produce,
+  and `verify --public-key` demanded a string only `public_key_b64_from_pem` could derive. So signing
+  was CLI-complete only for someone willing to write Python — the same gap `verify` closed, left open
+  one step upstream. A test now runs the whole keygen → sign → verify loop through the CLI, with a
+  wrong-key case so it cannot pass for the wrong reason. The key is unencrypted PKCS#8 (what
+  `sign_digest` reads): a deliberate limit, since this bootstraps a key rather than managing one, and
+  a passphrase prompt would imply custody guarantees nothing here provides. It **refuses to
+  overwrite** — every signature made with the old key would stop verifying, and published bytes are
+  never mutated.
+- **`reference`** (new). `authoring_reference()`/`json_schemas()` had no route at all, which hurt most
+  for the consumer that most needs them: an MCP surface offering an author the valid values had to
+  import `just_dna_format.reference`. `describe` answers that for one table; this answers it for all
+  of them plus the vocabularies, the closedness flag, `REQUIRED_ANY_OF` and the palette.
+
+**And the audit found a drift in the anti-drift module itself.** `authoring_reference()` reported
+requiredness with pydantic's two-way `is_required()` while `just_dna_compiler.draft` had already been
+fixed to the three-way `required` / `defaulted` / `optional` split. The middle category is the
+documented trap — `MeasureBinRow.measure_kind` and `unresolved` are *not* required and *not* safely
+left blank either, because `_load_csv_rows` turns an empty cell into `None` and keeps the key. Two
+surfaces answering one question, and the one whose entire job is not to drift was the stale one. The
+split moved to **`base.field_category`**, the only tier both can import from; `draft.field_category`
+re-binds it and the reference emits it as `category`. `required` is kept beside it — insufficient
+rather than wrong, and removing a published key breaks consumers.
+
+**Left unlevelled on purpose:** the enricher mirrors `template` but not `stub`/`requirements`/
+`describe`/`hint`/`scaffold`. The offline authoring surface has an owner; the one mirror exists so a
+PGx author does not switch binaries for a CSV header. And `clinical.verify_clin_sig` /
+`sequences.verify_reference_alleles` stay command-less because their verdicts land on `resolution.csv`
+and the enrichment report — run standalone they would compute a finding with nowhere to put it. Both
+packages' command → API tables are now in [COMPILER.md](COMPILER.md) and [ENRICHER.md](ENRICHER.md).
+
 ## 2026-08-03 — 0.5.1: RM28's cis/trans case, closed by a check rather than a grammar
 
 RM28's proposal says the demand for a predicate language "has to come from a module somebody actually

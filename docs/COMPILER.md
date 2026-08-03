@@ -481,15 +481,58 @@ table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are p
 The three hashes and how they compose into `(content_signature, resolution_signature, compiler_version)
 ⟹ artifact.digest` are documented in [SCHEMAS.md § identity & integrity](SCHEMAS.md#identity--integrity).
 
-## CLI
+## CLI, and what it maps onto
 
-`just-dna-compiler` (Typer): `validate <spec>`, `compile <spec> <out>`, `signature <spec>`,
-`reverse <parquet_dir> <out>`. Exit 0/1 (CI/registry-gateable). Key flags: `compile` takes
-`--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`,
-`--strip-identity`/`--authority-key`, and the **deprecated** `--ensembl-cache` (routes to the enricher,
-removed at 1.0); it prints `digest`, `content_signature`, and `resolution_mode`/`fully_resolved`/
-`resolution_signature`. `reverse` takes `--resolution/--no-resolution` (default on) plus the
-display-metadata overrides.
+`just-dna-compiler` (Typer) is a thin shell over the Python API. Exit 0/1, CI/registry-gateable.
+
+| Command | Python API | Notes |
+|---|---|---|
+| `validate <spec>` | `compiler.validate_spec` | `--strip-identity` / `--authority-key` |
+| `compile <spec> <out>` | `compiler.compile_module` | `--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`, and the **deprecated** `--ensembl-cache` (routes to the enricher; removed at 1.0). Prints `digest`, `content_signature`, `resolution_mode`/`fully_resolved`/`resolution_signature` |
+| `signature <spec>` | `compiler.content_signature` | no compile, no reference |
+| `reverse <parquet_dir> <out>` | `compiler.reverse_module` | `--resolution/--no-resolution` (default on) + display overrides |
+| `verify <module_dir>` | **`format.integrity.verify_manifest`** | `--public-key`, `--check-inputs/-logs/-provenance/-logo` |
+| `keygen` | **`format.signing.generate_private_key_pem`** + `public_key_b64_from_pem` | `--out` (refuses to overwrite) |
+| `sign <module_dir>` | **`format.signing.sign_digest`** | `--private-key` |
+| `reference` | **`format.reference.authoring_reference`** / `json_schemas` | `--summary`, `--schemas` |
+| `template <kind>` | `draft.blank_template` + `authoring_requirements` | |
+| `stub <kind>` | `draft.stub_template` | `--rows` |
+| `requirements <kind>` | `draft.authoring_requirements` | `--json` |
+| `scaffold <spec>` | `scaffold.scaffold_module` | `--kind`, `--rows`, `--dry-run` |
+| `describe <kind>` | `hints.describe_table` | one table's columns + pick-lists |
+| `hint <kind>` | `hints.inspect_rows` | `--rows-file`/`--row`, `--json` |
+
+**Four rows are bold because they belong to `just-dna-format`, which ships no CLI of its own** —
+Typer would breach its pydantic-plus-cryptography dependency floor (Goal 2). So anything the schema
+tier owns that a *user* needs has to surface here, and three of the four did not until 0.5.1:
+
+- `sign --private-key` demanded a key file the toolchain could not produce, and `verify --public-key`
+  demanded a string only `public_key_b64_from_pem` could derive. Signing was therefore CLI-complete
+  only for someone willing to write Python — the exact gap `verify` had been added to close, left
+  open one step upstream. `keygen` closes it; the key is unencrypted PKCS#8 (what `sign_digest`
+  reads), which is a deliberate limit rather than an oversight: this bootstraps a key, it is not key
+  management, and a passphrase prompt would imply custody guarantees nothing here provides. It
+  **refuses to overwrite** an existing key, because every signature made with the old one would stop
+  verifying and a published artifact's bytes are never mutated.
+- `authoring_reference()` had no route at all, which hurt most for the consumer that most needs it:
+  an MCP surface offering an author the valid values had to import `just_dna_format.reference` and
+  write Python. `describe` answers that for **one** table; `reference` answers it for all of them
+  plus the vocabularies, the open-vs-closed flag, `REQUIRED_ANY_OF` and the palette.
+
+**A drift the audit found in the same place.** `authoring_reference()` reported requiredness with
+pydantic's two-way `is_required()`, while `just_dna_compiler.draft` had already been fixed to the
+three-way `required` / `defaulted` / `optional` split — the middle one being the trap where
+`MeasureBinRow.measure_kind` is *not* required and *not* safely left blank either. Two surfaces
+answering one question, and the drift-proof one was the stale one. The split now lives in
+`format.base.field_category`, the only tier both can import from; the reference emits it as
+`category` beside the existing `required` key (kept, since removing a published key breaks consumers
+and `required` is insufficient rather than wrong).
+
+**Not levelled, deliberately:** `just-dna-enricher` mirrors `template` but not `stub`, `requirements`,
+`describe`, `hint` or `scaffold`. The offline authoring surface belongs to the compiler; the one
+mirror exists so a PGx author working through the enricher does not have to switch binaries for a
+header. Adding the other four would duplicate a surface that has an owner, and removing the mirror
+would break scripts for no gain.
 
 ## Coverage table (0.3 / 0.4 features)
 

@@ -10,7 +10,9 @@ Exit codes are CI/registry-gateable: `0` success, `1` failure (invalid spec / fa
     just-dna-compiler compile spec/ out/ --strict --ensembl-cache ref.duckdb
     just-dna-compiler reverse parquet_dir/ spec_out/ --version 1.2.3
     just-dna-compiler verify out/ --no-require-marketplace --public-key <base64>
+    just-dna-compiler keygen --out key.pem          # the key `sign` needs, and its public half
     just-dna-compiler sign out/ --private-key key.pem
+    just-dna-compiler reference --json              # the live authoring reference / JSON Schemas
 """
 
 import json
@@ -21,7 +23,12 @@ import typer
 from just_dna_format.integrity import IntegrityError, verify_manifest
 from just_dna_format.manifest import ModuleManifest, read_manifest, write_manifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
-from just_dna_format.signing import sign_digest
+from just_dna_format.reference import authoring_reference, json_schemas
+from just_dna_format.signing import (
+    generate_private_key_pem,
+    public_key_b64_from_pem,
+    sign_digest,
+)
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import ValidationError
 
@@ -246,6 +253,82 @@ def sign(
     typer.secho(f"signed: {module_dir / 'manifest.json'}", fg=typer.colors.GREEN)
     typer.echo(f"digest: {manifest.artifact.digest}")
     typer.echo(f"public key: {manifest.signature.public_key}")
+
+
+@app.command()
+def keygen(
+    out: Optional[Path] = typer.Option(
+        None, "--out", dir_okay=False,
+        help="Write the private key PEM here (refuses to overwrite). Omit to print it to stdout.",
+    ),
+) -> None:
+    """Generate an Ed25519 signing key: the private PEM `sign` needs, and the public key `verify` pins.
+
+    Closes the same gap `verify` was built to close, one step upstream. `verify_manifest` and the
+    signing helpers live in `just-dna-format`, which ships no CLI of its own (Typer would breach its
+    pydantic-plus-cryptography dependency floor) — so `sign --private-key` demanded a file the
+    toolchain had no way to produce, and `verify --public-key` demanded a string derivable only by
+    calling `public_key_b64_from_pem` from Python. Both halves now have a route.
+
+    The key is unencrypted PKCS#8, which is what `sign_digest` reads. That is a deliberate limit
+    rather than an oversight: this command bootstraps a key, it is not a key-management system, and
+    pretending otherwise by adding a passphrase prompt would imply custody guarantees nothing here
+    provides. A publishing key belongs in whatever secret store the publisher already runs.
+    """
+    private_key_pem = generate_private_key_pem()
+    public_key = public_key_b64_from_pem(private_key_pem)
+    if out is None:
+        typer.echo(private_key_pem.decode("ascii"), nl=False)
+        typer.secho(f"public key: {public_key}", fg=typer.colors.GREEN, err=True)
+        return
+    if out.exists():
+        # Never silently: overwriting a signing key orphans every signature made with it, and the
+        # artifacts are immutable, so there is no re-signing the ones already published.
+        typer.secho(
+            f"{out} already exists — refusing to overwrite a signing key. Every signature made with "
+            f"the old key would stop verifying, and a published artifact's bytes are never mutated.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
+    out.write_bytes(private_key_pem)
+    out.chmod(0o600)
+    typer.secho(f"private key: {out} (mode 600)", fg=typer.colors.GREEN)
+    typer.echo(f"public key: {public_key}")
+
+
+@app.command()
+def reference(
+    as_json: bool = typer.Option(
+        True, "--json/--summary", help="Full JSON (default), or a one-line-per-table summary."
+    ),
+    schemas: bool = typer.Option(
+        False, "--schemas", help="Emit the per-model JSON Schemas instead of the authoring reference."
+    ),
+) -> None:
+    """Print the authoring reference — every model's columns, vocabularies and requirements.
+
+    Generated from the live pydantic models, so it cannot drift from what the compiler accepts. That
+    is the point: it is the drift-proof replacement for a hand-kept spec dump, and the consumer that
+    most needs it (an MCP surface offering an author the valid values) had to import
+    `just_dna_format.reference` and write Python, because the schema tier ships no CLI. `describe`
+    answers the same question for **one** table; this answers it for all of them at once, plus the
+    vocabularies, the open-vs-closed flag, the `REQUIRED_ANY_OF` rules and the recommended palette.
+    """
+    payload = json_schemas() if schemas else authoring_reference()
+    if as_json:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=False))
+        return
+    if schemas:
+        for name in payload:
+            typer.echo(name)
+        return
+    typer.echo(f"schema_version: {payload['schema_version']}")
+    for model, fields in payload["models"].items():
+        required = [f["name"] for f in fields if f.get("required")]
+        typer.echo(f"{model}: {len(fields)} column(s), {len(required)} required — {', '.join(required)}")
+    typer.echo(f"vocabularies: {', '.join(payload['vocabularies'])}")
+    typer.echo(f"open/recommended: {', '.join(payload['open_recommended'])}")
+    typer.echo(f"reserved names: {', '.join(payload['reserved_names']) or '(none)'}")
 
 
 @app.command()

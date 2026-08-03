@@ -59,7 +59,7 @@ from just_dna_format.spec import (
     StudyRow,
     VariantRow,
 )
-from just_dna_format.base import authored_field_names, field_vocabularies
+from just_dna_format.base import authored_field_names, field_category, field_vocabularies
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
@@ -155,6 +155,16 @@ def _describe_model(model: type[BaseModel]) -> list[dict[str, Any]]:
             "name": name,
             "type": _type_name(field.annotation),
             "required": field.is_required(),
+            # `required` alone is pydantic's two-way answer and it is a trap for an authoring tool.
+            # `MeasureBinRow.measure_kind` and `unresolved` have defaults, so `is_required()` is
+            # False — but `_load_csv_rows` turns an empty cell into `None` and keeps the key, so the
+            # model gets `None` instead of its default and fails on type. A consumer that filled only
+            # the `required` columns produced a file the compiler refused, naming a fourth column.
+            # `just_dna_compiler.draft` was fixed to the three-way split and this surface was not,
+            # which is exactly the drift this whole module exists to prevent — so both now read
+            # `base.field_category`. `required` is kept beside it: removing a published key would
+            # break consumers, and it is not *wrong*, only insufficient on its own.
+            "category": field_category(model, name),
             "description": field.description,
         }
         # The allowed values ride on the field, so a tool building a picker reads them here instead

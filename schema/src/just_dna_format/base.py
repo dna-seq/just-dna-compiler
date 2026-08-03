@@ -25,7 +25,7 @@ Dependency-light: imports only `pydantic` + the stdlib `vocab` leaf, and nothing
 imports it back, so it introduces no cycle.
 """
 
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional, get_args
 
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator, model_validator
 
@@ -88,6 +88,33 @@ def authored_field_names(model: type[BaseModel]) -> list[str]:
 # definition time makes that drift impossible by construction.
 #
 # `sorted(...)` of `str` keeps the marker JSON-serializable, so `model_json_schema()` still builds.
+def accepts_none(annotation: Any) -> bool:
+    """Does this annotation admit `None`? (`Optional[str]` yes; a defaulted bare `str`/`bool` no.)"""
+    return annotation is type(None) or type(None) in get_args(annotation)
+
+
+def field_category(model: type[BaseModel], name: str) -> str:
+    """`required` | `defaulted` | `optional` — the three-way split an authoring surface must respect.
+
+    The middle category is the one that bites. `MeasureBinRow.measure_kind` (`str`, default
+    `"repeat_count"`) and `unresolved` (`bool`, default `False`) are *not* required, so pydantic's
+    `is_required()` says `False` — but `_load_csv_rows` turns an empty cell into `None` and **keeps
+    the key**, so the model receives `None` instead of its default and fails on type. An author who
+    filled exactly the columns a two-way `required` flag named got a rejection about a column nobody
+    had mentioned. A `defaulted` cell has to be written out with its default rather than left blank.
+
+    It lives **here** rather than in the compiler because two surfaces answer this question and they
+    drifted: `just_dna_compiler.draft` was fixed to the three-way split and `reference.authoring_reference`
+    — the drift-proof description consumers render *instead of* a hand-kept spec dump — was still
+    emitting the two-way one. Both now read this. The format tier is the only place both can import
+    from, and this needs nothing but pydantic.
+    """
+    field = model.model_fields[name]
+    if field.is_required():
+        return "required"
+    return "optional" if accepts_none(field.annotation) else "defaulted"
+
+
 def vocabulary(name: str, options: frozenset[str], *, closed: bool = True) -> dict[str, object]:
     """Mark a field as drawn from `options`, for tools that offer an author the valid values.
 

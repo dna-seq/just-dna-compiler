@@ -40,9 +40,9 @@ nothing. `DraftReport.shifted` names every row whose line moved.
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence, get_args
+from typing import Any, Callable, Optional, Sequence
 
-from just_dna_format.base import authored_field_names
+from just_dna_format.base import authored_field_names, field_category as base_field_category
 from just_dna_format.binning import MeasureBinRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -180,26 +180,11 @@ def required_fields(csv_name: str) -> list[str]:
     ]
 
 
-def field_category(model: type[BaseModel], name: str) -> str:
-    """`required` | `defaulted` | `optional` — the three-way split a template has to respect.
-
-    The middle category is the one that bites, and it is why `blank_template` alone was a trap. A
-    field like `MeasureBinRow.measure_kind` (`str`, default `"repeat_count"`) or `unresolved` (`bool`,
-    default `False`) is *not* required, so `required_fields` never named it — but `_load_csv_rows`
-    turns an empty cell into `None` and **keeps the key**, so the model receives `None` rather than
-    its default and fails on type. An author who filled exactly the columns they were told to fill
-    got `Input should be a valid string [input_value=None]` about a column nobody mentioned.
-
-    A `defaulted` cell must therefore be written out with its default rather than left blank."""
-    field = model.model_fields[name]
-    if field.is_required():
-        return "required"
-    return "optional" if _accepts_none(field.annotation) else "defaulted"
-
-
-def _accepts_none(annotation: Any) -> bool:
-    """Does this annotation admit `None`? (`Optional[str]` yes; a defaulted bare `str`/`bool` no.)"""
-    return annotation is type(None) or type(None) in get_args(annotation)
+#: Re-bound from `just_dna_format.base`, where the three-way split now lives so that this module and
+#: `reference.authoring_reference` cannot answer the same question differently — they did, and the
+#: reference was the one still emitting pydantic's two-way `is_required()`. Kept as a name here
+#: because it is part of this module's documented surface.
+field_category = base_field_category
 
 
 def authoring_requirements(csv_name: str) -> dict[str, Any]:
