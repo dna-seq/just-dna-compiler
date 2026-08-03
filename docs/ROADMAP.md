@@ -116,6 +116,16 @@ ClinVar → `variants.csv`) plus CPIC prescribing recommendations; **RM30**; a c
 star alleles used but never defined; and three reference examples authored end to end with the
 surface (`hfe_hemochromatosis`, `cyp2c19_star_alleles`, `apoe_epsilon`).
 
+**Also shipped in 0.5.1** (the 2026-08-03 round): the **ACMG SF cross-check** (above), **RM29**'s
+three cofactor columns, **RM28**'s cis/trans case closed as a compiler check, the **CLI/API parity**
+pass (`keygen`, `reference`, and one requiredness definition shared by `draft` and the authoring
+reference), and four adversarial reference examples with the defects each exposed —
+`hfe_compound_het`, `shox_par1`, `mt_heteroplasmy`, plus the CYP2D6 probe. The fixes those produced:
+the non-diploid guardrail made coordinate-aware and PAR-aware in both directions; `variant_key`
+re-derived against the module's declared build (a GRCh37 module was minting GRCh38 VRS ids);
+`HeteroplasmyRow` gaining a variant identity; live Ensembl reaching `hint variant`; and three walls of
+un-aggregated warnings collapsed. What they surfaced rather than fixed is **RM31–RM35** below.
+
 **The ACMG SF cross-check — ✅ shipped (0.5.1), as the guarded scrape.** Re-probed 2026-08-03 and the
 data file still does not exist: ClinGen's FTP publishes gene-curation, region-curation, dosage and
 recurrent-CNV lists and **no secondary-findings list**, and ClinVar's FTP tree carries no ACMG flag

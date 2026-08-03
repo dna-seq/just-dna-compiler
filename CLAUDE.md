@@ -393,6 +393,34 @@ CHANGELOG entry).
   `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
   is `data/interim/clinvar`. `resolution.csv` is provisional in 0.5, so `artifact.digest` changes for
   alt-bearing coordinate modules are acceptable pre-freeze.
+- **A row is stamped before the module is known — so anything build-dependent must be re-derived by
+  the compiler.** `VariantRow._freeze_identity` runs at construction, where `module_spec.yaml` is not
+  in scope, so it always took `derive_variant_key`'s GRCh38 default. A `genome_build: GRCh37` module
+  therefore minted GRCh38 VRS ids, silently, for years of the design — the `build` parameter and its
+  fall-through-rather-than-lie guard both existed and were simply never reached.
+  `compiler._restamp_for_build` fixes it after load, at **both** load sites (`validate_spec` and
+  `compile_module` each read their own copy; fixing one leaves the artifact wrong). When adding
+  anything else that depends on the spec, check whether the model can possibly know it.
+- **A warning computed post-resolution is discarded — the second `_cross_validate_variants` call takes
+  errors only.** That is right for a warning about authored cells and wrong for any whose input
+  resolution fills. It made the non-diploid guardrail invisible to every rsID-authored row, i.e. to
+  everything a drafting provider emits. `_check_contig_ploidy` now runs where `chrom` is final and
+  keeps a pass inside `validate_spec` (which has no resolution step), de-duplicated on the message.
+- **`chrom=Y` is NOT "never diploid" — PAR1 and PAR2 are diploid in every karyotype.**
+  `vrs.in_pseudoautosomal_region` is three-valued and `vrs.PAR_GRCh38` holds the intervals; they are
+  assembly constants of the same class as `REFGET_GRCh38`, not an un-injected reference. A PAR rsID
+  (`rs6603251` → X:359845 **and** Y:359845) also expands to two rows the author never chose — one
+  place, two contigs, tracked as RM32.
+- **`genotype_fits` compares allele STRINGS, so one indel spelled two ways does not match.** ClinVar's
+  `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion; the row resolves to
+  `not_found`. The message names both readings now and must keep doing so — it used to assert "a
+  different variant sharing the rsID", sending an author after a dbSNP merge that does not exist.
+  Normalization is RM31 and is not a small change: the predicate is shared with the reference-less
+  compiler.
+- **Before adding a table-level check, ask whether its rules are jointly satisfiable.** Inclusive
+  bounds + overlap-is-an-error + any-hole-is-a-warning cannot all hold on a continuous measure, so
+  every `allele_fraction` table warns forever (RM35). Integer kinds tile cleanly, which is why nobody
+  noticed.
 
 ## The design cycle (the order of things)
 
@@ -552,6 +580,40 @@ cycle* in `USE_CASES.md`.
   missing?* So do not "verify the tool's answers" with a second, independent implementation while
   dogfooding; that is a test, and it belongs in the suite. Use the tool, notice the friction, and
   write down what was not there.
+- **The adversarial role, and why it pays.** Dogfooding finds friction; the sharper yield comes from
+  switching roles deliberately — *be a beta-tester trying to show the libraries fail at something they
+  advertise*, then switch back and fix. Two rules keep it honest, and both matter. **Attack claims,
+  not gaps**: a documented deferral (RM5's symbolic alleles, VRS-for-indels) is a decision, and
+  "finding" it proves nothing; what counts is where a docstring, a comment or a doc *promises*
+  something the code does not do. **Use real data**: no `rs999999999`, no `e-328`. Every finding of
+  the 2026-08-03 round came from a real gene, and each is a sentence that quotes the code's own claim
+  back at it — `vrs.py` promised "GRCh38 and GRCh37 mint distinct, correctly non-colliding ids" while
+  a GRCh37 module minted GRCh38 ids; a comment called `chrom=Y` "the false-positive-free half" while
+  PAR1 is diploid in everyone; `draft-panel` asked for a `genotype` and supplied neither `ref` nor
+  `alts`.
+- **Pick the probe by where the schema generalized from one case.** The two blocking defects that
+  round were both "the documented example only ever showed one": `REFERENCE_EXAMPLES.md` §4 shows one
+  MT variant per gene, so `HeteroplasmyRow` keyed on the gene and a second real MELAS variant made the
+  module uncompilable; the binning bounds were generalized from integer kinds, so a continuous measure
+  turned out to be untileable (RM35). Choose a real case with **two** of whatever the example has one
+  of, and a case at the edge of a stated convention (a PAR locus for "Y is not diploid", a non-GRCh38
+  build for "the key names its build").
+- **Turn the tool on the work you just did.** A check written in the morning is the best candidate for
+  the afternoon's probe, and it will be wrong in a way its tests were not. The phase-ambiguity check
+  shipped, then reported 595 ambiguities in a CYP2C19 module that has none (grouped by row instead of
+  by haplotype pair), then — once fixed — told CYP2D6 authors that phase would resolve alleles the
+  module defines *identically*, which phase cannot. Both were found by running it on a real 16k-row
+  module, neither by re-reading it.
+- **Finish each probe as a reference example with a README that names what it broke.** The module is
+  the regression test and the README is the evidence; a finding recorded only in a commit message is
+  not reproducible. Keep the failing observation in the test suite by demonstrating it on the *old*
+  behaviour (strip the column, watch the compiler reject the real rows) rather than asserting that it
+  used to fail.
+- **Separate "fix it" from "surface it" before writing any code, and be strict about the line.** Fix a
+  false claim, a misdiagnosis, a wall of un-aggregated warnings, a guard that is never reached. Surface
+  anything where the obvious repair is itself a design decision — and say *why each candidate repair is
+  wrong*, because that is the part that makes the item actionable later. RM31/32/33/35 each carry that
+  paragraph; RM33's is the cleanest, since one of its two obvious fixes is charter-illegal.
 - **Dogfood a P7/dedup finding before you report it — construct a *real, sensible* example against
   the actual code paths, or it is not a finding.** A round-trip/dedup "loss" that is mechanically
   possible but has no real instantiation is noise; walk the data model with a biologist's eye before
