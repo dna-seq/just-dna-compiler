@@ -45,6 +45,7 @@ from just_dna_enricher.identifiers import (
     check_rsids,
 )
 from just_dna_enricher.literature import CrossrefClient, EuropePmcClient, _identifiers
+from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 
@@ -83,9 +84,12 @@ class LookupClients:
     europepmc: Optional[EuropePmcClient] = None
     crossref: Optional[CrossrefClient] = None
     ontology: Optional[OntologyClient] = None
+    ensembl: Optional[EnsemblResolver] = None
 
     def close(self) -> None:
-        for client in (self.gnomad, self.eutils, self.europepmc, self.crossref, self.ontology):
+        for client in (
+            self.gnomad, self.eutils, self.europepmc, self.crossref, self.ontology, self.ensembl,
+        ):
             closer = getattr(client, "close", None)
             if closer is not None:
                 closer()
@@ -181,6 +185,13 @@ def lookup_variant(
 
     _lookup_from_cache(hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache)
     if not offline:
+        # The live coordinate link, in `enrich()`'s own order: caches first, live Ensembl for what
+        # they missed. Without it this surface was *silently weaker than the pass it advises on* —
+        # `hint variant --rsid rs1799945` answered "not found in Ensembl, position remains unset"
+        # for a variant live Ensembl serves at 6:26090951, because the only thing it had ever
+        # searched was a local snapshot that did not contain it. An advisory tool that answers "no"
+        # where the pass it advises on answers "6:26090951" is worse than one that answers nothing.
+        _lookup_live_loci(hint, rsid, clients)
         _check_rsid_currency(hint, rsid, clients)
         if frequencies:
             _lookup_frequencies(hint, clients)
@@ -257,6 +268,37 @@ def _lookup_from_cache(
                 "clinvar build` / the Ensembl cache)",
             )
         )
+
+
+def _lookup_live_loci(hint: VariantHint, rsid: Optional[str], clients: LookupClients) -> None:
+    """Live Ensembl (V2 GraphQL → V1 REST) for an rsID no local snapshot resolved.
+
+    Runs **only** on a cache miss, so a provisioned snapshot still answers without egress and the
+    order matches `enrich()`'s. Reports the source it came from, because a locus from the network and
+    a locus from a pinned snapshot are not equally reproducible and the author should know which they
+    have. A failure is a finding, never an exception — nothing here is load-bearing enough to fail a
+    question, and `EnsemblResolver.resolve_rsid` already swallows its own transport errors into an
+    empty result.
+    """
+    if not rsid or hint.loci:
+        return
+    if clients.ensembl is None:
+        clients.ensembl = EnsemblResolver()
+    loci, source = clients.ensembl.resolve_rsid(rsid)
+    if not loci:
+        hint.findings.append(
+            Finding(None, None, "info", f"{rsid}: live Ensembl has no GRCh38 locus for it either")
+        )
+        return
+    hint.checked.add(source or "ensembl-live")
+    hint.loci.extend(loci)
+    hint.findings.append(
+        Finding(
+            None, None, "info",
+            f"{rsid}: {len(loci)} locus/loci from live {source} — not from a pinned snapshot, so "
+            f"re-running may differ as Ensembl advances",
+        )
+    )
 
 
 def _check_rsid_currency(hint: VariantHint, rsid: Optional[str], clients: LookupClients) -> None:
@@ -367,10 +409,18 @@ def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Optional[Path]) -> None:
 
 
 def _offer_coordinates(hint: VariantHint) -> None:
-    """Offer the resolved coordinate as advisory, and say plainly why it is not filled in."""
+    """Offer the resolved coordinate as advisory, and say plainly why it is not filled in.
+
+    The `source` is whichever link actually answered. It was hard-coded to `"snapshot"`, which became
+    a lie the moment the live link landed: a coordinate from live Ensembl was labelled as coming from
+    a pinned snapshot, in the one field an author reads to decide how reproducible the answer is.
+    """
     if len(hint.loci) != 1:
         return  # more than one locus is a choice, not an answer; zero is nothing to offer
     locus = hint.loci[0]
+    source = next(
+        (name for name in sorted(hint.checked) if name.startswith("ensembl-")), "snapshot"
+    )
     for column in ("chrom", "start", "ref", "alts"):
         value = locus.get(column)
         if value in (None, ""):
@@ -379,7 +429,7 @@ def _offer_coordinates(hint: VariantHint) -> None:
             _advisory(
                 column,
                 str(value),
-                "snapshot",
+                source,
                 "resolution fills this into resolution.csv, which is where it belongs: authoring it "
                 "instead would make the compiler's rsid-vs-coordinate check compare a source with "
                 "itself, and for an rsid-only row that check would not run at all",

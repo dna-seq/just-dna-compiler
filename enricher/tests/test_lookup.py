@@ -82,6 +82,76 @@ def test_a_missing_snapshot_is_reported_not_raised(tmp_path: Path) -> None:
     assert isinstance(hint.rsid_candidates, list)
 
 
+class _FakeEnsembl:
+    """An `EnsemblResolver` stand-in. `resolve_rsid` returns the same `(loci, source)` shape."""
+
+    def __init__(self, loci: list[dict], source: str = "ensembl-rest") -> None:
+        self.loci = loci
+        self.source = source
+        self.asked: list[str] = []
+
+    def resolve_rsid(self, rsid: str) -> tuple[list[dict], Optional[str]]:
+        self.asked.append(rsid)
+        return (list(self.loci), self.source) if self.loci else ([], None)
+
+    def close(self) -> None:  # pragma: no cover - nothing to release
+        pass
+
+
+_H63D = {"chrom": "6", "start": 26090951, "ref": "C", "alts": "G,T"}
+
+
+def test_a_cache_miss_falls_through_to_live_ensembl(tmp_path: Path) -> None:
+    """Found by dogfooding: `hint` searched only the local snapshot and then said "not found in
+    Ensembl". rs1799945 (HFE H63D) is served by Ensembl at 6:26090951 and was absent from the
+    snapshot, so an advisory tool answered "no locus" where the pass it advises on answers a
+    coordinate."""
+    ensembl = _FakeEnsembl([_H63D])
+    hint = lookup_variant(
+        rsid="rs1799945", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=ensembl, eutils=_FakeEutils({})),
+    )
+    assert ensembl.asked == ["rs1799945"]
+    assert hint.loci == [_H63D]
+
+
+def test_the_live_locus_is_labelled_live_and_not_as_a_snapshot(tmp_path: Path) -> None:
+    """The provenance field is what an author reads to judge reproducibility, and it was hard-coded
+    to `snapshot` — so a network answer claimed to come from a pinned file."""
+    hint = lookup_variant(
+        rsid="rs1799945", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=_FakeEnsembl([_H63D]), eutils=_FakeEutils({})),
+    )
+    offered = {row["column"]: row for row in as_report_rows(hint)}
+    assert {"chrom", "start", "ref", "alts"} <= set(offered)
+    assert {row["source"] for row in offered.values()} == {"ensembl-rest"}
+    # Still advisory: a live answer is not a licence to fill a redundancy-bearing cell.
+    assert all(row["applied"] is False for row in offered.values())
+
+
+def test_a_snapshot_hit_does_not_reach_the_network(tmp_path: Path) -> None:
+    """Cache first, live only for a miss — `enrich()`'s order, so a provisioned snapshot costs
+    nothing and the two surfaces cannot disagree about where an answer came from."""
+    ensembl = _FakeEnsembl([_H63D])
+    hint = lookup_variant(
+        rsid="rs1799945", offline=True, ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=ensembl),
+    )
+    assert ensembl.asked == [] and hint.loci == []
+
+
+def test_live_ensembl_not_knowing_it_either_is_said_plainly(tmp_path: Path) -> None:
+    ensembl = _FakeEnsembl([])
+    hint = lookup_variant(
+        rsid="rs2000000000", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=ensembl, eutils=_FakeEutils({})),
+    )
+    assert hint.loci == []
+    assert any("live Ensembl has no GRCh38 locus" in f.message for f in hint.findings)
+    # And the snapshot finding no longer claims to speak for Ensembl.
+    assert not any("not found in Ensembl" in f.message for f in hint.findings)
+
+
 def test_a_known_pmid_offers_its_doi_but_never_applies_it() -> None:
     """The DOI arrives free with the existence check — and is exactly what
     `literature._doi_conflicts` compares the authored one against, so it stays advisory."""

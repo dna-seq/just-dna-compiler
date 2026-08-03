@@ -326,6 +326,41 @@ PGx tables accept any name, so `e4` is legal in two tables and illegal in the th
 not blocked — an ε allele has no CPIC activity value, so the module carries no allele-function table
 — but a non-star haplotype gene could never carry one.
 
+## 2c. HFE C282Y/H63D — cis, trans, and what a table cannot say
+
+Compiled example: [`reference_examples/hfe_compound_het/`](../reference_examples/hfe_compound_het/).
+The companion probe to §2b, aimed at the half APOE left open. **Compound heterozygosity — the same two
+alleles meaning opposite things depending on which chromosome each sits on — was the case that most
+justified RM28's predicate grammar.** It needs none either.
+
+A **diplotype is already a statement about two homologs.** `haplotypes.csv` says which alleles ride
+together on one chromosome (§2b's finding) and `diplotypes.csv` pairs two of them, which is exactly
+what "in trans" means. So four haplotypes over two real HFE variants —
+
+| haplotype | rs1800562 (6:26092913 G>·) | rs1799945 (6:26090951 C>·) |
+|---|---|---|
+| `wt` | G | C |
+| `C282Y` | **A** | C |
+| `H63D` | G | **G** |
+| `C282Y-H63D` | **A** | **G** |
+
+— give `C282Y`/`H63D` as the **trans** compound heterozygote (no wild-type protein from either copy,
+an at-risk genotype) and `C282Y-H63D`/`wt` as the **cis** case (one intact copy remains, a carrier).
+Two rows, no grammar, and the relational notion the proposal was going to add is what a diplotype pair
+*is*. Copy §2b's habit again: `wt` writes out its reference alleles rather than being implicit.
+
+**What building it surfaced is the useful part.** Nothing said those two rows are indistinguishable
+without phase — identical unphased genotype, opposite conclusions, and nearly all consumer data is
+unphased. Silently reporting the first manufactures a finding; silently reporting the second
+suppresses one. It is derivable from the two tables, so it became a compiler warning
+(`_cross_validate_phase_ambiguity`) rather than a `requires_phase` column an author would have to keep
+in sync by hand. Compiling this module emits exactly one, and the other six rows are clean.
+
+The conclusions are deliberately hedged — HFE penetrance is incomplete and heavily modified by sex,
+age, alcohol and blood loss — and no row claims secondary-findings reportability, because ACMG SF v3.2
+scopes HFE to *"c.845G>A; p.C282Y homozygotes only"*, narrower than the gene and narrower than this
+module.
+
 ## 9c. CYP2C19 — star alleles drafted from CPIC, curated by removal
 
 Compiled example: [`reference_examples/cyp2c19_star_alleles/`](../reference_examples/cyp2c19_star_alleles/).

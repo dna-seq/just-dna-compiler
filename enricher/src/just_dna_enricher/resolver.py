@@ -335,7 +335,15 @@ def _lookup_positions_by_rsid(
         )
     for rsid in rsids:
         if rsid not in result:
-            warnings.append(f"{rsid}: not found in Ensembl, position remains unset")
+            # "in the injected snapshot", not "in Ensembl". Inside `enrich()` the distinction was
+            # harmless because a live link follows and fills the gap; as the *last* word — which is
+            # what it is for `lookup_variant` — it asserted that Ensembl does not know a variant
+            # Ensembl serves perfectly well (rs1799945, HFE H63D, is at 6:26090951 live and absent
+            # from a partial snapshot). Naming the thing that was actually searched is the difference
+            # between "we did not look there" and "it is not there".
+            warnings.append(
+                f"{rsid}: not in the injected Ensembl snapshot, position remains unset"
+            )
     return dict(result)
 
 

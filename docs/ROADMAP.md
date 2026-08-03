@@ -290,7 +290,31 @@ two pathogenic variants in trans" over 300 of them is ~45,000 pairs, expressible
 and unreadable — and (b) **open-world negation**, which no operator fixes: "no pathogenic variant
 in this gene" quantifies over a set the module does not close, and absence is only assertable where
 the region was callable (`requires_callable`). A negation feature ignoring that would manufacture
-reassurance, the worst failure mode this format has. Waits on a corpus to generalize from — roughly 70% built; nutrigenomics
+reassurance, the worst failure mode this format has.
+
+**Probed again 2026-08-03, and the cis/trans motivation is now closed — as a check, not a table.**
+`reference_examples/hfe_compound_het/` builds the case that most justified the predicate grammar:
+HFE C282Y and H63D, where the same two heterozygous calls mean *compound heterozygote, at-risk* in
+trans and *carrier* in cis. It needs no new machinery either. A **diplotype is already a statement
+about two homologs** — `haplotypes.csv` says which alleles ride together on one chromosome and
+`diplotypes.csv` pairs two of them, which is what "in trans" means — so cis and trans are two rows,
+and the relational notion the proposal was going to add to the grammar is what a diplotype pair *is*.
+Between this and APOE, **both** halves of the phase argument are now answered by the existing tables.
+
+What building it *did* surface is narrower and real: nothing said the two rows are
+**indistinguishable without phase**. They present the identical unphased genotype with opposite
+conclusions, and nearly all consumer data is unphased. That is derivable from the two tables the
+compiler already holds, so it shipped as `_cross_validate_phase_ambiguity` — a warning, never a block.
+A `requires_phase` column was rejected: it would make an author restate what the data determines and
+would go stale the moment a haplotype is edited. It is closed-world by design (it compares stated rows,
+never omitted ones), which is why APOE — whose ε2/ε4 vs ε1/ε3 is the textbook collision — stays quiet:
+the module carries no ε1.
+
+**So what remains of RM28 is smaller again**, and is the same two items APOE named: pairing across
+*subjects* (no table keys on more than one), and **economy** — "any two pathogenic variants in trans"
+over 300 of them is ~45,000 pairs, expressible and unwritable — plus open-world negation, which is not
+an operator problem. RM29 removed two of the three cofactor classes into columns in the same round, so
+only ancestry stays genuinely injected. Still parked. It waits on a corpus to generalize from — roughly 70% built; nutrigenomics
 and supplements do not exist yet — because fixing a shape against four table kinds and then meeting
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
 | format (schema + compiler) | combination annotations; disclosure policy | medium (after the corpus) |

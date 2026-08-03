@@ -800,6 +800,21 @@ own `PacingGate` — gnomAD is one request per six seconds — and a fresh clien
 both the pacing state and the connection pool. And `--offline` yields `unchecked`, never `absent`:
 a check that could not run is not a check that passed, and `None` is not `False` anywhere in the file.
 
+**A cache miss falls through to live Ensembl (0.5.1), and until it did this surface was silently
+weaker than the pass it advises on.** `hint variant --rsid rs1799945` answered *"not found in Ensembl,
+position remains unset"* for HFE H63D — which live Ensembl serves at 6:26090951 — because the only
+thing it had ever searched was a local snapshot that did not contain it. Two things were wrong and both
+are fixed: the live link (V2 GraphQL → V1 REST) now runs on a miss, in `enrich()`'s own order so a
+provisioned snapshot still costs no egress; and the snapshot's own warning stopped speaking for
+Ensembl, saying *"not in the injected Ensembl snapshot"* — the thing it actually searched. Naming the
+searched thing is the difference between "we did not look there" and "it is not there".
+
+A live locus is **labelled live**. The advisory rows were hard-coded to `source="snapshot"`, which
+became a lie the moment the live route landed: a network answer claimed to come from a pinned file, in
+the one field an author reads to judge how reproducible the answer is. They now carry
+`ensembl-graphql`/`ensembl-rest`, and a finding says re-running may differ as Ensembl advances. It is
+still advisory — a live answer is not a licence to fill a redundancy-bearing cell.
+
 ### Generation is not automatic
 
 The PGx tables are *authored* `_TABLE_KINDS`, not fact sidecars: they carry `AuthoredModel` semantics,

@@ -841,6 +841,116 @@ def _cross_validate_haplotype_definitions(
     ]
 
 
+#: An allele a haplotype does not mention — or mentions as its own reference base. The letter never
+#: has to be known: "unmentioned" means the same thing for every haplotype at a given variant, so two
+#: haplotype sets can be compared without a reference sequence anywhere in the compiler (P2).
+_IMPLIED_REFERENCE = "\0ref"
+
+
+def _unphased_signature(
+    pair: tuple[str, str], definitions: dict[str, dict[tuple, str]], variants: list[tuple]
+) -> tuple:
+    """The genotype a consumer *observes* for a diplotype, with phase discarded.
+
+    Per variant, the **sorted pair** of alleles the two haplotypes contribute — sorted because that
+    is precisely what losing phase does: it tells you which two alleles are present and not which
+    chromosome each sits on.
+    """
+    return tuple(
+        tuple(sorted((
+            definitions.get(pair[0], {}).get(variant, _IMPLIED_REFERENCE),
+            definitions.get(pair[1], {}).get(variant, _IMPLIED_REFERENCE),
+        )))
+        for variant in variants
+    )
+
+
+def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]) -> list[str]:
+    """Warn when two diplotype rows are indistinguishable without phase and disagree. Warnings only.
+
+    **The narrow, real residue of RM28's cis/trans motivation.** Compound heterozygosity is the case
+    that most justified a predicate language, and it turns out to need none: `haplotypes.csv` is a
+    junction table so a haplotype is same-strand conjunction, and a *diplotype* is a statement about
+    two homologs — so cis and trans are already two rows. `reference_examples/hfe_compound_het/`
+    writes exactly that, with the bricks that shipped in 0.4.
+
+    What no table can say is that the two rows **cannot be told apart from unphased data**. HFE
+    `C282Y/H63D` (in trans, no wild-type protein on either chromosome, an at-risk genotype) and
+    `C282Y-H63D` + `wt` (both variants on one chromosome, one intact copy, a carrier) present the
+    identical unphased genotype — rs1800562 G/A and rs1799945 C/G — and carry opposite conclusions.
+    A consumer with unphased calls that silently picks the first would manufacture a finding; picking
+    the second would suppress one.
+
+    It is a **check** rather than a column because it is derivable: the compiler already holds both
+    tables and the computation is pure and offline, which is the validate-by-redundancy class this
+    tier exists for. Adding a `requires_phase` column instead would make an author restate something
+    the data already determines, and it would go stale the moment a haplotype is edited.
+
+    **Closed-world, and deliberately so.** It compares the rows a module states, never the rows it
+    omits. APOE is the standing illustration: ε2/ε4 and ε1/ε3 are the textbook unphased collision, and
+    `reference_examples/apoe_epsilon/` carries no ε1, so nothing here fires. That is correct — the
+    module makes no claim about ε1 — and the neighbouring "used but not defined" check is what covers
+    an allele a caller might emit that the module never describes.
+
+    A haplotype that does not mention a variant is treated as carrying the reference there, and an
+    allele explicitly equal to the row's own `ref` normalizes to the same sentinel. Neither needs the
+    reference *sequence*: only that "unmentioned" means one thing. That is what lets this run on a
+    CPIC-drafted table, where haplotypes are sparse and `ref` is absent entirely — and on such a table
+    it correctly finds nothing, because sparse definitions genuinely do not collide.
+    """
+    if not haplotypes or not diplotypes:
+        return []
+
+    definitions: dict[str, dict[tuple, str]] = {}
+    variants: list[tuple] = []
+    for row in haplotypes:
+        # Position-level, and *without* `alts`: a haplotype names one allele at a locus, so the key
+        # must be the place. Passing `alts` would mint a per-allele VRS id and put each haplotype's
+        # own allele in a different bucket, which is the mixing-up `derive_variant_key` warns about.
+        variant = derive_variant_key(row.rsid, row.chrom, row.start, row.ref)
+        if variant is None:
+            continue
+        if variant not in definitions.get(row.haplotype_name, {}) and variant not in variants:
+            variants.append(variant)
+        allele = _IMPLIED_REFERENCE if row.ref is not None and row.allele == row.ref else row.allele
+        definitions.setdefault(row.haplotype_name, {})[variant] = allele
+
+    # A diplotype naming a haplotype `haplotypes.csv` never defines has no signature to compute —
+    # every one of its variants would read as reference, which is a claim rather than a computation.
+    # That case already has its own warning; here it is simply skipped.
+    by_signature: dict[tuple, list[Any]] = {}
+    for row in diplotypes:
+        pair = (row.haplotype_a, row.haplotype_b)
+        if not all(name in definitions for name in pair):
+            continue
+        by_signature.setdefault(
+            (row.gene, _unphased_signature(pair, definitions, variants)), []
+        ).append(row)
+
+    warnings: list[str] = []
+    for (gene, _signature), rows in by_signature.items():
+        # **Distinct haplotype PAIRS, not distinct rows** — the bug the first draft shipped, caught by
+        # compiling the real CYP2C19 example. One pair legitimately carries many rows: the dedup key
+        # is (gene, a, b, trait_efo_id, drug, clinical_context), so `*10/*10` has a row per drug and
+        # per clinical context, all with the same signature by construction and different conclusions
+        # by design. Flagging those reported 595 phase ambiguities in a module that has none, and the
+        # message named the same pair twice, which is what gave it away.
+        pairs = sorted({(row.haplotype_a, row.haplotype_b) for row in rows})
+        if len(pairs) < 2:
+            continue
+        # Two *different* pairs that state the same thing are harmless — a consumer reporting either
+        # is right. Only a disagreement is a finding.
+        if len({(row.conclusion, row.phenotype, row.direction, row.clin_sig) for row in rows}) < 2:
+            continue
+        named = ", ".join(f"{a}/{b}" for a, b in pairs)
+        warnings.append(
+            f"{gene}: diplotype rows {named} are indistinguishable without phase — they present the "
+            f"same unphased genotype but state different conclusions. A consumer with unphased calls "
+            f"must withhold rather than pick one; a phased consumer resolves it."
+        )
+    return warnings
+
+
 def _cross_validate_studies(
     studies: list[StudyRow], variants: list[VariantRow]
 ) -> tuple[list[str], list[str]]:
@@ -1011,6 +1121,12 @@ def validate_spec(
         _cross_validate_haplotype_definitions(
             loaded_kinds.get("haplotypes.csv", []),
             loaded_kinds.get("allele_function.csv", []),
+            loaded_kinds.get("diplotypes.csv", []),
+        )
+    )
+    all_warnings.extend(
+        _cross_validate_phase_ambiguity(
+            loaded_kinds.get("haplotypes.csv", []),
             loaded_kinds.get("diplotypes.csv", []),
         )
     )

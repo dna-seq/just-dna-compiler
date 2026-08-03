@@ -84,8 +84,32 @@ detectable without any reference. This is where most real authoring bugs are cau
 | MT/Y two-allele genotype | ploidy contradicts the contig | warning |
 | study / frequency / gene-metrics / literature orphans | the sidecar describes something the module lacks | warning |
 | star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it | warning |
+| **phase-ambiguous diplotypes** (0.5.1) | two *different* haplotype pairs whose unphased genotype is identical while their conclusions differ | warning |
 
-Two of these deserve their reasoning rather than just their row.
+Three of these deserve their reasoning rather than just their row.
+
+**The phase-ambiguity check is RM28's cis/trans motivation, closed by computation rather than by a
+grammar.** Compound heterozygosity is the case that most justified a predicate language, and
+`reference_examples/hfe_compound_het/` shows it needs none: a **diplotype is already a statement about
+two homologs**, so HFE `C282Y`/`H63D` (in trans, at-risk) and `C282Y-H63D`/`wt` (in cis, a carrier) are
+simply two rows. What no table can say is that a consumer without phase **cannot tell them apart** —
+they present the identical unphased genotype (rs1800562 G/A, rs1799945 C/G) and disagree about what it
+means, and nearly all consumer data is unphased.
+
+That is derivable from tables the compiler already holds, which is what makes it a check rather than a
+`requires_phase` column: a column would restate what the data determines and go stale the moment a
+haplotype is edited. The signature is, per variant, the **sorted pair** of alleles the two haplotypes
+contribute — sorted because that is precisely what losing phase does. An unmentioned variant reads as
+the implied reference, and an allele explicitly equal to the row's own `ref` normalizes to the same
+sentinel; neither needs the reference *sequence*, only that "unmentioned" means one thing. So it runs
+unchanged on a CPIC-drafted table where haplotypes are sparse and `ref` is absent — and correctly finds
+nothing there.
+
+Two boundaries. It compares **distinct haplotype pairs**, never distinct rows: the dedup key admits a
+row per drug and per `clinical_context` for one pair, and grouping on rows reported 595 ambiguities in
+a CYP2C19 module that has none. And it is **closed-world** — it compares the rows a module states, not
+the ones it omits, which is why APOE stays quiet despite ε2/ε4 vs ε1/ε3 being the textbook collision:
+that module carries no ε1. The neighbouring "used but not defined" warning covers that side.
 
 **The allele-membership checks never escalate to an unconditional error, and the tempting version is
 wrong.** An authored `ref`+`alts` contradicting the row's own genotype looks decidable here — but

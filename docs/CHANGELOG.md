@@ -5,6 +5,57 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: RM28's cis/trans case, closed by a check rather than a grammar
+
+RM28's proposal says the demand for a predicate language "has to come from a module somebody actually
+failed to write". So one was written. `reference_examples/hfe_compound_het/` builds the case that most
+justified the grammar — HFE C282Y and H63D, where the same two heterozygous calls mean *compound
+heterozygote, at-risk* in trans and *carrier* in cis — and it needs no new machinery.
+
+**A diplotype is already a statement about two homologs.** `haplotypes.csv` says which alleles ride
+together on one chromosome (which is what `apoe_epsilon` established) and `diplotypes.csv` pairs two of
+them, which is what "in trans" means. `C282Y`/`H63D` and `C282Y-H63D`/`wt` are two rows with bricks
+that shipped in 0.4. The single relational notion the proposal was going to add to the grammar — in-cis
+/ in-trans — is what a diplotype pair *is*. Between this and APOE, both halves of the phase argument
+are now answered by the existing tables.
+
+**What building it surfaced is the real finding.** Nothing said those two rows are indistinguishable
+without phase. They present the identical unphased genotype (rs1800562 G/A, rs1799945 C/G) and carry
+opposite conclusions, and nearly all consumer genotype data is unphased: reporting the first
+manufactures an at-risk finding, reporting the second suppresses one. Derivable from tables the
+compiler already holds, so it shipped as `_cross_validate_phase_ambiguity` — a warning, never a block.
+
+A `requires_phase` column was rejected. It would make an author restate what the data already
+determines and go stale the moment a haplotype is edited; this is the validate-by-redundancy class,
+not a schema gap. The signature is, per variant, the **sorted pair** of alleles the two haplotypes
+contribute — sorted because that is precisely what losing phase does. An unmentioned variant reads as
+the implied reference and an allele equal to the row's own `ref` normalizes to the same sentinel, so
+no reference *sequence* is needed anywhere (P2): it runs unchanged on a CPIC-drafted table where
+haplotypes are sparse and `ref` is absent, and correctly finds nothing there.
+
+**Dogfooding the check immediately killed the first version of it.** Grouping on rows rather than on
+distinct haplotype *pairs* reported **595 phase ambiguities in the CYP2C19 example, which has none** —
+one pair legitimately carries a row per drug and per `clinical_context`, so those share a signature by
+construction and differ in conclusion by design. The messages named the same pair twice, which is what
+gave it away. Kept as a regression test. Zero findings now across APOE, CYP2C19, SLCO1B1 and a
+2,664-row CPIC clopidogrel draft; one on the module built to have one.
+
+**Two side-defects, found by dogfooding and fixed.** `just-dna-enricher hint variant --rsid rs1799945`
+answered *"not found in Ensembl, position remains unset"* for a variant live Ensembl serves at
+6:26090951 — the surface had **no live coordinate route at all**, only the local snapshot, so an
+advisory tool answered "no" where the pass it advises on answers a coordinate. Live Ensembl (V2→V1) now
+runs on a cache miss, in `enrich()`'s own order, so a provisioned snapshot still costs no egress. And
+the snapshot's own message stopped speaking for Ensembl: it says *"not in the injected Ensembl
+snapshot"*, which is what it actually searched. Adding the live route then exposed a third: the
+advisory rows were hard-coded to `source="snapshot"`, so a network answer claimed to come from a pinned
+file, in the one field an author reads to judge reproducibility.
+
+**What is left of RM28 shrank twice this round.** RM29 moved two of the three cofactor classes into
+columns, leaving only ancestry genuinely injected; this closes the cis/trans motivation. The residue is
+what APOE already named — pairing across *subjects*, and economy ("any two pathogenic variants in
+trans" over 300 of them is ~45,000 pairs, expressible and unwritable) — plus open-world negation, which
+is not an operator problem. Still parked, on a smaller case than before.
+
 ## 2026-08-03 — 0.5.1: RM29 cofactors, and a refusal dissolved rather than resolved
 
 Three optional columns carrying single-subject cofactors with **no predicate language at all** —
