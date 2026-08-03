@@ -490,6 +490,14 @@ cycle* in `USE_CASES.md`.
   demoted; anything that changes `artifact.digest` bytes (parquet column set/types) is major-only —
   *except* while a version is still unpublished, where the digest is not yet frozen.
 - **Round-trip must stay lossless and idempotent** (Principle 7) — prove it with tests, don't assume.
+- **CPIC recommendations are keyed by (gene phenotype, drug, POPULATION) — and the populations
+  disagree.** Clopidogrel has three (`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI`); the same Poor
+  Metabolizer diplotype is `strong` in one and `moderate` in another. `DiplotypeRow` has no
+  population column, so drafting them all collides on `_TABLE_DUPE_KEYS` and defaulting to one would
+  assert a clinical context the author never chose — `draft --drug` therefore *refuses* and lists the
+  choices when several exist. Drug rows sit **beside** the phenotype rows (the key includes `drug`),
+  they do not replace them. And `recommendation_strength` is CPIC's; `evidence_level` is PharmGKB's;
+  they are different axes and a provider must fill only its own.
 - **A drafting provider's skip guard must be DERIVED from the model's rule, not restated beside it.**
   `pgx_draft` skipped a CPIC variant when "no rsID *and* no position", while `HaplotypeRow` requires
   an rsID **or** chrom AND start — and CPIC publishes no chromosome (`sequence_location` carries

@@ -358,6 +358,14 @@ def clinpgx_check_(
 def draft_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     gene: list[str] = typer.Option(..., "--gene", help="Gene to draft from CPIC (repeatable)."),
+    drug: list[str] = typer.Option(
+        [], "--drug",
+        help="Also draft CPIC's prescribing recommendations for this drug (repeatable).",
+    ),
+    population: Optional[str] = typer.Option(
+        None, "--population",
+        help="CPIC clinical population for --drug (e.g. 'NVI'). Required when CPIC scopes several.",
+    ),
     use: str = typer.Option(
         "unstated", "--use",
         help=(
@@ -377,7 +385,10 @@ def draft_(
     total_added = 0
     for name in gene:
         try:
-            result = draft_gene(spec_dir, name, declared_use=declared, dry_run=dry_run)
+            result = draft_gene(
+                spec_dir, name, drugs=drug, population=population,
+                declared_use=declared, dry_run=dry_run,
+            )
         except (CpicError, DraftError) as exc:
             typer.secho(f"DRAFT FAILED ({name}): {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from exc

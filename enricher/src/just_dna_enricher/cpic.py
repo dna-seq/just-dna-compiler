@@ -83,6 +83,42 @@ class CpicDefiningVariant:
     ambiguous: bool = False
 
 
+@dataclass
+class CpicRecommendation:
+    """One CPIC prescribing recommendation: a (gene phenotype, drug, population) triple.
+
+    Keyed by **phenotype**, not by diplotype — one recommendation covers every diplotype that shares
+    the phenotype, which is why drafting joins on it rather than fetching per pair.
+    """
+
+    gene: str
+    phenotype: str
+    drug: str
+    population: str
+    classification: Optional[str] = None
+    recommendation: Optional[str] = None
+    implication: Optional[str] = None
+    activity_score: Optional[str] = None
+
+
+# CPIC's recommendation `classification` → `vocab.VALID_RECOMMENDATION_STRENGTH`. `n/a` is absent on
+# purpose: it is CPIC recording that it did not classify, which is an empty cell here — inventing a
+# member for it would let "unclassified" read as a classification.
+_CLASSIFICATION_MAP: dict[str, str] = {
+    "strong": "strong",
+    "moderate": "moderate",
+    "optional": "optional",
+    "no recommendation": "no_recommendation",
+}
+
+
+def map_classification(raw: Optional[str]) -> Optional[str]:
+    """CPIC's recommendation strength → this format's vocabulary, or None when it did not classify."""
+    if not raw:
+        return None
+    return _CLASSIFICATION_MAP.get(raw.strip().lower())
+
+
 # CPIC's `clinicalfunctionalstatus` prose → this workspace's `VALID_FUNCTION_STATUS` vocabulary.
 # An unmapped value is carried as None rather than guessed; the raw string stays available upstream.
 _FUNCTION_MAP: dict[str, str] = {
@@ -187,6 +223,51 @@ class CpicClient:
             )
             for r in rows
         ]
+
+    def recommendations(self, gene: str, drug: str) -> list[CpicRecommendation]:
+        """CPIC's prescribing recommendations for one gene/drug pair, across every population.
+
+        Two hops, because CPIC keys recommendations by RxNorm id: `drug` resolves the name, then
+        `recommendation` is filtered on it. `phenotypes` is a `{gene: phenotype}` map, so a
+        multi-gene recommendation is kept only when it names the gene asked for — a row about
+        CYP2C19 *and* CYP2D6 is not a statement about CYP2C19 alone.
+
+        Deterministically ordered (population, phenotype) so a re-draft emits the same rows in the
+        same order (Principle 7).
+        """
+        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug.strip().lower()}"})
+        if not found:
+            return []
+        rows = self._get(
+            "recommendation",
+            {
+                "select": (
+                    "drugid,phenotypes,implications,drugrecommendation,classification,"
+                    "population,activityscore"
+                ),
+                "drugid": f"eq.{found[0]['drugid']}",
+            },
+        )
+        out: list[CpicRecommendation] = []
+        for row in rows:
+            phenotypes = row.get("phenotypes") or {}
+            phenotype = phenotypes.get(gene)
+            if not phenotype or len(phenotypes) != 1:
+                continue
+            implications = row.get("implications") or {}
+            out.append(
+                CpicRecommendation(
+                    gene=gene,
+                    phenotype=phenotype,
+                    drug=drug.strip().lower(),
+                    population=(row.get("population") or "").strip(),
+                    classification=map_classification(row.get("classification")),
+                    recommendation=(row.get("drugrecommendation") or "").strip() or None,
+                    implication=(implications.get(gene) or "").strip() or None,
+                    activity_score=(row.get("activityscore") or None),
+                )
+            )
+        return sorted(out, key=lambda r: (r.population, r.phenotype))
 
     def defining_variants(self, gene: str) -> tuple[list[CpicDefiningVariant], list[str]]:
         """Star-allele defining variants for one gene, plus warnings for what could not be used.

@@ -303,6 +303,29 @@ compiler's orphan check fires. Grounding evidence comes from ClinVar's own liter
 with `just-dna-enricher clinvar citations` — without it a drafted panel could not compile at all,
 since `studies.csv` is mandatory and the VCF carries no PMIDs.
 
+## 2b. APOE ε2/ε3/ε4 — compiled, and the meta-conclusion feasibility probe
+
+Compiled example: [`reference_examples/apoe_epsilon/`](../reference_examples/apoe_epsilon/). §2 above
+described the shape; this is the built module, and it exists to settle a design question with
+evidence: **does pairing two annotations need new machinery?**
+
+APOE is the sharpest test available — the ε haplotypes are defined by *two* SNPs together
+(rs429358 19:44908684 T>C, rs7412 19:44908822 C>T), and CONSTITUTION Principle 1's example of the
+predicate escape hatch is literally the ε4 condition, `rs429358==C AND rs7412==C`. It needs no
+predicate. `HaplotypeRow` is a junction table — one row per (haplotype × defining variant) — so ε4 is
+two rows, ε2 is two rows, and `diplotypes.csv` carries the six pairs and their conclusions.
+**Same-strand co-location is what a haplotype table already is.**
+
+Two details worth copying. ε3 carries the *reference* allele at both sites and is written out anyway:
+unlike a star-allele `*1`, defined by the absence of variants, ε3 is a real named haplotype whose
+defining alleles happen to be reference. And ε2/ε4 declares `direction=unknown` rather than averaging
+two opposing alleles into a number nobody measured.
+
+The probe also found a defect: `AlleleFunctionRow.allele` demands a leading `*` while the other two
+PGx tables accept any name, so `e4` is legal in two tables and illegal in the third (RM30). APOE is
+not blocked — an ε allele has no CPIC activity value, so the module carries no allele-function table
+— but a non-star haplotype gene could never carry one.
+
 ## 9c. CYP2C19 — star alleles drafted from CPIC, curated by removal
 
 Compiled example: [`reference_examples/cyp2c19_star_alleles/`](../reference_examples/cyp2c19_star_alleles/).

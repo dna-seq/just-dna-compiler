@@ -278,10 +278,96 @@ def test_stripping_the_declaration_makes_the_compile_refuse(tmp_path: Path) -> N
     assert any("forbid sale" in e for e in result.errors)
 
 
-def test_drug_columns_are_empty_on_purpose() -> None:
-    """This module answers genotype → phenotype and stops. CPIC's prescribing recommendations live
-    in a resource the provider does not read, so filling these would mean inventing them."""
+def test_the_drug_rows_sit_beside_the_phenotype_rows_not_instead_of_them() -> None:
+    """Two questions, two row sets, one table: `_TABLE_DUPE_KEYS` keys on `drug`, so a pair can
+    carry both "what phenotype is this" and "what does CPIC advise for clopidogrel"."""
     rows = list(csv.DictReader(io.StringIO((_CYP2C19 / "diplotypes.csv").read_text())))
-    assert rows
-    for column in ("drug", "evidence_level", "recommendation_strength"):
-        assert all(not r.get(column) for r in rows), column
+    plain = [r for r in rows if not r["drug"]]
+    drugged = [r for r in rows if r["drug"]]
+    assert plain and drugged
+    assert {r["drug"] for r in drugged} == {"clopidogrel"}
+    # the same pair appears once per question, never twice for the same one
+    pairs = lambda rs: [(r["gene"], r["haplotype_a"], r["haplotype_b"]) for r in rs]
+    assert len(set(pairs(plain))) == len(plain)
+    assert len(set(pairs(drugged))) == len(drugged)
+
+
+def test_evidence_level_stays_empty_because_it_is_a_different_axis() -> None:
+    """PharmGKB grades the evidence; CPIC grades the action. One column for both would repeat the
+    `state`-overloading mistake, so the CPIC provider fills only `recommendation_strength`."""
+    rows = [
+        r
+        for r in csv.DictReader(io.StringIO((_CYP2C19 / "diplotypes.csv").read_text()))
+        if r["drug"]
+    ]
+    # Absent from the header entirely, not merely blank: drafting only adds columns its rows fill,
+    # so a column nothing writes never appears — which is the stronger statement.
+    assert all(not r.get("evidence_level") for r in rows)
+    assert "evidence_level" not in rows[0]
+    assert {r["recommendation_strength"] for r in rows} <= {
+        "strong", "moderate", "optional", "no_recommendation", ""
+    }
+    assert any(r["recommendation_strength"] for r in rows)
+
+
+# ── The APOE example (0.5.1) — the meta-conclusion feasibility probe ─────────────────────────────
+
+_APOE = Path(__file__).resolve().parents[2] / "reference_examples" / "apoe_epsilon"
+
+
+def test_the_apoe_example_compiles_and_is_a_fixed_point(tmp_path: Path) -> None:
+    assert validate_spec(_APOE).valid, validate_spec(_APOE).errors
+    first = compile_module(_APOE, tmp_path / "out1").manifest
+    reverse_module(tmp_path / "out1", tmp_path / "back")
+    second = compile_module(tmp_path / "back", tmp_path / "out2").manifest
+    assert first.artifact.digest == second.artifact.digest
+
+
+def test_a_two_snp_haplotype_needs_no_predicate() -> None:
+    """The finding this module exists for. Principle 1's escape-hatch example is `rs429358==C AND
+    rs7412==C` — which is ε4 — and `HaplotypeRow` already expresses it as two junction rows, because
+    same-strand co-location is what a haplotype table *is*."""
+    rows = list(csv.DictReader(io.StringIO((_APOE / "haplotypes.csv").read_text())))
+    by_haplotype: dict[str, dict[str, str]] = {}
+    for row in rows:
+        by_haplotype.setdefault(row["haplotype_name"], {})[row["rsid"]] = row["allele"]
+    # every epsilon allele is pinned at BOTH sites — one alone cannot tell ε4 from ε1
+    assert all(set(sites) == {"rs429358", "rs7412"} for sites in by_haplotype.values())
+    assert by_haplotype["e4"] == {"rs429358": "C", "rs7412": "C"}
+    assert by_haplotype["e2"] == {"rs429358": "T", "rs7412": "T"}
+    assert by_haplotype["e3"] == {"rs429358": "T", "rs7412": "C"}
+
+
+def test_every_diplotype_pairs_defined_haplotypes() -> None:
+    diplotypes = list(csv.DictReader(io.StringIO((_APOE / "diplotypes.csv").read_text())))
+    defined = {r["haplotype_name"] for r in csv.DictReader(io.StringIO((_APOE / "haplotypes.csv").read_text()))}
+    used = {h for r in diplotypes for h in (r["haplotype_a"], r["haplotype_b"])}
+    assert used <= defined
+    # all six pairs over three haplotypes, none repeated
+    assert len(diplotypes) == 6
+    assert len({(r["haplotype_a"], r["haplotype_b"]) for r in diplotypes}) == 6
+
+
+def test_the_opposing_diplotype_declares_unknown_rather_than_averaging() -> None:
+    """ε2/ε4 carries opposing alleles; the risk is not the sum of its parts, so the module says so
+    instead of splitting the difference."""
+    rows = {
+        (r["haplotype_a"], r["haplotype_b"]): r
+        for r in csv.DictReader(io.StringIO((_APOE / "diplotypes.csv").read_text()))
+    }
+    assert rows[("e2", "e4")]["direction"] == "unknown"
+    assert rows[("e3", "e4")]["direction"] == "risk"
+    assert rows[("e2", "e3")]["direction"] == "protective"
+
+
+def test_epsilon_names_are_legal_where_apoe_needs_them() -> None:
+    """The defect the probe found: `AlleleFunctionRow.allele` demands a leading `*` while the other
+    two PGx tables accept any name, so a non-star haplotype gene can never carry allele function.
+    APOE routes around it by carrying no such table — asserted so the day the rule changes is loud."""
+    from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
+
+    HaplotypeRow(haplotype_name="e4", rsid="rs429358", allele="C", gene="APOE")
+    DiplotypeRow(gene="APOE", haplotype_a="e3", haplotype_b="e4", conclusion="c")
+    with pytest.raises(Exception, match="star-allele"):
+        AlleleFunctionRow(gene="APOE", allele="e4")
+    assert not (_APOE / "allele_function.csv").exists()

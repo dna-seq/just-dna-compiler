@@ -237,3 +237,75 @@ def test_the_guard_matches_the_models_own_rule() -> None:
 def test_an_ambiguous_iupac_allele_is_still_skipped() -> None:
     rows, _ = _haplotype_rows([_variant(rsid="rs1799853", variant_allele="R", ambiguous=True)])
     assert rows == []
+
+
+# ── CPIC prescribing recommendations (0.5.1) ────────────────────────────────────────────────────
+
+from just_dna_enricher.cpic import CpicDiplotype, CpicRecommendation, map_classification
+from just_dna_enricher.pgx_draft import _recommendation_rows
+
+
+def _rec(phenotype: str, population: str, classification: str = "strong") -> CpicRecommendation:
+    return CpicRecommendation(
+        gene="CYP2C19", phenotype=phenotype, drug="clopidogrel", population=population,
+        classification=classification, recommendation="Avoid standard dose.",
+        implication="Reduced active metabolite.",
+    )
+
+
+_DIPS = [CpicDiplotype(gene="CYP2C19", diplotype="*2/*2", phenotype="Poor Metabolizer")]
+
+
+def test_several_populations_with_no_choice_drafts_nothing_and_lists_them() -> None:
+    """CPIC scopes a recommendation to a clinical context and the contexts disagree; `DiplotypeRow`
+    has no population column, so writing them all collides and picking one asserts a context the
+    author never chose."""
+    recs = [_rec("Poor Metabolizer", p) for p in ("NVI", "CVI ACS PCI")]
+    rows, warnings = _recommendation_rows(_DIPS, recs, population=None)
+    assert rows == []
+    assert warnings and "CVI ACS PCI" in warnings[0] and "NVI" in warnings[0]
+
+
+def test_a_single_population_needs_no_choice() -> None:
+    rows, warnings = _recommendation_rows(_DIPS, [_rec("Poor Metabolizer", "general")], population=None)
+    assert len(rows) == 1 and warnings == []
+    assert rows[0].drug == "clopidogrel" and rows[0].recommendation_strength == "strong"
+
+
+def test_the_chosen_population_is_the_one_used() -> None:
+    """The populations really differ — this is why the choice cannot be defaulted."""
+    recs = [_rec("Poor Metabolizer", "NVI", "moderate"),
+            _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
+    strong, _ = _recommendation_rows(_DIPS, recs, population="CVI ACS PCI")
+    moderate, _ = _recommendation_rows(_DIPS, recs, population="NVI")
+    assert strong[0].recommendation_strength == "strong"
+    assert moderate[0].recommendation_strength == "moderate"
+
+
+def test_an_unknown_population_is_refused_with_the_real_choices() -> None:
+    rows, warnings = _recommendation_rows(_DIPS, [_rec("Poor Metabolizer", "NVI")], population="nope")
+    assert rows == [] and "Available" in warnings[0]
+
+
+def test_a_phenotype_cpic_does_not_cover_gets_no_drug_row_and_is_reported() -> None:
+    dips = _DIPS + [CpicDiplotype(gene="CYP2C19", diplotype="*1/*1", phenotype="Indeterminate")]
+    rows, warnings = _recommendation_rows(dips, [_rec("Poor Metabolizer", "general")], population=None)
+    assert len(rows) == 1
+    assert warnings and "Indeterminate" in warnings[0]
+
+
+def test_classification_maps_onto_the_vocabulary_and_drops_unclassified() -> None:
+    from just_dna_format.vocab import VALID_RECOMMENDATION_STRENGTH
+
+    for raw in ("Strong", "Moderate", "Optional", "No Recommendation"):
+        assert map_classification(raw) in VALID_RECOMMENDATION_STRENGTH
+    # `n/a` is CPIC saying it did not classify — an empty cell, never a vocabulary member
+    assert map_classification("n/a") is None
+    assert map_classification(None) is None
+
+
+def test_the_conclusion_carries_cpics_own_two_halves() -> None:
+    """Implication (what the genotype does) then recommendation (what to do) — transcribed, not
+    summarized."""
+    rows, _ = _recommendation_rows(_DIPS, [_rec("Poor Metabolizer", "general")], population=None)
+    assert rows[0].conclusion == "Reduced active metabolite. Avoid standard dose."

@@ -29,12 +29,17 @@ instinctive `-1` introduces an off-by-one.
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import STAR_ALLELE_PATTERN, AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 
-from just_dna_enricher.cpic import CpicClient, CpicDefiningVariant, CpicError
+from just_dna_enricher.cpic import (
+    CpicClient,
+    CpicDefiningVariant,
+    CpicError,
+    CpicRecommendation,
+)
 from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, merge_sources_file
 
 logger = logging.getLogger(__name__)
@@ -114,10 +119,80 @@ def _split_diplotype(diplotype: str) -> Optional[tuple[str, str]]:
     return parts[0], parts[1]
 
 
+def _recommendation_rows(
+    diplotypes: Sequence,
+    recommendations: Sequence[CpicRecommendation],
+    *,
+    population: Optional[str],
+) -> tuple[list[DiplotypeRow], list[str]]:
+    """CPIC recommendations → drug-carrying `DiplotypeRow`s, joined on the phenotype.
+
+    **The population is the author's to choose, not this function's to guess.** CPIC scopes a
+    recommendation to a clinical context — clopidogrel has three (`CVI ACS PCI`, `CVI non-ACS
+    non-PCI`, `NVI`) and they disagree — while `DiplotypeRow` has no population column, so writing
+    all of them would produce rows the compiler rejects as duplicates and picking one silently would
+    assert a clinical context nobody chose. With more than one available and none named, nothing is
+    drafted and the choices are reported.
+    """
+    populations = sorted({r.population for r in recommendations if r.population})
+    warnings: list[str] = []
+    if not recommendations:
+        return [], warnings
+    if population is None and len(populations) > 1:
+        return [], [
+            f"{recommendations[0].drug}: CPIC scopes its recommendations to "
+            f"{len(populations)} clinical populations ({', '.join(populations)}) and they differ. "
+            f"Choose one with --population; drafting them all would collide, and picking one for you "
+            f"would assert a clinical context you did not."
+        ]
+    chosen = population or (populations[0] if populations else "")
+    if population is not None and population not in populations:
+        return [], [
+            f"{recommendations[0].drug}: no CPIC recommendations for population {population!r}. "
+            f"Available: {', '.join(populations) or '(none)'}."
+        ]
+    by_phenotype = {
+        r.phenotype: r for r in recommendations if not r.population or r.population == chosen
+    }
+    rows: list[DiplotypeRow] = []
+    unmatched: set[str] = set()
+    for entry in diplotypes:
+        pair = _split_diplotype(entry.diplotype)
+        if pair is None or entry.phenotype is None:
+            continue
+        rec = by_phenotype.get(entry.phenotype)
+        if rec is None:
+            unmatched.add(entry.phenotype)
+            continue
+        rows.append(
+            DiplotypeRow(
+                gene=entry.gene,
+                haplotype_a=pair[0],
+                haplotype_b=pair[1],
+                phenotype=entry.phenotype,
+                drug=rec.drug,
+                recommendation_strength=rec.classification,
+                # CPIC's own words. The implication says what the genotype does, the recommendation
+                # says what to do about it; both are transcribed, neither is summarized.
+                conclusion=" ".join(
+                    part for part in (rec.implication, rec.recommendation) if part
+                ) or f"{entry.gene} {entry.diplotype} and {rec.drug}: {entry.phenotype}",
+            )
+        )
+    if unmatched:
+        warnings.append(
+            f"{recommendations[0].drug}: no CPIC recommendation for phenotype(s) "
+            f"{sorted(unmatched)} in population {chosen!r} — those diplotypes carry no drug row."
+        )
+    return rows, warnings
+
+
 def draft_gene(
     spec_dir: Path,
     gene: str,
     *,
+    drugs: Sequence[str] = (),
+    population: Optional[str] = None,
     declared_use: str = "unstated",
     dry_run: bool = False,
     client: Optional[CpicClient] = None,
@@ -138,6 +213,7 @@ def draft_gene(
         alleles = cpic.alleles_for_gene(gene)
         diplotypes = cpic.diplotypes_for_gene(gene)
         defining, defining_warnings = cpic.defining_variants(gene)
+        by_drug = {drug: cpic.recommendations(gene, drug) for drug in drugs}
     finally:
         if owned:
             cpic.close()
@@ -202,6 +278,19 @@ def draft_gene(
             )
             + f". e.g. {shown}{rest}."
         )
+
+    # Drug rows are *added to* the phenotype table, not a replacement for it: the plain rows answer
+    # "what phenotype is this pair", the drug rows answer "and what does CPIC say to do about it for
+    # this drug". Different questions, and `_TABLE_DUPE_KEYS` keys on `drug`, so both coexist.
+    for drug, recommendations in by_drug.items():
+        if not recommendations:
+            warnings.append(f"{gene}: CPIC has no recommendations for {drug!r} — nothing drafted.")
+            continue
+        drug_rows, drug_warnings = _recommendation_rows(
+            diplotypes, recommendations, population=population
+        )
+        warnings.extend(drug_warnings)
+        diplotype_rows.extend(drug_rows)
 
     reports = [
         append_rows(spec_dir, csv_name, rows, dry_run=dry_run)

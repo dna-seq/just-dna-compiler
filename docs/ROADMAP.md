@@ -197,6 +197,64 @@ makes the diff legible.
 Still a hard **no**: a `sort`/`canonicalize` command. It moves every row at once for no authoring
 gain, and unlike a grouped append there is no local reason for any individual move.
 
+**RM29 — cofactor columns (candidate, digest-moving so major-only once 0.5 ships):** two optional
+columns that would carry single-subject cofactors without any predicate language, because **a row's
+columns already conjoin**. (a) A **quality floor** on `VariantRow` — "assert this only where the call
+is at least this good" — in the `requires_callable`/`source_field` declarative-pointer idiom, and
+distinct from the dropped `caller` names (those recorded which tool made a call; this states where an
+annotation stops being reliable). (b) A **clinical population/indication** column on `DiplotypeRow`,
+inside `_TABLE_DUPE_KEYS`: CPIC scopes recommendations to contexts that disagree, and a column would
+let all three coexist as distinct rows with the consumer selecting its setting — dissolving the
+`draft --population` refusal built in 0.5.1. Both mirror `HeteroplasmyRow.tissue`, which is already a
+cofactor-as-column with explicitly tissue-conditional bins. Recorded rather than slipped in: a new
+column on an existing parquet moves every module's digest. | format (schema) | PGx; call-confidence
+gating | low (after the digest window decision) |
+
+**RM30 — the three PGx tables disagree about what a haplotype name is (found by the APOE probe):**
+`AlleleFunctionRow.allele` enforces `STAR_ALLELE_PATTERN` (a leading `*`), while
+`HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` accept any string. So `e4`
+is legal in two of the three tables and illegal in the third, and a non-star haplotype gene can never
+carry allele function. Worse, the 0.5.1 cross-table check would report `*4` (function) against `e4`
+(definition) as used-but-undefined — a real mismatch the author has no legal way to fix.
+`reference_examples/apoe_epsilon/` routes around it by carrying no allele-function table, which is
+honest for APOE (an ε allele has no CPIC activity value) and not a fix. Widening the pattern is
+additive and cheap; the question worth answering first is whether `allele` should be a *grammar* at
+all or simply a name, given the other two columns already treat it as one. | format (schema) |
+non-star haplotype genes (APOE, HLA) | low |
+
+**RM28 — meta-conclusions and injected cofactors (starter shape recorded, deliberately unbuilt):**
+A module is rarely one axis, and what a curator wants is to pair them — a CVD module that also says
+something about aspirin or warfarin *given* what the rest of the module found. The format cannot
+state that today: every table keys on one subject and `conclusion` is prose about it alone.
+CONSTITUTION P1 already sanctions the mechanism (a non-Turing-complete boolean predicate, drafted
+since 0.1 and never wired because nothing demanded it). The full design thread, the starter shape and
+what is deliberately left open are in [PROPOSAL_0_5.md § G3](PROPOSAL_0_5.md). In brief: a new
+**optional** table, a predicate that **never blocks** (an unresolvable reference warns), a grammar
+kept to the smallest thing that covers the motivating case — conjunction **plus one relational
+notion, in-cis/in-trans**, because the case that most justifies the table is compound
+heterozygosity, where the same two alleles mean *affected* in trans and *carrier* in cis and a
+pure conjunction cannot tell them apart (*the table is the safe commitment; the grammar is where
+drift happens*) — and **injected cofactors** — values the consumer supplies at query time that a module must
+never hold. Three classes so far, each with the same withhold-on-missing rule: **ancestry**
+(a panel-scale inference, not derivable from a curated module's own gnomAD frequencies —
+real models do not rely on single SNPs), **clinical context** (CPIC's populations), and
+**call quality** (a `QUAL`/`GQ` floor, the `source_field`/`callable_from` declarative-pointer
+idiom pointed at confidence — and distinct from the dropped `caller` names, which recorded
+measurement provenance rather than an annotation's own applicability). The first real evidence arrived with
+CPIC's clopidogrel populations, where `draft --population` makes an author bake in a choice that is
+only knowable at query time. **Feasibility probed 2026-08-03 and the result argues for keeping it parked:**
+`reference_examples/apoe_epsilon/` builds the highest-profile meta case — APOE, whose ε
+haplotypes are defined by two SNPs together and whose ε4 condition is P1's own example
+(`rs429358==C AND rs7412==C`) — with **bricks that shipped in 0.4 and no predicate at all**.
+`HaplotypeRow` is a junction table, so same-strand co-location is what it already expresses;
+`diplotypes.csv` carries the conclusion. What stays out of reach is narrower than it looked:
+pairing across *subjects* (an APOE diplotype + a CVD variant + a drug row), and compound
+heterozygosity without enumerating every pair — which is an economy argument, not an
+expressiveness one. Waits on a corpus to generalize from — roughly 70% built; nutrigenomics
+and supplements do not exist yet — because fixing a shape against four table kinds and then meeting
+the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
+| format (schema + compiler) | combination annotations; disclosure policy | medium (after the corpus) |
+
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
   `TCAT` repeats + 3 extra bases), which is *not* the decimal 9.3. A binning bound stays a plain

@@ -125,7 +125,92 @@ Its drug columns are deliberately empty: CPIC's prescribing recommendations live
 provider does not read, so filling them would mean inventing them, and the module is named for star
 alleles rather than for clopidogrel for the same reason.
 
-903 passed, 6 skipped. Reference examples still compile to byte-identical digests.
+**CPIC prescribing recommendations — the increment that stops the module being an infodump.**
+`draft --gene CYP2C19 --drug clopidogrel --population "CVI ACS PCI"` now adds drug-carrying
+`DiplotypeRow`s beside the phenotype rows. They coexist rather than replace: `_TABLE_DUPE_KEYS` keys
+on `drug`, and the two answer different questions — what phenotype a pair is, and what CPIC advises
+about it for a drug. The `conclusion` is CPIC's own two halves transcribed, implication then
+recommendation, and `classification` maps onto `VALID_RECOMMENDATION_STRENGTH` (`n/a` maps to nothing:
+CPIC did not classify, which is an empty cell, not a member).
+
+`evidence_level` stays empty and that is deliberate — PharmGKB grades how well established an
+association is, CPIC grades how firmly a guideline says to act, and one column for both would repeat
+the `state`-overloading mistake.
+
+**`--population` is required rather than convenient**, and it is the round's sharpest finding. CPIC
+scopes clopidogrel to three clinical contexts and **they disagree**: the same Poor Metabolizer
+diplotype is `strong` in `CVI ACS PCI` and `moderate` in `NVI`. `DiplotypeRow` has no population
+column, so drafting all three collides on the dedup key and picking one silently would assert a
+clinical context nobody chose. With several available and none named, the provider drafts nothing and
+lists them.
+
+**Design thread recorded, deliberately unbuilt — meta-conclusions (RM28,
+[PROPOSAL_0_5 § G3](PROPOSAL_0_5.md)).** A module is rarely one axis, and what a curator wants is to
+pair them: a CVD module that also says something about warfarin *given* what the rest of it found.
+The format cannot state that — every table keys on one subject. Principle 1 has sanctioned the
+mechanism since 0.1 (a non-Turing-complete predicate) and nothing had demanded it. The starter shape
+commits to the **carrier** — an optional table that **never blocks**, since an unresolvable reference
+warns — and keeps the **grammar** minimal, because the table is the safe commitment and the grammar
+is where drift happens.
+
+Three things sharpened it, and one of them corrected it:
+
+* **Phase corrects the grammar.** The case that most justifies the table is compound heterozygosity:
+  two pathogenic alleles **in trans** leave no functional copy (affected), **in cis** leave one
+  (carrier) — same rows, same genotypes, opposite conclusion. `rs1 AND rs2` is true of both, so a
+  pure-conjunction starter grammar could not express the very example that motivates it. The minimum
+  is conjunction **plus one relational notion**, in-cis/in-trans.
+* **Cofactors the module must never hold.** Detected ancestry, clinical context and call quality are
+  all supplied by the consumer at query time, like the measurement already is. The tempting shortcut
+  — derive ancestry from the gnomAD frequencies a module already carries — does not work, because
+  real population models are panel-scale and a module curated for disease association is precisely
+  the wrong panel.
+* **Call quality is the third class**, and reuses the `source_field`/`callable_from` declarative-
+  pointer idiom. It is *not* the dropped `caller`/`caller_version` mistake: those recorded which tool
+  made a call (consumer-side provenance), while a `QUAL` floor is the module stating where its own
+  conclusion stops being reliable.
+
+**And the scoping cut that shrank it: columns are already a conjunction.** A row carrying
+`genotype` + `requires_callable` + a quality floor already means "all of these", with no grammar —
+and `HeteroplasmyRow.tissue` has been a cofactor-as-column since 0.4, with bins explicitly
+tissue-conditional and the consumer selecting the row matching what it measured. So the line is not
+cofactor-vs-not, it is **arity**: a condition about *one* subject is a column, and only a relation
+*between* subjects needs the table. That reclassifies two of the three — a SNP quality floor and
+CPIC's clinical population are columns (recorded as **RM29**, digest-moving so major-only once 0.5
+ships; the population column would dissolve the `--population` refusal built above) — and leaves the
+predicate with relations and essentially nothing else. The most useful thing said about this design
+was that the table already had a conjunction and nobody had called it one.
+
+The safety rule is the same in all three and is the reason the table can never block: a **missing**
+cofactor withholds the conclusion rather than resolving it either way — the discipline `unresolved`
+already applies to a missing measurement and `requires_callable` to an uncalled absence. It waits on
+a corpus to generalize from (~70% built; nutrigenomics and supplements do not exist yet), and it
+blocks the "shy module" signal, which cannot mean anything until a module can carry something a
+source could not have produced.
+
+**And then the design was probed instead of argued — `reference_examples/apoe_epsilon/`.** APOE is
+the sharpest possible test of the meta-conclusion case: its ε haplotypes are defined by *two* SNPs
+together, and Principle 1's escape-hatch example is literally the ε4 condition
+(`rs429358==C AND rs7412==C`). The probe **weakened the case for the table**, which is the more
+useful outcome. APOE builds with bricks that shipped in 0.4 and no predicate at all: `HaplotypeRow`
+is a junction table, so a two-SNP haplotype is two rows, and `diplotypes.csv` carries the conclusion.
+Same-strand co-location is what a haplotype table already *is* — the predicate would have restated it
+less legibly, and the cis/trans motivation evaporates for the same-gene case that was its strongest
+example.
+
+What survives is narrower and now labelled honestly: pairing across **subjects** (an APOE diplotype
+with a cardiovascular variant and a drug row — no table keys on more than one subject), and compound
+heterozygosity without enumerating every pair, which is an argument from *economy* rather than from
+expressiveness. RM28 stays parked, with better reasons than it had.
+
+The probe found a real defect on the way (**RM30**): `AlleleFunctionRow.allele` enforces a leading
+`*` while `HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`_b` accept any string, so
+`e4` is legal in two of the three PGx tables and illegal in the third — and the new cross-table check
+would report `*4` against `e4` as used-but-undefined, a mismatch the author has no legal way to fix.
+APOE carries no allele-function table (an ε allele has no CPIC activity value), which is honest for
+APOE and not a fix.
+
+916 passed, 6 skipped. Reference examples still compile to byte-identical digests.
 
 ## 2026-08-03 — 0.5.0: the authoring surface — options as data, stubs that cannot compile, hints that never write
 

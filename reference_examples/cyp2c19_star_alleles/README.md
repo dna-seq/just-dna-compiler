@@ -1,4 +1,4 @@
-# CYP2C19 star alleles — a PGx module drafted from CPIC
+# CYP2C19 — star alleles and clopidogrel, drafted from CPIC
 
 The PGx counterpart to [`hfe_hemochromatosis/`](../hfe_hemochromatosis/), and the interesting thing
 is how *differently* the two behave. The ClinVar panel came back with a hole a human had to fill.
@@ -9,13 +9,14 @@ has to do instead is decide what to *remove*, and notice what the source never h
 
 ```bash
 just-dna-compiler scaffold reference_examples/cyp2c19_star_alleles --name cyp2c19_star_alleles
-just-dna-enricher draft reference_examples/cyp2c19_star_alleles --gene CYP2C19 --use non-commercial
+just-dna-enricher draft reference_examples/cyp2c19_star_alleles \
+    --gene CYP2C19 --drug clopidogrel --population "CVI ACS PCI" --use non-commercial
 # ... curation, below ...
 just-dna-enricher enrich reference_examples/cyp2c19_star_alleles --offline
 just-dna-compiler compile reference_examples/cyp2c19_star_alleles out/
 ```
 
-811 rows across three tables, no placeholders, valid immediately. `--use non-commercial` is required
+1,477 rows across three tables, no placeholders, valid immediately. `--use non-commercial` is required
 rather than polite: CPIC's terms forbid sale, so a draft is **skipped** when the use is unstated and
 **refused** when it is commercial — the terms are accepted by taking the data, so the check happens
 before anything is fetched.
@@ -51,14 +52,29 @@ and why the check only runs when `haplotypes.csv` is present at all.
 * **No chromosome.** CPIC's `sequence_location` publishes `genesymbol`, `dbsnpid` and `position` and
   no chromosome column, so a defining variant is identified by rsID or not at all — see below.
 
-## What is deliberately *not* here: drugs
+## The drug context, and why the population is a curation decision
 
-`DiplotypeRow` can carry `drug`, `evidence_level` and `recommendation_strength`, and every one is
-empty. This module answers **genotype → metabolizer phenotype** and stops there. CPIC publishes
-prescribing recommendations in a separate resource the provider does not read, so filling those
-columns would mean inventing them — and a CYP2C19 module that named clopidogrel without CPIC's actual
-recommendation text would be worse than one that stays silent. Adding that is roadmapped, not done;
-the module's name says star alleles, not clopidogrel, for the same reason.
+`draft --gene CYP2C19 --drug clopidogrel --population "CVI ACS PCI"` adds 595 diplotype rows
+carrying CPIC's prescribing recommendation on top of the 595 phenotype rows. They coexist because
+they answer different questions and `_TABLE_DUPE_KEYS` keys on `drug`: the plain row says *what
+phenotype this pair is*, the drug row says *what CPIC advises about it for this drug*.
+
+`--population` is required rather than convenient. CPIC scopes clopidogrel to three clinical
+contexts — `CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI` — and **they disagree**: `*2/*2` (Poor
+Metabolizer) is a `strong` recommendation in `CVI ACS PCI` and `moderate` in `NVI`. `DiplotypeRow`
+has no population column, so drafting all three would produce rows the compiler rejects as
+duplicates, and picking one silently would assert a clinical context the author never chose. With
+more than one available and none named, the provider drafts nothing and lists the choices. This
+module declares `CVI ACS PCI` — the acute-coronary/PCI setting CPIC's clopidogrel guideline is
+written around — and that declaration is the curation, not a default.
+
+The `conclusion` is CPIC's own two halves, transcribed rather than summarized: the *implication*
+(what the genotype does) followed by the *recommendation* (what to do about it).
+
+`evidence_level` stays empty on purpose. That is PharmGKB's grade of how well established an
+association is — a different axis from CPIC's `recommendation_strength`, which grades how firmly a
+guideline tells a prescriber to act. Folding them into one column would be the `state`-overloading
+mistake again, and the two bodies routinely disagree.
 
 ## What drafting a real gene taught the tooling
 
@@ -84,6 +100,6 @@ Three fixes, all in the provider rather than worked around here:
 | `module_spec.yaml` | `just-dna-compiler scaffold`, then filled by hand |
 | `haplotypes.csv` | `draft --gene CYP2C19` (CPIC allele definitions) |
 | `allele_function.csv` | `draft`, minus the alleles nothing defines |
-| `diplotypes.csv` | `draft`, minus pairs using those alleles |
+| `diplotypes.csv` | `draft` (phenotype rows + clopidogrel rows), minus pairs using undefined alleles |
 | `sources.csv` | `draft` (CPIC: CC BY-SA 4.0, no sale) |
 | `resolution.csv` | `just-dna-enricher enrich --offline` |
