@@ -327,6 +327,52 @@ ACTIONABILITY_SEED: frozenset[str] = frozenset(
 )
 
 
+#: The cell a generated template writes where a human must decide the value. A *value* sentinel,
+#: not a marker column: replacement happens one row at a time, so a half-filled file keeps failing on
+#: exactly the rows still to do, and an author never has to delete a header column. Deliberately not
+#: `MeasureBinRow.unresolved` — that sentinel means "the measurement is absent at read time" and is
+#: designed to COMPILE, while this one must never compile. Two opposite lifecycles on one field would
+#: be the overloaded-axis anti-pattern (CONSTITUTION P5).
+TEMPLATE_PLACEHOLDER: str = "<<REPLACE>>"
+
+
+def reject_template_placeholders(data: object, *, what: str = "row") -> object:
+    """A `mode="before"` guard: refuse any cell still carrying `TEMPLATE_PLACEHOLDER`.
+
+    Runs *before* field coercion so an unreplaced stub in a typed column (`start: int`, a closed
+    vocabulary, the genotype grammar) is diagnosed as an unfilled template rather than as
+    "Input should be a valid integer" — the author is told what to do, not what pydantic wanted.
+
+    This tightens validation: a module carrying the literal string `<<REPLACE>>` in a free-text cell
+    would now be invalid. Recorded deliberately rather than slipped in; the token is chosen so no
+    curated prose contains it."""
+    hits = sorted(_placeholder_paths(data, prefix=""))
+    if hits:
+        raise ValueError(
+            f"unreplaced template placeholder {TEMPLATE_PLACEHOLDER!r} in {what}: "
+            f"{', '.join(hits)}. Replace the value, or delete the row if you do not need it."
+        )
+    return data
+
+
+def _placeholder_paths(data: object, *, prefix: str) -> list[str]:
+    """Dotted paths of every placeholder cell, recursing into nested blocks and lists.
+
+    Recursive because `module_spec.yaml` nests (`module.title`, `authorship[0].who`) and its inner
+    blocks are plain `BaseModel`s, not `AuthoredModel`s — so they carry no guard of their own and a
+    top-level-only scan would let a scaffolded `module:` block through."""
+    found: list[str] = []
+    if isinstance(data, dict):
+        for key, value in data.items():
+            found.extend(_placeholder_paths(value, prefix=f"{prefix}.{key}" if prefix else str(key)))
+    elif isinstance(data, (list, tuple)):
+        for index, value in enumerate(data):
+            found.extend(_placeholder_paths(value, prefix=f"{prefix}[{index}]"))
+    elif isinstance(data, str) and data.strip() == TEMPLATE_PLACEHOLDER:
+        found.append(prefix or "<value>")
+    return found
+
+
 def reject_reserved(data: object) -> object:
     """A `mode="before"` guard for every authored model, layered *on top of* `extra="forbid"`.
 

@@ -30,6 +30,17 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
    self-contained — it names no other document.** The navigation *into* the living material it
    alludes to is here in this guide (below); keep it that way — never add an outward pointer to the
    Constitution.
+
+   **Never delegate a Constitution question to a spawned agent — read it yourself, in full.** It is
+   150 lines and it is the document that decides whether a change is legal at all. A subagent returns
+   a *summary*, and a summary of a charter is exactly the lossy relay that loses the clause the
+   decision turned on: a principle's force is in its wording (the difference between "additive" and
+   "non-breaking", between `None` and `False`, between "tightened" and "loosened"), and a paraphrase
+   silently drops the qualifier. The same applies to any other durable rule you are about to *judge*
+   a design against, as opposed to merely locate — delegation is for finding things, never for
+   deciding them. Exploring wide (which files touch X, where does Y live) is what agents are for;
+   reading the charter, the principle you are invoking, or the exact test that pins a behaviour is
+   first-hand work.
 2. **[docs/ROADMAP.md](docs/ROADMAP.md)** — forward-only, revised often. Holds the 0.5 scope (`RMn`
    items), the freeform idea-book, **the reserved-namespace tracker** (Constitution Principle 5), and
    **the 1.0-cleanup candidate tracker** (Principles 3 and 8). These two trackers are the concrete,
@@ -221,6 +232,12 @@ CHANGELOG entry).
   reports identically, so marking it viral is a false positive); **most-restrictive-wins module-wide**
   (a permissive source can't launder a restricted one); and **`None` ≠ `False`** on
   `share_alike`/`commercial_use` (unknown terms are undetermined, never permitted).
+- **A pass that consults a source must WRITE its `SourceRow`, via `licensing.merge_sources_file`.**
+  Building the row is half the job; the compile gate and `manifest.sources` read `sources.csv` and
+  nothing else, so a row that is only returned is a source the module cannot account for. `clingen.py`
+  returned one and never wrote it — permissive terms (CC0) made it look harmless, but CC0 still asks
+  for attribution and the table exists to carry it. The helper does the load-merge-write in one place
+  and takes the caller's own error type; don't grow a third private copy of that wrapper.
 - **The compile gate is data-driven; a `--non-commercial` CLI flag would be charter-illegal.** It
   refuses when an annotation-layer source forbids sale and the module records no declaration, reading
   only injected `sources.csv`. A *flag* cannot be recorded in the artifact — `reverse_module` rebuilds
@@ -262,6 +279,19 @@ CHANGELOG entry).
   round-trips as silent data loss, which is why every new column gets a round-trip test. Table kinds
   under `_TABLE_KINDS` are exempt — `_build_table`/`_write_table_csv` are generic over `model_fields`,
   so `DiplotypeRow.recommendation_strength` needed no compiler change at all.
+- **`model_fields` is NOT the authored surface — generators must use `base.authored_field_names`.**
+  `VariantRow.variant_key` and `authored_ident` are declared fields (carried in memory, materialized
+  to `weights.parquet`) that the compiler *stamps* and `reverse_module` deliberately never writes
+  back. Anything that turns a model into CSV columns for a human — `draft.blank_template`,
+  `draft.append_rows`, `reference.authoring_reference` — has to skip them, and it must skip them by
+  the field's own `COMPILER_MANAGED` marker, **never by name**: `FrequencyRow.variant_key` is the same
+  name and is genuinely authored and required, so a name set hides a column an author must fill. Both
+  hand-kept exclusion lists that preceded the marker were wrong — `reference.py`'s named only
+  `variant_key` and never learned about `authored_ident`; `draft.py` had none, so it wrote a
+  `variants.csv` the compiler then refused to load (`authored_ident` renders as `rsid` and does not
+  reload as a `list[str]`). The bug survived a green suite because every drafting test used a PGx or
+  binning table, and no model but `VariantRow` has a stamped field. **When adding a drafting provider
+  or any new model-driven generator, test it against `variants.csv` specifically.**
 - **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
   CSV, materialize the derived value into parquet as a `@property`, and let it fall away on reverse
   because it is not a model field. `FrequencyRow.allele_frequency` (AC/AN) and

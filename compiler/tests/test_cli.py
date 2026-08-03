@@ -6,7 +6,9 @@ validate / compile / reverse, including `--strict` and `--strip-identity`.
 
 from pathlib import Path
 
+import pytest
 from just_dna_compiler.cli import app
+from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -111,8 +113,6 @@ def test_verify_catches_a_tampered_artifact(tmp_path: Path) -> None:
 
 
 def test_sign_then_verify_round_trips_and_a_wrong_key_fails(tmp_path: Path) -> None:
-    from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem
-
     out = _compiled(tmp_path)
     pem = generate_private_key_pem()
     key_path = tmp_path / "key.pem"
@@ -139,8 +139,6 @@ def test_sign_then_verify_round_trips_and_a_wrong_key_fails(tmp_path: Path) -> N
 def test_a_signature_does_not_survive_editing_the_artifact(tmp_path: Path) -> None:
     # The signature covers `artifact.digest`, which covers every file — so tampering after signing
     # cannot be papered over: the file hash fails first, and the digest would have moved anyway.
-    from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem
-
     out = _compiled(tmp_path)
     pem = generate_private_key_pem()
     (tmp_path / "key.pem").write_bytes(pem)
@@ -160,3 +158,40 @@ def test_verify_without_a_manifest_is_a_clean_failure(tmp_path: Path) -> None:
     result = runner.invoke(app, ["verify", str(empty)])
     assert result.exit_code == 1
     assert "no manifest.json" in result.output
+
+
+@pytest.mark.parametrize(
+    "manifest_bytes, label",
+    [
+        (b"not json at all", "not JSON"),
+        (b'{"not": "a manifest"}', "JSON, but not a manifest"),
+        (b'{"schema_version": "1.0", "identity": ', "truncated mid-write"),
+        (b"\xff\xfe\x00binary", "not even text"),
+    ],
+)
+def test_verify_reports_an_unreadable_manifest_instead_of_raising(
+    tmp_path: Path, manifest_bytes: bytes, label: str
+) -> None:
+    # Judging a possibly-corrupt artifact is this command's entire job, so a manifest that does not
+    # parse is ordinary input, not an internal error. It used to reach the user as a bare pydantic
+    # traceback, which buries the verdict a verify-then-install caller came for.
+    module_dir = tmp_path / label.replace(" ", "_").replace(",", "")
+    module_dir.mkdir()
+    (module_dir / "manifest.json").write_bytes(manifest_bytes)
+
+    result = runner.invoke(app, ["verify", str(module_dir), "--no-require-marketplace"])
+    assert result.exit_code == 1, label
+    assert "could not be read as a module manifest" in result.output, label
+    assert result.exception is None or isinstance(result.exception, SystemExit), label
+
+
+def test_sign_reports_an_unreadable_manifest_instead_of_raising(tmp_path: Path) -> None:
+    module_dir = tmp_path / "module"
+    module_dir.mkdir()
+    (module_dir / "manifest.json").write_bytes(b"{}")
+    pem = tmp_path / "key.pem"
+    pem.write_bytes(generate_private_key_pem())
+
+    result = runner.invoke(app, ["sign", str(module_dir), "--private-key", str(pem)])
+    assert result.exit_code == 1
+    assert "could not be read as a module manifest" in result.output

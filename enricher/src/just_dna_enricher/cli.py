@@ -17,7 +17,7 @@ from just_dna_compiler.compiler import compile_module
 
 from just_dna_format.vocab import VALID_DECLARED_USE
 
-from just_dna_compiler.draft import DraftError, blank_template, required_fields
+from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.clinpgx_build import (
     DEFAULT_CLINPGX_URL,
@@ -173,10 +173,19 @@ def dosage_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every gene is ClinGen-curated."),
     url: str = typer.Option(DEFAULT_CLINGEN_URL, "--url", help="ClinGen gene-curation list URL."),
+    use: str = typer.Option(
+        "unstated", "--use",
+        help=(
+            "Declared use: unstated | non-commercial | commercial. ClinGen is CC0, so no declaration "
+            "is refused here — it is recorded into sources.csv beside the rows it justifies."
+        ),
+    ),
 ) -> None:
     """Add ClinGen dosage-sensitivity rows to gene_metrics.csv (haploinsufficiency/triplosensitivity)."""
     try:
-        result = enrich_dosage_sensitivity(spec_dir, mode=_mode(strict), url=url)
+        result = enrich_dosage_sensitivity(
+            spec_dir, mode=_mode(strict), declared_use=_use(use), url=url
+        )
     except ClinGenError as exc:
         typer.secho(f"DOSAGE FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -376,13 +385,26 @@ def draft_(
 def template_(
     kind: str = typer.Argument(..., help="Authored CSV to emit a header for, e.g. repeat_alleles.csv"),
 ) -> None:
-    """Print a header-only CSV for one authored table kind, generated from the live models."""
+    """Print a header-only CSV for one authored table kind, generated from the live models.
+
+    Kept working here, but `just-dna-compiler template` is canonical: this needs no network, and an
+    author who installed only the tier that owns the CSV shape should not have to add the network
+    tier to get a header. See `just-dna-compiler stub` for a template with rows to replace.
+    """
     try:
         typer.echo(blank_template(kind), nl=False)
+        reqs = authoring_requirements(kind)
     except DraftError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"required: {', '.join(required_fields(kind))}", fg=typer.colors.BLUE, err=True)
+    typer.secho(f"required: {', '.join(reqs['always'])}", fg=typer.colors.BLUE, err=True)
+    for group in reqs["any_of"]:
+        typer.secho(f"and one of: {' + '.join(group)}", fg=typer.colors.BLUE, err=True)
+    if reqs["defaulted"]:
+        # Without this line the command gave actively wrong advice: these columns are not "required",
+        # so they were never listed, yet an empty cell arrives as None and fails on type.
+        shown = ", ".join(f"{k}={v}" for k, v in reqs["defaulted"].items())
+        typer.secho(f"must not be left empty (defaults): {shown}", fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("check-identifiers")

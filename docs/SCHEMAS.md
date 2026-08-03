@@ -84,7 +84,9 @@ the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literat
   at load by `_freeze_identity` (authored values ignored) and never re-derived — so resolution can
   fill a coord/rsid or expand a row without ever re-keying it (Principle 7). It is a derived read-only
   *property* on `StudyRow`/`PharmVariantRow` (never resolved/expanded), and is excluded from the
-  authoring reference.
+  authoring reference. Note the asymmetry that makes a name-based exclusion wrong: `FrequencyRow`
+  declares a `variant_key` that is genuinely **authored and required**, so what is compiler-managed is
+  the *field*, not the name.
 - **Frozen `authored_ident`.** Stamped by the same validator: which of `{rsid, chrom, start, ref, alts}`
   the author actually supplied. Also compiler-managed and materialized to `weights.parquet`, and it is
   what makes resolution *reversible* — `variant_key` answers "which variant is this", not "what did the
@@ -92,6 +94,14 @@ the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literat
   from an authored coordinate. Without it reverse materialized resolved coordinates back into
   `variants.csv` and `content_signature` moved on every round-trip of an rsid-authored module. See
   [COMPILER.md § Resolution](COMPILER.md).
+- **Both carry the `COMPILER_MANAGED` marker (`base.py`), and every generator over the authored
+  surface reads `base.authored_field_names(model)` rather than `model_fields`.** A generator that
+  walks `model_fields` directly offers these two as columns an author writes, which is wrong twice
+  over: the compiler overwrites whatever is in them, and `authored_ident` is a `list[str]`, so a
+  rendered cell (`rsid`) does not reload as one. The marker exists because the two hand-kept
+  exclusion lists that preceded it both drifted — one named only `variant_key` and never learned
+  about `authored_ident`; the other did not exist at all, so `draft.append_rows` wrote a
+  `variants.csv` the compiler then refused to load.
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
   columns later (P5) — today `{reference_db, callable_from}`, each with a reason in
   `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already rejects

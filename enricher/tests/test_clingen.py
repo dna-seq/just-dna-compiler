@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE, VALID_DOSAGE_SENSITIVITY
 
 from just_dna_enricher.clingen import (
@@ -157,3 +158,40 @@ def test_source_row_records_that_clingen_is_sellable(tmp_path: Path) -> None:
     assert (row.source, row.layer) == ("clingen", "annotation")
     assert row.commercial_use is True and row.share_alike is False
     assert row.license == "CC0-1.0"
+
+
+def test_the_source_row_reaches_sources_csv(tmp_path: Path) -> None:
+    # It was returned and never written, so the licensing table stayed silent about a source the
+    # module's rows came from. The compile gate reads `sources.csv` and nothing else, and CC0 asks
+    # for attribution — both need the row to actually be on disk.
+    spec = _spec(tmp_path, ["BRCA1"])
+    enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV, declared_use="commercial")
+
+    written, errors, _ = _load_csv_rows(spec / "sources.csv", SourceRow, "sources.csv")
+    assert not errors
+    recorded = {(r.source, r.layer): r for r in written}
+    assert ("clingen", "annotation") in recorded
+    row = recorded[("clingen", "annotation")]
+    assert row.license == "CC0-1.0" and row.commercial_use is True
+    assert row.declared_use == "commercial"
+    assert row.dataset == "clingen_dosage_01 Aug,2026"  # the terms name the release they justify
+    assert row.attribution  # CC0 requests it; the column exists to carry it
+
+
+def test_recording_clingen_does_not_clobber_another_sources_row(tmp_path: Path) -> None:
+    # A PGx pass may have written its own terms first. Merging must add beside them — losing a
+    # restrictive row would silently make a module look sellable.
+    spec = _spec(tmp_path, ["BRCA1"])
+    (spec / "sources.csv").write_text(
+        "source,layer,license,commercial_use\ncpic,annotation,CC-BY-SA-4.0,false\n",
+        encoding="utf-8",
+    )
+    enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV)
+
+    written, errors, _ = _load_csv_rows(spec / "sources.csv", SourceRow, "sources.csv")
+    assert not errors
+    assert {(r.source, r.layer) for r in written} == {
+        ("cpic", "annotation"),
+        ("clingen", "annotation"),
+    }
+    assert {r.source: r.commercial_use for r in written} == {"cpic": False, "clingen": True}

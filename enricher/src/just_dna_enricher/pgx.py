@@ -41,7 +41,6 @@ from just_dna_enricher.cpic import CpicClient, CpicError
 from just_dna_enricher.licensing import (
     CPIC_TERMS,
     PHARMVAR_TERMS,
-    LicenseRefusal,
     SourceTerms,
     check_declared_use,
     write_sources_csv,

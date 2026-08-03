@@ -28,7 +28,7 @@ from typing import Optional
 
 from pydantic import Field, field_validator
 
-from just_dna_format.base import AuthoredModel
+from just_dna_format.base import AuthoredModel, vocabulary
 from just_dna_format.vocab import MULTI_SEP, check_vocab, validate_finite
 
 PGS_ID_PATTERN: re.Pattern[str] = re.compile(r"^PGS\d+$")
@@ -50,6 +50,10 @@ class PgsRow(AuthoredModel):
     group: Optional[str] = Field(default=None, description="Grouping label within the module")
     training_ancestry: Optional[list[str]] = Field(
         default=None,
+        # NOT `vocab.RECOMMENDED_ANCESTRY_GROUPS` — these are 1000G superpopulation codes and that is
+        # a gnomAD population list. `vocab.py` forbids merging them; keying the marker by vocabulary
+        # *name* rather than by field name is what keeps two ancestry lists from collapsing into one.
+        json_schema_extra=vocabulary("training_ancestry", VALID_TRAINING_ANCESTRY),
         description="Superpopulation(s) the score was validated in (1000G superpop codes; multi-valued)",
     )
     training_cohort: Optional[str] = Field(
@@ -64,7 +68,9 @@ class PgsRow(AuthoredModel):
         ),
     )
     research_tier: Optional[str] = Field(
-        default=None, description="research_only | calibrated (VALID_RESEARCH_TIERS)"
+        default=None,
+        json_schema_extra=vocabulary("research_tier", VALID_RESEARCH_TIERS),
+        description="research_only | calibrated (VALID_RESEARCH_TIERS)",
     )
 
     @field_validator("pgs_id")

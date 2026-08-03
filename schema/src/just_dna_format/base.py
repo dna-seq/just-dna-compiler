@@ -25,7 +25,7 @@ Dependency-light: imports only `pydantic` + the stdlib `vocab` leaf, and nothing
 imports it back, so it introduces no cycle.
 """
 
-from typing import Optional
+from typing import ClassVar, Optional
 
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator, model_validator
 
@@ -37,12 +37,100 @@ from just_dna_format.vocab import (
     VALID_SIGNIFICANCE,
     check_vocab,
     reject_reserved,
+    reject_template_placeholders,
     validate_field_token,
     validate_finite,
     validate_rsid,
     validate_trait_ids,
 )
 from just_dna_format.vrs import UnsupportedBuildError, derive_vrs_allele_id
+
+# ── Compiler-managed columns ────────────────────────────────────────────────────────────────────
+# Marker for a field the *compiler* stamps at load rather than the author writing it — today
+# `VariantRow.variant_key` and `VariantRow.authored_ident`, which `_freeze_identity` derives and
+# which `reverse_module` deliberately never writes back. They are declared as model fields because
+# they are carried in memory and materialized to `weights.parquet`, but they are not part of the
+# authored surface, and a tool that generates CSV columns from `model_fields` must not offer them:
+# `authored_ident` is a `list[str]`, so a rendered cell (`rsid`) does not even reload as one.
+#
+# Attached with `json_schema_extra` so the fact lives on the field itself. A hand-kept list somewhere
+# else is how `reverse_module`'s writer and a generator drift apart — see `authored_field_names`.
+COMPILER_MANAGED: dict[str, bool] = {"compiler_managed": True}
+
+
+def authored_field_names(model: type[BaseModel]) -> list[str]:
+    """The columns a human actually authors for `model`, in field-declaration order.
+
+    `model_fields` minus anything marked `COMPILER_MANAGED`. Every generator over the authored
+    surface — a blank template, a drafted CSV's header — reads its columns through here, so a field
+    that stops being authored stops being offered in the same commit that marks it."""
+    return [
+        name
+        for name, field in model.model_fields.items()
+        if not (
+            isinstance(field.json_schema_extra, dict)
+            and field.json_schema_extra.get("compiler_managed")
+        )
+    ]
+
+
+# ── Vocabulary-bound columns ────────────────────────────────────────────────────────────────────
+# Marker for a field whose value is drawn from a constrained vocabulary, carrying the members with it
+# so an authoring tool can offer them ("valid options to select from") without knowing the field.
+#
+# **The marker carries the options, not a name to look up.** A name would need a central registry, and
+# the vocabularies deliberately live in the leaves that own them (`vocab`, `spec`, `binning`, `pgx`,
+# `pgs`, `manifest`, `sources`). A registry in `vocab` cannot import `pgx` — that is the cycle this
+# module's "imports only pydantic + the stdlib vocab leaf" note exists to avoid — and a registry
+# anywhere else is a second hand-kept list, which is the exact failure being fixed: the authoring
+# reference's vocabulary block *was* such a list, and it silently missed `recommendation_strength`
+# and `phenotype_category` when 0.5 added them. Reading the members off the frozenset at class-
+# definition time makes that drift impossible by construction.
+#
+# `sorted(...)` of `str` keeps the marker JSON-serializable, so `model_json_schema()` still builds.
+def vocabulary(name: str, options: frozenset[str], *, closed: bool = True) -> dict[str, object]:
+    """Mark a field as drawn from `options`, for tools that offer an author the valid values.
+
+    `closed=True` means a validator rejects anything outside the set; `closed=False` marks the
+    recommended-but-open sets (`RECOMMENDED_EFFECT_MEASURES`, `ACTIONABILITY_SEED`,
+    `RECOMMENDED_AUTHOR_KINDS`), where the members are suggestions and a novel value is legal. A
+    consumer must be able to tell "pick one of these" from "these are suggestions", so the two are one
+    marker with a flag rather than two markers."""
+    return {"vocabulary": {"name": name, "options": sorted(options), "closed": closed}}
+
+
+# The vocabularies enforced by this class's own shared validators below. Declared once, here, so the
+# `check_vocab` call and the marker a tool reads are the *same object* — for these four the two
+# cannot disagree even in principle. A per-field marker would have to be repeated on every model
+# declaring the column (`direction` is declared on `VariantRow`, `MeasureBinRow` and `DiplotypeRow`),
+# and a repeated marker is a list again. The rule for where a binding lives is simply *where its
+# validator lives*: shared validator → here; model-specific validator → that model's `Field(...)`.
+SHARED_VOCABULARIES: dict[str, frozenset[str]] = {
+    "direction": VALID_DIRECTIONS,
+    "clin_sig": VALID_CLIN_SIG,
+    "stat_significance": VALID_SIGNIFICANCE,
+    "evidence_level": VALID_EVIDENCE_LEVELS,
+}
+
+
+def field_vocabularies(model: type[BaseModel]) -> dict[str, dict]:
+    """`{field_name: {name, options, closed}}` for every vocabulary-bound field of `model`.
+
+    The single route to "what may this cell contain" — `authoring_reference()` and any authoring tool
+    read it, and neither keeps a list of its own. Covers both binding sites: a field marked at its own
+    declaration, and a field whose vocabulary is enforced by `AuthoredModel`'s shared validators."""
+    found: dict[str, dict] = {}
+    for name, field in model.model_fields.items():
+        marker = (
+            field.json_schema_extra.get("vocabulary")
+            if isinstance(field.json_schema_extra, dict)
+            else None
+        )
+        if isinstance(marker, dict):
+            found[name] = marker
+        elif name in SHARED_VOCABULARIES:
+            found[name] = vocabulary(name, SHARED_VOCABULARIES[name])["vocabulary"]
+    return found
 
 
 def derive_variant_key(
@@ -120,9 +208,29 @@ class AuthoredModel(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    #: Alternative sets of columns, any ONE of which satisfies the row's identity requirement.
+    #: Empty when requiredness is fully expressed by the fields themselves.
+    #:
+    #: Pydantic's `is_required()` answers "must this column be present", which is not the whole
+    #: contract: `VariantRow` needs `rsid` **or** `chrom`+`start`, and that rule lives in a
+    #: `model_validator`, invisible to any tool listing required columns. `draft.required_fields`
+    #: consequently told an author a `variants.csv` needed nothing but `genotype`/`state`/`conclusion`.
+    #: Declaring the groups beside the validator makes the rule machine-readable; a test proves the
+    #: declaration and the validator agree by construction, so the two cannot drift.
+    #:
+    #: A `ClassVar` rather than a per-field marker because the rule is a property of the *model*:
+    #: `{"chrom", "start"}` is one group meaning "both together", which no annotation on `chrom`
+    #: alone can express. `MeasureBinRow._KEY_FIELDS`/`_EXPECTED_KIND` are the same shape for the
+    #: same reason — generic code reading model-level structure without a name list.
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = ()
+
     @model_validator(mode="before")
     @classmethod
-    def _reject_reserved(cls, data: object) -> object:
+    def _guard_raw_input(cls, data: object) -> object:
+        # Both guards run on the RAW dict, before field coercion, so each can give its own diagnosis
+        # instead of pydantic's type error. Placeholder first: a stub row is a half-written template,
+        # which is more useful to say than "that column is also reserved".
+        reject_template_placeholders(data, what=f"{cls.__name__} row")
         # A reserved name fails with a specific diagnosis; any other unknown/typo'd column falls
         # through to `extra="forbid"`'s generic message. See vocab.reject_reserved.
         return reject_reserved(data)
@@ -137,25 +245,15 @@ class AuthoredModel(BaseModel):
     def _validate_trait_efo_id(cls, v: Optional[str]) -> Optional[str]:
         return validate_trait_ids(v)
 
-    @field_validator("direction", check_fields=False)
+    # The four below read their vocabulary out of `SHARED_VOCABULARIES`, which is also what
+    # `field_vocabularies` reports — so the set a tool offers an author is the same object the
+    # validator rejects against, not a copy of it.
+    @field_validator("direction", "clin_sig", "stat_significance", "evidence_level",
+                     check_fields=False)
     @classmethod
-    def _validate_direction(cls, v: Optional[str]) -> Optional[str]:
-        return check_vocab(v, VALID_DIRECTIONS, "direction")
-
-    @field_validator("clin_sig", check_fields=False)
-    @classmethod
-    def _validate_clin_sig(cls, v: Optional[str]) -> Optional[str]:
-        return check_vocab(v, VALID_CLIN_SIG, "clin_sig")
-
-    @field_validator("stat_significance", check_fields=False)
-    @classmethod
-    def _validate_stat_significance(cls, v: Optional[str]) -> Optional[str]:
-        return check_vocab(v, VALID_SIGNIFICANCE, "stat_significance")
-
-    @field_validator("evidence_level", check_fields=False)
-    @classmethod
-    def _validate_evidence_level(cls, v: Optional[str]) -> Optional[str]:
-        return check_vocab(v, VALID_EVIDENCE_LEVELS, "evidence_level")
+    def _validate_shared_vocabulary(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+        name = info.field_name or ""
+        return check_vocab(v, SHARED_VOCABULARIES[name], name)
 
     @field_validator("effect_size", check_fields=False)
     @classmethod

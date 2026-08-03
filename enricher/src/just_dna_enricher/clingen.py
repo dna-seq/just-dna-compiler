@@ -43,7 +43,7 @@ from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
-from just_dna_enricher.licensing import CLINGEN_TERMS
+from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file
 
 logger = logging.getLogger(__name__)
 
@@ -200,14 +200,20 @@ def enrich_dosage_sensitivity(
             f"list: {sorted(set(missing))}. ClinGen curates a subset by design (1,520 genes at "
             f"{released}), so this is usually correct rather than an error — use mode='best_effort'."
         )
+    # The terms live beside the other sources in `licensing`, not here — one place per service, so the
+    # endpoint and its terms cannot drift apart.
+    source_row = CLINGEN_TERMS.row("annotation", declared_use=declared_use, dataset=dataset)
     if write:
         _write_gene_metrics_csv(out, output_path)
+        # A pass that consulted a source records it, exactly as the PGx passes do. ClinGen's CC0 makes
+        # no difference to whether it is recorded: the compile gate reads `sources.csv` and nothing
+        # else, so an unrecorded source is one the module cannot account for — and CC0 asks for
+        # attribution, which is a thing this table exists to carry.
+        merge_sources_file([source_row], spec_dir / "sources.csv", error=ClinGenError)
     return ClinGenResult(
         rows=out,
         covered=sorted(set(covered)),
         missing=sorted(set(missing)),
         dataset=dataset,
-        # The terms live beside the other sources in `licensing`, not here — one place per service,
-        # so the endpoint and its terms cannot drift apart.
-        source_row=CLINGEN_TERMS.row("annotation", declared_use=declared_use, dataset=dataset),
+        source_row=source_row,
     )

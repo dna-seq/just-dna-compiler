@@ -23,6 +23,7 @@ from just_dna_format.identity import (
     validate_name,
     validate_namespace,
 )
+from just_dna_format.base import vocabulary
 from just_dna_format.vocab import (
     RECOMMENDED_AUTHOR_KINDS,
     VALID_AUTHOR_ROLES,
@@ -115,7 +116,9 @@ class Display(BaseModel):
         default="database", description="Icon name within `icon_set` — the no-logo fallback glyph"
     )
     icon_set: str = Field(
-        default="fomantic", description="Icon family for `icon`: 'fomantic' or 'awesome' (FontAwesome)"
+        default="fomantic",
+        json_schema_extra=vocabulary("icon_set", VALID_ICON_SETS),
+        description="Icon family for `icon`: 'fomantic' or 'awesome' (FontAwesome)",
     )
     color: str = Field(default="#6435c9", description="Hex color for UI theming")
 
@@ -471,9 +474,13 @@ class Contribution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     who: str = Field(description="Contributor identity: a name, handle, or model id")
-    role: str = Field(description="What this contributor did (created|edited|audited|reviewed)")
+    role: str = Field(
+        json_schema_extra=vocabulary("author_role", VALID_AUTHOR_ROLES),
+        description="What this contributor did (created|edited|audited|reviewed)",
+    )
     kind: list[str] = Field(
         default_factory=list,
+        json_schema_extra=vocabulary("author_kind", RECOMMENDED_AUTHOR_KINDS, closed=False),
         description=(
             "Multi-valued tag set describing the contributor — human ladder {human, human_expert, "
             "human_certified} or {ai} + scale {agent, team, swarm}. Open (recommended seed); route "

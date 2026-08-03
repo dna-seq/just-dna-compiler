@@ -12,7 +12,7 @@ manifest enforce exactly the same constraints.
 
 import math
 import re
-from typing import Optional
+from typing import ClassVar, Optional
 
 from pydantic import (
     BaseModel,
@@ -31,7 +31,7 @@ from just_dna_format.derive import (
     stat_significance_from_state,
     trimmed_state,
 )
-from just_dna_format.base import AuthoredModel, derive_variant_key
+from just_dna_format.base import COMPILER_MANAGED, AuthoredModel, derive_variant_key, vocabulary
 from just_dna_format.identity import validate_name
 from just_dna_format.manifest import SCHEMA_VERSION, Contribution, Display, GenePanelSpec
 from just_dna_format.normalize import normalize_version
@@ -42,6 +42,7 @@ from just_dna_format.vocab import (
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
     check_vocab,
+    reject_template_placeholders,
     validate_allele,
     validate_finite,
 )
@@ -177,6 +178,14 @@ class ModuleSpecConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_template_placeholders(cls, data: object) -> object:
+        # The YAML counterpart of `AuthoredModel`'s guard: a scaffolded `module_spec.yaml` must not
+        # compile with its stub values still in place. Only the top level is scanned here; the nested
+        # blocks (`module:`, `defaults:`) are models of their own and are checked when they validate.
+        return reject_template_placeholders(data, what="module_spec.yaml")
+
     schema_version: str = Field(default=SCHEMA_VERSION, description="DSL schema version")
     module: ModuleInfo = Field(description="Module identity and display metadata")
     defaults: Defaults = Field(default_factory=Defaults, description="Default variant-row values")
@@ -233,7 +242,11 @@ class VariantRow(AuthoredModel):
     """
 
     rsid: Optional[str] = Field(default=None, description="dbSNP identifier, e.g. rs1801133")
-    chrom: Optional[str] = Field(default=None, description="Chromosome without 'chr' prefix")
+    chrom: Optional[str] = Field(
+        default=None,
+        json_schema_extra=vocabulary("chromosome", VALID_CHROMOSOMES),
+        description="Chromosome without 'chr' prefix",
+    )
     start: Optional[int] = Field(
         default=None, ge=0, description="0-based genomic position (GRCh38)"
     )
@@ -241,6 +254,7 @@ class VariantRow(AuthoredModel):
     alts: Optional[str] = Field(default=None, description="Alt allele(s), comma-separated")
     variant_key: Optional[str] = Field(
         default=None,
+        json_schema_extra=COMPILER_MANAGED,
         description=(
             "Frozen machine identity (rsid, else chrom:start:ref, or chrom:start:ref:alts when an alt "
             "is present so distinct alleles at one locus don't collide), stamped at load and never "
@@ -251,6 +265,7 @@ class VariantRow(AuthoredModel):
     )
     authored_ident: Optional[list[str]] = Field(
         default=None,
+        json_schema_extra=COMPILER_MANAGED,
         description=(
             "Which identity columns the author actually supplied, from {rsid, chrom, start, ref, "
             "alts}. Stamped at load like `variant_key` and never re-derived, so resolution can fill "
@@ -259,9 +274,18 @@ class VariantRow(AuthoredModel):
             "what keeps `content_signature` stable across a round-trip."
         ),
     )
+    #: rsid, or a full coordinate. Mirrors `_validate_identification` below; pinned to it by test.
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
+        frozenset({"rsid"}),
+        frozenset({"chrom", "start"}),
+    )
+
     genotype: str = Field(description="Slash-separated sorted alleles, e.g. A/G")
     weight: Optional[float] = Field(default=None, description="Score (positive=protective)")
-    state: str = Field(description="One of: risk, protective, neutral, significant, alt, ref")
+    state: str = Field(
+        json_schema_extra=vocabulary("state", VALID_STATES),
+        description="One of: risk, protective, neutral, significant, alt, ref",
+    )
     conclusion: str = Field(description="Human-readable interpretation for this genotype")
     negatives: Optional[str] = Field(
         default=None,
@@ -294,6 +318,9 @@ class VariantRow(AuthoredModel):
     )
     effect_measure: Optional[str] = Field(
         default=None,
+        json_schema_extra=vocabulary(
+            "effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False
+        ),
         description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended; not a closed set).",
     )
     effect_allele: Optional[str] = Field(
@@ -302,6 +329,7 @@ class VariantRow(AuthoredModel):
     )
     flags: Optional[list[str]] = Field(
         default=None,
+        json_schema_extra=vocabulary("reserved_flags", RESERVED_FLAGS, closed=False),
         description=(
             "Open, multi-valued tag list (CSV: comma/semicolon/pipe-separated). Reserved tags the "
             "tooling acts on: conditional|phased|pleiotropic; other tags are allowed (surfaced as INFO)."
@@ -332,6 +360,12 @@ class VariantRow(AuthoredModel):
     )
     actionability: Optional[str] = Field(
         default=None,
+        # CLOSED, despite `ACTIONABILITY_SEED`'s name and its own docstring: `_validate_actionability`
+        # below calls `check_vocab`, which rejects a non-member. The authoring reference advertised it
+        # under `open_recommended`, so a tool offering a novel value got a rejection it was told to
+        # expect to work — a drift in *closedness* rather than in membership, which is exactly why
+        # this marker carries the flag instead of just the members.
+        json_schema_extra=vocabulary("actionability", ACTIONABILITY_SEED),
         description=(
             "Annotation-level actionability of the finding (ACTIONABILITY_SEED: actionable|"
             "preventable|pharmacogenomic|incurable|reproductive|descriptive|modifiable). A property "
@@ -540,11 +574,19 @@ class StudyRow(AuthoredModel):
     `stat_significance`/`effect_size` validators)."""
 
     rsid: Optional[str] = Field(default=None, description="dbSNP identifier or variant key")
+    # No `chromosome` marker: `StudyRow` runs no chrom validator (only `VariantRow` does), and a
+    # marker must describe what actually rejects. Same call as the PGx tables — see `pgx.py`.
     chrom: Optional[str] = Field(default=None, description="Chromosome (for position-only variants)")
     start: Optional[int] = Field(
         default=None, ge=0, description="0-based position (position-only variants)"
     )
     ref: Optional[str] = Field(default=None, description="Reference allele (position-only variants)")
+    #: rsid, or a bare chrom (no `start` — see `_validate_study_identification`).
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
+        frozenset({"rsid"}),
+        frozenset({"chrom"}),
+    )
+
     pmid: str = Field(description="PubMed ID or reference — free-form, must be non-empty")
     population: Optional[str] = Field(default=None, description="Study population")
     p_value: Optional[str] = Field(default=None, description="Raw p-value string (free-form)")
@@ -560,7 +602,9 @@ class StudyRow(AuthoredModel):
         default=None, description="Per-study effect magnitude (unit given by `effect_measure`)."
     )
     effect_measure: Optional[str] = Field(
-        default=None, description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended, open)."
+        default=None,
+        json_schema_extra=vocabulary("effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False),
+        description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended, open).",
     )
     trait_efo_id: Optional[str] = Field(
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s) for this study."
@@ -665,6 +709,9 @@ class StudyRow(AuthoredModel):
 
     @model_validator(mode="after")
     def _validate_study_identification(self) -> "StudyRow":
+        # NOTE the asymmetry with `VariantRow`: this rule accepts a bare `chrom`, no `start`. The
+        # message below says "chrom + start" and the code does not require `start` — declared as
+        # written, not as worded, because `REQUIRED_ANY_OF` must describe what actually validates.
         if self.rsid is None and self.chrom is None:
             raise ValueError(
                 "At least one identifier is required: provide rsid or position (chrom + start)"

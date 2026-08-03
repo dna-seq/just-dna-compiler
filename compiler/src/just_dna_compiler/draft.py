@@ -32,9 +32,12 @@ compile → reverse → recompile and parquet bytes depend on it, so re-sorting 
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, get_args
 
+from just_dna_format.base import authored_field_names
+from just_dna_format.binning import MeasureBinRow
 from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler import (
@@ -137,19 +140,140 @@ def natural_key(row: BaseModel) -> Optional[tuple]:
 def blank_template(csv_name: str) -> str:
     """A header-only CSV for one table kind, with columns in the model's own field order.
 
-    Generated from `model_fields`, never a hand-kept list — the same drift-proof route
+    Generated from the model, never a hand-kept list — the same drift-proof route
     `reference.authoring_reference()` takes. Starting a new table currently means copying a header out
-    of the docs, which is exactly the thing that goes stale."""
-    return ",".join(model_for(csv_name).model_fields.keys()) + "\n"
+    of the docs, which is exactly the thing that goes stale.
+
+    Compiler-managed columns are left out (`base.authored_field_names`): `variant_key` and
+    `authored_ident` are stamped at load and never written back by `reverse_module`, so offering them
+    would invite an author to fill a column the compiler overwrites — and `authored_ident` is a list,
+    so a rendered cell would not even reload."""
+    return ",".join(authored_field_names(model_for(csv_name))) + "\n"
 
 
 def required_fields(csv_name: str) -> list[str]:
-    """The columns an author must fill for this kind — everything without a default."""
-    return [name for name, f in model_for(csv_name).model_fields.items() if f.is_required()]
+    """The columns an author must fill for this kind — everything without a default.
+
+    Field-local only, and deliberately unchanged (it is shipped API). It does **not** answer "what
+    must I fill to get a valid row": see `authoring_requirements`, which adds the columns that have a
+    default but reject an empty cell, and the alternative identity groups a model validator enforces."""
+    model = model_for(csv_name)
+    authored = set(authored_field_names(model))
+    return [
+        name for name, f in model.model_fields.items() if f.is_required() and name in authored
+    ]
+
+
+def field_category(model: type[BaseModel], name: str) -> str:
+    """`required` | `defaulted` | `optional` — the three-way split a template has to respect.
+
+    The middle category is the one that bites, and it is why `blank_template` alone was a trap. A
+    field like `MeasureBinRow.measure_kind` (`str`, default `"repeat_count"`) or `unresolved` (`bool`,
+    default `False`) is *not* required, so `required_fields` never named it — but `_load_csv_rows`
+    turns an empty cell into `None` and **keeps the key**, so the model receives `None` rather than
+    its default and fails on type. An author who filled exactly the columns they were told to fill
+    got `Input should be a valid string [input_value=None]` about a column nobody mentioned.
+
+    A `defaulted` cell must therefore be written out with its default rather than left blank."""
+    field = model.model_fields[name]
+    if field.is_required():
+        return "required"
+    return "optional" if _accepts_none(field.annotation) else "defaulted"
+
+
+def _accepts_none(annotation: Any) -> bool:
+    """Does this annotation admit `None`? (`Optional[str]` yes; a defaulted bare `str`/`bool` no.)"""
+    return annotation is type(None) or type(None) in get_args(annotation)
+
+
+def authoring_requirements(csv_name: str) -> dict[str, Any]:
+    """What an author actually has to supply for one table kind, machine-readably.
+
+    Three parts, because requiredness has three shapes here and only the first is visible to
+    pydantic's `is_required()`:
+
+    * `always`   — columns with no default;
+    * `any_of`   — alternative identity groups, any ONE of which satisfies the row (`rsid`, or
+      `chrom`+`start`). Enforced by a model validator, so no per-field flag can express it;
+    * `defaulted` — `{column: rendered default}` for columns that have a default but reject an empty
+      cell. A template writes these out; see `field_category`.
+    """
+    model = model_for(csv_name)
+    categories = {name: field_category(model, name) for name in authored_field_names(model)}
+    return {
+        "csv": csv_name,
+        "always": [n for n, c in categories.items() if c == "required"],
+        "any_of": [sorted(group) for group in getattr(model, "REQUIRED_ANY_OF", ())],
+        "defaulted": {
+            n: _scalar_cell(model.model_fields[n].get_default(call_default_factory=True))
+            for n, c in categories.items()
+            if c == "defaulted"
+        },
+        "optional": [n for n, c in categories.items() if c == "optional"],
+    }
+
+
+def stub_template(csv_name: str, *, rows: int = 1) -> str:
+    """A header plus `rows` stub rows: the sentinel where a human must decide, defaults written out.
+
+    The point of the sentinel over a blank cell is that an unreplaced stub **cannot compile** —
+    `vocab.reject_template_placeholders` refuses it by name and row, in both modes. A blank required
+    cell would also fail, but a blank *optional* one would silently become a real row asserting
+    nothing, and the binning kinds' `unresolved` sentinel could not be used for this at all: it is
+    real data designed to compile.
+
+    For a binning kind the mandatory `unresolved` companion row is emitted too, because a binning
+    table without one is incomplete by contract and the author would otherwise meet that rule as a
+    compile error about a row they never wrote."""
+    model = model_for(csv_name)
+    fieldnames = authored_field_names(model)
+    requirements = authoring_requirements(csv_name)
+    # Only the FIRST identity group, not the union: the groups are alternatives, so stubbing all of
+    # them would tell an author to supply an rsid *and* a coordinate. First is the declaration order,
+    # which puts the cheapest identity (`rsid`) in front.
+    identity = list(requirements["any_of"][0]) if requirements["any_of"] else []
+    stubbed = set(requirements["always"]) | set(identity)
+    defaults = requirements["defaulted"]
+
+    def cell(name: str) -> str:
+        if name in defaults:
+            return defaults[name]
+        return TEMPLATE_PLACEHOLDER if name in stubbed else ""
+
+    lines = [",".join(fieldnames)]
+    lines.extend(",".join(cell(f) for f in fieldnames) for _ in range(rows))
+    if issubclass(model, MeasureBinRow):
+        lines.append(",".join(_unresolved_cell(model, f, defaults) for f in fieldnames))
+    return "\n".join(lines) + "\n"
+
+
+def _unresolved_cell(model: type[BaseModel], name: str, defaults: dict[str, str]) -> str:
+    """One cell of the mandatory `unresolved` companion row for a binning kind.
+
+    It carries no bounds (`_validate_range` forbids them on the sentinel) and only `conclusion` is
+    left for the human — the row's whole content is "what to say when nothing was measured"."""
+    if name == "unresolved":
+        return "true"
+    if name in ("measure_min", "measure_max"):
+        return ""
+    if name in defaults:
+        return defaults[name]
+    return TEMPLATE_PLACEHOLDER if model.model_fields[name].is_required() else ""
+
+
+def _authored_dump(row: BaseModel) -> dict[str, Any]:
+    """`model_dump()` restricted to the columns a human authors.
+
+    Compiler-managed fields are dropped here rather than at each call site, so a drafted cell, a
+    widened header and a difference report all agree on what the authored surface is."""
+    dumped = row.model_dump()
+    return {name: dumped.get(name) for name in authored_field_names(type(row))}
 
 
 def _render(row: BaseModel, fieldnames: list[str], list_fields: set[str]) -> dict[str, str]:
-    dumped = row.model_dump()
+    # `.get` (not `[]`): a pre-existing file may carry a compiler-managed column, and a new row leaves
+    # it empty rather than stamping a value the compiler re-derives anyway.
+    dumped = _authored_dump(row)
     return {
         name: (_list_cell(dumped.get(name)) if name in list_fields else _scalar_cell(dumped.get(name)))
         for name in fieldnames
@@ -161,12 +285,15 @@ def _compare(authored: BaseModel, incoming: BaseModel) -> dict[str, tuple[Any, A
 
     Only fields the *source* actually set are compared: a scaffold that fills three of twelve columns
     is not claiming the other nine are empty, so treating its `None`s as contradictions would report a
-    disagreement on every hand-annotated row."""
-    a, b = authored.model_dump(), incoming.model_dump()
+    disagreement on every hand-annotated row. An empty list counts as unset for the same reason.
+    Compiler-managed columns are out of scope entirely — `authored_ident` differs whenever the source
+    names a variant by fewer identity columns than the author did, which is not a disagreement about
+    the row's content."""
+    a, b = _authored_dump(authored), _authored_dump(incoming)
     return {
         name: (a.get(name), value)
         for name, value in b.items()
-        if value is not None and a.get(name) != value
+        if value is not None and value != [] and a.get(name) != value
     }
 
 
@@ -188,7 +315,10 @@ def append_rows(
 
     existing_rows: list[BaseModel] = []
     existing_header: list[str] = []
-    if path.exists():
+    # A zero-byte file (a bare `touch`) is treated as absent rather than as an invalid table: it has
+    # no header to key against and no rows to preserve, so refusing it would only mean the author has
+    # to delete a file that says nothing.
+    if path.exists() and path.stat().st_size > 0:
         existing_rows, errors, _ = _load_csv_rows(path, model, csv_name)
         if errors:
             raise DraftError(
@@ -230,11 +360,11 @@ def append_rows(
     # Which columns the file needs: whatever it already has, plus every column the new rows actually
     # set. A column no incoming row fills is not added — a scaffold should not widen a hand-authored
     # table with empties it has nothing to put in.
-    field_order = list(model.model_fields.keys())
+    field_order = authored_field_names(model)
     filled = {
         name
         for row in to_write
-        for name, value in row.model_dump().items()
+        for name, value in _authored_dump(row).items()
         if value is not None and value != []
     }
     header = existing_header or [f for f in field_order if f in filled or f in set(required_fields(csv_name))]
@@ -246,21 +376,36 @@ def append_rows(
 
     list_fields = _list_fields(model)
     rendered = [_render(row, fieldnames, list_fields) for row in to_write]
-    if extended or not path.exists():
-        # The header has to grow (or the file does not exist yet), so the table is rewritten. Existing
-        # rows keep their order and values; they gain an empty cell in each new column, which
-        # `content_signature` ignores by construction.
-        previous = _render_existing(path, fieldnames) if path.exists() else []
+    if extended or not existing_header:
+        # The header has to grow, or there is none yet (the file is absent, or present but empty —
+        # a bare `touch`). Either way the table is written whole. Existing rows keep their order and
+        # values; they gain an empty cell in each new column, which `content_signature` ignores by
+        # construction.
+        previous = _render_existing(path, fieldnames) if existing_header else []
         with open(path, "w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(previous + rendered)
     else:
-        # The common case: the header already fits, so existing bytes are literally untouched.
+        # The common case: the header already fits, so existing bytes are literally untouched — bar a
+        # final newline the file may be missing. A hand-authored CSV often has none (plenty of editors
+        # do not add one), and appending straight onto it would glue the first new row to the author's
+        # last one, corrupting a row this module promises never to touch.
         with open(path, "a", encoding="utf-8", newline="") as handle:
+            if not _ends_with_newline(path):
+                handle.write(csv.excel.lineterminator)
             csv.DictWriter(handle, fieldnames=fieldnames).writerows(rendered)
 
     return DraftReport(csv_name, path, outcomes, written=True, header_extended=extended)
+
+
+def _ends_with_newline(path: Path) -> bool:
+    """Does the file already end in a line break? (An empty file counts as terminated.)"""
+    with open(path, "rb") as handle:
+        if handle.seek(0, 2) == 0:
+            return True
+        handle.seek(-1, 2)
+        return handle.read(1) in (b"\n", b"\r")
 
 
 def _render_existing(path: Path, fieldnames: list[str]) -> list[dict[str, str]]:

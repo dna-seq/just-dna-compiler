@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE
 
@@ -260,3 +261,23 @@ def merge_sources_csv(rows: list[SourceRow], path: Path, existing: list[SourceRo
     out = [merged[key] for key in sorted(merged)]
     write_sources_csv(out, path)
     return out
+
+
+def merge_sources_file(
+    rows: list[SourceRow], path: Path, *, error: type[Exception]
+) -> list[SourceRow]:
+    """Read `sources.csv` if it is there, merge `rows` in without clobbering, and write it back.
+
+    The read-merge-write every terms-emitting pass performs, in one place: a pass that consulted a
+    source has to record it, and each of them was otherwise growing its own copy of these nine lines.
+    An unparseable existing file raises rather than being overwritten — merging into a table that did
+    not load would silently drop the rows already recorded. `error` is the caller's own exception
+    type, so a failure still surfaces as that pass's error rather than as a licensing one.
+    """
+    existing: list[SourceRow] = []
+    if path.exists():
+        parsed, errors, _ = _load_csv_rows(path, SourceRow, "sources.csv")
+        if errors:
+            raise error(f"existing sources.csv is invalid: {errors[0]}")
+        existing = parsed
+    return merge_sources_csv(rows, path, existing)

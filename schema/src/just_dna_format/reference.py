@@ -59,6 +59,7 @@ from just_dna_format.spec import (
     StudyRow,
     VariantRow,
 )
+from just_dna_format.base import authored_field_names, field_vocabularies
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
@@ -115,28 +116,55 @@ def _type_name(annotation: Any) -> str:
     )
 
 
-# Compiler-managed machine fields that are materialized into the artifact but are NOT authored — kept
-# out of the human-facing authoring reference so they don't read as fields an author writes. (The full
-# machine `json_schemas()` still lists them: it is the honest, complete materialized shape.)
-_COMPILER_MANAGED_FIELDS: frozenset[str] = frozenset({"variant_key"})
+def _collect_vocabularies(*, closed: bool) -> dict[str, list[str]]:
+    """`{vocabulary name: sorted members}` over every marked field of every authored model.
+
+    Keyed by **vocabulary name**, not by field name, and that is load-bearing: `PgsRow`'s
+    `training_ancestry` (1000G superpopulations) and gnomAD's population list are two different
+    vocabularies that `vocab.py` forbids merging, and a `measure_kind` pinned to one value on a
+    binning subclass is not the open choice on the base. Names are distinct, so a collision would be
+    a real modelling error rather than a silent merge — `test_reference.py` asserts there is none."""
+    collected: dict[str, list[str]] = {}
+    for model in _ALL_MODELS.values():
+        for marker in field_vocabularies(model).values():
+            if marker["closed"] is closed:
+                collected[marker["name"]] = marker["options"]
+    return collected
 
 
 def _describe_model(model: type[BaseModel]) -> list[dict[str, Any]]:
     """Field list for one model, in declaration order — `{name, type, required, description}`.
 
-    Skips `_COMPILER_MANAGED_FIELDS` (e.g. the frozen `variant_key`): materialized, but not authored."""
+    Compiler-managed fields are skipped — materialized into the artifact, but not authored, so
+    listing them here would read as columns an author writes. (The full machine `json_schemas()`
+    still lists them: it is the honest, complete materialized shape.)
+
+    The set comes from the fields' own `COMPILER_MANAGED` marker via `base.authored_field_names`,
+    not from a name list kept here. It *was* a name list, and it drifted exactly as you would expect:
+    it named `variant_key` and never learned about `authored_ident` when 0.5 added it, so this
+    reference — whose entire job is not to drift — offered an author a `list[str]` column the
+    compiler stamps. A bare name set is also model-blind, and `FrequencyRow.variant_key` is a
+    genuinely authored, required column that such a set would have hidden."""
     fields = []
+    authored = set(authored_field_names(model))
+    vocabularies = field_vocabularies(model)
     for name, field in model.model_fields.items():
-        if name in _COMPILER_MANAGED_FIELDS:
+        if name not in authored:
             continue
-        fields.append(
-            {
-                "name": name,
-                "type": _type_name(field.annotation),
-                "required": field.is_required(),
-                "description": field.description,
-            }
-        )
+        entry: dict[str, Any] = {
+            "name": name,
+            "type": _type_name(field.annotation),
+            "required": field.is_required(),
+            "description": field.description,
+        }
+        # The allowed values ride on the field, so a tool building a picker reads them here instead
+        # of matching a field name against the top-level vocabulary block and hoping the two agree.
+        marker = vocabularies.get(name)
+        if marker is not None:
+            entry["vocabulary"] = marker["name"]
+            entry["options"] = marker["options"]
+            entry["closed"] = marker["closed"]
+        fields.append(entry)
     return fields
 
 
@@ -148,25 +176,20 @@ def authoring_reference() -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "genome_build_default": ModuleSpecConfig.model_fields["genome_build"].default,
         "models": {name: _describe_model(model) for name, model in _ALL_MODELS.items()},
-        "vocabularies": {
-            "state": sorted(VALID_STATES),
-            "chromosome": sorted(VALID_CHROMOSOMES),
-            "direction": sorted(VALID_DIRECTIONS),
-            "stat_significance": sorted(VALID_SIGNIFICANCE),
-            "clin_sig": sorted(VALID_CLIN_SIG),
-            "measure_kind": sorted(VALID_MEASURE_KINDS),
-            "function_status": sorted(VALID_FUNCTION_STATUS),
-            "evidence_level": sorted(VALID_EVIDENCE_LEVELS),
-            "training_ancestry": sorted(VALID_TRAINING_ANCESTRY),
-            "research_tier": sorted(VALID_RESEARCH_TIERS),
-            "reserved_flags": sorted(RESERVED_FLAGS),
-            "icon_set": sorted(VALID_ICON_SETS),
-            "author_role": sorted(VALID_AUTHOR_ROLES),
-        },
-        "open_recommended": {
-            "effect_measure": sorted(RECOMMENDED_EFFECT_MEASURES),
-            "actionability_seed": sorted(ACTIONABILITY_SEED),
-            "author_kind": sorted(RECOMMENDED_AUTHOR_KINDS),
+        # Both blocks are generated from the fields' own `vocabulary` markers (`base.py`), not listed
+        # here. The list they replace drifted twice: it never learned about `recommendation_strength`
+        # or `phenotype_category` when 0.5 added them, and it filed `actionability` under
+        # `open_recommended` although `VariantRow` rejects a non-member — a drift in *closedness*,
+        # which is why the marker carries that flag and why `actionability` now appears below.
+        "vocabularies": _collect_vocabularies(closed=True),
+        "open_recommended": _collect_vocabularies(closed=False),
+        # Alternative identity-column sets, any ONE of which satisfies a row's requirement. Field-level
+        # `required` cannot express "rsid OR chrom+start" — that rule is a model validator — so a tool
+        # listing required columns told an author a `variants.csv` row needed no identifier at all.
+        "required_any_of": {
+            name: [sorted(group) for group in model.REQUIRED_ANY_OF]
+            for name, model in _ALL_MODELS.items()
+            if getattr(model, "REQUIRED_ANY_OF", ())
         },
         "reserved_names": sorted(RESERVED_NAMES_0_4),
         # Field-ownership boundary for the `module:` block (S2): keys the format knows about but that

@@ -13,15 +13,26 @@ Exit codes are CI/registry-gateable: `0` success, `1` failure (invalid spec / fa
     just-dna-compiler sign out/ --private-key key.pem
 """
 
+import json
 from pathlib import Path
 from typing import Optional
 
 import typer
 from just_dna_format.integrity import IntegrityError, verify_manifest
-from just_dna_format.manifest import read_manifest, write_manifest
+from just_dna_format.manifest import ModuleManifest, read_manifest, write_manifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 from just_dna_format.signing import sign_digest
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
+from pydantic import ValidationError
 
+from just_dna_compiler.draft import (
+    DraftError,
+    authoring_requirements,
+    blank_template,
+    stub_template,
+)
+from just_dna_compiler.hints import describe_table, inspect_rows
+from just_dna_compiler.scaffold import scaffold_module
 from just_dna_compiler.compiler import (
     compile_module,
     content_signature,
@@ -138,6 +149,29 @@ def signature(
     typer.echo(content_signature(spec_dir))
 
 
+def _read_manifest_or_exit(module_dir: Path) -> ModuleManifest:
+    """Load `module_dir/manifest.json`, turning any unreadable manifest into a clean exit-1.
+
+    Shared by `verify` and `sign` so the failure is reported once, in one shape. It matters most for
+    `verify`, whose whole job is judging an artifact that may be corrupt or hostile: a manifest that
+    is truncated, not JSON, or missing required blocks is an ordinary input to that command, not an
+    internal error, and answering it with a pydantic traceback buries the verdict a caller came for.
+    """
+    manifest_path = module_dir / "manifest.json"
+    if not manifest_path.is_file():
+        typer.secho(f"no manifest.json in {module_dir}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    try:
+        return read_manifest(manifest_path)
+    except (ValidationError, UnicodeDecodeError, OSError) as exc:
+        typer.secho(
+            f"manifest.json in {module_dir} could not be read as a module manifest: {exc}",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+
+
 @app.command()
 def verify(
     module_dir: Path = typer.Argument(
@@ -166,11 +200,7 @@ def verify(
     a download. It re-hashes every artifact file, recomputes `artifact.digest` over the set, and — when
     a key is pinned — verifies the Ed25519 signature over that digest.
     """
-    manifest_path = module_dir / "manifest.json"
-    if not manifest_path.is_file():
-        typer.secho(f"no manifest.json in {module_dir}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
-    manifest = read_manifest(manifest_path)
+    manifest = _read_manifest_or_exit(module_dir)
     try:
         verify_manifest(
             module_dir,
@@ -210,14 +240,10 @@ def sign(
     file set, so one signature covers every artifact byte, and re-signing after any edit is impossible
     to forget — the digest moves and the old signature stops verifying.
     """
-    manifest_path = module_dir / "manifest.json"
-    if not manifest_path.is_file():
-        typer.secho(f"no manifest.json in {module_dir}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
-    manifest = read_manifest(manifest_path)
+    manifest = _read_manifest_or_exit(module_dir)
     manifest.signature = sign_digest(manifest.artifact.digest, private_key.read_bytes())
-    write_manifest(manifest, manifest_path)
-    typer.secho(f"signed: {manifest_path}", fg=typer.colors.GREEN)
+    write_manifest(manifest, module_dir / "manifest.json")
+    typer.secho(f"signed: {module_dir / 'manifest.json'}", fg=typer.colors.GREEN)
     typer.echo(f"digest: {manifest.artifact.digest}")
     typer.echo(f"public key: {manifest.signature.public_key}")
 
@@ -256,3 +282,160 @@ def reverse(
 
 if __name__ == "__main__":
     app()
+
+
+# ── Authoring surface (0.5): templating and requirements, pure and offline ───────────────────────
+# These live here, not on `just-dna-enricher`, because they need no network: they are generated from
+# the live models. `template` shipped on the enricher CLI first, which meant an author who installed
+# only the tier that *owns the CSV shape* had the API and no command.
+
+
+@app.command()
+def template(
+    kind: str = typer.Argument(..., help="Authored CSV to emit a header for, e.g. repeat_alleles.csv"),
+) -> None:
+    """Print a header-only CSV for one authored table kind, generated from the live models.
+
+    The requirements go to stderr, so `just-dna-compiler template x.csv > x.csv` stays clean.
+    """
+    try:
+        typer.echo(blank_template(kind), nl=False)
+        reqs = authoring_requirements(kind)
+    except DraftError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"required: {', '.join(reqs['always'])}", fg=typer.colors.BLUE, err=True)
+    for group in reqs["any_of"]:
+        typer.secho(f"and one of: {' + '.join(group)}", fg=typer.colors.BLUE, err=True)
+    if reqs["defaulted"]:
+        # The columns that bite: they have a default, so nothing calls them required, but an empty
+        # cell arrives as None and fails on type. `stub` writes them out for you.
+        shown = ", ".join(f"{k}={v}" for k, v in reqs["defaulted"].items())
+        typer.secho(f"must not be left empty (defaults): {shown}", fg=typer.colors.YELLOW, err=True)
+
+
+@app.command()
+def stub(
+    kind: str = typer.Argument(..., help="Authored CSV to emit stub rows for"),
+    rows: int = typer.Option(1, "--rows", min=1, help="How many stub rows to emit."),
+) -> None:
+    """Print a header plus stub rows, with a placeholder wherever a human must decide.
+
+    An unreplaced stub cannot compile — it is refused by name and row — so a half-filled table fails
+    loudly on exactly the rows still to do rather than compiling into a module that asserts nothing.
+    """
+    try:
+        typer.echo(stub_template(kind, rows=rows), nl=False)
+    except DraftError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"replace every {TEMPLATE_PLACEHOLDER} before compiling", fg=typer.colors.BLUE, err=True)
+
+
+@app.command()
+def requirements(
+    kind: str = typer.Argument(..., help="Authored CSV to describe"),
+    as_json: bool = typer.Option(False, "--json", help="Emit the machine-readable form."),
+) -> None:
+    """What an author must supply for one table kind: always, one-of, and never-empty defaults."""
+    try:
+        reqs = authoring_requirements(kind)
+    except DraftError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if as_json:
+        typer.echo(json.dumps(reqs, indent=2, sort_keys=True))
+        return
+    typer.echo(f"{kind}")
+    typer.echo(f"  always:    {', '.join(reqs['always']) or '(none)'}")
+    for group in reqs["any_of"]:
+        typer.echo(f"  one of:    {' + '.join(group)}")
+    for column, default in reqs["defaulted"].items():
+        typer.echo(f"  default:   {column}={default}  (never leave empty)")
+    typer.echo(f"  optional:  {', '.join(reqs['optional']) or '(none)'}")
+
+
+@app.command()
+def scaffold(
+    spec_dir: Path = typer.Argument(..., file_okay=False, help="Module spec directory to create"),
+    kind: list[str] = typer.Option([], "--kind", help="Authored table kind to stub (repeatable)."),
+    name: Optional[str] = typer.Option(None, "--name", help="Machine name for the module block."),
+    rows: int = typer.Option(1, "--rows", min=1, help="Stub rows per table."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report the plan; write nothing."),
+) -> None:
+    """Create module_spec.yaml plus a stub CSV per kind. Never overwrites; existing files are kept.
+
+    Re-runnable: run it again with a different --kind to add a table to a module that already exists.
+    """
+    try:
+        plan = scaffold_module(spec_dir, kinds=kind, name=name, rows=rows, dry_run=dry_run)
+    except DraftError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    for warning in plan.warnings:
+        typer.secho(f"  note: {warning}", fg=typer.colors.YELLOW, err=True)
+    verb = "would create" if dry_run else "created"
+    for path in plan.created:
+        typer.secho(f"  {verb}: {path.name}", fg=typer.colors.GREEN)
+    for path, reason in plan.refused:
+        typer.secho(f"  kept:  {path.name} — {reason}", fg=typer.colors.YELLOW, err=True)
+    typer.echo(str(plan))
+
+
+@app.command()
+def describe(
+    kind: str = typer.Argument(..., help="Authored CSV to describe, e.g. variants.csv"),
+) -> None:
+    """Emit the full machine description of one table kind: columns, options, requirements.
+
+    Always JSON — this is the form an authoring tool or MCP surface consumes, beside
+    `just_dna_format.reference.authoring_reference()`.
+    """
+    try:
+        typer.echo(json.dumps(describe_table(kind), indent=2))
+    except DraftError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@app.command()
+def hint(
+    kind: str = typer.Argument(..., help="Authored CSV the rows belong to"),
+    rows_file: Optional[Path] = typer.Option(
+        None, "--file", exists=True, dir_okay=False, help="Read the CSV text from a file."
+    ),
+    row: Optional[str] = typer.Option(None, "--row", help="A single CSV row (or header+rows) inline."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the full machine report."),
+) -> None:
+    """Inspect authored CSV rows and report what is wrong, what the model rewrites, and what is left
+    to you on purpose. **Writes nothing** — the corrected text goes to stdout for you to use or not.
+
+    Offline: this is the pure half. The enricher adds the lookups that need a reference.
+    """
+    if (rows_file is None) == (row is None):
+        typer.secho("give exactly one of --file or --row", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    text = rows_file.read_text(encoding="utf-8") if rows_file is not None else f"{row}\n"
+    try:
+        report = inspect_rows(kind, text)
+    except DraftError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if as_json:
+        typer.echo(report.to_json())
+        return
+    for line in report.csv_out:
+        typer.echo(line)
+    for alteration in report.alterations:
+        typer.secho(
+            f"  normalized row {alteration.row} {alteration.column}: "
+            f"{alteration.before!r} -> {alteration.after!r} ({alteration.note})",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+    colours = {"error": typer.colors.RED, "warning": typer.colors.YELLOW, "info": typer.colors.BLUE}
+    for finding in report.findings:
+        where = f"row {finding.row} " if finding.row is not None else ""
+        column = f"[{finding.column}] " if finding.column else ""
+        typer.secho(f"  {finding.level}: {where}{column}{finding.message}", fg=colours[finding.level], err=True)
+    typer.secho(str(report), fg=typer.colors.GREEN, err=True)

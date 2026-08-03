@@ -6,7 +6,6 @@ distinct annotations at three phenotype categories (the rs4149056/simvastatin ca
 broke the first version of the cross-check).
 """
 
-import io
 import json
 import zipfile
 from pathlib import Path

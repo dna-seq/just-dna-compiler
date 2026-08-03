@@ -2,11 +2,13 @@
 
 import json
 
-import pytest
 
+from just_dna_format.base import authored_field_names
 from just_dna_format.binning import VALID_MEASURE_KINDS
+from just_dna_format.frequency import FrequencyRow
 from just_dna_format.manifest import COLOR_PATTERN, RECOMMENDED_COLORS, RECOMMENDED_ICONS
 from just_dna_format.reference import authoring_reference, json_schemas
+from just_dna_format.spec import VariantRow
 
 
 def test_authoring_reference_is_json_serializable_with_expected_shape() -> None:
@@ -31,7 +33,10 @@ def test_authoring_reference_is_generated_not_hardcoded() -> None:
     # the vocab is the live frozenset, not a copy that could drift
     assert ref["vocabularies"]["measure_kind"] == sorted(VALID_MEASURE_KINDS)
     assert "reference_db" in ref["reserved_names"]
-    assert "descriptive" in ref["open_recommended"]["actionability_seed"]
+    # `actionability` is reported under `vocabularies`, not `open_recommended`: `VariantRow` rejects
+    # a non-member, so it is closed however `ACTIONABILITY_SEED` is named. This assertion used to
+    # pin the opposite and was pinning the drift.
+    assert "descriptive" in ref["vocabularies"]["actionability"]
     # adoption pass: PharmVariantRow + evidence_level + the VariantRow axes appear (generated)
     assert "PharmVariantRow" in ref["models"]
     assert ref["vocabularies"]["evidence_level"] == ["1A", "1B", "2A", "2B", "3", "4"]
@@ -49,6 +54,29 @@ def test_authoring_reference_is_generated_not_hardcoded() -> None:
     assert {"human", "human_expert", "human_certified", "ai", "swarm"} <= set(
         ref["open_recommended"]["author_kind"]
     )
+
+
+def test_authoring_reference_omits_every_compiler_managed_field() -> None:
+    # This reference is what an agent authors a module from, so a stamped column listed here reads as
+    # one the author writes. The exclusion used to be a hand-kept name set naming only `variant_key`,
+    # and it drifted the moment 0.5 added `authored_ident` — a `list[str]` an author cannot even
+    # spell in a CSV cell. It now reads the fields' own marker, so this asserts against the marker
+    # rather than against a second copy of the same list.
+    ref = authoring_reference()
+    listed = {f["name"] for f in ref["models"]["VariantRow"]}
+    assert listed == set(authored_field_names(VariantRow))
+    assert {"variant_key", "authored_ident"}.isdisjoint(listed)
+    # …while the machine-facing schema stays complete: it describes the materialized shape, which
+    # genuinely has these columns.
+    assert {"variant_key", "authored_ident"} <= set(json_schemas()["VariantRow"]["properties"])
+
+
+def test_a_genuinely_authored_field_is_not_hidden_by_a_shared_name() -> None:
+    # `FrequencyRow.variant_key` is required and authored — the same *name* as `VariantRow`'s stamped
+    # column, and a name-based exclusion would have hidden it from an author who must supply it.
+    # Marking the field rather than the name is what keeps the two apart.
+    assert "variant_key" in authored_field_names(FrequencyRow)
+    assert FrequencyRow.model_fields["variant_key"].is_required()
 
 
 def test_authoring_reference_surfaces_version_and_registry_stamped_boundary() -> None:
@@ -89,3 +117,132 @@ def test_json_schemas_returns_a_schema_per_model() -> None:
     assert "VariantRow" in schemas and "properties" in schemas["VariantRow"]
     assert "CopyNumberRow" in schemas and "PgsRow" in schemas
     json.dumps(schemas)  # serialisable
+
+
+# ── The vocabulary binding (0.5) ────────────────────────────────────────────────────────────────
+# `authoring_reference()["vocabularies"]` was a hand-kept dict, and it drifted twice: it never
+# learned about `recommendation_strength` or `phenotype_category` (added in 0.5), and it filed
+# `actionability` under `open_recommended` although `VariantRow` rejects a non-member. The tests
+# below discover the binding from the models themselves, so neither kind of drift can recur.
+
+_JUNK = "zzz_not_a_vocabulary_member"
+
+
+def _rejects_as_vocabulary(model, field: str) -> bool:
+    """Does `model` reject `_JUNK` for `field` *because it is outside a vocabulary*?
+
+    Validates a dict carrying only that field: other fields fail as missing, and we read the error
+    for this one. That avoids a hand-kept table of plausible seed values per model — which is the
+    hand-kept list these tests exist to abolish, relocated."""
+    try:
+        model.model_validate({field: _JUNK})
+    except Exception as exc:  # pydantic ValidationError
+        errors = getattr(exc, "errors", lambda: [])()
+        return any(
+            e.get("loc") == (field,) and "must be one of" in str(e.get("msg", ""))
+            for e in errors
+        )
+    return False
+
+
+def test_every_enforced_vocabulary_field_declares_its_options() -> None:
+    """Enforcement implies a marker. Discovered by behaviour, so a new closed field is covered
+    without editing this test — which a name list could never do."""
+    from just_dna_format.base import authored_field_names, field_vocabularies
+    from just_dna_format.reference import _ALL_MODELS
+
+    missing = [
+        f"{name}.{field}"
+        for name, model in _ALL_MODELS.items()
+        for field in authored_field_names(model)
+        if _rejects_as_vocabulary(model, field) and field not in field_vocabularies(model)
+    ]
+    assert missing == []
+
+
+def test_declared_closed_options_are_exactly_what_is_accepted() -> None:
+    """And the converse: a `closed` marker implies enforcement, so a marker cannot advertise a
+    vocabulary nothing rejects (the `actionability` drift, pointing the other way)."""
+    from just_dna_format.base import field_vocabularies
+    from just_dna_format.reference import _ALL_MODELS
+
+    unenforced = [
+        f"{name}.{field}"
+        for name, model in _ALL_MODELS.items()
+        for field, marker in field_vocabularies(model).items()
+        if marker["closed"] and not _rejects_as_vocabulary(model, field)
+    ]
+    assert unenforced == []
+
+
+def test_authoring_reference_vocabularies_come_from_the_markers() -> None:
+    from just_dna_format.base import field_vocabularies
+    from just_dna_format.reference import _ALL_MODELS
+
+    ref = authoring_reference()
+    expected = {
+        marker["name"]: marker["options"]
+        for model in _ALL_MODELS.values()
+        for marker in field_vocabularies(model).values()
+        if marker["closed"]
+    }
+    assert ref["vocabularies"] == expected
+
+
+def test_the_two_vocabularies_0_5_added_are_reachable() -> None:
+    """The concrete drift: both were enforced and neither was listed."""
+    from just_dna_format.pgx import VALID_FUNCTION_STATUS  # noqa: F401 — sanity that pgx imports
+    from just_dna_format.vocab import (
+        VALID_PHENOTYPE_CATEGORIES,
+        VALID_RECOMMENDATION_STRENGTH,
+    )
+
+    ref = authoring_reference()
+    assert ref["vocabularies"]["recommendation_strength"] == sorted(VALID_RECOMMENDATION_STRENGTH)
+    assert ref["vocabularies"]["phenotype_category"] == sorted(VALID_PHENOTYPE_CATEGORIES)
+
+
+def test_actionability_is_reported_closed_because_it_is_enforced() -> None:
+    """It was advertised as an open seed while `VariantRow` rejected non-members, so a tool that
+    offered a novel value got a rejection it was told to expect to work."""
+    from just_dna_format.vocab import ACTIONABILITY_SEED
+
+    ref = authoring_reference()
+    assert ref["vocabularies"]["actionability"] == sorted(ACTIONABILITY_SEED)
+    assert "actionability_seed" not in ref["open_recommended"]
+
+
+def test_required_any_of_agrees_with_each_models_own_validator() -> None:
+    """The declaration is proven against the validator it mirrors, not trusted.
+
+    For each declared group: a row carrying only that group's identity columns must construct, and
+    a row carrying none of them must fail. Cases are derived from the declaration and checked
+    against the real validator, so adding a branch to one without the other fails here."""
+    from just_dna_format.reference import _ALL_MODELS
+
+    # Non-identity columns each model needs before its identity rule is even reached.
+    filler = {
+        "VariantRow": {"genotype": "A/G", "state": "risk", "conclusion": "c"},
+        "StudyRow": {"pmid": "12345678"},
+        "HaplotypeRow": {"haplotype_name": "*4", "allele": "A"},
+        "PharmVariantRow": {"drug": "warfarin", "conclusion": "c"},
+    }
+    identity_values = {"rsid": "rs1801133", "chrom": "1", "start": 100}
+    checked = 0
+    for name, model in _ALL_MODELS.items():
+        groups = getattr(model, "REQUIRED_ANY_OF", ())
+        if not groups:
+            continue
+        base = filler[name]
+        for group in groups:
+            model.model_validate({**base, **{c: identity_values[c] for c in group}})
+            checked += 1
+        try:
+            model.model_validate(dict(base))
+        except Exception:
+            pass
+        else:
+            raise AssertionError(f"{name} accepted a row satisfying none of REQUIRED_ANY_OF")
+    assert checked == sum(len(m.REQUIRED_ANY_OF) for m in _ALL_MODELS.values()
+                          if getattr(m, "REQUIRED_ANY_OF", ()))
+    assert checked > 0

@@ -40,7 +40,7 @@ from typing import ClassVar, Optional, Sequence
 
 from pydantic import Field, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel
+from just_dna_format.base import AuthoredModel, vocabulary
 from just_dna_format.vocab import check_vocab, validate_finite
 
 # Open, additive vocabulary of measured quantities (the `frozenset[str]` idiom, Principle 6). New
@@ -71,7 +71,10 @@ class MeasureBinRow(AuthoredModel):
     # is part of the key (T3): a measurement is only comparable within its motif/reference/modifier.
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ()
 
-    measure_kind: str = Field(description="Measured quantity; one of VALID_MEASURE_KINDS")
+    measure_kind: str = Field(
+        json_schema_extra=vocabulary("measure_kind", VALID_MEASURE_KINDS),
+        description="Measured quantity; one of VALID_MEASURE_KINDS",
+    )
     measure_min: Optional[float] = Field(
         default=None, description="Inclusive lower bound; None = open below"
     )
@@ -153,7 +156,16 @@ class ActivityPhenotypeRow(MeasureBinRow):
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene",)
 
     gene: str = Field(description="Gene symbol, e.g. CYP2D6")
-    measure_kind: str = Field(default="activity_score", description="Fixed: activity_score")
+    measure_kind: str = Field(
+        default="activity_score",
+        # A one-member vocabulary under its OWN name, not `VALID_MEASURE_KINDS`:
+        # `_validate_measure_kind` pins this subclass to `_EXPECTED_KIND`, so offering the full
+        # set would offer values this very model rejects. It needs a distinct name because a
+        # vocabulary name must map to one option set — `measure_kind` is already the open choice
+        # on the base, and this is the narrowed one.
+        json_schema_extra=vocabulary("measure_kind_activity_score", frozenset({"activity_score"})),
+        description="Fixed: activity_score",
+    )
 
 
 class CopyNumberRow(MeasureBinRow):
@@ -176,7 +188,16 @@ class CopyNumberRow(MeasureBinRow):
     modifier_cn: Optional[int] = Field(
         default=None, description="Copy number of the modifier locus (set with modifier_gene)"
     )
-    measure_kind: str = Field(default="copy_number", description="Fixed: copy_number")
+    measure_kind: str = Field(
+        default="copy_number",
+        # A one-member vocabulary under its OWN name, not `VALID_MEASURE_KINDS`:
+        # `_validate_measure_kind` pins this subclass to `_EXPECTED_KIND`, so offering the full
+        # set would offer values this very model rejects. It needs a distinct name because a
+        # vocabulary name must map to one option set — `measure_kind` is already the open choice
+        # on the base, and this is the narrowed one.
+        json_schema_extra=vocabulary("measure_kind_copy_number", frozenset({"copy_number"})),
+        description="Fixed: copy_number",
+    )
 
     @model_validator(mode="after")
     def _validate_modifier(self) -> "CopyNumberRow":
@@ -199,7 +220,16 @@ class RepeatAlleleRow(MeasureBinRow):
 
     gene: str = Field(description="Gene symbol, e.g. HTT")
     repeat_unit: str = Field(description="Repeat motif, part of the key, e.g. CAG")
-    measure_kind: str = Field(default="repeat_count", description="Fixed: repeat_count")
+    measure_kind: str = Field(
+        default="repeat_count",
+        # A one-member vocabulary under its OWN name, not `VALID_MEASURE_KINDS`:
+        # `_validate_measure_kind` pins this subclass to `_EXPECTED_KIND`, so offering the full
+        # set would offer values this very model rejects. It needs a distinct name because a
+        # vocabulary name must map to one option set — `measure_kind` is already the open choice
+        # on the base, and this is the narrowed one.
+        json_schema_extra=vocabulary("measure_kind_repeat_count", frozenset({"repeat_count"})),
+        description="Fixed: repeat_count",
+    )
 
 
 # The known-dangerous legacy mtDNA reference lineage: NC_001807 silently disagrees with rCRS
@@ -234,7 +264,16 @@ class HeteroplasmyRow(MeasureBinRow):
     assay_context: Optional[str] = Field(
         default=None, description="Optional assay context, e.g. WGS, chip, amplicon"
     )
-    measure_kind: str = Field(default="allele_fraction", description="Fixed: allele_fraction")
+    measure_kind: str = Field(
+        default="allele_fraction",
+        # A one-member vocabulary under its OWN name, not `VALID_MEASURE_KINDS`:
+        # `_validate_measure_kind` pins this subclass to `_EXPECTED_KIND`, so offering the full
+        # set would offer values this very model rejects. It needs a distinct name because a
+        # vocabulary name must map to one option set — `measure_kind` is already the open choice
+        # on the base, and this is the narrowed one.
+        json_schema_extra=vocabulary("measure_kind_allele_fraction", frozenset({"allele_fraction"})),
+        description="Fixed: allele_fraction",
+    )
 
     @field_validator("reference_sequence")
     @classmethod

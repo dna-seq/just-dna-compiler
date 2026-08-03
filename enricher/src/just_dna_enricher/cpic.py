@@ -26,7 +26,7 @@ for rs4986893 (chr10:94780653) — which is what this pipeline already stores. D
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Optional
 
 import httpx

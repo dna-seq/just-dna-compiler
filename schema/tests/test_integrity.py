@@ -16,7 +16,6 @@ from just_dna_format.integrity import (
 )
 from just_dna_format.manifest import (
     MARKETPLACE_COMPILED_BY,
-    Artifact,
     Compilation,
     Display,
     FileEntry,

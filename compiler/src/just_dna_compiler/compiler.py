@@ -26,7 +26,7 @@ from typing import Any, Callable, Iterable, Optional, Union, get_args, get_origi
 
 import polars as pl
 import yaml
-from just_dna_format.base import derive_variant_key
+from just_dna_format.base import authored_field_names, derive_variant_key
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.identity import is_valid_version
@@ -265,7 +265,11 @@ def _write_table_csv(df: pl.DataFrame, model: type[BaseModel], path: Path) -> No
     """Reverse of `_build_table`: parquet → the authored CSV. Drops the injected `module` column
     (not authored); renders each cell via `_scalar_cell`/`_list_cell` (None→"", list→pipe-joined,
     bool→"true"/"false", integer-valued float→bare int)."""
-    fieldnames = list(model.model_fields.keys())
+    # `authored_field_names`, not `model_fields`: identical today (no table-kind model carries a
+    # compiler-managed field) but it closes the third place the authored surface is derived. The two
+    # that preceded it both drifted, and a reverse writer that offered a stamped column would emit a
+    # CSV the compiler then refused to reload — the exact `authored_ident` bug, one tier over.
+    fieldnames = authored_field_names(model)
     list_fields = _list_fields(model)
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)

@@ -9,7 +9,12 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_compiler.compiler import (
+    _load_csv_rows,
+    compile_module,
+    reverse_module,
+    validate_spec,
+)
 from just_dna_compiler.draft import (
     DraftError,
     append_rows,
@@ -18,6 +23,7 @@ from just_dna_compiler.draft import (
     natural_key,
     required_fields,
 )
+from just_dna_format.base import authored_field_names
 from just_dna_format.binning import RepeatAlleleRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow
 from just_dna_format.spec import StudyRow, VariantRow
@@ -206,14 +212,123 @@ def test_appending_does_not_move_an_already_compiled_digest_for_untouched_rows(t
     assert grown.head(original.height).equals(original)  # …but the old rows are untouched and first
 
 
+# ── the SNP core, whose model carries compiler-managed columns ──────────────────────────────────
+#
+# Every test above drafts into a PGx or binning table, and none of those models has a field the
+# compiler stamps. `VariantRow` has two (`variant_key`, `authored_ident`), and rendering them wrote a
+# `variants.csv` the compiler then refused to load — the list-typed `authored_ident` came back as the
+# bare string `rsid`. RM26 roadmaps a ClinVar → `variants.csv` provider, so this is the path next.
+
+
+def _variant(rsid: str, genotype: str, **kw) -> VariantRow:
+    # A negative weight for a `risk` state: the sign convention is positive=protective, and the
+    # compiler warns on the mismatch.
+    return VariantRow(
+        rsid=rsid, genotype=genotype, **{"state": "risk", "weight": -0.5, "conclusion": "c", **kw}
+    )
+
+
+def _study(rsid: str, pmid: str) -> StudyRow:
+    return StudyRow(rsid=rsid, pmid=pmid, conclusion="grounding evidence")
+
+
+def test_a_drafted_variants_table_reloads_and_compiles(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    append_rows(spec, "variants.csv", [
+        _variant("rs1801133", "C/T", gene="MTHFR"),
+        _variant("rs334", "A/A", gene="HBB"),
+    ])
+    append_rows(spec, "studies.csv", [_study("rs1801133", "12345678"), _study("rs334", "23456789")])
+    header = (spec / "variants.csv").read_text(encoding="utf-8").splitlines()[0].split(",")
+    assert {"variant_key", "authored_ident"}.isdisjoint(header)
+
+    # The real contract: what was written is a module, not merely a plausible CSV.
+    assert validate_spec(spec).valid
+    out = tmp_path / "out"
+    first = compile_module(spec, out, resolve_with_ensembl=False)
+    assert first.success, first.errors
+    # The stamped identity still reaches the artifact — it is derived, not authored.
+    weights = pl.read_parquet(out / "weights.parquet")
+    assert weights["variant_key"].to_list() == ["rs1801133", "rs334"]
+    assert weights["authored_ident"].to_list() == [["rsid"], ["rsid"]]
+
+
+def test_drafting_into_variants_round_trips_to_the_same_digest(tmp_path: Path) -> None:
+    spec = _spec(tmp_path)
+    append_rows(spec, "variants.csv", [_variant("rs1801133", "C/T")])
+    append_rows(spec, "studies.csv", [_study("rs1801133", "12345678")])
+    out = tmp_path / "out"
+    first = compile_module(spec, out, resolve_with_ensembl=False)
+    assert first.success, first.errors
+    reverse_module(out, tmp_path / "reversed")
+    second = compile_module(tmp_path / "reversed", tmp_path / "out2", resolve_with_ensembl=False)
+    assert second.success, second.errors
+    assert first.manifest.artifact.digest == second.manifest.artifact.digest
+
+
+def test_a_file_missing_its_final_newline_keeps_its_last_row_intact(tmp_path: Path) -> None:
+    # A hand-authored CSV often has no trailing newline; appending onto it would glue the first new
+    # row to the author's last one — corrupting a row this module promises never to touch.
+    spec = _spec(tmp_path)
+    path = spec / "variants.csv"
+    path.write_bytes(b"rsid,genotype,state,weight,conclusion\nrs334,A/A,risk,1.0,sickle cell")
+    report = append_rows(spec, "variants.csv", [_variant("rs1801133", "C/T")])
+
+    assert report.header_extended == []  # the header already fits, so this is the append branch
+    assert path.read_bytes().startswith(
+        b"rsid,genotype,state,weight,conclusion\nrs334,A/A,risk,1.0,sickle cell"
+    )  # the author's bytes, untouched
+    rows, errors, _ = _load_csv_rows(path, VariantRow, "variants.csv")
+    assert errors == []
+    assert [(r.rsid, r.conclusion) for r in rows] == [
+        ("rs334", "sickle cell"),
+        ("rs1801133", "c"),
+    ]
+
+
+def test_a_zero_byte_file_is_drafted_into_rather_than_refused(tmp_path: Path) -> None:
+    # A bare `touch` has no header to key against and no rows to lose, so it is the absent case.
+    spec = _spec(tmp_path)
+    path = spec / "variants.csv"
+    path.write_bytes(b"")
+    append_rows(spec, "variants.csv", [_variant("rs1801133", "C/T")])
+    rows, errors, _ = _load_csv_rows(path, VariantRow, "variants.csv")
+    assert errors == []
+    assert [r.rsid for r in rows] == ["rs1801133"]
+
+
+def test_a_source_naming_fewer_identity_columns_is_not_a_disagreement(tmp_path: Path) -> None:
+    # The author wrote rsid + coordinate; the source names only the rsid. `authored_ident` therefore
+    # differs between the two rows, but that is a fact about how each was written, not a claim about
+    # the variant — reporting it would put a `differs` on every hand-annotated row.
+    spec = _spec(tmp_path)
+    append_rows(spec, "variants.csv", [
+        _variant("rs1801133", "C/T", chrom="1", start=11796321, ref="G"),
+    ])
+    report = append_rows(spec, "variants.csv", [_variant("rs1801133", "C/T")])
+    assert [o.status for o in report.outcomes] == ["already_present"]
+    assert report.differs == []
+
+
 # ── templates and misuse ────────────────────────────────────────────────────────────────────────
 
 
 def test_blank_template_comes_from_the_live_model(tmp_path: Path) -> None:
     header = blank_template("repeat_alleles.csv").strip().split(",")
-    assert header == list(model_for("repeat_alleles.csv").model_fields.keys())
+    assert header == authored_field_names(model_for("repeat_alleles.csv"))
     assert {"gene", "repeat_unit", "conclusion"} <= set(header)
     assert set(required_fields("repeat_alleles.csv")) <= set(header)
+
+
+def test_a_template_never_offers_a_compiler_managed_column() -> None:
+    # `variant_key`/`authored_ident` are stamped by `_freeze_identity` and never written back by
+    # `reverse_module`, so a template that listed them would invite an author to fill a column the
+    # compiler overwrites — and `authored_ident` is a `list[str]`, so the rendered cell would not even
+    # reload. Asserted against the marker, so a newly-marked field is covered without editing this.
+    header = blank_template("variants.csv").strip().split(",")
+    assert header == authored_field_names(VariantRow)
+    assert {"variant_key", "authored_ident"}.isdisjoint(header)
+    assert {"rsid", "genotype", "state", "conclusion"} <= set(header)
 
 
 def test_an_unknown_table_kind_is_refused(tmp_path: Path) -> None:
@@ -284,3 +399,133 @@ def test_the_htt_bins_cover_every_count_with_exactly_one_answer(tmp_path: Path) 
     assert "reduced penetrance" in selected(36)[0]
     assert "fully penetrant" in selected(40)[0]
     assert "intermediate" in selected(27)[0]
+
+
+# ── Templating: stubs, the three-way field split, and the placeholder guard (0.5) ────────────────
+# The bug this section exists for: `blank_template` emitted every authored column and
+# `required_fields` named only the field-local required ones, so an author who filled exactly what
+# they were told to fill got a compile error about `measure_kind`/`unresolved` — columns that have a
+# default but reject the `None` an empty cell becomes. Every test here is parametrized over
+# `DRAFTABLE`, so a new table kind is covered without editing them.
+
+import csv as _csv
+import io as _io
+
+import pytest as _pytest
+from just_dna_compiler.draft import (
+    DRAFTABLE,
+    authoring_requirements,
+    field_category,
+    stub_template,
+)
+from just_dna_format.base import authored_field_names
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
+
+#: One valid value per stubbed column, for filling a template in the tests below. Domain constants,
+#: which CLAUDE.md's testing rules explicitly allow hardcoding — unlike row counts.
+_FILL = {
+    "rsid": "rs1801133", "genotype": "A/G", "state": "risk", "conclusion": "an interpretation",
+    "pmid": "12345678", "gene": "HTT", "repeat_unit": "CAG", "haplotype_name": "*4",
+    "haplotype_a": "*1", "haplotype_b": "*4", "pgs_id": "PGS000135", "drug": "warfarin",
+    "tissue": "blood", "reference_sequence": "NC_012920.1",
+}
+_FILL_BY_KIND = {
+    # `allele` is a star-allele here and a nucleotide on HaplotypeRow — same name, different grammar.
+    "allele_function.csv": {"allele": "*4"},
+    "haplotypes.csv": {"allele": "A"},
+}
+
+
+def _fill(kind: str, text: str) -> str:
+    """Replace every placeholder in a stub template with a valid value, preserving row order."""
+    rows = list(_csv.DictReader(_io.StringIO(text)))
+    fieldnames = list(rows[0])
+    values = {**_FILL, **_FILL_BY_KIND.get(kind, {})}
+    for row in rows:
+        for column, cell in row.items():
+            if cell == TEMPLATE_PLACEHOLDER:
+                row[column] = values.get(column, "1")
+        if row.get("unresolved") == "false" and not row.get("measure_min"):
+            row["measure_min"] = "1"  # a resolved bin needs at least one bound
+    buf = _io.StringIO()
+    writer = _csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    return buf.getvalue()
+
+
+@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_an_unreplaced_stub_never_loads(kind: str, tmp_path) -> None:
+    """The whole point of a sentinel over a blank cell: it cannot reach a compiled module, and it
+    says so by name rather than as a type error about a column the author never wrote."""
+    path = tmp_path / kind
+    path.write_text(stub_template(kind))
+    rows, errors, _ = _load_csv_rows(path, model_for(kind), kind)
+    assert rows == []
+    assert errors and all(TEMPLATE_PLACEHOLDER in e for e in errors)
+
+
+@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_a_filled_stub_loads_with_no_errors(kind: str, tmp_path) -> None:
+    """The regression that matters: replacing only the stubbed cells must be enough.
+
+    On the pre-0.5.1 generator this failed for all four binning kinds — `measure_kind` and
+    `unresolved` have defaults, so nothing told the author to fill them, and an empty cell arrives as
+    `None` rather than as the default."""
+    path = tmp_path / kind
+    path.write_text(_fill(kind, stub_template(kind)))
+    rows, errors, _ = _load_csv_rows(path, model_for(kind), kind)
+    assert errors == []
+    assert rows
+
+
+@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_defaulted_columns_are_written_out_not_left_blank(kind: str) -> None:
+    """A `defaulted` column is written with its default; an `optional` one is left empty."""
+    model = model_for(kind)
+    requirements = authoring_requirements(kind)
+    header, first, *_ = stub_template(kind).splitlines()
+    cells = dict(zip(header.split(","), next(_csv.reader([first]))))
+    for column, rendered in requirements["defaulted"].items():
+        assert cells[column] == rendered, f"{kind}:{column} should carry its default"
+        assert field_category(model, column) == "defaulted"
+    # An identity column is field-level optional (`rsid` has a default of None) but is stubbed,
+    # because a model validator requires one of the groups. Exclude the group actually offered.
+    offered_identity = set(requirements["any_of"][0]) if requirements["any_of"] else set()
+    for column in requirements["optional"]:
+        if column in offered_identity:
+            assert cells[column] == TEMPLATE_PLACEHOLDER
+            continue
+        assert cells[column] == "", f"{kind}:{column} is optional and should be blank"
+
+
+@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_a_stub_offers_exactly_the_authored_surface(kind: str) -> None:
+    """Asserted against the marker, so a newly compiler-managed field is covered without an edit."""
+    header = stub_template(kind).splitlines()[0].split(",")
+    assert header == authored_field_names(model_for(kind))
+
+
+def test_a_stub_asks_for_one_identity_group_not_every_alternative() -> None:
+    """`rsid` OR `chrom`+`start` — stubbing both would tell the author to supply two identities."""
+    header, first, *_ = stub_template("variants.csv").splitlines()
+    cells = dict(zip(header.split(","), next(_csv.reader([first]))))
+    assert cells["rsid"] == TEMPLATE_PLACEHOLDER
+    assert cells["chrom"] == "" and cells["start"] == ""
+
+
+def test_a_binning_stub_carries_the_mandatory_unresolved_companion() -> None:
+    """A binning table without the sentinel is incomplete by contract, so the template supplies it
+    rather than letting the author meet that rule as a compile error about a row they never wrote."""
+    rows = list(_csv.DictReader(_io.StringIO(stub_template("repeat_alleles.csv"))))
+    assert [r["unresolved"] for r in rows] == ["false", "true"]
+    sentinel = rows[-1]
+    assert sentinel["measure_min"] == "" and sentinel["measure_max"] == ""
+
+
+def test_authoring_requirements_names_what_required_fields_cannot() -> None:
+    """The three shapes of requiredness, and the two `required_fields` alone cannot express."""
+    reqs = authoring_requirements("repeat_alleles.csv")
+    assert set(reqs["always"]) == set(required_fields("repeat_alleles.csv"))
+    assert reqs["defaulted"] == {"measure_kind": "repeat_count", "unresolved": "false"}
+    assert authoring_requirements("variants.csv")["any_of"] == [["rsid"], ["chrom", "start"]]

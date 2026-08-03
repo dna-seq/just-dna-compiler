@@ -1,0 +1,157 @@
+"""Scaffolding — de-novo module creation that never touches what already exists (0.5).
+
+Companion to `test_draft.py`, which pins the *append* half. What is pinned here is the refusal
+granularity (per file, never per run), the companion-kind rule against the compiler's real
+requirement, and the property that ties the whole authoring surface together: a scaffolded module
+does not validate until its stubs are replaced, and once replaced it is a compile → reverse →
+recompile fixed point.
+"""
+
+import csv
+import io
+from pathlib import Path
+
+import pytest
+from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_compiler.draft import DRAFTABLE, DraftError
+from just_dna_compiler.scaffold import (
+    COMPANION_KINDS,
+    MODULE_SPEC,
+    module_spec_template,
+    scaffold_module,
+)
+from just_dna_format.spec import ModuleSpecConfig
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
+
+_FILL = {
+    "rsid": "rs1801133", "genotype": "A/G", "state": "risk", "conclusion": "MTHFR C677T",
+    "pmid": "12345678", "gene": "HTT", "repeat_unit": "CAG", "haplotype_name": "*4",
+    "haplotype_a": "*1", "haplotype_b": "*4", "pgs_id": "PGS000135", "drug": "warfarin",
+    "tissue": "blood", "reference_sequence": "NC_012920.1",
+}
+_FILL_BY_KIND = {"allele_function.csv": {"allele": "*4"}, "haplotypes.csv": {"allele": "A"}}
+
+
+def _fill_csv(path: Path) -> None:
+    rows = list(csv.DictReader(io.StringIO(path.read_text())))
+    fieldnames = list(rows[0])
+    values = {**_FILL, **_FILL_BY_KIND.get(path.name, {})}
+    for row in rows:
+        for column, cell in row.items():
+            if cell == TEMPLATE_PLACEHOLDER:
+                row[column] = values.get(column, "1")
+        if row.get("unresolved") == "false" and not row.get("measure_min"):
+            row["measure_min"] = "1"
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows(rows)
+    path.write_text(buf.getvalue())
+
+
+def _fill_module(spec_dir: Path) -> None:
+    (spec_dir / MODULE_SPEC).write_text(
+        (spec_dir / MODULE_SPEC).read_text().replace(TEMPLATE_PLACEHOLDER, "demo text")
+    )
+    for path in sorted(spec_dir.glob("*.csv")):
+        _fill_csv(path)
+
+
+def test_a_scaffolded_module_does_not_validate_until_the_stubs_are_replaced(tmp_path: Path) -> None:
+    spec_dir = tmp_path / "spec"
+    scaffold_module(spec_dir, kinds=["variants.csv"], name="demo")
+    result = validate_spec(spec_dir)
+    assert not result.valid
+    # and every complaint is about the placeholder — the scaffold is otherwise structurally complete
+    assert result.errors and all(TEMPLATE_PLACEHOLDER in e for e in result.errors)
+
+
+def test_a_filled_scaffold_compiles_and_is_a_fixed_point(tmp_path: Path) -> None:
+    """P7: compile → reverse → compile reproduces the digest, for a module built entirely by tooling."""
+    spec_dir = tmp_path / "spec"
+    scaffold_module(spec_dir, kinds=["variants.csv"], name="demo")
+    _fill_module(spec_dir)
+    assert validate_spec(spec_dir).valid
+
+    first = compile_module(spec_dir, tmp_path / "out1").manifest
+    reverse_module(tmp_path / "out1", tmp_path / "back")
+    second = compile_module(tmp_path / "back", tmp_path / "out2").manifest
+    assert first.artifact.digest == second.artifact.digest
+
+
+def test_scaffolding_never_overwrites_and_refuses_per_file(tmp_path: Path) -> None:
+    """Per file, not per run: an existing table must not block a new one from being added."""
+    spec_dir = tmp_path / "spec"
+    scaffold_module(spec_dir, kinds=["variants.csv"], name="demo")
+    before = {p.name: p.read_bytes() for p in sorted(spec_dir.iterdir())}
+
+    again = scaffold_module(spec_dir, kinds=["variants.csv"], name="demo")
+    assert again.created == []
+    assert {p.name for p, _ in again.refused} == set(before)
+    assert {p.name: p.read_bytes() for p in sorted(spec_dir.iterdir())} == before
+
+    added = scaffold_module(spec_dir, kinds=["pgs.csv"])
+    assert [p.name for p in added.created] == ["pgs.csv"]
+    # the pre-existing files are still byte-identical
+    assert all(before[name] == (spec_dir / name).read_bytes() for name in before)
+
+
+def test_dry_run_writes_nothing_and_predicts_the_real_run(tmp_path: Path) -> None:
+    spec_dir = tmp_path / "spec"
+    planned = scaffold_module(spec_dir, kinds=["pgs.csv"], dry_run=True)
+    assert not planned.written
+    assert not spec_dir.exists()
+    real = scaffold_module(spec_dir, kinds=["pgs.csv"])
+    assert [p.name for p in real.created] == [p.name for p in planned.created]
+
+
+def test_a_zero_byte_file_counts_as_absent(tmp_path: Path) -> None:
+    """The same rule `draft.append_rows` applies, so the two never disagree about existence."""
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    (spec_dir / "pgs.csv").touch()
+    plan = scaffold_module(spec_dir, kinds=["pgs.csv"])
+    assert [p.name for p in plan.created] == [MODULE_SPEC, "pgs.csv"]
+
+
+def test_the_companion_rule_matches_the_compilers_own_requirement(tmp_path: Path) -> None:
+    """`COMPANION_KINDS` is pinned to the real rule rather than trusted: scaffolding only the kind
+    that needs a companion, with the companion suppressed, must fail for that documented reason."""
+    for kind, companions in COMPANION_KINDS.items():
+        spec_dir = tmp_path / f"spec_{kind.replace('.', '_')}"
+        scaffold_module(spec_dir, kinds=[kind])
+        for companion in companions:
+            (spec_dir / companion).unlink()
+        _fill_module(spec_dir)
+        errors = validate_spec(spec_dir).errors
+        assert any(companion in e for companion in companions for e in errors), (
+            f"{kind} was expected to require {companions}, but validation did not say so"
+        )
+
+
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_every_kind_can_be_scaffolded_and_filled(kind: str, tmp_path: Path) -> None:
+    spec_dir = tmp_path / "spec"
+    plan = scaffold_module(spec_dir, kinds=[kind], name="demo")
+    assert (spec_dir / kind) in plan.created
+    _fill_module(spec_dir)
+    assert validate_spec(spec_dir).valid, validate_spec(spec_dir).errors
+
+
+def test_an_unknown_kind_is_refused_before_anything_is_written(tmp_path: Path) -> None:
+    spec_dir = tmp_path / "spec"
+    with pytest.raises(DraftError, match="not an authored table"):
+        scaffold_module(spec_dir, kinds=["nonsense.csv"])
+    assert not spec_dir.exists()
+
+
+def test_the_module_spec_template_round_trips_through_its_own_model() -> None:
+    """Generated from the live models, so it carries the current keys and no stale ones."""
+    import yaml
+
+    spec = yaml.safe_load(module_spec_template(name="demo"))
+    assert spec["module"]["name"] == "demo"
+    assert spec["genome_build"] == ModuleSpecConfig.model_fields["genome_build"].default
+    # an empty `authorship: []` would claim the module has no contributors — it is omitted instead
+    assert "authorship" not in spec
+    assert set(spec) <= set(ModuleSpecConfig.model_fields)

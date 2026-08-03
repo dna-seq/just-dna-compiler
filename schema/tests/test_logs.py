@@ -53,8 +53,12 @@ def test_logs_roundtrip_including_subfolder(tmp_path: Path) -> None:
 
 def test_logs_excluded_from_artifact_digest(tmp_path: Path) -> None:
     # Same compiled data, different logs -> identical artifact.digest (dedup stays intact).
-    da = tmp_path / "da"; da.mkdir(); (da / "weights.parquet").write_bytes(b"w")
-    db = tmp_path / "db"; db.mkdir(); (db / "weights.parquet").write_bytes(b"w")
+    da = tmp_path / "da"
+    da.mkdir()
+    (da / "weights.parquet").write_bytes(b"w")
+    db = tmp_path / "db"
+    db.mkdir()
+    (db / "weights.parquet").write_bytes(b"w")
     (db / "run.log").write_bytes(b"different log")
     assert build_artifact(da, ["weights.parquet"]).digest == build_artifact(
         db, ["weights.parquet"]

@@ -6,7 +6,6 @@ that caused trouble: PharmVar's per-reference-sequence variant rows (only the `N
 and CPIC's IUPAC ambiguity codes.
 """
 
-import json
 from pathlib import Path
 
 import httpx

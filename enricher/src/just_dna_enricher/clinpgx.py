@@ -36,7 +36,7 @@ from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 import duckdb
 
 from just_dna_enricher.clinpgx_build import RELEASE_FILENAME
-from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_csv
+from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
 
 logger = logging.getLogger(__name__)
 
@@ -258,16 +258,5 @@ def enrich_clinpgx(
     result.rows = [row]
 
     if write:
-        _merge_sources_csv(result.rows, spec_dir / "sources.csv")
+        merge_sources_file(result.rows, spec_dir / "sources.csv", error=ClinPgxEnrichmentError)
     return result
-
-
-def _merge_sources_csv(rows: list[SourceRow], path: Path) -> None:
-    """Merge into an existing `sources.csv`, never clobbering a row already there."""
-    existing: list[SourceRow] = []
-    if path.exists():
-        parsed, errors, _ = _load_csv_rows(path, SourceRow, "sources.csv")
-        if errors:
-            raise ClinPgxEnrichmentError(f"existing sources.csv is invalid: {errors[0]}")
-        existing = parsed
-    merge_sources_csv(rows, path, existing)

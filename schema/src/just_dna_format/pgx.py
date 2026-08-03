@@ -19,12 +19,13 @@ multiplies by *total* CN gets it wrong.
 """
 
 import re
-from typing import Optional
+from typing import ClassVar, Optional
 
 from pydantic import Field, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, derive_variant_key
+from just_dna_format.base import AuthoredModel, derive_variant_key, vocabulary
 from just_dna_format.vocab import (
+    VALID_PHENOTYPE_CATEGORIES,
     VALID_RECOMMENDATION_STRENGTH,
     check_vocab,
     validate_allele,
@@ -55,8 +56,20 @@ class HaplotypeRow(AuthoredModel):
 
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid` validator)."""
 
+    #: rsid, or a full coordinate. Mirrors `_validate_identification` below.
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
+        frozenset({"rsid"}),
+        frozenset({"chrom", "start"}),
+    )
+
     haplotype_name: str = Field(description="Named haplotype/allele, e.g. *4 or e4")
     rsid: Optional[str] = Field(default=None, description="dbSNP id of the defining variant")
+    # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
+    # these two models run no chrom validator, so the set is not enforced. A marker claims "a
+    # validator rejects anything outside this", and attaching one where nothing rejects would be the
+    # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
+    # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
+    # validation *tightening* — Principle 3 — not a marker change.)
     chrom: Optional[str] = Field(default=None, description="Chromosome (position-only variants)")
     start: Optional[int] = Field(default=None, description="0-based position (position-only)")
     ref: Optional[str] = Field(default=None, description="Reference allele (position-only)")
@@ -92,7 +105,9 @@ class AlleleFunctionRow(AuthoredModel):
         default=None, description="Per-allele activity value (e.g. *1=1.0, *10=0.25, *4=0)"
     )
     function_status: Optional[str] = Field(
-        default=None, description="CPIC function category (VALID_FUNCTION_STATUS)"
+        default=None,
+        json_schema_extra=vocabulary("function_status", VALID_FUNCTION_STATUS),
+        description="CPIC function category (VALID_FUNCTION_STATUS)",
     )
     suballele: Optional[str] = Field(
         default=None, description="Optional finer sub-allele, e.g. 1.001 (core star is the key)"
@@ -157,6 +172,7 @@ class DiplotypeRow(AuthoredModel):
     # optional action — so the two grades are not interchangeable and must not share a column. ──
     recommendation_strength: Optional[str] = Field(
         default=None,
+        json_schema_extra=vocabulary("recommendation_strength", VALID_RECOMMENDATION_STRENGTH),
         description=(
             "How firmly the guideline recommends the action: strong|moderate|optional|"
             "no_recommendation (CPIC's classification). Empty when the source did not classify."
@@ -207,6 +223,12 @@ class PharmVariantRow(AuthoredModel):
     `trait_efo_id`/`genotype` validators)."""
 
     rsid: Optional[str] = Field(default=None, description="dbSNP id of the variant, e.g. rs9923231")
+    # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
+    # these two models run no chrom validator, so the set is not enforced. A marker claims "a
+    # validator rejects anything outside this", and attaching one where nothing rejects would be the
+    # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
+    # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
+    # validation *tightening* — Principle 3 — not a marker change.)
     chrom: Optional[str] = Field(default=None, description="Chromosome (position-only variants)")
     start: Optional[int] = Field(default=None, description="0-based position (position-only)")
     ref: Optional[str] = Field(default=None, description="Reference allele (position-only)")
@@ -215,9 +237,16 @@ class PharmVariantRow(AuthoredModel):
         default=None,
         description="Genotype the response applies to, canonical sorted form, e.g. C/T",
     )
+    #: rsid, or a full coordinate. Mirrors `_validate_identification` below.
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
+        frozenset({"rsid"}),
+        frozenset({"chrom", "start"}),
+    )
+
     drug: str = Field(description="Drug the response annotation is about, e.g. warfarin")
     phenotype_category: Optional[str] = Field(
         default=None,
+        json_schema_extra=vocabulary("phenotype_category", VALID_PHENOTYPE_CATEGORIES),
         description=(
             "What kind of effect this is (VALID_PHENOTYPE_CATEGORIES; multi-valued via [,;|]). "
             "Part of the identity — one variant+drug carries separate efficacy, toxicity and "
