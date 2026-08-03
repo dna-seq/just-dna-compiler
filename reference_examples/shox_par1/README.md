@@ -72,23 +72,35 @@ string equality will still miss, because the VCF is in the reference's frame. `j
 public and dependency-free so the consumer can apply the same reduction; having the enricher rewrite the
 authored cell is the parked co-authoring item, since it would make `content_signature` depend on a fetch.
 
-## 4. Nine findings became eighteen rows (surfaced — [RM32](../../docs/ROADMAP.md))
+## 4. Ten findings, twenty rows (surfaced — [RM32](../../docs/ROADMAP.md), deferred to its own run)
 
-Nine of the ten variants map to **both** X and Y at the same base, so the expansion emits two rows
-each: 19 resolution rows for 10 findings, all inside `artifact.digest`. A consumer counting findings
-gets 19, and since standard GRCh38 analysis sets hard-mask the Y PAR, the nine Y rows can never match
-anything in a normal pipeline.
+Every one of the ten variants maps to **both** X and Y at the same base (PAR1 has identical coordinates on
+the two contigs in GRCh38), so the expansion emits two rows each: **20 rows for 10 findings**, all inside
+`artifact.digest`. Standard GRCh38 analysis sets hard-mask the Y PAR, so in a normal pipeline the ten Y rows
+can never match anything.
 
-Collapsing them would contradict the identity model 0.5 just adopted — VRS keys on the refget
-accession, and X and Y are different sequences — and the expansion is exactly right for the paralog
-case it was built for. So it is recorded as a question (is a module's subject a *place* or a *contig
-coordinate*?) rather than patched.
+Counting the findings is not the problem — `weights.parquet` keeps `rsid` on both rows, so ten distinct
+findings are countable straight out of the artifact:
+
+```python
+w = pl.read_parquet("out/shox_par1/weights.parquet")
+w.height, w["rsid"].n_unique()      # (20, 10)
+```
+
+What is missing is a **place identity**: a name for the locus that is not a contig coordinate. Collapsing
+the pair would contradict the identity model 0.5 adopted — a VRS allele id keys on the refget accession, and
+X and Y are different sequences — and the expansion is exactly right for the paralog case it was built for.
+So it stays a question (is a module's subject a *place* or a *contig coordinate*?), with the candidate
+answers and the objection that decides each written out in [ROADMAP.md](../../docs/ROADMAP.md#rm32--a-pseudoautosomal-locus-is-one-place-on-two-contigs).
+This module is the evidence that run should start from.
 
 ## Also visible in the compile output
 
-`sources.csv has no row for ['ensembl', 'ensembl-rest']` — [RM33](../../docs/ROADMAP.md). The
-resolution table's `source` names *which link answered*; `sources.csv`'s names *a licensed source*.
-Two vocabularies, one column name, compared by string equality.
+Nothing about licensing any more: `resolution.csv` records an `authority` beside the link, so the
+`sources.csv has no row for ['ensembl-rest']` warning this module used to emit is gone
+([RM33](../../docs/ROADMAP_HISTORY.md)) — and `sources.csv` now carries Ensembl's terms at the `resolution`
+layer, written by the enricher pass that consulted it. The ten remaining warnings are the PAR expansions
+above, one per variant, which are expected rather than findings.
 
 ## Reproduce
 

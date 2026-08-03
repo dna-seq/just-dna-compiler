@@ -322,7 +322,9 @@ would need the whole coordinate, and `alts` is redundancy-bearing.
 "that record is a different variant sharing the rsID", sending an author to hunt a dbSNP merge that
 does not exist. It now names both readings. The underlying normalization is **RM31**.
 
-**Three recorded rather than patched**, each because the obvious repair is wrong:
+**Three recorded rather than patched**, each because the obvious repair is wrong. *(Two of the three were
+fixed later the same day — see the RM31 and RM33 entries above — and in both cases part of what made them
+look undecidable turned out to be wrong. RM32 stands, and is deferred to its own run.)*
 
 - **RM31** — indel spellings. A reference-free parsimony trim fixes this pair but cannot left-align
   inside a repeat; a reference-backed one can only run in the enricher, and `genotype_fits` is shared

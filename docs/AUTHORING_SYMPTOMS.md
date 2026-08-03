@@ -57,8 +57,9 @@ silence it.
 
 **`maps to N loci in the resolution table; expanded to N rows`**
 Normal for a paralogous or pseudoautosomal rsID. For a PAR variant the two rows are one physical place
-on two contigs, and standard GRCh38 analysis sets hard-mask the Y copy — **RM32**. Expected, not an
-error; do not delete rows to suppress it.
+on two contigs, and standard GRCh38 analysis sets hard-mask the Y copy — **RM32**, still open. Expected,
+not an error; do not delete rows to suppress it. To count *findings* rather than rows, count distinct
+`rsid` in `weights.parquet` — the expanded rows keep it.
 
 **A sidecar did not change after you edited the spec**
 An existing `resolution.csv` / `frequencies.csv` / `gene_metrics.csv` is authoritative and merged.

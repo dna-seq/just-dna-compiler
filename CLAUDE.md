@@ -464,7 +464,11 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `vrs.in_pseudoautosomal_region` is three-valued and `vrs.PAR_GRCh38` holds the intervals; they are
   assembly constants of the same class as `REFGET_GRCh38`, not an un-injected reference. A PAR rsID
   (`rs6603251` → X:359845 **and** Y:359845) also expands to two rows the author never chose — one
-  place, two contigs, tracked as RM32.
+  place, two contigs, tracked as **RM32, the one dogfooding item still open** and deferred to its own
+  run because it is a *question* (what identifies a place present on two sequences?) rather than a
+  patch. Two things not to redo there: **countability is already answered** — the expanded rows keep
+  `rsid`, so distinct findings are `n_unique` over it — and the four candidate fixes are argued out in
+  the roadmap entry, one of them charter-illegal. Don't re-derive them; start from the CAID probe.
 - **Hosting is a THREE-valued question — `hosting_verdict`, not `genotype_fits` (RM31, shipped).** One
   indel has several valid spellings: ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the
   same 2 bp deletion, and comparing allele *strings* resolved it to `not_found` while asserting a dbSNP

@@ -21,7 +21,10 @@ All three packages are at **`0.5.0`, unpublished**, on `enricher-0.5`; `schema_v
 **The unpublished window is load-bearing while it lasts.** `integrity.file_entries` skips missing
 files, so a **new optional table** never moves the digest of a module that does not carry it (additive
 any time), while a **new column on an existing parquet** moves every module's digest — major-only once
-0.5 ships. Anything digest-moving is therefore cheap now and expensive after the cut.
+0.5 ships. Anything digest-moving is therefore cheap now and expensive after the cut. Spent in this
+window so far: `ResolutionRow.authority` (provenance, so no signature moved), the continuous-bin
+semantics (`mt_heteroplasmy` re-authored), and indel reconciliation (`shox_par1` gained a resolved
+coordinate) — RM33, RM35 and RM31 respectively.
 
 Each entry below is `## RMn — name`, a metadata line (**severity**, **status**, **owner**, **motivating
 case**), then the detail. Severity is *how much it costs to do*, not how urgent.
@@ -252,22 +255,48 @@ than a defect.
 
 ## RM32 — A pseudoautosomal locus is one place on two contigs
 
-**Severity** medium · **Status** open, found 2026-08-03 · **Owner** format (identity) ·
+**Severity** large (it is a question, not a patch) · **Status** open, deferred to its own run — the
+approaches below are argued out so that run can start from them · **Owner** format (identity) ·
 **Motivating case** any PAR gene: SHOX, CSF2RA, ASMT, CD99
 
-**a pseudoautosomal locus is one place and two contigs; the format models it as two variants.**
-Nine of the ten SHOX variants in `reference_examples/shox_par1/` map to **both** X and Y at the same
-base (PAR1 has identical coordinates on the two contigs in GRCh38), so the one-to-many expansion emits
-two rows per variant: 19 rows for 10 findings, all in `weights.parquet` and in `artifact.digest`. A
-consumer counting the module's findings gets 19. Worse, standard GRCh38 analysis sets **hard-mask the
-Y PAR**, so in a normal pipeline the nine Y rows can never match anything.
+**A pseudoautosomal locus is one place and two contigs; the format models it as two variants.** Nine of
+the ten SHOX variants in `reference_examples/shox_par1/` map to **both** X and Y at the same base (PAR1
+has identical coordinates on the two contigs in GRCh38), so the one-to-many expansion emits two rows per
+variant: **20 rows for 10 findings** since RM31 landed the tenth, all in `weights.parquet` and in
+`artifact.digest`. And standard GRCh38 analysis sets **hard-mask the Y PAR**, so in a normal pipeline the
+nine Y rows can never match anything.
 
-The obvious "fix" — collapse the pair — contradicts the identity model 0.5 just adopted: VRS keys on
-the **refget accession**, and X and Y are different sequences, so `ga4gh:VA.…` says these are two
-alleles. The expansion is also *correct* for the case it was built for (paralogs are genuinely
-distinct loci). So this is not a bug to patch but a question to answer: does a module say something
-about a *place in the genome* or about a *contig coordinate*, and if the former, what is the identity
-of a locus present on two contigs? Recording it with the evidence rather than guessing.
+**Narrow the question first, because half of what this entry used to claim is already answered.**
+"A consumer counting the module's findings gets 20" is not a gap: `weights.parquet` keeps `rsid` on both
+expanded rows, so distinct findings are countable today (`n_unique` over `rsid` gives 10, and that is how
+the example's README states it). What is genuinely missing is a **place identity** — a name for the locus
+that is not a contig coordinate — not countability. The question to answer is therefore: *does a module
+say something about a place in the genome or about a contig coordinate, and if the former, what identifies
+a place present on two sequences?*
+
+The candidates, each with the objection that decides it:
+
+- **Collapse the pair to one row.** Contradicts the identity model 0.5 just adopted: a VRS allele id keys
+  on the **refget accession**, and X and Y are different sequences, so `ga4gh:VA.…` says these are two
+  alleles. It is also wrong for the case the expansion was built for — paralogs are genuinely distinct
+  loci, and the same machinery serves both.
+- **A `--par` flag on the compiler** (emit X only, say). Charter-illegal for the same reason
+  `--non-commercial` was: a flag cannot be recorded in the artifact, `reverse_module` rebuilds the spec
+  from parquet alone, so `compile → reverse → compile` would diverge (P7).
+- **A PAR policy in the enricher** (which loci reach `resolution.csv`). *Legal* — the enricher's output is
+  injected data and round-trips — but it encodes the **consumer's** analysis set into the module, and
+  whether the Y PAR is hard-masked is a property of the consumer's reference rather than of the
+  annotation. That is the data-agnostic line, so it is not the default; it could be an explicit,
+  recorded author choice, and that is a decision this item has to make rather than assume.
+- **A place identity beside the allele identity.** The open direction, and where the run should start.
+  `ResolutionRow.caid` already exists and gnomAD serves a CAID, but gnomAD hard-masks the Y PAR — so the
+  opening probe is whether the **ClinGen Allele Registry** mints *one* CA id across the X and Y spellings
+  of a PAR variant. If it does, the place identity is already in the schema and the question becomes what
+  a consumer should key on; if it does not, the format would have to name the concept itself.
+
+Two interactions to carry into that run: the non-diploid guardrail already treats a PAR locus as
+legitimately diploid (`_check_contig_ploidy` + `vrs.in_pseudoautosomal_region`, three-valued), so nothing
+chosen here may fight it; and PAR intervals are per-assembly, so this inherits RM15's build axis.
 
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
