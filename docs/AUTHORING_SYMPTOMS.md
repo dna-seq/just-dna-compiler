@@ -60,7 +60,7 @@ names to silence it.
 
 **`overlapping bins for key (…)`** — an **error**, so the module cannot compile
 Two resolved bins in one group select two phenotypes for one measurement. Check the group key first
-(`references/table-kinds.md`): bins are grouped by the kind's key columns **plus** `trait_efo_id`. If
+([AUTHORING_TABLES.md](AUTHORING_TABLES.md)): bins are grouped by the kind's key columns **plus** `trait_efo_id`. If
 two different variants are colliding in a heteroplasmy table, give each its variant identity
 (`chrom`/`start`/`ref`/`alts`) — that is what the key is for.
 

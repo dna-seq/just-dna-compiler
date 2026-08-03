@@ -6,7 +6,7 @@ row's subject** — not what data you happen to have.
 ## The decision
 
 | The row is about… | Table | Model | Keyed on |
-|---|---|---|---|
+|------------------------------|----------------------|----------------------|--------------------------|
 | one variant + one genotype | `variants.csv` | `spec.VariantRow` | `(variant_key, genotype)` |
 | the evidence for a variant | `studies.csv` | `spec.StudyRow` | `(variant_key, pmid)` |
 | which variants make up a named allele | `haplotypes.csv` | `pgx.HaplotypeRow` | `(haplotype_name, variant, allele)` |
@@ -75,7 +75,7 @@ must exist.
 Worked examples, each README naming what it exercises:
 
 | Example | Shows |
-|---|---|
+|--------------------------|--------------------------------------------------------------------------|
 | `hfe_hemochromatosis` | a ClinVar-drafted panel, zygosity curated by hand |
 | `pathogenic_clinvar` | a large panel; rsID one-to-many expansion |
 | `apoe_epsilon` | a two-SNP haplotype needing no predicate |

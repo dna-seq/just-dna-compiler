@@ -18,13 +18,20 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
 **no app and no orchestration here** — those live in `just-dna-pipelines` / `just-dna-lite` /
 `just-dna-marketplace`.
 
-## Authoring a module? Use the skill
+## Authoring a module? Start at docs/AUTHORING.md
 
-`.claude/skills/write-module/` is the workflow for *using* this format rather than changing it — which
-table kind a finding belongs in, the order the commands must run in (and the one place deviating from it
-deadlocks), what only a human may decide, and a symptom→cause→action index for the messages that cost
-someone a day. Every command in it was run end to end. Prefer it over re-deriving the flow from the
-package docs; come back here when you are changing the schema rather than authoring against it.
+[docs/AUTHORING.md](docs/AUTHORING.md) is the workflow for *using* this format rather than changing it
+— the command order (and the one place deviating from it deadlocks), what only a human may decide, and
+the three questions that close off wrong turns. Companions:
+[AUTHORING_TABLES.md](docs/AUTHORING_TABLES.md) (which table kind a finding belongs in) and
+[AUTHORING_SYMPTOMS.md](docs/AUTHORING_SYMPTOMS.md) (message → cause → action, keyed on the actual
+text). Every command in them was run end to end. `/write-module` invokes the same guide as a skill;
+`.claude/skills/write-module/SKILL.md` only dispatches, so there is one copy.
+
+**Looking for a roadmap item?** [docs/RM_TOC.md](docs/RM_TOC.md) is the single complete list of every
+`RMn` — status, the doc that defines it, and every doc that mentions it — plus the unnumbered
+1.0/major bucket. Neither ROADMAP's nor USE_CASES' table was complete, which is how `RM33` became
+unfindable.
 
 ## Read these first, in this order
 
@@ -67,10 +74,9 @@ Both the **ClinVar snapshot** and the **gnomAD v4.1** work are shipped (see
 [ENRICHER.md](docs/ENRICHER.md); reference example at `reference_examples/pathogenic_clinvar/`; the
 design thread and the decisions in [PROPOSAL_0_5.md § G1](docs/PROPOSAL_0_5.md)). gnomAD landed as a
 last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_metrics.csv` pass, and
-**GA4GH VRS allele identity**. The plan file
-[docs/gnomad_4.1_enricher_a2c1ccca.plan.md](docs/gnomad_4.1_enricher_a2c1ccca.plan.md) is now history —
-**read the docs, not the plan**, since probing overturned several of its assumptions (listed in the
-CHANGELOG entry).
+**GA4GH VRS allele identity**. The plan file `gnomad_4.1_enricher_a2c1ccca.plan.md` was **deleted in
+0b82494** — **read the docs, not the plan**, since probing overturned several of its assumptions
+(listed in the CHANGELOG entry). Recover it from git history if you ever need the original.
 
 - **`variant_key` is the VRS allele id for a resolved substitution (0.5).**
   `derive_variant_key(rsid, chrom, start, ref, alts=None)` returns, in order: the **rsid**; else the

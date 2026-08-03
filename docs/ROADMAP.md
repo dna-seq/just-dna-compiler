@@ -143,12 +143,29 @@ floor, not the list. Details and the verdict tri-state in [ENRICHER.md](ENRICHER
 
 **Still queued:** nothing from the 0.5.1 list.
 
+## Every `RMn` — see [RM_TOC.md](RM_TOC.md)
+
+[**RM_TOC.md**](RM_TOC.md) is the single complete, sorted list: every `RMn` with a one-line summary, its
+status, the document that *defines* it, and every document that mentions it — plus the unnumbered
+**1.0/major** bucket and the other trackers.
+
+It exists because nothing here was complete. The detail table below covers RM4–RM7 / RM10–RM17 /
+RM20–RM27; [USE_CASES.md](USE_CASES.md)'s covers RM1–RM14 / RM18–RM22; neither is sorted; RM28–RM35 are
+prose sections further down; and the major-version items have no numbers at all. `RM33` was
+unfindable.
+
+**Add new items to RM_TOC.md as well as here.** Do not start a third index — two lists of the same 35
+things is the bug this fixes.
+
 ## 0.6.0 scope — deferred roadmap items (`RMn`)
 
 Derived in [USE_CASES.md](USE_CASES.md) ("Roadmap items surfaced") by running each real/desired use
 case against the shipped 0.4 bricks. RM1/RM2/RM3/RM8/RM9/RM11/RM12/RM14 **shipped in 0.4** (their
 rows below are kept for traceability, marked ✅); RM18/RM19/RM20/RM21/RM22 **shipped in 0.5**; RM13 is
 **realized by `just-dna-enricher`** in 0.5; the rest are 0.6-and-beyond scope.
+
+**This detail table is not the complete list** — see the index above. It also is not sorted, which is
+history rather than intent.
 
 **RM3 is the cautionary row.** It was marked shipped in 0.4 against a *hand-authored sample*, and the
 real ClinPGx corpus then rejected roughly 97% of itself against that shape — corrected by RM20. When
@@ -218,6 +235,8 @@ makes the diff legible.
 Still a hard **no**: a `sort`/`canonicalize` command. It moves every row at once for no authoring
 gain, and unlike a grouped append there is no local reason for any individual move.
 
+### RM29
+
 **RM29 — ✅ shipped (0.5.1): cofactor columns, taken inside the unpublished-digest window.** Three
 optional columns carrying single-subject cofactors with **no predicate language at all**, because a
 row's columns already conjoin. Both halves mirror `HeteroplasmyRow.tissue`, already a
@@ -246,6 +265,8 @@ axes under one label across two tables and spend the name ancestry will want on 
 on load, because three of CPIC's sixteen live values carry a trailing space and the column is in the
 key. | format (schema) | PGx; call-confidence gating | **done** |
 
+### RM30
+
 **RM30 — ✅ fixed (0.5.1): one rule for a haplotype name across all three PGx tables.**
 `AlleleFunctionRow.allele` enforced `STAR_ALLELE_PATTERN` (a leading `*`) while
 `HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` had no rule at all, so
@@ -258,6 +279,8 @@ checks at its four sites, so loosening the schema did not loosen CPIC drafting. 
 loosening (previously-valid data stays valid, P3-safe) plus a negligible tightening on the two
 columns that had no floor: an empty or whitespace-split name could never have identified a real
 haplotype.
+
+### RM28
 
 **RM28 — meta-conclusions and injected cofactors (starter shape recorded, deliberately unbuilt):**
 A module is rarely one axis, and what a curator wants is to pair them — a CVD module that also says
@@ -329,6 +352,8 @@ and supplements do not exist yet — because fixing a shape against four table k
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
 | format (schema + compiler) | combination annotations; disclosure policy | medium (after the corpus) |
 
+### RM31
+
 **RM31 — indel representation mismatch defeats allele-aware resolution (found 2026-08-03, real).**
 `resolution.genotype_fits` compares **allele strings**, so two valid spellings of one indel do not
 match and the locus is dropped. Confirmed end to end while drafting
@@ -348,6 +373,8 @@ which loci survive expansion → digest-visible), or a reference-backed normaliz
 in the enricher and would make the two callers disagree about what fits. Neither is a small change,
 and picking one is the decision. | format + enricher | any indel-bearing panel | **medium** |
 
+### RM32
+
 **RM32 — a pseudoautosomal locus is one place and two contigs; the format models it as two variants.**
 Nine of the ten SHOX variants in `reference_examples/shox_par1/` map to **both** X and Y at the same
 base (PAR1 has identical coordinates on the two contigs in GRCh38), so the one-to-many expansion emits
@@ -362,6 +389,8 @@ distinct loci). So this is not a bug to patch but a question to answer: does a m
 about a *place in the genome* or about a *contig coordinate*, and if the former, what is the identity
 of a locus present on two contigs? Recording it with the evidence rather than guessing.
 | format (identity) | any PAR gene: SHOX, CSF2RA, ASMT, CD99 | **medium** |
+
+### RM33
 
 **RM33 — `source` names two different things in two tables, and the compiler compares them.**
 `_source_checks` warns when a fact table cites a source with no `sources.csv` row, by exact string
@@ -381,6 +410,8 @@ to `ResolutionRow`. Note `VALID_SOURCE_LAYERS` already reserves `"resolution"` f
 writes — `enrich()` is the only pass that records no source at all.
 | format (schema) + enricher | every enriched module | **medium** |
 
+### RM34
+
 **RM34 — the CPIC provider has no filter, and CYP2D6 shows what that costs (found 2026-08-03).**
 `draft --gene CYP2D6` succeeds and produces a module nobody can use: **16,290 diplotype rows, 11,825
 of them (73%) `Indeterminate`** — CPIC saying it cannot call that pair. It compiles, in 1.9s, and it
@@ -399,6 +430,8 @@ Two smaller CYP2D6 observations, both already fixed: 546 diplotypes are skipped 
 copy number as `x≥3` and `≥` is not a star-string character (RM5 territory — the notation, not the
 biology), and those skips were emitted one line each until they were aggregated like the activity
 scores beside them. | enricher (CLI) | CYP2D6, and any large star-allele gene | **medium** |
+
+### RM35
 
 **RM35 — a continuous binning table cannot be tiled without a finding (proved 2026-08-03).**
 Three rules that are individually right and jointly unsatisfiable on a continuous measure: bounds are

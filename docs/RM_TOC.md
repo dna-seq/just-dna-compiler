@@ -1,0 +1,109 @@
+# `RM` table of contents — every roadmap item and where it actually lives
+
+**The single complete list.** Nothing else was: [ROADMAP.md](ROADMAP.md)'s detail table covers
+RM4–RM7 / RM10–RM17 / RM20–RM27, [USE_CASES.md](USE_CASES.md)'s covers RM1–RM14 / RM18–RM22, neither is
+sorted, RM28–RM35 lived only as prose paragraphs, and the major-version items are not numbered at all.
+So `RM33` was genuinely unfindable. This file exists to make that impossible.
+
+**Add an entry here whenever you add an item, and keep it sorted.** If you find yourself wanting a
+second index somewhere else, don't — two lists of the same 35 things is what caused this.
+
+Format of an entry: the **number** links to the authoritative entry, the one to edit. *also in* lists
+every other document that mentions it, so a rename or a status change can be propagated without
+grepping.
+
+---
+
+## ✅ Shipped
+
+**0.4**
+
+- **[RM1](USE_CASES.md#roadmap-items-surfaced)** — compiler materializes every 0.4 table → parquet, lossless round-trip. · *also in* ROADMAP, CHANGELOG
+- **[RM2](USE_CASES.md#roadmap-items-surfaced)** — composed modules: `variants.csv` optional, a module carries only the kinds it uses. · *also in* ROADMAP, CHANGELOG, SCHEMAS
+- **[RM3](USE_CASES.md#roadmap-items-surfaced)** ⚠ — PharmGKB row shape. **Superseded by RM20**, and the cautionary row: marked shipped against a hand-authored sample, then the real corpus rejected ~97% of itself. · *also in* ROADMAP, PROPOSAL_0_5
+- **[RM8](USE_CASES.md#roadmap-items-surfaced)** — generated authoring reference (`authoring_reference()` / `json_schemas()`), reachable since 0.5.1 as `just-dna-compiler reference`. · *also in* ROADMAP, SCHEMAS, COMPILER, CHANGELOG
+- **[RM9](USE_CASES.md#roadmap-items-surfaced)** — recommended colour / icon palette (`RECOMMENDED_COLORS` / `RECOMMENDED_ICONS`). · *also in* ROADMAP, COMPILER, CHANGELOG
+- **[RM11](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — `doi` provenance column on `StudyRow`. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG
+- **[RM12](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — provenance locator: `provenance_quote` / `provenance_regex`. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG
+- **[RM14](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — structured per-version `authorship` (identity / role / kind). · *also in* USE_CASES, COMPILER, CHANGELOG
+
+**0.5**
+
+- **[RM6](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — callability as first-class state: `requires_callable` + `callable_from`. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG, PROPOSAL_0_5
+- **[RM13](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — network-first resolution tier, **realized as `just-dna-enricher`**. · *also in* USE_CASES, CHANGELOG, PROPOSAL_0_5
+- **[RM17](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — SemVer enforcement on `module.version`, coercing. · *also in* COMPILER, CHANGELOG, PROPOSAL_0_5
+- **[RM18](USE_CASES.md#roadmap-items-surfaced)** — frequency + gene-constraint sidecars (`frequencies.csv`, `gene_metrics.csv`). · *also in* ROADMAP
+- **[RM19](USE_CASES.md#roadmap-items-surfaced)** — GA4GH VRS allele identity: `vrs_id`, `caid`, VA-derived `variant_key`. Satisfies RM15's build-naming condition; multi-build minting stays RM15. · *also in* ROADMAP
+- **[RM20](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — PharmGKB annotations are per-genotype **and** per-category. Corrects RM3. · *also in* USE_CASES, PROPOSAL_0_5
+- **[RM21](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — data-source licensing as data: `sources.csv` + the compile gate. · *also in* USE_CASES, COMPILER, ENRICHER, CHANGELOG, PROPOSAL_0_5
+- **[RM22](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — PGx tables join resolution (`enrich()` reads the PGx CSVs too). · *also in* USE_CASES, PROPOSAL_0_5
+
+**0.5.1**
+
+- **[RM26](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — all three drafting providers: CPIC, ClinPGx, ClinVar. Partially dissolves RM4. · *also in* ENRICHER, CHANGELOG
+- **[RM29](ROADMAP.md#rm29)** — cofactor columns: `quality_from` / `min_quality` on `VariantRow`, `clinical_context` on `DiplotypeRow`. Dissolved the `draft --population` refusal. · *also in* CHANGELOG
+- **[RM30](ROADMAP.md#rm30)** — one haplotype-name rule across all three PGx tables. · *also in* REFERENCE_EXAMPLES, CHANGELOG
+
+## ⏳ Deferred — additive, lands in a minor (0.6+)
+
+- **[RM4](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — native ClinVar gene-panel materialization at compile time. The injectable-reference half is unblocked; compile-time materialization is what stays parked. · *also in* USE_CASES, ENRICHER, CHANGELOG, PROPOSAL_0_5
+- **[RM5](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — symbolic / structural alleles (`<DEL>`, 5-HTTLPR, ClinPGx `del`/`ins`, CPIC's `x≥3`). · *also in* CLAUDE.md, USE_CASES, SCHEMAS, ENRICHER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5
+- **[RM10](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — declarative inheritance-expectation field (trio / de-novo). *On demand only.* · *also in* USE_CASES, PROPOSAL_0_5
+- **[RM15](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — build-agnostic identity & multi-build support (refget tables beyond GRCh38). Paired with the `end`-column item in the major bucket: both blocked on settling the coordinate convention. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG, PROPOSAL_0_5
+- **[RM16](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — authored PRS weights: a scoring file, not a `pgs.csv` manifest. · *also in* SCHEMAS, PROPOSAL_0_5
+- **[RM23](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — computational predictor scores as a table (`predictions.csv`), long-form. Deferred on grain + acquisition, not on code. · *also in* CLAUDE.md, CHANGELOG
+- **[RM24](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — gene–disease validity as a table (`gene_validity.csv`): ClinGen, GenCC, HPO from one shape. · *also in* CLAUDE.md
+- **[RM25](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — ClinVar assertion tier persisted as artifact data. Not the same as escalating the check's severity.
+- **[RM27](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — a redistribution compile gate. A distribution right is not a *use*, so `declared_use` is the wrong axis; needs the third axis designed first. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
+- **[RM28](ROADMAP.md#rm28)** — meta-conclusions + injected cofactors. **Parked and now smaller**: RM29 moved two of three cofactor classes into columns, and the cis/trans motivation closed as a compiler check. What survives is cross-*subject* pairing, economy, and open-world negation. · *also in* COMPILER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5 § G3
+
+**Found by dogfooding, 2026-08-03** — each carries the probe that produced it and a refutation of every
+obvious repair. Do not work around these in data.
+
+- **[RM31](ROADMAP.md#rm31)** — one indel spelled two ways defeats allele-aware resolution. ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion; `genotype_fits` compares strings. · *also in* CLAUDE.md, CHANGELOG
+- **[RM32](ROADMAP.md#rm32)** — a pseudoautosomal locus is one place on two contigs, modelled as two variants. 10 SHOX findings became 19 rows, and GRCh38 analysis sets hard-mask the Y copy. · *also in* CLAUDE.md, CHANGELOG
+- **[RM33](ROADMAP.md#rm33)** — `source` names a *link* in `resolution.csv` and a *licensed source* in `sources.csv`; the compiler compares them by string equality. Both obvious repairs are wrong, and one is charter-illegal. · *also in* CLAUDE.md, CHANGELOG
+- **[RM34](ROADMAP.md#rm34)** — the CPIC provider has no filter: CYP2D6 drafts 16,290 rows, 73% `Indeterminate`. `draft-panel` filters, `draft` does not. · *also in* CHANGELOG
+- **[RM35](ROADMAP.md#rm35)** — a continuous binning table cannot be tiled without a finding. Inclusive bounds + overlap-is-error + hole-is-warning are jointly unsatisfiable; proved by construction. · *also in* CLAUDE.md, SCHEMAS, CHANGELOG
+
+## — Not format scope
+
+- **[RM7](ROADMAP.md#060-scope--deferred-roadmap-items-rmn)** — evaluation / report-card schema. Per-sample results are a *measurement*, so this is a **consumer** contract (`just-dna-lite`). Listed only so it is not mistaken for format scope. · *also in* USE_CASES, COMPILER, PROPOSAL_0_5
+
+## 🔒 The major bucket — unnumbered on purpose, and that is why it hides
+
+Everything needing a **major** lives in one table in
+[ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker). These have **no `RMn`
+number**, which is why they are easy to lose. They are not deferred features — each breaks a rule
+Principle 3/8 protects, so a minor cannot carry it.
+
+- `VariantRow.state` — deprecate at 1.0, remove at 2.0; a derived alias of `direction` since 0.3
+- `state` values `alt` / `ref` — drop from the read-vocabulary; genotype-relative descriptors
+- `VariantRow.pathogenic` / `benign` — deprecate → remove; lossy aliases of `clin_sig`
+- `StudyRow.p_value: str` — retype (the numeric companion `p_value_num` shipped in 0.5)
+- `weights.parquet` `end` — remove or wire; blocked on settling 0-based vs 1-based first, same as RM15
+- `weights.parquet` `likely_pathogenic` / `likely_benign` — remove; dead output, wiring rejected in 0.5
+- `VariantRow.weight` vs `effect_size` — review whether `weight` is subsumed
+- Deprecated flag / vocab aliases — collapse to the canonical vocab
+- `ModuleManifest.authors` + free-form `curator` — fold into RM14's structured record
+- `StudyRow.pmid` required — **doi-first**: require ≥1 of `{doi, pmid}`; a requiredness demotion
+- Compiler `ensembl_cache` shim — remove the deprecated parameter outright
+- ~~Coordinate-first identity~~ — **resolved in 0.5** by VRS; kept struck through for traceability
+
+## The other trackers
+
+| Tracker | Where | What it holds |
+|--------------|----------------------|----------------------------------------------------------------|
+| Reserved namespace | [ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) | Names withheld because a release will plausibly claim them (Principle 5). Currently just `reference_db`. |
+| Freeform idea-book | [ROADMAP § Freeform suggestions](ROADMAP.md#freeform-suggestions--the-05-idea-book) | Unshaped ideas, plus **Parked in 0.5** — recorded so they are not re-proposed as new. |
+| Not format scope | [ROADMAP § Annotating core](ROADMAP.md#annotating-core-not-format-scope-the-05-source-assessment) | Half of every source assessed: anything that *calls or interprets* is a consumer's job. |
+| Design threads | [PROPOSAL_0_5.md](PROPOSAL_0_5.md) | Where an item's shape was argued before it became an `RMn`. |
+| What shipped | [CHANGELOG.md](CHANGELOG.md) | Newest first. The statuses above summarize it. |
+
+## Where an item comes from
+
+An `RMn` is stage 5 of the design cycle, not its start: a field report
+([CONSUMER_FIELD_NOTES](CONSUMER_FIELD_NOTES.md)) → run it against the bricks
+([USE_CASES](USE_CASES.md)) → shape it ([PROPOSAL_0_5](PROPOSAL_0_5.md)) → then either **shipped**
+(recorded in [COMPILER.md](COMPILER.md)'s coverage table) or **parked as an `RMn`**. An item with no
+trail through those was usually found by dogfooding — RM31–RM35 all were.
