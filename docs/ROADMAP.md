@@ -116,17 +116,22 @@ ClinVar → `variants.csv`) plus CPIC prescribing recommendations; **RM30**; a c
 star alleles used but never defined; and three reference examples authored end to end with the
 surface (`hfe_hemochromatosis`, `cyp2c19_star_alleles`, `apoe_epsilon`).
 
-**Still queued:**
-- **The ACMG SF cross-check.** `VariantRow.acmg_sf` is materialized and validated against nothing, so
-  the check is worth having — but the pre-cut probe went looking for something to validate it against
-  and **did not find a data file**. What exists (2026-08-02): NCBI's ClinVar ACMG page
-  (`/clinvar/docs/acmg/`) carries the **SF v3.2** list as a 91-row *HTML table*, and ClinGen's FTP
-  publishes gene-curation and region-curation lists but no secondary-findings list. Scraping the HTML
-  is possible and would need the same guards `clingen.parse_curation_list` has (refuse on a changed
-  layout rather than return a short list, since a silently-truncated gene list makes correctly
-  authored `acmg_sf=true` rows look wrong). Deferred rather than rushed, on the standing rule that a
-  hand-transcribed gene list inside the enricher is the un-injected-reference mistake RM21 already
-  taught. Revisit if ACMG or ClinGen publishes the list as data, or accept the guarded scrape.
+**The ACMG SF cross-check — ✅ shipped (0.5.1), as the guarded scrape.** Re-probed 2026-08-03 and the
+data file still does not exist: ClinGen's FTP publishes gene-curation, region-curation, dosage and
+recurrent-CNV lists and **no secondary-findings list**, and ClinVar's FTP tree carries no ACMG flag
+(`gene_condition_source_id`, 13,478 rows, zero mentions of ACMG). So the second branch was taken —
+`acmg.py`, `just-dna-enricher check-acmg` — with the guards that branch was made conditional on.
+
+The deferral's reasoning turned out to be *understated* rather than cautious. The pre-cut probe called
+it a "91-row HTML table"; it is 94 gene-condition rows over 81 genes, and the obvious `<tr>` split
+returns **78 genes, silently**, because two rows open with a bare `<td>` and no `<tr>` at all. The
+three genes it drops are `TP53`, `COL3A1` and `TPM1` — i.e. the predicted failure mode ("a
+silently-truncated gene list makes correctly authored `acmg_sf=true` rows look wrong") would have
+begun with the most recognizable secondary-findings gene there is. The parse therefore counts **cells**
+rather than rows and refuses on five guards, none of which hard-codes a gene count; the floor is a
+floor, not the list. Details and the verdict tri-state in [ENRICHER.md](ENRICHER.md).
+
+**Still queued:** nothing from the 0.5.1 list.
 
 ## 0.6.0 scope — deferred roadmap items (`RMn`)
 

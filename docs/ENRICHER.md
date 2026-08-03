@@ -27,6 +27,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` |
+| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list | `acmg.check_acmg_sf` |
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
@@ -614,6 +615,76 @@ compile would key on it, and `variant_key` would change with no authored edit an
 usual ladder (warn / fail in `strict`), and `strict` failing is the nudge toward the drift-proof key:
 author the coordinate, and the VRS allele id cannot drift at all.
 
+## ACMG secondary findings (`acmg.py`, online) — `just-dna-enricher check-acmg`
+
+`VariantRow.acmg_sf` has been materialized into `weights.parquet` since 0.4 and checked against
+nothing. The compiler cannot hold a gene list (that is the un-injected reference RM21 taught), and no
+pass here had one, so the column was assertable and unfalsifiable. This closes it.
+
+**There is still no data file, and the list is scraped.** Probed 2026-08-03: ClinGen's FTP publishes
+gene-curation, region-curation, dosage and recurrent-CNV lists and **no secondary-findings list**;
+ClinVar's FTP tree carries no ACMG flag (`gene_condition_source_id`, 13,478 rows, zero mentions). The
+only machine-reachable form of SF v3.2 is NCBI's adaptation of ACMG's Table 1 at
+`/clinvar/docs/acmg/`, as HTML. So this is the "accept the guarded scrape" branch the roadmap left
+open — taken with the guards that branch was conditional on.
+
+**The guards are load-bearing, and the naive parse really is wrong.** Splitting the table on `<tr>`
+returns **78 of the 81 genes, silently**. The page is hand-maintained and shows it: two rows open with
+a bare `<td>` after the previous `</tr>`, four leave a `<td>` unclosed with a stray trailing `</td>`,
+and the gene cell links through **three** URL shapes (`/gtr/genes/324`, `/gtr/genes/4089/`,
+`/gene/3949`). The three genes the naive split drops are `TP53`, `COL3A1` and `TPM1` — which is the
+failure mode stated exactly: a short list makes correctly authored `acmg_sf=true` rows look wrong, and
+it would have begun with the single most recognizable secondary-findings gene there is. So the parse
+works in **cells**, not rows, and refuses rather than returning a short list:
+
+| Guard | Catches |
+|---|---|
+| the page declares `ACMG SF vN.N` | a re-write, and it supplies the `dataset` label |
+| one table carries all four `EXPECTED_HEADERS` | a re-layout, or a nav/footer table becoming "the list" |
+| `<td>` count divides exactly by four | a column added or dropped |
+| every four-cell group yields **exactly one** gene link | a gene cell that lost its link — a silent drop |
+| at least `MIN_GENES` distinct genes survive | a truncated response, a JS shell, an error page |
+
+`MIN_GENES` is a floor, not the real count. Hard-coding 81 would be the hand-transcribed gene list this
+module exists to avoid, and it would go stale the day ACMG publishes v3.3.
+
+**The list is richer than a set of symbols, and cells hold more than one of things.** Each row is a
+gene–condition pair (94 pairs over 81 genes; `TRDN` is listed for two conditions), and a cell can carry
+several MIMs and several MedGen concepts at once — `SDHB` names MIM 115310 *and* 171300 against MedGen
+`C1861848, C0031511`, linking to a MedGen **search** rather than a concept. `disease_mims` and
+`medgen_ids` are therefore tuples; taking the first of each would be a silent truncation of the same
+family as the `<tr>` split.
+
+**The verdicts are the house tri-state, and a blank cell is never a defect.** `agree` (either way
+round) and `blank` are silent; `not_listed` (claimed true, gene absent) and `denied` (claimed false,
+gene present) are findings that warn in `best_effort` and refuse in `strict`; `unstated` (blank, gene
+listed) is a **note**, because blank means "not stated" and turning that into a defect is the
+`None`-means-`False` collapse this codebase refuses everywhere else; `unchecked` covers a row naming no
+gene and the whole of `--offline`, which reports that nothing was asked rather than that nothing was
+found.
+
+**Findings group by gene, because that is what they are about.** Found by running the real thing: the
+HFE reference example is 13 variants in one gene, and a per-row report printed the same 220-character
+sentence 13 times. Same aggregation rule CPIC already taught (~600 identical lines for CYP2C19). The
+per-row verdicts stay on the report for a caller that wants them; `AcmgReport.by_gene` is what a report
+prints.
+
+**Gene-level, and the column says so — but ACMG's own list is not purely gene-level.** `acmg_sf` is
+documented as "True when the **gene** is on the ACMG secondary-findings list", so that is what is
+compared. ACMG itself is finer-grained in at least one place: the `HFE` entry reads *"Hereditary
+hemochromatosis (c.845G>A; p.C282Y homozygotes only)"*. The parse keeps that text and the `denied`
+message points at it, telling an author to leave the cell **blank** rather than `false` when a row is
+about a variant in a listed gene that is not itself a reportable finding. Reading the column as
+per-variant reportability would make the format decide disclosure policy, which it does not do.
+
+**This pass records no `SourceRow`**, the deliberate exception to "a pass that consults a source writes
+one". That rule is about a module *carrying* a source's data. Nothing lands in the module here:
+`acmg_sf` was authored by a human before this ran, exactly as a gene symbol was, and this asks a
+registry whether the authored value is still right. It is `check-identifiers`' shape (HGNC and OLS4 go
+unrecorded too), not `dosage`'s. The corollary is in the other direction: `acmg_sf` joins
+`hints.REDUNDANCY_BEARING`, so no lookup or hint may fill it — a cell filled from the list this checks
+against would make the check vacuous.
+
 ## Pharmacogenomics and data-source licensing (`pgx.py`, `licensing.py`, `pharmvar.py`, `cpic.py`)
 
 Pass 5 cross-checks a module's star-allele tables against the nomenclature authorities and records
@@ -804,6 +875,7 @@ just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdr
 just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC)
+just-dna-enricher check-acmg spec/                 # acmg_sf vs the ACMG SF gene list (online)
 
 # Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)
 just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults

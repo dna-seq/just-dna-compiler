@@ -19,6 +19,7 @@ from just_dna_compiler.compiler import compile_module
 from just_dna_format.vocab import VALID_DECLARED_USE
 
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
+from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.lookup import (
     as_report_rows,
@@ -468,6 +469,51 @@ def check_identifiers_(
         typer.secho("all identifiers current", fg=typer.colors.GREEN)
     elif strict:
         raise typer.Exit(code=1)
+
+
+@app.command("check-acmg")
+def check_acmg_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(False, "--strict/--best-effort", help="Exit 1 if any acmg_sf disagrees."),
+    offline: bool = typer.Option(False, "--offline", help="No-op with a warning: the SF list is live-only."),
+    url: str = typer.Option(DEFAULT_ACMG_URL, "--url", help="ACMG secondary-findings page URL."),
+) -> None:
+    """Check each row's `acmg_sf` against the ACMG secondary-findings list (online, reports only).
+
+    Writes nothing, for the same reason `check-identifiers` writes nothing: `acmg_sf` is an authored
+    cell this asks a registry about, not a fact this pass contributes. Filling it here would break the
+    check — see `hints.REDUNDANCY_BEARING`.
+    """
+    from just_dna_compiler.compiler import _load_csv_rows
+    from just_dna_format.spec import VariantRow
+
+    variants_path = spec_dir / "variants.csv"
+    if not variants_path.exists():
+        typer.secho("no variants.csv — nothing to check", fg=typer.colors.YELLOW)
+        return
+    variants, errors, _ = _load_csv_rows(variants_path, VariantRow, "variants.csv")
+    if errors:
+        typer.secho(f"variants.csv is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        report = verify_acmg_sf(variants, mode=_mode(strict), offline=offline, url=url)
+    except AcmgSfError as exc:
+        typer.secho(f"ACMG CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    version = f"ACMG SF v{report.version}" if report.version else "not consulted"
+    typer.echo(f"{version}: {report.checked}/{len(report.verdicts)} row(s) checked")
+    for warning in report.warnings:
+        typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
+    # Grouped by gene: every verdict is a statement about a gene, so a per-row list prints one
+    # sentence once per variant in it.
+    for gene, rows, message in AcmgReport.by_gene(report.notes):
+        typer.secho(f"  note: {gene} ({len(rows)} row(s)): {message}", fg=typer.colors.CYAN)
+    for gene, rows, message in AcmgReport.by_gene(report.mismatches):
+        typer.secho(f"  {gene} ({len(rows)} row(s), first at {rows[0]}): {message}",
+                    fg=typer.colors.YELLOW, err=True)
+    if report.clean and report.version:
+        typer.secho("every stated acmg_sf agrees with the list", fg=typer.colors.GREEN)
 
 
 @app.command("enrich-and-compile")

@@ -78,6 +78,7 @@ REDUNDANCY_BEARING: dict[str, str] = {
     "function_status": "enricher.pgx.enrich_pgx (authored function vs PharmVar and CPIC)",
     "evidence_level": "enricher.clinpgx (authored level vs the ClinPGx snapshot)",
     "p_value_num": "compiler p_value ↔ p_value_num agreement",
+    "acmg_sf": "enricher.acmg.check_acmg_sf (authored flag vs the ACMG SF list)",
 }
 
 

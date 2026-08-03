@@ -5,6 +5,60 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: the ACMG SF cross-check, and what a "simple scrape" actually cost
+
+`VariantRow.acmg_sf` has been materialized into `weights.parquet` since 0.4 and checked against
+nothing — assertable and unfalsifiable. It now has a checker: `enricher/acmg.py` and
+`just-dna-enricher check-acmg`.
+
+**Re-probed first, because the deferral was conditional on a data file appearing.** It has not.
+ClinGen's FTP publishes gene-curation, region-curation, dosage and recurrent-CNV lists and **no
+secondary-findings list**; ClinVar's own FTP tree carries no ACMG flag at all
+(`gene_condition_source_id`, 13,478 rows, zero mentions). NCBI's adaptation of ACMG Table 1 at
+`/clinvar/docs/acmg/` remains the only machine-reachable form of SF v3.2, as HTML. So the roadmap's
+second branch — accept the guarded scrape — was taken.
+
+**The deferral's own worry was right, and understated.** It described a "91-row HTML table". It is 94
+gene-condition rows over **81 genes**, and the obvious `<tr>` split returns **78 genes, silently**: two
+rows open with a bare `<td>` after the previous `</tr>` and have no `<tr>` of their own, four leave a
+`<td>` unclosed with a stray trailing `</td>`, and the gene cell links through three different URL
+shapes (`/gtr/genes/324`, `/gtr/genes/4089/`, `/gene/3949`). The three genes the naive split drops are
+`TP53`, `COL3A1` and `TPM1` — so the predicted failure mode, a short list making correctly authored
+`acmg_sf=true` rows look wrong, would have opened with the most recognizable secondary-findings gene
+there is. A test reproduces the naive parse on the real page and asserts exactly which three it loses,
+so the guard is not cargo-culted.
+
+The parse therefore counts **cells**, not rows, behind five guards: the page must declare its version,
+one table must carry all four expected headers, the `<td>` count must divide exactly by four, every
+four-cell group must yield **exactly one** gene link, and a floor of distinct genes must survive. None
+hard-codes 81 — that would be the hand-transcribed list this avoids, stale the day v3.3 lands.
+
+**Two things the page holds that a first pass would have flattened.** A row is a gene–*condition* pair
+(`TRDN` appears twice), and a single cell can carry several MIMs and several MedGen concepts —
+`SDHB` names MIM 115310 *and* 171300 against `C1861848, C0031511`, linking to a MedGen **search**
+rather than a concept, so the href has no id in it at all. Both are tuples now.
+
+**Verdicts are the house tri-state.** `agree`/`blank` silent, `not_listed`/`denied` findings (warn in
+`best_effort`, refuse in `strict` — list membership is a published fact, not a clinical judgement, so
+unlike the `clin_sig` check there is no reason to hold it at a warning), `unstated` a **note** because
+a blank cell means "not stated", and `unchecked` for a row naming no gene and for all of `--offline`.
+
+**Dogfooding the CLI changed the output shape.** Run against `reference_examples/hfe_hemochromatosis`
+— 13 variants in one gene — the per-row report printed the same 220-character sentence 13 times. Every
+verdict here is about a *gene*, so `AcmgReport.by_gene` groups them; the per-row verdicts stay on the
+report. Same rule CPIC taught with ~600 identical lines for CYP2C19.
+
+**ACMG's list is not purely gene-level, and the column is.** The `HFE` entry reads *"Hereditary
+hemochromatosis (c.845G>A; p.C282Y homozygotes only)"*. `acmg_sf` is documented as a gene-level fact,
+so that is what is compared, and the `denied` message quotes the entry and tells an author to leave the
+cell **blank** rather than `false` for a variant in a listed gene that is not itself reportable.
+Reading the column as per-variant reportability would make the format decide disclosure policy.
+
+**No `SourceRow`, deliberately** — the exception to "a pass consulting a source writes one". Nothing
+lands in the module: this asks a registry about a cell a human already authored, which is
+`check-identifiers`' shape, not `dosage`'s. The corollary runs the other way: `acmg_sf` joins
+`hints.REDUNDANCY_BEARING`, so no lookup may fill it.
+
 ## 2026-08-03 — 0.5.1: delegated insertion, partial rows, and RM26's last provider
 
 Two mechanisms and the provider they unblock. The short version: **the tool decides where a row goes
