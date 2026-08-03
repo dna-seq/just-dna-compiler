@@ -85,7 +85,12 @@ from just_dna_format.spec import (
     extract_pmids,
 )
 from just_dna_format.vocab import population_sort_key
-from just_dna_format.vrs import UnsupportedBuildError, derive_vrs_allele_id, is_substitution
+from just_dna_format.vrs import (
+    UnsupportedBuildError,
+    derive_vrs_allele_id,
+    in_pseudoautosomal_region,
+    is_substitution,
+)
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.models import CompilationResult, ValidationResult
@@ -532,19 +537,64 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
                 warnings.append(
                     f"{row.variant_key} genotype {row.genotype}: direction='protective' but weight={row.weight} < 0"
                 )
-        # Non-diploid guardrail (ROADMAP 0.3 item 5b): MT and Y are never diploid, so a two-allele
-        # genotype is almost certainly a "fake diploid" error — a homoplasmic MT call or a hemizygous
-        # Y call is a single allele (e.g. 'G'). X is deliberately excluded: it is diploid in XX
-        # samples, so a two-allele X row is legitimate (the item-5b dogfood enumerates both a
-        # single-allele hemizygous row and the diploid rows at an X-linked locus); warning on X would
-        # be pure noise. PAR vs non-PAR needs coordinates the format does not resolve — so Y (never
-        # diploid regardless of sex) is the safe, false-positive-free half of "non-PAR X/Y".
-        if row.chrom in {"MT", "Y"} and ("/" in row.genotype or "|" in row.genotype):
-            warnings.append(
-                f"{row.variant_key} genotype {row.genotype}: chrom={row.chrom} is not diploid — use "
-                f"a single-allele genotype (e.g. 'G') for a homoplasmic/hemizygous call"
-            )
     return errors, warnings
+
+
+def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38") -> list[str]:
+    """Non-diploid guardrail (ROADMAP 0.3 item 5b): MT and Y against a two-allele genotype.
+
+    **Run where `chrom` is final — after resolution, not before.** It used to live inside
+    `_cross_validate_variants`, which is called twice: once on the authored rows and once on the
+    resolved ones, the second time taking *errors only* ("warnings were already surfaced"). That is
+    correct for a warning computed from authored cells and wrong for this one, whose entire input —
+    `chrom` — is the thing resolution fills. The result was a check whose coverage depended on
+    authoring style rather than on the data: `MT,3243,A/G` written by hand warned, while
+    `rs199474657` with genotype `A/G` — the same MELAS variant, the same fake-diploid error, and the
+    shape *every drafting provider emits* — was silently unchecked.
+
+    **X is excluded**, as before: it is diploid in XX samples, so a two-allele X row is legitimate and
+    warning on it would be pure noise.
+
+    **Y is not the false-positive-free half it was documented to be.** PAR1 and PAR2 recombine with X
+    and are diploid in every karyotype, so a two-allele genotype at `Y:359845` is *correct* and the
+    old advice ("use a single-allele genotype") would have made the annotation wrong. Real instance:
+    `rs6603251` maps to X:359845 **and** Y:359845, and a one-to-many expansion produces the Y row on
+    its own — the author never chose it. The premise that "PAR vs non-PAR needs coordinates the format
+    does not resolve" was the error: `resolution.csv` resolves exactly that, and the PAR intervals are
+    assembly constants of the same class as `vrs.REFGET_GRCh38`.
+
+    So the answer is three-valued (`vrs.in_pseudoautosomal_region`), and the uncertain case is
+    reported rather than either asserted or swallowed — the same shape as the `absent` rsID message,
+    which names both readings and commits to neither.
+    """
+    warnings: list[str] = []
+    for row in variants:
+        if row.chrom not in {"MT", "Y"} or not ("/" in row.genotype or "|" in row.genotype):
+            continue
+        # MT has no pseudoautosomal region at all, so its verdict never depends on a coordinate.
+        par = False if row.chrom == "MT" else in_pseudoautosomal_region(
+            row.chrom, row.start, build=genome_build
+        )
+        if par is True:
+            continue
+        if par is None:
+            # Reachable in practice only for a build with no PAR table: `VariantRow` already refuses
+            # `chrom` without `start`, so a Y row always has a position, and an unresolved row has no
+            # `chrom` at all and never reaches here. The message therefore names the *build* rather
+            # than inventing a missing coordinate, and asserts neither reading — the same shape the
+            # `absent` rsID message uses.
+            warnings.append(
+                f"{row.variant_key} genotype {row.genotype}: chrom=Y with two alleles on build "
+                f"{genome_build!r}, which has no pseudoautosomal table here — so whether this locus "
+                f"is diploid could not be decided. Outside PAR1/PAR2 Y is hemizygous and this should "
+                f"be a single allele (e.g. 'G'); inside them the genotype is right."
+            )
+            continue
+        warnings.append(
+            f"{row.variant_key} genotype {row.genotype}: chrom={row.chrom} is not diploid here — use "
+            f"a single-allele genotype (e.g. 'G') for a homoplasmic/hemizygous call"
+        )
+    return warnings
 
 
 def _allowed_alleles(
@@ -1161,6 +1211,16 @@ def validate_spec(
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
         all_warnings.extend(cross_warnings)
+        # Ploidy runs here *and* post-resolution in `compile_module`, because the two passes see
+        # different rows. Here it catches a hand-written `MT,3243,A/G` on the standalone `validate`
+        # command, where there is no resolution step at all; there it catches the rsID-authored form,
+        # whose `chrom` does not exist until the table has been consulted. A row that both passes can
+        # see produces the same string twice, which compile de-duplicates.
+        # `config` is None when the spec itself failed to load; default rather than crash, since
+        # the point of `validate` is to report every problem it can, not to stop at the first.
+        all_warnings.extend(
+            _check_contig_ploidy(variants, config.genome_build if config else "GRCh38")
+        )
         if studies:
             _, study_warnings = _cross_validate_studies(studies, variants)
             all_warnings.extend(study_warnings)
@@ -1432,6 +1492,15 @@ def compile_module(
                 errors=[f"post-resolution: {e}" for e in post_errors],
                 warnings=all_warnings,
             )
+
+    # The non-diploid guardrail runs **here**, once, because this is the first point at which `chrom`
+    # is final for every row — resolution has either run and filled it or was skipped. Inside
+    # `_cross_validate_variants` it was emitted from the pre-resolution pass only (the post-resolution
+    # call takes errors alone), so an rsID-authored MT or Y row — the shape every drafting provider
+    # writes — was never checked at all.
+    all_warnings.extend(
+        w for w in _check_contig_ploidy(variants, config.genome_build) if w not in all_warnings
+    )
 
     # Outcome axis (orthogonal to the requested `resolution_mode` policy, Principle 5): did every
     # in-scope variant resolve to a genomic position? Vacuously true for a table-kind-only module.

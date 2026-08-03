@@ -129,6 +129,43 @@ def normalize_chrom(chrom: Optional[str]) -> Optional[str]:
     return upper if upper in ("X", "Y") else value
 
 
+# ── The pseudoautosomal regions of GRCh38 ──────────────────────────────────────────────────────
+# X and Y share two homologous stretches that recombine at meiosis, so a locus inside one is present
+# in **two copies in every karyotype** — diploid in XX and in XY alike. 1-based inclusive, matching the
+# convention the rest of this pipeline stores (Ensembl/CPIC/PharmVar positions go in unconverted).
+#
+# These are assembly constants, exactly like `REFGET_GRCh38` above: fixed properties of a named build,
+# not curated data that goes stale, so holding them here is not the un-injected-reference mistake
+# (RM21). They live in the format tier because the *compiler* needs them offline — the non-diploid
+# guardrail cannot otherwise tell a genuinely hemizygous Y locus from a PAR one.
+PAR_GRCh38: dict[str, tuple[tuple[int, int], ...]] = {
+    "X": ((10_001, 2_781_479), (155_701_383, 156_030_895)),
+    "Y": ((10_001, 2_781_479), (56_887_903, 57_217_415)),
+}
+
+
+def in_pseudoautosomal_region(
+    chrom: Optional[str], start: Optional[int], *, build: str = "GRCh38"
+) -> Optional[bool]:
+    """Is this locus in a PAR? **Three-valued** — `True`, `False`, or `None` for "cannot say".
+
+    `None` when there is no coordinate, when the contig is not X or Y, or when the build is one this
+    table does not describe. A caller must not read `None` as `False`: "this row has no position" and
+    "this position is outside the PAR" are different facts, and the second licenses a claim about
+    ploidy that the first does not.
+
+    Unlike `refget_accession` this does **not** raise on another build. That function answers a
+    question whose wrong answer would corrupt an identity, so silence is unacceptable; this one feeds
+    a warning, where the honest degradation is to withhold it.
+    """
+    if start is None or build != "GRCh38":
+        return None
+    regions = PAR_GRCh38.get(normalize_chrom(chrom) or "")
+    if regions is None:
+        return None
+    return any(low <= start <= high for low, high in regions)
+
+
 def refget_accession(chrom: Optional[str], build: str = "GRCh38") -> Optional[str]:
     """The refget accession for a contig on `build`, or `None` for a contig outside the table.
 

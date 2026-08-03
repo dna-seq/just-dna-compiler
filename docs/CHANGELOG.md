@@ -5,6 +5,62 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: dogfooding a pseudoautosomal module — two fixes, three questions
+
+`reference_examples/shox_par1/` was built adversarially: pick a real gene where the libraries are
+likely to claim more than they know, and use only the shipped surface. SHOX sits in **PAR1**, the
+stretch X and Y share and recombine, so it is present in two copies in every karyotype. Ten
+pathogenic ClinVar alleles, drafted, curated, enriched, compiled. Four findings; two are fixed and
+three are recorded because patching them would mean inventing a design.
+
+**The non-diploid guardrail was wrong in both directions.** Its comment claimed Y was *"the safe,
+false-positive-free half of non-PAR X/Y"*. PAR1 (Y:10,001–2,781,479) and PAR2
+(Y:56,887,903–57,217,415) are diploid in everyone, so a two-allele genotype there is correct and the
+advice to use a single allele would have made the annotation wrong — and the author need not even
+choose the Y coordinate, because the one-to-many expansion produces the Y row on its own
+(`rs6603251` maps to X:359845 *and* Y:359845).
+
+The same probe found the **opposite** error, which is the bigger one. The check lived inside
+`_cross_validate_variants`, which compile calls twice and the second time takes *errors only* — so a
+warning whose entire input is `chrom` was computed before resolution filled it and discarded after.
+`rs199474657` with genotype `A/G` — the MELAS m.3243A>G fake-diploid error, and **the shape every
+drafting provider emits** — was silently unchecked, while `MT,3243,A/G` warned. Coverage depended on
+authoring style rather than on data. Now: `vrs.in_pseudoautosomal_region` answers three-valued (the
+`None` being a build with no PAR table, where the message names both readings and asserts neither),
+the guardrail runs where `chrom` is final, and it keeps a pass inside `validate_spec` too, since the
+standalone `validate` command has no resolution step and would otherwise have been silently emptied.
+PAR intervals are assembly constants of the same class as `vrs.REFGET_GRCh38`, so holding them is not
+the un-injected-reference mistake.
+
+**`draft-panel` asked for a decision and withheld its inputs.** It leaves `genotype` stubbed —
+correctly, since ClinVar publishes alleles and zygosity follows from inheritance mode. But a genotype
+is nucleotides from `{ref} ∪ alts`, and an rsID-identified row carries neither, so the author faced
+`rs201157428` and `<<REPLACE>>` with nothing to write from. `enrich` would resolve the alleles and
+refuses to load a file containing a placeholder — which is *right*, because forward resolution is
+allele-aware and a placeholder genotype would skip that filter on exactly the one-to-many rsIDs that
+need it. The alleles are now reported, one line per stubbed row, and still never written: writing them
+would need the whole coordinate, and `alts` is redundancy-bearing.
+
+**And a message that asserted the wrong reason.** `rs1569493663` does not resolve — ClinVar publishes
+`X:634689 CAG>C`, Ensembl publishes the same 2 bp AG deletion as `X:634690 AGAG>AG`. The warning said
+"that record is a different variant sharing the rsID", sending an author to hunt a dbSNP merge that
+does not exist. It now names both readings. The underlying normalization is **RM31**.
+
+**Three recorded rather than patched**, each because the obvious repair is wrong:
+
+- **RM31** — indel spellings. A reference-free parsimony trim fixes this pair but cannot left-align
+  inside a repeat; a reference-backed one can only run in the enricher, and `genotype_fits` is shared
+  with the compiler, which by charter holds no reference.
+- **RM32** — nine of ten SHOX variants map to both contigs, so 10 findings became 19 rows, all inside
+  `artifact.digest`, and standard GRCh38 analysis sets hard-mask the Y PAR so those rows can never
+  match. Collapsing them would contradict VRS identity (X and Y are different refget sequences), and
+  the expansion is correct for the paralog case it was built for.
+- **RM33** — `resolution.csv`'s `source` names *which link answered*; `sources.csv`'s names *a
+  licensed source*. Two vocabularies under one name, compared by string equality, which is why every
+  enriched module warns that `ensembl-rest` has no terms. Writing a row per link would make
+  `ensembl-rest` and `ensembl-graphql` two sources with identical terms; teaching the compiler a
+  link→source map would give it a source convention, which P2's 0.5 tightening removed on purpose.
+
 ## 2026-08-03 — 0.5.1: CLI/API parity — signing was never CLI-complete
 
 An audit of every command against every public function across the three packages. Most of it was

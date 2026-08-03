@@ -128,6 +128,38 @@ def _identity_cells(record: dict, *, force_coordinate: bool = False) -> Optional
     return None
 
 
+def _genotype_worklist(records: Sequence[dict]) -> list[str]:
+    """The alleles each stubbed row's pending genotype must be written from.
+
+    **The provider was asking for a decision and withholding its inputs.** A `genotype` is nucleotides
+    drawn from `{ref} ∪ alts`, and a row identified by its rsID carries neither — `_identity_cells`
+    prefers the rsID, correctly (it is the stabler, more legible identity, and the model forbids
+    `ref`/`alts` without a coordinate anyway), so the author was left with `rs201157428` and
+    `<<REPLACE>>` and nothing to write from. Worse, the obvious next move does not work: `enrich`
+    would resolve the alleles, and it *refuses* to load a file containing a placeholder — which is
+    right, because forward resolution is allele-aware (`genotype_fits`) and a placeholder genotype
+    would silently skip that filter on exactly the one-to-many rsIDs that need it.
+
+    So the alleles are **reported**, never written. Writing them would need the whole coordinate
+    (identity is filled whole or not at all), which would discard the rsID identity the provider
+    deliberately chose; and `alts` is redundancy-bearing — the compiler's allele-membership check
+    compares the human's genotype against it, and that check keeps its force precisely because the two
+    were authored independently.
+
+    One line per stubbed row, uncapped: each is a task the author must do, and a task list that
+    silently drops entries is worse than a long one.
+    """
+    lines: list[str] = []
+    for record in records:
+        ref, alt = (record.get("ref") or "").strip(), (record.get("alt") or "").strip()
+        if not (ref and alt):
+            continue
+        label = (record.get("rsid") or "").strip() or f"{record.get('chrom')}:{record.get('start')}"
+        alleles = ", ".join(sorted({ref, alt}))
+        lines.append(f"  genotype for {label}: ClinVar publishes {ref}>{alt} — an allele pair from {{{alleles}}}")
+    return lines
+
+
 def _row_cells(record: dict, *, force_coordinate: bool = False) -> Optional[dict]:
     """One ClinVar record → the authored cells this provider is willing to state."""
     identity = _identity_cells(record, force_coordinate=force_coordinate)
@@ -303,6 +335,7 @@ def draft_gene_panel(
             f"{len(report.added)} row(s) carry an unreplaced genotype placeholder and will not "
             f"compile until you decide the zygosity each finding is about."
         )
+        warnings.extend(_genotype_worklist(records))
     if not dry_run:
         # A source that rows were copied out of must be recorded, permissive terms or not: the compile
         # gate and `manifest.sources` read sources.csv and nothing else.

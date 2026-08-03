@@ -375,9 +375,20 @@ def enrich(
             ]
             for lo in all_loci:
                 if lo not in loci:
+                    # **Two readings, and this cannot tell them apart — so it names both.** The
+                    # message used to assert "that record is a different variant sharing the rsID",
+                    # which is often true and was flatly wrong for the case that found it: a SHOX
+                    # deletion drafted from ClinVar as `X:634689 CAG>C` is the *same* 2 bp AG deletion
+                    # Ensembl publishes as `X:634690 AGAG>AG`, anchored one base earlier with a
+                    # padding base. `genotype_fits` compares allele strings, so two spellings of one
+                    # indel do not match — and an author sent looking for a dbSNP merge would find
+                    # nothing, because there is none. Reconciling them needs indel normalization,
+                    # which needs the reference sequence; see ROADMAP RM31.
                     logger.warning(
-                        "%s: %s:%s %s>%s cannot host the authored %s %s — that record is a "
-                        "different variant sharing the rsID, and is left out of resolution.csv.",
+                        "%s: %s:%s %s>%s cannot host the authored %s %s, and is left out of "
+                        "resolution.csv. Either it is a different variant sharing the rsID, or the "
+                        "two sources spell one indel differently (padding base, repeat alignment) — "
+                        "this compares allele strings and cannot tell those apart.",
                         v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
                         "allele" if v.origin == "haplotypes.csv" else "genotype", v.constraint,
                     )

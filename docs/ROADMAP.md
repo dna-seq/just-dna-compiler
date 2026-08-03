@@ -319,6 +319,58 @@ and supplements do not exist yet — because fixing a shape against four table k
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
 | format (schema + compiler) | combination annotations; disclosure policy | medium (after the corpus) |
 
+**RM31 — indel representation mismatch defeats allele-aware resolution (found 2026-08-03, real).**
+`resolution.genotype_fits` compares **allele strings**, so two valid spellings of one indel do not
+match and the locus is dropped. Confirmed end to end while drafting
+`reference_examples/shox_par1/`: `rs1569493663` is drafted from ClinVar as `X:634689 CAG>C` and
+Ensembl publishes the same 2 bp AG deletion as `X:634690 AGAG>AG` — anchored one base earlier with a
+padding base — so the authored genotype "cannot host" Ensembl's alleles and the variant resolves to
+`not_found`. Nothing about it is a merge or a paralog; it is one deletion written two ways. The
+message that reported it *asserted* the wrong reading ("a different variant sharing the rsID"), which
+is now corrected to name both — that part is shipped.
+
+The fix is not. A reference-free **parsimony trim** (strip the shared suffix, then the shared prefix)
+reconciles this particular pair, but it does **not** left-align inside a repeat, which genuinely needs
+the reference sequence — and `genotype_fits` is deliberately **shared three ways**, including with the
+compiler, which by charter holds no reference (P2). So the options are a bounded reference-free
+normalization in the shared predicate (helps many real cases, silently misses others, and changes
+which loci survive expansion → digest-visible), or a reference-backed normalization that can only run
+in the enricher and would make the two callers disagree about what fits. Neither is a small change,
+and picking one is the decision. | format + enricher | any indel-bearing panel | **medium** |
+
+**RM32 — a pseudoautosomal locus is one place and two contigs; the format models it as two variants.**
+Nine of the ten SHOX variants in `reference_examples/shox_par1/` map to **both** X and Y at the same
+base (PAR1 has identical coordinates on the two contigs in GRCh38), so the one-to-many expansion emits
+two rows per variant: 19 rows for 10 findings, all in `weights.parquet` and in `artifact.digest`. A
+consumer counting the module's findings gets 19. Worse, standard GRCh38 analysis sets **hard-mask the
+Y PAR**, so in a normal pipeline the nine Y rows can never match anything.
+
+The obvious "fix" — collapse the pair — contradicts the identity model 0.5 just adopted: VRS keys on
+the **refget accession**, and X and Y are different sequences, so `ga4gh:VA.…` says these are two
+alleles. The expansion is also *correct* for the case it was built for (paralogs are genuinely
+distinct loci). So this is not a bug to patch but a question to answer: does a module say something
+about a *place in the genome* or about a *contig coordinate*, and if the former, what is the identity
+of a locus present on two contigs? Recording it with the evidence rather than guessing.
+| format (identity) | any PAR gene: SHOX, CSF2RA, ASMT, CD99 | **medium** |
+
+**RM33 — `source` names two different things in two tables, and the compiler compares them.**
+`_source_checks` warns when a fact table cites a source with no `sources.csv` row, by exact string
+set difference. But `resolution.csv`'s `source` column names **which link answered** (`ensembl-rest`,
+`ensembl-graphql`, `cache`, `authored`, `reversed`, `clinvar`, `gnomad`) while `sources.csv`'s names a
+**licensed data source** (`ensembl`, `clinvar`, `clingen`, …). They are different vocabularies under
+one name — the overloaded-axis anti-pattern (P5) — spread across two tables, which is why every
+enriched module warns that `ensembl-rest` has no terms recorded.
+
+Both obvious repairs are wrong. Writing a `SourceRow` per link makes `ensembl-rest` and
+`ensembl-graphql` two "sources" with identical terms. Teaching the compiler a link→source map gives it
+a **source convention**, which is exactly what P2's 0.5 tightening removed and what
+`licensing.py` says in as many words ("the compiler holds no source→licence map — that would give it
+a source convention and an un-injected reference"). What is missing is a third thing: the resolution
+table recording *both* the link and the source it stands for, which is additive but is a schema change
+to `ResolutionRow`. Note `VALID_SOURCE_LAYERS` already reserves `"resolution"` for the row nobody
+writes — `enrich()` is the only pass that records no source at all.
+| format (schema) + enricher | every enriched module | **medium** |
+
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
   `TCAT` repeats + 3 extra bases), which is *not* the decimal 9.3. A binning bound stays a plain

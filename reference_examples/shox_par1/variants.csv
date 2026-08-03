@@ -1,0 +1,11 @@
+rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,negatives,priority,gene,phenotype,category,clinvar,pathogenic,benign,curator,method,direction,stat_significance,effect_size,effect_measure,effect_allele,flags,trait_efo_id,clin_sig,requires_callable,acmg_sf,actionability,callable_from,quality_from,min_quality
+rs201157428,,,,,A/G,,risk,ClinVar: pathogenic (2★) — SHOX-related short stature|Leri-Weill dyschondrosteosis,,,SHOX,SHOX-related short stature|Leri-Weill dyschondrosteosis,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs757391565,,,,,A/C,,risk,ClinVar: pathogenic (2★) — Leri-Weill dyschondrosteosis,,,SHOX,Leri-Weill dyschondrosteosis,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs2052711401,,,,,C/T,,risk,ClinVar: pathogenic (2★) — not provided|SHOX-related short stature,,,SHOX,not provided|SHOX-related short stature,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs1569493663,,,,,C/CAG,,risk,ClinVar: pathogenic (2★) — not provided|Leri-Weill dyschondrosteosis,,,SHOX,not provided|Leri-Weill dyschondrosteosis,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs2522102328,,,,,C/T,,risk,ClinVar: pathogenic (2★) — not provided|Leri-Weill dyschondrosteosis,,,SHOX,not provided|Leri-Weill dyschondrosteosis,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs137852557,,,,,C/T,,risk,ClinVar: pathogenic (2★) — not provided|Langer mesomelic dysplasia syndrome|Leri-Weill dyschondrosteosis,,,SHOX,not provided|Langer mesomelic dysplasia syndrome|Leri-Weill dyschondrosteosis,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs137852556,,,,,C/T,,risk,ClinVar: pathogenic (2★) — SHOX-related disorder|not provided|Leri-Weill dyschondrosteosis,,,SHOX,SHOX-related disorder|not provided|Leri-Weill dyschondrosteosis,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs746801054,,,,,A/G,,risk,ClinVar: pathogenic (2★) — Leri-Weill dyschondrosteosis|not provided,,,SHOX,Leri-Weill dyschondrosteosis|not provided,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs1170991098,,,,,A/C,,risk,ClinVar: pathogenic (2★) — not provided,,,SHOX,not provided,,true,true,,,,,,,,,,,pathogenic,true,,,,,
+rs137852552,,,,,C/T,,risk,ClinVar: pathogenic (2★) — SHOX-related disorder|not provided|Leri-Weill dyschondrosteosis|SHOX-related short stature,,,SHOX,SHOX-related disorder|not provided|Leri-Weill dyschondrosteosis|SHOX-related short stature,,true,true,,,,,,,,,,,pathogenic,true,,,,,

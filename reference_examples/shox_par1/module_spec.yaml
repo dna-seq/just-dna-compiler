@@ -1,0 +1,15 @@
+schema_version: '1.0'
+module:
+  name: shox_par1
+  title: SHOX haploinsufficiency — an annotation in the pseudoautosomal region
+  report_title: SHOX haploinsufficiency (PAR1)
+  description: Pathogenic and likely-pathogenic SHOX alleles from ClinVar (2★ and above). SHOX
+    sits in PAR1, so it escapes X-inactivation and is present in two copies in every karyotype —
+    which is why these findings are heterozygous rather than hemizygous.
+  icon: child
+  icon_set: fomantic
+  color: '#6435c9'
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38
