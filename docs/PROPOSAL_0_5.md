@@ -445,6 +445,34 @@ cardiovascular variant and a drug row — no table keys on more than one subject
 name a row in another table), and compound heterozygosity without enumerating every pair, which is an
 argument from economy rather than from expressiveness and should be labelled as such.
 
+### What the table algebra already spans, precisely
+
+It is tempting to summarise the position as "we have AND, the DSL would buy OR/NOT/XOR". That is
+close, and wrong in both directions, so it is worth stating exactly.
+
+**Rows are a disjunction; columns are a conjunction.** A lookup table matches if *any* row matches,
+and a row matches if *all* its cells do. So `OR` is already expressible — write two rows with the
+same conclusion — and so is `XOR`, and so is a bounded `NOT`: enumerate the genotypes that do match.
+Together with `haplotypes.csv` for same-strand conjunction, the existing tables span **any finite
+boolean function over an enumerable set of genotypes**. There is no operator missing.
+
+What is missing is therefore not expressiveness but two other things, and naming them correctly is
+what keeps this proposal honest:
+
+1. **Economy, and the intent that enumeration destroys.** "Any two pathogenic variants in trans" over
+   a gene with 300 of them is ~45,000 pairs. Expressible, unwritable, and unreadable afterwards — the
+   enumerated form no longer says *why*, which is the thing a curator was trying to record.
+2. **Open-world negation, which is not an operator problem.** "No pathogenic variant anywhere in this
+   gene" cannot be enumerated, because it quantifies over a set the module does not close. Adding a
+   `NOT` token would not fix it: absence is only assertable where the region was *callable*, which is
+   why `requires_callable` exists and why a consumer lacking callability must withhold rather than
+   report the reference conclusion. A negation feature that ignored that would manufacture
+   reassurance — the single worst failure mode this format has.
+
+So the DSL's case rests on economy and on open-world absence, not on missing operators. That is a
+weaker case than "we cannot express it", and a more precise one — and it is why the demand has to
+come from a module somebody actually failed to write, rather than from the shape of boolean algebra.
+
 ### What is deliberately not decided
 
 The column set, the reference syntax for a module-internal term, and the cofactor namespace. Those

@@ -248,10 +248,15 @@ only knowable at query time. **Feasibility probed 2026-08-03 and the result argu
 haplotypes are defined by two SNPs together and whose ε4 condition is P1's own example
 (`rs429358==C AND rs7412==C`) — with **bricks that shipped in 0.4 and no predicate at all**.
 `HaplotypeRow` is a junction table, so same-strand co-location is what it already expresses;
-`diplotypes.csv` carries the conclusion. What stays out of reach is narrower than it looked:
-pairing across *subjects* (an APOE diplotype + a CVD variant + a drug row), and compound
-heterozygosity without enumerating every pair — which is an economy argument, not an
-expressiveness one. Waits on a corpus to generalize from — roughly 70% built; nutrigenomics
+`diplotypes.csv` carries the conclusion. What stays out of reach is narrower than it looked. **Rows are a disjunction and columns are a
+conjunction**, so the existing tables already span any finite boolean function over an enumerable
+set of genotypes — `OR` is two rows, `XOR` and bounded `NOT` are enumeration, and `haplotypes.csv`
+is same-strand `AND`. No operator is missing. What is missing is (a) **economy and intent** — "any
+two pathogenic variants in trans" over 300 of them is ~45,000 pairs, expressible but unwritable
+and unreadable — and (b) **open-world negation**, which no operator fixes: "no pathogenic variant
+in this gene" quantifies over a set the module does not close, and absence is only assertable where
+the region was callable (`requires_callable`). A negation feature ignoring that would manufacture
+reassurance, the worst failure mode this format has. Waits on a corpus to generalize from — roughly 70% built; nutrigenomics
 and supplements do not exist yet — because fixing a shape against four table kinds and then meeting
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
 | format (schema + compiler) | combination annotations; disclosure policy | medium (after the corpus) |
