@@ -21,18 +21,26 @@ source publishes leaves `content_signature` a function of the authored bytes exa
 *mutating* a cell a human wrote would make the content identity depend on a network fetch. Drift on
 rows that already exist is the cross-check passes' job to report, not this module's to fix.
 
-**Existing bytes are not touched when the header already fits.** New rows are appended to the open
-file; the whole table is only rewritten when a scaffolded row needs a column the file lacks, and then
-existing rows gain an empty cell — value-neutral, and `content_signature` ignores unset optional
-columns by construction. Rows always go **at the end**: authored row order is preserved through
-compile → reverse → recompile and parquet bytes depend on it, so re-sorting would move the
-`artifact.digest` of an already-compiled module.
+**Existing cells are never touched.** New rows are appended to the open file; the table is rewritten
+whole only when the header must grow or when placement is delegated, and a rewrite re-reads existing
+rows **as text** (`_render_existing`), so it can never reformat `1.0` into `1`. Rows gain an empty
+cell in a new column — value-neutral, and `content_signature` ignores unset optional columns by
+construction.
+
+**Where a row lands: the end by default, or its group when asked** (`group_by`, 0.5.1). Appending at
+the end makes a re-drafted file chronological rather than logical, so a gene's rows scatter as a
+module grows; delegated insertion puts a row after the last member of its block instead. The tool
+chooses *where*, never *what* — there is deliberately no `at=N`, because an index is the caller
+deciding and buys nothing a text editor does not. Moving a row's line number is safe: a pure reorder
+moves `artifact.digest` but leaves `content_signature` untouched (it is order-independent), the
+round-trip fixed point still holds, and duplicate keys are rejected so order can disambiguate
+nothing. `DraftReport.shifted` names every row whose line moved.
 """
 
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, get_args
+from typing import Any, Callable, Optional, Sequence, get_args
 
 from just_dna_format.base import authored_field_names
 from just_dna_format.binning import MeasureBinRow
@@ -74,7 +82,7 @@ class RowOutcome:
     """What happened to one incoming row."""
 
     key: Optional[tuple]
-    status: str  #: added | already_present | differs | appended_unkeyed
+    status: str  #: added | already_present | differs | appended_unkeyed | invalid
     differences: dict[str, tuple[Any, Any]] = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -94,6 +102,9 @@ class DraftReport:
     outcomes: list[RowOutcome]
     written: bool
     header_extended: list[str] = field(default_factory=list)
+    #: Authored indices of rows whose *line number* moved because a new row was placed into their
+    #: group. Their cells are byte-identical; only the offset changed. Empty for a plain append.
+    shifted: list[int] = field(default_factory=list)
 
     @property
     def added(self) -> list[RowOutcome]:
@@ -107,10 +118,15 @@ class DraftReport:
     def differs(self) -> list[RowOutcome]:
         return [o for o in self.outcomes if o.status == "differs"]
 
+    @property
+    def invalid(self) -> list[RowOutcome]:
+        return [o for o in self.outcomes if o.status == "invalid"]
+
     def __str__(self) -> str:
+        placed = f", {len(self.shifted)} existing row(s) shifted" if self.shifted else ""
         return (
             f"{self.csv_name}: {len(self.added)} added, {len(self.already_present)} already present, "
-            f"{len(self.differs)} differing (left unchanged)"
+            f"{len(self.differs)} differing (left unchanged){placed}"
         )
 
 
@@ -302,12 +318,18 @@ def append_rows(
     csv_name: str,
     rows: list[BaseModel],
     *,
+    group_by: Sequence[str] = (),
     dry_run: bool = False,
 ) -> DraftReport:
     """Append `rows` to `spec_dir/csv_name`, skipping any whose natural key is already there.
 
     Creates the file when absent. Returns a `DraftReport` describing every incoming row, so a caller
     can show what a run would do (`dry_run=True` writes nothing and reports the same thing).
+
+    `group_by` turns the append into a **delegated insertion**: each new row lands after the last
+    existing row sharing those columns (its gene, its haplotype) instead of at the end of the file.
+    The tool picks the position; the caller never supplies an index. Existing cells are still never
+    rewritten — only their line number can move, and `DraftReport.shifted` names every row it did.
     """
     spec_dir = Path(spec_dir)
     path = spec_dir / csv_name
@@ -376,16 +398,18 @@ def append_rows(
 
     list_fields = _list_fields(model)
     rendered = [_render(row, fieldnames, list_fields) for row in to_write]
-    if extended or not existing_header:
-        # The header has to grow, or there is none yet (the file is absent, or present but empty —
-        # a bare `touch`). Either way the table is written whole. Existing rows keep their order and
-        # values; they gain an empty cell in each new column, which `content_signature` ignores by
-        # construction.
+    shifted: list[int] = []
+    if extended or not existing_header or group_by:
+        # The table is written whole when the header has to grow, when there is none yet (the file is
+        # absent, or present but empty — a bare `touch`), or when placement is delegated and a row may
+        # land mid-file. Existing rows keep their **cells**: `_render_existing` re-reads them as text,
+        # so a rewrite can never reformat `1.0` to `1`; only their line number can change.
         previous = _render_existing(path, fieldnames) if existing_header else []
+        merged, shifted = place_rows(previous, rendered, group_by)
         with open(path, "w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(previous + rendered)
+            writer.writerows(merged)
     else:
         # The common case: the header already fits, so existing bytes are literally untouched — bar a
         # final newline the file may be missing. A hand-authored CSV often has none (plenty of editors
@@ -396,7 +420,9 @@ def append_rows(
                 handle.write(csv.excel.lineterminator)
             csv.DictWriter(handle, fieldnames=fieldnames).writerows(rendered)
 
-    return DraftReport(csv_name, path, outcomes, written=True, header_extended=extended)
+    return DraftReport(
+        csv_name, path, outcomes, written=True, header_extended=extended, shifted=shifted
+    )
 
 
 def _ends_with_newline(path: Path) -> bool:
@@ -406,6 +432,179 @@ def _ends_with_newline(path: Path) -> bool:
             return True
         handle.seek(-1, 2)
         return handle.read(1) in (b"\n", b"\r")
+
+
+# ── Partial rows (0.5.1) ────────────────────────────────────────────────────────────────────────
+# A source that publishes *most* of a row. ClinVar is the case that forced it: `VariantRow.genotype`
+# is required and ClinVar publishes **alleles, not genotypes** — whether a pathogenic allele is
+# informative het or hom-alt is zygosity interpretation (dominant vs recessive vs carrier) that the
+# source cannot supply and a provider must not invent. So the provider writes what is published and
+# leaves the rest carrying `TEMPLATE_PLACEHOLDER`, which no mode compiles.
+
+
+@dataclass
+class PartialRow:
+    """Cells a source published, plus the columns only a human can decide.
+
+    `match_on` is what makes a re-draft safe. A partial row cannot be keyed the usual way — its
+    natural key runs through a column that is still a placeholder — so sameness is decided on the
+    columns that *are* filled. Once the human replaces the stub, a re-run matches on those same
+    columns and reports `already_present` instead of appending the stub again.
+    """
+
+    model: type[BaseModel]
+    cells: dict[str, Any]
+    stubbed: tuple[str, ...]
+    match_on: tuple[str, ...]
+
+    def rendered(self, fieldnames: list[str], list_fields: set[str]) -> dict[str, str]:
+        """The CSV cells for this row: what the source gave, the placeholder where it could not."""
+        out: dict[str, str] = {}
+        for name in fieldnames:
+            if name in self.stubbed:
+                out[name] = TEMPLATE_PLACEHOLDER
+                continue
+            value = self.cells.get(name)
+            out[name] = _list_cell(value) if name in list_fields else _scalar_cell(value)
+        return out
+
+    def validation_errors(self) -> list[str]:
+        """What is wrong with the cells the source *did* publish.
+
+        The stubbed columns are validated by omission: the row is built without them and any error
+        located on one is discarded. That avoids the alternative — a per-column table of plausible
+        dummy values — which would be exactly the hand-kept list this module keeps abolishing.
+        """
+        payload = {
+            name: value
+            for name, value in self.cells.items()
+            if name not in self.stubbed and value is not None and value != ""
+        }
+        try:
+            self.model.model_validate(payload)
+        except Exception as exc:  # pydantic ValidationError
+            return [
+                f"{(error.get('loc') or ('?',))[0]}: {error.get('msg')}"
+                for error in getattr(exc, "errors", lambda: [])()
+                if (error.get("loc") or ("?",))[0] not in self.stubbed
+            ]
+        return []
+
+
+def append_partial_rows(
+    spec_dir: Path,
+    csv_name: str,
+    partials: list[PartialRow],
+    *,
+    group_by: Sequence[str] = (),
+    dry_run: bool = False,
+) -> DraftReport:
+    """Append rows a source could only partly fill, leaving the rest as stubs a human must replace.
+
+    Same promises as `append_rows`: never rewrites a cell, never removes a row, and a row already
+    covered is reported rather than duplicated. The difference is only how sameness is decided — see
+    `PartialRow.match_on` — because a row whose key column is a placeholder has no usable key yet.
+    """
+    spec_dir = Path(spec_dir)
+    path = spec_dir / csv_name
+    model = model_for(csv_name)
+    fieldnames = authored_field_names(model)
+    list_fields = _list_fields(model)
+
+    existing_header: list[str] = []
+    if path.exists() and path.stat().st_size > 0:
+        with open(path, encoding="utf-8", newline="") as handle:
+            existing_header = next(csv.reader(handle), [])
+    previous = _render_existing(path, fieldnames or existing_header) if existing_header else []
+    header = existing_header or fieldnames
+    fieldnames = header
+
+    outcomes: list[RowOutcome] = []
+    to_write: list[dict[str, str]] = []
+    covered = [
+        tuple((row.get(column) or "").strip() for column in partials[0].match_on)
+        for row in previous
+    ] if partials else []
+
+    for partial in partials:
+        errors = partial.validation_errors()
+        signature = tuple(
+            str(partial.cells.get(column) or "").strip() for column in partial.match_on
+        )
+        if errors:
+            outcomes.append(RowOutcome(signature, "invalid", {"errors": (None, "; ".join(errors))}))
+            continue
+        if signature in covered:
+            outcomes.append(RowOutcome(signature, "already_present"))
+            continue
+        covered.append(signature)
+        outcomes.append(RowOutcome(signature, "added"))
+        to_write.append(partial.rendered(fieldnames, list_fields))
+
+    if dry_run or not to_write:
+        return DraftReport(csv_name, path, outcomes, written=False)
+
+    merged, shifted = place_rows(previous, to_write, group_by)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(merged)
+    return DraftReport(csv_name, path, outcomes, written=True, shifted=shifted)
+
+
+# ── Delegated placement (0.5.1) ─────────────────────────────────────────────────────────────────
+# Where a new row lands. Appending at the end was the first cut and stays the default, but it makes a
+# re-drafted file *chronological* rather than logical: draft a gene, come back when upstream adds an
+# allele, and the new rows sit hundreds of lines from their siblings. That taxes the human half of the
+# human-authorable/machine-precise duality this DSL is gated on.
+#
+# The tool chooses **where**, never **what** — hence "delegated": there is no `at=N`, because an index
+# is the caller deciding, and an index buys nothing a text editor does not already do. A row joins the
+# block that shares its group columns, or goes to the end when no such block exists.
+#
+# Moving an existing row's *line number* is safe, and the objection that looked strongest turns out
+# not to be: a pure reorder moves `artifact.digest` but leaves `content_signature` untouched (it is
+# order-independent by construction), the compile → reverse → compile fixed point still holds, and
+# duplicate keys are rejected outright so order can disambiguate nothing. An author reordering rows in
+# an editor is already legal and already moves the digest. The report still names every shifted row,
+# because that is cheap and makes the diff legible.
+
+
+def group_of(cells: dict[str, str], columns: Sequence[str]) -> Optional[tuple]:
+    """The block a row belongs to, or `None` when it declares no group (then it goes to the end)."""
+    values = tuple((cells.get(column) or "").strip() for column in columns)
+    return values if any(values) else None
+
+
+def place_rows(
+    existing: list[dict[str, str]], incoming: list[dict[str, str]], group_by: Sequence[str]
+) -> tuple[list[dict[str, str]], list[int]]:
+    """Merge `incoming` into `existing`, each row after the last member of its group.
+
+    Returns the final row list and the **original indices** of existing rows whose line moved. With no
+    `group_by` this is a plain append and nothing shifts. Incoming rows keep their relative order
+    within a group, so a provider's own ordering survives.
+    """
+    if not group_by:
+        return existing + incoming, []
+    merged = list(existing)
+    original_index = {id(row): position for position, row in enumerate(existing)}
+    for row in incoming:
+        group = group_of(row, group_by)
+        insert_at = len(merged)
+        if group is not None:
+            for position in range(len(merged) - 1, -1, -1):
+                if group_of(merged[position], group_by) == group:
+                    insert_at = position + 1
+                    break
+        merged.insert(insert_at, row)
+    shifted = [
+        original_index[id(row)]
+        for position, row in enumerate(merged)
+        if id(row) in original_index and original_index[id(row)] != position
+    ]
+    return merged, shifted
 
 
 def _render_existing(path: Path, fieldnames: list[str]) -> list[dict[str, str]]:

@@ -100,6 +100,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
+| `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, citation existence. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
@@ -674,6 +675,33 @@ next such change into a finding.
 The compiler holds **no** source→licence map — that would give it a source convention (Principle 2)
 and an un-injected reference. It reads only what the enricher recorded.
 
+### A gene panel is drafted, never decided
+
+`clinvar_draft.draft_gene_panel` is the provider RM4 waited for, in the shape the charter allows: it
+drafts rows a human then owns, with no compile-time reference materialization. It was blocked on a
+real problem rather than on effort. `VariantRow.genotype` is **required** and ClinVar publishes
+**alleles, not genotypes** — whether carrying a pathogenic allele once is informative (a carrier, an
+affected proband, neither) follows from the condition's inheritance mode, which ClinVar does not
+state. Writing `A/G` because the alt is `G` would be a clinical claim the source never made;
+`reference_examples/pathogenic_clinvar/` is a human having made that call by hand, row by row.
+
+So the provider writes a **partial row**: everything ClinVar publishes, with `genotype` carrying
+`vocab.TEMPLATE_PLACEHOLDER`, which no mode compiles. The panel is authored, in place, in gene order,
+and loudly incomplete until someone decides. A re-draft after those decisions adds nothing, because a
+partial row matches on the identity columns rather than on the natural key — that key runs straight
+through the column still holding the stub.
+
+Two rules worth keeping in view. **Identity is filled whole or not at all**: the rsID, else the
+complete coordinate, never a subset, because a lone `alts` on a position-only row makes
+`derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref` — a partial coordinate
+silently changes which variant the row is. And `min_review_stars` defaults to **2**: a panel that
+mixes a 0-star "no assertion criteria" submission with a 3-star expert-panel review without saying so
+is worse than one that names its floor.
+
+What it does not fill is as deliberate as what it does — no `weight`, `direction` or effect statistic
+(ClinVar publishes none), no `trait_efo_id` (its `condition` is free text and MedGen, not EFO), no
+`acmg_sf`, and no `curator`/`method` (the spec's `defaults:` block owns those).
+
 ### Lookups answer, they never fill
 
 `lookup.py` is the authoring counterpart to the passes above: same clients, same offline-capable
@@ -780,6 +808,7 @@ just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene 
 just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults
 just-dna-enricher draft spec/ --gene CYP2C19        # CPIC → haplotypes/allele_function/diplotypes
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
+just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1 --snapshot cv/  # ClinVar gene panel
 
 # Authoring — lookups. These WRITE NOTHING: every answer comes back advisory, with a reason.
 just-dna-enricher hint variant --rsid rs1801133              # validity, loci, ref/alts

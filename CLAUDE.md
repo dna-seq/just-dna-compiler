@@ -332,6 +332,31 @@ CHANGELOG entry).
   `applied=False` with a refusal; the only thing `hints` applies is a `normalized` rewrite the model
   already performs silently on load (`DiplotypeRow` swaps its haplotype pair). A `--apply` flag on a
   lookup would ship the parked enricher-co-authoring item without deciding to.
+- **"It moves the digest" is NOT a reason to refuse a row move — that argument was checked and it
+  failed.** Probed: a pure reorder moves `artifact.digest` but leaves `content_signature` untouched
+  (order-independent by construction), the compile → reverse → compile fixed point still holds,
+  duplicate keys are rejected so order can disambiguate nothing, and **nothing reads the append-only
+  prefix property** (one test asserts it; no other code). The decisive point: an author reordering
+  rows in their editor is already legal and already moves the digest, so forbidding the tool the same
+  move proves too much. Mid-flight digest stability is worth ~nothing — the digest is consumed at
+  exactly one moment, *publish*, and every authoring edit changes it anyway. What stays refused is an
+  `at=N` index (it buys nothing an editor does not) and a `sort`/`canonicalize` command (every row
+  moves, no local reason for any of them). What shipped is `append_rows(..., group_by=…)` /
+  `place_rows`: **the tool picks where, the caller never supplies an index.** Shifted rows keep their
+  cells byte-for-byte — `_render_existing` re-reads them as text — and `DraftReport.shifted` names them.
+- **A partial row is validated by OMISSION, and matches on `match_on`, not the natural key.**
+  `draft.PartialRow` exists because ClinVar publishes **alleles, not genotypes**, and
+  `VariantRow.genotype` is required: zygosity is inheritance-mode interpretation the source does not
+  state, so `clinvar_draft` writes what is published and leaves `genotype` as `TEMPLATE_PLACEHOLDER`.
+  Two traps. (1) Validating the non-stubbed cells by substituting dummy values needs a per-column
+  value oracle — a hand-kept list again; instead the row is built **without** the stubbed columns and
+  errors located on them are discarded. (2) The natural key runs *through* the stub, so it cannot
+  decide sameness; `match_on` (the identity columns) does, which is what makes a re-draft after the
+  human fills the genotype report `already_present` instead of appending the stub a second time.
+- **A drafting provider fills identity WHOLE or not at all.** rsID, else the complete
+  `chrom`/`start`/`ref`/`alts` — never a subset. A lone `alts` on a position-only row makes
+  `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref`, so a partial
+  coordinate silently changes *which variant the row is*.
 - **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
   CSV, materialize the derived value into parquet as a `@property`, and let it fall away on reverse
   because it is not a model field. `FrequencyRow.allele_frequency` (AC/AN) and

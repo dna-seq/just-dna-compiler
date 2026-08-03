@@ -157,3 +157,52 @@ def _lookup_positions_by_rsid(
         if rsid not in result:
             warnings.append(f"{rsid}: not found in ClinVar, position remains unset")
     return dict(result)
+
+
+def select_by_gene(
+    reference: Path,
+    genes: list[str],
+    *,
+    clin_sig: Optional[frozenset[str]] = None,
+    min_review_stars: int = 0,
+) -> list[dict]:
+    """Rows for a gene panel: the third reader over the same view, serving the drafting provider.
+
+    Kept here with the other two because this module owns the snapshot's schema; deciding what a row
+    *means* for a module stays in `clinvar_draft`, the same data-access/judgement split `lookup_loci`
+    and `clinical.py` already draw.
+
+    `min_review_stars` is the honest quality dial for a panel — a 0-star "no assertion criteria"
+    submission and a 3-star expert-panel review are not the same evidence, and a panel that mixes them
+    silently is worse than one that says which floor it drew. Ordered deterministically so a re-draft
+    appends nothing new (Principle 7): the emitted row order is authored order, and authored order is
+    digest-visible.
+    """
+    wanted = [g.strip() for g in genes if g.strip()]
+    if not wanted:
+        return []
+    con = _connect(reference)
+    try:
+        conditions = ["gene = ?" for _ in wanted]
+        params: list[object] = list(wanted)
+        clause = f"({' OR '.join(conditions)})"
+        if clin_sig:
+            clause += f" AND clin_sig IN ({', '.join('?' for _ in clin_sig)})"
+            params.extend(sorted(clin_sig))
+        if min_review_stars:
+            clause += " AND review_stars >= ?"
+            params.append(min_review_stars)
+        cursor = con.execute(
+            f"""
+            SELECT chrom, start, ref, alt, rsid, gene, clin_sig, review_status, review_stars,
+                   condition, variation_id
+            FROM clinvar
+            WHERE {clause}
+            ORDER BY gene, chrom, start, ref, alt, review_stars DESC, variation_id
+            """,
+            params,
+        )
+        columns = [d[0] for d in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    finally:
+        con.close()

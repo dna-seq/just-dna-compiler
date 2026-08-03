@@ -38,6 +38,7 @@ from just_dna_enricher.cpic import CpicError
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.clinpgx_draft import draft_pharm_variants
+from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
@@ -914,3 +915,57 @@ def draft_clinpgx_(
         typer.secho(f"  warning: {warning}", fg=typer.colors.YELLOW, err=True)
     verb = "would add" if dry_run else "added"
     typer.secho(f"{verb} {result.added} row(s) in {spec_dir}", fg=typer.colors.GREEN)
+
+
+@app.command("draft-panel")
+def draft_panel_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    gene: list[str] = typer.Option(..., "--gene", help="Gene to draft from ClinVar (repeatable)."),
+    snapshot: Path = typer.Option(
+        ..., "--snapshot", exists=True, file_okay=False,
+        help="Built ClinVar snapshot (see `clinvar build`). Inject-only; nothing is downloaded.",
+    ),
+    clin_sig: Optional[str] = typer.Option(
+        None, "--clin-sig",
+        help="Comma-separated calls to include. Default: pathogenic,likely_pathogenic.",
+    ),
+    min_review_stars: int = typer.Option(
+        2, "--min-review-stars", min=0, max=4,
+        help="Review-status floor. 2 = multiple submitters, no conflicts.",
+    ),
+    use: str = typer.Option("unstated", "--use", help="Declared use (ClinVar is public domain)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
+) -> None:
+    """Draft a gene panel's variants.csv rows from ClinVar — appends, never overwrites a row.
+
+    The drafted rows carry a **genotype placeholder**, so the module will not compile until you decide
+    what each finding is about. That is deliberate: ClinVar publishes alleles, and whether carrying one
+    is a carrier state or an affected one follows from the condition's inheritance mode, which the
+    source does not say. Rows land in their gene's block, and a re-run leaves anything already there —
+    stub or filled — exactly as it is.
+    """
+    calls = (
+        frozenset(c.strip() for c in clin_sig.split(",") if c.strip()) if clin_sig else None
+    )
+    try:
+        result = draft_gene_panel(
+            spec_dir, gene, snapshot=snapshot,
+            **({"clin_sig": calls} if calls else {}),
+            min_review_stars=min_review_stars, declared_use=_use(use), dry_run=dry_run,
+        )
+    except (ClinVarDraftError, DraftError) as exc:
+        typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped:
+        for warning in result.warnings:
+            typer.secho(f"  skipped: {warning}", fg=typer.colors.YELLOW, err=True)
+        return
+    for report in result.reports:
+        typer.echo(f"  {report}")
+    for warning in result.warnings:
+        typer.secho(f"  warning: {warning}", fg=typer.colors.YELLOW, err=True)
+    verb = "would add" if dry_run else "added"
+    typer.secho(
+        f"{verb} {result.added} row(s), {result.already_present} already present, in {spec_dir}",
+        fg=typer.colors.GREEN,
+    )

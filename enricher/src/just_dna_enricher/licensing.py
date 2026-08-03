@@ -168,6 +168,25 @@ CLINGEN_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# ClinVar is NCBI public-domain: US-government work, no copyright asserted over the aggregate. It is
+# already consulted as a resolver link and for the `clin_sig` cross-check; a drafting provider *copies*
+# rows out of it, which is the point at which a module must be able to say where they came from. The
+# NCBI disclaimer asks for citation and warns the data is not for clinical diagnosis unaided — recorded
+# in `notice` because the table exists to carry exactly that, not only to carry prohibitions.
+CLINVAR_TERMS = SourceTerms(
+    source="clinvar",
+    license="public-domain",
+    license_url="https://www.ncbi.nlm.nih.gov/clinvar/docs/maintenance_use/",
+    attribution="ClinVar, NCBI (https://www.ncbi.nlm.nih.gov/clinvar/)",
+    notice=(
+        "US-government work, no copyright asserted. NCBI asks that ClinVar be cited and states the "
+        "records are submitter assertions, not a clinical diagnosis."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
 # Already in the chain and unrestricted — recorded so a module's licence picture is complete rather
 # than only listing the sources that constrain it.
 ENSEMBL_TERMS = SourceTerms(

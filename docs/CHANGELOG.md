@@ -5,6 +5,62 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: delegated insertion, partial rows, and RM26's last provider
+
+Two mechanisms and the provider they unblock. The short version: **the tool decides where a row goes
+and what it can honestly state; it never decides what a human must.**
+
+**Delegated insertion.** Drafting appended at the end, and the reason recorded for that led with
+`artifact.digest`. Probing killed the argument: a pure row reorder does move the digest, but
+`content_signature` is unchanged (it is order-independent by construction), the compile → reverse →
+compile fixed point still holds, duplicate keys are rejected outright so order can disambiguate
+nothing, and **nothing in the codebase reads the append-only prefix property** — one test asserts it.
+The decisive point is that an author reordering rows in their editor is already legal and already
+moves the digest, so "it moves the digest" cannot be grounds for refusing a tool the same move. Nor
+is mid-flight digest stability worth much: the digest is consumed at exactly one moment, publish, and
+during authoring every edit changes it anyway.
+
+What stays refused is *arbitrary* insertion — an `at=N` index buys nothing a text editor does not.
+What shipped is `append_rows(..., group_by=…)`: a new row joins the block sharing its group columns,
+or goes to the end. One writer, no index arithmetic, and the never-rewrite-a-cell rule intact — a
+test asserts every shifted row is byte-identical afterwards, and `DraftReport.shifted` names each.
+A `sort`/`canonicalize` command remains a hard no: it moves every row for no authoring gain.
+
+**Partial rows.** `draft.PartialRow` + `append_partial_rows`, for a source that publishes most of a
+row. The cells it has are written; the rest carry `TEMPLATE_PLACEHOLDER`, which no mode compiles.
+Two details carry the design. The stubbed columns are validated **by omission** — the row is built
+without them and errors located on them are discarded — which avoids a per-column table of dummy
+values, i.e. the hand-kept list this module keeps abolishing. And sameness is decided by `match_on`
+rather than the natural key, because for the case that forced this the key runs *through* the stub:
+once a human fills the genotype, a re-draft must recognise the row and report `already_present`
+instead of appending the stub again.
+
+**RM26's last provider — ClinVar → `variants.csv`** (`clinvar_draft.draft_gene_panel`,
+`just-dna-enricher draft-panel`). This partially dissolves RM4: a gene panel becomes authorable with
+no compile-time reference materialization and no reference in the compile path. It was blocked on a
+real problem, not effort: `VariantRow.genotype` is required and ClinVar publishes **alleles, not
+genotypes**. Whether carrying a pathogenic allele once is informative — carrier, affected, neither —
+follows from the condition's inheritance mode, which ClinVar does not state; writing `A/G` because
+the alt is `G` would be a clinical claim the source never made.
+`reference_examples/pathogenic_clinvar/` is a human having made that call by hand, per row. So the
+provider states what is published and stubs the rest, and the panel cannot compile until someone has
+decided. Rows land in their gene's block, which is what makes this usable on a 2,500-row BRCA1 draft
+rather than merely possible.
+
+Identity is filled **whole or not at all** — the rsID, else the complete coordinate. A lone `alts` on
+a position-only row makes `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of
+`chrom:start:ref`, so a partial coordinate silently changes which variant the row *is*. It fills
+`gene`, `clin_sig`, `clinvar`, the folded `pathogenic`/`benign` booleans, `state` (a fold of
+ClinVar's own call, absent when the call does not map), `phenotype` from `condition` verbatim, and a
+transcribed `conclusion`. It fills no `weight`, `direction` or effect statistic (ClinVar publishes
+none), no `trait_efo_id` (its `condition` is free text and MedGen, not EFO), no `acmg_sf`, and no
+`curator`/`method` (the `defaults:` block owns those). `min_review_stars` defaults to 2, because a
+panel that silently mixes a 0-star submission with a 3-star expert-panel review is worse than one
+that says which floor it drew from. `licensing.CLINVAR_TERMS` is new — public domain, and recorded
+anyway, because attribution is asked for even where permission is not required.
+
+890 passed, 6 skipped (from 870). Reference examples still compile to byte-identical digests.
+
 ## 2026-08-03 — 0.5.0: the authoring surface — options as data, stubs that cannot compile, hints that never write
 
 The 0.5 drafting helper shipped a mechanism with one provider and one accessory (`blank_template`, a

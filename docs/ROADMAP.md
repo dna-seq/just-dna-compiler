@@ -154,22 +154,48 @@ marking an item shipped, check what it was validated against.
 | RM23 | **Computational predictor scores as a table** (`predictions.csv`) — the groundwork every predictor source needs, built **once**: one row per `(variant, predictor, score_kind)` with `score`, `dataset`, `source`, and an optional `transcript`. Long-form, not wide, is the load-bearing choice — SpliceAI is four deltas plus positions, CADD is one number, AlphaMissense is one plus a class, so wide columns would make every new predictor a schema bump while long form makes it *data*. A predictor score is the same class of object as an allele frequency or a LOEUF (a per-variant number from a named dataset, no measurement), so the 0.5 sidecar precedent covers it. Deferred on two unsettled questions, neither of which is code: the **grain** (per-transcript scores; how to name the four splice deltas without inventing a predictor-specific column set) and the **acquisition** — precomputed splice scores need the *masked vs raw* file sizes measured and the Broad lookup API's terms read, which is the same measure-first question that correctly parked the frequency snapshot. Licensing is already solved rather than blocking: SpliceAI/Pangolin, dbNSFP, AlphaMissense, REVEL, CADD and PrimateAI are all non-commercial or academic-only, and `sources.csv` + the compile gate already confine that to the modules that use them, while phyloP/phastCons/GERP (UCSC, free — and queryable per-range rather than a bulk download) keep a module sellable. | format (schema + compiler) + enricher | pathogenicity triage; splice-impact panels | medium |
 | RM24 | **Gene–disease validity as a table** (`gene_validity.csv`) — one row per `(gene, disease term, classification, source, dataset)`, serving **ClinGen** gene-disease validity, **GenCC** aggregate validity and **HPO** gene→phenotype from one shape. This is a *different grain* from `gene_metrics.csv` (gene × term, not gene), which is why it is a table rather than more columns; dosage sensitivity went the other way for the same reason. The cost is the design (getting one shape to fit three submitters' vocabularies), not the code. All three sources are free, so unlike RM23 this one leaves a module sellable — worth remembering if the marketplace ever sells modules, since every PGx upstream forbids it. | format (schema + compiler) + enricher | gene-panel triage; lay-language disease naming | medium |
 | RM25 | **ClinVar assertion tier as artifact data** — a facts sidecar carrying `clin_sig` + `review_status` + `review_stars` + `variation_id` per variant, so a consumer can route scrutiny by assertion tier at query time (a 1-star submitter and a practice guideline are not the same claim). Nothing is lost today: `clinical.ClinSigFinding` **already** reports both fields via its `confidence` property, so this is about persisting the tier, not discovering it. Deferred as a new table. **Do not confuse this with escalating the check's severity** — see *Parked in 0.5*. | format (schema + compiler) + enricher | authorship/assertion-aware scrutiny | medium |
-| RM26 | **Drafting providers beyond CPIC** — the generic helper shipped with a CPIC provider; the **ClinPGx → `pharm_variants.csv`** provider landed in the authoring-surface batch (`clinpgx_draft.draft_pharm_variants`, `enricher draft-clinpgx`). **Still open: the ClinVar-snapshot → `variants.csv`** provider, and its hard part is now precisely stated. `VariantRow.genotype` is required and ClinVar publishes **alleles, not genotypes** — whether a pathogenic allele is informative het or hom-alt is zygosity *interpretation* (dominant vs recessive vs carrier), which ClinVar cannot supply and a provider must not invent. The shipped `reference_examples/pathogenic_clinvar/` shows a human making that call by hand. So the provider needs a **partial-row append**: write the cells ClinVar publishes, leave `genotype` carrying `vocab.TEMPLATE_PLACEHOLDER` (which cannot compile), and key such a row on the non-stubbed part of its natural key so a re-run after the human fills the genotypes reports `already_present` rather than re-adding stubs. That keying rule is the whole design and is why it waits. | enricher | gene-panel authoring | medium |
+| RM26 | ✅ **shipped (0.5.1)** — all three drafting providers. CPIC → PGx tables (`pgx_draft`), **ClinPGx → `pharm_variants.csv`** (`clinpgx_draft`), and **ClinVar → `variants.csv`** (`clinvar_draft.draft_gene_panel`, `enricher draft-panel`), which partially dissolves RM4: a gene panel is authorable with no compile-time reference materialization. The ClinVar one needed two mechanisms rather than a compromise. `VariantRow.genotype` is required and ClinVar publishes **alleles, not genotypes** — whether carrying a pathogenic allele is a carrier state or an affected one follows from the condition's inheritance mode, which the source does not state and a provider must not invent. So it writes a **partial row** (`draft.PartialRow`): every cell ClinVar publishes, with `genotype` carrying `TEMPLATE_PLACEHOLDER`, which no mode compiles. Sameness is decided by `match_on` (the identity columns) rather than by the natural key, because that key runs through the stub — so once a human fills a genotype, a re-draft reports `already_present` instead of re-adding the stub. Rows land in their gene's block via delegated insertion, which is what made this usable on a 2,500-row panel rather than merely possible. Identity is filled whole or not at all: a lone `alts` on a position-only row mints a VRS `ga4gh:VA.…` key instead of `chrom:start:ref`. | enricher | gene-panel authoring; PGx authoring | — |
 | RM27 | **A redistribution compile gate** — RM21's gate keys on `commercial_use` + `declared_use`; the 0.5 `redistribution` column is recorded but **not** gated. Deferred because it is a genuine design question rather than a missing branch: a redistribution bar is not a *use*, so `declared_use` (`unstated`/`non-commercial`/`commercial`) is the wrong axis to resolve it against — a module may be built legitimately and still not be shippable, which is a different verdict from the ones the gate currently issues. Needs the third axis thought through before code. | format (compiler) + enricher | OMIM-/dbNSFP-class sources | low (after the design) |
 
-**Parked in the authoring surface (0.5):**
-- **Row insertion at a chosen index** (`insert_rows(..., at=N)`). Drafting appends at the end because
-  authored row order is load-bearing: `compiler/tests/test_draft.py::test_appending_does_not_move_an_already_compiled_digest_for_untouched_rows`
-  pins `grown.head(original.height) == original`, so an append leaves an already-compiled module's
-  prefix byte-stable and the digest change is attributable to the new rows. An insert at index `i`
-  breaks exactly that: rows `[i, n)` keep their content and move offset, so `artifact.digest` moves
-  for rows nothing changed — while `content_signature` does **not** notice, because it is
-  order-independent by construction (`integrity.py`). That asymmetry is the interesting part and the
-  reason it is a design item rather than a missing branch: a content-dedup registry would call the
-  result identical to what an append would have produced while the digest identity has moved. If
-  built, it needs an explicit opt-in and a report naming every shifted row, not a warning on a stream.
-  (A `sort`/`canonicalize` command is a harder *no*: it moves every row, so it breaks the prefix
-  property maximally while leaving `content_signature` untouched.)
+**Delegated insertion — shipped (0.5.1). The reasoning, kept because it corrects itself:**
+
+Drafting appended at the end. That was the right first cut, but the reasoning originally recorded here
+led with `artifact.digest` and **that argument did not survive checking**, so it is corrected rather
+than quietly dropped:
+
+| probed | result |
+|---|---|
+| a pure row reorder moves `artifact.digest` | yes |
+| …and `content_signature` | **unchanged** — it is order-independent by construction |
+| a reordered module is still a compile → reverse → compile fixed point | **yes**, P7 is untouched |
+| duplicate keys are rejected outright, so order can disambiguate nothing | yes |
+| anything reads the append-only prefix property | **no** — one test asserts it; no other code consumes it |
+
+So row order is semantically vacuous here: with duplicates rejected, a table is a bag, not a
+sequence, and the digest's order-sensitivity is a parquet serialization artifact rather than a
+meaning. The decisive point is that **an author reordering rows in their editor is already legal and
+already moves the digest, and nothing objects** — so "it moves the digest" cannot be a reason to
+refuse a tool the same move; it would equally forbid the human from tidying their own file. Nor is
+mid-flight digest stability worth much: the digest is consumed at exactly one moment, *publish*, and
+during authoring every edit changes it anyway.
+
+What *is* worth refusing is **arbitrary** insertion — `insert_rows(at=N)` — and for an unglamorous
+reason: it adds a second writer and index arithmetic to buy an ergonomic nicety a text editor already
+does, with no safety the compiler does not already provide.
+
+**Delegated insertion is the shaped-right primitive**, and is what was built (`draft.place_rows`,
+`append_rows(..., group_by=…)`): the tool chooses *where*, never *what*. New rows land adjacent to
+the block that shares their group columns (gene, haplotype, drug) instead of at a caller-supplied
+index. It buys the whole win that matters — append-only makes a re-drafted file
+*chronological* rather than logical, and after a few re-runs a gene's rows are scattered down the
+file, which taxes the human half of the human-authorable ⇔ machine-precise duality this DSL is gated
+on. It needs no `at=` parameter, keeps one writer's worth of story ("appends into a group"), and
+leaves the never-rewrite-a-cell rule exactly where it is — a test asserts that every shifted row's
+cells are byte-identical afterwards. `DraftReport.shifted` names each one, because that is cheap and
+makes the diff legible.
+
+Still a hard **no**: a `sort`/`canonicalize` command. It moves every row at once for no authoring
+gain, and unlike a grouped append there is no local reason for any individual move.
 
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
