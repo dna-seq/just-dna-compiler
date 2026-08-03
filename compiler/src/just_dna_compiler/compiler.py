@@ -540,6 +540,49 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
     return errors, warnings
 
 
+def _restamp_for_build(variants: list[VariantRow], genome_build: str) -> list[str]:
+    """Re-derive `variant_key` against the module's declared build. Returns warnings.
+
+    **The guard existed, was correct, and was never reached.** `derive_variant_key` takes a `build`
+    and documents that "any other build falls through to case 3 rather than minting an id that would
+    claim the wrong sequence" — but `VariantRow._freeze_identity` runs at row construction, where
+    there is no module and therefore no declared build, so it always called the GRCh38 default. A
+    module declaring `genome_build: GRCh37` therefore minted GRCh38 VRS allele ids for GRCh37
+    coordinates, silently, with no warning anywhere.
+
+    That is an identity corruption, not a cosmetic one, and it goes both ways. `vrs.py` opens by
+    promising the opposite — "GRCh38 and GRCh37 mint distinct, correctly non-colliding ids instead of
+    silently baking one build into the key". Probed on a real pair: HFE C282Y sits at 6:26092913 on
+    GRCh38 and 6:26093141 on GRCh37, and a GRCh37 module at 26093141 minted
+    `ga4gh:VA.TWxWV6SkC5-…` — byte-identical to the id a *GRCh38* module claiming that coordinate
+    gets, which is a different place in the genome 228 bp away. Two modules about different loci
+    shared one content-addressed identity.
+
+    The compiler is where this can be fixed because it is the only tier holding both the row and the
+    spec. Re-stamping is not a new concept here — the resolver already re-keys on one-to-many
+    expansion — and it is a no-op on GRCh38, which is every module today.
+    """
+    if genome_build == "GRCh38":
+        return []
+    restamped = 0
+    for row in variants:
+        key = derive_variant_key(
+            row.rsid, row.chrom, row.start, row.ref, row.alts, build=genome_build
+        )
+        if key != row.variant_key:
+            row.variant_key = key
+            restamped += 1
+    if not restamped:
+        return []
+    return [
+        f"genome_build is {genome_build!r}: GA4GH VRS allele identity is GRCh38-only (RM15), so "
+        f"{restamped} variant(s) are keyed by coordinate instead. A coordinate key is "
+        f"**build-relative** — it will not join against GRCh38-keyed data, and the same key means a "
+        f"different locus on another build. Publish GRCh38 coordinates if the module is meant to "
+        f"join against gnomAD, ClinVar or ClinGen."
+    ]
+
+
 def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38") -> list[str]:
     """Non-diploid guardrail (ROADMAP 0.3 item 5b): MT and Y against a two-allele genotype.
 
@@ -1191,6 +1234,12 @@ def validate_spec(
         )
         all_errors.extend(var_errors)
         all_warnings.extend(var_warnings)
+        # Before anything reads `variant_key`: a row is stamped at construction, where the module's
+        # declared build is not knowable, so a non-GRCh38 module arrives carrying GRCh38-flavoured
+        # ids. Fix the identity here, where both the row and the spec are in hand.
+        all_warnings.extend(
+            _restamp_for_build(variants, config.genome_build if config else "GRCh38")
+        )
 
     # Validate each present 0.4 table kind against its model.
     kind_row_counts: dict[str, int] = {}
@@ -1411,6 +1460,9 @@ def compile_module(
     variants: list[VariantRow] = []
     if (spec_dir / "variants.csv").exists():
         variants, _, _ = _load_csv_rows(spec_dir / "variants.csv", VariantRow, "variants.csv")
+        # Same re-stamp as in `validate_spec`; this function re-loads its own rows, so the fix has to
+        # happen on both copies or the artifact would carry the un-corrected keys.
+        _restamp_for_build(variants, config.genome_build)
     studies: list[StudyRow] = []
     if (spec_dir / "studies.csv").exists():
         studies, _, _ = _load_csv_rows(spec_dir / "studies.csv", StudyRow, "studies.csv")

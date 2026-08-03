@@ -179,6 +179,14 @@ underflow rather than a probability, so it is rejected instead of stored as a co
 - The verbatim `p_value` string stays (retyping or removing it is a 1.0 item), and the compiler
   cross-checks the two at 1% relative tolerance, skipping any cell that is not one definite value.
 
+**`variant_key` is derived against the module's declared build (0.5.1).** `derive_variant_key`'s
+`build` argument always existed and was never passed: `VariantRow._freeze_identity` stamps at row
+construction, where no module is in scope, so a `genome_build: GRCh37` module minted GRCh38 VRS ids
+for GRCh37 coordinates — HFE C282Y at 6:26093141 (GRCh37) got the identical `ga4gh:VA.…` as a GRCh38
+module claiming that coordinate, a locus 228 bp away. `just_dna_compiler` now re-stamps after load
+(`_restamp_for_build`), falling back to the coordinate key and **warning that the key is
+build-relative**. A no-op on GRCh38.
+
 **Binning rows** (`binning.py`, all subclass `MeasureBinRow`). Shared: `measure_kind` (must match the
 row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` carries no bounds — the
 mandatory no-call sentinel), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`

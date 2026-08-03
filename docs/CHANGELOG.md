@@ -5,6 +5,35 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: a GRCh37 module minted GRCh38 identities, silently
+
+The sharpest finding of the dogfooding round, and the shortest to state. **A module declaring
+`genome_build: GRCh37` compiled with no warning and stamped GA4GH VRS allele ids that name the GRCh38
+sequence.**
+
+The guard already existed and was already correct. `derive_variant_key` takes a `build` and its
+docstring says any build without a refget table "falls through to case 3 rather than minting an id
+that would claim the wrong sequence"; `vrs.py` opens by promising that "GRCh38 and GRCh37 mint
+distinct, correctly non-colliding ids instead of silently baking one build into the key". **Nobody
+ever passed the argument.** `VariantRow._freeze_identity` runs at row construction, where there is no
+module and therefore no declared build, so every row took the GRCh38 default.
+
+Probed on a real pair rather than argued: HFE C282Y is 6:26092913 on GRCh38 and 6:26093141 on GRCh37.
+A GRCh37 module at 26093141 minted `ga4gh:VA.TWxWV6SkC5-…` — **byte-identical** to what a GRCh38
+module claiming that coordinate gets, which is a different place in the genome 228 bp away. Two
+modules about different loci shared one content-addressed identity, and a registry deduplicating on
+`variant_key` would have merged them.
+
+Fixed in the compiler, which is the only tier holding both the row and the spec: `_restamp_for_build`
+re-derives the key against the declared build after load. Re-stamping is not a new concept — the
+resolver already re-keys on one-to-many expansion — and it is a strict no-op on GRCh38, which is every
+module that exists. Both load sites are covered, because `compile_module` re-loads its own rows and
+fixing only `validate_spec` would have left the artifact carrying the bad keys.
+
+The fallback is now **stated**, which is the other half of the bug: silence is what let this go
+unnoticed. The warning says the consequence rather than the fact — a coordinate key is build-relative,
+will not join against GRCh38-keyed data, and means a different locus on another build.
+
 ## 2026-08-03 — 0.5.1: dogfooding mitochondrial heteroplasmy — one blocker fixed, one proved unfixable
 
 `reference_examples/mt_heteroplasmy/` — two MELAS-causing MT-TL1 variants (m.3243A>G, m.3271T>C)
