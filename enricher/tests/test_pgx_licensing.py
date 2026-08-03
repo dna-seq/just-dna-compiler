@@ -6,10 +6,14 @@ that caused trouble: PharmVar's per-reference-sequence variant rows (only the `N
 and CPIC's IUPAC ambiguity codes.
 """
 
+import csv
 from pathlib import Path
 
 import httpx
 import pytest
+
+from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_format.sources import SourceRow
 
 from just_dna_enricher.cpic import CpicClient, map_function_status
 from just_dna_enricher.licensing import (
@@ -19,7 +23,9 @@ from just_dna_enricher.licensing import (
     PHARMVAR_TERMS,
     LicenseRefusal,
     SourceTerms,
+    _cell,
     check_declared_use,
+    write_sources_csv,
 )
 from just_dna_enricher.pgx import enrich_pgx
 from just_dna_enricher.pharmvar import (
@@ -140,6 +146,40 @@ def test_unknown_terms_are_skipped_not_refused_and_not_used() -> None:
 def test_permissive_source_proceeds_under_any_declaration() -> None:
     for declared in ("unstated", "non_commercial", "commercial"):
         assert check_declared_use(ENSEMBL_TERMS, declared) is None
+
+
+def test_every_declared_column_survives_a_write_read_cycle(tmp_path: Path) -> None:
+    """`sources.csv` must carry every field of the row it was written from.
+
+    The regression this pins: `SOURCES_FIELDNAMES` was a hand-kept literal that omitted
+    `redistribution`, so a row stating `redistribution=True` reloaded as `None` — *unknown*, which in
+    this codebase is deliberately not the same claim — and `merge_sources_file` dropped it again on
+    every merge. Asserting field-by-field equality rather than naming the one column that was missing
+    makes the next omission fail too. The old behaviour is demonstrated below by writing the same rows
+    through the literal list that used to be there.
+    """
+    rows = [
+        PHARMVAR_TERMS.row("annotation", declared_use="non_commercial", license_text="terms v1"),
+        ENSEMBL_TERMS.row("resolution", declared_use="unstated"),
+    ]
+    path = tmp_path / "sources.csv"
+    write_sources_csv(rows, path)
+    reloaded, errors, _ = _load_csv_rows(path, SourceRow, "sources.csv")
+    assert not errors
+    assert [r.model_dump() for r in reloaded] == [r.model_dump() for r in rows]
+    # …and the axis RM27 is designed to read is a real value, not the absence of one.
+    assert [r.redistribution for r in reloaded] == [True, True]
+
+    stale = ["source", "layer", "license", "license_url", "license_sha256", "attribution",
+             "notice", "share_alike", "commercial_use", "declared_use", "dataset", "fetched_at"]
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=stale)
+        writer.writeheader()
+        for row in rows:
+            dumped = row.model_dump()
+            writer.writerow({name: _cell(dumped.get(name)) for name in stale})
+    dropped, _, _ = _load_csv_rows(path, SourceRow, "sources.csv")
+    assert [r.redistribution for r in dropped] == [None, None]
 
 
 def test_license_sha256_pins_the_terms_to_the_text() -> None:

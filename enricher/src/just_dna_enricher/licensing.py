@@ -238,10 +238,16 @@ def check_declared_use(terms: SourceTerms, declared_use: str) -> Optional[str]:
     )
 
 
-SOURCES_FIELDNAMES = [
-    "source", "layer", "license", "license_url", "license_sha256", "attribution", "notice",
-    "share_alike", "commercial_use", "declared_use", "dataset", "fetched_at",
-]
+#: The `sources.csv` column order, **derived from the model** rather than hand-kept.
+#:
+#: It was a literal list, and it silently omitted `redistribution` — so every `sources.csv` this
+#: workspace has ever written recorded that axis as *unknown* while the terms constants right above
+#: state it as `True`, and `merge_sources_file` dropped the column again on every merge. RM27 is a gate
+#: designed to read a column that never reached a single file. `SourceRow` has no compiler-stamped
+#: fields (it is not an `AuthoredModel`), so every declared field is a column an author or a pass may
+#: fill, and declaration order is the order this list already used — deriving it makes a future column
+#: unloseable instead of merely present in the model.
+SOURCES_FIELDNAMES = list(SourceRow.model_fields)
 
 
 def _cell(value: object) -> str:
