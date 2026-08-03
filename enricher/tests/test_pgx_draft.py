@@ -125,7 +125,12 @@ def test_an_inequality_activity_score_is_reported_not_invented(tmp_path: Path) -
     # never stated.
     spec = _spec(tmp_path)
     result = draft_gene(spec, "CYP2C19", declared_use="non_commercial", client=_client())
-    assert any("≥3.0" in w and "inequality" in w for w in result.warnings), result.warnings
+    # Reported as a *bound*, and distinguished from CPIC's `n/a` — which means "not scored" and is an
+    # absence, not an inequality. Both used to get the same (wrong) message, one line per row.
+    bounds = [w for w in result.warnings if "≥3.0" in w]
+    assert bounds, result.warnings
+    assert "bound rather than a value" in bounds[0]
+    assert "not scored" not in bounds[0]
     # …and the diplotype row itself still lands, since the phenotype is perfectly usable.
     pairs = {(r.haplotype_a, r.haplotype_b) for r in _rows(spec, "diplotypes.csv", DiplotypeRow)}
     assert ("*17", "*17") in pairs
@@ -179,3 +184,56 @@ def test_an_unstated_declaration_skips_rather_than_failing(tmp_path: Path) -> No
 
     declared = draft_gene(spec, "CYP2C19", declared_use="non_commercial", client=_client())
     assert not declared.skipped and declared.added > 0
+
+
+# ── What drafting a real gene exposed (0.5.1) ───────────────────────────────────────────────────
+# `draft --gene CYP2C19` looked fine; `--gene CYP2C9` died on an unhandled pydantic error. The
+# difference is data CPIC publishes for one gene and not the other, so the tests below are built from
+# the shapes rather than from a gene name.
+
+from just_dna_enricher.cpic import CpicDefiningVariant
+from just_dna_enricher.pgx_draft import _haplotype_rows
+
+
+def _variant(**kw) -> CpicDefiningVariant:
+    base = dict(gene="CYP2C9", allele="*57", rsid=None, chrom=None, start=None,
+                variant_allele="T", ambiguous=False)
+    base.update(kw)
+    return CpicDefiningVariant(**base)
+
+
+def test_a_position_without_a_chromosome_is_skipped_not_written() -> None:
+    """The crash: the guard accepted a bare `start`, but `HaplotypeRow` needs rsid, or chrom AND
+    start — and CPIC publishes no chromosome, so the row could never validate. 18 CYP2C9 defining
+    variants are shaped this way (also 14 in TPMT, 4 in NUDT15); CYP2C19 has none."""
+    rows, warnings = _haplotype_rows([_variant(start=94947907)])
+    assert rows == []
+    assert warnings and "no complete coordinate" in warnings[0]
+
+
+def test_the_guard_matches_the_models_own_rule() -> None:
+    """Derived from `HaplotypeRow` rather than restated: whatever the model accepts, the guard keeps.
+
+    A guard that does not match the model it builds is not a guard — which is exactly how the crash
+    got shipped."""
+    cases = [
+        _variant(rsid="rs1799853"),                       # rsid alone: accepted
+        _variant(chrom="10", start=94947907),             # full coordinate: accepted
+        _variant(start=94947907),                         # position only: refused by the model
+        _variant(chrom="10"),                             # chromosome only: refused by the model
+        _variant(),                                       # nothing: refused by the model
+    ]
+    for case in cases:
+        kept = bool(_haplotype_rows([case])[0])
+        try:
+            HaplotypeRow(haplotype_name=case.allele, rsid=case.rsid, chrom=case.chrom,
+                         start=case.start, allele=case.variant_allele, gene=case.gene)
+            model_accepts = True
+        except Exception:
+            model_accepts = False
+        assert kept == model_accepts, f"guard and model disagree for {case}"
+
+
+def test_an_ambiguous_iupac_allele_is_still_skipped() -> None:
+    rows, _ = _haplotype_rows([_variant(rsid="rs1799853", variant_allele="R", ambiguous=True)])
+    assert rows == []

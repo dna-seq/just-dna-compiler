@@ -490,6 +490,30 @@ cycle* in `USE_CASES.md`.
   demoted; anything that changes `artifact.digest` bytes (parquet column set/types) is major-only —
   *except* while a version is still unpublished, where the digest is not yet frozen.
 - **Round-trip must stay lossless and idempotent** (Principle 7) — prove it with tests, don't assume.
+- **A drafting provider's skip guard must be DERIVED from the model's rule, not restated beside it.**
+  `pgx_draft` skipped a CPIC variant when "no rsID *and* no position", while `HaplotypeRow` requires
+  an rsID **or** chrom AND start — and CPIC publishes no chromosome (`sequence_location` carries
+  genesymbol/dbsnpid/position and nothing else, probed 2026-08-03). So `draft --gene CYP2C9` died on
+  an unhandled pydantic error while `--gene CYP2C19` was fine: 18 CYP2C9 defining variants have a
+  position and no rsID, 14 in TPMT, 4 in NUDT15, and none in CYP2C19. Test the guard against the
+  model case-by-case rather than asserting a message — doing that immediately found a second bug,
+  `chrom` never being passed to the constructor at all.
+- **Every provider must write its `SourceRow` — check the newest one, not just the old one.** The
+  rule was recorded for `clingen.py` and then `pgx_draft` shipped without it, which is the worst
+  instance: CPIC is CC BY-SA **with a no-sale clause**, so a module drafted entirely from it carried
+  no `sources.csv`, and the compile gate keys on that file and nothing else — the restriction simply
+  vanished. A test that strips `declared_use` and asserts the compile refuses is what keeps the row
+  load-bearing rather than decorative.
+- **Distinguish "the source did not say" from "the source said something we cannot hold", and
+  aggregate repeated warnings.** CPIC's `n/a` means *not scored* (an absence → an empty cell);
+  `≥3.0` is a real bound the numeric columns cannot express. Both were reported as "an inequality
+  rather than a number", one line per row — ~600 lines for CYP2C19 and 2,184 for CYP2C9, which
+  buries every other finding a run produces. Say which case it is, once, with the count.
+- **A star allele can be *used* without being *defined*.** `allele_function.csv`/`diplotypes.csv`
+  name alleles that `haplotypes.csv` may never define, and a consumer's caller can then never emit
+  one — every row about it is dead. `_cross_validate_haplotype_definitions` warns (Class 2), only
+  when `haplotypes.csv` is present, since a module leaning on an external caller's definitions is
+  legitimate. `*1` is exempt: the reference allele is defined by carrying no variants.
 - **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is
   the result, not an obstacle to route around.** The moment you reach for an ad-hoc script, a raw
   `httpx` call, or a hand-written query to get past something the product cannot do, the exercise has

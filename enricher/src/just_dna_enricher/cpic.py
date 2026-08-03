@@ -230,7 +230,11 @@ class CpicClient:
                     gene=location.get("genesymbol") or gene,
                     allele=by_id.get(r["alleledefinitionid"], ""),
                     rsid=location.get("dbsnpid") or None,
-                    # GRCh38, 1-based, matching Ensembl — no conversion.
+                    # GRCh38, 1-based, matching Ensembl — no conversion. `chrom` stays None because
+                    # CPIC does not publish one: `sequence_location` has genesymbol/dbsnpid/position/
+                    # chromosomelocation and no chromosome column (probed 2026-08-03). Deriving it
+                    # from the gene symbol would be inference, so the drafting provider must not
+                    # write a bare `start` — see `pgx_draft._haplotype_rows`.
                     chrom=None,
                     start=location.get("position"),
                     variant_allele=allele_value or None,

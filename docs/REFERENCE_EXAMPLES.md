@@ -303,6 +303,31 @@ compiler's orphan check fires. Grounding evidence comes from ClinVar's own liter
 with `just-dna-enricher clinvar citations` — without it a drafted panel could not compile at all,
 since `studies.csv` is mandatory and the VCF carries no PMIDs.
 
+## 9c. CYP2C19 — star alleles drafted from CPIC, curated by removal
+
+Compiled example: [`reference_examples/cyp2c19_star_alleles/`](../reference_examples/cyp2c19_star_alleles/).
+The PGx counterpart to the HFE panel, and instructive because it fails the *opposite* way. CPIC
+publishes every column the star-allele models require, so `draft --gene CYP2C19` produced 811 rows
+with no placeholders that validated immediately. The curator's job was not to fill a hole but to
+decide what to take out — and to notice what the source never had.
+
+What came out: `*36`, `*37` and `*42` were paired across 71 diplotype rows (two declared
+`no_function`) while `haplotypes.csv` defined none of them. A star-allele caller can never emit an
+allele nothing defines, so those rows could never match. That is a cross-table redundancy settleable
+without any reference, so `_cross_validate_haplotype_definitions` now warns about it — as a warning,
+and only when `haplotypes.csv` is present, because a module leaning on an external caller's
+definitions is legitimate.
+
+What CPIC could not express, reported rather than coerced: IUPAC ambiguity codes on one defining
+variant each of `*2`/`*4`/`*35` (the alleles survive — they have other defining variants); `n/a`
+activity scores, which mean *not scored* rather than a bound; and no chromosome anywhere, so a
+defining variant is identified by rsID or not at all.
+
+What is deliberately absent: **drugs**. `DiplotypeRow.drug`, `evidence_level` and
+`recommendation_strength` are all empty. The module answers genotype → metabolizer phenotype and
+stops, because CPIC's prescribing recommendations live in a resource the provider does not read and
+inventing them would be worse than silence.
+
 ## 10. General annotation axes on `VariantRow` (optional, sparse)
 
 Three optional refinements apply to *any* variant finding, so they live on `VariantRow` (not a domain

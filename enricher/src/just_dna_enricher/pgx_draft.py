@@ -34,10 +34,13 @@ from typing import Optional
 from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import STAR_ALLELE_PATTERN, AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 
-from just_dna_enricher.cpic import CpicClient, CpicDefiningVariant
-from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use
+from just_dna_enricher.cpic import CpicClient, CpicDefiningVariant, CpicError
+from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, merge_sources_file
 
 logger = logging.getLogger(__name__)
+
+#: CPIC's spelling for "not scored" — an absence, never a value the module should carry.
+_NOT_SCORED: frozenset[str] = frozenset({"n/a", "na", "none", "-"})
 
 #: CPIC writes a diplotype as `*1/*2`; both halves must be star alleles the format can hold.
 _DIPLOTYPE_SEP = "/"
@@ -73,16 +76,28 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
                 f"hold — skipped."
             )
             continue
-        if variant.rsid is None and variant.start is None:
+        # Mirror `HaplotypeRow._validate_identification` exactly: rsid, or chrom AND start. The
+        # guard used to accept a bare `start`, and CPIC never publishes a chromosome — its
+        # `sequence_location` has no such column — so `draft --gene CYP2C9` built a row with a
+        # position, no chromosome and no rsID and died on an unhandled pydantic error. 18 CYP2C9
+        # variants are shaped that way, 14 TPMT, 4 NUDT15; CYP2C19 has none, which is why the
+        # provider looked fine. A guard that does not match the model it builds is not a guard.
+        if variant.rsid is None and (variant.chrom is None or variant.start is None):
             warnings.append(
-                f"{variant.gene} {variant.allele}: CPIC gives neither an rsID nor a position for a "
-                f"defining variant — skipped, since a haplotype row with no locus resolves to nothing."
+                f"{variant.gene} {variant.allele}: CPIC gives no rsID and no complete coordinate "
+                f"(position {variant.start}, chromosome not published) — skipped, since a haplotype "
+                f"row with no locus resolves to nothing."
             )
             continue
         rows.append(
             HaplotypeRow(
                 haplotype_name=variant.allele,
                 rsid=variant.rsid,
+                # `chrom` was dropped on the floor here: `CpicDefiningVariant` carries one and this
+                # never passed it, so a coordinate-identified variant would have been built without
+                # its chromosome and rejected by the very rule the guard above checks. Latent while
+                # CPIC publishes no chromosome, and exactly the kind of gap that bites the day it does.
+                chrom=variant.chrom,
                 # CPIC positions are GRCh38 1-based; stored as-is (see the module docstring).
                 start=variant.start,
                 allele=variant.variant_allele,
@@ -146,6 +161,9 @@ def draft_gene(
         )
 
     diplotype_rows: list[DiplotypeRow] = []
+    # Aggregated, not one line per row: CYP2C19 alone produced ~600 identical warnings, which buries
+    # every other finding in the run. A cap with the total stated beats a wall with nothing stated.
+    unscorable: dict[str, list[str]] = {}
     for entry in diplotypes:
         pair = _split_diplotype(entry.diplotype)
         if pair is None:
@@ -156,12 +174,12 @@ def draft_gene(
         if entry.phenotype is None:
             continue  # nothing to conclude; a row whose only content is the pair says nothing
         if entry.activity_score and not _is_numeric(entry.activity_score):
-            # `"≥3.0"` is a bound, not a value. Reported so the author can bin it by hand rather than
-            # having a fabricated number appear in their module.
-            warnings.append(
-                f"{gene} {entry.diplotype}: CPIC gives the activity score as {entry.activity_score!r}, "
-                f"an inequality rather than a number — not carried; add a bin by hand if you need it."
-            )
+            # Two different things, and they were reported as one. `"≥3.0"` is a *bound*: real
+            # information the numeric bin columns cannot hold. `"n/a"` is CPIC saying it did not
+            # score this diplotype — an absence, which is an empty cell here and not a finding at
+            # all. Calling that "an inequality rather than a number" was simply wrong.
+            bucket = "unscored" if entry.activity_score.strip().lower() in _NOT_SCORED else "bounded"
+            unscorable.setdefault(bucket, []).append(f"{entry.diplotype}={entry.activity_score}")
         diplotype_rows.append(
             DiplotypeRow(
                 gene=entry.gene,
@@ -170,6 +188,19 @@ def draft_gene(
                 phenotype=entry.phenotype,
                 conclusion=f"{entry.gene} {entry.diplotype}: {entry.phenotype}",
             )
+        )
+
+    for bucket, entries in sorted(unscorable.items()):
+        shown = ", ".join(entries[:3])
+        rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
+        warnings.append(
+            f"{gene}: {len(entries)} diplotype(s) carry no numeric activity score — "
+            + (
+                "CPIC records them as not scored, so the cell is simply empty"
+                if bucket == "unscored"
+                else "CPIC gives a bound rather than a value; add a bin by hand if you need one"
+            )
+            + f". e.g. {shown}{rest}."
         )
 
     reports = [
@@ -181,6 +212,17 @@ def draft_gene(
         )
         if rows
     ]
+    if not dry_run and reports:
+        # A pass that consults a source must WRITE its `SourceRow`. This one did not, and of the three
+        # providers it is the one where that matters most: CPIC is CC BY-SA **with a no-sale clause**,
+        # so a module drafted from it and carrying no `sources.csv` leaves the compile gate nothing to
+        # refuse on — the restriction simply disappears. Building the row and not writing it is the
+        # exact `clingen.py` bug, and it was sitting in the newest provider.
+        merge_sources_file(
+            [CPIC_TERMS.row("annotation", declared_use=declared_use)],
+            spec_dir / "sources.csv",
+            error=CpicError,
+        )
     return PgxDraftResult(reports=reports, warnings=warnings)
 
 

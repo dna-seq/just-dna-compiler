@@ -91,7 +91,41 @@ The example itself is the argument for the design: `rs1800562` appears as `A/A` 
 the allele and `state`/`direction` describe the finding for a genotype. A provider deriving a
 genotype from an alt would have been wrong half the time.
 
-895 passed, 6 skipped. Reference examples still compile to byte-identical digests.
+**The PGx side, dogfooded the same way — and it failed differently, which is the interesting part.**
+Authoring `reference_examples/cyp2c19_star_alleles/` from CPIC produced a module that was *complete*:
+811 rows, no stubs, valid immediately. Where ClinVar left a hole for a human, CPIC left none — so the
+curator's job became deciding what to **remove**, and the findings were about what nobody checked.
+
+* **`draft --gene CYP2C9` crashed** with a raw pydantic traceback while `--gene CYP2C19` worked. The
+  skip guard checked "no rsID *and* no position", but `HaplotypeRow` needs an rsID **or** chrom AND
+  start — and CPIC publishes no chromosome at all (`sequence_location` has genesymbol/dbsnpid/
+  position and no chromosome column, probed 2026-08-03). 18 CYP2C9 defining variants have a position
+  and no rsID, plus 14 in TPMT and 4 in NUDT15; CYP2C19 has none, which is why it looked fine. The
+  guard is now derived from the model's own rule, and a test asserts the two agree case by case —
+  which promptly found a **second** bug: `_haplotype_rows` never passed `chrom` through at all.
+* **Nothing recorded CPIC as a source.** The provider checked the licence before fetching and then
+  wrote no `SourceRow`, so a module built entirely from CC BY-SA **no-sale** data carried no
+  `sources.csv` and the compile gate had nothing to key on. That is the `clingen.py` bug living in
+  the newest provider, and it is the one place it matters most. Fixed via `merge_sources_file`;
+  a test strips the declaration and asserts the compile then refuses.
+* **`n/a` was diagnosed as "an inequality rather than a number"**, which is the wrong reading — CPIC
+  means *it did not score this pair*, an absence, not a bound. And it was emitted once per row: ~600
+  identical lines for CYP2C19, 2,184 for CYP2C9, burying every other finding in the run. Now
+  classified into unscored-vs-bounded and aggregated, with the total and a few examples.
+* **A new compiler check, from a real coherence gap.** CPIC pairs alleles whose defining variants it
+  does not publish in a holdable form, so `*36`, `*37` and `*42` arrived used across 71 diplotype
+  rows — two declared `no_function` — and defined by nothing. A caller can never emit an allele
+  nothing defines, so those rows are dead, and the compiler said `valid`.
+  `_cross_validate_haplotype_definitions` now warns (Class 2: two independently-authored tables that
+  must agree), and only when `haplotypes.csv` is present — a module leaning on an external caller's
+  definitions is legitimate, and faulting it would be the orphan-sidecar mistake.
+
+The example carries the curation that warning prompted (666 → 595 diplotypes) and validates clean.
+Its drug columns are deliberately empty: CPIC's prescribing recommendations live in a resource the
+provider does not read, so filling them would mean inventing them, and the module is named for star
+alleles rather than for clopidogrel for the same reason.
+
+903 passed, 6 skipped. Reference examples still compile to byte-identical digests.
 
 ## 2026-08-03 — 0.5.0: the authoring surface — options as data, stubs that cannot compile, hints that never write
 

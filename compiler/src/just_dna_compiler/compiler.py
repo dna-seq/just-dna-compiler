@@ -792,6 +792,50 @@ def _recompute_vrs_id(row: ResolutionRow) -> tuple[Optional[str], Optional[str]]
     return recomputed, None
 
 
+#: The reference star allele. Defined by carrying **none** of a gene's variants, so it can never
+#: appear in `haplotypes.csv` and must never be reported as undefined.
+_REFERENCE_HAPLOTYPE = "*1"
+
+
+def _cross_validate_haplotype_definitions(
+    haplotypes: list[Any], allele_functions: list[Any], diplotypes: list[Any]
+) -> list[str]:
+    """Warn when a star allele is *used* but never *defined*. Returns warnings.
+
+    Validate-by-redundancy across the PGx tables: `allele_function.csv` says what an allele does and
+    `diplotypes.csv` pairs it, while `haplotypes.csv` says which variants make it. An allele named by
+    the first two and absent from the third cannot be called from a VCF at all, so every row about it
+    is dead weight — a consumer's star-allele caller will never emit it.
+
+    Only checked when `haplotypes.csv` is **present**: a module may legitimately carry a diplotype
+    table alone and lean on the caller's own definitions, and punishing that would be the
+    orphan-sidecar mistake (don't fault an author for a file they deliberately did not write).
+
+    Found by drafting CYP2C19 from CPIC: `*36`, `*37` and `*42` were used across 666 diplotype rows,
+    two of them declared `no_function`, and nothing defined any of them.
+    """
+    if not haplotypes:
+        return []
+    defined = {row.haplotype_name for row in haplotypes}
+    used: dict[str, set[str]] = {}
+    for row in allele_functions:
+        used.setdefault(row.allele, set()).add("allele_function.csv")
+    for row in diplotypes:
+        for allele in (row.haplotype_a, row.haplotype_b):
+            used.setdefault(allele, set()).add("diplotypes.csv")
+    undefined = sorted(
+        allele
+        for allele in used
+        if allele not in defined and allele != _REFERENCE_HAPLOTYPE
+    )
+    if not undefined:
+        return []
+    return [
+        f"Star allele(s) used but not defined in haplotypes.csv: {undefined}. A consumer's caller "
+        f"cannot emit an allele nothing defines, so rows about it can never match."
+    ]
+
+
 def _cross_validate_studies(
     studies: list[StudyRow], variants: list[VariantRow]
 ) -> tuple[list[str], list[str]]:
@@ -936,6 +980,7 @@ def validate_spec(
 
     # Validate each present 0.4 table kind against its model.
     kind_row_counts: dict[str, int] = {}
+    loaded_kinds: dict[str, list[Any]] = {}
     for csv_name, _parquet, model in _TABLE_KINDS:
         kind_path = spec_dir / csv_name
         if not kind_path.exists():
@@ -944,6 +989,7 @@ def validate_spec(
         all_errors.extend(kind_errors)
         all_warnings.extend(kind_warnings)
         kind_row_counts[csv_name] = len(rows)
+        loaded_kinds[csv_name] = rows
         if not rows:
             if not kind_errors:
                 all_errors.append(f"{csv_name} is present but has no rows.")
@@ -953,6 +999,16 @@ def validate_spec(
             tbl_errors, tbl_warnings = _validate_table_kind(csv_name, model, rows)
             all_errors.extend(tbl_errors)
             all_warnings.extend(tbl_warnings)
+
+    # Cross-table PGx coherence: an allele used by the function/diplotype tables that the definition
+    # table never defines can never be called. Runs after the loop so every kind is in hand.
+    all_warnings.extend(
+        _cross_validate_haplotype_definitions(
+            loaded_kinds.get("haplotypes.csv", []),
+            loaded_kinds.get("allele_function.csv", []),
+            loaded_kinds.get("diplotypes.csv", []),
+        )
+    )
 
     # Composition: a module must carry at least one recognized table kind.
     if not has_variants and not kind_row_counts:

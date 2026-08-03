@@ -83,6 +83,7 @@ detectable without any reference. This is where most real authoring bugs are cau
 | `p_value` string ↔ the mantissa/exponent pair | two encodings of one number | warning / error in `strict` |
 | MT/Y two-allele genotype | ploidy contradicts the contig | warning |
 | study / frequency / gene-metrics / literature orphans | the sidecar describes something the module lacks | warning |
+| star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it | warning |
 
 Two of these deserve their reasoning rather than just their row.
 

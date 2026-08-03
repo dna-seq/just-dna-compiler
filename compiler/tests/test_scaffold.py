@@ -216,3 +216,72 @@ def test_every_study_row_grounds_a_variant_the_module_carries() -> None:
     variants = {key(r) for r in csv.DictReader(io.StringIO((_HFE / "variants.csv").read_text()))}
     studies = {key(r) for r in csv.DictReader(io.StringIO((_HFE / "studies.csv").read_text()))}
     assert studies <= variants, studies - variants
+
+
+# ── The CYP2C19 reference example (0.5.1) ───────────────────────────────────────────────────────
+# The PGx counterpart to the HFE panel: drafted complete from CPIC, then curated by *removal*.
+
+_CYP2C19 = Path(__file__).resolve().parents[2] / "reference_examples" / "cyp2c19_star_alleles"
+
+
+def test_the_cyp2c19_example_compiles_and_is_a_fixed_point(tmp_path: Path) -> None:
+    result = validate_spec(_CYP2C19)
+    assert result.valid, result.errors
+    first = compile_module(_CYP2C19, tmp_path / "out1").manifest
+    reverse_module(tmp_path / "out1", tmp_path / "back")
+    second = compile_module(tmp_path / "back", tmp_path / "out2").manifest
+    assert first.artifact.digest == second.artifact.digest
+
+
+def test_every_star_allele_it_uses_is_one_it_defines() -> None:
+    """The curation the new cross-table warning prompted: CPIC pairs alleles it does not define, and
+    a caller can never emit one of those — so the example carries none, and validates clean."""
+    def rows(name: str) -> list[dict]:
+        return list(csv.DictReader(io.StringIO((_CYP2C19 / name).read_text())))
+
+    defined = {r["haplotype_name"] for r in rows("haplotypes.csv")} | {"*1"}
+    used = {r["allele"] for r in rows("allele_function.csv")}
+    for row in rows("diplotypes.csv"):
+        used.update((row["haplotype_a"], row["haplotype_b"]))
+    assert used <= defined, sorted(used - defined)
+    assert not [w for w in validate_spec(_CYP2C19).warnings if "not defined in haplotypes.csv" in w]
+
+
+def test_the_cpic_source_is_recorded_so_the_licence_gate_can_see_it() -> None:
+    """CPIC is CC BY-SA with a no-sale clause. A module built from it that records no source leaves
+    the compile gate nothing to key on — which is what the provider used to produce."""
+    sources = list(csv.DictReader(io.StringIO((_CYP2C19 / "sources.csv").read_text())))
+    cpic = [s for s in sources if s["source"] == "cpic"]
+    assert cpic, "the module is entirely CPIC-derived and must say so"
+    assert cpic[0]["layer"] == "annotation"
+    assert cpic[0]["commercial_use"] == "false"
+    assert cpic[0]["declared_use"] == "non_commercial"
+
+
+def test_stripping_the_declaration_makes_the_compile_refuse(tmp_path: Path) -> None:
+    """Proves the recorded row is load-bearing rather than decorative."""
+    import shutil
+
+    spec = tmp_path / "spec"
+    shutil.copytree(_CYP2C19, spec)
+    rows = list(csv.DictReader(io.StringIO((spec / "sources.csv").read_text())))
+    for row in rows:
+        row["declared_use"] = ""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=list(rows[0]))
+    writer.writeheader()
+    writer.writerows(rows)
+    (spec / "sources.csv").write_text(buf.getvalue())
+
+    result = compile_module(spec, tmp_path / "out")
+    assert not result.success
+    assert any("forbid sale" in e for e in result.errors)
+
+
+def test_drug_columns_are_empty_on_purpose() -> None:
+    """This module answers genotype → phenotype and stops. CPIC's prescribing recommendations live
+    in a resource the provider does not read, so filling these would mean inventing them."""
+    rows = list(csv.DictReader(io.StringIO((_CYP2C19 / "diplotypes.csv").read_text())))
+    assert rows
+    for column in ("drug", "evidence_level", "recommendation_strength"):
+        assert all(not r.get(column) for r in rows), column
