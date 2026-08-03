@@ -5,6 +5,41 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: dogfooding CYP2D6, the hard PGx case — and a defect in a check shipped hours earlier
+
+`REFERENCE_EXAMPLES.md` has listed CYP2D6 as "the hard PGx case" since 0.4 and nobody had built it.
+Drafting it from CPIC produces **16,290 diplotype rows over 644 defining variants and 206 alleles**,
+and compiles in 1.9 seconds. Three findings, two fixed.
+
+**The phase-ambiguity check shipped this morning was overclaiming, and CYP2D6 proved it.** It flagged
+`*10/*8`, `*100/*8`, `*101/*8` and `*147/*8` as "indistinguishable without phase — a phased consumer
+resolves it". They are not phase-ambiguous: `*10`, `*100`, `*101` and `*147` carry **identical
+defining-variant sets** in CPIC's core definitions (rs1058164 G, rs1065852 A, rs1135840 G), so those
+pairs present the same genotype phased or not. The advice would have sent an author to buy phasing
+that cannot help.
+
+The two cases separate exactly, by grouping on the *phase-preserving* signature: the same multiset of
+haplotype definitions means nothing distinguishes them, a different one means phase does. They now
+get different messages, and the first is arguably the more valuable finding — "this module names
+alleles it defines identically, so at most one of these disagreeing rows can be right" is a real
+data-quality signal. CYP2D6 has **378** such groups and 20 genuinely phase-resolvable ones; HFE still
+reports the phase case correctly. This is the dogfooding rule applied to my own new code: the check
+was built, run against real data, and found wrong within the day.
+
+**398 warning lines became 2.** Both classes now aggregate per gene with examples and a count — the
+rule CPIC taught with ~600 lines for CYP2C19, which this check had to relearn.
+
+**And the same wall in the CPIC provider.** 546 CYP2D6 diplotypes are skipped because CPIC writes
+copy number as `x≥3` and `≥` is not a star-string character, and they were emitted one line each —
+inside a function that aggregates the activity-score skips four lines below. 644 output lines became
+99, which is what finally made the three *allele* skips and the licence row visible at all.
+
+**Recorded, not patched — RM34.** The module is 73% `Indeterminate` (11,825 rows of CPIC saying it
+cannot call that pair) and there is no way to draft a subset: `--drug` adds rows rather than filtering
+them. The gap shows as a parity difference — `draft-panel` takes `--clin-sig` and
+`--min-review-stars`, `draft` takes nothing — but *which* filter is the decision, and each spends a
+CLI name on a different view of what a PGx module is for.
+
 ## 2026-08-03 — 0.5.1: dogfooding a pseudoautosomal module — two fixes, three questions
 
 `reference_examples/shox_par1/` was built adversarially: pick a real gene where the libraries are

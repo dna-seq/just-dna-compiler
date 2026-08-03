@@ -92,6 +92,52 @@ def test_one_pair_with_many_rows_is_not_a_phase_ambiguity() -> None:
     assert _cross_validate_phase_ambiguity(_HAPLOTYPES, diplotypes) == []
 
 
+def test_identically_defined_haplotypes_are_not_called_a_phase_problem() -> None:
+    """Found by compiling a real 16,290-row CYP2D6 draft, and it was a defect in *this* check.
+
+    CPIC's core definitions give `*10`, `*100`, `*101` and `*147` the identical three defining
+    variants, so `*10/*8` and `*100/*8` present the same genotype **phased or not**. Telling the
+    author "a phased consumer resolves it" would send them to buy phasing that cannot help. The two
+    cases are separated by grouping on the *phase-preserving* signature: same multiset of haplotype
+    definitions → nothing distinguishes them; different → phase does.
+    """
+    same = [
+        HaplotypeRow(haplotype_name=name, rsid="rs1065852", start=42130692, allele="A", gene="CYP2D6")
+        for name in ("*10", "*100")
+    ]
+    other = HaplotypeRow(
+        haplotype_name="*8", rsid="rs5030865", start=42129084, allele="A", gene="CYP2D6"
+    )
+    diplotypes = [
+        DiplotypeRow(gene="CYP2D6", haplotype_a="*10", haplotype_b="*8", conclusion="IM"),
+        DiplotypeRow(gene="CYP2D6", haplotype_a="*100", haplotype_b="*8", conclusion="Indeterminate"),
+    ]
+    (warning,) = _cross_validate_phase_ambiguity([*same, other], diplotypes)
+    assert "defines identically" in warning
+    assert "phase does not help" in warning
+    assert "indistinguishable without phase" not in warning
+
+
+def test_findings_aggregate_per_gene_with_the_count_stated() -> None:
+    """398 lines on the real CYP2D6 draft buried every other finding. One line per gene per class,
+    examples plus a count, so nothing is silently capped."""
+    haplotypes = [
+        HaplotypeRow(haplotype_name=f"*{i}", rsid="rs1065852", start=42130692, allele="A",
+                     gene="CYP2D6")
+        for i in range(1, 10)
+    ]
+    haplotypes.append(
+        HaplotypeRow(haplotype_name="*8", rsid="rs5030865", start=42129084, allele="A", gene="CYP2D6")
+    )
+    diplotypes = [
+        DiplotypeRow(gene="CYP2D6", haplotype_a=f"*{i}", haplotype_b="*8", conclusion=f"c{i}")
+        for i in range(1, 10)
+    ]
+    (warning,) = _cross_validate_phase_ambiguity(haplotypes, diplotypes)
+    assert "1 group(s)" in warning
+    assert warning.count(";") <= 3  # examples are bounded
+
+
 def test_sparse_star_allele_definitions_do_not_collide() -> None:
     """CPIC publishes only the variants an allele carries, and no `ref` at all.
 

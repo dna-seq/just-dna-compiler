@@ -978,6 +978,8 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
         ).append(row)
 
     warnings: list[str] = []
+    undistinguished: dict[str, list[str]] = {}
+    unphased: dict[str, list[str]] = {}
     for (gene, _signature), rows in by_signature.items():
         # **Distinct haplotype PAIRS, not distinct rows** — the bug the first draft shipped, caught by
         # compiling the real CYP2C19 example. One pair legitimately carries many rows: the dedup key
@@ -992,13 +994,60 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
         # is right. Only a disagreement is a finding.
         if len({(row.conclusion, row.phenotype, row.direction, row.clin_sig) for row in rows}) < 2:
             continue
-        named = ", ".join(f"{a}/{b}" for a, b in pairs)
+
+        # **Phase does not always resolve it, and saying so was overclaiming.** Caught by compiling a
+        # real 16,290-row CYP2D6 draft: `*10/*8`, `*100/*8`, `*101/*8` and `*147/*8` collide because
+        # `*10`, `*100`, `*101` and `*147` carry *identical defining-variant sets* (rs1058164 G,
+        # rs1065852 A, rs1135840 G — CPIC's core definitions do not separate these suballeles). Those
+        # pairs are indistinguishable **at all**, phased or not, so telling an author "a phased
+        # consumer resolves it" would send them to buy phasing that cannot help. Grouping the pairs by
+        # their *phase-preserving* signature separates the two cases exactly: same multiset of
+        # haplotype definitions → nothing distinguishes them; different → phase does.
+        by_definition: dict[tuple, list[tuple[str, str]]] = {}
+        for pair in pairs:
+            key = tuple(sorted(
+                tuple(sorted(definitions[name].items())) for name in pair
+            ))
+            by_definition.setdefault(key, []).append(pair)
+
+        for identical in by_definition.values():
+            if len(identical) > 1:
+                undistinguished.setdefault(gene, []).append(
+                    ", ".join(f"{a}/{b}" for a, b in identical)
+                )
+        distinct = [same[0] for same in by_definition.values()]
+        if len(distinct) > 1:
+            unphased.setdefault(gene, []).append(
+                ", ".join(f"{a}/{b}" for a, b in sorted(distinct))
+            )
+
+    # One warning per gene per class, with examples and a count — the aggregation rule CPIC taught and
+    # this check had to relearn: the real CYP2D6 draft produces 378 identically-defined groups and 20
+    # phase-ambiguous ones, and 398 lines bury every other finding a compile emits. Deterministic
+    # order (first-occurrence per gene, P7), and the count is always stated so nothing is silently
+    # capped.
+    for gene, groups in undistinguished.items():
         warnings.append(
-            f"{gene}: diplotype rows {named} are indistinguishable without phase — they present the "
-            f"same unphased genotype but state different conclusions. A consumer with unphased calls "
-            f"must withhold rather than pick one; a phased consumer resolves it."
+            f"{gene}: {len(groups)} group(s) of diplotype rows name haplotypes this module defines "
+            f"identically, so nothing in it can tell them apart — phase does not help. A consumer's "
+            f"caller may still emit each name and the rows disagree, so at most one can be right: "
+            f"either the defining variants are incomplete or the rows describe one allele under "
+            f"several names. {_examples(groups)}"
+        )
+    for gene, groups in unphased.items():
+        warnings.append(
+            f"{gene}: {len(groups)} group(s) of diplotype rows are indistinguishable without phase — "
+            f"same unphased genotype, different conclusions. A consumer with unphased calls must "
+            f"withhold rather than pick one; a phased consumer resolves it. {_examples(groups)}"
         )
     return warnings
+
+
+def _examples(groups: list[str], limit: int = 3) -> str:
+    """`e.g. A, B, C (+N more)` — the shape `pgx_draft` already uses for a repeated finding."""
+    shown = "; ".join(groups[:limit])
+    extra = len(groups) - limit
+    return f"e.g. {shown}" + (f" (+{extra} more)" if extra > 0 else "")
 
 
 def _cross_validate_studies(

@@ -371,6 +371,25 @@ to `ResolutionRow`. Note `VALID_SOURCE_LAYERS` already reserves `"resolution"` f
 writes — `enrich()` is the only pass that records no source at all.
 | format (schema) + enricher | every enriched module | **medium** |
 
+**RM34 — the CPIC provider has no filter, and CYP2D6 shows what that costs (found 2026-08-03).**
+`draft --gene CYP2D6` succeeds and produces a module nobody can use: **16,290 diplotype rows, 11,825
+of them (73%) `Indeterminate`** — CPIC saying it cannot call that pair. It compiles, in 1.9s, and it
+is not wrong; every row is a faithful transcription, and an `Indeterminate` row is genuinely better
+than silence for a consumer whose caller emits `*100/*102`. But the module is not human-authorable in
+the sense the charter gates on, and the author has **no way to draft a subset** — `--drug` *adds* rows
+rather than filtering them.
+
+The gap is visible as a parity difference between the two providers: `draft-panel` (ClinVar) takes
+`--clin-sig` and `--min-review-stars`, and `draft` (CPIC) takes nothing. The reason to record this
+rather than add a flag is that *which* filter is the decision — by called phenotype, by allele set, by
+activity score — and each spends a CLI name and asserts a different view of what a PGx module is for.
+CYP2C19 (2,664 rows) is borderline; CYP2D6 is where it stops working.
+
+Two smaller CYP2D6 observations, both already fixed: 546 diplotypes are skipped because CPIC writes
+copy number as `x≥3` and `≥` is not a star-string character (RM5 territory — the notation, not the
+biology), and those skips were emitted one line each until they were aggregated like the activity
+scores beside them. | enricher (CLI) | CYP2D6, and any large star-allele gene | **medium** |
+
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
   `TCAT` repeats + 3 extra bases), which is *not* the decimal 9.3. A binning bound stays a plain

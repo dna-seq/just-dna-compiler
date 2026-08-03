@@ -242,12 +242,16 @@ def draft_gene(
     # Aggregated, not one line per row: CYP2C19 alone produced ~600 identical warnings, which buries
     # every other finding in the run. A cap with the total stated beats a wall with nothing stated.
     unscorable: dict[str, list[str]] = {}
+    unparsable: list[str] = []
     for entry in diplotypes:
         pair = _split_diplotype(entry.diplotype)
         if pair is None:
-            warnings.append(
-                f"{gene}: diplotype {entry.diplotype!r} is not a pair of star alleles — skipped."
-            )
+            # Aggregated for the same reason the activity scores four lines below are, which this
+            # loop had not learned: a real CYP2D6 draft skips 546 diplotypes whose copy-number
+            # notation carries `≥` (`*4x≥3/*95`), and 546 identical-shaped lines bury every other
+            # finding — including the three allele skips and the licence row. One line, examples,
+            # and the count, so nothing is silently dropped.
+            unparsable.append(entry.diplotype)
             continue
         if entry.phenotype is None:
             continue  # nothing to conclude; a row whose only content is the pair says nothing
@@ -266,6 +270,15 @@ def draft_gene(
                 phenotype=entry.phenotype,
                 conclusion=f"{entry.gene} {entry.diplotype}: {entry.phenotype}",
             )
+        )
+
+    if unparsable:
+        shown = ", ".join(unparsable[:3])
+        rest = f" (+{len(unparsable) - 3} more)" if len(unparsable) > 3 else ""
+        warnings.append(
+            f"{gene}: {len(unparsable)} diplotype(s) are not a pair of star alleles and were "
+            f"skipped — CPIC writes copy number as `x≥3`, and `≥` is not a nucleotide-allele or "
+            f"star-string character. e.g. {shown}{rest}."
         )
 
     for bucket, entries in sorted(unscorable.items()):
