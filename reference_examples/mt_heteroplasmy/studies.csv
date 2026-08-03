@@ -1,0 +1,4 @@
+rsid,chrom,start,ref,pmid,conclusion
+rs199474657,MT,3243,A,2263545,"Goto 1990: m.3243A>G identified as the common MELAS mutation."
+rs199474657,MT,3243,A,29735722,"Grady 2018: m.3243A>G heteroplasmy level and tissue both shape the phenotype; blood underestimates."
+rs199474671,MT,3271,T,1671810,"Goto 1991: m.3271T>C as a second MELAS mutation in tRNA-Leu(UUR)."

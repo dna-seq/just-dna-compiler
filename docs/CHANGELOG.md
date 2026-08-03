@@ -5,6 +5,43 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-03 — 0.5.1: dogfooding mitochondrial heteroplasmy — one blocker fixed, one proved unfixable
+
+`reference_examples/mt_heteroplasmy/` — two MELAS-causing MT-TL1 variants (m.3243A>G, m.3271T>C)
+binned in blood and in muscle. Heteroplasmy is the case the binning primitive was built for, so it is
+the right place to ask whether the primitive holds a real module.
+
+**A mitochondrial gene could carry only one variant, and that was a hard block.** `HeteroplasmyRow`
+keyed on `(gene, reference_sequence, tissue)` and carried **no variant identity at all**, so both
+variants' bins landed in one group, `validate_bins` saw `[0, 0.099]` overlapping `[0, 0.149]`, and
+refused — as an **error**, not a warning, so the module could not compile. There was no honest
+workaround: `trait_efo_id` is in the group key and would have separated them, but both variants cause
+MELAS, so using two ontology ids means falsifying the data to satisfy the tool. The alternatives were
+one module per variant or dropping a real annotation.
+
+The row now carries optional `rsid`/`chrom`/`start`/`ref`/`alts`, mirroring `PharmVariantRow` exactly,
+entering the key through a derived `variant_key` property. Optional is load-bearing: a single-variant
+table groups precisely as before (P3/P8). `alts` is in the derivation because MT-ATP6 m.8993T>G and
+m.8993T>C are the same base with different alleles and different phenotypes. `REFERENCE_EXAMPLES.md`
+§4 only ever showed one variant per gene, which is why this was invisible rather than decided — the
+schema had generalized from a one-variant case.
+
+**And a check that cannot be satisfied — RM35, recorded not patched.** Three rules, each right alone,
+jointly unsatisfiable on a continuous measure: bounds are inclusive at both ends, an overlap is an
+**error**, and any positive hole is a **warning**. Two adjacent `allele_fraction` bins therefore either
+share an endpoint (a measurement of exactly `0.1` selects two phenotypes) or leave a hole — and no
+epsilon escapes it, `[0, 0.0999999]` and `[0.1, 1.0]` still warn. Every `allele_fraction` and
+`prs_percentile` table must carry a finding forever. Integer kinds are fine and that is why it was
+missed: HTT `[6,35]`, `[36,39]`, `[40,∞)` is genuinely gapless because the domain is discrete, and the
+inclusive convention was generalized from those. Proved by construction in the tests. Every candidate
+resolution is a semantic decision — half-open intervals for continuous kinds, dropping the continuous
+gap check, or treating a shared endpoint as a boundary — so it is recorded.
+
+**What the module gets right, and is worth copying.** Each variant/tissue group carries its own
+`unresolved` sentinel, and the conclusions state the consequence: an absent heteroplasmy read is not a
+low one, and the low-blood row tells a reader to measure urine or muscle before reassuring anyone,
+because blood is the tissue most likely to look innocent.
+
 ## 2026-08-03 — 0.5.1: dogfooding CYP2D6, the hard PGx case — and a defect in a check shipped hours earlier
 
 `REFERENCE_EXAMPLES.md` has listed CYP2D6 as "the hard PGx case" since 0.4 and nobody had built it.

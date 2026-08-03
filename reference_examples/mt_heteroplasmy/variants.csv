@@ -1,0 +1,3 @@
+rsid,chrom,start,ref,alts,genotype,state,conclusion,gene,phenotype,trait_efo_id,clin_sig,pathogenic,requires_callable,callable_from
+rs199474657,MT,3243,A,G,G,risk,"Homoplasmic m.3243A>G: MELAS-spectrum disease is expected, though expression varies. Heteroplasmic carriage is the common presentation and is binned in heteroplasmy.csv instead.",MT-TL1,MELAS,MONDO:0010789,pathogenic,true,true,DP
+rs199474671,MT,3271,T,C,C,risk,"Homoplasmic m.3271T>C: the second most frequent MELAS variant in MT-TL1.",MT-TL1,MELAS,MONDO:0010789,pathogenic,true,true,DP

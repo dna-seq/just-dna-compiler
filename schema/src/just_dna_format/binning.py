@@ -40,7 +40,7 @@ from typing import ClassVar, Optional, Sequence
 
 from pydantic import Field, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, vocabulary
+from just_dna_format.base import AuthoredModel, derive_variant_key, vocabulary
 from just_dna_format.vocab import check_vocab, validate_finite
 
 # Open, additive vocabulary of measured quantities (the `frozenset[str]` idiom, Principle 6). New
@@ -249,12 +249,41 @@ class HeteroplasmyRow(MeasureBinRow):
     **tissue-conditional** — a blood-derived fraction systematically under-represents the
     affected-tissue burden, and the penetrance threshold itself shifts by tissue, so the *same*
     fraction bins to different phenotypes across tissues. A heteroplasmy table with no tissue context
-    is quietly unsafe; state the tissue the bins assume."""
+    is quietly unsafe; state the tissue the bins assume.
+
+    **The variant identity is part of the key too (0.5.1), and it was missing.** A mitochondrial gene
+    carries several pathogenic variants with genuinely different thresholds — MT-TL1 has m.3243A>G
+    *and* m.3271T>C, both causing MELAS; MT-ATP6 has m.8993T>G and m.9176T>C. Keyed on the gene alone,
+    their bins landed in one group and `validate_bins` rejected the module outright with "overlapping
+    bins", which is an **error**, not a warning, so the module could not compile at all. There was no
+    honest way out: `trait_efo_id` is in the group key and would have separated them, but only by
+    giving one disease two ontology ids. The documented example never showed two variants in a gene,
+    so the limitation was invisible rather than decided.
+
+    The columns mirror `PharmVariantRow` exactly — rsid, else `chrom`+`start`(+`ref`/`alts`) — and are
+    **optional**, so an existing single-variant table groups as it always did (P3/P8). They enter the
+    key through the derived `variant_key` property rather than one-by-one, so all the identity shapes
+    collapse to the format's own notion of which variant a row is about."""
 
     _EXPECTED_KIND: ClassVar[str] = "allele_fraction"
-    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene", "reference_sequence", "tissue")
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = (
+        "gene", "reference_sequence", "tissue", "variant_key",
+    )
 
     gene: str = Field(description="MT locus/gene, e.g. MT-TL1")
+    # Optional on purpose: required would invalidate every already-authored heteroplasmy table
+    # (Principle 8 — a new field may not be unconditionally required), and a single-variant gene has
+    # nothing to disambiguate. No `chromosome` vocabulary marker, matching the other tables that run
+    # no chrom validator.
+    rsid: Optional[str] = Field(
+        default=None, description="dbSNP id of the variant these bins are about, when it has one"
+    )
+    chrom: Optional[str] = Field(default=None, description="Contig (MT), for a position-only variant")
+    start: Optional[int] = Field(
+        default=None, description="Position of the variant, e.g. 3243 for m.3243A>G"
+    )
+    ref: Optional[str] = Field(default=None, description="Reference allele, e.g. A")
+    alts: Optional[str] = Field(default=None, description="Alternate allele(s), e.g. G")
     reference_sequence: str = Field(
         description="MT reference accession, part of the key, e.g. NC_012920.1 (rCRS)"
     )
@@ -274,6 +303,17 @@ class HeteroplasmyRow(MeasureBinRow):
         json_schema_extra=vocabulary("measure_kind_allele_fraction", frozenset({"allele_fraction"})),
         description="Fixed: allele_fraction",
     )
+
+    @property
+    def variant_key(self) -> Optional[str]:
+        """Which variant these bins are about, or `None` when the table names only a gene.
+
+        `None` is the pre-0.5.1 shape and groups exactly as it always did. A property rather than a
+        stamped field, like `PharmVariantRow.variant_key`: a heteroplasmy row is never resolved or
+        expanded, so there is nothing to freeze."""
+        if self.rsid is None and self.start is None:
+            return None
+        return derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)
 
     @field_validator("reference_sequence")
     @classmethod

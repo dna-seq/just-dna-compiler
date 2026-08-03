@@ -184,9 +184,23 @@ row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` car
 mandatory no-call sentinel), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
 and the `source_field?` VCF pointer. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
 `CopyNumberRow`→`(gene, modifier_gene, modifier_cn)`; `RepeatAlleleRow`→`(gene, repeat_unit)`;
-`HeteroplasmyRow`→`(gene, reference_sequence, tissue)` (rejects the legacy `NC_001807` mtDNA lineage,
-fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping resolved ranges in a key group
-are a compile error; interior coverage gaps are warnings.
+`HeteroplasmyRow`→`(gene, reference_sequence, tissue, variant_key)` (rejects the legacy `NC_001807`
+mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping resolved ranges
+in a key group are a compile error; interior coverage gaps are warnings.
+
+`HeteroplasmyRow`'s **`variant_key` joined the key in 0.5.1** and closed a blocking gap. A mitochondrial
+gene carries several pathogenic variants with different thresholds — MT-TL1 has m.3243A>G *and*
+m.3271T>C, both causing MELAS — and keyed on the gene alone their bins collided and `validate_bins`
+**errored**, so the module could not compile. `trait_efo_id` is in the group key but could only have
+separated them by giving one disease two ontology ids. The row therefore carries optional
+`rsid`/`chrom`/`start`/`ref`/`alts` mirroring `PharmVariantRow`, entering the key through a derived
+`variant_key` property; optional means a single-variant table groups exactly as before (P3/P8), and
+`alts` is in the derivation because MT-ATP6 m.8993T>G and m.8993T>C are one base with two alleles.
+
+**A continuous kind cannot satisfy `validate_bins` at all — [RM35](ROADMAP.md).** Inclusive bounds +
+overlap-is-an-error + any-hole-is-a-warning are jointly unsatisfiable on `allele_fraction` /
+`prs_percentile`: adjacent bins either share an endpoint (error) or leave a hole (warning), for any
+epsilon. Integer kinds tile cleanly, which is where the inclusive convention came from.
 
 **PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction, nucleotide allele);
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,

@@ -1,0 +1,15 @@
+schema_version: '1.0'
+module:
+  name: mt_heteroplasmy
+  title: MT-TL1 heteroplasmy — the level is the finding
+  report_title: MT-TL1 heteroplasmy (m.3243A>G, m.3271T>C)
+  description: Two MELAS-causing MT-TL1 variants whose phenotype depends on heteroplasmy level,
+    and whose level means different things in blood and in muscle. The module supplies the bins;
+    the consumer supplies the measured fraction.
+  icon: heartbeat
+  icon_set: fomantic
+  color: '#a333c8'
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38
