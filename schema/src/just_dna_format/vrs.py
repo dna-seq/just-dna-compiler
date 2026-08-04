@@ -166,6 +166,44 @@ def in_pseudoautosomal_region(
     return any(low <= start <= high for low, high in regions)
 
 
+#: The other contig of a pseudoautosomal pair.
+_PAR_PARTNER_CONTIG = {"X": "Y", "Y": "X"}
+
+
+def par_partner(
+    chrom: Optional[str], start: Optional[int], *, build: str = "GRCh38"
+) -> Optional[tuple[str, int]]:
+    """Where this pseudoautosomal locus is spelled on the *other* sex contig.
+
+    Returns `(contig, position)` — `("Y", 640851)` for `("X", 640851)` — or `None`, which is the
+    withhold answer this module uses everywhere: no coordinate, a contig that is not X or Y, a locus
+    outside both PARs, or a build with no PAR table. A caller must not read `None` as "there is no
+    partner", only as "this function did not name one".
+
+    The arithmetic is an index-matched offset between the two contigs' intervals, which is well-defined
+    because GRCh38's Y PAR *is* a copy of the X PAR: the paired intervals have equal length, so PAR1
+    maps at offset 0 (X:640851 ↔ Y:640851) and PAR2 at a constant 98,813,480 (X:155770036 ↔
+    Y:56956556). A test pins the equal-length property over the table itself, so adding a build whose
+    intervals do not pair cannot silently corrupt the mapping.
+
+    **Position agreement is a necessary condition, never a sufficient one.** Two loci at partner
+    coordinates are the same place, but a caller deciding they are the same *variant* must also compare
+    alleles — this function knows nothing about `ref`/`alts`, and fusing on geometry alone would merge
+    two different variants that happen to sit opposite each other.
+    """
+    if start is None or build != "GRCh38":
+        return None
+    contig = normalize_chrom(chrom) or ""
+    other = _PAR_PARTNER_CONTIG.get(contig)
+    if other is None:
+        return None
+    here, there = PAR_GRCh38[contig], PAR_GRCh38[other]
+    for (low, high), (other_low, _other_high) in zip(here, there):
+        if low <= start <= high:
+            return other, start - low + other_low
+    return None
+
+
 def refget_accession(chrom: Optional[str], build: str = "GRCh38") -> Optional[str]:
     """The refget accession for a contig on `build`, or `None` for a contig outside the table.
 

@@ -72,41 +72,67 @@ string equality will still miss, because the VCF is in the reference's frame. `j
 public and dependency-free so the consumer can apply the same reduction; having the enricher rewrite the
 authored cell is the parked co-authoring item, since it would make `content_signature` depend on a fetch.
 
-## 4. Ten findings, twenty rows (surfaced — [RM32](../../docs/ROADMAP.md), deferred to its own run)
+## 4. Ten findings, twenty rows (fixed — [RM32](../../docs/ROADMAP_HISTORY.md))
 
 Every one of the ten variants maps to **both** X and Y at the same base (PAR1 has identical coordinates on
-the two contigs in GRCh38), so the expansion emits two rows each: **20 rows for 10 findings**, all inside
+the two contigs in GRCh38), so the expansion emitted two rows each: **20 rows for 10 findings**, all inside
 `artifact.digest`. Standard GRCh38 analysis sets hard-mask the Y PAR, so in a normal pipeline the ten Y rows
-can never match anything.
+could never match anything.
 
-Counting the findings is not the problem — `weights.parquet` keeps `rsid` on both rows, so ten distinct
-findings are countable straight out of the artifact:
+It is **10 rows now**, and the module lost nothing:
 
 ```python
 w = pl.read_parquet("out/shox_par1/weights.parquet")
-w.height, w["rsid"].n_unique()      # (20, 10)
+w.height, w["rsid"].n_unique()      # (10, 10) — was (20, 10)
 ```
 
-What is missing is a **place identity**: a name for the locus that is not a contig coordinate. Collapsing
-the pair would contradict the identity model 0.5 adopted — a VRS allele id keys on the refget accession, and
-X and Y are different sequences — and the expansion is exactly right for the paralog case it was built for.
-So it stays a question (is a module's subject a *place* or a *contig coordinate*?), with the candidate
-answers and the objection that decides each written out in [ROADMAP.md](../../docs/ROADMAP.md#rm32--a-pseudoautosomal-locus-is-one-place-on-two-contigs).
-This module is the evidence that run should start from.
+The question the entry parked on was whether a **place identity** exists — a name for the locus that is not
+a contig coordinate — and the probe it named answered no. The **ClinGen Allele Registry mints two CA ids**
+for one PAR base (`CA254919` for X:640851 and `CA254920` for Y:640851 of `rs137852556`; `CA10330023` /
+`CA2467802563` for `rs746801054`), so `ResolutionRow.caid` cannot carry a place and no upstream mints one.
+
+What the probe found instead is that **every annotation source already picked a spelling, and it is X**:
+ClinVar holds no variant in either PAR on Y at all (0 of 677 Y records), gnomAD v4 excludes the Y PAR from
+its callset (X PAR1 640000–641500 serves 880 variants, the same interval on Y serves none), and the
+Registry's Y record is a bare dbSNP cross-reference with no ClinVar and no gnomAD. Only the coordinate
+resolver reports both contigs. So recording the X locus alone is not encoding the *consumer's* analysis set
+— the objection that had parked the idea — it is recording the **sources' own convention**, which is what
+the enricher is for. `enrich` keeps the X spelling and says so; `--keep-par-twin` keeps both for an unmasked
+reference.
+
+Two things this did **not** become, and why. Collapsing the pair into one row would contradict the identity
+model 0.5 adopted — a VRS allele id keys on the refget accession, and X and Y are different sequences — and
+the expansion is exactly right for the paralog case it was built for; selecting between two spellings is not
+collapsing two alleles. And a `place_key` column was rejected: the X↔Y correspondence is *derivable* from
+constants already in the tier (`vrs.par_partner`, which is public and dependency-free precisely so a
+consumer can apply it), so a column would make an author restate what the data determines — the same
+argument that rejected `requires_phase`.
+
+The boundary case that decided the *shape* of the fix is a separate module,
+[`par_boundary/`](../par_boundary/README.md): XG and SPRY3 straddle a PAR boundary, so the verdict has to be
+per locus and could never be per gene or per module.
 
 ## Also visible in the compile output
 
-Nothing about licensing any more: `resolution.csv` records an `authority` beside the link, so the
-`sources.csv has no row for ['ensembl-rest']` warning this module used to emit is gone
-([RM33](../../docs/ROADMAP_HISTORY.md)) — and `sources.csv` now carries Ensembl's terms at the `resolution`
-layer, written by the enricher pass that consulted it. The ten remaining warnings are the PAR expansions
-above, one per variant, which are expected rather than findings.
+**Nothing.** The compile is silent now, which it has never been before. Licensing went quiet in the round
+that landed [RM33](../../docs/ROADMAP_HISTORY.md) — `resolution.csv` records an `authority` beside the link,
+so the `sources.csv has no row for ['ensembl-rest']` warning is gone and `sources.csv` carries Ensembl's
+terms at the `resolution` layer, written by the pass that consulted it. The ten PAR-expansion warnings that
+remained after that were the last thing this module emitted, and RM32 removed the expansion that caused
+them.
 
 ## Reproduce
 
 ```bash
 just-dna-enricher draft-panel reference_examples/shox_par1 --gene SHOX --snapshot <clinvar-snapshot>
 # then decide each genotype, from the allele pairs the draft reports
-just-dna-enricher enrich reference_examples/shox_par1
+just-dna-enricher enrich reference_examples/shox_par1 --no-clinvar
 just-dna-compiler compile reference_examples/shox_par1 out/shox_par1
 ```
+
+`--no-clinvar` pins the resolver to the Ensembl link, which is what produced the coordinates and `alts` this
+module's digest was computed from. It matters here beyond reproducibility: the chain is first-hit-wins, and
+the ClinVar link resolves several of these rsIDs to a *narrower* `alts` (`rs137852552` as `C>T` rather than
+Ensembl's `C>A,T`) and spells the `rs1569493663` deletion in ClinVar's own frame instead of the
+`X:634690 AGAG>AG` one section 3 is about. Both tables are correct; they are not the same bytes, and `alts`
+is a fact column.

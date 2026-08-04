@@ -1,0 +1,4 @@
+rsid,chrom,start,ref,alts,genotype,weight,state,conclusion,negatives,priority,gene,phenotype,category,clinvar,pathogenic,benign,curator,method,direction,stat_significance,effect_size,effect_measure,effect_allele,flags,trait_efo_id,clin_sig,requires_callable,acmg_sf,actionability,callable_from,quality_from,min_quality
+rs184115031,,,,,A/G,,neutral,ClinVar: benign (1★) — not provided,,,SPRY3,not provided,,true,,true,,,,,,,,,,benign,,,,,,
+rs12395656,,,,,C/T,,neutral,ClinVar: benign (2★) — not provided,,,XG,not provided,,true,,true,,,,,,,,,,benign,,,,,,
+rs202025841,,,,,C/T,,neutral,ClinVar: benign (1★) — not provided,,,XG,not provided,,true,,true,,,,,,,,,,benign,,,,,,

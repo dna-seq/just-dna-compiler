@@ -56,10 +56,21 @@ Run the enricher (it has sequence access) if you want the ambiguity resolved; do
 silence it.
 
 **`maps to N loci in the resolution table; expanded to N rows`**
-Normal for a paralogous or pseudoautosomal rsID. For a PAR variant the two rows are one physical place
-on two contigs, and standard GRCh38 analysis sets hard-mask the Y copy — **RM32**, still open. Expected,
-not an error; do not delete rows to suppress it. To count *findings* rather than rows, count distinct
-`rsid` in `weights.parquet` — the expanded rows keep it.
+Normal for a **paralogous** rsID — one id, several genuinely distinct places. Expected, not an error; do
+not delete rows to suppress it. To count *findings* rather than rows, count distinct `rsid` in
+`weights.parquet` — the expanded rows keep it.
+
+**`rsN is pseudoautosomal: it maps to 2 loci (X:… and Y:…) that are 1 place(s)`**
+A different message for a different situation, and the wording is the point: PAR1/PAR2 are shared between
+X and Y, so this is **one place spelled twice**, not two places. You only see it if the table carries both
+contigs — `enrich` records the X spelling alone by default, since ClinVar holds no PAR variant on Y and
+gnomAD excludes the Y PAR from its callset, so the Y row could match nothing in a standard
+(analysis-set-masked) GRCh38 pipeline. Re-run `enrich` without `--keep-par-twin` to record X only; keep
+both deliberately if your reference is unmasked. Not an error either way.
+
+**`pseudoautosomal: kept the X spelling of N locus/loci; left out …`** (from `enrich`)
+Informational, and printed rather than silent precisely so a table half the size you expected is never a
+surprise. The named Y loci are the same places as the X ones kept. `--keep-par-twin` records both.
 
 **A sidecar did not change after you edited the spec**
 An existing `resolution.csv` / `frequencies.csv` / `gene_metrics.csv` is authoritative and merged.

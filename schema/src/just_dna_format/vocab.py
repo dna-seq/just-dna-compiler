@@ -232,6 +232,31 @@ VALID_DECLARED_USE: frozenset[str] = frozenset({"unstated", "non_commercial", "c
 # locus (rare — a one-to-many rsid is expanded to distinct rows instead, so it is not `ambiguous`).
 VALID_RESOLUTION_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "ambiguous"})
 
+# ── Frequency status (0.5.1) ────────────────────────────────────────────────────────────────────
+# Closed vocabulary (Principle 6) for a `FrequencyRow`'s outcome. It borrows two members from the
+# resolution table above and adds a third, because an allele-frequency source has one more way to
+# answer than a coordinate lookup does:
+#
+# * `resolved`     — the source served counts for this allele.
+# * `not_found`    — the source was asked and does not have this allele. A **fact** about a locus the
+#                    source does cover: absent from the callset means absent from those samples.
+# * `not_covered`  — the source does not cover this locus **at all**, so it has no answer to give and
+#                    none can be inferred. gnomAD v4 is the motivating case: it excludes the Y
+#                    pseudoautosomal region from its callset outright (probed 2026-08-04 — X PAR1
+#                    640000-641500 serves 880 variants, the same interval on Y serves none), so
+#                    recording an expanded Y-PAR row as `not_found` asserted an absence that was never
+#                    established. That is the `None` ≠ `False` rule: an unknown may not be written down
+#                    as a negative.
+#
+# `not_covered` rather than `unchecked`, which is this codebase's word for a question that was never
+# put (`acmg.py`: the row named no gene, the list could not be reached). This is the stronger and more
+# specific statement — the source was consulted, and its scope excludes the locus, so the answer is
+# unknowable *from this source* rather than merely unobtained.
+#
+# `ambiguous` is deliberately absent: a frequency row names one allele in one population, so there is
+# nothing for a source to be ambiguous between.
+VALID_FREQUENCY_STATUS: frozenset[str] = frozenset({"resolved", "not_found", "not_covered"})
+
 # Closed vocabulary (Principle 6) for what dbSNP currently says about an authored rsID. Provenance,
 # not a resolution fact — see `ResolutionRow.rsid_status` for why it stays out of the fact set.
 #

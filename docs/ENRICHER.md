@@ -31,6 +31,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
+| **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) |
 
 **Two of these break the severity rule in opposite directions, and both are deliberate.** The
 allele-function check joins the clinical cross-check in warning under `strict` too: PharmVar and CPIC
@@ -244,6 +245,36 @@ let an un-rs'd insertion inherit a co-located SNV's rsid. So:
 - **≥2 for the same allele** (a genuine dbSNP merge) → deterministic pick in `rsid`, `status="ambiguous"`,
   and the full candidate list in `ResolutionRow.rsid_alternates` — recorded, never silently chosen.
 
+### A pseudoautosomal locus is one place, recorded as the X spelling (RM32)
+
+PAR1 and PAR2 are shared between X and Y, so dbSNP maps one rsID to both contigs and the expansion above
+would emit two rows for one finding. `enrich()` keeps the **X** spelling and reports the Y twin it left
+out; `--keep-par-twin` (`keep_par_twin=True`) records both, for a consumer whose reference is not
+analysis-set masked.
+
+**This records the sources' convention, not the consumer's reference** — which is what makes it this
+tier's call rather than a data-agnostic violation (P2 makes the enricher the only tier permitted to hold a
+source convention). Probed 2026-08-04: ClinVar holds **no** variant in either PAR on Y (all 677 of its Y
+records lie outside them), gnomAD v4 excludes the Y PAR from its callset (`region(chrom:"X",
+640000-641500)` serves 880 variants; the same interval on Y serves none), and the ClinGen Allele Registry
+does mint a separate Y allele id but leaves that record a bare dbSNP cross-reference. Only Ensembl/dbSNP
+reports both contigs. There is therefore no external **place identity** to adopt — the Registry minting
+two CA ids is what closed that direction — and none is invented here.
+
+Three properties worth knowing:
+
+- **The pairing is an offset, not an equality.** `vrs.par_partner` (format tier, stdlib) maps PAR1 at
+  offset 0 and PAR2 at 98,813,480, from the interval table. PAR1 shares coordinates between the contigs
+  and PAR2 does not, so a "same base on X and Y" shortcut would pass a PAR1 module and silently fail a
+  PAR2 one.
+- **Allele agreement is required.** A twin is dropped only when the partner position carries the same
+  `ref`/`alts`. Partner coordinates say "same place"; they do not say "same variant", and a same-place
+  different-allele pair is a real finding that survives whole.
+- **The verdict is per locus.** `XG` runs out of PAR1 and `SPRY3` runs into PAR2, so a gene- or
+  module-scoped policy would misclassify half of either. `reference_examples/par_boundary/` is that case,
+  and it demonstrates the round-trip fixed point — which is exactly why this belongs here and a `--par`
+  compiler flag would be P7-illegal: `resolution.csv` travels with the module, a flag would not.
+
 Relatedly, the frozen identity now carries the allele: `base.derive_variant_key` keys a coordinate
 variant as `chrom:start:ref:alts` (normalized) when an alt is present, so distinct alleles at one locus
 are distinct identities. Together these make the compiler's `compile → reverse → compile` a **full
@@ -343,6 +374,30 @@ This is the **first online-only link in the whole chain**, and it will stay that
 VCFs are 58 GB (exomes) and 742 GB (genomes), so there is no slice to ship. `--offline` makes the pass
 a no-op with a warning rather than a failure — and that is not a reproducibility hole, because once
 `frequencies.csv` is written it *is* the pin, and every later compile reads it offline.
+
+**`status` has three members, and the third exists because gnomAD's callset has a hole.**
+`VALID_FREQUENCY_STATUS` is `{resolved, not_found, not_covered}`:
+
+- `resolved` — the source served counts.
+- `not_found` — the source was asked and has no such allele. A **fact** about a locus it does cover.
+- `not_covered` — the source does not cover the locus, so it has no answer and none can be inferred.
+
+The third was added after the pass was found writing `not_found` for a **Y pseudoautosomal** locus, whose
+comment claimed the row was a fact ("gnomAD was asked and does not have this allele"). It is not: gnomAD
+hard-masks the Y PAR — those bases duplicate the X PAR — so it never looked, and before PAR selection
+landed a one-to-many expansion handed this pass ten such loci per SHOX panel. That is the `None` ≠ `False`
+rule: an unknown may not be recorded as a negative. `gnomad.covers_locus` decides it (three-valued, and
+the *source convention* lives there while the PAR *geometry* stays in `vrs`), and such a locus is now not
+queried at all — the request would spend a slot of a 10-per-minute budget to learn nothing, and asking is
+what produced the false absence.
+
+`not_covered` rather than `unchecked`, which is this codebase's word for a question that was never *put*
+(`acmg.py`: the row named no gene, the list could not be reached). This is the stronger statement that the
+source's scope excludes the locus. `FrequencyResult` reports them in `uncovered`, kept apart from
+`missing`, and they are **outside the `strict` gate** on purpose: a locus gnomAD cannot cover is perfectly
+reproducible, so refusing would make a pseudoautosomal module uncompilable for a reason no authored edit
+could fix. (`FrequencyRow.status` also gained a validator here — until 0.5.1 it was free text on a fact
+table.)
 
 ### Pass 3 — gene constraint (`gene_metrics.py`, offline capable)
 
@@ -1020,6 +1075,7 @@ just-dna-enricher enrich spec/ --no-clinvar        # Ensembl links only
 just-dna-enricher enrich spec/ --no-verify-ref     # skip the reference-allele check
 just-dna-enricher enrich spec/ --no-verify-clinsig # skip the ClinVar clin_sig cross-check
 just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdrawal check
+just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseudoautosomal locus
 just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC)

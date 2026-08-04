@@ -1,0 +1,18 @@
+schema_version: '1.0'
+module:
+  name: par_boundary
+  title: XG and SPRY3 — annotation across a pseudoautosomal boundary
+  report_title: PAR boundary (XG, SPRY3)
+  description: A boundary probe. XG and SPRY3 are the two genes that straddle a pseudoautosomal
+    boundary in GRCh38 — XG runs out of PAR1, SPRY3 runs into PAR2 — so within either gene some
+    variants are one place on two contigs and some are not. Whether a locus is pseudoautosomal is
+    therefore a property of the locus, never of the gene or of the module. The three benign alleles
+    here come from ClinVar with its own citations; the annotation content is deliberately thin,
+    because what this module is for is the coordinate mechanics.
+  icon: dna
+  icon_set: fomantic
+  color: '#00b5ad'
+defaults:
+  curator: ai-module-creator
+  method: literature-review
+genome_build: GRCh38

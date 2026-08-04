@@ -499,13 +499,36 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   keeps a pass inside `validate_spec` (which has no resolution step), de-duplicated on the message.
 - **`chrom=Y` is NOT "never diploid" — PAR1 and PAR2 are diploid in every karyotype.**
   `vrs.in_pseudoautosomal_region` is three-valued and `vrs.PAR_GRCh38` holds the intervals; they are
-  assembly constants of the same class as `REFGET_GRCh38`, not an un-injected reference. A PAR rsID
-  (`rs6603251` → X:359845 **and** Y:359845) also expands to two rows the author never chose — one
-  place, two contigs, tracked as **RM32, the one dogfooding item still open** and deferred to its own
-  run because it is a *question* (what identifies a place present on two sequences?) rather than a
-  patch. Two things not to redo there: **countability is already answered** — the expanded rows keep
-  `rsid`, so distinct findings are `n_unique` over it — and the four candidate fixes are argued out in
-  the roadmap entry, one of them charter-illegal. Don't re-derive them; start from the CAID probe.
+  assembly constants of the same class as `REFGET_GRCh38`, not an un-injected reference.
+- **A PAR locus is ONE place on two contigs, and the enricher records the X spelling (RM32, shipped).**
+  `vrs.par_partner` maps a PAR locus to its twin by **index-matched offset** — PAR1 at 0, PAR2 at
+  98,813,480 — so never compare "the same base on X and Y": that passes PAR1 and silently fails PAR2,
+  where `rs184115031` is X:155773979 **and** Y:56960499. `enrich.select_par_representative` keeps X and
+  reports the twin; `--keep-par-twin` keeps both. Five things not to redo:
+  - **The place-identity direction is closed by probe, not by opinion.** ClinGen's Allele Registry mints
+    **two** CA ids per PAR base (`CA254919`/`CA254920` for `rs137852556`), so `ResolutionRow.caid`
+    cannot carry a place and no upstream mints one. A `place_key` column was rejected too — the relation
+    is derivable, so a column would restate what the data determines (the `requires_phase` argument).
+  - **Selecting X follows the SOURCES, which is why it is legal** (P2). ClinVar has 0 PAR records on Y
+    (of 677 Y records), gnomAD v4 excludes the Y PAR (X PAR1 640000-641500 → 880 variants, Y → 0), and
+    the Registry's Y record is a bare dbSNP xref. Only Ensembl/dbSNP reports both. The old objection
+    ("it encodes the consumer's analysis set") was checked against data and failed.
+  - **The verdict is PER LOCUS — `XG` and `SPRY3` straddle a boundary** (XG out of PAR1 at 2,781,479,
+    SPRY3 into PAR2 at 155,701,383), so anything gene- or module-scoped is wrong for half of either.
+    `reference_examples/par_boundary/` is that case, and its round trip is a fixed point on all three
+    signatures — which is why an enricher flag is legal where a `--par` compiler flag is P7-illegal.
+  - **Position agreement is necessary, never sufficient.** A twin is dropped only when the partner
+    position carries the same `ref`/`alts`; partner coordinates say "same place", not "same variant".
+  - **Two non-problems, checked:** `studies.csv` is rsID-keyed so both rows always inherited the
+    citation, and `_check_contig_ploidy` only branches on `{MT, Y}` so selecting X makes it quiet rather
+    than wrong. It stays, for hand-authored and `--keep-par-twin` modules.
+- **gnomAD does not cover the Y PAR, and an absence there is not a fact.** `frequencies.csv` wrote
+  `status="not_found"` for it — an absence nobody established. `gnomad.covers_locus` (the source
+  convention, so enricher-only; the PAR *geometry* stays in `vrs`) gates it, such a locus is not queried
+  at all, and the outcome is **`not_covered`** — a third `VALID_FREQUENCY_STATUS` member, distinct from
+  `unchecked` (this codebase's word for a question never *put*). It is deliberately outside the `strict`
+  gate: a locus the source cannot cover is perfectly reproducible, and refusing would make a PAR module
+  uncompilable for a reason no authored edit could fix.
 - **Hosting is a THREE-valued question — `hosting_verdict`, not `genotype_fits` (RM31, shipped).** One
   indel has several valid spellings: ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the
   same 2 bp deletion, and comparing allele *strings* resolved it to `not_found` while asserting a dbSNP

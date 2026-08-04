@@ -75,7 +75,7 @@ the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literat
 - **Vocabulary idiom (Principle 6).** A constrained vocabulary is a `frozenset[str]` + a validator,
   never `Enum`/`Literal` — additive and inspectable. Live sets in `vocab.py`: `VALID_DIRECTIONS`,
   `VALID_SIGNIFICANCE`, `VALID_CLIN_SIG`, `VALID_EVIDENCE_LEVELS`, `VALID_RESOLUTION_STATUS`,
-  `VALID_RSID_STATUS`, `VALID_AUTHOR_ROLES`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`,
+  `VALID_FREQUENCY_STATUS`, `VALID_RSID_STATUS`, `VALID_AUTHOR_ROLES`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`,
   `ACTIONABILITY_SEED`.
 - **`derive_variant_key(rsid, chrom, start, ref, alts=None)` (`base.py`).** The single source of a
   variant's natural identity: the rsid when present, else `chrom:start:ref`, or `chrom:start:ref:alts`
@@ -338,6 +338,14 @@ it lines up with post-expansion weights rows), `rsid?`, `chrom?`/`start?`/`ref?`
 `allele_number` (AN), `homozygote_count?`, `hemizygote_count?`, `faf95?`, `dataset`, `genome_build`.
 Provenance (excluded): `source?`, `status?`, `fetched_at?`. Cross-references `vrs_id?`/`caid?` are also
 outside the fact set.
+
+- **`status` is a closed vocabulary with THREE members, and the third is not redundant.**
+  `VALID_FREQUENCY_STATUS = {resolved, not_found, not_covered}`. `not_found` means the source was asked and
+  has no such allele — a fact about a locus it *does* cover. `not_covered` means the locus is outside the
+  source's callset, so it has no answer and none can be inferred: gnomAD hard-masks the Y pseudoautosomal
+  region, and recording an absence there stated something nobody established (`None` ≠ `False`). Not
+  `unchecked`, which is this codebase's word for a question never *put*. The column was free text until
+  0.5.1, which is how the false absence reached a fact table in the first place.
 
 - **`allele_frequency` is a derived property, never a stored column.** Integers round-trip through CSV
   exactly; a stored float invites formatting drift, which is a Principle 7 idempotency hazard, for the

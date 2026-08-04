@@ -85,3 +85,4 @@ Worked examples, each README naming what it exercises:
 | `htt_repeat_expansion` | repeat-count bins |
 | `mt_heteroplasmy` | tissue- and variant-conditional bins, `unresolved` sentinels |
 | `shox_par1` | a pseudoautosomal panel, and what it broke |
+| `par_boundary` | XG and SPRY3 straddling a PAR boundary — why the PAR verdict is per locus |

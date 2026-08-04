@@ -27,7 +27,12 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.vocab import normalize_population, validate_population
+from just_dna_format.vocab import (
+    VALID_FREQUENCY_STATUS,
+    check_vocab,
+    normalize_population,
+    validate_population,
+)
 from just_dna_format.vrs import validate_caid, validate_vrs_id
 
 # The fact columns that feed `integrity.frequency_signature` — everything except the provenance
@@ -143,7 +148,8 @@ class FrequencyRow(BaseModel):
         default=None, description="Which link filled this: gnomad|manual|reversed (open)"
     )
     status: Optional[str] = Field(
-        default=None, description="Outcome: resolved|not_found (the ResolutionRow vocabulary)"
+        default=None,
+        description="Outcome: resolved|not_found|not_covered (VALID_FREQUENCY_STATUS)",
     )
     fetched_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp, advisory")
 
@@ -173,3 +179,14 @@ class FrequencyRow(BaseModel):
     @classmethod
     def _validate_caid(cls, v: Optional[str]) -> Optional[str]:
         return validate_caid(v)
+
+    @field_validator("status")
+    @classmethod
+    def _validate_status(cls, v: Optional[str]) -> Optional[str]:
+        """A closed vocabulary since 0.5.1 — it was free text, on a fact table.
+
+        The three members are not interchangeable and the distinction is the whole point: `not_found`
+        is a fact about a covered locus, `not_covered` is the absence of an answer. See
+        `VALID_FREQUENCY_STATUS` for why the second exists.
+        """
+        return check_vocab(v, VALID_FREQUENCY_STATUS, "status")

@@ -13,12 +13,14 @@ import pytest
 from just_dna_format.base import derive_variant_key
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import (
+    PAR_GRCh38,
     REFGET_GRCh38,
     REFGET_GRCh38_LENGTHS,
     UnsupportedBuildError,
     derive_vrs_allele_id,
     is_substitution,
     normalize_chrom,
+    par_partner,
     refget_accession,
     sha512t24u,
     validate_caid,
@@ -265,3 +267,70 @@ def test_refget_table_matches_the_public_seqrepo() -> None:
         aliases = {a for a in metadata["aliases"] if a.startswith("ga4gh:SQ.")}
         assert f"ga4gh:{accession}" in aliases, f"{chrom}: {accession} not in seqrepo aliases"
         assert metadata["length"] == REFGET_GRCh38_LENGTHS[chrom]
+
+
+# ── the pseudoautosomal partner mapping (RM32) ───────────────────────────────────────────────────
+#
+# Coordinates are live-verified against Ensembl, 2026-08-04. PAR1 is coordinate-identical on the two
+# contigs in GRCh38; PAR2 is not, which is the case a "same base on X and Y" shortcut would get wrong.
+
+
+@pytest.mark.parametrize(
+    ("chrom", "start", "expected", "why"),
+    [
+        ("X", 640851, ("Y", 640851), "PAR1 maps at offset 0 — rs137852556, a real SHOX variant"),
+        ("Y", 640851, ("X", 640851), "and the mapping is symmetric"),
+        ("X", 155770036, ("Y", 56956556), "PAR2 does NOT share coordinates — rs748219607"),
+        ("Y", 56956556, ("X", 155770036), "symmetric there too"),
+        ("X", 155770003, ("Y", 56956523), "rs1347948851, a second PAR2 point on the same offset"),
+        ("X", 10001, ("Y", 10001), "the first base of PAR1, inclusive"),
+        ("X", 2781479, ("Y", 2781479), "and the last"),
+    ],
+)
+def test_a_par_locus_names_its_partner(chrom, start, expected, why) -> None:
+    assert par_partner(chrom, start) == expected, why
+
+
+@pytest.mark.parametrize(
+    ("chrom", "start", "why"),
+    [
+        ("X", 2781480, "the first base after PAR1 — XG spans this boundary, so it is a real case"),
+        ("X", 155701382, "the base before PAR2 starts — SPRY3 spans this one"),
+        ("Y", 2789135, "the male-specific region has no partner"),
+        ("7", 117559591, "an autosome is not part of the question"),
+        ("MT", 3243, "and neither is the mitochondrion"),
+        ("X", None, "no coordinate, so nothing to map"),
+    ],
+)
+def test_a_non_par_locus_withholds_rather_than_guessing(chrom, start, why) -> None:
+    assert par_partner(chrom, start) is None, why
+
+
+def test_another_build_withholds_like_the_par_predicate_does() -> None:
+    """`refget_accession` raises for an unknown build because a wrong answer corrupts an identity.
+    This one only decides which locus to keep, so the honest degradation is to name no partner and
+    leave both — the same choice `in_pseudoautosomal_region` makes."""
+    assert par_partner("X", 640851, build="GRCh37") is None
+
+
+def test_the_paired_intervals_have_equal_length_on_every_contig() -> None:
+    """The offset arithmetic is only well-defined because GRCh38's Y PAR is a *copy* of the X PAR.
+
+    This guards the table rather than the function: a future build whose intervals do not pair
+    one-to-one would make `par_partner` return a position outside the partner PAR, silently. Asserting
+    it here means such a table fails a test instead of corrupting a locus selection.
+    """
+    x_regions, y_regions = PAR_GRCh38["X"], PAR_GRCh38["Y"]
+    assert len(x_regions) == len(y_regions)
+    for (x_low, x_high), (y_low, y_high) in zip(x_regions, y_regions):
+        assert x_high - x_low == y_high - y_low
+
+
+def test_every_par_position_maps_back_to_itself() -> None:
+    """A round trip over both interval endpoints and the midpoints, in both directions."""
+    for contig, regions in PAR_GRCh38.items():
+        for low, high in regions:
+            for position in (low, (low + high) // 2, high):
+                partner = par_partner(contig, position)
+                assert partner is not None
+                assert par_partner(*partner) == (contig, position)

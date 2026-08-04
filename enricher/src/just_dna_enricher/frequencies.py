@@ -29,7 +29,7 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import population_sort_key
 
-from just_dna_enricher.gnomad import FREQUENCY_DATASET_LABEL, GnomadClient
+from just_dna_enricher.gnomad import FREQUENCY_DATASET_LABEL, GnomadClient, covers_locus
 from just_dna_enricher.licensing import record_source_terms
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,10 @@ class FrequencyResult:
     rows: list[FrequencyRow]
     covered: list[str] = field(default_factory=list)     # variant_keys that got at least one row
     missing: list[str] = field(default_factory=list)     # resolved alleles gnomAD did not know
+    # Alleles gnomAD does not COVER — kept apart from `missing` because they are a different answer.
+    # `missing` means asked and absent; these were never askable, so counting them as absences would
+    # report an unknown as a negative (see `gnomad.covers_locus`).
+    uncovered: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
     skipped_offline: bool = False
@@ -165,7 +169,13 @@ def enrich_frequencies(
     # Only fetch what no existing row already covers — a re-run after adding two variants costs one
     # request, not a full refetch of a table that is already right.
     covered_keys = {key for key, _population in existing}
-    to_fetch = [a for a in alleles if a[0] not in covered_keys]
+    wanted = [a for a in alleles if a[0] not in covered_keys]
+    # A locus gnomAD does not cover is not asked about at all. Two reasons, and the second is the
+    # important one: the request would spend a slot of a 10-per-minute budget to learn nothing, and
+    # gnomAD's silence about a locus it never looked at is indistinguishable from a real absence — so
+    # asking is how the false `not_found` got written in the first place.
+    to_fetch = [a for a in wanted if covers_locus(a[1], a[2]) is not False]
+    uncovered = [a for a in wanted if covers_locus(a[1], a[2]) is False]
     fetched: dict[str, dict] = {}
     if to_fetch:
         owned = client is None
@@ -187,8 +197,9 @@ def enrich_frequencies(
         if not payload or not payload.get("populations"):
             missing.append(key)
             # A `not_found` row is a FACT — "gnomAD was asked and does not have this allele" — and is
-            # materially different from a variant that was never queried (no row at all). Same
-            # reasoning as the resolution table's `not_found` sentinel.
+            # materially different both from a variant that was never queried (no row at all) and from
+            # one at a locus gnomAD does not cover (`not_covered`, below). Reaching this branch means
+            # the locus IS in the callset and the allele is absent from those samples.
             out.append(
                 FrequencyRow(
                     variant_key=key, chrom=chrom, start=start, ref=ref, alt=alt,
@@ -210,14 +221,39 @@ def enrich_frequencies(
                 )
             )
 
+    # Recorded rather than omitted: an author looking at the table should be able to see that gnomAD has
+    # no answer here, instead of wondering why the row is absent. One aggregated line, not one per row.
+    for key, chrom, start, ref, alt in uncovered:
+        out.append(
+            FrequencyRow(
+                variant_key=key, chrom=chrom, start=start, ref=ref, alt=alt,
+                population="global", dataset=dataset, source="gnomad", status="not_covered",
+                fetched_at=fetched_at,
+            )
+        )
+    if uncovered:
+        logger.warning(
+            "%d allele(s) sit outside gnomAD's callset and were recorded as not_covered, not asked "
+            "about and not counted as absent (%s). gnomAD hard-masks the Y pseudoautosomal region — "
+            "those bases duplicate the X PAR — so it has no frequency to give there; the X spelling of "
+            "the same place does. This is an unknown, not a zero.",
+            len(uncovered),
+            ", ".join(f"{chrom}:{start} {ref}>{alt}" for _, chrom, start, ref, alt in uncovered),
+        )
+
     out.sort(key=_sort_key)
     result = FrequencyResult(
         rows=out,
         covered=sorted(set(covered)),
         missing=sorted(set(missing)),
+        uncovered=sorted({key for key, *_ in uncovered}),
         sources=sorted({r.source for r in out if r.source}),
         mode=mode,
     )
+    # `result.uncovered` is deliberately NOT part of this gate. `strict` means "a reproducible
+    # artifact", and a locus outside gnomAD's callset is perfectly reproducible — it will be outside it
+    # on every run. Refusing would make a pseudoautosomal module uncompilable under `strict` for a
+    # reason no authored edit could fix, which is the opposite of what a strict failure is for.
     if mode == "strict" and result.missing:
         raise FrequencyEnrichmentError(
             f"strict frequency enrichment: {len(result.missing)} resolved allele(s) have no gnomAD "

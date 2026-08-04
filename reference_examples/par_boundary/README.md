@@ -1,0 +1,114 @@
+# XG and SPRY3 — annotation across a pseudoautosomal boundary
+
+Built to answer the question [RM32](../../docs/ROADMAP_HISTORY.md) left open: *is a pseudoautosomal
+locus one place or two, and whose decision is that?* The SHOX panel
+([`shox_par1/`](../shox_par1/README.md)) showed the symptom — ten findings compiling to twenty rows.
+This module is the control that decides the shape of the fix.
+
+## Why these two genes
+
+They are the only two genes that **straddle** a pseudoautosomal boundary in GRCh38, and they straddle
+in opposite directions:
+
+| Gene | Span (GRCh38) | Boundary it crosses |
+|---|---|---|
+| **XG** (Xg blood group) | X:2,751,798–2,816,500 | runs **out of** PAR1, which ends at 2,781,479 |
+| **SPRY3** (Sprouty homolog 3) | X:155,612,298–155,782,459 | runs **into** PAR2, which starts at 155,701,383 |
+
+That makes them the case that settles the design. If "pseudoautosomal" were a property of a *gene* —
+or worse, of a module, which is what a `--par` compile flag would have made it — then either gene would
+be classified wrongly for half of itself. It is a property of the **locus**, and nothing coarser can be
+correct.
+
+The three alleles here are real ClinVar records with ClinVar's own citations, drafted with
+`draft-panel`. They are all **benign**, and that is honest rather than incidental: the module exists for
+the coordinate mechanics, so it carries the grounding evidence a module must carry and makes no clinical
+claim it cannot support. A benign annotation is still a real one — it is what stops a consumer flagging
+the allele.
+
+## What it demonstrates
+
+One `enrich` run, one module, and the verdict differs per row:
+
+```
+pseudoautosomal: kept the X spelling of 1 locus/loci; left out rs184115031 Y:56960499
+```
+
+| rsID | Gene | Resolved | In a PAR? | Partner | Rows |
+|---|---|---|---|---|---|
+| `rs184115031` | SPRY3 | X:155,773,979 | **yes** (PAR2) | Y:56,960,499 | 1 — the Y twin is left out |
+| `rs12395656` | XG | X:2,808,207 | no | — | 1 — never a candidate |
+| `rs202025841` | XG | X:2,811,333 | no | — | 1 — never a candidate |
+
+**The PAR2 coordinates are the point.** PAR1 happens to be coordinate-identical on X and Y, so the SHOX
+panel could have been "fixed" by a shortcut that pairs the same base on the two contigs. PAR2 would have
+silently defeated it: X:155,773,979 and Y:56,960,499 are the same place at a constant offset of
+98,813,480, which is what `vrs.par_partner` computes from the interval table rather than assuming.
+Ensembl confirms the pairing independently for both SPRY3 alleles.
+
+Selecting X follows the sources rather than the consumer. Probed 2026-08-04: ClinVar records **no**
+variant in either PAR on Y (all 677 of its Y records lie outside them), gnomAD v4 excludes the Y PAR from
+its callset entirely, and the ClinGen Allele Registry does mint a separate Y allele id but leaves the
+record a bare dbSNP cross-reference. Only the coordinate resolver reports both.
+
+## The round trip, which is why this is the enricher's decision and not the compiler's
+
+```
+compile → reverse → compile
+digest                sha256:bf0fc867…  (unchanged)
+content_signature     sha256:7bd0073c…  (unchanged)
+resolution_signature  sha256:3e6dea31…  (unchanged)
+```
+
+A fixed point, including `resolution_signature`. That is the whole argument: the choice is recorded in
+`resolution.csv`, which is injected data and travels with the module, so reverse re-emits it and the
+recompile agrees. A compiler flag could not do this — `reverse_module` rebuilds the spec from parquet
+alone, so the third step would diverge (Principle 7).
+
+## Keeping both, for an unmasked reference
+
+A consumer whose reference is not analysis-set masked can have both spellings:
+
+```bash
+just-dna-enricher enrich <spec> --keep-par-twin
+```
+
+which yields 4 rows instead of 3, and the compiler then names the pair for what it is rather than
+reporting it as a paralog:
+
+```
+warning: rs184115031 is pseudoautosomal: it maps to 2 loci (X:155773979 and Y:56960499) that are
+1 place(s) … count distinct findings by rsid rather than by row
+```
+
+## Two things building it found, neither about PAR
+
+**1. `draft-panel --clin-sig uncertain_significance` drops every row, and says only
+`state: Field required`.** Twenty-six times, one identical line per row, with no count and no
+explanation. The underlying *decision* is right and documented — `_STATE_BY_CLIN_SIG` maps only the
+four decided calls, because folding `uncertain_significance` to a `state` would assert a direction the
+source declined to state, and `state` is required. What is wrong is the diagnosis: a raw pydantic error
+reaches the author as the whole explanation, un-aggregated, naming neither the rsIDs nor the reason. An
+author cannot act on it. Recorded in [ROADMAP.md](../../docs/ROADMAP.md); not worked around here, which
+is why this module carries benign alleles rather than the uncertain ones first attempted.
+
+**2. The run summary adds rows across tables.** `added 7 row(s)` for what the per-file lines correctly
+report as `variants.csv: 3 added` and `studies.csv: 4 added`. Harmless, but the rolled-up number
+matches neither file.
+
+## Reproduce
+
+```bash
+just-dna-enricher draft-panel reference_examples/par_boundary --gene XG --gene SPRY3 \
+    --clin-sig uncertain_significance,benign,likely_benign --min-review-stars 1 \
+    --snapshot <clinvar-snapshot>
+# then decide each genotype from the allele pairs the draft reports — unphased alleles are
+# alphabetically sorted, which the model tells you if you get it wrong
+just-dna-enricher enrich reference_examples/par_boundary --no-clinvar
+just-dna-compiler compile reference_examples/par_boundary out/par_boundary
+```
+
+`--no-clinvar` is deliberate, and it is worth knowing why. The chain is first-hit-wins, so with the
+ClinVar link enabled ClinVar answers — and since it holds no Y-PAR record, the table comes out X-only
+for a completely different reason, and the selection never runs. Same table, two different mechanisms;
+forcing the Ensembl link is what makes this module exercise the one under test.

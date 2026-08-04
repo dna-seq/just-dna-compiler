@@ -5,6 +5,71 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-04 — RM32: a pseudoautosomal locus is one place, and the sources already picked which contig
+
+The last open dogfooding item from 2026-08-03, held back because it was a *question* rather than a defect:
+a PAR variant maps to both X and Y, so the one-to-many expansion emitted two rows per finding — 20 rows for
+10 findings in `reference_examples/shox_par1/`, all inside `artifact.digest`, while standard GRCh38 analysis
+sets hard-mask the Y PAR so the Y rows could match nothing. The entry named its opening probe. **The probe
+came back negative and that is what settled it:** the ClinGen Allele Registry mints **two** CA ids for one
+PAR base (`CA254919`/`CA254920` for `rs137852556`; `CA10330023`/`CA2467802563` for `rs746801054`), so
+`ResolutionRow.caid` cannot carry a place identity and no upstream mints one.
+
+What the probing found instead is that **every annotation source has already chosen a spelling, and it is
+X**: ClinVar holds no variant in either PAR on Y (0 of 677 Y records; all 1,675 records across
+SHOX/CSF2RA/ASMT/CD99/XG/SPRY3/IL9R/VAMP7 are on X), gnomAD v4 excludes the Y PAR from its callset
+(`region(chrom:"X", 640000-641500)` → 880 variants; the same interval on Y → 0), and the Registry's Y record
+is a bare dbSNP cross-reference. Only Ensembl/dbSNP reports both, and it is the link that manufactures the
+Y row. So the objection that had parked an enricher PAR policy — that it "encodes the consumer's analysis
+set into the module" — does not hold: selecting X records the **sources' own convention**, which is what P2
+makes the enricher the only tier allowed to hold.
+
+- **`vrs.par_partner(chrom, start, *, build)`** — format tier, stdlib, three-valued, beside
+  `in_pseudoautosomal_region`. Maps a PAR locus to its spelling on the other contig by index-matched offset:
+  PAR1 at offset 0, PAR2 at 98,813,480. **PAR2 is why this is arithmetic and not an equality** — a shortcut
+  comparing "the same base on X and Y" would have passed SHOX and silently failed SPRY3. A test pins the
+  equal-length property over `PAR_GRCh38` itself, so a future build whose intervals do not pair cannot
+  corrupt a selection quietly. Public and dependency-free, like `alleles.parsimony_reduce`.
+- **`enrich` keeps the X spelling and reports the twin** (`select_par_representative`); `--keep-par-twin`
+  records both for an unmasked reference. It **selects, it does not repair** — same contract as the
+  allele-aware `hosting_verdict` filter beside it — and it will not fuse on geometry alone: a Y locus is
+  dropped only when its partner position carries the same `ref`/`alts`, because partner coordinates say
+  "same place", not "same variant". Reported once with a count, and surfaced on `EnrichmentResult` and in
+  the CLI, since a selection nobody can see is indistinguishable from a silent repair.
+- **The verdict is per locus, and a real gene forces that.** **XG** runs out of PAR1 (ends 2,781,479) and
+  **SPRY3** runs into PAR2 (starts 155,701,383), so any gene- or module-scoped policy is wrong for half of
+  either. New `reference_examples/par_boundary/` is that case end to end: one run, one PAR2 locus selected,
+  two XG loci past the boundary untouched, and a `compile → reverse → compile` fixed point on all three
+  signatures — which is *why* the flag is legal here and would be charter-illegal on the compiler (P7).
+- **The compiler now says which kind of "many" an expansion is** (`resolution._expansion_warning`). A
+  paralog and a PAR pair produced the same count for opposite reasons, and the generic "a consumer can
+  count them" told a SHOX author to count ten findings as twenty. It describes only; the row-set decision
+  stays in injected data.
+- **A false absence in `frequencies.csv`, found on the way.** The pass recorded `status="not_found"` for any
+  locus gnomAD returned nothing for, commenting that the row was a **fact** — "gnomAD was asked and does not
+  have this allele". False for a Y-PAR locus, so a SHOX frequency run would have written ten absences nobody
+  established. Fixed with a third vocabulary member `not_covered` (`VALID_FREQUENCY_STATUS`; and
+  `FrequencyRow.status` gained the validator it never had — it was free text on a fact table), the coverage
+  rule in `gnomad.covers_locus` where a source convention belongs, and such a locus is no longer queried at
+  all. `not_covered` rather than `unchecked`, which is this codebase's word for a question never put. It is
+  deliberately outside the `strict` gate: a locus gnomAD cannot cover is perfectly reproducible, and
+  refusing would make a PAR module uncompilable for a reason no authored edit could fix.
+
+**Digest impact, spent inside the unpublished window on purpose:** `shox_par1` goes from 20 rows to 10 with
+every other cell byte-identical, and its compile is now silent for the first time. `content_signature` did
+not move, which is a clean demonstration of its documented pre-resolution independence. The **multi-build**
+half remains RM15's — `par_partner` withholds on any build but GRCh38.
+
+Two things checked and found harmless, recorded so they are not re-flagged: `studies.csv` is rsID-keyed, so
+both expanded rows always inherited the citation; and `_check_contig_ploidy` branches only on
+`chrom in {MT, Y}`, so selecting X makes it quiet rather than wrong — it stays for hand-authored and
+`--keep-par-twin` modules.
+
+Building `par_boundary` also surfaced two **diagnosis** defects unrelated to PAR, recorded in
+[ROADMAP.md](ROADMAP.md) rather than fixed here: `draft-panel --clin-sig uncertain_significance` drops every
+row while reporting only a raw `state: Field required`, once per row (26 identical lines for two genes), and
+the run summary adds rows across tables (`added 7` for `3` variants + `4` studies).
+
 ## 2026-08-04 — `draft-panel` finds its own snapshot, so the published citations reach an author
 
 `draft_gene_panel(spec_dir, genes, *, snapshot: Path, …)` **required** the snapshot, with no resolution
@@ -89,7 +154,8 @@ publisher and the provisioner cannot disagree about it again; a repo without one
 **ClinVar publishes a SHOX deletion as `X:634689 CAG>C` and Ensembl publishes the same 2 bp AG deletion as
 `X:634690 AGAG>AG`**, and `genotype_fits` compared allele *strings*, so `rs1569493663` resolved to
 `not_found` in `reference_examples/shox_par1/`. It now resolves — 20 rows, 10 findings, both PAR contigs —
-with no authored edit.
+with no authored edit. *(**20** was the count while both PAR contigs were recorded. RM32 later reduced the
+module to 10 rows by keeping only the X spelling; the resolution of the indel is unaffected.)*
 
 `alleles.parsimony_reduce` (new, format tier, stdlib) strips the flank a *collection* of alleles shares,
 which leaves the event: `{C, CAG}` and `{AGAG, AG}` both reduce to `{'', 'AG'}`. **No position is passed
@@ -403,7 +469,9 @@ does not exist. It now names both readings. The underlying normalization is **RM
 
 **Three recorded rather than patched**, each because the obvious repair is wrong. *(Two of the three were
 fixed later the same day — see the RM31 and RM33 entries above — and in both cases part of what made them
-look undecidable turned out to be wrong. RM32 stands, and is deferred to its own run.)*
+look undecidable turned out to be wrong. RM32 was deferred to its own run and **shipped on 2026-08-04** —
+see the entry at the top — where the same thing happened a third time: the probe this entry was waiting on
+refuted the direction it called most promising.)*
 
 - **RM31** — indel spellings. A reference-free parsimony trim fixes this pair but cannot left-align
   inside a repeat; a reference-backed one can only run in the enricher, and `genotype_fits` is shared
@@ -411,7 +479,11 @@ look undecidable turned out to be wrong. RM32 stands, and is deferred to its own
 - **RM32** — nine of ten SHOX variants map to both contigs, so 10 findings became 19 rows, all inside
   `artifact.digest`, and standard GRCh38 analysis sets hard-mask the Y PAR so those rows can never
   match. Collapsing them would contradict VRS identity (X and Y are different refget sequences), and
-  the expansion is correct for the paralog case it was built for.
+  the expansion is correct for the paralog case it was built for. *(**19** is right for this moment and
+  should not be "corrected" to the 20 the later entries state: the tenth variant was still resolving to
+  `not_found` until RM31 landed hours later. Closed on 2026-08-04 — not by collapsing, which stayed
+  rejected for exactly the reason given here, but by recording the X spelling every annotation source
+  already uses.)*
 - **RM33** — `resolution.csv`'s `source` names *which link answered*; `sources.csv`'s names *a
   licensed source*. Two vocabularies under one name, compared by string equality, which is why every
   enriched module warns that `ensembl-rest` has no terms. Writing a row per link would make

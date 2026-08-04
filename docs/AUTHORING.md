@@ -171,9 +171,14 @@ The two `content_signature` values must match — that is Principle 7's fixed po
 [AUTHORING_SYMPTOMS.md](AUTHORING_SYMPTOMS.md) maps the actual message text → cause → what to do. Start there before reading
 code; most of those entries are traps that cost someone a day already.
 
-Known limitations you may hit and should **not** try to work around in your data — the open ones are
-`RM31` and `RM32` in [ROADMAP.md](ROADMAP.md): one indel spelled two ways failing to resolve, and a
-pseudoautosomal variant becoming two rows. (Three of that batch have shipped: `sources.csv` now
-understands that a resolution *link* is not a source name; a continuous binning table can be tiled — write
-bounds that **touch**, e.g. `0.0–0.1` then `0.1–0.3`, and the higher bin owns the shared endpoint; and a
-large star-allele gene is drafted with `draft --allele`.)
+Known limitations you may hit and should **not** try to work around in your data: **the batch of five
+found by dogfooding has all shipped**, so what follows is behaviour to expect rather than defects to route
+around. One indel spelled two ways now resolves, and the reduction is public
+(`just_dna_format.alleles`) if you need to apply it to your own calls. `sources.csv` understands that a
+resolution *link* is not a source name. A continuous binning table can be tiled — write bounds that
+**touch**, e.g. `0.0–0.1` then `0.1–0.3`, and the higher bin owns the shared endpoint. A large star-allele
+gene is drafted with `draft --allele`. And a pseudoautosomal variant is recorded once, on X, because that
+is the spelling every annotation source uses — pass `--keep-par-twin` to `enrich` if your reference is not
+analysis-set masked and you want the Y copy too. The rationale for each is in
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md); the still-open items in [ROADMAP.md](ROADMAP.md) are design
+questions rather than traps.

@@ -38,7 +38,7 @@ grepping.
 - **[RM21](ROADMAP_HISTORY.md#rm21--data-source-licensing-as-data)** — data-source licensing as data: `sources.csv` + the compile gate. · *also in* USE_CASES, COMPILER, ENRICHER, CHANGELOG, PROPOSAL_0_5
 - **[RM22](ROADMAP_HISTORY.md#rm22--pgx-tables-join-resolution)** — PGx tables join resolution (`enrich()` reads the PGx CSVs too). · *also in* USE_CASES, PROPOSAL_0_5
 
-*Found by dogfooding on 2026-08-03 and fixed in the same window — the batch of five that produced RM31–RM35. Each entry keeps the probe, the repairs that stayed rejected, and (for two of them) the part of the original argument that turned out to be wrong.*
+*Found by dogfooding on 2026-08-03 — the batch of five that produced RM31–RM35. Four were fixed in that same window and are listed here; **RM32** was held back as a question about identity and shipped in 0.5.1, below. Each entry keeps the probe, the repairs that stayed rejected, and (for three of the five) the part of the original argument that turned out to be wrong on probing.*
 
 - **[RM31](ROADMAP_HISTORY.md#rm31--one-indel-spelled-two-ways-defeats-allele-aware-resolution)** — ✅ **shipped in 0.5**: ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion, and string comparison called it `not_found`. Closed by a frame-free parsimony reduction with a tri-state verdict; one residual (the authored genotype keeps its source's frame) is stated there. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
 - **[RM33](ROADMAP_HISTORY.md#rm33--source-names-two-different-things-in-two-tables)** — ✅ **shipped in 0.5**: `source` named a *link* in `resolution.csv` and a *licensed source* in `sources.csv`, compared by string equality. Closed by `ResolutionRow.authority` + the link→authority map in the enricher; the two repairs the entry rejected stayed rejected. · *also in* CLAUDE.md, SCHEMAS, ENRICHER, CHANGELOG
@@ -50,6 +50,7 @@ grepping.
 - **[RM26](ROADMAP_HISTORY.md#rm26--all-three-drafting-providers)** — all three drafting providers: CPIC, ClinPGx, ClinVar. Partially dissolves RM4. · *also in* ENRICHER, CHANGELOG
 - **[RM29](ROADMAP_HISTORY.md#rm29--cofactor-columns)** — cofactor columns: `quality_from` / `min_quality` on `VariantRow`, `clinical_context` on `DiplotypeRow`. Dissolved the `draft --population` refusal. · *also in* CHANGELOG
 - **[RM30](ROADMAP_HISTORY.md#rm30--one-rule-for-a-haplotype-name-across-all-three-pgx-tables)** — one haplotype-name rule across all three PGx tables. · *also in* REFERENCE_EXAMPLES, CHANGELOG
+- **[RM32](ROADMAP_HISTORY.md#rm32--a-pseudoautosomal-locus-is-one-place-on-two-contigs)** — ✅ **shipped in 0.5.1**, the fifth of the 2026-08-03 dogfooding batch and the one held back as a question: a pseudoautosomal locus is one place on two contigs, modelled as two variants (10 SHOX findings → 20 rows). The probe the entry named **refuted** its own preferred direction — ClinGen mints two CA ids per PAR base, so there is no place identity to adopt — while the objection that had parked the enricher policy also failed: ClinVar and gnomAD place PAR annotation on X exclusively, so selecting X records the *sources'* convention, not the consumer's analysis set. Closed by `vrs.par_partner` + X-spelling selection (`--keep-par-twin` keeps both), per locus because XG and SPRY3 straddle a boundary. Carried a false-absence fix in `frequencies.csv` (`not_covered`) with it. · *also in* CLAUDE.md, SCHEMAS, ENRICHER, COMPILER, AUTHORING, AUTHORING_SYMPTOMS, REFERENCE_EXAMPLES, CHANGELOG
 
 ## ⏳ Deferred — additive, lands in a minor (0.6+)
 
@@ -63,11 +64,6 @@ grepping.
 - **[RM25](ROADMAP.md#rm25--clinvar-assertion-tier-as-artifact-data)** — ClinVar assertion tier persisted as artifact data. Not the same as escalating the check's severity.
 - **[RM27](ROADMAP.md#rm27--a-redistribution-compile-gate)** — a redistribution compile gate. A distribution right is not a *use*, so `declared_use` is the wrong axis; needs the third axis designed first. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
 - **[RM28](ROADMAP.md#rm28--meta-conclusions-and-injected-cofactors)** — meta-conclusions + injected cofactors. **Parked and now smaller**: RM29 moved two of three cofactor classes into columns, and the cis/trans motivation closed as a compiler check. What survives is cross-*subject* pairing, economy, and open-world negation. · *also in* COMPILER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5 § G3
-
-**Found by dogfooding, 2026-08-03** — one of that batch of five is still open; the other four shipped
-in the same window and are listed under Shipped above. Do not work around this one in data.
-
-- **[RM32](ROADMAP.md#rm32--a-pseudoautosomal-locus-is-one-place-on-two-contigs)** — **the one still open**, and a question rather than a defect: a pseudoautosomal locus is one place on two contigs, modelled as two variants (10 SHOX findings → 20 rows; GRCh38 analysis sets hard-mask the Y copy). Countability turned out to be already answered; what is missing is a *place identity*. Deferred to its own run, with the candidates and the objection deciding each written out. · *also in* CLAUDE.md, CHANGELOG
 
 ## — Not format scope
 

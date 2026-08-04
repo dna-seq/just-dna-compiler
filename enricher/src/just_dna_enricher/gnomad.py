@@ -43,6 +43,7 @@ from tenacity import (
 )
 
 from just_dna_format.vocab import normalize_population, population_sort_key
+from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 
 from just_dna_enricher.net import PacingGate, batched, dedupe
 
@@ -84,6 +85,35 @@ _MULTIPLE_VARIANTS_RE = re.compile(r"multiple variants found", re.IGNORECASE)
 _SEX_SUFFIX_RE = re.compile(r"(^|_)(XX|XY)$")
 # A gnomAD variantId is `chrom-pos-ref-alt`.
 _VARIANT_ID_RE = re.compile(r"^(?P<chrom>[^-]+)-(?P<pos>\d+)-(?P<ref>[A-Za-z]+)-(?P<alt>[A-Za-z]+)$")
+
+
+def covers_locus(
+    chrom: Optional[str], start: Optional[int], *, build: str = "GRCh38"
+) -> Optional[bool]:
+    """Is this locus inside gnomAD's callset at all? **Three-valued**, and `None` means "cannot say".
+
+    gnomAD excludes the **Y pseudoautosomal region**: like a standard GRCh38 analysis set it hard-masks
+    the Y PAR, because those bases are a duplicate of the X PAR and reads there cannot be placed. Probed
+    live 2026-08-04 — `region(chrom:"X", 640000-641500)` serves **880** variants and the identical
+    interval on Y serves **none**, while a single-variant lookup for `Y-640851-C-T` returns
+    `Variant not found` where `X-640851-C-T` resolves.
+
+    That matters because "the source has no such allele" and "the source does not look here" are
+    different answers, and only the first is a fact. Without this, the one-to-many expansion of a PAR
+    rsID handed the frequency pass a Y locus, gnomAD said nothing, and the pass recorded `not_found` —
+    an absence nobody established. Three-valued so an unknown build withholds rather than asserting
+    coverage it cannot vouch for (PAR intervals are per-assembly — RM15).
+
+    **This is a source convention and it lives here, in the network tier.** The PAR *geometry* is an
+    assembly constant and belongs to the format tier (`vrs.in_pseudoautosomal_region`); "gnomAD masks
+    it" is a fact about gnomAD, and Principle 2 makes the enricher the only tier permitted to hold one.
+    """
+    if build != "GRCh38":
+        return None
+    in_par = in_pseudoautosomal_region(chrom, start, build=build)
+    if normalize_chrom(chrom) == "Y" and in_par is True:
+        return False
+    return True
 
 
 class GnomadError(RuntimeError):

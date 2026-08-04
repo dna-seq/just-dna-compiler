@@ -20,6 +20,7 @@ from just_dna_format.base import derive_variant_key
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
+from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
 from just_dna_enricher.clinical import ClinSigConflict, verify_clin_sig
@@ -130,6 +131,70 @@ def _authored_alt(v: _Subject) -> Optional[str]:
     return None
 
 
+def _locus_alleles(locus: dict) -> tuple[str, frozenset[str]]:
+    """A locus's alleles in a comparable form: `(ref, {alts})`, order- and whitespace-insensitive."""
+    alts = str(locus.get("alts") or "")
+    return str(locus.get("ref") or ""), frozenset(a.strip() for a in alts.split(",") if a.strip())
+
+
+def select_par_representative(
+    loci: list[dict], *, build: str = "GRCh38"
+) -> tuple[list[dict], list[dict]]:
+    """Split a one-to-many expansion into `(kept, y_par_twins)`, preferring the X spelling.
+
+    A pseudoautosomal locus is **one place on two contigs** — PAR1 and PAR2 are the stretches X and Y
+    share, so dbSNP maps one rsID to both and the expansion emits two rows for one finding. Probed
+    2026-08-04, every annotation source places PAR annotation on **X** and only the coordinate resolver
+    disagrees: ClinVar has zero records in either PAR on Y (all 677 of its Y records lie outside the
+    PARs), gnomAD v4 excludes the Y PAR from its callset outright (X PAR1 640000-641500 serves 880
+    variants, the same interval on Y serves none), and the ClinGen Allele Registry does mint a Y allele
+    id but leaves the record a stub — a dbSNP cross-reference and nothing else, no ClinVar, no gnomAD,
+    and a title that degrades to the bare genomic HGVS. Standard GRCh38 analysis sets then hard-mask the
+    Y PAR, so the Y row cannot match a call either.
+
+    So keeping it records **the sources' own convention**, not the consumer's analysis set — which is
+    the distinction that makes this the enricher's decision to take (Principle 2: this is the only tier
+    permitted to hold a source convention). The caller keeps both with `keep_par_twin`.
+
+    This **selects; it does not repair** — the same contract as the allele-aware `hosting_verdict`
+    filter beside it. Every authored value is untouched, and the caller reports what was left out.
+
+    Two things it deliberately will not do:
+
+    * **Fuse on geometry alone.** A Y locus is dropped only when its `par_partner` X position is present
+      *and* carries the same `ref`/`alts`. Partner coordinates say "same place"; they do not say "same
+      variant", and a same-place different-allele pair is a real finding rather than a duplicate — so it
+      is kept, and both rows survive.
+    * **Judge a gene.** The verdict is per locus, because a real gene can straddle a PAR boundary: **XG**
+      runs out of PAR1 (X:2,751,798-2,816,500 crosses the boundary at 2,781,479) and **SPRY3** runs into
+      PAR2 (X:155,612,298-155,782,459 crosses 155,701,383). Any module- or gene-scoped policy would be
+      wrong for half of either one.
+    """
+    by_place: dict[tuple[str, int, str, frozenset[str]], dict] = {}
+    for locus in loci:
+        chrom, start = normalize_chrom(locus.get("chrom")), locus.get("start")
+        if chrom is None or start is None:
+            continue
+        ref, alts = _locus_alleles(locus)
+        by_place[(chrom, int(start), ref, alts)] = locus
+
+    kept: list[dict] = []
+    twins: list[dict] = []
+    for locus in loci:
+        chrom, start = normalize_chrom(locus.get("chrom")), locus.get("start")
+        partner = (
+            par_partner(chrom, int(start), build=build)
+            if chrom == "Y" and start is not None
+            else None
+        )
+        ref, alts = _locus_alleles(locus)
+        if partner is not None and (partner[0], partner[1], ref, alts) in by_place:
+            twins.append(locus)
+        else:
+            kept.append(locus)
+    return kept, twins
+
+
 class EnrichmentError(RuntimeError):
     """Raised in strict mode when the chain cannot fully resolve the module."""
 
@@ -149,6 +214,11 @@ class EnrichmentResult:
     # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
     # columns and reported; never substituted — see `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = field(default_factory=list)
+    # `(rsid, chrom, start)` of each Y pseudoautosomal locus left out in favour of its X spelling.
+    # Surfaced rather than only logged: the table is half the size an author might expect, and a
+    # selection nobody can see is indistinguishable from a silent repair. See
+    # `select_par_representative`. Empty with `keep_par_twin`, and on every non-PAR module.
+    par_twins_dropped: list[tuple[str, str, int]] = field(default_factory=list)
 
     @property
     def fully_resolved(self) -> bool:
@@ -171,6 +241,7 @@ def enrich(
     verify_ref: bool = True,
     verify_clinsig: bool = True,
     verify_rsids: bool = True,
+    keep_par_twin: bool = False,
     resolver: Optional[EnsemblResolver] = None,
     gnomad_client: Optional["GnomadClient"] = None,
 ) -> EnrichmentResult:
@@ -198,6 +269,14 @@ def enrich(
     offline-capable (the snapshot is local) and is the **one check whose severity does not follow the
     mode**: it warns in `strict` too, because failing a compile would make the format arbitrate a
     clinical disagreement. See `clinical.verify_clin_sig` for the full argument.
+
+    `keep_par_twin` keeps both spellings of a pseudoautosomal locus. By default only the X one is
+    recorded, because every annotation source uses X and a standard GRCh38 analysis set hard-masks the
+    Y PAR — see `select_par_representative` for the probe behind that. Set it for a consumer whose
+    reference is unmasked. The switch belongs here and could not live on the compiler: `resolution.csv`
+    is injected data that travels with the module, so the choice is *recorded* and
+    `compile → reverse → compile` stays a fixed point either way, whereas a compiler flag would not
+    survive `reverse_module` rebuilding the spec from parquet alone (Principle 7).
     """
     spec_dir = Path(spec_dir)
     variants: list[VariantRow] = []
@@ -351,6 +430,9 @@ def enrich(
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     out: list[ResolutionRow] = []
     unresolved: list[str] = []
+    # Collected across the loop and reported once. A per-row line here would be one line per variant —
+    # ten for the SHOX panel — which buries every other finding a run produces.
+    par_twins_dropped: list[tuple[str, str, int]] = []
     for v in subjects:
         key = v.variant_key
         if key in existing:
@@ -403,6 +485,13 @@ def enrich(
                         v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
                         subject, v.constraint,
                     )
+            if loci and not keep_par_twin:
+                # One place on two contigs: keep the X spelling every annotation source uses. Runs
+                # after the allele-aware filter above so it only ever sees loci this row can host.
+                loci, twins = select_par_representative(loci, build=genome_build)
+                par_twins_dropped.extend(
+                    (v.rsid, str(t.get("chrom")), int(t.get("start") or 0)) for t in twins
+                )
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")
                 for i, locus in enumerate(loci):
@@ -436,6 +525,20 @@ def enrich(
                 variant_key=key, rsid=v.rsid, chrom=v.chrom, start=v.start, ref=v.ref, alts=v.alts,
                 genome_build=genome_build, source="authored", status="resolved",
             ))
+
+    # One line for the whole run, grouped by reason and counted. These are not findings about the
+    # module — they are the resolver's second spelling of a place the module already names — so a line
+    # per variant would be pure volume.
+    if par_twins_dropped:
+        logger.info(
+            "Pseudoautosomal: kept the X spelling of %d locus/loci and left the Y twin out of "
+            "resolution.csv (%s). PAR1 and PAR2 are shared between X and Y, so dbSNP maps one rsID to "
+            "both, but ClinVar records no PAR variant on Y, gnomAD excludes the Y PAR from its callset, "
+            "and standard GRCh38 analysis sets hard-mask it — so the Y row could match nothing. Pass "
+            "--keep-par-twin to record both.",
+            len(par_twins_dropped),
+            ", ".join(f"{rsid} {chrom}:{start}" for rsid, chrom, start in par_twins_dropped),
+        )
 
     # Content-addressed allele identity, stamped after the chain has settled the coordinates (there is
     # nothing to mint from before that). Existing ids are never overwritten.
@@ -501,7 +604,7 @@ def enrich(
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
-        stale_rsids=stale_rsids,
+        stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
     )
 
     if mode == "strict" and ref_mismatches:

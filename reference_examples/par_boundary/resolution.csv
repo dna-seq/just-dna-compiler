@@ -1,0 +1,4 @@
+variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,authority,status,rsid_alternates,rsid_current,rsid_status,fetched_at
+rs12395656,rs12395656,X,2808207,T,C,GRCh38,0,ga4gh:VA.NycEAiE1xV6sVbLD2YnCMGYP7Y-6WsXP,2.0,,ensembl-rest,ensembl,resolved,,,live,
+rs184115031,rs184115031,X,155773979,A,G,GRCh38,0,ga4gh:VA.dbg6ArjPrshiEkQrZjTIoKLufrEgZdhf,2.0,,ensembl-rest,ensembl,resolved,,,live,
+rs202025841,rs202025841,X,2811333,C,T,GRCh38,0,ga4gh:VA.6ZpvDqee3uteqRIunzUI3oSfUy8RoK8f,2.0,,ensembl-rest,ensembl,resolved,,,live,

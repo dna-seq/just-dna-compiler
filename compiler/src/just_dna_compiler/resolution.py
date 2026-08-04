@@ -22,6 +22,7 @@ from just_dna_format.alleles import parsimony_reduce
 from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
+from just_dna_format.vrs import par_partner
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +139,7 @@ def resolve_from_table(
                 elif len(usable) == 1:
                     patched.append(v.model_copy(update=_coord_update(usable[0])))
                 else:
-                    warnings.append(
-                        f"{v.rsid} maps to {len(usable)} loci in the resolution table; expanded to "
-                        f"{len(usable)} rows (one per locus, each keyed by its coordinate — a consumer "
-                        f"can count them)."
-                    )
+                    warnings.append(_expansion_warning(v.rsid, usable, genome_build))
                     for locus in _sorted_loci(usable):
                         update = _coord_update(locus)
                         update["variant_key"] = derive_variant_key(
@@ -345,6 +342,59 @@ def _hostable_loci(
         if verdict is None:
             undecided.append(locus)
     return usable, rejected, undecided
+
+
+def _par_pairs(loci: list[ResolutionRow], genome_build: str) -> list[tuple[str, str]]:
+    """Which of these loci are the same pseudoautosomal place spelled on the other contig.
+
+    Returns `[(x_spelling, y_spelling)]` as `chrom:start` labels, in the loci's own order. Empty when
+    the expansion is a genuine multi-locus one — paralogs, patch scaffolds — which is what the
+    expansion was built for and what the generic message is right about.
+    """
+    places = {
+        (lo.chrom, lo.start, lo.ref or "", lo.alts or ""): lo
+        for lo in loci
+        if lo.chrom is not None and lo.start is not None
+    }
+    pairs: list[tuple[str, str]] = []
+    for lo in loci:
+        if lo.chrom != "X" or lo.start is None:
+            continue
+        partner = par_partner(lo.chrom, lo.start, build=genome_build)
+        if partner is not None and (partner[0], partner[1], lo.ref or "", lo.alts or "") in places:
+            pairs.append((f"{lo.chrom}:{lo.start}", f"{partner[0]}:{partner[1]}"))
+    return pairs
+
+
+def _expansion_warning(rsid: str, usable: list[ResolutionRow], genome_build: str) -> str:
+    """Describe a one-to-many expansion — and say which KIND of many it is.
+
+    A paralogous rsID and a pseudoautosomal one produce the same row count for opposite reasons: the
+    first is several distinct places, the second is **one place spelled on two contigs**. Reporting both
+    with "a consumer can count them" told a SHOX author to count ten findings as twenty. The compiler
+    can tell them apart offline — `chrom`, `start` and the PAR intervals are all it needs — so it says
+    which.
+
+    The compiler only *describes* this; it never drops the locus. Which loci reach the table is the
+    enricher's decision (`enrich.select_par_representative`, which keeps the X spelling by default),
+    because that choice has to be recorded in injected data to survive
+    `compile → reverse → compile` — a compiler-side prune would fail Principle 7.
+    """
+    pairs = _par_pairs(usable, genome_build)
+    if len(pairs) * 2 == len(usable):
+        spellings = "; ".join(f"{x} and {y}" for x, y in pairs)
+        return (
+            f"{rsid} is pseudoautosomal: it maps to {len(usable)} loci ({spellings}) that are "
+            f"{len(pairs)} place(s), because PAR1/PAR2 are shared between X and Y. Expanded to "
+            f"{len(usable)} rows, so count distinct findings by rsid rather than by row — and note "
+            f"that a standard GRCh38 analysis set hard-masks the Y PAR, so the Y row matches nothing "
+            f"there. Re-run the enricher without --keep-par-twin to record the X spelling alone."
+        )
+    return (
+        f"{rsid} maps to {len(usable)} loci in the resolution table; expanded to "
+        f"{len(usable)} rows (one per locus, each keyed by its coordinate — a consumer "
+        f"can count them)."
+    )
 
 
 def _sorted_loci(loci: list[ResolutionRow]) -> list[ResolutionRow]:

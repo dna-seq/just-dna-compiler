@@ -407,6 +407,7 @@ fails in `strict` — enumerated and enforced in `compiler/tests/test_resolution
 |---|---|---|---|
 | rsid only, 1:1 fill | ✅ | ✅ | stable |
 | rsid only, one-to-many (every locus can host the genotype) | ✅ | ✅ | stable |
+| rsid only, pseudoautosomal pair (X + Y, same place) | ✅ | ✅ | stable — the compiler names it as one place; the enricher decides whether both reach the table |
 | coordinate + alt, rsid resolved | ✅ | ✅ | stable |
 | coordinate only, rsid **and** alt resolved | ✅ | ✅ | stable |
 | pair (rsid + coordinate), table agrees | ✅ | ✅ | stable |

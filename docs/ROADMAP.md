@@ -23,8 +23,10 @@ files, so a **new optional table** never moves the digest of a module that does 
 any time), while a **new column on an existing parquet** moves every module's digest — major-only once
 0.5 ships. Anything digest-moving is therefore cheap now and expensive after the cut. Spent in this
 window so far: `ResolutionRow.authority` (provenance, so no signature moved), the continuous-bin
-semantics (`mt_heteroplasmy` re-authored), and indel reconciliation (`shox_par1` gained a resolved
-coordinate) — RM33, RM35 and RM31 respectively.
+semantics (`mt_heteroplasmy` re-authored), indel reconciliation (`shox_par1` gained a resolved
+coordinate), and pseudoautosomal locus selection (`shox_par1` halved, 20 rows to 10) — RM33, RM35, RM31
+and RM32 respectively. Only the last two moved an `artifact.digest`; neither moved a
+`content_signature`, which is pre-resolution by definition.
 
 Each entry below is `## RMn — name`, a metadata line (**severity**, **status**, **owner**, **motivating
 case**), then the detail. Severity is *how much it costs to do*, not how urgent.
@@ -246,57 +248,32 @@ and supplements do not exist yet — because fixing a shape against four table k
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
 
 
-The items below were found by **dogfooding** on 2026-08-03 rather than derived from a use case, so each
-carries the probe that produced it and a refutation of every obvious repair. **Do not work around any
-of them in module data** — the workaround would be the thing that hides the defect. Four of the five
-have since shipped (RM31, RM33, RM34, RM35); their rationale is in
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md), and what is left below is the one that is a *question* rather
-than a defect.
+The five items found by **dogfooding** on 2026-08-03 have **all shipped** — RM31, RM33, RM34 and RM35 in
+that window, and RM32 in its own run — so none of them lives here any more; their rationale, including
+the probe each rested on, is in [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md). The pattern worth carrying
+forward is that in three of the five, part of what made the item look hard turned out to be **wrong on
+probing** rather than merely cautious, so an entry's own reasoning is a starting point and not a finding.
 
-## RM32 — A pseudoautosomal locus is one place on two contigs
+## Found by dogfooding, 2026-08-04 (unnumbered — small, and about diagnosis rather than schema)
 
-**Severity** large (it is a question, not a patch) · **Status** open, deferred to its own run — the
-approaches below are argued out so that run can start from them · **Owner** format (identity) ·
-**Motivating case** any PAR gene: SHOX, CSF2RA, ASMT, CD99
+Both fell out of building `reference_examples/par_boundary/` and neither is about PAR. Recorded rather
+than fixed in that run, to keep the RM32 change reviewable.
 
-**A pseudoautosomal locus is one place and two contigs; the format models it as two variants.** Nine of
-the ten SHOX variants in `reference_examples/shox_par1/` map to **both** X and Y at the same base (PAR1
-has identical coordinates on the two contigs in GRCh38), so the one-to-many expansion emits two rows per
-variant: **20 rows for 10 findings** since RM31 landed the tenth, all in `weights.parquet` and in
-`artifact.digest`. And standard GRCh38 analysis sets **hard-mask the Y PAR**, so in a normal pipeline the
-nine Y rows can never match anything.
-
-**Narrow the question first, because half of what this entry used to claim is already answered.**
-"A consumer counting the module's findings gets 20" is not a gap: `weights.parquet` keeps `rsid` on both
-expanded rows, so distinct findings are countable today (`n_unique` over `rsid` gives 10, and that is how
-the example's README states it). What is genuinely missing is a **place identity** — a name for the locus
-that is not a contig coordinate — not countability. The question to answer is therefore: *does a module
-say something about a place in the genome or about a contig coordinate, and if the former, what identifies
-a place present on two sequences?*
-
-The candidates, each with the objection that decides it:
-
-- **Collapse the pair to one row.** Contradicts the identity model 0.5 just adopted: a VRS allele id keys
-  on the **refget accession**, and X and Y are different sequences, so `ga4gh:VA.…` says these are two
-  alleles. It is also wrong for the case the expansion was built for — paralogs are genuinely distinct
-  loci, and the same machinery serves both.
-- **A `--par` flag on the compiler** (emit X only, say). Charter-illegal for the same reason
-  `--non-commercial` was: a flag cannot be recorded in the artifact, `reverse_module` rebuilds the spec
-  from parquet alone, so `compile → reverse → compile` would diverge (P7).
-- **A PAR policy in the enricher** (which loci reach `resolution.csv`). *Legal* — the enricher's output is
-  injected data and round-trips — but it encodes the **consumer's** analysis set into the module, and
-  whether the Y PAR is hard-masked is a property of the consumer's reference rather than of the
-  annotation. That is the data-agnostic line, so it is not the default; it could be an explicit,
-  recorded author choice, and that is a decision this item has to make rather than assume.
-- **A place identity beside the allele identity.** The open direction, and where the run should start.
-  `ResolutionRow.caid` already exists and gnomAD serves a CAID, but gnomAD hard-masks the Y PAR — so the
-  opening probe is whether the **ClinGen Allele Registry** mints *one* CA id across the X and Y spellings
-  of a PAR variant. If it does, the place identity is already in the schema and the question becomes what
-  a consumer should key on; if it does not, the format would have to name the concept itself.
-
-Two interactions to carry into that run: the non-diploid guardrail already treats a PAR locus as
-legitimately diploid (`_check_contig_ploidy` + `vrs.in_pseudoautosomal_region`, three-valued), so nothing
-chosen here may fight it; and PAR intervals are per-assembly, so this inherits RM15's build axis.
+- **`draft-panel --clin-sig uncertain_significance` drops every row and reports only
+  `state: Field required`, once per row.** Twenty-six identical lines for a two-gene panel, with no count,
+  no rsIDs and no explanation. The underlying *decision* is right and documented:
+  `clinvar_draft._STATE_BY_CLIN_SIG` maps only the four decided calls, because folding
+  `uncertain_significance` into a `state` would assert a direction ClinVar declined to state, and `state`
+  is required. So this is not a schema gap — it is a **raw pydantic error reaching the author as the whole
+  diagnosis**, which is both the misdiagnosis class and the un-aggregated-warning class, the second for
+  the fifth time in this provider family. The fix is a message that names the reason once with a count and
+  the affected rsIDs, and says what the author is expected to do (fill `state` by hand, or draft only
+  decided calls). Worth doing **with** the `state` question in view: `uncertain` has no direction, which
+  is arguably what `direction`/`clin_sig` being the orthogonal axes is for, and a 1.0 that demotes `state`
+  (already queued below) would dissolve the whole branch.
+- **`draft-panel`'s run summary adds rows across tables.** It prints `added 7 row(s)` where the per-file
+  lines correctly say `variants.csv: 3 added` and `studies.csv: 4 added`. Harmless, and it matches neither
+  file.
 
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full

@@ -103,6 +103,12 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         True, "--verify-rsids/--no-verify-rsids",
         help="Check each authored rsID against dbSNP for merges/withdrawals (online only).",
     ),
+    keep_par_twin: bool = typer.Option(
+        False, "--keep-par-twin",
+        help="Record both contigs of a pseudoautosomal locus. Default keeps only the X spelling, "
+             "which is the one every annotation source uses and the only one a hard-masked GRCh38 "
+             "analysis set can match.",
+    ),
 ) -> None:
     """Resolve a spec's variants into resolution.csv beside the spec. Exit 1 in strict mode if unresolved."""
     try:
@@ -110,7 +116,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             spec_dir, mode=_mode(strict), offline=offline,
             ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, use_clinvar=use_clinvar,
             use_gnomad=use_gnomad, mint_vrs=mint_vrs, verify_ref=verify_ref,
-            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
+            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids, keep_par_twin=keep_par_twin,
         )
     except EnrichmentError as exc:
         typer.secho(f"ENRICH FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -119,6 +125,16 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     typer.echo(f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}")
     if result.unresolved:
         typer.secho(f"  unresolved: {result.unresolved}", fg=typer.colors.YELLOW, err=True)
+    if result.par_twins_dropped:
+        # Cyan, not yellow: this is not a finding about the module. It is the table being half the size
+        # an author might expect, said out loud so the selection is never silent.
+        typer.secho(
+            f"  pseudoautosomal: kept the X spelling of {len(result.par_twins_dropped)} locus/loci; "
+            f"left out "
+            + ", ".join(f"{r} {c}:{p}" for r, c, p in result.par_twins_dropped)
+            + " (--keep-par-twin records both)",
+            fg=typer.colors.CYAN,
+        )
     for mismatch in result.ref_mismatches:
         # Red rather than yellow even in best_effort: this is authored data contradicting the genome,
         # which is a different (and worse) thing than a variant the chain could not find.
