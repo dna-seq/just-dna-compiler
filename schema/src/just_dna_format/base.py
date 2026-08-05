@@ -27,7 +27,14 @@ imports it back, so it introduces no cycle.
 
 from typing import Any, ClassVar, Optional, get_args
 
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    PrivateAttr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from just_dna_format.vocab import (
     ALLELE_PATTERN,
@@ -230,10 +237,48 @@ def _mint_vrs_key(
         return None
 
 
+#: The assembly a row is assumed to be on when nobody has said otherwise. Matches
+#: `ModuleSpecConfig.genome_build`'s default, deliberately — a row loaded outside a module gets the
+#: same answer compiling that directory would give, which is a derivation rather than a guess.
+DEFAULT_GENOME_BUILD: str = "GRCh38"
+
+
 class AuthoredModel(BaseModel):
     """Base for authored-DSL rows: reserved-namespace guard + shared-vocabulary field validators."""
 
     model_config = ConfigDict(extra="forbid")
+
+    #: The module's declared assembly, **injected by the loader, never authored**.
+    #:
+    #: A coordinate is not absolute, so any row that derives an identity from one needs to know which
+    #: assembly it is in — and a pydantic model is constructed from a CSV row dict, with no
+    #: `module_spec.yaml` in scope. The 2026-08-06 sweep found seven paths that answered a GRCh38
+    #: question in a GRCh37 module's name because of exactly that gap.
+    #:
+    #: **A private attribute, not a column, and the distinction is the whole design.** The build is a
+    #: *module-wide* property, so stating it per row (or per CSV, as a service row) would let two files
+    #: disagree about one fact, overload a data table with a non-data row (Principle 5), and burden the
+    #: rare human author with bookkeeping — while still not reaching the model, since a loader that
+    #: parsed such a row would already know the build from the yaml it just read. So the build stays
+    #: declared exactly once, in `module_spec.yaml`, and the loader *tells* each row it builds. Being
+    #: private, it is absent from `model_fields` and from `model_dump()`, so it reaches no CSV, no
+    #: parquet, and does not move `artifact.digest`; `extra="forbid"` still rejects it as a column.
+    _genome_build: str = PrivateAttr(default=DEFAULT_GENOME_BUILD)
+
+    @property
+    def genome_build(self) -> str:
+        """The assembly this row was loaded as being on. Read-only; see `_genome_build`."""
+        return self._genome_build
+
+    def with_genome_build(self, genome_build: str) -> "AuthoredModel":
+        """Tell this row which assembly it is on. Returns `self`, so a loader can map over rows.
+
+        Deliberately a method rather than a settable property: injecting the build is something a
+        *loader* does once, at a known point, and making it look like an ordinary attribute assignment
+        would invite it being done anywhere. `just_dna_compiler.compiler._load_csv_rows` is the caller.
+        """
+        self._genome_build = genome_build
+        return self
 
     #: Alternative sets of columns, any ONE of which satisfies the row's identity requirement.
     #: Empty when requiredness is fully expressed by the fields themselves.

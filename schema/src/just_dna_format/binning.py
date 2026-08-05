@@ -348,19 +348,19 @@ class HeteroplasmyRow(MeasureBinRow):
         stamped field, like `PharmVariantRow.variant_key`: a heteroplasmy row is never resolved or
         expanded, so there is nothing to freeze.
 
-        **GRCh38-relative, and the one identity helper that cannot yet be told otherwise (RM36).** It
-        passes `alts`, so it can mint a `ga4gh:VA.…` — and a property has no module in scope, so unlike
-        `VariantRow.variant_key` (a stored field the compiler re-stamps via `_restamp_for_build`) there
-        is nothing for the compiler to correct. On a `genome_build: GRCh37` module one locus therefore
-        gets two identities: `6:26093141:G:A` from `variants.csv` and a GRCh38 VA from
-        `heteroplasmy.csv`. The blast radius is bounded — this is **not** a model field, so it never
-        reaches parquet, and every row in one table derives its key the same way, so bin grouping stays
-        internally consistent — but a message can name a VA nothing else in the module uses.
-        `PharmVariantRow.variant_key` and the `HaplotypeRow` key are unaffected: they omit `alts`, so
-        they are build-independent by construction."""
+        **Keyed against the build the loader injected** (`AuthoredModel._genome_build`, RM36). This
+        passes `alts`, so it can mint a `ga4gh:VA.…`, and a VA names its reference sequence by refget
+        accession — so it must know the assembly or it will claim the wrong one. A property cannot be
+        re-stamped the way `VariantRow.variant_key` is (that is a stored *field*; this is recomputed on
+        every access), so the build is told to the row at load instead of corrected after it. Before
+        that, one locus on a `genome_build: GRCh37` module got two identities: `6:26093141:G:A` from
+        `variants.csv` and a GRCh38 VA from here. `PharmVariantRow.variant_key` and the `HaplotypeRow`
+        key never had the problem — they omit `alts`, so they are build-independent by construction."""
         if self.rsid is None and self.start is None:
             return None
-        return derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)
+        return derive_variant_key(
+            self.rsid, self.chrom, self.start, self.ref, self.alts, build=self._genome_build
+        )
 
     @field_validator("reference_sequence")
     @classmethod

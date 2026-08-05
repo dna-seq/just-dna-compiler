@@ -248,7 +248,13 @@ class VariantRow(AuthoredModel):
         description="Chromosome without 'chr' prefix",
     )
     start: Optional[int] = Field(
-        default=None, ge=0, description="0-based genomic position (GRCh38)"
+        default=None,
+        ge=0,
+        description=(
+            "1-based genomic position (VCF POS convention), on the module's `genome_build` — the same "
+            "convention as `ResolutionRow.start`, Ensembl, ClinVar and gnomAD. Do NOT subtract one: "
+            "every check and every minted identity reads this column as VCF POS"
+        ),
     )
     ref: Optional[str] = Field(default=None, description="Reference allele")
     alts: Optional[str] = Field(default=None, description="Alt allele(s), comma-separated")
@@ -621,7 +627,9 @@ class StudyRow(AuthoredModel):
     # marker must describe what actually rejects. Same call as the PGx tables — see `pgx.py`.
     chrom: Optional[str] = Field(default=None, description="Chromosome (for position-only variants)")
     start: Optional[int] = Field(
-        default=None, ge=0, description="0-based position (position-only variants)"
+        default=None,
+        ge=0,
+        description="1-based position, VCF POS convention (position-only variants) — do not subtract one",
     )
     ref: Optional[str] = Field(default=None, description="Reference allele (position-only variants)")
     #: rsid, or a bare chrom (no `start` — see `_validate_study_identification`).

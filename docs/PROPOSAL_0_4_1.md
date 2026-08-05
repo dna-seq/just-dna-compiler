@@ -136,10 +136,14 @@ A new `integrity.content_signature(tables)` (the schema package — the lightest
 can compute it) hashes the **raw authored data rows**, and the compiler stamps it into
 `manifest.content_signature` (optional, out of `artifact.digest`). It is:
 
-- **Ensembl/build-independent** — computed from the rows *before* resolution, so recompiling against a
+- **Reference-independent** — computed from the rows *before* resolution, so recompiling against a
   different/complete reference does not change it. (This is also why it is read from disk at compile
-  time, not from the already-resolved in-memory rows.)
-- **Name/metadata-independent** — only the data tables feed it; `module_spec.yaml` is excluded.
+  time, not from the already-resolved in-memory rows.) *Corrected in 0.5: this bullet said
+  "Ensembl/build-independent", conflating the reference used to resolve with the module's **declared
+  assembly** — see `integrity.content_signature` and RM36.*
+- **Name/metadata-independent** — the identity/display half of `module_spec.yaml` is excluded.
+  `genome_build` is the exception and feeds the hash (when non-default), because identical coordinate
+  rows on two assemblies are two different loci, not one module described twice.
 - **Normalized** — each row is `model_dump(mode="json", exclude_none=True)`, so CSV reformatting and
   additive schema growth (a new optional column left unset) do not change it.
 - **Deterministically sorted, order-independent** — rows are sorted by canonical JSON and files by

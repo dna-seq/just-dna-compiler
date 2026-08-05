@@ -511,7 +511,7 @@ the other five are the one-per-injected-table family below.)
 | Hash (`integrity.py`) | Over | Order | Reference-dependent | Purpose |
 |---|---|---|---|---|
 | `artifact_digest(files)` | compiled parquet file set (Merkle root of `{name,sha256,size}`) | row order preserved in each file | yes (GRCh38 coords) | the version's immutable content identity |
-| `content_signature(tables)` | raw authored rows, `model_dump(mode="json", exclude_none=True)` | order-independent (sorted) | no (pre-resolution) | content-dedup key surviving recompile/metadata-strip |
+| `content_signature(tables, genome_build)` | raw authored rows, `model_dump(mode="json", exclude_none=True)`, plus `genome_build` when non-default | order-independent (sorted) | no (pre-resolution) | content-dedup key surviving recompile/metadata-strip. **Reference-independent, not build-independent** (RM36): identical rows on two assemblies are two different loci, so the declared build is content. Omitting the default keeps every GRCh38 module's signature unchanged. |
 | `resolution_signature(rows)` | resolution **facts** only (`RESOLUTION_FACT_FIELDS`) | order-independent | n/a | pins the resolved facts; producer-independent |
 | `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
 | `gene_metrics_signature(rows)` | gene-constraint **facts** (`GENE_METRICS_FACT_FIELDS`) | order-independent | n/a | pins the gene-constraint table |

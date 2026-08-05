@@ -20,6 +20,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from pydantic import BaseModel
 
+from just_dna_format.base import DEFAULT_GENOME_BUILD
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.literature import LITERATURE_FACT_FIELDS
@@ -108,7 +109,10 @@ def build_artifact(output_dir: Path, filenames: list[str]) -> Artifact:
     return Artifact(digest=artifact_digest(files), files=files)
 
 
-def content_signature(tables: Mapping[str, Sequence[BaseModel]]) -> str:
+def content_signature(
+    tables: Mapping[str, Sequence[BaseModel]],
+    genome_build: str = DEFAULT_GENOME_BUILD,
+) -> str:
     """Stable content identity over the RAW authored data rows — the canonical, owned algorithm.
 
     Distinct from `artifact_digest`: that hashes the *compiled parquet* bytes, which are
@@ -116,11 +120,25 @@ def content_signature(tables: Mapping[str, Sequence[BaseModel]]) -> str:
     (and move if the module is recompiled elsewhere). `content_signature` instead hashes the authored
     *data* rows as parsed — so it is:
 
-    - **Ensembl/build-independent** — computed from the rows *before* resolution (an rsid-only row is
+    - **Reference-independent** — computed from the rows *before* resolution (an rsid-only row is
       hashed as authored, not as resolved coordinates), so recompiling against a different/complete
-      reference does not change it.
-    - **Name/metadata-independent** — only the data tables feed it; `module_spec.yaml` (name, version,
-      namespace, display) is excluded, so a metadata edit or a registry strip does not change it.
+      reference does not change it. This bullet used to say "build-independent", which was true of the
+      *reference used to resolve* and false of the **declared assembly**, and the two are not the same
+      thing: for a coordinate-authored module `genome_build` is not a resolution artifact, it is the
+      frame the authored numbers are in. HFE C282Y is 6:26,093,141 on GRCh37 and 6:26,092,913 on
+      GRCh38, so two modules with byte-identical CSVs and different declared builds describe loci 228 bp
+      apart — and hashed equal, which for a *content-dedup* key is the wrong answer. The realistic way
+      to hit it is not contrived: "lift over" a GRCh37 panel by editing the yaml and not the
+      coordinates, and a registry keyed on this would call the result the same content.
+    - **Build-aware, by omitting the default** — `genome_build` now feeds the hash, but only when it is
+      not `DEFAULT_GENOME_BUILD`. That is the same normalization the bullet below already applies to
+      an unset optional column, not an exception to it, and it is what keeps the fix targeted: every
+      GRCh38 module — which is every module published to date — keeps its existing signature byte for
+      byte, and only the modules that were being *misidentified* change.
+    - **Name/metadata-independent** — the *identity and display* half of `module_spec.yaml` (name,
+      version, namespace, title, colour) is excluded, so a metadata edit or a registry strip does not
+      change it. `genome_build` is the one key from that file that does feed the hash, because it is
+      not metadata about the module: it is part of what the rows *mean*.
     - **Normalized** — each row is `model_dump(mode="json", exclude_none=True)`, so CSV reformatting
       (whitespace, quoting, column reorder, cell canonicalization like `1.00`→`1.0`) and additive
       schema growth (a new optional column left unset) do not change it.
@@ -134,7 +152,7 @@ def content_signature(tables: Mapping[str, Sequence[BaseModel]]) -> str:
     survives import/recompile and metadata-strip. It is the reference algorithm a marketplace's
     `find_versions_by_content` should adopt (see docs/PROPOSAL_0_4_1.md).
     """
-    listing = [
+    listing: list[dict[str, object]] = [
         {
             "file": filename,
             "rows": sorted(
@@ -148,7 +166,12 @@ def content_signature(tables: Mapping[str, Sequence[BaseModel]]) -> str:
         }
         for filename, rows in tables.items()
     ]
-    listing.sort(key=lambda part: part["file"])
+    listing.sort(key=lambda part: str(part["file"]))
+    if genome_build != DEFAULT_GENOME_BUILD:
+        # Appended, and only when non-default, so every GRCh38 module keeps the signature it already
+        # had — see the `genome_build` bullet above for why this is the existing omit-the-default
+        # normalization rather than an exception to it.
+        listing.append({"genome_build": genome_build})
     canonical = json.dumps(listing, sort_keys=True, separators=(",", ":"))
     return sha256_bytes(canonical.encode("utf-8"))
 

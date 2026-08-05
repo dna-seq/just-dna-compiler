@@ -26,9 +26,8 @@ refuses rather than answers.
 
 ## What it broke
 
-Seven defects, all in the direction of *silently relabelling the assembly*. The first four
-were found by building this module; the last three by then asking whether the list was
-complete — see *The sweep* below.
+Eight defects, all in the direction of *silently relabelling the assembly*. The first four were found by building this
+module; the rest by then asking whether the list was complete — see *The sweep* below.
 
 **1 — `reverse_module` hardcoded the build, so the round trip relocated the identity.**
 `genome_build` reaches the artifact through `manifest.json` and **no parquet column**, and reverse wrote
@@ -72,7 +71,7 @@ key. The same row also reached `derive_variant_key` without a `build`, minting a
 coordinate — the third place producing that exact false identity, which is why the build gnomAD serves is
 now a named constant (`gnomad.FREQUENCY_GENOME_BUILD`) rather than an assumption at each call site.
 
-## The sweep — defects 5 to 7, and why they were only found by asking
+## The sweep — defects 5 to 8, and why they were only found by asking
 
 Four instances of one mistake is a pattern, not a coincidence, so the next question was whether the list
 was complete. It was not, and the method that answered it is worth keeping: **`derive_variant_key` mints
@@ -95,12 +94,31 @@ resolution table that could not join to the module it was made for.
 
 **7 — `_subject_of_variant`'s fallback**, threaded rather than left on the default.
 
+**RM36 — the one the sweep filed rather than fixed, then closed on the same day.**
+`HeteroplasmyRow.variant_key` is a *property*: it mints a VA and has no module in scope, and unlike
+`VariantRow.variant_key` there is no stored field for the compiler to re-stamp afterwards. So on a GRCh37
+module one locus had two identities — a coordinate key from `variants.csv`, a GRCh38 VA from
+`heteroplasmy.csv`. The repair is **injection**: `AuthoredModel._genome_build` is a private attribute the
+loader sets on every row it builds, so the build stays declared once (the yaml) and reaches every row
+without becoming a column. Stating it *per row* is overkill for a module-wide property, and stating it
+*per CSV* as a "service row" is worse — two files could disagree about one fact, a data table would carry
+a non-data row, a copied row would drop it, and it would still not reach the model, since a loader
+parsing it already knows the build from the yaml it just read.
+
+Closing RM36 also corrected a claim: `content_signature` documented itself as **"build-independent"**,
+which is true of the *reference used to resolve* and false of the **declared assembly**. Byte-identical
+CSVs under two builds describe loci 228 bp apart and hashed equal — so a registry deduping on content
+would call a GRCh37 panel and a GRCh38 panel the same module. That is reachable by "lifting over" a panel
+through the yaml without touching the coordinates. `genome_build` now feeds the hash **only when it is
+not the default**, the same omit-the-default rule already applied to unset optional columns, so every
+GRCh38 module keeps its signature byte for byte and only the misidentified ones move. This module's
+`content_signature` changed; its `artifact.digest` did not.
+
 `compiler/tests/test_build_call_sites.py` now walks the AST of all three packages and fails on any call
-that supplies an allele without supplying a build. Two exemptions, each stating its reason and each
-checked to still exist: `VariantRow._freeze_identity` (a validator with no module in scope — but it
-writes a *stored field*, which is exactly what `_restamp_for_build` corrects afterwards) and
-`HeteroplasmyRow.variant_key`, which has no stored field to correct and is **RM36**. The check found
-defects 6 and 7 on its first run.
+that supplies an allele without supplying a build. One exemption, stating its reason and checked to
+still exist: `VariantRow._freeze_identity`, a validator with no module in scope — but it writes a
+*stored field*, which is exactly what `_restamp_for_build` corrects afterwards. The check found defects
+6 and 7 on its first run, and `HeteroplasmyRow.variant_key` lost its exemption when RM36 closed.
 
 ## Reproducing
 
@@ -121,7 +139,8 @@ Two warnings are expected and correct, and neither is a defect in the module:
   coordinates are authored), and the compiler says so rather than resolving cross-build.
 
 `artifact.digest` is `sha256:020304fa…`; `compile → reverse → compile` is a fixed point on
-`artifact.digest`, `content_signature` **and** `resolution_signature`.
+`artifact.digest`, `content_signature` **and** `resolution_signature`. (This module's
+`content_signature` is *not* the one a pre-RM36 build produced — see below; its `artifact.digest` is.)
 
 ## What this example is *not*
 

@@ -101,6 +101,36 @@ to still exist. It is a static check on purpose: the behavioural tests cover the
 what this catches is the *next* one somebody adds. It found the last two of the three above on its first
 run.
 
+**RM36, filed and then closed: the build is injected at load, not authored.** The sweep's one
+leftover was `HeteroplasmyRow.variant_key`, a *property* that mints a VA and has no module in scope —
+so unlike `VariantRow.variant_key` there is no stored field for `_restamp_for_build` to correct
+afterwards. One locus on a GRCh37 module therefore carried two identities, a coordinate key from
+`variants.csv` and a GRCh38 VA from `heteroplasmy.csv`.
+
+Three repairs were considered and all three answer the wrong question — they ask *where should the build
+be stated*, when it is already stated correctly, once, in `module_spec.yaml`. Per-row is overkill for a
+module-wide property; **per-CSV (a "service row") is worse**, because two files could then disagree about
+one fact, a data table would carry a non-data row (P5), an author copying rows between files would drop
+it silently, and it would *still* not reach the model — a loader parsing such a row already knows the
+build from the yaml it just read. So the row is **told**, not asked to **hold**:
+`AuthoredModel._genome_build` is a `PrivateAttr` that `_load_csv_rows` sets on every row it builds.
+Private, so it is absent from `model_fields` and `model_dump()` — not a column, no CSV, no parquet, no
+digest move — and `extra="forbid"` still rejects an author who tries to write one. `PrivateAttr` behind
+a read-only property was already the house idiom (`ModuleInfo._version_coerced_from`), so this adds no
+new mechanism.
+
+**`content_signature` was not "build-independent", and now says so.** The docstring's claim was true of
+the *reference used to resolve* and false of the **declared assembly**, and conflating them meant the
+content-dedup key hashed two modules describing loci 228 bp apart as identical content — reachable by
+"lifting over" a GRCh37 panel through the yaml without touching the coordinates, at which point a
+registry calls the result the same module. `genome_build` now feeds the hash **only when it is not the
+default**, which is the same omit-the-default normalization already applied to an unset optional column
+rather than an exception to it. That keeps it targeted: every GRCh38 module — every module published to
+date — keeps its signature byte for byte, so `find_versions_by_content` still links a 0.4 module to its
+own 0.5 recompile, and only the modules that were being misidentified move. Verified across all eleven
+reference examples: ten unchanged on all three signatures, `grch37_build`'s `content_signature` changed
+and its `artifact.digest` did not.
+
 **`validate` reported `valid` for modules `compile` then refused.** Both loops in `validate_spec` iterate
 `_TABLE_KINDS`, and `resolution.csv` plus the four fact sidecars are `_FACT_TABLES` — a tuple it never
 touched, though `compile_module` refuses on a bad row in any of them. AUTHORING.md § 6 puts `validate`

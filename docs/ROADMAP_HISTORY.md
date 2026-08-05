@@ -406,6 +406,46 @@ inequalities).
   chromosome" lines in one CYP2D6 run, each one line per row. Both collapsed to one line per reason with
   a count and examples — the third and fourth time this file has needed that.
 
+## RM36 — A model property cannot know its module's build
+
+**Severity** — · **Status** ✅ shipped in 0.5 (filed and closed on 2026-08-06, in that order) ·
+**Owner** format (schema) + compiler · **Motivating case** a GRCh37 module carrying `heteroplasmy.csv`
+
+**The finding.** `HeteroplasmyRow.variant_key` is a *property* that passes `alts` to
+`derive_variant_key`, so it can mint a `ga4gh:VA.…` — and a property has no module in scope, so it
+always took the GRCh38 default. One locus on a `genome_build: GRCh37` module therefore carried two
+identities: `6:26093141:G:A` from `variants.csv` (a stored field the compiler re-stamps) and a GRCh38 VA
+from `heteroplasmy.csv`. It was the last of seven instances the build sweep found, and the only one
+filed rather than fixed on the spot, because the three obvious repairs were each a design decision.
+
+**The entry's own three candidates were all rejected, and the reason is the same one each time: they
+answer "where should the build be stated?" when the build was already stated correctly.** It lives in
+`module_spec.yaml`, once, and that is right — it is a module-wide property, so per-row is overkill and
+**per-CSV (a "service row") is worse**: two files could then disagree about one fact, a data table would
+carry a non-data row (Principle 5), an author copying rows between files would silently drop it, and it
+would *still* not reach the model — a loader parsing such a row already knows the build from the yaml it
+just read. Stamping it like `VariantRow` fails differently: there is no stored field here to correct
+after load, which is precisely what distinguishes a property from `variant_key`.
+
+**Closed by injection instead: the row is *told*, it does not *hold*.** `AuthoredModel._genome_build` is
+a pydantic `PrivateAttr` that `_load_csv_rows` sets on every row it builds, from the build the caller
+read out of the yaml. Being private it is absent from `model_fields` and `model_dump()`, so it is not a
+column, reaches no CSV and no parquet, moves no `artifact.digest`, and `extra="forbid"` still rejects it
+if an author tries to write one. The declaration stays in exactly one place and reaches every row that
+needs it. `PrivateAttr` + a read-only property was already the house idiom
+(`ModuleInfo._version_coerced_from`), so this introduced no new mechanism.
+
+**And it exposed a second thing, which is why the entry is longer than the fix.** `content_signature`
+documented itself as **"build-independent"**. That was true of the *reference used to resolve* and false
+of the **declared assembly**, and conflating the two meant the content-dedup key hashed two modules
+describing loci 228 bp apart as identical content. The realistic instantiation is not contrived: "lift
+over" a GRCh37 panel by editing the yaml and not the coordinates, and a registry keyed on this calls the
+result the same module. `genome_build` now feeds the hash — **but only when it is not the default**,
+which is the same omit-the-default normalization the algorithm already applies to an unset optional
+column, not an exception to it. That keeps the fix targeted: every GRCh38 module, which is every module
+published to date, keeps its signature byte for byte, so `find_versions_by_content` still links a 0.4
+module to its own 0.5 recompile; only the modules that were being *misidentified* move.
+
 ## RM35 — A continuous binning table cannot be tiled without a finding
 
 **Severity** — · **Status** ✅ shipped in 0.5 (proved by construction 2026-08-03, fixed in the same

@@ -517,7 +517,26 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   grep for the caller**; **any code calling `derive_variant_key`/`derive_vrs_allele_id` on a row must
   pass that row's `build`**, since the default silently mints GRCh38; and **`reference_examples/grch37_build/`
   must stay** or the corpus goes uniform again — `test_reference_examples_roundtrip.py` asserts more than
-  one build is represented for exactly that reason.
+  one build is represented for exactly that reason. `test_build_call_sites.py` walks the AST and fails on
+  a call that hands over an allele without a build, so a *sixth* site cannot arrive silently.
+- **The build is INJECTED into a row, never authored on one — `AuthoredModel._genome_build` (RM36).** A
+  model built from a CSV dict has no `module_spec.yaml` in scope, and a *property* (unlike
+  `VariantRow.variant_key`) has no stored field for `_restamp_for_build` to correct afterwards — which is
+  why `HeteroplasmyRow.variant_key` minted a GRCh38 VA on a GRCh37 module. `_load_csv_rows` tells every
+  row it builds; the attribute is **private**, so it is not a column, reaches no CSV or parquet, moves no
+  digest, and `extra="forbid"` still rejects an author who writes one. Two shapes that were **rejected**,
+  so don't re-propose them: per-row declaration (overkill — the build is module-wide) and **per-CSV, as a
+  "service row"** — two files could disagree about one fact, a data table would carry a non-data row (P5),
+  a copied row would drop it, and it would still not reach the model, since a loader parsing it already
+  knows the build from the yaml. The rule generalizes: **anything module-wide that a row needs is told to
+  the row at load, not stated on the row.**
+- **`content_signature` is reference-independent, NOT build-independent — the docstring said the wrong
+  one.** True of the reference used to *resolve*; false of the *declared assembly*, which for a
+  coordinate-authored module is the frame the numbers are in. Two modules with byte-identical CSVs and
+  different builds describe loci 228 bp apart, and the content-dedup key hashed them equal — reachable by
+  "lifting over" a panel through the yaml alone. `genome_build` now feeds the hash **only when
+  non-default**, which is the existing omit-the-default normalization, not an exception: every GRCh38
+  module keeps its signature byte for byte, so a 0.4 module still links to its own 0.5 recompile.
 - **`validate` must refuse everything `compile` refuses — it exempted four of the twelve tables.** Both
   loops in `validate_spec` iterate `_TABLE_KINDS`; `resolution.csv` and the four fact sidecars are
   `_FACT_TABLES`, which it never read, though `compile_module` refuses on a bad row in any of them.

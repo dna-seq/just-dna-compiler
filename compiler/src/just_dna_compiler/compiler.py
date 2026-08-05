@@ -26,7 +26,12 @@ from typing import Any, Callable, Iterable, Optional, Union, get_args, get_origi
 
 import polars as pl
 import yaml
-from just_dna_format.base import authored_field_names, derive_variant_key
+from just_dna_format.base import (
+    DEFAULT_GENOME_BUILD,
+    AuthoredModel,
+    authored_field_names,
+    derive_variant_key,
+)
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.identity import is_valid_version
@@ -449,9 +454,18 @@ def _load_yaml(
 
 
 def _load_csv_rows(
-    path: Path, row_model: type, file_label: str
+    path: Path, row_model: type, file_label: str, genome_build: str = DEFAULT_GENOME_BUILD
 ) -> tuple[list[Any], list[str], list[str]]:
-    """Load a CSV and validate each row against a Pydantic model. Returns (rows, errors, warnings)."""
+    """Load a CSV and validate each row against a Pydantic model. Returns (rows, errors, warnings).
+
+    `genome_build` is **told to each row**, not read from it. A coordinate is not absolute, so a row
+    deriving an identity from one needs the module's assembly — and a pydantic model built from a CSV
+    dict has no `module_spec.yaml` in scope. Injecting it here keeps the build declared exactly once
+    (the yaml) while reaching every row: it is a private attribute, so it is not a column, reaches no
+    parquet, and moves no digest. See `AuthoredModel._genome_build` for why per-row or per-CSV
+    declaration was rejected. Callers that load a build-independent table — the resolution and fact
+    sidecars, which carry their own `genome_build` column — leave it at the default and are unaffected.
+    """
     errors: list[str] = []
     rows: list[Any] = []
     if not path.exists():
@@ -478,7 +492,10 @@ def _load_csv_rows(
                 if k is not None
             }
             try:
-                rows.append(row_model.model_validate(cleaned))
+                row = row_model.model_validate(cleaned)
+                if isinstance(row, AuthoredModel):
+                    row.with_genome_build(genome_build)
+                rows.append(row)
             except ValidationError as exc:
                 for err in exc.errors():
                     loc = " → ".join(str(x) for x in err["loc"])
@@ -1272,6 +1289,11 @@ def validate_spec(
             f"canonical version on publish — but the module now compiles under the coerced value."
         )
 
+    # The build every authored row below is loaded as being on. `config` is None when the yaml itself
+    # failed to load, and the format's own default is the honest answer there — `validate` reports every
+    # problem it can rather than stopping at the first, so the rows still have to be loaded somehow.
+    declared_build = config.genome_build if config else DEFAULT_GENOME_BUILD
+
     # A module composes from optional table kinds (RM2): variants.csv is no longer mandatory — a PGx /
     # PharmGKB / PRS module carries only its own table(s). Load whatever is present.
     variants_path = spec_dir / "variants.csv"
@@ -1279,7 +1301,7 @@ def validate_spec(
     variants: list[VariantRow] = []
     if has_variants:
         variants, var_errors, var_warnings = _load_csv_rows(
-            variants_path, VariantRow, "variants.csv"
+            variants_path, VariantRow, "variants.csv", genome_build=declared_build
         )
         all_errors.extend(var_errors)
         all_warnings.extend(var_warnings)
@@ -1297,7 +1319,9 @@ def validate_spec(
         kind_path = spec_dir / csv_name
         if not kind_path.exists():
             continue
-        rows, kind_errors, kind_warnings = _load_csv_rows(kind_path, model, csv_name)
+        rows, kind_errors, kind_warnings = _load_csv_rows(
+            kind_path, model, csv_name, genome_build=declared_build
+        )
         all_errors.extend(kind_errors)
         all_warnings.extend(kind_warnings)
         kind_row_counts[csv_name] = len(rows)
@@ -1370,7 +1394,7 @@ def validate_spec(
     studies: list[StudyRow] = []
     if studies_path.exists():
         studies, study_errors, study_warnings = _load_csv_rows(
-            studies_path, StudyRow, "studies.csv"
+            studies_path, StudyRow, "studies.csv", genome_build=declared_build
         )
         all_errors.extend(study_errors)
         all_warnings.extend(study_warnings)
@@ -1454,6 +1478,12 @@ def content_signature(spec_dir: Path) -> str:
     against a different reference. Raises `ValueError` if a present data CSV fails validation.
     """
     spec_dir = Path(spec_dir)
+    # The declared build is part of the content, not metadata about it: identical coordinate rows on
+    # two assemblies describe two different loci. A spec whose yaml will not load falls back to the
+    # format default — this function raises on an invalid *data* CSV, and an unreadable yaml is
+    # `validate_spec`'s finding to report, not this one's.
+    config, _, _ = _load_yaml(spec_dir / "module_spec.yaml")
+    declared_build = config.genome_build if config else DEFAULT_GENOME_BUILD
     kinds: list[tuple[str, type[BaseModel]]] = [
         ("variants.csv", VariantRow),
         ("studies.csv", StudyRow),
@@ -1464,11 +1494,11 @@ def content_signature(spec_dir: Path) -> str:
         path = spec_dir / csv_name
         if not path.is_file():
             continue
-        rows, errors, _ = _load_csv_rows(path, model, csv_name)
+        rows, errors, _ = _load_csv_rows(path, model, csv_name, genome_build=declared_build)
         if errors:
             raise ValueError(f"cannot compute content_signature: {csv_name} is invalid: {errors[0]}")
         tables[csv_name] = rows
-    return _content_signature(tables)
+    return _content_signature(tables, declared_build)
 
 
 def compile_module(
@@ -1537,13 +1567,18 @@ def compile_module(
     # A module composes from optional table kinds (RM2): load whatever is present.
     variants: list[VariantRow] = []
     if (spec_dir / "variants.csv").exists():
-        variants, _, _ = _load_csv_rows(spec_dir / "variants.csv", VariantRow, "variants.csv")
+        variants, _, _ = _load_csv_rows(
+            spec_dir / "variants.csv", VariantRow, "variants.csv",
+            genome_build=config.genome_build,
+        )
         # Same re-stamp as in `validate_spec`; this function re-loads its own rows, so the fix has to
         # happen on both copies or the artifact would carry the un-corrected keys.
         _restamp_for_build(variants, config.genome_build)
     studies: list[StudyRow] = []
     if (spec_dir / "studies.csv").exists():
-        studies, _, _ = _load_csv_rows(spec_dir / "studies.csv", StudyRow, "studies.csv")
+        studies, _, _ = _load_csv_rows(
+            spec_dir / "studies.csv", StudyRow, "studies.csv", genome_build=config.genome_build
+        )
 
     all_warnings = list(validation.warnings)
 
@@ -1740,7 +1775,9 @@ def compile_module(
         kind_path = spec_dir / csv_name
         if not kind_path.exists():
             continue
-        rows, _, _ = _load_csv_rows(kind_path, model, csv_name)
+        rows, _, _ = _load_csv_rows(
+            kind_path, model, csv_name, genome_build=config.genome_build
+        )
         table_df = _build_table(rows, model, module_name)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height

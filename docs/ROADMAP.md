@@ -182,43 +182,6 @@ a practice guideline are not the same claim). Nothing is lost today: `clinical.C
 tier, not discovering it. Deferred as a new table. **Do not confuse this with escalating the
 check's severity** — see *Parked in 0.5*.
 
-## RM36 — A model property cannot know its module's build
-
-**Severity** low (bounded today) · **Status** deferred — the obvious repairs are each a design
-decision · **Owner** format (schema) + compiler · **Motivating case** a GRCh37 module carrying
-`heteroplasmy.csv`
-
-`HeteroplasmyRow.variant_key` is a **property** that passes `alts` to `derive_variant_key`, so it can
-mint a `ga4gh:VA.…` — and a property has no module in scope, so it always takes the GRCh38 default. On a
-`genome_build: GRCh37` module one locus then carries two identities: `6:26093141:G:A` from
-`variants.csv` (a stored field the compiler re-stamps) and a GRCh38 VA from `heteroplasmy.csv`.
-
-Found by the 2026-08-06 sweep, which fixed five *reachable* instances of the same confusion (reverse,
-`enrich`, `VrsMinter`, the frequency pass, and the reverse-emitted resolution keys) and left this one
-because it is the only one where the repair is not obvious. **Bounded today**, which is why it is
-deferred rather than rushed: the property is not a model field, so it never reaches parquet; every row
-in one table derives its key identically, so bin grouping and overlap detection are unaffected; and
-`PharmVariantRow.variant_key`/`HaplotypeRow` omit `alts` and are build-independent by construction. What
-is wrong is that a message, or any future cross-table join, can name an identity nothing else in the
-module uses.
-
-Three candidate repairs, and why each is a decision rather than a patch:
-
-- **Stamp it like `VariantRow`.** Make it a real field frozen at construction and re-stamped after load.
-  That is the proven pattern, and it costs a new `COMPILER_MANAGED` field on every binning model plus a
-  third touch point in the reverse writer — for a value that is currently derived, free, and never
-  stored. It also spends a digest move if the field is materialized.
-- **Pass the build at each call site.** Turns a property into a method, which is an API change on a
-  shipped model and pushes the burden onto every reader (the shape that produced the bug in the first
-  place — five call sites, five chances to forget).
-- **Drop `alts` from the property.** Makes it build-independent and undoes the 0.5 fix that let a second
-  real MELAS variant be distinguished — `variant_key` joined the heteroplasmy key precisely because
-  keying on the gene alone made the module uncompilable. Rejected outright.
-
-The real question underneath is whether a *row* should be able to answer "what is my identity" at all
-without being told which assembly it lives in. Settle that before picking one of the three. Related:
-RM15 (the build as a first-class axis), whose resolution would dissolve this.
-
 ## RM27 — A redistribution compile gate
 
 **Severity** low (after the design) · **Status** deferred — needs the third axis designed first ·

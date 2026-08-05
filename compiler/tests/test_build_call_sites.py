@@ -38,10 +38,6 @@ _EXEMPT = {
     # of its load sites plus `enrich()`'s. That correction is what makes this call safe, and it is
     # tested directly in `test_build_roundtrip.py::test_the_two_builds_key_differently`.
     ("spec.py", "_freeze_identity"),
-    # RM36: a property has no module in scope *and* no stored field to correct, so unlike the entry
-    # above there is nothing for the compiler to fix afterwards. Bounded — never reaches parquet, and
-    # grouping stays internally consistent. Removing this entry is how RM36 gets closed.
-    ("binning.py", "variant_key"),
 }
 
 

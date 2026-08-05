@@ -22,6 +22,7 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_format.manifest import read_manifest
+from pydantic import ValidationError
 
 _C282Y = {"GRCh37": 26_093_141, "GRCh38": 26_092_913}
 
@@ -135,3 +136,119 @@ def test_reversed_resolution_csv_carries_the_module_build(tmp_path: Path) -> Non
     lines = (tmp_path / "rev" / "resolution.csv").read_text().strip().splitlines()
     header, row = lines[0].split(","), lines[1].split(",")
     assert row[header.index("genome_build")] == "GRCh37"
+
+
+# ── RM36: the build is injected at load, not authored ───────────────────────────────────────────
+
+
+def test_a_computed_key_uses_the_injected_build(tmp_path: Path) -> None:
+    """`HeteroplasmyRow.variant_key` is a *property*, so there is no stored field to re-stamp.
+
+    It passes `alts`, so it can mint a `ga4gh:VA.…` — and before the build was injected at load it
+    always took the GRCh38 default, so one locus on a GRCh37 module carried two identities: the
+    coordinate key from `variants.csv` and a GRCh38 VA from `heteroplasmy.csv`.
+    """
+    from just_dna_format.binning import HeteroplasmyRow
+
+    kwargs = {
+        "gene": "HFE", "reference_sequence": "NC_012920.1", "chrom": "6",
+        "start": _C282Y["GRCh37"], "ref": "G", "alts": "A", "conclusion": "x",
+        "measure_min": 0.1, "measure_max": 0.3,
+    }
+    assert HeteroplasmyRow(**kwargs).variant_key.startswith("ga4gh:VA.")
+    told = HeteroplasmyRow(**kwargs).with_genome_build("GRCh37")
+    assert told.variant_key == f"6:{_C282Y['GRCh37']}:G:A"
+
+
+def test_the_injected_build_is_not_an_authored_column(tmp_path: Path) -> None:
+    """The whole point of a private attribute: the build stays declared once, in the yaml.
+
+    If it were a column (or a per-CSV service row) two files could disagree about one module-wide
+    fact, and it would reach parquet and move every digest. It must also stay unwritable by an author
+    — `extra="forbid"` has to keep rejecting it.
+    """
+    from just_dna_format.binning import HeteroplasmyRow
+
+    assert "genome_build" not in HeteroplasmyRow.model_fields
+    assert "_genome_build" not in HeteroplasmyRow.model_fields
+    row = HeteroplasmyRow(
+        gene="HFE", reference_sequence="NC_012920.1", conclusion="x", measure_min=0.1
+    ).with_genome_build("GRCh37")
+    assert "genome_build" not in row.model_dump()
+    with pytest.raises(ValidationError):
+        HeteroplasmyRow(
+            gene="HFE", reference_sequence="NC_012920.1", conclusion="x", measure_min=0.1,
+            genome_build="GRCh37",
+        )
+
+
+def test_loading_a_table_kind_tells_its_rows_the_build(tmp_path: Path) -> None:
+    """End to end through the real loader, which is the only thing that injects it."""
+    from just_dna_compiler.compiler import _load_csv_rows
+    from just_dna_format.binning import HeteroplasmyRow
+
+    path = tmp_path / "heteroplasmy.csv"
+    path.write_text(
+        "gene,reference_sequence,chrom,start,ref,alts,measure_min,measure_max,conclusion,unresolved\n"
+        f"HFE,NC_012920.1,6,{_C282Y['GRCh37']},G,A,0.1,0.3,x,false\n",
+        encoding="utf-8",
+    )
+    rows, errors, _ = _load_csv_rows(
+        path, HeteroplasmyRow, "heteroplasmy.csv", genome_build="GRCh37"
+    )
+    assert not errors, errors
+    assert rows[0].genome_build == "GRCh37"
+    assert rows[0].variant_key == f"6:{_C282Y['GRCh37']}:G:A"
+
+
+# ── content_signature is not build-independent ──────────────────────────────────────────────────
+
+
+def test_content_signature_separates_two_builds(tmp_path: Path) -> None:
+    """Byte-identical CSVs on two assemblies are two different modules, and must not dedup together.
+
+    The docstring called this "build-independent", which was true of the *reference used to resolve*
+    and false of the **declared assembly**. The realistic way to hit it: "lift over" a GRCh37 panel by
+    editing the yaml and not the coordinates, and a registry keyed on content calls it the same module.
+    """
+    from just_dna_compiler.compiler import content_signature
+
+    signatures = {}
+    for build in ("GRCh37", "GRCh38"):
+        spec = tmp_path / build
+        spec.mkdir()
+        (spec / "module_spec.yaml").write_text(
+            "schema_version: '1.0'\n"
+            "module:\n  name: same\n  title: T\n  description: d\n  report_title: R\n"
+            f"genome_build: {build}\n",
+            encoding="utf-8",
+        )
+        # Deliberately identical bytes in both directories — that is the whole test.
+        (spec / "variants.csv").write_text(
+            "chrom,start,ref,alts,genotype,state,conclusion\n"
+            "6,26093141,G,A,A/A,risk,x\n", encoding="utf-8",
+        )
+        (spec / "studies.csv").write_text(
+            "chrom,start,ref,pmid\n6,26093141,G,8696333\n", encoding="utf-8"
+        )
+        signatures[build] = content_signature(spec)
+
+    assert (spec.parent / "GRCh37" / "variants.csv").read_bytes() == (
+        spec.parent / "GRCh38" / "variants.csv"
+    ).read_bytes(), "the fixture must differ only in the declared build"
+    assert signatures["GRCh37"] != signatures["GRCh38"]
+
+
+def test_the_default_build_keeps_its_existing_signature() -> None:
+    """The fix is targeted by omitting the default, which is the same rule that already keeps an unset
+    optional column out of the hash. Every module published to date is GRCh38, so none of them move —
+    without this, `find_versions_by_content` would stop linking a 0.4 module to its own recompile."""
+    from just_dna_format.integrity import content_signature as raw_signature
+    from just_dna_format.spec import VariantRow
+
+    rows = [VariantRow(
+        chrom="6", start=_C282Y["GRCh38"], ref="G", alts="A",
+        genotype="A/A", state="risk", conclusion="x",
+    )]
+    assert raw_signature({"variants.csv": rows}) == raw_signature({"variants.csv": rows}, "GRCh38")
+    assert raw_signature({"variants.csv": rows}) != raw_signature({"variants.csv": rows}, "GRCh37")

@@ -31,7 +31,12 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.licensing import record_source_terms, resolution_authority
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
-from just_dna_enricher.sequences import RefMismatch, SequenceProxy, verify_reference_alleles
+from just_dna_enricher.sequences import (
+    RefMismatch,
+    SequenceProxy,
+    summarize_ref_mismatches,
+    verify_reference_alleles,
+)
 from just_dna_enricher.vrs import VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger(__name__)
@@ -626,8 +631,8 @@ def enrich(
     ref_mismatches = (
         verify_reference_alleles(out, sequences=sequences, offline=offline) if verify_ref else []
     )
-    for mismatch in ref_mismatches:
-        logger.warning("Reference-allele mismatch — %s", mismatch)
+    for line in summarize_ref_mismatches(ref_mismatches):
+        logger.warning("Reference-allele mismatch — %s", line)
 
     # Second validation pass: does the module's clinical call agree with ClinVar's? Offline-capable
     # (the snapshot is local), and — unlike every other check here — it stays a warning in `strict`
@@ -681,9 +686,11 @@ def enrich(
         # error the author sees first.
         raise EnrichmentError(
             f"strict enrichment: {len(ref_mismatches)} row(s) disagree with the {genome_build} "
-            f"reference sequence: {[str(m) for m in ref_mismatches]}. Fix the authored coordinates "
-            f"(a wrong ref length silently mints a different allele id), or enrich with "
-            f"mode='best_effort' to record them as warnings."
+            f"reference sequence. "
+            + "; ".join(summarize_ref_mismatches(ref_mismatches))
+            + ". Fix the authored coordinates (a shifted position, or a wrong ref length, silently "
+            f"mints a different allele id), or enrich with mode='best_effort' to record them as "
+            f"warnings."
         )
 
     withdrawn = [s for s in result.stale_rsids if s.is_fatal]
