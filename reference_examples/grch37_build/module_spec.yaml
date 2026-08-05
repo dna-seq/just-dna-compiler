@@ -1,0 +1,16 @@
+schema_version: '1.0'
+module:
+  name: hfe_grch37
+  title: HFE Hemochromatosis (GRCh37)
+  description: >-
+    The two common HFE variants, authored on GRCh37 coordinates — the probe case for
+    "the identity key names its build". Deliberately not GRCh38: every other reference
+    example is, which is why reverse could hardcode the build for a whole release
+    without a test noticing.
+  report_title: HFE (GRCh37)
+  icon: dna
+  color: '#b5651d'
+defaults:
+  curator: audit
+  method: literature-review
+genome_build: GRCh37

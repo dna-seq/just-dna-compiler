@@ -144,7 +144,6 @@ def test_the_reference_reports_the_three_way_category_not_just_is_required() -> 
     """`required` alone told an authoring tool to fill three columns and produced a file the compiler
     refused, naming a fourth. `draft` was fixed and this surface was not — the exact drift this
     module exists to prevent."""
-    from just_dna_format.binning import RepeatAlleleRow
 
     fields = {f["name"]: f for f in authoring_reference()["models"]["RepeatAlleleRow"]}
     # The trap: not required, and *not* safely left blank either.

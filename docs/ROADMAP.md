@@ -6,7 +6,7 @@
 
 - **[RM_TOC.md](RM_TOC.md)** — the complete index of every `RMn`, active and shipped, with the document
   that defines each and every document that mentions it. **Start there if you are looking for an item.**
-- **[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md)** — the shipped items, plus the 0.4.1 / 0.5.0 / 0.5.1
+- **[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md)** — the shipped items, plus the 0.4.1 and 0.5.0
   release narratives.
 - **[CHANGELOG.md](CHANGELOG.md)** — what shipped in each release, newest first.
 - **[USE_CASES.md](USE_CASES.md)** — where most `RMn` were derived (the *what-blocks?* lens);
@@ -27,6 +27,16 @@ semantics (`mt_heteroplasmy` re-authored), indel reconciliation (`shox_par1` gai
 coordinate), and pseudoautosomal locus selection (`shox_par1` halved, 20 rows to 10) — RM33, RM35, RM31
 and RM32 respectively. Only the last two moved an `artifact.digest`; neither moved a
 `content_signature`, which is pre-resolution by definition.
+
+**The 2026-08-06 readiness audit spent none of it**, which is worth recording because the findings were
+severe: it fixed a Principle 7 break where `compile → reverse → compile` relabelled a non-GRCh38 module's
+assembly and re-minted its identity key, three further build-confusions in the enricher (including a
+frequency pass that would have fetched a *different variant's* counts), and a `validate` that passed
+modules `compile` refused (see [CHANGELOG.md](CHANGELOG.md)). Every fix is confined to behaviour
+that was only reachable **off** GRCh38 or through the error channel, so all ten pre-existing reference
+examples keep their exact `artifact.digest`, `content_signature` and `resolution_signature` — verified by
+comparing before and after, not assumed. The one addition is a new example
+(`reference_examples/grch37_build/`), and a new module cannot move an existing digest.
 
 Each entry below is `## RMn — name`, a metadata line (**severity**, **status**, **owner**, **motivating
 case**), then the detail. Severity is *how much it costs to do*, not how urgent.
@@ -94,6 +104,16 @@ resolved substitution (see [SCHEMAS.md](SCHEMAS.md) § the identity switch). Wha
 here is the **multi-build** half: a second refget table beside `REFGET_GRCh38`, per-build
 coordinates, and cross-build annotatability. The GRCh38-only minting ships now — the same
 "GRCh38-now, multi-build-later" split this item already applies to one-to-many expansion.
+
+**What a non-GRCh38 module gets *today* is now pinned, and it was not before.** The 2026-08-06 audit
+found four separate paths quietly answering a GRCh38 question in a GRCh37 module's name — reverse
+relabelling the build, `enrich()` resolving against the wrong assembly, `VrsMinter` aborting on one,
+and the frequency pass querying gnomAD with an off-build coordinate. All four survived because **every
+reference example was GRCh38**, so "reads the build" and "writes `GRCh38`" were indistinguishable.
+`reference_examples/grch37_build/` closes that, and `test_reference_examples_roundtrip.py` asserts the
+corpus spans more than one build so it cannot reopen. This does not shrink RM15 — the remaining work is
+unchanged — but it does separate the two halves cleanly: **RM15 is about *supporting* another build;
+what shipped is only that the tools *decline* to answer for one rather than answering wrongly.**
 **Generalizes one-to-many rsid expansion to multi-build:** a no-coord rsid that maps to several
 loci is expanded to one row per locus (a paralog/SV signal a client can count — data-agnostic),
 and that ships **GRCh38-only now as compiler behavior** (pinned by `compiler_version`, not a
@@ -161,6 +181,43 @@ a practice guideline are not the same claim). Nothing is lost today: `clinical.C
 **already** reports both fields via its `confidence` property, so this is about persisting the
 tier, not discovering it. Deferred as a new table. **Do not confuse this with escalating the
 check's severity** — see *Parked in 0.5*.
+
+## RM36 — A model property cannot know its module's build
+
+**Severity** low (bounded today) · **Status** deferred — the obvious repairs are each a design
+decision · **Owner** format (schema) + compiler · **Motivating case** a GRCh37 module carrying
+`heteroplasmy.csv`
+
+`HeteroplasmyRow.variant_key` is a **property** that passes `alts` to `derive_variant_key`, so it can
+mint a `ga4gh:VA.…` — and a property has no module in scope, so it always takes the GRCh38 default. On a
+`genome_build: GRCh37` module one locus then carries two identities: `6:26093141:G:A` from
+`variants.csv` (a stored field the compiler re-stamps) and a GRCh38 VA from `heteroplasmy.csv`.
+
+Found by the 2026-08-06 sweep, which fixed five *reachable* instances of the same confusion (reverse,
+`enrich`, `VrsMinter`, the frequency pass, and the reverse-emitted resolution keys) and left this one
+because it is the only one where the repair is not obvious. **Bounded today**, which is why it is
+deferred rather than rushed: the property is not a model field, so it never reaches parquet; every row
+in one table derives its key identically, so bin grouping and overlap detection are unaffected; and
+`PharmVariantRow.variant_key`/`HaplotypeRow` omit `alts` and are build-independent by construction. What
+is wrong is that a message, or any future cross-table join, can name an identity nothing else in the
+module uses.
+
+Three candidate repairs, and why each is a decision rather than a patch:
+
+- **Stamp it like `VariantRow`.** Make it a real field frozen at construction and re-stamped after load.
+  That is the proven pattern, and it costs a new `COMPILER_MANAGED` field on every binning model plus a
+  third touch point in the reverse writer — for a value that is currently derived, free, and never
+  stored. It also spends a digest move if the field is materialized.
+- **Pass the build at each call site.** Turns a property into a method, which is an API change on a
+  shipped model and pushes the burden onto every reader (the shape that produced the bug in the first
+  place — five call sites, five chances to forget).
+- **Drop `alts` from the property.** Makes it build-independent and undoes the 0.5 fix that let a second
+  real MELAS variant be distinguished — `variant_key` joined the heteroplasmy key precisely because
+  keying on the gene alone made the module uncompilable. Rejected outright.
+
+The real question underneath is whether a *row* should be able to answer "what is my identity" at all
+without being told which assembly it lives in. Settle that before picking one of the three. Related:
+RM15 (the build as a first-class axis), whose resolution would dissolve this.
 
 ## RM27 — A redistribution compile gate
 

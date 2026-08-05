@@ -19,7 +19,7 @@ purpose.
 - Stay **dependency-light, in tiers.** `just-dna-format` (schema + integrity) costs only `pydantic`
   plus `cryptography` (the latter solely for Ed25519 signature verify/sign, added in 0.2 — a small,
   pure-verify dependency, never a heavy transitive tree), so any verify-only client can depend on it;
-  `just-dna-compiler` adds polars/duckdb/pyyaml for the transform. A third, **network tier**
+  `just-dna-compiler` adds polars/pyyaml/typer for the transform, and is pure-Python. A third, **network tier**
   (`just-dna-enricher`, added 0.5) *produces* the injected resolution table these two consume, and is
   the only tier permitted to fetch (httpx/tenacity/huggingface-hub); it depends inward
   (`enricher → compiler → format`) so its deps never enter the compile path. Consumers pick the tier
@@ -148,3 +148,10 @@ a reversal — `just-dna-format` and `just-dna-compiler` become *more* strictly 
 source convention and never fetch), and HuggingFace/httpx/tenacity are confined to the enricher, never
 reaching the dependency-light tiers a verify-only or compile-only client installs. This completes the
 `just-dna-datasets`/"cache authority leaves the compiler" decoupling recorded in the 0.4.1 plan.
+
+The same amendment **removed `duckdb` from the compiler tier**, which is why Goal 2 now names
+polars/pyyaml/typer alone. Resolution moved from an in-compiler DuckDB query over an injected reference
+to the injected `resolution.csv` table, so the whole SQL/cache-location half went to the enricher and
+the compiler became pure-Python. This is a *tightening* of Goal 2's dependency-light commitment, not a
+new allowance, and it is recorded here because Goal 2 read as though duckdb were still sanctioned there
+for a full release after it had gone.

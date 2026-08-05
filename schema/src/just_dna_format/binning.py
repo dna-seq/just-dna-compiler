@@ -344,9 +344,20 @@ class HeteroplasmyRow(MeasureBinRow):
     def variant_key(self) -> Optional[str]:
         """Which variant these bins are about, or `None` when the table names only a gene.
 
-        `None` is the pre-0.5.1 shape and groups exactly as it always did. A property rather than a
+        `None` is the pre-0.5 shape and groups exactly as it always did. A property rather than a
         stamped field, like `PharmVariantRow.variant_key`: a heteroplasmy row is never resolved or
-        expanded, so there is nothing to freeze."""
+        expanded, so there is nothing to freeze.
+
+        **GRCh38-relative, and the one identity helper that cannot yet be told otherwise (RM36).** It
+        passes `alts`, so it can mint a `ga4gh:VA.…` — and a property has no module in scope, so unlike
+        `VariantRow.variant_key` (a stored field the compiler re-stamps via `_restamp_for_build`) there
+        is nothing for the compiler to correct. On a `genome_build: GRCh37` module one locus therefore
+        gets two identities: `6:26093141:G:A` from `variants.csv` and a GRCh38 VA from
+        `heteroplasmy.csv`. The blast radius is bounded — this is **not** a model field, so it never
+        reaches parquet, and every row in one table derives its key the same way, so bin grouping stays
+        internally consistent — but a message can name a VA nothing else in the module uses.
+        `PharmVariantRow.variant_key` and the `HaplotypeRow` key are unaffected: they omit `alts`, so
+        they are build-independent by construction."""
         if self.rsid is None and self.start is None:
             return None
         return derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)

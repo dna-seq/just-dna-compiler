@@ -235,11 +235,16 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   ClinPGx by the bare triple has this bug** — the first cross-check did, and reported correctly-authored
   levels as stale. Look it up by `annotation_id`, then category, and report ambiguity rather than
   comparing against an arbitrary candidate.
-- **A runtime pass may not depend on a `[dev]` package — read snapshots with duckdb, not polars.**
-  `polars` is `[dev]` in the enricher (builders only); `duckdb` is core. `clinpgx.py` first read its
-  snapshot with polars, which made a *runtime* cross-check unusable on a plain
-  `pip install just-dna-enricher`. `clinvar.py` had it right: builder in polars, pass in duckdb. Check
-  which side of that line new code sits on.
+- **Read snapshots with duckdb, not polars — but NOT for the reason this bullet used to give.**
+  `polars` is `[dev]` in the enricher (builders only) and `duckdb` is core, so the convention is: builder
+  in polars, runtime pass in duckdb. `clinvar.py` had it right; `clinpgx.py` first read its snapshot with
+  polars. **The stated justification was checked in the 0.5 audit and is false**: `just-dna-compiler`
+  requires `polars` *unconditionally* and the enricher requires the compiler, so polars is present on
+  every enricher install and no runtime pass was ever unusable on a plain
+  `pip install just-dna-enricher`. Keep the convention anyway — it is what keeps the enricher's declared
+  dependency set honest about what its runtime actually needs, so the tier could stop pulling polars
+  transitively without every pass breaking — but do not repeat the broken-install claim, and do not
+  reason from it when judging a new pass.
 - **Licensing lives as DATA in `sources.csv`, never as a table in the compiler.** A source→licence map
   in `just_dna_compiler` would give it a source convention (Principle 2, tightened in 0.5) and an
   un-injected reference — and it goes stale (both halves of one did inside 0.5). The enricher reads the
@@ -492,6 +497,36 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `compiler._restamp_for_build` fixes it after load, at **both** load sites (`validate_spec` and
   `compile_module` each read their own copy; fixing one leaves the artifact wrong). When adding
   anything else that depends on the spec, check whether the model can possibly know it.
+- **`genome_build` is in `manifest.json` and NO parquet column — so anything rebuilding a spec must
+  read it, and three things didn't.** The bug above was fixed on the forward path and then re-entered
+  twice more, because a corpus where **every** reference example is GRCh38 cannot tell "reads the
+  module's build" from "writes `GRCh38`". `reverse_module` hardcoded the constant into both the rebuilt
+  `module_spec.yaml` and `resolution.csv`'s own column, so `compile → reverse → compile` on a GRCh37
+  module minted `ga4gh:VA.…` ids for GRCh37 coordinates — P7 broken *and* a false content-addressed
+  claim, since a VA names a base on a sequence the module never referenced. (`resolve_from_table`
+  **filters** on that column too, so the mislabelled table was also unjoinable.) And `enrich()` took
+  `genome_build="GRCh38"` that **no caller ever passed**, making every `== "GRCh38"` gate inside it
+  dead code: a GRCh37 module was resolved against GRCh38 and the answer written under its own build.
+  The **frequency pass** was the fourth site: it fed every resolved row to gnomAD regardless of build and
+  re-keyed it with `derive_variant_key` *without* passing one. gnomAD's id is `chrom-pos-ref-alt` and
+  carries no assembly, so a GRCh37 coordinate is a well-formed request returning **a different variant's**
+  counts, written under this module's key — with a GRCh38 VA minted on the way. Fixes:
+  `compiler._genome_build_from_artifact` (manifest → explicit arg → default), `enrich.spec_genome_build`,
+  and `gnomad.FREQUENCY_GENOME_BUILD` (a named constant precisely because it was the third
+  build-confusion in one round). Three rules from it: **a parameter nothing passes is not a guard, so
+  grep for the caller**; **any code calling `derive_variant_key`/`derive_vrs_allele_id` on a row must
+  pass that row's `build`**, since the default silently mints GRCh38; and **`reference_examples/grch37_build/`
+  must stay** or the corpus goes uniform again — `test_reference_examples_roundtrip.py` asserts more than
+  one build is represented for exactly that reason.
+- **`validate` must refuse everything `compile` refuses — it exempted four of the twelve tables.** Both
+  loops in `validate_spec` iterate `_TABLE_KINDS`; `resolution.csv` and the four fact sidecars are
+  `_FACT_TABLES`, which it never read, though `compile_module` refuses on a bad row in any of them.
+  AUTHORING.md § 6 makes `validate` the pre-flight, so a green pre-flight then a refusal sends an author
+  hunting a change they did not make — and the worst case shipped: the **licence gate** reads
+  `sources.csv` alone, so a module drafted entirely from a no-sale source with no `declared_use`
+  validated clean and refused to compile. Rule for a new compile-side check: if it is pure computation
+  over injected bytes and needs no `output_dir`, it belongs in `validate_spec` too. What stays
+  compile-only is anything reading *resolved* rows.
 - **A warning computed post-resolution is discarded — the second `_cross_validate_variants` call takes
   errors only.** That is right for a warning about authored cells and wrong for any whose input
   resolution fills. It made the non-diploid guardrail invisible to every rsID-authored row, i.e. to

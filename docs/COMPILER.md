@@ -31,8 +31,10 @@ Import from `just_dna_compiler.compiler`.
   `manifest.json`. `resolve_with_ensembl`/`ensembl_cache` are **deprecated (removed at 1.0)** — see the
   precedence block.
 - **`reverse_module(parquet_dir, output_dir, module_name=None, title=None, description=None,
-  report_title=None, icon="database", color="#6435c9", version=None, write_resolution=True) -> Path`** —
-  reverse a compiled artifact back to the authored DSL.
+  report_title=None, icon="database", color="#6435c9", version=None, write_resolution=True,
+  genome_build=None) -> Path`** — reverse a compiled artifact back to the authored DSL.
+  `genome_build=None` reads it from the artifact's own `manifest.json` (it lives in no parquet
+  column); pass it only for a bare parquet directory carrying no manifest.
 
 `models.py`: **`ValidationResult`** (`valid`, `errors`, `warnings`, `info`, `stats`) — the `.stats` key
 contract is `variant_count`/`unique_rsids`/`gene_count`/`genes`/`categories`/`study_count`/
@@ -84,7 +86,7 @@ detectable without any reference. This is where most real authoring bugs are cau
 | MT/Y two-allele genotype | ploidy contradicts the contig | warning |
 | study / frequency / gene-metrics / literature orphans | the sidecar describes something the module lacks | warning |
 | star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it | warning |
-| **phase-ambiguous diplotypes** (0.5.1) | two *different* haplotype pairs whose unphased genotype is identical while their conclusions differ | warning |
+| **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs whose unphased genotype is identical while their conclusions differ | warning |
 
 Three of these deserve their reasoning rather than just their row.
 
@@ -158,7 +160,7 @@ covers what.
 | **Is the annotation medically correct?** Whether `A/T at HBB → sickle-cell carrier` is *true*. | Out of scope by charter — the format supplies annotation tables and never a gene–disease inference. | `authorship.kind` lets a consumer route scrutiny (AI vs human-certified); `curator`/`method` record who decided. |
 | **Does the cited study support the row?** `pmid` is grammar-checked; nobody reads the paper. | Requires the literature. | **Partly closed by the enricher (0.5).** Its literature pass confirms the PMID resolves, cross-fills the DOI/PMCID, and matches `provenance_quote`/`provenance_regex` against fulltext — for the **open-access subset only**, with coverage reported as a fraction so an unread paper is never mistaken for a failed quote. The compiler still reads nothing; it surfaces the recorded verdict from `literature.csv`. |
 | **Is the source stale?** A v2.1.1 constraint number is well-formed and current-looking. | The compiler cannot see the world move. | `dataset` names the release; the gene-metrics pass labels its two routes differently and warns on the older one. Generalized to **identifiers** in 0.5: the enricher checks rsIDs against dbSNP (live/merged/absent), trait CURIEs against OLS4 (obsolete + replacement) and gene symbols against HGNC (approved/retired). All report; none rewrite. |
-| **Is `acmg_sf` right?** A gene-list-membership flag the compiler holds no list for. | Same shape as `clin_sig`: the list is not in the module and cannot be, since a gene list inside the compiler is an un-injected reference (RM21). | **Closed by the enricher (0.5.1).** `acmg.check_acmg_sf` compares the flag against ACMG SF v3.2 as NCBI publishes it. Warns in `best_effort`, refuses in `strict` — list membership is a published fact, not a clinical judgement, so unlike `clin_sig` it *does* escalate. A blank cell is a note, never a defect. |
+| **Is `acmg_sf` right?** A gene-list-membership flag the compiler holds no list for. | Same shape as `clin_sig`: the list is not in the module and cannot be, since a gene list inside the compiler is an un-injected reference (RM21). | **Closed by the enricher (0.5).** `acmg.check_acmg_sf` compares the flag against ACMG SF v3.2 as NCBI publishes it. Warns in `best_effort`, refuses in `strict` — list membership is a published fact, not a clinical judgement, so unlike `clin_sig` it *does* escalate. A blank cell is a note, never a defect. |
 | **Is the annotation medically correct?** — the clinical half. Whether the module's `clin_sig` is the right call. | Out of scope by charter (below), and ClinVar is not truth either. | **Surfaced, never adjudicated (0.5).** The enricher compares each authored `clin_sig` against the ClinVar snapshot's, allele-exactly, and reports opposed calls with ClinVar's review-star count. It is the one check whose severity does **not** escalate in `strict`: failing there would make the format decide a clinical dispute. |
 | **Did the author declare every source they copied from?** A copied annotation with no `sources.csv` row is indistinguishable from an original one. | Provenance of a text is not a property of the text. | The **enricher** writes the row when it fetches (it is the only tier that knows); `sources.csv` + `manifest.sources` make the declaration legible and hashed. The compiler warns on a source a fact table cites with no row, but cannot see what was copied by hand. |
 | **Did the enricher get it right?** The resolution table is consumed as fact. | The trust boundary itself. | `source`, `status`, `resolution_mode`, `fully_resolved` and `resolution_signature` make the provenance and the policy legible. |
@@ -471,11 +473,20 @@ table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are p
   recomputed rather than stored: `allele_frequency` is derived on write and is not a `FrequencyRow`
   field, so it falls away by construction rather than by a special case, and re-deriving it on the next
   compile reproduces the identical parquet.
-- **Normalized:** `genome_build` re-emitted as `GRCh38`; title/description/report_title fall back to
-  name-derived defaults; icon/color from args; curator/method from the most-common column value.
-- **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel`, `provenance`, `logo`, a
-  non-GRCh38 build label. A consumer needing these reads `manifest.json` (preserved verbatim by the
-  forward compile).
+- **Normalized:** title/description/report_title fall back to name-derived defaults; icon/color from
+  args; curator/method from the most-common column value.
+- **Recovered from `manifest.json`, not normalized: `genome_build`.** It reaches the artifact through the
+  manifest and no parquet column, and reverse used to re-emit the constant `GRCh38` — listed here, for a
+  release, as a harmless normalization "out of the digest". It is not out of the digest, because the
+  build decides the *identity key*: a GRCh37 module reversed as GRCh38 recompiled with `ga4gh:VA.…` keys
+  minted for GRCh37 coordinates, so `artifact.digest` moved **and** the new key asserted an allele at a
+  base the module never named. `_genome_build_from_artifact` reads it; `genome_build=` (CLI
+  `--genome-build`) overrides; a bare parquet directory with no manifest falls back to `GRCh38`, the
+  format's own default. See `reference_examples/grch37_build/`.
+- **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel`, `provenance`, `logo`. A
+  consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). The test of
+  whether something belongs on this list is whether losing it can change a parquet byte — which is why
+  `genome_build` moved off it.
 
 ## Output artifact & hashing
 
@@ -531,7 +542,7 @@ The three hashes and how they compose into `(content_signature, resolution_signa
 
 **Four rows are bold because they belong to `just-dna-format`, which ships no CLI of its own** —
 Typer would breach its pydantic-plus-cryptography dependency floor (Goal 2). So anything the schema
-tier owns that a *user* needs has to surface here, and three of the four did not until 0.5.1:
+tier owns that a *user* needs has to surface here, and three of the four did not until 0.5:
 
 - `sign --private-key` demanded a key file the toolchain could not produce, and `verify --public-key`
   demanded a string only `public_key_b64_from_pem` could derive. Signing was therefore CLI-complete
@@ -595,8 +606,8 @@ would break scripts for no gain.
 | **drafting (0.5)** | ✅ appended rows are validated rows; keys reuse `_TABLE_DUPE_KEYS` | — (writes authored CSVs, not parquet) | ✅ append / already-present / differs report | complete (`draft.append_rows`, `blank_template`) |
 | **templating (0.5)** | ✅ a stub carries `TEMPLATE_PLACEHOLDER`, which no mode compiles | — (writes authored CSVs, not parquet) | ✅ created / kept-untouched plan | complete (`draft.stub_template`, `scaffold.scaffold_module`) |
 | **hints (0.5)** | ✅ per-cell validation, bin coverage, duplicate keys — all offline | — (writes nothing at all) | ✅ alterations + findings + options | complete (`hints.inspect_rows`, `hints.describe_table`) |
-| **delegated insertion (0.5.1)** | ✅ placed rows are validated rows; shifted rows keep their cells | — (writes authored CSVs, not parquet) | ✅ `DraftReport.shifted` names every moved row | complete (`draft.place_rows`, `append_rows(group_by=…)`) |
-| **partial rows (0.5.1)** | ✅ stubbed columns validated by omission; the stub itself never compiles | — (writes authored CSVs, not parquet) | ✅ added / already-present / invalid | complete (`draft.PartialRow`, `append_partial_rows`) |
+| **delegated insertion (0.5)** | ✅ placed rows are validated rows; shifted rows keep their cells | — (writes authored CSVs, not parquet) | ✅ `DraftReport.shifted` names every moved row | complete (`draft.place_rows`, `append_rows(group_by=…)`) |
+| **partial rows (0.5)** | ✅ stubbed columns validated by omission; the stub itself never compiles | — (writes authored CSVs, not parquet) | ✅ added / already-present / invalid | complete (`draft.PartialRow`, `append_partial_rows`) |
 | genotype widening: hemizygous single allele | ✅ | ✅ (1-element list) | — | complete |
 | genotype widening: phased `A\|G` | ✅ (order kept) | ✅ `phased` bit → lossless round-trip | ✅ | complete |
 | `state` (legacy) | ✅ (stays required — P8) | ✅ | ✅ read alias via `effective_direction`; trimmed to {protective,risk,neutral} on `upgraded()` | complete |
@@ -613,9 +624,9 @@ would break scripts for no gain.
 | PGx `HaplotypeRow` / `AlleleFunctionRow` / `DiplotypeRow` (+ `drug`/`response`/`evidence_level`) | ✅ | ✅ | **materialized** |
 | PharmGKB `PharmVariantRow` (single-variant drug response, `evidence_level` 1A…4, per-genotype) | ✅ | ✅ | **materialized** |
 | **`sources.csv` licensing path (0.5)** | ✅ `SourceRow`; tri-state permissions; orphan/undeclared + declared-licence warnings (never escalate) | ✅ `sources.parquet` (in digest); `source_signature`/licences/attributions/per-layer facets/derived `commercial_use` → **manifest** | ✅ **refuses** (both modes) when annotation-layer terms forbid sale and no declaration is recorded | **complete** (injected; enricher produces it) |
-| `VariantRow` general axes: `requires_callable` / `acmg_sf` / `actionability` | ✅ (`actionability` vs `ACTIONABILITY_SEED`; `acmg_sf` vs the ACMG SF list in the **enricher**, 0.5.1) | ✅ into `weights.parquet` (tri-state bool round-trip) | **materialized** |
-| **RM29a call-confidence cofactor: `quality_from` + `min_quality` (0.5.1)** | ✅ shared pointer grammar (`source_field`/`callable_from`/`quality_from`, one validator); finite floor; **both-or-neither** model rule | ✅ `weights.parquet` (`Utf8` + `Float64`); absent floor is null, never `0.0` | **materialized** |
-| **RM29b clinical cofactor: `DiplotypeRow.clinical_context` (0.5.1)** | ✅ whitespace-stripped, open (no vocabulary — guideline bodies scope differently) | ✅ generic table materializer, no compiler change | **in `_TABLE_DUPE_KEYS`** — disagreeing CPIC contexts coexist as distinct rows |
+| `VariantRow` general axes: `requires_callable` / `acmg_sf` / `actionability` | ✅ (`actionability` vs `ACTIONABILITY_SEED`; `acmg_sf` vs the ACMG SF list in the **enricher**, 0.5) | ✅ into `weights.parquet` (tri-state bool round-trip) | **materialized** |
+| **RM29a call-confidence cofactor: `quality_from` + `min_quality` (0.5)** | ✅ shared pointer grammar (`source_field`/`callable_from`/`quality_from`, one validator); finite floor; **both-or-neither** model rule | ✅ `weights.parquet` (`Utf8` + `Float64`); absent floor is null, never `0.0` | **materialized** |
+| **RM29b clinical cofactor: `DiplotypeRow.clinical_context` (0.5)** | ✅ whitespace-stripped, open (no vocabulary — guideline bodies scope differently) | ✅ generic table materializer, no compiler change | **in `_TABLE_DUPE_KEYS`** — disagreeing CPIC contexts coexist as distinct rows |
 | PGS `PgsRow` (declared interface; ancestry-validity fields) | ✅ `PGS<digits>`, ancestry/tier vocab, `match_rate_floor∈[0,1]` | ✅ | **materialized** |
 | reserved namespace (`reference_db` / `callable_from`) | ✅ specific diagnosis via `reject_reserved` on top of `extra=forbid` | — | reserved |
 | authoring reference + palette (`reference.authoring_reference()`/`json_schemas()`) | ✅ generated from live models (drift-proof) | n/a | **shipped** (RM8/RM9) |
@@ -649,11 +660,16 @@ axes are optional, and `just_dna_format.derive` supplies fallbacks:
    `artifact.digest` is GRCh38-relative. A GRCh37/T2T module compiles but is not re-resolved for that
    build. Legacy-from-implementation, not a principle — build-aware identity is RM15. A no-coord rsid
    mapping to several loci is expanded to one row per locus (data-agnostic), shipping GRCh38-now.
-4. **`reverse_module` reconstructs the compilable core, not manifest-only metadata** (reads parquet only,
-   never `manifest.json`). `authorship`/`panel`/`provenance`/`logo` are not restored and `genome_build`
-   emits `GRCh38`; the digest fixed point still holds (these are out of the digest). What *is*
-   round-trip-critical — every authored value, including a poly-effect variant's per-effect
-   `gene`/`phenotype`/`category` — is restored.
+4. **`reverse_module` reconstructs the compilable core, not manifest-only metadata.** It reads the
+   parquets for everything materialized into them, and `manifest.json` for the **one** authored value
+   that is digest-relevant and lives nowhere else: `genome_build`. That single read replaced a
+   "parquet only, never `manifest.json`" rule which sounded principled and was how the build came to be
+   hardcoded — the rule's real content is *nothing in the digest may be invented*, and for a
+   non-GRCh38 module the invented build changed the identity key, hence the digest. Absence is handled
+   rather than assumed: no manifest means the format's default, and an explicit `genome_build=` always
+   wins. `authorship`/`panel`/`provenance`/`logo` genuinely are not restored and genuinely cannot move a
+   parquet byte. What *is* round-trip-critical — every authored value, including a poly-effect variant's
+   per-effect `gene`/`phenotype`/`category` — is restored.
 
 ## Consequences worth knowing
 

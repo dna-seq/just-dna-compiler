@@ -15,14 +15,22 @@ called by both `just-dna-pipelines` (local compile) and `just-dna-marketplace` (
 recompile on publish).
 
 ```python
-from just_dna_compiler.compiler import validate_spec, compile_module
+from just_dna_compiler.compiler import validate_spec, compile_module, reverse_module
 
 validate_spec(spec_dir)                       # -> ValidationResult (genes/categories lists)
 compile_module(spec_dir, out_dir,             # -> CompilationResult (+ manifest.json written)
-               resolve_with_ensembl=False,    # inject an Ensembl DuckDB/parquet dir to resolve
+               strict=False,                  # True: refuse a partial artifact
                compiled_by="marketplace-server")
+reverse_module(out_dir, spec_again)           # -> Path (the spec DSL, rebuilt from the artifact)
 ```
 
-**Dependencies:** `just-dna-format`, `polars`, `duckdb`, `pyyaml`, `platformdirs`, `python-dotenv` —
-deliberately no Dagster / LLM SDKs. The Ensembl reference is **injected** by the caller (a `.duckdb`
-file or a parquet dir); this package never downloads it.
+**Resolution is injected, never fetched** (CONSTITUTION Principle 2). Drop a `resolution.csv` beside
+`module_spec.yaml` — a table of already-resolved facts keyed by `variant_key` — and the compiler fills
+in coordinates and rsIDs from it with no network, no DuckDB and no source convention of its own.
+Produce that file with [`just-dna-enricher`](../enricher) (`just-dna-enricher enrich spec/`). With
+nothing injected the compiler **skips resolution with a warning** rather than downloading anything.
+The pre-0.5 `compile_module(ensembl_cache=…)` DuckDB path still works, is deprecated, and is removed
+at 1.0.
+
+**Dependencies:** `just-dna-format`, `polars`, `pyyaml`, `typer` — pure-Python and **duckdb-free since
+0.5**, and deliberately no Dagster / LLM SDKs.

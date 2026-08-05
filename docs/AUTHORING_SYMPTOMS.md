@@ -81,6 +81,26 @@ both deliberately if your reference is unmasked. Not an error either way.
 Informational, and printed rather than silent precisely so a table half the size you expected is never a
 surprise. The named Y loci are the same places as the X ones kept. `--keep-par-twin` records both.
 
+**`N coordinate-authored row(s) have no rsid in the resolution table, so they stay coordinate-keyed`**
+Not an error and usually not worth acting on: a coordinate is a complete identity and an rsID is a label on
+top of it, so these rows are fully resolved. Re-run the enricher if you want the labels back-filled. This
+used to print one line per row — 26 of them on a real ClinVar panel — each announcing the row's
+`variant_key`, which for a resolved substitution is a `ga4gh:VA.…` digest, so it named an identity you
+cannot find in your own CSV. It now names the coordinate.
+
+**`Enrichment is GRCh38-bound; the module declares genome_build='GRCh37'`** (from `enrich`)
+Expected, and the only honest answer: resolution and VRS minting have one refget table (**RM15**). No link
+runs and **no row is recorded** for anything needing a lookup — not even `not_found`, which would claim the
+source was asked. Your authored coordinates are still transcribed, under your own build, and the module
+compiles: it keeps build-relative coordinate keys instead of `ga4gh:VA.…` ids. Author coordinates rather
+than rsIDs on a non-GRCh38 module, since an rsID is only resolvable against GRCh38. See
+`reference_examples/grch37_build/`.
+
+**`GA4GH VRS allele identity is GRCh38-only (RM15), so N variant(s) are keyed by coordinate instead`**
+The companion message at compile time, and it is a statement about the key, not a defect. A coordinate key
+is **build-relative** — it will not join against a GRCh38-keyed module — which is true of coordinates and
+is said out loud rather than hidden behind an id that looks portable.
+
 **A sidecar did not change after you edited the spec**
 An existing `resolution.csv` / `frequencies.csv` / `gene_metrics.csv` is authoritative and merged.
 **Delete the file** and re-run, or stale rows persist silently.
@@ -94,6 +114,20 @@ records an `authority` beside the link and the check reads that (**RM33**, shipp
 `resolution.csv` written before the column existed simply says nothing here — re-enrich to fill it.
 
 ## Validation and compile
+
+**`validate` says `valid` and `compile` then refuses**
+It should not, and if it does, that is a bug worth reporting rather than something to work around.
+`validate` used to skip `resolution.csv` and the four fact sidecars (`sources.csv`, `literature.csv`,
+`frequencies.csv`, `gene_metrics.csv`) and to skip the **licence gate**, so a module drafted from a no-sale
+source with no `declared_use` recorded passed the pre-flight and refused at compile. Both now run in
+`validate`. What still only appears at compile is anything computed from *resolved* rows — the expansion
+and hosting findings above — because resolution has not run yet when `validate` does.
+
+**`module_spec.yaml is not valid YAML: … line 4, column 10`**
+A syntax error in your hand-written spec, with pyyaml's own line and column. This used to surface as a
+Python `ParserError` traceback. The usual causes are an unclosed `[`/`{`, a tab used for indentation, or an
+unquoted value containing `:`. **`module_spec.yaml must be a mapping of top-level keys`** is the neighbour
+case: the file parses but is a list or a bare scalar.
 
 **`overlapping bins for key (…)`** — an **error**, so the module cannot compile
 Two resolved bins in one group select two phenotypes for one measurement. Check the group key first

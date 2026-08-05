@@ -346,6 +346,11 @@ def reverse(
         True, "--resolution/--no-resolution",
         help="Also emit resolution.csv (the resolved facts), so reverse→compile is fully offline.",
     ),
+    genome_build: Optional[str] = typer.Option(
+        None, "--genome-build",
+        help="Override the build. Read from the artifact's manifest.json by default; only needed for "
+             "a bare parquet directory that carries no manifest.",
+    ),
 ) -> None:
     """Reverse a compiled parquet artifact back into the authored spec DSL (yaml + csv)."""
     out = reverse_module(
@@ -359,6 +364,7 @@ def reverse(
         color=color,
         version=version,
         write_resolution=resolution,
+        genome_build=genome_build,
     )
     typer.secho(f"reversed: {out}", fg=typer.colors.GREEN)
 

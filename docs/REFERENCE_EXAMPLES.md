@@ -5,13 +5,17 @@ These are **hand-authored sketches** of how modules are expressed with the 0.3/0
 authors and consumers** — a picture of the intended shapes. The 0.4 shapes are now shipped and frozen;
 rsIDs / coordinates / effect sizes are illustrative.
 
-**Three examples are not sketches but real, compiled modules** under `reference_examples/`, rebuilt by
-documented commands: `pathogenic_clinvar/` (the SNP core, from a real ClinVar snapshot),
-`pgx_slco1b1_simvastatin/` (the pharmacogenomics path — nine per-genotype rows from three real ClinPGx
-annotations, no `variants.csv`, and a `sources.csv` recording that the module is not sellable), and
-**`htt_repeat_expansion/`** (the binning path — §7 below, built for real: no variants, no studies, no
-coordinates, and the mandatory `unresolved` sentinel doing the job it exists for). Read those when you
-want the authored shape that actually passes the compiler, rather than an illustration.
+**Some examples are not sketches but real, compiled modules** — every directory under
+[`reference_examples/`](../reference_examples), rebuilt by the commands in its own README. Read those
+when you want the authored shape that actually passes the compiler rather than an illustration; the
+sections below stay as the *shape* argument. Each README names **what building it broke**, which is the
+point of having them: the module is the regression test and the README is the evidence. Highlights:
+`pathogenic_clinvar/` (the SNP core from a real ClinVar snapshot), `pgx_slco1b1_simvastatin/` (the PGx
+path — no `variants.csv`, and a `sources.csv` recording that the module is not sellable),
+`htt_repeat_expansion/` (the binning path, §7), `shox_par1/` + `par_boundary/` (pseudoautosomal
+selection, RM32) and `grch37_build/` (§11 — the non-GRCh38 case). Do not maintain a count here; the
+directory is the list, and `compiler/tests/test_reference_examples_roundtrip.py` sweeps all of them for
+the Principle 7 fixed point by discovery rather than by a second inventory.
 
 This doc is the **"conclusion" stage of the feedback → schema cycle** (see
 [`USE_CASES.md`](USE_CASES.md) → *The feedback → schema cycle*): where a use case, once its blockers
@@ -401,3 +405,48 @@ rs80357906,A/AT,BRCA1,pathogenic,true,true,preventable,"BRCA1 frameshift — HBO
 - `acmg_sf=true` — the gene is on the ACMG secondary-findings list.
 - `actionability=preventable` — an `ACTIONABILITY_SEED` value a consumer's return-of-results policy may
   read; the format never decides disclosure.
+
+---
+
+## 11. A module on GRCh37 — what "the key names its build" costs
+
+Built for real as [`reference_examples/grch37_build/`](../reference_examples/grch37_build). Every other
+example is GRCh38, which is exactly why this one earns a section: a uniform corpus cannot tell "reads the
+module's build" apart from "writes GRCh38", and for one release three separate code paths were doing the
+second while looking like the first.
+
+Authoring is unremarkable — coordinates, not rsIDs, because an rsID is only resolvable against GRCh38:
+
+```csv
+chrom,start,ref,alts,genotype,state,conclusion,gene,clin_sig
+6,26093141,G,A,A/A,risk,C282Y homozygote,HFE,pathogenic
+6,26091179,C,G,G/G,risk,H63D homozygote,HFE,uncertain_significance
+```
+
+with `genome_build: GRCh37` in `module_spec.yaml`. HFE C282Y is 6:26,093,141 here and 6:26,092,913 on
+GRCh38 — a 228 bp offset, so either number is a real place and neither is a place at the other's
+coordinate.
+
+**What the tools do, and why each is the honest answer:**
+
+- `variant_key` is `6:26093141:G:A`, a **coordinate** key, not a `ga4gh:VA.…`. A VA addresses its
+  sequence by refget accession and there is one refget table (GRCh38, RM15), so minting here would
+  either need a table that does not exist or produce a GRCh38 identity for a GRCh37 base. The compiler
+  says so once, counted: *"GA4GH VRS allele identity is GRCh38-only (RM15), so 3 variant(s) are keyed by
+  coordinate instead."*
+- **Resolution is skipped, not attempted.** The compiler warns that it is GRCh38-bound; the enricher
+  resolves nothing and — since no link ran — records **no row at all** rather than a `not_found` one.
+  `not_found` means "the source was asked and does not have it", and the source was never asked.
+  (`VALID_RESOLUTION_STATUS` has no `unchecked` member to write instead, and adding one to describe a
+  row carrying no fact is worse than writing no row.)
+- **Authored coordinates are still transcribed** into `resolution.csv`, under `GRCh37`. What the author
+  wrote is not a lookup result, so refusing to record it would lose data — while recording a *fetched*
+  GRCh38 coordinate under a GRCh37 label would invent it.
+- `compile → reverse → compile` is a fixed point on `artifact.digest`, `content_signature` **and**
+  `resolution_signature`, and the reversed `module_spec.yaml` still says `GRCh37`.
+
+**This is not multi-build support.** RM15 stays open: one refget table, coordinates untagged by build,
+cross-build annotatability unrecorded. What ships is the narrower and more basic guarantee — the tools
+**state which build they are working in and never quietly change it**. A coordinate key is
+build-relative, so a GRCh37 module's keys will not join against a GRCh38 module's; that is a true fact
+about coordinates, and the warning says it rather than hiding it behind an id that looks portable.

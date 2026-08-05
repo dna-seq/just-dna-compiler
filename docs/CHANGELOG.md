@@ -5,6 +5,154 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+**A version heading names the release a change will ship in, not a development batch.** Entries dated
+2026-08-03 carried a `0.5.1:` label for a while; nothing 0.5.x has been published (tags stop at `v0.4.0`,
+`dist/` holds only 0.4.0 wheels) and all three packages are at `0.5.0`, so that work ships **as 0.5.0**
+and the label was relabelled to match. Keep it that way: a number here should answer "which published
+version introduced this", and a batch inside an unpublished release is not a version.
+
+## 2026-08-06 — 0.5 readiness audit: the round trip moved a module to another assembly
+
+A pre-publication audit of 0.5. The suite was green (1178 passed) and all ten reference examples were
+Principle 7 fixed points, so the findings came from probing the one place the corpus was uniform: **every
+reference example is GRCh38**, which makes "reads the module's build" and "writes GRCh38" indistinguishable.
+Seven code paths were doing the second. New reference example
+[`reference_examples/grch37_build/`](../reference_examples/grch37_build) is the probe, and its README is the
+evidence.
+
+**Blocker — `reverse_module` hardcoded `genome_build: "GRCh38"`, so `compile → reverse → compile` relocated
+a GRCh37 module's identity.** `genome_build` reaches the artifact through `manifest.json` and **no parquet
+column**, so reverse had nothing to read and simply wrote the constant — into the rebuilt
+`module_spec.yaml` *and* into `resolution.csv`'s own `genome_build` column. On a GRCh37 module the recompile
+then minted `ga4gh:VA.…` ids for GRCh37 coordinates: `artifact.digest` moved (P7 failed outright), and the
+new key was a **false content-addressed claim** — a VA asserts this allele at this base of this sequence,
+and 6:26,093,141 on GRCh38 is a base the module never named. 0.5 had already fixed this on the forward path
+(`_restamp_for_build`, "a GRCh37 module minted GRCh38 identities, silently"); reverse reintroduced it one
+step later. Fixed by `_genome_build_from_artifact`, reading the artifact's own manifest, with an explicit
+`genome_build=` override for a bare parquet directory (also `--genome-build` on `reverse`). The mislabelled
+`resolution.csv` was the sharper half of that bug: `resolve_from_table` **filters** rows on that column, so a
+reversed table was not only wrong but unjoinable.
+
+**Blocker — the enricher ignored the module's declared build entirely.** `enrich()` took
+`genome_build: str = "GRCh38"` and **nothing ever passed it** — no CLI flag, no caller. Every resolver link
+inside is gated on `genome_build == "GRCh38"`, and so is the warning saying a non-GRCh38 module resolves
+nothing, so all of that was unreachable: enriching a `genome_build: GRCh37` module resolved it against
+GRCh38 Ensembl, wrote the **GRCh38** coordinate into its `resolution.csv` labelled `GRCh38`, minted a
+GRCh38 VA for it, and said nothing. The compiler then correctly refused the lot, so the visible symptom was
+an unresolved module while the file on disk claimed another assembly's coordinate. Exactly the
+`_restamp_for_build` shape: the guard and its fall-through both existed and the value never arrived. Fixed
+by `enrich.spec_genome_build`, which reads the declaration; the parameter stays an inject-only override. A
+spec with no `module_spec.yaml` gets the format's own default (a derivation, not a guess); one whose yaml is
+present but unreadable now **refuses**, because choosing an assembly for a module whose declaration cannot
+be read is the invention being removed.
+
+It also wrote `status="not_found"` for those rsIDs — "the source was asked and does not have this" — when no
+link had run. That is the `None` ≠ `False` rule, and the fix is to write **no row**: the position is still
+unset, which the unresolved list already reports. `VALID_RESOLUTION_STATUS` has no `unchecked` member, and
+adding one to describe a row carrying no fact would be worse than writing no row.
+
+**Blocker — one GRCh37 row aborted the whole enrich run.** `refget_accession` **raises**
+`UnsupportedBuildError` for a build with no table, deliberately, so every call site must catch it.
+`VrsMinter.mint`'s substitution branch did not — while `_mint_normalized` beside it always had — so a single
+hand-authored `genome_build: GRCh37` row in an otherwise fine `resolution.csv` killed the run with an
+unhandled exception. Now it is an unmintable row like any other. `derive_vrs_allele_id`'s docstring had
+meanwhile promised it "never raises"; it now documents the one input that does, and why softening it to
+`None` would be wrong (`None` is a per-row fact; an unknown build is the caller's whole frame of reference
+missing).
+
+**Blocker — the frequency pass queried gnomAD with coordinates from another assembly.**
+`_alleles_from_resolution` took every resolved row regardless of `genome_build` and re-keyed it with
+`derive_variant_key` **without** passing one. gnomAD's variant id is `chrom-pos-ref-alt` and carries no
+assembly, so a GRCh37 coordinate is a *well-formed request for a different variant*: the pass would have
+written another variant's `allele_count`/`allele_number` under this module's key, with no error anywhere —
+and minted a GRCh38 `ga4gh:VA.…` for the GRCh37 coordinate on the way, the identical false identity from a
+third place. Now gated on `gnomad.FREQUENCY_GENOME_BUILD`, a named constant beside `covers_locus` because
+one round produced three build confusions, with the skipped rows reported in one counted line naming the
+build. Third rule earned: **anything calling `derive_variant_key`/`derive_vrs_allele_id` on a row must pass
+that row's `build`** — the default is GRCh38 and it does not complain.
+
+**The sweep: three more instances, and a check so there is no fourth round.** Having found the same
+mistake four times, the remaining question was whether the list was complete. It was not.
+`derive_variant_key` mints a VRS id **only** when handed a single `alts` — an rsID short-circuits first,
+and no-`alts`/multi-allelic cells fall through to a coordinate key that never touches the build — so the
+whole exposure is enumerable: *calls that pass one allele and omit `build=`*. Auditing that set found:
+
+- **The reverse-emitted `resolution.csv` keys**, i.e. an incomplete first fix. Threading the build into
+  the `genome_build` *column* was not enough: the same function derives `variant_key` from
+  `(chrom, start, ref, alts)`, so a GRCh37 module got rows reading
+  `ga4gh:VA.TWxWV6Sk…,…,GRCh37` — a GRCh38 allele identity beside a cell saying GRCh37, in one row. And
+  since `resolve_from_table` joins on `variant_key`, the table silently matched nothing on recompile.
+  `_write_variants_csv`'s dedupe key had the same gap (it mis-groups rather than mislabels).
+- **`enrich()` never re-stamped `variants.csv`.** `_restamp_for_build` was wired into the compiler's two
+  load sites and there is a **third**: the enricher loads the same file. So `enrich` wrote a
+  `resolution.csv` keyed by GRCh38 VAs for a module the compiler keys by coordinate — a resolution table
+  that could not join to the module it was produced for.
+- **`_subject_of_variant`'s fallback**, threaded rather than left on the default.
+
+Two call sites are exempt and say why: `VariantRow._freeze_identity` (a model validator with no module
+in scope — it writes a *stored field*, which is precisely what `_restamp_for_build` corrects afterwards)
+and `HeteroplasmyRow.variant_key`, which has no stored field to correct and is now **RM36**. Also
+removed: `VariantRow.authored_key`, a dead, undocumented, build-blind third copy of the identity rule
+that no caller in the workspace used.
+
+`compiler/tests/test_build_call_sites.py` walks the AST of all three packages and fails on a call that
+supplies an allele without supplying a build, with the exemptions listed in the test and each one checked
+to still exist. It is a static check on purpose: the behavioural tests cover the paths we know about, and
+what this catches is the *next* one somebody adds. It found the last two of the three above on its first
+run.
+
+**`validate` reported `valid` for modules `compile` then refused.** Both loops in `validate_spec` iterate
+`_TABLE_KINDS`, and `resolution.csv` plus the four fact sidecars are `_FACT_TABLES` — a tuple it never
+touched, though `compile_module` refuses on a bad row in any of them. AUTHORING.md § 6 puts `validate`
+immediately before `compile`, so it is the author's pre-flight, and a green pre-flight followed by a refusal
+sends them hunting a change they did not make. Worst case, and the one that shipped: the **licence gate**
+reads `sources.csv` and nothing else, so a module drafted entirely from a no-sale source with no
+`declared_use` validated clean and refused to compile. `validate` now runs the row-level checks on all five
+injected tables plus the gate — all of them pure computation over injected bytes, needing no output
+directory. The cross-checks that compare a sidecar against resolved rows stay in `compile`, where the rows
+exist; this is about the error channel agreeing.
+
+**A YAML syntax error came out as a traceback.** `_load_yaml` parsed outside its own `try`, so an unclosed
+bracket — the likeliest mistake in a hand-written file — killed `validate` with
+`yaml.parser.ParserError` instead of locating it, for the one command whose job is to report problems
+legibly. pyyaml's message already names line and column, so it is kept and merely labelled. A YAML scalar or
+list now reports "must be a mapping of top-level keys" rather than a pydantic message about input types.
+
+**A warning wall, and a false label inside it.** `resolve_from_table` emitted
+`Position {variant_key}: no rsid found in resolution table` once per row — 26 of `pathogenic_clinvar`'s 37
+warnings, burying nine expansion findings and a duplicate-citation error. And `variant_key` is a
+`ga4gh:VA.…` digest for a resolved substitution, so a third of those lines announced a content-addressed
+identity as a position, giving the author nothing to look up. Now one counted line naming real coordinates
+(`11:5226931 TGCCCAGG>T`), with the tail counted rather than listed: 37 warnings → 11. The deprecated DuckDB
+resolver's similar message was checked and is **correct** — its key is built without `alts`, so it really is
+a position.
+
+**Tests.** `compiler/tests/test_reference_examples_roundtrip.py` sweeps **every** reference example for the
+fixed point on all three signatures, by discovery rather than a list, plus compile-idempotency and
+build-survival — the sweep that did not exist, which is why the reverse bug survived. It includes a guard
+that the corpus spans more than one build, since a uniform corpus cannot catch a hardcoded one. Also
+`test_build_roundtrip.py` (which keeps the old behaviour as a demonstration, passing
+`genome_build="GRCh38"` explicitly), `test_validate_agrees_with_compile.py`, and
+`enricher/tests/test_build_awareness.py`. Every one was run against a detached worktree at the prior commit
+first: 7 of 10, 3 of 6, and 2 of 2 respectively fail there.
+
+**Docs.** The root `README` still described a **two**-package workspace and listed the compiler's 0.4
+dependency set (`duckdb`, `platformdirs`, `python-dotenv`) — `just-dna-enricher` was absent from the table
+that is a reader's first contact with the repo. `compiler/README` headlined the deprecated
+`resolve_with_ensembl=` DuckDB path and never mentioned `resolution.csv`. **CONSTITUTION Goal 2 said the
+compiler adds duckdb**, which has been false since the 0.5 amendment removed it; the amendment section now
+records that removal explicitly, as the tightening it is. `REFERENCE_EXAMPLES.md` claimed "three examples
+are real, compiled modules" when there are eleven — replaced with a pointer to the directory rather than a
+count to keep in sync.
+
+**Checked and found sound**, so nobody re-audits them: tier import purity (no `duckdb`/`httpx`/`ga4gh` leaks
+into format or compiler); a clean-venv `pip install just-dna-compiler` compiling five real examples; every
+enricher module importing on a core (non-`[dev]`) install; all three wheels+sdists building; every CLI
+subcommand on both CLIs registering and `--help`-ing; the reverse-side `fieldnames` lists matching
+`authored_field_names` for `VariantRow`/`StudyRow` exactly (`ResolutionRow`'s omissions are the documented
+provenance columns); `RM_TOC` covering all 35 items; and a module carrying **all twelve** table kinds at
+once — 14 parquets, a shape no example or test had built — round-tripping to a fixed point.
+
 ## 2026-08-06 — `draft-panel`: an undecided clinical call is a second stub, not a dropped row
 
 Both defects that building `par_boundary` surfaced, and the first turned out to be losing data rather than
@@ -355,7 +503,7 @@ unreadable symbol on a *populated* row refuses, because that is the `<tr>` failu
 matched by prefix and resolved **by name to a column index** (ACMG misspells one — `Disease/Phentyope` —
 and pads another), so a reordered column moves the reader instead of shifting every value left.
 
-## 2026-08-03 — 0.5.1: a GRCh37 module minted GRCh38 identities, silently
+## 2026-08-03 — 0.5.0: a GRCh37 module minted GRCh38 identities, silently
 
 The sharpest finding of the dogfooding round, and the shortest to state. **A module declaring
 `genome_build: GRCh37` compiled with no warning and stamped GA4GH VRS allele ids that name the GRCh38
@@ -384,7 +532,7 @@ The fallback is now **stated**, which is the other half of the bug: silence is w
 unnoticed. The warning says the consequence rather than the fact — a coordinate key is build-relative,
 will not join against GRCh38-keyed data, and means a different locus on another build.
 
-## 2026-08-03 — 0.5.1: dogfooding mitochondrial heteroplasmy — one blocker fixed, one proved unfixable
+## 2026-08-03 — 0.5.0: dogfooding mitochondrial heteroplasmy — one blocker fixed, one proved unfixable
 
 `reference_examples/mt_heteroplasmy/` — two MELAS-causing MT-TL1 variants (m.3243A>G, m.3271T>C)
 binned in blood and in muscle. Heteroplasmy is the case the binning primitive was built for, so it is
@@ -422,7 +570,7 @@ day as the third of those; see the RM35 entry above.)*
 low one, and the low-blood row tells a reader to measure urine or muscle before reassuring anyone,
 because blood is the tissue most likely to look innocent.
 
-## 2026-08-03 — 0.5.1: dogfooding CYP2D6, the hard PGx case — and a defect in a check shipped hours earlier
+## 2026-08-03 — 0.5.0: dogfooding CYP2D6, the hard PGx case — and a defect in a check shipped hours earlier
 
 `REFERENCE_EXAMPLES.md` has listed CYP2D6 as "the hard PGx case" since 0.4 and nobody had built it.
 Drafting it from CPIC produces **16,290 diplotype rows over 644 defining variants and 206 alleles**,
@@ -457,7 +605,7 @@ them. The gap shows as a parity difference — `draft-panel` takes `--clin-sig` 
 `--min-review-stars`, `draft` takes nothing — but *which* filter is the decision, and each spends a
 CLI name on a different view of what a PGx module is for.
 
-## 2026-08-03 — 0.5.1: dogfooding a pseudoautosomal module — two fixes, three questions
+## 2026-08-03 — 0.5.0: dogfooding a pseudoautosomal module — two fixes, three questions
 
 `reference_examples/shox_par1/` was built adversarially: pick a real gene where the libraries are
 likely to claim more than they know, and use only the shipped surface. SHOX sits in **PAR1**, the
@@ -521,7 +669,7 @@ refuted the direction it called most promising.)*
   `ensembl-rest` and `ensembl-graphql` two sources with identical terms; teaching the compiler a
   link→source map would give it a source convention, which P2's 0.5 tightening removed on purpose.
 
-## 2026-08-03 — 0.5.1: CLI/API parity — signing was never CLI-complete
+## 2026-08-03 — 0.5.0: CLI/API parity — signing was never CLI-complete
 
 An audit of every command against every public function across the three packages. Most of it was
 already level; three gaps were not, and they clustered in one place, for one reason.
@@ -562,7 +710,7 @@ PGx author does not switch binaries for a CSV header. And `clinical.verify_clin_
 and the enrichment report — run standalone they would compute a finding with nowhere to put it. Both
 packages' command → API tables are now in [COMPILER.md](COMPILER.md) and [ENRICHER.md](ENRICHER.md).
 
-## 2026-08-03 — 0.5.1: RM28's cis/trans case, closed by a check rather than a grammar
+## 2026-08-03 — 0.5.0: RM28's cis/trans case, closed by a check rather than a grammar
 
 RM28's proposal says the demand for a predicate language "has to come from a module somebody actually
 failed to write". So one was written. `reference_examples/hfe_compound_het/` builds the case that most
@@ -613,7 +761,7 @@ what APOE already named — pairing across *subjects*, and economy ("any two pat
 trans" over 300 of them is ~45,000 pairs, expressible and unwritable) — plus open-world negation, which
 is not an operator problem. Still parked, on a smaller case than before.
 
-## 2026-08-03 — 0.5.1: RM29 cofactors, and a refusal dissolved rather than resolved
+## 2026-08-03 — 0.5.0: RM29 cofactors, and a refusal dissolved rather than resolved
 
 Three optional columns carrying single-subject cofactors with **no predicate language at all** —
 because a row's columns already conjoin, which is the whole reason RM29 was ever separable from RM28.
@@ -664,7 +812,7 @@ on `DiplotypeRow` later. Open rather than a closed vocabulary, since CPIC's own 
 DPWG/CPNDS scope differently; whitespace-stripped on load, because three of CPIC's sixteen values ship
 a trailing space and the column is part of the key.
 
-## 2026-08-03 — 0.5.1: the ACMG SF cross-check, and what a "simple scrape" actually cost
+## 2026-08-03 — 0.5.0: the ACMG SF cross-check, and what a "simple scrape" actually cost
 
 `VariantRow.acmg_sf` has been materialized into `weights.parquet` since 0.4 and checked against
 nothing — assertable and unfalsifiable. It now has a checker: `enricher/acmg.py` and
@@ -718,7 +866,7 @@ lands in the module: this asks a registry about a cell a human already authored,
 `check-identifiers`' shape, not `dosage`'s. The corollary runs the other way: `acmg_sf` joins
 `hints.REDUNDANCY_BEARING`, so no lookup may fill it.
 
-## 2026-08-03 — 0.5.1: delegated insertion, partial rows, and RM26's last provider
+## 2026-08-03 — 0.5.0: delegated insertion, partial rows, and RM26's last provider
 
 Two mechanisms and the provider they unblock. The short version: **the tool decides where a row goes
 and what it can honestly state; it never decides what a human must.**
@@ -927,7 +1075,7 @@ APOE and not a fix.
 narrow — `STAR_ALLELE_PATTERN` had exactly one schema-side use, on `AlleleFunctionRow.allele`, while
 `HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`_b` had no validator at all. So one of
 three tables imposed a star-allele convention on what the other two treated as a plain name, and the
-0.5.1 cross-table check turned the workaround into a dead end: `*4` in one table and `e4` in another
+later cross-table check turned the workaround into a dead end: `*4` in one table and `e4` in another
 reports "used but not defined", and no spelling satisfies both. All three now share
 `validate_haplotype_name` — non-empty, no whitespace, nothing else, because **a name is an identity,
 not a grammar**. `STAR_ALLELE_PATTERN` stays exported and `pgx_draft` still checks it at four sites,
@@ -1148,8 +1296,8 @@ mandatory `unresolved` sentinel is the row that stops an unspanned expansion rea
 
 **The ACMG SF check was probed and deferred, not skipped.** `acmg_sf` is validated against nothing and
 deserves a check, but the probe found no machine-readable list: NCBI carries SF v3.2 as an HTML table
-and ClinGen's FTP publishes no secondary-findings file. A guarded scrape is possible and is recorded in
-0.5.1 rather than rushed — a hand-transcribed gene list in the enricher is the un-injected-reference
+and ClinGen's FTP publishes no secondary-findings file. A guarded scrape is possible and is recorded as follow-up work
+rather than rushed — a hand-transcribed gene list in the enricher is the un-injected-reference
 mistake RM21 already taught.
 
 ## 2026-08-02 — 0.5.0: the ClinPGx snapshot, and a PGx reference example

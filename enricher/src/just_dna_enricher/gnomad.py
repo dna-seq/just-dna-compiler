@@ -77,6 +77,16 @@ FREQUENCY_DATASET_LABEL = "gnomad_v4.1_joint"
 CONSTRAINT_DATASET_LABEL = "gnomad_v4.1_constraint"
 API_CONSTRAINT_DATASET_LABEL = "gnomad_v2.1.1_constraint"
 
+# The assembly gnomAD v4 coordinates are on. A source convention, so it lives here beside `covers_locus`
+# rather than in the pass that queries — and it is a *constant*, not a parameter, because there is one
+# v4 and it is GRCh38-only (v2.1.1 was GRCh37, and asking this API for a GRCh37 position does not
+# request a GRCh37 answer, it requests a GRCh38 one at that number).
+#
+# Named because the frequency pass has to compare against it. `chrom-pos-ref-alt` carries no build, so a
+# GRCh37 coordinate is a perfectly well-formed request that returns whatever GRCh38 variant sits at that
+# number — a wrong-variant fact rather than an error, which is the worst shape a fetch can have.
+FREQUENCY_GENOME_BUILD = "GRCh38"
+
 # The exact message gnomAD returns for an rsID mapping to more than one variant — matched to trigger
 # the `variant_search` fallback. Any other message is a genuine failure for that alias.
 _MULTIPLE_VARIANTS_RE = re.compile(r"multiple variants found", re.IGNORECASE)

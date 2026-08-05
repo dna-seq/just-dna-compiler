@@ -128,10 +128,19 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 ```python
 enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
        clinvar_cache=None, use_clinvar=True, use_gnomad=True, download=True,
-       genome_build="GRCh38", write=True, mint_vrs=True,
+       genome_build=None, write=True, mint_vrs=True,
        verify_ref=True, verify_clinsig=True, verify_rsids=True,
-       resolver=None, gnomad_client=None) -> EnrichmentResult
+       keep_par_twin=False, resolver=None, gnomad_client=None) -> EnrichmentResult
 ```
+
+**`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
+GRCh38". It defaulted to the literal `"GRCh38"` and no caller ever passed anything else, which made every
+`genome_build == "GRCh38"` gate below — and the warning saying a non-GRCh38 module resolves nothing —
+unreachable: a `genome_build: GRCh37` module was resolved against GRCh38 Ensembl and the GRCh38
+coordinate written into its `resolution.csv` under the label `GRCh38`, silently. Enrichment is
+GRCh38-bound (RM15), so for any other build it now warns, runs **no** link, and records **no lookup
+result** — not even `not_found`, which would claim the source was asked. Authored coordinates are still
+transcribed verbatim, under the module's own build. An explicit value stays the inject-only override.
 
 Reads **every table that can ask for a coordinate** — `variants.csv`, `pharm_variants.csv` and
 `haplotypes.csv` — computes which rows still need work (`need_pos` = rsid but no coord; `need_rsid` =
@@ -396,7 +405,7 @@ what produced the false absence.
 source's scope excludes the locus. `FrequencyResult` reports them in `uncovered`, kept apart from
 `missing`, and they are **outside the `strict` gate** on purpose: a locus gnomAD cannot cover is perfectly
 reproducible, so refusing would make a pseudoautosomal module uncompilable for a reason no authored edit
-could fix. (`FrequencyRow.status` also gained a validator here — until 0.5.1 it was free text on a fact
+could fix. (`FrequencyRow.status` also gained a validator here — until 0.5 it was free text on a fact
 table.)
 
 ### Pass 3 — gene constraint (`gene_metrics.py`, offline capable)
@@ -959,7 +968,7 @@ own `PacingGate` — gnomAD is one request per six seconds — and a fresh clien
 both the pacing state and the connection pool. And `--offline` yields `unchecked`, never `absent`:
 a check that could not run is not a check that passed, and `None` is not `False` anywhere in the file.
 
-**A cache miss falls through to live Ensembl (0.5.1), and until it did this surface was silently
+**A cache miss falls through to live Ensembl (0.5), and until it did this surface was silently
 weaker than the pass it advises on.** `hint variant --rsid rs1799945` answered *"not found in Ensembl,
 position remains unset"* for HFE H63D — which live Ensembl serves at 6:26090951 — because the only
 thing it had ever searched was a local snapshot that did not contain it. Two things were wrong and both
@@ -1014,7 +1023,7 @@ separate step.
 - **Coordinates are 1-based** in both (verified against Ensembl for rs4244285 → chr10:94781859, which
   PharmVar, CPIC and our own resolution all agree on). Do not convert.
 - **CPIC recommendations are keyed by (gene phenotype, drug, clinical context) and the contexts
-  disagree** — and since 0.5.1 (RM29b) that is no longer a refusal. `draft --drug` used to stop and
+  disagree** — and since 0.5 (RM29b) that is no longer a refusal. `draft --drug` used to stop and
   list the choices when CPIC scoped a pair to several settings, because `DiplotypeRow` had nowhere to
   put the distinction: writing all of them collided on the duplicate-row key, and writing one asserted
   a clinical setting the author never chose. `DiplotypeRow.clinical_context` is now part of that key,

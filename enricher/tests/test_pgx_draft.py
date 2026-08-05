@@ -15,9 +15,16 @@ import pytest
 from just_dna_compiler.compiler import _load_csv_rows, validate_spec
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 
-from just_dna_enricher.cpic import CpicClient, CpicError
+from just_dna_enricher.cpic import (
+    CpicClient,
+    CpicDefiningVariant,
+    CpicDiplotype,
+    CpicError,
+    CpicRecommendation,
+    map_classification,
+)
 from just_dna_enricher.licensing import LicenseRefusal
-from just_dna_enricher.pgx_draft import draft_gene
+from just_dna_enricher.pgx_draft import _haplotype_rows, _recommendation_rows, draft_gene
 
 _YAML = (
     'schema_version: "1.0"\n'
@@ -193,9 +200,6 @@ def test_an_unstated_declaration_skips_rather_than_failing(tmp_path: Path) -> No
 # difference is data CPIC publishes for one gene and not the other, so the tests below are built from
 # the shapes rather than from a gene name.
 
-from just_dna_enricher.cpic import CpicDefiningVariant
-from just_dna_enricher.pgx_draft import _haplotype_rows
-
 
 def _variant(**kw) -> CpicDefiningVariant:
     base = dict(gene="CYP2C9", allele="*57", rsid=None, chrom=None, start=None,
@@ -290,9 +294,6 @@ def test_variants_with_no_locus_are_reported_once_with_the_count() -> None:
 
 
 # ── CPIC prescribing recommendations (0.5.1) ────────────────────────────────────────────────────
-
-from just_dna_enricher.cpic import CpicDiplotype, CpicRecommendation, map_classification
-from just_dna_enricher.pgx_draft import _recommendation_rows
 
 
 def _rec(phenotype: str, population: str, classification: str = "strong") -> CpicRecommendation:

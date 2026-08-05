@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import _load_csv_rows, _load_yaml, _restamp_for_build
 from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
@@ -74,12 +74,23 @@ class _Subject:
     origin: str
 
 
-def _subject_of_variant(v: VariantRow) -> _Subject:
-    key = v.variant_key or derive_variant_key(v.rsid, v.chrom, v.start, v.ref, v.alts)
+def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> _Subject:
+    """The subject a `variants.csv` row asks about, keyed on the identity it already carries.
+
+    `variant_key` is always set (`_freeze_identity` is a model validator) and `enrich` re-stamps it for
+    the module's build before this runs, so the fallback is belt-and-braces — and it takes `genome_build`
+    anyway, because a fallback that mints a GRCh38 id on a GRCh37 module would be wrong in exactly the
+    way this whole path was.
+    """
+    key = v.variant_key or derive_variant_key(
+        v.rsid, v.chrom, v.start, v.ref, v.alts, build=genome_build
+    )
     return _Subject(key, v.rsid, v.chrom, v.start, v.ref, v.alts, v.genotype, "variants.csv")
 
 
-def _collect_subjects(spec_dir: Path, variants: list[VariantRow]) -> list[_Subject]:
+def _collect_subjects(
+    spec_dir: Path, variants: list[VariantRow], genome_build: str = "GRCh38"
+) -> list[_Subject]:
     """Every row in the spec that needs a coordinate, `variants.csv` first, deduped by `variant_key`.
 
     Order and precedence are load-bearing. `variants.csv` goes first so that when the same variant is
@@ -93,7 +104,7 @@ def _collect_subjects(spec_dir: Path, variants: list[VariantRow]) -> list[_Subje
     variant at `chrom:start:ref` regardless of allele. Mixing that up would mint a VRS allele id for a
     row that never named an allele.
     """
-    subjects: list[_Subject] = [_subject_of_variant(v) for v in variants]
+    subjects: list[_Subject] = [_subject_of_variant(v, genome_build) for v in variants]
 
     pharm_path = spec_dir / "pharm_variants.csv"
     if pharm_path.exists():
@@ -199,6 +210,37 @@ class EnrichmentError(RuntimeError):
     """Raised in strict mode when the chain cannot fully resolve the module."""
 
 
+def spec_genome_build(spec_dir: Path) -> str:
+    """The build the module itself declares, which is the only build enrichment may resolve against.
+
+    `enrich()` took `genome_build` as a plain parameter defaulting to `"GRCh38"` and **nothing ever
+    passed it** — no CLI flag, no caller — so the GRCh38 gate on every link below was unreachable and a
+    `genome_build: GRCh37` module was resolved against GRCh38 Ensembl, its GRCh38 coordinates written
+    into `resolution.csv` labelled `GRCh38`, and GRCh38 VRS ids minted for them. The compiler then
+    (correctly) refused to use any of it. The guard existed; the value never arrived — the same shape as
+    the `VariantRow` re-stamp bug, where a `build` parameter and its fall-through both existed and were
+    never reached.
+
+    A spec with no `module_spec.yaml` gets the format's own default. That is not a guess: `enrich` is
+    routinely pointed at a bare table directory in tests and by hand, and `ModuleSpecConfig.genome_build`
+    defaults to `"GRCh38"`, so this returns what compiling that directory would assume. A spec whose
+    yaml is *present but unreadable* is a different case and raises — enrichment writes facts into that
+    directory, and picking a build for a module whose declaration cannot be read is exactly the
+    invention this function exists to remove.
+    """
+    if not (spec_dir / "module_spec.yaml").exists():
+        return "GRCh38"
+    config, errors, _ = _load_yaml(spec_dir / "module_spec.yaml")
+    if config is None:
+        raise EnrichmentError(
+            f"cannot read the module's genome_build: {errors[0] if errors else 'module_spec.yaml is '
+            'unreadable'}. Enrichment resolves against one assembly and records the answer under the "
+            f"module's declared build, so it will not choose one for you — fix module_spec.yaml, or "
+            f"pass genome_build= explicitly."
+        )
+    return config.genome_build
+
+
 @dataclass
 class EnrichmentResult:
     rows: list[ResolutionRow]
@@ -235,7 +277,7 @@ def enrich(
     use_clinvar: bool = True,
     use_gnomad: bool = True,
     download: bool = True,
-    genome_build: str = "GRCh38",
+    genome_build: Optional[str] = None,
     write: bool = True,
     mint_vrs: bool = True,
     verify_ref: bool = True,
@@ -279,12 +321,24 @@ def enrich(
     survive `reverse_module` rebuilding the spec from parquet alone (Principle 7).
     """
     spec_dir = Path(spec_dir)
+    if genome_build is None:
+        genome_build = spec_genome_build(spec_dir)
     variants: list[VariantRow] = []
     variants_path = spec_dir / "variants.csv"
     if variants_path.exists():
         variants, errors, _ = _load_csv_rows(variants_path, VariantRow, "variants.csv")
         if errors:
             raise EnrichmentError(f"variants.csv is invalid: {errors[0]}")
+        # The **third** load site for `variants.csv`, and it needs the same re-stamp the compiler's two
+        # already do. `VariantRow._freeze_identity` runs at construction with no module in scope, so it
+        # always takes `derive_variant_key`'s GRCh38 default; the compiler fixes that after load in
+        # both `validate_spec` and `compile_module`, and this loader was simply never added to the list.
+        # The consequence was not cosmetic: `enrich` writes `variant_key` into `resolution.csv`, so a
+        # GRCh37 module got a table keyed by `ga4gh:VA.…` GRCh38 ids while the compiler keyed the same
+        # rows `6:26093141:G:A` — a resolution table that could not join to the module it was produced
+        # for, silently. Warnings are dropped here on purpose: the compiler emits the same ones from its
+        # own copy, and repeating them would double every message an author sees for one cause.
+        _restamp_for_build(variants, genome_build)
 
     # Existing/human rows are authoritative — merge, never clobber.
     existing: dict[str, list[ResolutionRow]] = {}
@@ -297,10 +351,16 @@ def enrich(
             existing.setdefault(row.variant_key, []).append(row)
 
     if genome_build != genome_build.strip() or genome_build != "GRCh38":
-        logger.warning("Enrichment is GRCh38-bound; genome_build=%r resolves nothing (RM15).", genome_build)
+        logger.warning(
+            "Enrichment is GRCh38-bound; the module declares genome_build=%r, so no lookup runs and no "
+            "lookup result is recorded (RM15). Every link below is gated on GRCh38 — resolving against "
+            "Ensembl and stamping the answer under %r would record a coordinate from a different "
+            "assembly as this module's own. Authored coordinates are still transcribed verbatim.",
+            genome_build, genome_build,
+        )
 
     # Every table that can ask for a coordinate, not just variants.csv (a PGx module has none).
-    subjects = _collect_subjects(spec_dir, variants)
+    subjects = _collect_subjects(spec_dir, variants, genome_build)
 
     # Partition the subjects that still need work (skip those an existing row already covers).
     need_pos = [
@@ -499,9 +559,17 @@ def enrich(
                         variant_key=key, rsid=v.rsid, genome_build=genome_build,
                         locus_index=i, source=src, status="resolved", **locus,
                     ))
-            else:
+            elif genome_build == "GRCh38":
                 out.append(ResolutionRow(variant_key=key, rsid=v.rsid, genome_build=genome_build,
                                          source="ensembl" if not offline else "cache", status="not_found"))
+                unresolved.append(key)
+            else:
+                # No link ran at all (every one is gated on GRCh38), so there is no answer to record.
+                # `not_found` would say "the source was asked and does not have this rsID" — a negative
+                # nobody established, about a question never put. `VALID_RESOLUTION_STATUS` has no
+                # `unchecked` member to write instead, and inventing one to describe a row that carries
+                # no fact is worse than writing no row: the position is simply still unset, which the
+                # unresolved list already says and the compiler already warns about.
                 unresolved.append(key)
         elif v.rsid is None and v.chrom is not None:
             # Allele-aware back-fill (Tier 0/1/3): 0 candidates → leave rsid null (coordinate is the

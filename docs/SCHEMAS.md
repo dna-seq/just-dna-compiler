@@ -148,7 +148,7 @@ Annotation: `weight?`, `negatives?`, `priority?`, `gene?`, `phenotype?`, `catego
 `acmg_sf?`, `actionability?` (`ACTIONABILITY_SEED`). 0.5: `callable_from?` — the VCF field(s) a consumer
 establishes callability from (`DP`, `GQ`, `FT`, or `DP|GQ`), the RM6 pointer half of
 `requires_callable`; same bare-token grammar as `source_field`, validated on `AuthoredModel` since the
-two share it. 0.5.1 (RM29a): `quality_from?` + `min_quality?` — the call-confidence cofactor, a
+two share it. 0.5 (RM29a): `quality_from?` + `min_quality?` — the call-confidence cofactor, a
 pointer at the VCF confidence field plus an **inclusive** floor below which the row's conclusion is
 withheld. **Both-or-neither** (a model validator): a bound with no field does not say what must clear
 it, and a field with no bound is no threshold at all, so either half alone reads as a gate that is not
@@ -180,7 +180,7 @@ underflow rather than a probability, so it is rejected instead of stored as a co
 - The verbatim `p_value` string stays (retyping or removing it is a 1.0 item), and the compiler
   cross-checks the two at 1% relative tolerance, skipping any cell that is not one definite value.
 
-**`variant_key` is derived against the module's declared build (0.5.1).** `derive_variant_key`'s
+**`variant_key` is derived against the module's declared build (0.5).** `derive_variant_key`'s
 `build` argument always existed and was never passed: `VariantRow._freeze_identity` stamps at row
 construction, where no module is in scope, so a `genome_build: GRCh37` module minted GRCh38 VRS ids
 for GRCh37 coordinates — HFE C282Y at 6:26093141 (GRCh37) got the identical `ga4gh:VA.…` as a GRCh38
@@ -197,7 +197,7 @@ and the `source_field?` VCF pointer. Per-kind key fields: `ActivityPhenotypeRow`
 mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping resolved ranges
 in a key group are a compile error; interior coverage gaps are warnings.
 
-`HeteroplasmyRow`'s **`variant_key` joined the key in 0.5.1** and closed a blocking gap. A mitochondrial
+`HeteroplasmyRow`'s **`variant_key` joined the key in 0.5** and closed a blocking gap. A mitochondrial
 gene carries several pathogenic variants with different thresholds — MT-TL1 has m.3243A>G *and*
 m.3271T>C, both causing MELAS — and keyed on the gene alone their bins collided and `validate_bins`
 **errored**, so the module could not compile. `trait_efo_id` is in the group key but could only have
@@ -234,7 +234,7 @@ grammar is the shared `AuthoredModel` one, so a genotype means the same thing he
 `VariantRow`; a haplotype-keyed annotation (`*1`) belongs on `DiplotypeRow` instead, and a symbolic
 allele (`del/del`) stays RM5 rather than widening the nucleotide grammar.
 
-`DiplotypeRow.clinical_context` (0.5.1, RM29b) is the same shape of fix one table over: CPIC scopes a
+`DiplotypeRow.clinical_context` (0.5, RM29b) is the same shape of fix one table over: CPIC scopes a
 gene/drug recommendation to a **setting**, and the settings disagree. Clopidogrel carries three
 (`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI`) where the same Poor Metabolizer diplotype is graded
 `strong` in one and `moderate` in the others. It is in the dedup key
@@ -345,7 +345,7 @@ outside the fact set.
   source's callset, so it has no answer and none can be inferred: gnomAD hard-masks the Y pseudoautosomal
   region, and recording an absence there stated something nobody established (`None` ≠ `False`). Not
   `unchecked`, which is this codebase's word for a question never *put*. The column was free text until
-  0.5.1, which is how the false absence reached a fact table in the first place.
+  0.5, which is how the false absence reached a fact table in the first place.
 
 - **`allele_frequency` is a derived property, never a stored column.** Integers round-trip through CSV
   exactly; a stored float invites formatting drift, which is a Principle 7 idempotency hazard, for the
@@ -559,7 +559,7 @@ Everything else in `manifest.py` is manifest-only, never authored into a CSV.
   never a name list — the list this replaced named `variant_key` and never learned about
   `authored_ident`.
 
-  **Reachable from the CLI since 0.5.1: `just-dna-compiler reference [--summary|--schemas]`.** This
+  **Reachable from the CLI since 0.5: `just-dna-compiler reference [--summary|--schemas]`.** This
   package ships no CLI of its own (Typer would breach the pydantic-plus-cryptography floor), so the
   consumer that most needs the reference had to import this module and write Python. Same reasoning
   put `verify`, `sign` and now `keygen` on the compiler's command list.

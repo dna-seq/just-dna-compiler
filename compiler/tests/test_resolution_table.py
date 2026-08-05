@@ -98,6 +98,36 @@ def test_resolve_from_table_warns_on_missing_and_skips_non_grch38() -> None:
     assert any("GRCh38-bound" in w for w in skip)
 
 
+def test_rows_with_no_rsid_are_one_counted_warning_naming_their_coordinates() -> None:
+    """Coordinate-authored rows the table knows no rsID for: one line, and it names *places*.
+
+    Two defects in the same message. It was emitted per row — 26 of them in
+    `reference_examples/pathogenic_clinvar/`, out of 37 warnings, burying the nine expansion findings
+    and a duplicate-citation error. And it printed `variant_key`, which since 0.5 is a
+    `ga4gh:VA.…` digest for a resolved substitution, so a third of those lines read "Position
+    ga4gh:VA.aseiElOGc6FKVcLTpib-L1y4s1dwiYE2" — a content-addressed identity announced as a position,
+    which an author cannot find in their own CSV.
+    """
+    rows = [
+        _v(chrom="11", start=5_227_002, ref="T", alts="A"),
+        _v(chrom="11", start=5_226_931, ref="TGCCCAGG", alts="T"),
+        _v(chrom="1", start=11_796_321, ref="G", alts="A"),
+        _v(chrom="6", start=26_092_913, ref="G", alts="A"),
+    ]
+    # A substitution row's frozen key really is a VA — that is what made the old message wrong.
+    assert rows[0].variant_key.startswith("ga4gh:VA.")
+
+    warnings = resolve_from_table(rows, {}).warnings
+    no_rsid = [w for w in warnings if "no rsid in the resolution table" in w]
+
+    assert len(no_rsid) == 1, warnings
+    message = no_rsid[0]
+    assert "4 coordinate-authored row(s)" in message
+    assert "11:5227002 T>A" in message and "11:5226931 TGCCCAGG>T" in message
+    assert "ga4gh:VA." not in message
+    assert "and 1 more" in message, "the tail is counted, not listed"
+
+
 # ── offline round-trip / digest parity: DuckDB (path 2) vs resolution.csv (path 1) ────────────
 
 

@@ -84,6 +84,12 @@ def resolve_from_table(
     strict_errors: list[str] = []
     errors: list[str] = []
     patched: list[VariantRow] = []
+    # Coordinate-authored rows the table knows no rsID for. Collected rather than reported per row:
+    # `reference_examples/pathogenic_clinvar/` produced 26 of these, which buried the nine expansion
+    # warnings and the duplicate-citation finding in the same run. It is also the *expected* state for a
+    # coordinate-authored module — the row already has its identity, and an rsID is a convenience label
+    # — so it earns one counted line, not a line each.
+    no_rsid: list[str] = []
     for v in variants:
         rows = resolution.get(v.variant_key or "")
         loci = _usable_loci(rows, genome_build)
@@ -142,8 +148,13 @@ def resolve_from_table(
                     warnings.append(_expansion_warning(v.rsid, usable, genome_build))
                     for locus in _sorted_loci(usable):
                         update = _coord_update(locus)
+                        # `build=` is redundant *today* — the function returns early for any other
+                        # build 70 lines up — and is passed anyway: correct-by-construction beats
+                        # correct-by-a-distant-guard, and every instance of this bug so far was a
+                        # guard that existed somewhere else.
                         update["variant_key"] = derive_variant_key(
-                            None, locus.chrom, locus.start, locus.ref, locus.alts
+                            None, locus.chrom, locus.start, locus.ref, locus.alts,
+                            build=genome_build,
                         )
                         patched.append(v.model_copy(update=update))
 
@@ -163,9 +174,11 @@ def resolve_from_table(
             if update:
                 patched.append(v.model_copy(update=update))
             else:
-                warnings.append(
-                    f"Position {v.variant_key}: no rsid found in resolution table"
-                )
+                # Name the *place*, not the key. `variant_key` for a resolved substitution is a
+                # `ga4gh:VA.…` allele id, so the old message read "Position
+                # ga4gh:VA.aseiElOGc6FKVcLTpib-L1y4s1dwiYE2" — calling a content-addressed identity a
+                # position, and giving the author nothing to look up. The row holds the coordinate.
+                no_rsid.append(_locus_label(v))
                 patched.append(v)
 
         else:
@@ -173,6 +186,14 @@ def resolve_from_table(
             if v.rsid is not None and v.chrom is not None and loci:
                 _verify(v, loci, warnings, strict_errors)
             patched.append(v)
+
+    if no_rsid:
+        warnings.append(
+            f"{len(no_rsid)} coordinate-authored row(s) have no rsid in the resolution table, so they "
+            f"stay coordinate-keyed: {_examples(no_rsid)}. Not an error — a coordinate is a complete "
+            f"identity and an rsID is a label on top of it; re-run the enricher if you want the labels "
+            f"back-filled."
+        )
 
     for variant in patched:
         for locus in resolution.get(variant.variant_key or "", []):
@@ -209,6 +230,25 @@ def resolve_from_table(
     return ResolutionOutcome(
         variants=patched, warnings=warnings, strict_errors=strict_errors, errors=errors
     )
+
+
+def _locus_label(v: VariantRow) -> str:
+    """`chrom:start ref>alts` for a message about a place, falling back to the key if it has none.
+
+    Deliberately not `variant_key`: since 0.5 that is a `ga4gh:VA.…` digest for a resolved
+    substitution, which names the variant precisely and tells a human nothing they can find in their
+    own CSV.
+    """
+    if v.chrom is None or v.start is None:
+        return str(v.variant_key)
+    alleles = f" {v.ref}>{v.alts}" if v.ref and v.alts else f" {v.ref}" if v.ref else ""
+    return f"{v.chrom}:{v.start}{alleles}"
+
+
+def _examples(labels: list[str], limit: int = 3) -> str:
+    """The first few labels, with a count of the rest — so one line stays one line."""
+    shown = ", ".join(labels[:limit])
+    return shown if len(labels) <= limit else f"{shown} … and {len(labels) - limit} more"
 
 
 def _usable_loci(

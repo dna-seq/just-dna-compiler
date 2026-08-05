@@ -51,7 +51,7 @@ parked until a module appears that genuinely cannot be written.
 `AlleleFunctionRow.allele` enforced `STAR_ALLELE_PATTERN` (a leading `*`) while
 `HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` had no rule at all, so
 `e4` was legal in two of the three PGx tables and illegal in the third. Worse, the cross-table check
-added in 0.5.1 turned the obvious workaround into a dead end: write `*4` in one table and `e4` in the
+added in 0.5 turned the obvious workaround into a dead end: write `*4` in one table and `e4` in the
 other and it reports "used but not defined", with no spelling that satisfies both.
 
 All three tables now share one rule (`validate_haplotype_name`): non-empty, no whitespace, nothing

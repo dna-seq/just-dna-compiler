@@ -287,7 +287,9 @@ def test_the_drug_rows_sit_beside_the_phenotype_rows_not_instead_of_them() -> No
     assert plain and drugged
     assert {r["drug"] for r in drugged} == {"clopidogrel"}
     # the same pair appears once per question, never twice for the same one
-    pairs = lambda rs: [(r["gene"], r["haplotype_a"], r["haplotype_b"]) for r in rs]
+    def pairs(rs):
+        return [(r["gene"], r["haplotype_a"], r["haplotype_b"]) for r in rs]
+
     assert len(set(pairs(plain))) == len(plain)
     assert len(set(pairs(drugged))) == len(drugged)
 

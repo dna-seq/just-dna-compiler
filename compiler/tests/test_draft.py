@@ -5,6 +5,8 @@ single calls: a helper that works once and then self-defuses would pass a one-sh
 a multi-gene module unbuildable, which is the failure mode this design exists to avoid.
 """
 
+import csv
+import io
 from pathlib import Path
 
 import polars as pl
@@ -16,17 +18,22 @@ from just_dna_compiler.compiler import (
     validate_spec,
 )
 from just_dna_compiler.draft import (
+    DRAFTABLE,
     DraftError,
     append_rows,
+    authoring_requirements,
     blank_template,
+    field_category,
     model_for,
     natural_key,
     required_fields,
+    stub_template,
 )
 from just_dna_format.base import authored_field_names
 from just_dna_format.binning import RepeatAlleleRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow
 from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
 _YAML = (
     "schema_version: '1.0'\n"
@@ -408,19 +415,6 @@ def test_the_htt_bins_cover_every_count_with_exactly_one_answer(tmp_path: Path) 
 # default but reject the `None` an empty cell becomes. Every test here is parametrized over
 # `DRAFTABLE`, so a new table kind is covered without editing them.
 
-import csv as _csv
-import io as _io
-
-import pytest as _pytest
-from just_dna_compiler.draft import (
-    DRAFTABLE,
-    authoring_requirements,
-    field_category,
-    stub_template,
-)
-from just_dna_format.base import authored_field_names
-from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
-
 #: One valid value per stubbed column, for filling a template in the tests below. Domain constants,
 #: which CLAUDE.md's testing rules explicitly allow hardcoding — unlike row counts.
 _FILL = {
@@ -438,7 +432,7 @@ _FILL_BY_KIND = {
 
 def _fill(kind: str, text: str) -> str:
     """Replace every placeholder in a stub template with a valid value, preserving row order."""
-    rows = list(_csv.DictReader(_io.StringIO(text)))
+    rows = list(csv.DictReader(io.StringIO(text)))
     fieldnames = list(rows[0])
     values = {**_FILL, **_FILL_BY_KIND.get(kind, {})}
     for row in rows:
@@ -447,14 +441,14 @@ def _fill(kind: str, text: str) -> str:
                 row[column] = values.get(column, "1")
         if row.get("unresolved") == "false" and not row.get("measure_min"):
             row["measure_min"] = "1"  # a resolved bin needs at least one bound
-    buf = _io.StringIO()
-    writer = _csv.DictWriter(buf, fieldnames=fieldnames)
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(rows)
     return buf.getvalue()
 
 
-@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
 def test_an_unreplaced_stub_never_loads(kind: str, tmp_path) -> None:
     """The whole point of a sentinel over a blank cell: it cannot reach a compiled module, and it
     says so by name rather than as a type error about a column the author never wrote."""
@@ -465,7 +459,7 @@ def test_an_unreplaced_stub_never_loads(kind: str, tmp_path) -> None:
     assert errors and all(TEMPLATE_PLACEHOLDER in e for e in errors)
 
 
-@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
 def test_a_filled_stub_loads_with_no_errors(kind: str, tmp_path) -> None:
     """The regression that matters: replacing only the stubbed cells must be enough.
 
@@ -479,13 +473,13 @@ def test_a_filled_stub_loads_with_no_errors(kind: str, tmp_path) -> None:
     assert rows
 
 
-@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
 def test_defaulted_columns_are_written_out_not_left_blank(kind: str) -> None:
     """A `defaulted` column is written with its default; an `optional` one is left empty."""
     model = model_for(kind)
     requirements = authoring_requirements(kind)
     header, first, *_ = stub_template(kind).splitlines()
-    cells = dict(zip(header.split(","), next(_csv.reader([first]))))
+    cells = dict(zip(header.split(","), next(csv.reader([first]))))
     for column, rendered in requirements["defaulted"].items():
         assert cells[column] == rendered, f"{kind}:{column} should carry its default"
         assert field_category(model, column) == "defaulted"
@@ -499,7 +493,7 @@ def test_defaulted_columns_are_written_out_not_left_blank(kind: str) -> None:
         assert cells[column] == "", f"{kind}:{column} is optional and should be blank"
 
 
-@_pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
 def test_a_stub_offers_exactly_the_authored_surface(kind: str) -> None:
     """Asserted against the marker, so a newly compiler-managed field is covered without an edit."""
     header = stub_template(kind).splitlines()[0].split(",")
@@ -509,7 +503,7 @@ def test_a_stub_offers_exactly_the_authored_surface(kind: str) -> None:
 def test_a_stub_asks_for_one_identity_group_not_every_alternative() -> None:
     """`rsid` OR `chrom`+`start` — stubbing both would tell the author to supply two identities."""
     header, first, *_ = stub_template("variants.csv").splitlines()
-    cells = dict(zip(header.split(","), next(_csv.reader([first]))))
+    cells = dict(zip(header.split(","), next(csv.reader([first]))))
     assert cells["rsid"] == TEMPLATE_PLACEHOLDER
     assert cells["chrom"] == "" and cells["start"] == ""
 
@@ -517,7 +511,7 @@ def test_a_stub_asks_for_one_identity_group_not_every_alternative() -> None:
 def test_a_binning_stub_carries_the_mandatory_unresolved_companion() -> None:
     """A binning table without the sentinel is incomplete by contract, so the template supplies it
     rather than letting the author meet that rule as a compile error about a row they never wrote."""
-    rows = list(_csv.DictReader(_io.StringIO(stub_template("repeat_alleles.csv"))))
+    rows = list(csv.DictReader(io.StringIO(stub_template("repeat_alleles.csv"))))
     assert [r["unresolved"] for r in rows] == ["false", "true"]
     sentinel = rows[-1]
     assert sentinel["measure_min"] == "" and sentinel["measure_max"] == ""

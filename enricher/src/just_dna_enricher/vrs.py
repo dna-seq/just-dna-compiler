@@ -112,7 +112,16 @@ class VrsMinter:
         if chrom is None or start is None or ref is None or not alt:
             return None, None
         if is_substitution(ref, alt):
-            return derive_vrs_allele_id(chrom, start, ref, alt, build=build), "stdlib"
+            # `refget_accession` RAISES for a build with no table, deliberately — a caller asking for
+            # GRCh37 must hear "not built", never get a GRCh38-flavoured id. So every call site has to
+            # catch it, and this one did not: a single `genome_build: GRCh37` row in an otherwise fine
+            # `resolution.csv` aborted the whole enrich run with an unhandled exception. The indel
+            # branch below already caught it; the substitution branch is the cheap path that skipped
+            # the guard. Same severity as any other unmintable row — no id, and the run carries on.
+            try:
+                return derive_vrs_allele_id(chrom, start, ref, alt, build=build), "stdlib"
+            except UnsupportedBuildError:
+                return None, None
         minted = self._mint_normalized(chrom, start, ref, alt, build)
         return minted, ("normalized" if minted is not None else None)
 

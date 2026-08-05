@@ -1,0 +1,4 @@
+chrom,start,ref,alts,genotype,state,conclusion,gene,phenotype,category,clin_sig,clinvar,direction,trait_efo_id
+6,26093141,G,A,A/A,risk,C282Y homozygote: the classic hereditary-haemochromatosis genotype,HFE,Hereditary haemochromatosis,metabolic,pathogenic,true,risk,EFO_0001361
+6,26093141,G,A,A/G,risk,C282Y heterozygote: carrier; iron overload uncommon without a second variant,HFE,Hereditary haemochromatosis,metabolic,pathogenic,true,risk,EFO_0001361
+6,26091179,C,G,G/G,risk,H63D homozygote: mild iron-overload risk,HFE,Hereditary haemochromatosis,metabolic,uncertain_significance,true,risk,EFO_0001361

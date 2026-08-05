@@ -459,23 +459,15 @@ class VariantRow(AuthoredModel):
         ]
         return self
 
-    @property
-    def authored_key(self) -> str:
-        """The identity the author wrote, recomputed from `authored_ident` alone.
-
-        For an expanded one-to-many rsid this is the *authored* rsid while `variant_key` has become
-        the per-locus allele id — which is exactly the pairing reverse needs to collapse N artifact
-        rows back into the one row that was written.
-        """
-        authored = set(self.authored_ident or ())
-        return derive_variant_key(
-            self.rsid if "rsid" in authored else None,
-            self.chrom if "chrom" in authored else None,
-            self.start if "start" in authored else None,
-            self.ref if "ref" in authored else None,
-            self.alts if "alts" in authored else None,
-        )
-
+    # `authored_key` — "the identity the author wrote, recomputed from `authored_ident`" — lived here
+    # and is **removed**. It had no caller anywhere in the workspace: `reverse_module` recomputes the
+    # same expression inline from a polars row dict, which is not a `VariantRow` and so could never
+    # have used the property. What made a dead duplicate worth deleting rather than leaving is that it
+    # was *build-blind* — it called `derive_variant_key` with no `build`, so on a `genome_build: GRCh37`
+    # module it minted a GRCh38 `ga4gh:VA.…`, the exact identity falsification the 2026-08-06 sweep
+    # found in four other places. A second copy of a rule that has already gone wrong four times is a
+    # trap, not a convenience. The live copy in `_write_variants_csv` passes the build.
+    #
     # ── 0.3 read-time aliases + upgrade (ROADMAP item 1/6 + "Upgrade derivation"). ────────────────
     # `state` and the ClinVar booleans stay REQUIRED/authoritative for 0.2 compat (CONSTITUTION
     # Principle 3/8 — a required field is never demoted to optional inside a major). These accessors

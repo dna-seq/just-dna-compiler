@@ -1,0 +1,3 @@
+chrom,start,ref,pmid,population,conclusion,study_design
+6,26093141,G,8696333,european,C282Y identified as the major hereditary-haemochromatosis allele,candidate_gene
+6,26091179,C,8696333,european,H63D described in the same report as the second HFE variant,candidate_gene

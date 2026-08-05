@@ -194,8 +194,11 @@ def resolve_variants(
                         f"rows (one per locus, each keyed by its coordinate — a consumer can count them)."
                     )
                     for locus in usable:
+                        # Redundant today (the function returns early above for any non-GRCh38 build),
+                        # passed anyway — see the twin in `just_dna_compiler.resolution`.
                         key = derive_variant_key(
-                            None, locus["chrom"], locus["start"], locus["ref"], locus["alts"]
+                            None, locus["chrom"], locus["start"], locus["ref"], locus["alts"],
+                            build=genome_build,
                         )
                         patched.append(v.model_copy(update={**locus, "variant_key": key}))
         elif v.rsid is None and v.chrom is not None:

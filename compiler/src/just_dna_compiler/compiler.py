@@ -60,6 +60,7 @@ from just_dna_format.manifest import (
     ProvenanceDoc,
     Sources,
     Stats,
+    read_manifest,
     write_manifest,
 )
 from just_dna_format.binning import (
@@ -417,9 +418,23 @@ def _load_yaml(
     of keys actually removed, for the caller to surface as INFO."""
     if not path.exists():
         return None, [f"module_spec.yaml not found at {path}"], []
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        # A syntax error is the most likely mistake in a hand-written file, and it used to come out as
+        # an unhandled `yaml.parser.ParserError` traceback from inside `validate` — for the one command
+        # whose whole job is to report problems in a form an author can act on. pyyaml's own message
+        # locates the line and column, so it is kept verbatim and merely labelled.
+        return None, [f"module_spec.yaml is not valid YAML: {exc}"], []
     if raw is None:
         return None, ["module_spec.yaml is empty"], []
+    if not isinstance(raw, dict):
+        # A scalar or a list parses fine and then dies in `model_validate` with a pydantic message
+        # about the wrong input type, which does not name the actual problem.
+        return None, [
+            f"module_spec.yaml must be a mapping of top-level keys (module:, defaults:, …), not "
+            f"{type(raw).__name__}"
+        ], []
     dropped: list[str] = []
     if authority_keys and isinstance(raw, dict) and isinstance(raw.get("module"), dict):
         raw["module"], dropped = strip_authority_keys(raw["module"], authority_keys)
@@ -1312,6 +1327,35 @@ def validate_spec(
             loaded_kinds.get("diplotypes.csv", []),
         )
     )
+
+    # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
+    # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
+    # live in the spec directory and `compile_module` **refuses** on a bad row in any of them, so
+    # leaving them out here made `validate` report `valid` for a directory `compile` then rejected.
+    # That is the one thing this command must never do: AUTHORING.md § 6 puts `validate` immediately
+    # before `compile`, so it is the author's pre-flight, and a green pre-flight followed by a refusal
+    # sends them looking for a change they did not make. Row-level validation only — the cross-checks
+    # that compare a sidecar against the module's variants produce *warnings*, and several of them need
+    # rows that only exist after resolution has run.
+    for csv_name, model in (
+        ("resolution.csv", ResolutionRow),
+        *((name, model) for name, _parquet, model in _FACT_TABLES),
+    ):
+        injected_path = spec_dir / csv_name
+        if not injected_path.exists():
+            continue
+        injected_rows, injected_errors, injected_warnings = _load_csv_rows(
+            injected_path, model, csv_name
+        )
+        all_errors.extend(injected_errors)
+        all_warnings.extend(injected_warnings)
+        if model is SourceRow and not injected_errors:
+            # The licence gate, run here for the same reason. It refuses in **both** modes and is pure
+            # computation over injected bytes (the compiler holds no source→licence map, P2), so there
+            # is nothing about it that needs an output directory — it was simply only wired into
+            # `compile_module`. It is also the refusal most expensive to discover late: a module drafted
+            # entirely from a no-sale source compiles right up to the gate.
+            all_errors.extend(_check_license_gate(injected_rows))
 
     # Composition: a module must carry at least one recognized table kind.
     if not has_variants and not kind_row_counts:
@@ -2619,6 +2663,29 @@ def _module_name_from_parquets(parquet_dir: Path) -> Optional[str]:
     return None
 
 
+def _genome_build_from_artifact(parquet_dir: Path) -> Optional[str]:
+    """Recover the module's declared `genome_build` from the artifact's own `manifest.json`.
+
+    `genome_build` is authored `module_spec.yaml` metadata that reaches the artifact through the
+    manifest and **no parquet column**, so this is the only place it survives a compile. Reverse has
+    to consult it: unlike `title`, getting the build wrong is not cosmetic — a coordinate is not
+    absolute, so re-emitting a GRCh37 module as GRCh38 makes the next compile mint a GRCh38 VRS allele
+    id for a GRCh37 position, which is a *false content-addressed claim* rather than a lost label.
+
+    Returns `None` for a bare parquet directory with no manifest, or a manifest this compiler cannot
+    parse — the same "recover it from the artifact, else fall back" shape as
+    `_module_name_from_parquets`. A provenance failure must not stop a reverse, so the read is
+    tolerant; what it must not do is *invent* a build, which is why the caller's fallback is explicit.
+    """
+    path = parquet_dir / "manifest.json"
+    if not path.is_file():
+        return None
+    try:
+        return read_manifest(path).genome_build
+    except (OSError, ValueError):
+        return None
+
+
 def reverse_module(
     parquet_dir: Path,
     output_dir: Path,
@@ -2630,12 +2697,22 @@ def reverse_module(
     color: str = "#6435c9",
     version: Optional[str] = None,
     write_resolution: bool = True,
+    genome_build: Optional[str] = None,
 ) -> Path:
     """Reverse-engineer a parquet module back into the spec DSL (yaml + csv). Returns output_dir.
 
     `version` (like `title`/`description`) is authored `module:` metadata, out of `artifact.digest`
     and so not materialized into any parquet — a caller that wants it in the re-emitted spec supplies
     it (e.g. from the manifest's `identity.version`); when omitted it is left out of the block.
+
+    `genome_build` is **not** in that class, even though it reaches the artifact the same way (the
+    manifest, never a parquet column). A wrong title is cosmetic; a wrong build relocates every
+    coordinate in the module. This used to be hardcoded `"GRCh38"`, so
+    `compile → reverse → compile` on a `genome_build: GRCh37` module re-emitted it as GRCh38 and the
+    recompile minted `ga4gh:VA.…` ids — GRCh38 allele identities for GRCh37 positions — moving
+    `artifact.digest` and asserting a variant at a base the module never named. Resolution order is
+    therefore: this argument, else the artifact's own `manifest.json`, else `"GRCh38"` for a bare
+    parquet directory that records nothing.
 
     `write_resolution` (default True) also emits `resolution.csv` — the resolved facts recovered from
     the artifact — so `reverse → compile` reproduces the identical `artifact.digest` with **no network
@@ -2652,6 +2729,8 @@ def reverse_module(
 
     if module_name is None:
         module_name = _module_name_from_parquets(parquet_dir) or parquet_dir.name
+    if genome_build is None:
+        genome_build = _genome_build_from_artifact(parquet_dir) or "GRCh38"
 
     default_curator = "unknown"
     default_method = "unknown"
@@ -2681,7 +2760,7 @@ def reverse_module(
         "schema_version": "1.0",
         "module": module_block,
         "defaults": defaults_dict,
-        "genome_build": "GRCh38",
+        "genome_build": genome_build,
     }
     (output_dir / "module_spec.yaml").write_text(
         yaml.dump(spec, default_flow_style=False, sort_keys=False), encoding="utf-8"
@@ -2716,10 +2795,12 @@ def reverse_module(
                 }
         _write_variants_csv(
             weights_df, ann_lookup, ann_keyed_by_effect, default_curator, default_method,
-            default_priority, output_dir / "variants.csv",
+            default_priority, output_dir / "variants.csv", genome_build=genome_build,
         )
         if write_resolution:
-            _write_resolution_csv(weights_df, output_dir / "resolution.csv")
+            _write_resolution_csv(
+                weights_df, output_dir / "resolution.csv", genome_build=genome_build
+            )
     studies_path = parquet_dir / "studies.parquet"
     if studies_path.exists():
         _write_studies_csv(pl.read_parquet(studies_path), output_dir / "studies.csv")
@@ -2743,7 +2824,9 @@ def reverse_module(
     return output_dir
 
 
-def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
+def _write_resolution_csv(
+    weights_df: pl.DataFrame, output_path: Path, genome_build: str = "GRCh38"
+) -> None:
     """Emit `resolution.csv` from the compiled weights — the resolved facts, so `reverse → compile`
     is fully offline (no Ensembl reference, no network).
 
@@ -2767,7 +2850,14 @@ def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
     `authority` (RM33) joins that list for the same reason and one of its own: `source` is `reversed`
     here, and a reversed table's facts came out of parquet rather than from any licensed source, so
     there is no authority to name. The column is absent, loads as `None`, and contributes nothing to the
-    compiler's `sources.csv` coherence check — which is the accurate statement."""
+    compiler's `sources.csv` coherence check — which is the accurate statement.
+
+    `genome_build` is the module's, and it reaches **both** the column and `derive_variant_key`. Getting
+    only the column right is not enough and was the first shape of this fix: the key is minted from
+    `(chrom, start, ref, alts)`, so on a GRCh37 module the default build produced a `ga4gh:VA.…` — a
+    GRCh38 allele identity — on a row whose own `genome_build` cell said `GRCh37`. The row contradicted
+    itself, and since `resolve_from_table` joins on `variant_key`, it also silently matched nothing on
+    recompile."""
     fieldnames = [
         "variant_key", "rsid", "chrom", "start", "ref", "alts",
         "genome_build", "locus_index", "source", "status", "fetched_at",
@@ -2797,10 +2887,12 @@ def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
                     start if "start" in authored_set else None,
                     row.get("ref") if "ref" in authored_set else None,
                     alts_cell if "alts" in authored_set else None,
+                    build=genome_build,
                 )
             else:
                 resolution_key = row.get("variant_key") or derive_variant_key(
                     row.get("rsid"), chrom, start, row.get("ref"), alts_cell,
+                    build=genome_build,
                 )
             # One authored row may appear several times in weights (one per genotype); the resolved
             # fact is the same each time, so emit it once.
@@ -2818,7 +2910,11 @@ def _write_resolution_csv(weights_df: pl.DataFrame, output_path: Path) -> None:
                     "start": _scalar_cell(start),
                     "ref": _scalar_cell(row.get("ref")),
                     "alts": alts_cell or "",
-                    "genome_build": "GRCh38",
+                    # The module's own declared build, not a constant. A GRCh37 module's facts were
+                    # being written out labelled GRCh38 — a coordinate relabelled onto an assembly
+                    # where it names a different base. `resolve_from_table` filters rows on this
+                    # column, so the wrong label also made a reversed table unjoinable.
+                    "genome_build": genome_build,
                     "locus_index": index,
                     "source": "reversed",
                     "status": "resolved",
@@ -2850,8 +2946,15 @@ def _write_variants_csv(
     default_method: str,
     default_priority: Optional[str],
     output_path: Path,
+    genome_build: str = "GRCh38",
 ) -> None:
-    """Write variants.csv from weights parquet + annotations lookup."""
+    """Write variants.csv from weights parquet + annotations lookup.
+
+    `genome_build` reaches `derive_variant_key` below for the same reason it does in
+    `_write_resolution_csv`: the key is minted from the coordinate, so the default would mint a GRCh38
+    `ga4gh:VA.…` for a row on another assembly. Here it decides only which artifact rows collapse into
+    one authored row, so a wrong build mis-groups rather than mislabels — still wrong, and wrong in a
+    way that shows up as a lost or duplicated row rather than as a bad cell."""
     fieldnames = [
         "rsid", "chrom", "start", "ref", "alts", "genotype", "weight", "state", "conclusion",
         "negatives", "priority", "gene", "phenotype", "category", "clinvar", "pathogenic", "benign",
@@ -2897,6 +3000,7 @@ def _write_variants_csv(
                     row.get("start") if "start" in authored_set else None,
                     row.get("ref") if "ref" in authored_set else None,
                     ",".join(row.get("alts") or []) if "alts" in authored_set else None,
+                    build=genome_build,
                 )
                 dedupe_key = (authored_key, row.get("conclusion"), row.get("negatives"),
                               tuple(row.get("genotype") or ()))

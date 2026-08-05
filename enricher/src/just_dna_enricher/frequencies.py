@@ -29,7 +29,12 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import population_sort_key
 
-from just_dna_enricher.gnomad import FREQUENCY_DATASET_LABEL, GnomadClient, covers_locus
+from just_dna_enricher.gnomad import (
+    FREQUENCY_DATASET_LABEL,
+    FREQUENCY_GENOME_BUILD,
+    GnomadClient,
+    covers_locus,
+)
 from just_dna_enricher.licensing import record_source_terms
 
 logger = logging.getLogger(__name__)
@@ -75,20 +80,37 @@ def format_faf95(value: Optional[float]) -> str:
     return str(value)
 
 
-def _alleles_from_resolution(rows: list[ResolutionRow]) -> list[tuple[str, str, int, str, str]]:
+def _alleles_from_resolution(
+    rows: list[ResolutionRow],
+) -> tuple[list[tuple[str, str, int, str, str]], list[str]]:
     """Expand resolved rows into `(variant_key, chrom, start, ref, alt)` — one entry per ALT.
+
+    Returns `(alleles, off_build)`, the second being the `variant_key`s left out because their assembly
+    is not the one gnomAD serves.
 
     A multi-allelic `alts` cell becomes several entries, each re-keyed to *its own* allele identity via
     `derive_variant_key`, because that is the key the compiler's weights rows carry after expansion.
     Emitted in first-occurrence order, de-duplicated, so the request order (and so the written table)
     is deterministic.
+
+    **A row on another build is skipped, and that is a correctness fix rather than an optimization.**
+    gnomAD's variant id is `chrom-pos-ref-alt` and carries no assembly, so a GRCh37 coordinate is a
+    well-formed request that returns whatever GRCh38 variant sits at that number: the pass would have
+    written a **different variant's** counts under this module's key, with no error anywhere. The same
+    row also reached `derive_variant_key` without a `build`, so it minted a GRCh38 `ga4gh:VA.…` for a
+    GRCh37 coordinate — the same false content-addressed identity the reverse and enrich paths were
+    producing, from a third place.
     """
     seen: set[tuple[str, int, str, str]] = set()
     out: list[tuple[str, str, int, str, str]] = []
+    off_build: list[str] = []
     for row in rows:
         if row.chrom is None or row.start is None or row.ref is None or not row.alts:
             continue
         if row.status == "not_found":
+            continue
+        if row.genome_build != FREQUENCY_GENOME_BUILD:
+            off_build.append(row.variant_key)
             continue
         for alt in (a.strip() for a in row.alts.split(",")):
             if not alt:
@@ -97,9 +119,11 @@ def _alleles_from_resolution(rows: list[ResolutionRow]) -> list[tuple[str, str, 
             if coord in seen:
                 continue
             seen.add(coord)
-            key = derive_variant_key(None, row.chrom, row.start, row.ref, alt)
+            key = derive_variant_key(
+                None, row.chrom, row.start, row.ref, alt, build=row.genome_build
+            )
             out.append((key, row.chrom, row.start, row.ref, alt))
-    return out
+    return out, off_build
 
 
 def _variant_id(chrom: str, start: int, ref: str, alt: str) -> str:
@@ -148,7 +172,16 @@ def enrich_frequencies(
         for row in rows:
             existing[(row.variant_key, row.population)] = row
 
-    alleles = _alleles_from_resolution(resolution_rows)
+    alleles, off_build = _alleles_from_resolution(resolution_rows)
+    if off_build:
+        # One counted line, not one per row, and it names the build rather than the count alone: an
+        # author on GRCh37 needs to know the pass declined rather than found nothing.
+        logger.warning(
+            "Frequency enrichment skipped %d row(s) whose genome_build is not %s: gnomAD v4 is "
+            "%s-only and its variant id carries no assembly, so querying a coordinate from another "
+            "build would return a different variant's counts under this module's key. Examples: %s",
+            len(off_build), FREQUENCY_GENOME_BUILD, FREQUENCY_GENOME_BUILD, off_build[:3],
+        )
     wanted_populations = {p.strip().lower() for p in populations} if populations else None
 
     if offline:

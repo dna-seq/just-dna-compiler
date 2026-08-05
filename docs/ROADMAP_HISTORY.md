@@ -91,21 +91,23 @@ pressure). So the last 0.5 work is columns plus tooling that carries no schema r
   actually say; recording that as `commercial_use=False` understates it.
 - **RM17** SemVer enforcement (coercing), the `verify`/`sign` CLI, the generic drafting helper with its
   first CPIC provider, an `ORDO` ontology route, and the `htt_repeat_expansion` reference example — all
-  digest-neutral. The ACMG SF cross-check was scoped here too and is **deferred to 0.5.1**: the probe
+  digest-neutral. The ACMG SF cross-check was scoped here too and is **deferred to the post-cut round**: the probe
   found no machine-readable list to check against (see below).
 
-## 0.5.1 — queued behind the cut (nothing here needs the window)
+## The post-cut round — queued behind the digest window (nothing here needed it)
 
-Small, additive, and digest-neutral, so waiting costs nothing.
+Small, additive, and digest-neutral, so waiting costs nothing. This was labelled `0.5.1` while it was
+being planned as a separate release; it never became one — nothing 0.5.x has been published, so it ships
+as part of 0.5.0 with everything above (see the note at the top of [CHANGELOG.md](CHANGELOG.md)).
 
-**Shipped in 0.5.1** (see [CHANGELOG](CHANGELOG.md) for the detail): the whole authoring surface —
+**Shipped in the post-cut round** (see [CHANGELOG](CHANGELOG.md) for the detail): the whole authoring surface —
 templating (`stub`/`scaffold`), offline hints, the enricher lookup surface, **delegated insertion**
 and **partial rows**; **RM26**'s remaining two drafting providers (ClinPGx → `pharm_variants.csv`,
 ClinVar → `variants.csv`) plus CPIC prescribing recommendations; **RM30**; a cross-table check for
 star alleles used but never defined; and three reference examples authored end to end with the
 surface (`hfe_hemochromatosis`, `cyp2c19_star_alleles`, `apoe_epsilon`).
 
-**Also shipped in 0.5.1** (the 2026-08-03 round): the **ACMG SF cross-check** (above), **RM29**'s
+**Also shipped in 0.5** (the 2026-08-03 round): the **ACMG SF cross-check** (above), **RM29**'s
 three cofactor columns, **RM28**'s cis/trans case closed as a compiler check, the **CLI/API parity**
 pass (`keygen`, `reference`, and one requiredness definition shared by `draft` and the authoring
 reference), and four adversarial reference examples with the defects each exposed —
@@ -118,11 +120,11 @@ five — **RM31**, **RM33**, **RM34**, **RM35** — were then fixed in the same 
 below. Two of the four had been argued to be undecidable, and in both cases part of the argument turned out
 to be wrong (RM31's trim did not need an anchor the row does not have; RM33's third column cost no
 signature). **RM32** was the fifth, held back as a question about identity rather than a defect, and it was
-answered in its own run (0.5.1) — with the same result a third time: the probe it was waiting on refuted the
+answered in its own run — with the same result a third time: the probe it was waiting on refuted the
 direction the entry had called most promising, and the objection that had parked the *other* candidate did
 not survive contact with the data either. Its entry is below.
 
-**The ACMG SF cross-check — ✅ shipped (0.5.1), as the guarded scrape.** Re-probed 2026-08-03 and the
+**The ACMG SF cross-check — ✅ shipped (0.5), as the guarded scrape.** Re-probed 2026-08-03 and the
 data file still does not exist: ClinGen's FTP publishes gene-curation, region-curation, dosage and
 recurrent-CNV lists and **no secondary-findings list**, and ClinVar's FTP tree carries no ACMG flag
 (`gene_condition_source_id`, 13,478 rows, zero mentions of ACMG). So the second branch was taken —
@@ -137,7 +139,7 @@ begun with the most recognizable secondary-findings gene there is. The parse the
 rather than rows and refuses on five guards, none of which hard-codes a gene count; the floor is a
 floor, not the list. Details and the verdict tri-state in [ENRICHER.md](ENRICHER.md).
 
-**Still queued:** nothing from the 0.5.1 list.
+**Still queued:** nothing from that list.
 
 
 # Shipped items
@@ -259,7 +261,7 @@ instead of an empty `resolution.csv`.
 
 ## RM26 — All three drafting providers
 
-**Severity** — · **Status** ✅ shipped in 0.5.1 · **Owner** enricher · **Motivating case**
+**Severity** — · **Status** ✅ shipped in 0.5 · **Owner** enricher · **Motivating case**
 gene-panel authoring; PGx authoring
 
 All three drafting providers. CPIC → PGx tables (`pgx_draft`), **ClinPGx → `pharm_variants.csv`**
@@ -279,10 +281,10 @@ position-only row mints a VRS `ga4gh:VA.…` key instead of `chrom:start:ref`.
 
 ## RM29 — Cofactor columns
 
-**Severity** — · **Status** ✅ shipped in 0.5.1, inside the unpublished-digest window · **Owner**
+**Severity** — · **Status** ✅ shipped in 0.5, inside the unpublished-digest window · **Owner**
 format (schema) · **Motivating case** PGx; call-confidence gating
 
-**✅ shipped (0.5.1): cofactor columns, taken inside the unpublished-digest window.** Three
+**✅ shipped (0.5): cofactor columns, taken inside the unpublished-digest window.** Three
 optional columns carrying single-subject cofactors with **no predicate language at all**, because a
 row's columns already conjoin. Both halves mirror `HeteroplasmyRow.tissue`, already a
 cofactor-as-column.
@@ -485,14 +487,14 @@ Three things came out of implementing it that the entry had not seen:
 
 ## RM30 — One rule for a haplotype name across all three PGx tables
 
-**Severity** — · **Status** ✅ fixed in 0.5.1 · **Owner** format (schema) · **Motivating case**
+**Severity** — · **Status** ✅ fixed in 0.5 · **Owner** format (schema) · **Motivating case**
 `reference_examples/apoe_epsilon/`, which found it
 
-**✅ fixed (0.5.1): one rule for a haplotype name across all three PGx tables.**
+**✅ fixed (0.5): one rule for a haplotype name across all three PGx tables.**
 `AlleleFunctionRow.allele` enforced `STAR_ALLELE_PATTERN` (a leading `*`) while
 `HaplotypeRow.haplotype_name` and `DiplotypeRow.haplotype_a`/`haplotype_b` had no rule at all, so
 `e4` was legal in two of three tables and illegal in the third — and an author working around it
-with `*4` in one and `e4` in another hit the 0.5.1 cross-table check's "used but not defined",
+with `*4` in one and `e4` in another hit the later cross-table check's "used but not defined",
 with no spelling that satisfied both. Found by `reference_examples/apoe_epsilon/`. The three now
 share `validate_haplotype_name`: non-empty, no whitespace, and nothing else — **a name is an
 identity, not a grammar**. `STAR_ALLELE_PATTERN` stays exported and is still what `pgx_draft`
@@ -504,7 +506,7 @@ haplotype.
 
 ## RM32 — A pseudoautosomal locus is one place on two contigs
 
-**Severity** large (it was a question, not a patch) · **Status** ✅ shipped in 0.5.1 (found by dogfooding
+**Severity** large (it was a question, not a patch) · **Status** ✅ shipped in 0.5 (found by dogfooding
 2026-08-03, answered in its own run 2026-08-04) · **Owner** format (identity) + enricher · **Motivating
 case** any PAR gene: SHOX, CSF2RA, ASMT, CD99
 
@@ -591,7 +593,7 @@ are per-assembly, so `par_partner` withholds on any build but GRCh38 and the gen
 
 ## Delegated insertion — the reasoning, kept because it corrects itself
 
-**Severity** — · **Status** ✅ shipped in 0.5.1 · **Owner** compiler (`draft`) · **Motivating case**
+**Severity** — · **Status** ✅ shipped in 0.5 · **Owner** compiler (`draft`) · **Motivating case**
 re-drafting a multi-gene module
 
 

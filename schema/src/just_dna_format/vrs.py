@@ -269,13 +269,21 @@ def derive_vrs_allele_id(
     ClinVar snapshots already use); the interbase conversion happens here, once, so no caller has to
     remember it.
 
-    Returns `None` — never raises, never guesses — when the row is not a mintable substitution:
+    Returns `None` — never guesses — when the row is not a mintable substitution:
 
     - no coordinate (an rsid-only row, pre-resolution): there is nothing to address;
     - an indel or MNV: justification needs the reference sequence (see the module docstring);
     - a multi-allelic cell (`alt` carrying a comma): a VA names *one* allele, so the caller must split
       first — silently picking one would be a data error wearing an id;
     - a contig outside the primary assembly, or a position past the end of it.
+
+    It **raises** `UnsupportedBuildError` for exactly one input: a `build` with no refget table (today,
+    anything but GRCh38). That is not an oversight and must not be softened to `None` — `None` here
+    means "this row is not mintable", a per-row fact, while an unknown build means the caller's whole
+    frame of reference is unavailable, and answering `None` would let a GRCh37 module quietly compile
+    with no identities rather than being told minting is GRCh38-only (RM15). Every call site therefore
+    catches it and turns it into its own kind of report: `compiler._recompute_vrs_id` into an
+    "unverifiable" reason, `enricher.vrs.VrsMinter.mint` into an unmintable row.
 
     The digest is taken over the VRS Allele serialization, in which the location appears as its **own
     digest** (not inlined and not as a `ga4gh:SL.` CURIE) — that exact shape is what reproduces the ids
