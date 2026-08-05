@@ -81,32 +81,43 @@ warning: rs184115031 is pseudoautosomal: it maps to 2 loci (X:155773979 and Y:56
 1 place(s) … count distinct findings by rsid rather than by row
 ```
 
-## Two things building it found, neither about PAR
+## Three things building it found, none about PAR — all since fixed
 
-**1. `draft-panel --clin-sig uncertain_significance` drops every row, and says only
-`state: Field required`.** Twenty-six times, one identical line per row, with no count and no
-explanation. The underlying *decision* is right and documented — `_STATE_BY_CLIN_SIG` maps only the
-four decided calls, because folding `uncertain_significance` to a `state` would assert a direction the
-source declined to state, and `state` is required. What is wrong is the diagnosis: a raw pydantic error
-reaches the author as the whole explanation, un-aggregated, naming neither the rsIDs nor the reason. An
-author cannot act on it. Recorded in [ROADMAP.md](../../docs/ROADMAP.md); not worked around here, which
-is why this module carries benign alleles rather than the uncertain ones first attempted.
+**1. `draft-panel --clin-sig uncertain_significance` drafted nothing, and said only
+`state: Field required`.** Twenty-six times, one identical line per row, no count and no explanation.
+The underlying *decision* was right and documented — `_STATE_BY_CLIN_SIG` folds only the four decided
+calls, because `VALID_STATES` has no "undecided" member and every candidate asserts something ClinVar
+did not (`neutral` says benign, `risk` says a direction). But `state` is required, so a correct refusal
+to guess became a **silent drop** of the conclusion, phenotype, `clin_sig` and citations already
+assembled. `state` is now stubbed like `genotype` — the same shape, and what `PartialRow` is for — so
+XG at 1★ drafts 26 rows where it drafted 0, and the compiler names both columns when it refuses.
 
-**2. The run summary adds rows across tables.** `added 7 row(s)` for what the per-file lines correctly
-report as `variants.csv: 3 added` and `studies.csv: 4 added`. Harmless, but the rolled-up number
-matches neither file.
+**2. The genotype worklist named rows that did not exist.** It was handed every candidate record rather
+than the rows that landed, so a "3 row(s) carry a placeholder" header came with a 27-line worklist
+covering refused and already-present rows too. It now covers exactly what was added.
+
+**3. The run summary added rows across tables.** `added 7 row(s)` for what the per-file lines correctly
+reported as `variants.csv: 3 added` and `studies.csv: 4 added` — a number matching neither file. The CLI
+reports per table now.
+
+This module still carries the three **benign** alleles it was first built from, rather than being
+re-drafted to include the uncertain ones. That is deliberate: the boundary mechanics are what it exists
+to demonstrate, three loci show them exactly as well as twenty-six would, and a module whose every row is
+`uncertain_significance` would be a worse example to copy.
 
 ## Reproduce
 
 ```bash
 just-dna-enricher draft-panel reference_examples/par_boundary --gene XG --gene SPRY3 \
-    --clin-sig uncertain_significance,benign,likely_benign --min-review-stars 1 \
-    --snapshot <clinvar-snapshot>
+    --clin-sig benign,likely_benign --min-review-stars 1 --snapshot <clinvar-snapshot>
 # then decide each genotype from the allele pairs the draft reports — unphased alleles are
 # alphabetically sorted, which the model tells you if you get it wrong
 just-dna-enricher enrich reference_examples/par_boundary --no-clinvar
 just-dna-compiler compile reference_examples/par_boundary out/par_boundary
 ```
+
+Adding `uncertain_significance` to that `--clin-sig` list is how finding 1 above turned up, and it now
+drafts 23 more rows carrying a second placeholder. The module keeps the three decided calls.
 
 `--no-clinvar` is deliberate, and it is worth knowing why. The chain is first-hit-wins, so with the
 ClinVar link enabled ClinVar answers — and since it holds no Y-PAR record, the table comes out X-only

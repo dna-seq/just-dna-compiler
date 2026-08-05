@@ -10,12 +10,18 @@ import io
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
+
+from just_dna_compiler.compiler import compile_module
+from just_dna_compiler.draft import PartialRow, RowOutcome
 from just_dna_enricher.clinvar_draft import (
     DEFAULT_CLIN_SIG,
     _identity_cells,
+    _refusal_summary,
     _row_cells,
     draft_gene_panel,
 )
+from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
 _SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "interim" / "clinvar"
@@ -212,3 +218,121 @@ def test_a_failed_provisioning_refuses_with_the_reason_attached(monkeypatch) -> 
     monkeypatch.setattr(clinvar_draft, "ensure_clinvar_snapshot", boom)
     with pytest.raises(ClinVarDraftError, match="HF unreachable"):
         clinvar_draft._resolve_snapshot(None, offline=False, download=True)
+
+
+# ── an undecided clinical call: drafted with a second stub, not silently dropped ─────────────────
+#
+# `--clin-sig uncertain_significance` used to drop **every** row, reporting only a raw
+# `state: Field required` — one identical line per row, 26 of them for a two-gene panel. The
+# underlying decision was right (`_STATE_BY_CLIN_SIG` folds only the four decided calls, because
+# `VALID_STATES` has no "undecided" member and every candidate asserts something ClinVar did not);
+# what was wrong is that the row was thrown away and the reason never stated.
+
+
+def test_an_undecided_call_stubs_state_instead_of_refusing_the_row(tmp_path: Path) -> None:
+    """The defect, demonstrated on the shape that produced it: the row must survive."""
+    record = {**_RECORD, "clin_sig": "uncertain_significance"}
+    cells = _row_cells(record)
+    # The old path: `state` absent from an otherwise complete row, and `state` is required —
+    # so building the row *without* stubbing it is exactly the refusal that used to happen.
+    assert "state" not in cells
+    with pytest.raises(ValidationError):
+        VariantRow(**cells, genotype="A/G")
+    # The fix: stub it, like `genotype`, and the row validates by omission.
+    partial = PartialRow(
+        model=VariantRow, cells=cells, stubbed=("genotype", "state"),
+        match_on=("rsid", "chrom", "start", "ref", "alts"),
+    )
+    assert partial.validation_errors() == []
+
+
+def test_a_decided_call_is_not_given_a_state_stub(tmp_path: Path) -> None:
+    """Otherwise the fix would make work where the source already answered."""
+    partial = PartialRow(
+        model=VariantRow, cells=_row_cells(_RECORD), stubbed=("genotype",),
+        match_on=("rsid", "chrom", "start", "ref", "alts"),
+    )
+    assert partial.validation_errors() == []
+    assert _row_cells(_RECORD)["state"] == "risk"
+
+
+def test_refusals_are_grouped_by_reason_with_a_count_never_one_line_per_row() -> None:
+    """The aggregation rule, which this provider family has now needed five times."""
+    invalid = [
+        RowOutcome(("rs1", "", "", "", ""), "invalid", {"errors": (None, "state: Field required")}),
+        RowOutcome(("rs2", "", "", "", ""), "invalid", {"errors": (None, "state: Field required")}),
+        RowOutcome(("rs3", "", "", "", ""), "invalid", {"errors": (None, "genotype: bad allele")}),
+    ]
+    lines = _refusal_summary(invalid)
+    assert len(lines) == 2, "one line per reason, not per row"
+    by_reason = {line.split(" — ")[1].split(".")[0]: line for line in lines}
+    assert by_reason["state: Field required"].startswith("2 row(s) not drafted")
+    assert "rs1, rs2" in by_reason["state: Field required"]
+    assert by_reason["genotype: bad allele"].startswith("1 row(s) not drafted")
+
+
+def test_a_long_refusal_list_is_capped_because_it_is_context_not_a_worklist() -> None:
+    invalid = [
+        RowOutcome((f"rs{i}", "", "", "", ""), "invalid", {"errors": (None, "same reason")})
+        for i in range(20)
+    ]
+    (line,) = _refusal_summary(invalid)
+    assert line.startswith("20 row(s) not drafted")
+    assert "and 14 more" in line
+
+
+@_needs_snapshot
+def test_an_undecided_panel_drafts_every_row_and_explains_the_state_stub(tmp_path: Path) -> None:
+    """End to end on real records. XG has 1★+ uncertain variants; before the fix this drafted zero
+    variant rows and emitted one raw pydantic line per record."""
+    result = draft_gene_panel(
+        tmp_path, ["XG"], snapshot=_SNAPSHOT,
+        clin_sig={"uncertain_significance"}, min_review_stars=1,
+    )
+    rows = _rows(tmp_path / "variants.csv")
+    assert result.added_for("variants.csv") == len(rows) > 0
+    assert result.invalid == 0, "nothing may be refused for a call the provider can stub"
+    assert {r["clin_sig"] for r in rows} == {"uncertain_significance"}
+    # both columns are stubbed, and nothing else is
+    assert {r["genotype"] for r in rows} == {TEMPLATE_PLACEHOLDER}
+    assert {r["state"] for r in rows} == {TEMPLATE_PLACEHOLDER}
+    assert {r["conclusion"] for r in rows} != {""}, "the transcription still happened"
+
+    # exactly one line explains the state stub, and it names the call rather than repeating per row
+    state_lines = [w for w in result.warnings if "`state` placeholder" in w]
+    assert len(state_lines) == 1
+    assert "uncertain_significance" in state_lines[0]
+    assert "no member meaning 'undecided'" in state_lines[0]
+
+    # and the compiler refuses, naming both columns — the stub's whole purpose
+    errors = compile_module(tmp_path, tmp_path / "out").errors
+    assert any("genotype, state" in e for e in errors), errors
+
+
+@_needs_snapshot
+def test_the_genotype_worklist_covers_the_rows_added_and_no_others(tmp_path: Path) -> None:
+    """It used to be handed every candidate record, so a "3 row(s) carry a placeholder" header was
+    followed by a 27-line worklist naming rows that had been refused or were already present."""
+    first = draft_gene_panel(tmp_path, ["XG"], snapshot=_SNAPSHOT,
+                             clin_sig={"uncertain_significance"}, min_review_stars=1)
+    worklist = [w for w in first.warnings if w.strip().startswith("genotype for ")]
+    assert len(worklist) == first.added_for("variants.csv")
+
+    # A re-run adds nothing, so the worklist must be empty — the work is already on the author's desk.
+    again = draft_gene_panel(tmp_path, ["XG"], snapshot=_SNAPSHOT,
+                             clin_sig={"uncertain_significance"}, min_review_stars=1)
+    assert again.added_for("variants.csv") == 0
+    assert not [w for w in again.warnings if w.strip().startswith("genotype for ")]
+    assert not [w for w in again.warnings if "`state` placeholder" in w]
+
+
+@_needs_snapshot
+def test_added_is_reported_per_table_because_a_total_matches_neither(tmp_path: Path) -> None:
+    """`draft-panel` writes two tables, so the rolled-up `added` counts rows from both — which is what
+    made the CLI print "added 7 row(s)" for 3 variants and 4 studies."""
+    result = draft_gene_panel(tmp_path, ["MTHFR"], snapshot=_SNAPSHOT)
+    variants, studies = result.added_for("variants.csv"), result.added_for("studies.csv")
+    assert variants > 0 and studies > 0
+    assert result.added == variants + studies
+    assert result.added != variants, "the total is not the variant count — hence the per-table report"
+    assert {r.csv_name for r in result.reports} == {"variants.csv", "studies.csv"}

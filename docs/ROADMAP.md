@@ -254,27 +254,6 @@ the probe each rested on, is in [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md). The pa
 forward is that in three of the five, part of what made the item look hard turned out to be **wrong on
 probing** rather than merely cautious, so an entry's own reasoning is a starting point and not a finding.
 
-## Found by dogfooding, 2026-08-04 (unnumbered — small, and about diagnosis rather than schema)
-
-Both fell out of building `reference_examples/par_boundary/` and neither is about PAR. Recorded rather
-than fixed in that run, to keep the RM32 change reviewable.
-
-- **`draft-panel --clin-sig uncertain_significance` drops every row and reports only
-  `state: Field required`, once per row.** Twenty-six identical lines for a two-gene panel, with no count,
-  no rsIDs and no explanation. The underlying *decision* is right and documented:
-  `clinvar_draft._STATE_BY_CLIN_SIG` maps only the four decided calls, because folding
-  `uncertain_significance` into a `state` would assert a direction ClinVar declined to state, and `state`
-  is required. So this is not a schema gap — it is a **raw pydantic error reaching the author as the whole
-  diagnosis**, which is both the misdiagnosis class and the un-aggregated-warning class, the second for
-  the fifth time in this provider family. The fix is a message that names the reason once with a count and
-  the affected rsIDs, and says what the author is expected to do (fill `state` by hand, or draft only
-  decided calls). Worth doing **with** the `state` question in view: `uncertain` has no direction, which
-  is arguably what `direction`/`clin_sig` being the orthogonal axes is for, and a 1.0 that demotes `state`
-  (already queued below) would dissolve the whole branch.
-- **`draft-panel`'s run summary adds rows across tables.** It prints `added 7 row(s)` where the per-file
-  lines correctly say `variants.csv: 3 added` and `studies.csv: 4 added`. Harmless, and it matches neither
-  file.
-
 **Round-3 / on-demand (widen additively only if a real module hits it):**
 - **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
   `TCAT` repeats + 3 extra bases), which is *not* the decimal 9.3. A binning bound stays a plain

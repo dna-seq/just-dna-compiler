@@ -10,6 +10,15 @@ A scaffolded stub or a drafted partial row still needs a human. This blocks **ev
 that filter. Do not try to enrich first: the draft report already printed the allele pair for each
 stubbed row (`genotype for rs…: ClinVar publishes C>T — an allele pair from {C, T}`). Curate from that.
 
+**…`in VariantRow row: genotype, state`** — the same message naming **two** columns
+The row is an `uncertain_significance` (or otherwise undecided) ClinVar record, so `state` is stubbed as
+well. That is not an omission: `VALID_STATES` has no member meaning "undecided", and every candidate
+asserts something the submitters did not — `neutral` says the variant is benign, `risk` says a direction.
+The draft report explains it once per clinical call and names the affected rows. Decide it per row
+alongside the genotype; `risk` for a variant you have reason to treat as actionable, `neutral` for one you
+have reason to discount, and if you can justify neither, the honest move is to drop the row rather than
+pick a `state` to make the compile pass.
+
 **`Input should be a valid string [input_value=None]` on a column you were not told to fill**
 A *defaulted* column left empty. An empty cell arrives as `None` and overrides the default. Run
 `just-dna-compiler requirements <kind>` — its "must not be left empty (defaults)" line names them.

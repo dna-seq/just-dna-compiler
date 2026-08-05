@@ -1142,10 +1142,12 @@ def draft_panel_(
     for warning in result.warnings:
         typer.secho(f"  warning: {warning}", fg=typer.colors.YELLOW, err=True)
     verb = "would add" if dry_run else "added"
-    typer.secho(
-        f"{verb} {result.added} row(s), {result.already_present} already present, in {spec_dir}",
-        fg=typer.colors.GREEN,
-    )
+    # Per table, never a rolled-up total. The draft writes `variants.csv` AND `studies.csv`, so a single
+    # number matches neither file — `ClinVarDraftResult.added` says as much in its own docstring.
+    breakdown = ", ".join(
+        f"{r.csv_name} {len(r.added)}" for r in result.reports
+    ) or "nothing"
+    typer.secho(f"{verb}: {breakdown} — in {spec_dir}", fg=typer.colors.GREEN)
 
 
 @clinvar_app.command("citations")

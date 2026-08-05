@@ -133,6 +133,48 @@ def _identity_cells(record: dict, *, force_coordinate: bool = False) -> Optional
     return None
 
 
+#: The identity columns a partial row matches on — see the `PartialRow` call site for why the natural
+#: key cannot be used. Shared so the signature a row is keyed by and the one used to look its source
+#: record back up cannot drift apart.
+_MATCH_ON: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
+
+
+def _signature(cells: dict) -> tuple[str, ...]:
+    """The `_MATCH_ON` signature of a row, spelled exactly as `append_partial_rows` spells it."""
+    return tuple(str(cells.get(column) or "").strip() for column in _MATCH_ON)
+
+
+def _label(record: dict) -> str:
+    """How to name one ClinVar record to a human: its rsID, else its coordinate."""
+    return (record.get("rsid") or "").strip() or f"{record.get('chrom')}:{record.get('start')}"
+
+
+def _refusal_summary(invalid: Sequence) -> list[str]:
+    """Rows the model refused, **grouped by reason with a count** — never one line per row.
+
+    A per-row line here is the failure mode this repo has hit five times in the drafting providers: a
+    two-gene panel produced twenty-six identical `state: Field required` lines, which buries every other
+    finding a run reports and tells the author nothing they can act on. Group by the message, count, and
+    name the rows — and cap the naming, because the list is context for a diagnosis rather than a
+    worklist the author must work through (unlike `_genotype_worklist`, which is uncapped for exactly
+    the opposite reason).
+
+    This is the generic net. A cause this provider can *diagnose* should be caught before validation and
+    explained in its own words, the way an undecided clinical call now is — a raw pydantic message
+    reaching the author as the whole explanation is a misdiagnosis, not a report.
+    """
+    by_reason: dict[str, list[str]] = {}
+    for outcome in invalid:
+        reason = outcome.differences.get("errors", (None, "unknown"))[1]
+        label = "/".join(part for part in (outcome.key or ()) if part) or "?"
+        by_reason.setdefault(reason, []).append(label)
+    lines = []
+    for reason, labels in by_reason.items():
+        shown = ", ".join(labels[:6]) + (f", … and {len(labels) - 6} more" if len(labels) > 6 else "")
+        lines.append(f"{len(labels)} row(s) not drafted — {reason}. Affected: {shown}")
+    return lines
+
+
 def _genotype_worklist(records: Sequence[dict]) -> list[str]:
     """The alleles each stubbed row's pending genotype must be written from.
 
@@ -153,15 +195,22 @@ def _genotype_worklist(records: Sequence[dict]) -> list[str]:
 
     One line per stubbed row, uncapped: each is a task the author must do, and a task list that
     silently drops entries is worse than a long one.
+
+    **Pass the records that were actually added.** It used to be given every candidate record, so the
+    list covered rows the model had refused and rows already in the file — a "3 row(s) carry a
+    placeholder" header followed by twenty-seven lines. A worklist naming work that does not exist is
+    worse than no worklist.
     """
     lines: list[str] = []
     for record in records:
         ref, alt = (record.get("ref") or "").strip(), (record.get("alt") or "").strip()
         if not (ref and alt):
             continue
-        label = (record.get("rsid") or "").strip() or f"{record.get('chrom')}:{record.get('start')}"
         alleles = ", ".join(sorted({ref, alt}))
-        lines.append(f"  genotype for {label}: ClinVar publishes {ref}>{alt} — an allele pair from {{{alleles}}}")
+        lines.append(
+            f"  genotype for {_label(record)}: ClinVar publishes {ref}>{alt} — "
+            f"an allele pair from {{{alleles}}}"
+        )
     return lines
 
 
@@ -330,21 +379,35 @@ def draft_gene_panel(
             f"({', '.join(sorted(ambiguous))}) — written with their full coordinate, since an rsID "
             f"alone cannot say which allele the row is about."
         )
+    record_by_signature: dict[tuple[str, ...], dict] = {}
+    # signature -> the clinical call that left `state` undecidable, for the aggregated report below.
+    undirected: dict[tuple[str, ...], str] = {}
     for record in records:
         cells = _row_cells(record, force_coordinate=(record.get("rsid") or "").strip() in ambiguous)
         if cells is None:
             unkeyable += 1
             continue
+        # `state` is required and has no honest value for an undecided clinical call, so it is stubbed
+        # for the same reason `genotype` is: the source did not say, and only a human can. See
+        # `_STATE_BY_CLIN_SIG` — `VALID_STATES` offers no "uncertain" member, and every candidate
+        # asserts something ClinVar declined to (`neutral` says benign, `risk` says a direction).
+        # Skipping the row instead would throw away the conclusion, phenotype, clin_sig and citations
+        # already assembled for it.
+        stubbed = ("genotype",) if "state" in cells else ("genotype", "state")
+        signature = _signature(cells)
+        record_by_signature[signature] = record
+        if "state" not in cells:
+            undirected[signature] = cells.get("clin_sig") or "no call"
         partials.append(
             PartialRow(
                 model=VariantRow,
                 cells=cells,
-                stubbed=("genotype",),
+                stubbed=stubbed,
                 # Identity, not the natural key: the key runs through `genotype`, which is the stub.
                 # Matching here means "this variant is already in the panel, however it was written".
                 # `alts` is in the set because without it two rows of a multi-allelic site collapse
                 # into one and a real allele is lost — which is exactly what drafting HFE did.
-                match_on=("rsid", "chrom", "start", "ref", "alts"),
+                match_on=_MATCH_ON,
             )
         )
     if unkeyable:
@@ -380,13 +443,33 @@ def draft_gene_panel(
             warnings.append(
                 f"{dropped} further ClinVar citation(s) not drafted (--max-citations {max_citations})."
             )
-    warnings.extend(f"row not drafted — {o.differences['errors'][1]}" for o in report.invalid)
+    warnings.extend(_refusal_summary(report.invalid))
     if report.added:
+        added_records = [
+            record_by_signature[o.key] for o in report.added if o.key in record_by_signature
+        ]
         warnings.append(
             f"{len(report.added)} row(s) carry an unreplaced genotype placeholder and will not "
             f"compile until you decide the zygosity each finding is about."
         )
-        warnings.extend(_genotype_worklist(records))
+        warnings.extend(_genotype_worklist(added_records))
+    # One line per clinical CALL, not per row: which call carries no direction is the thing the author
+    # needs to know, and the answer is identical for every row carrying it. Only rows that were actually
+    # added are counted — a row already in the file is the author's, stub or not.
+    by_call: dict[str, list[str]] = {}
+    for outcome in report.added:
+        call = undirected.get(outcome.key or ())
+        if call is not None:
+            by_call.setdefault(call, []).append(_label(record_by_signature[outcome.key]))
+    for call, labels in sorted(by_call.items()):
+        shown = ", ".join(labels[:6]) + (f", … and {len(labels) - 6} more" if len(labels) > 6 else "")
+        warnings.append(
+            f"{len(labels)} of those also carry a `state` placeholder, all with clin_sig={call!r}: "
+            f"ClinVar states no direction for that call, and VALID_STATES has no member meaning "
+            f"'undecided' — `neutral` would assert the variant is benign, `risk` would assert a "
+            f"direction the submitters did not. So `state` is yours to decide too, per row. "
+            f"Affected: {shown}."
+        )
     if not dry_run:
         # A source that rows were copied out of must be recorded, permissive terms or not: the compile
         # gate and `manifest.sources` read sources.csv and nothing else.

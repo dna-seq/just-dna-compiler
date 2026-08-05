@@ -5,6 +5,39 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 **just-dna-marketplace**, and **just-dna-agents**, cross-repo integration changes are recorded
 here so parallel work in the other repos isn't surprised. Newest first.
 
+## 2026-08-06 — `draft-panel`: an undecided clinical call is a second stub, not a dropped row
+
+Both defects that building `par_boundary` surfaced, and the first turned out to be losing data rather than
+just reporting badly.
+
+**`--clin-sig uncertain_significance` drafted nothing.** Every row was refused with a raw
+`state: Field required` — one identical line per row, 26 of them for a two-gene panel, naming no rsID and
+giving no reason an author could act on. Three things were wrong and only one was the message:
+
+- **The row was thrown away.** `_STATE_BY_CLIN_SIG` folds only the four decided calls, and that decision is
+  right: `VALID_STATES` has no member meaning "undecided", so `neutral` would assert the variant is benign
+  and `risk` a direction the submitters declined. But `state` is *required*, so a correct refusal to guess
+  became a silent drop of the conclusion, phenotype, `clin_sig` and citations already assembled for the row.
+  It is now **stubbed like `genotype`** — the machinery `PartialRow` exists for, since this is the same
+  shape: the source did not say, and only a human can. XG at 1★ now drafts 26 rows where it drafted 0, and
+  the placeholder guard names both columns (`unreplaced template placeholder … genotype, state`).
+- **The explanation is one line per clinical *call*,** not per row, since the answer is identical for every
+  row carrying it, and it says why no `VALID_STATES` member fits rather than quoting pydantic.
+- **`_refusal_summary` is the generic net**, grouping whatever still fails by reason with a count and a
+  capped list of affected rows. A cause the provider can *diagnose* should be caught before validation and
+  explained in its own words; a raw validation message reaching the author as the whole diagnosis is a
+  misdiagnosis, not a report. This is the fifth time this provider family has needed warning aggregation.
+
+**A third defect fell out while fixing it:** `_genotype_worklist` was handed every candidate record rather
+than the rows that landed, so a "3 row(s) carry a placeholder" header was followed by a 27-line worklist
+naming rows that had been refused or were already present. A worklist naming work that does not exist is
+worse than no worklist; it now covers exactly `report.added`, and a re-run that adds nothing emits none.
+
+**And the run summary no longer adds rows across tables.** It printed `added 7 row(s)` where the per-file
+lines correctly said `variants.csv: 3 added` and `studies.csv: 4 added` — a number matching neither file.
+The CLI reports per table; `ClinVarDraftResult.added` already warned against the bare total in its own
+docstring, and `added_for` was already there.
+
 ## 2026-08-04 — RM32: a pseudoautosomal locus is one place, and the sources already picked which contig
 
 The last open dogfooding item from 2026-08-03, held back because it was a *question* rather than a defect:
@@ -65,10 +98,8 @@ both expanded rows always inherited the citation; and `_check_contig_ploidy` bra
 `chrom in {MT, Y}`, so selecting X makes it quiet rather than wrong — it stays for hand-authored and
 `--keep-par-twin` modules.
 
-Building `par_boundary` also surfaced two **diagnosis** defects unrelated to PAR, recorded in
-[ROADMAP.md](ROADMAP.md) rather than fixed here: `draft-panel --clin-sig uncertain_significance` drops every
-row while reporting only a raw `state: Field required`, once per row (26 identical lines for two genes), and
-the run summary adds rows across tables (`added 7` for `3` variants + `4` studies).
+Building `par_boundary` also surfaced two **diagnosis** defects unrelated to PAR, fixed in the entry above
+this one.
 
 ## 2026-08-04 — `draft-panel` finds its own snapshot, so the published citations reach an author
 
