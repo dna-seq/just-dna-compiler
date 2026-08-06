@@ -1,6 +1,6 @@
 """`validate` must not report `valid` for a module `compile` then refuses.
 
-AUTHORING.md § 6 puts the two commands one after the other:
+The documented authoring order puts the two commands one after the other:
 
     just-dna-compiler validate spec/
     just-dna-compiler compile  spec/ out/ --strict

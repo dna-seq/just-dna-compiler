@@ -18,32 +18,43 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
 **no app and no orchestration here** — those live in `just-dna-pipelines` / `just-dna-lite` /
 `just-dna-marketplace`.
 
-## Authoring a module? Start at docs/AUTHORING.md
+## Authoring a module? It is the `/create-module` skill, and that is the only copy
 
-[docs/AUTHORING.md](docs/AUTHORING.md) is the workflow for *using* this format rather than changing it
-— the command order (and the one place deviating from it deadlocks), what only a human may decide, and
-the three questions that close off wrong turns. Companions:
-[AUTHORING_TABLES.md](docs/AUTHORING_TABLES.md) (which table kind a finding belongs in) and
-[AUTHORING_SYMPTOMS.md](docs/AUTHORING_SYMPTOMS.md) (message → cause → action, keyed on the actual
-text). Every command in them was run end to end. `/write-module` points at the same guide, so the
-**workflow** still has one copy — but `.claude/skills/write-module/SKILL.md` is no longer a pure
-dispatcher: it also carries the authoring **gotchas** inline, dereferenced from here and from the
-docs, because an author should not have to read 961 lines of contributor guidance to find the ten
-rules that apply to them. That duplication is deliberate and narrow. **Keep the two in sync in one
-direction only: a new authoring gotcha is added to the skill, and to this file only if a
-*contributor* also needs it.** Anything about why a bug existed, or what a repair rejected, belongs
-here or in ROADMAP_HISTORY — never in the skill, which is operative rules only.
+`.claude/skills/create-module/SKILL.md` plus `references/TABLES.md` (which table kind a finding belongs
+in) and `references/SYMPTOMS.md` (message → cause → action, keyed on the actual text). It is the
+workflow for *using* this format rather than changing it — the command order and the one place
+deviating from it deadlocks, what only a human may decide, the three questions that close off wrong
+turns, the command surface of both CLIs, and the gotcha list. Every command in it was run end to end.
 
-**`/create-module` is the same guidance for an author who has no checkout** — someone who ran
-`pip install just-dna-enricher` and can see the skill plus the CLI and nothing else. It is therefore
-fully dereferenced: `.claude/skills/create-module/SKILL.md` inlines the AUTHORING workflow and bundles
-`references/TABLES.md` and `references/SYMPTOMS.md` in place of the two companion docs, and it names no
-path outside its own directory — **no `docs/`, no `reference_examples/`, no Constitution, no bare `RMn`
-without saying what an RM is.** Adding anything there that a reader cannot reach breaks the only
-property it has. So a new authoring gotcha now lands in **both** skills; write it for `/write-module`
-first and port it, dropping any repo-relative pointer on the way. When a *published surface* changes
-(a flag, a command, a vocabulary), `/create-module`'s command-surface tables are the copy that goes
-stale silently, since nothing in the suite reads them — re-run `--help` against it.
+**It is written for an author with no checkout** — someone who ran `pip install just-dna-enricher` and
+can see the skill and the CLI and nothing else — so it is **fully dereferenced and must stay that way:
+it names no path outside its own directory.** No `docs/`, no `reference_examples/`, no Constitution, no
+bare `RMn` without saying in-line what an RM is. Adding a pointer its reader cannot follow breaks the
+only property it has. Note the direction of that constraint: it bans *outward references*, not the
+material behind them — where a repo doc would link, the skill states the rule and moves on.
+
+This replaced two earlier attempts, and both failure modes are worth not repeating. `/write-module` was
+a dispatcher into `docs/`, useless to the reader above. `docs/AUTHORING.md` + `AUTHORING_TABLES.md` +
+`AUTHORING_SYMPTOMS.md` were the repo-side twin, kept "for a reader who has the checkout" — 578 lines
+that the skill turned out to contain in full (identical symptom-entry set, identical table claims), so
+the split bought a second thing to update and nothing else. They were removed; recover them from git
+history if you ever want the wording.
+
+Four rules that follow:
+
+- **There is one copy. A new authoring gotcha goes in the skill**, and reaches this file only if a
+  **contributor** also needs it. Do not start a second authoring doc under `docs/` — that is the thing
+  that just got deleted.
+- **Why a bug existed, or what a repair rejected, never goes in the skill.** That belongs here or in
+  ROADMAP_HISTORY. The skill is operative rules only, which is what keeps it short enough to read.
+- **Repo-side context is reached through this file, not from the skill**: worked modules in
+  `reference_examples/` (indexed by [REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md)), the
+  validation-ceiling table in [COMPILER.md](docs/COMPILER.md), the tracked limitations in
+  [RM_TOC.md](docs/RM_TOC.md).
+- **The skill's command-surface tables are the part that rots silently**, since no test reads them. When
+  a published surface changes — a flag, a command, a vocabulary member — re-run `--help` against them.
+  Everything it says about *schemas* it delegates to `describe`/`requirements`/`reference` rather than
+  restating, which is what keeps that half drift-proof; keep it that way.
 
 **Looking for a roadmap item?** [docs/RM_TOC.md](docs/RM_TOC.md) is the single complete list of every
 `RMn` — status, the doc that defines it, and every doc that mentions it — plus the unnumbered
@@ -602,8 +613,8 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 - **`validate` must refuse everything `compile` refuses — it exempted four of the twelve tables.** Both
   loops in `validate_spec` iterate `_TABLE_KINDS`; `resolution.csv` and the four fact sidecars are
   `_FACT_TABLES`, which it never read, though `compile_module` refuses on a bad row in any of them.
-  AUTHORING.md § 6 makes `validate` the pre-flight, so a green pre-flight then a refusal sends an author
-  hunting a change they did not make — and the worst case shipped: the **licence gate** reads
+  The authoring skill's step 6 puts `validate` immediately before `compile`, making it the author's
+  pre-flight, so a green pre-flight then a refusal sends an author hunting a change they did not make — and the worst case shipped: the **licence gate** reads
   `sources.csv` alone, so a module drafted entirely from a no-sale source with no `declared_use`
   validated clean and refused to compile. Rule for a new compile-side check: if it is pure computation
   over injected bytes and needs no `output_dir`, it belongs in `validate_spec` too. What stays

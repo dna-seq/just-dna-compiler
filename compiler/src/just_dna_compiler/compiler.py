@@ -1357,9 +1357,9 @@ def validate_spec(
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
     # live in the spec directory and `compile_module` **refuses** on a bad row in any of them, so
     # leaving them out here made `validate` report `valid` for a directory `compile` then rejected.
-    # That is the one thing this command must never do: AUTHORING.md § 6 puts `validate` immediately
-    # before `compile`, so it is the author's pre-flight, and a green pre-flight followed by a refusal
-    # sends them looking for a change they did not make. Row-level validation only — the cross-checks
+    # That is the one thing this command must never do: the documented authoring order puts `validate`
+    # immediately before `compile`, so it is the author's pre-flight, and a green pre-flight followed by
+    # a refusal sends them looking for a change they did not make. Row-level validation only — the cross-checks
     # that compare a sidecar against the module's variants produce *warnings*, and several of them need
     # rows that only exist after resolution has run.
     for csv_name, model in (
