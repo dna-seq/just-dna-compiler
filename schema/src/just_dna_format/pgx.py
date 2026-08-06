@@ -99,7 +99,11 @@ class HaplotypeRow(AuthoredModel):
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
     chrom: Optional[str] = Field(default=None, description="Chromosome (position-only variants)")
-    start: Optional[int] = Field(default=None, description="0-based position (position-only)")
+    start: Optional[int] = Field(
+        default=None,
+        description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
+        "this convention and it is stored as-is; do not subtract one",
+    )
     ref: Optional[str] = Field(default=None, description="Reference allele (position-only)")
     allele: str = Field(description="The defining (variant) allele on this haplotype, nucleotides")
     gene: Optional[str] = Field(default=None, description="Gene symbol, e.g. CYP2D6")
@@ -308,7 +312,11 @@ class PharmVariantRow(AuthoredModel):
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
     chrom: Optional[str] = Field(default=None, description="Chromosome (position-only variants)")
-    start: Optional[int] = Field(default=None, description="0-based position (position-only)")
+    start: Optional[int] = Field(
+        default=None,
+        description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
+        "this convention and it is stored as-is; do not subtract one",
+    )
     ref: Optional[str] = Field(default=None, description="Reference allele (position-only)")
     gene: Optional[str] = Field(default=None, description="Gene symbol, e.g. VKORC1")
     genotype: Optional[str] = Field(

@@ -11,6 +11,79 @@ here so parallel work in the other repos isn't surprised. Newest first.
 and the label was relabelled to match. Keep it that way: a number here should answer "which published
 version introduced this", and a batch inside an unpublished release is not a version.
 
+## 2026-08-06 — externally authored modules: the authoring contract said 0-based
+
+Five modules produced elsewhere (two Claude4Science bundles: a GWAS intelligence/personality catalogue
+and a bodybuilding/lean-mass panel) were run through the shipped surface end to end. Four of the five
+compiled clean under `--strict` on the first try, which is the good news and also how the finding
+stayed hidden. The dogfooding value was in what the tools *said* about modules nobody here wrote.
+
+**Blocker — the authored `start` columns described themselves as "0-based" while every tier reads them
+as 1-based VCF POS.** `VariantRow.start`, `StudyRow.start`, `HaplotypeRow.start` and
+`PharmVariantRow.start` all carried it, and those strings are not commentary: `describe`,
+`requirements` and `reference` print them, so they *are* the authoring contract. An independent author
+followed them and shifted **3,038 variants across four modules** by one base. The inconsistency was a
+known one — recorded in CLAUDE.md as a CPIC/PharmVar gotcha and named in the ROADMAP as a blocker for
+the `end` column — but it was rated low severity as an internal tidiness issue, because nobody had
+watched it produce a wrong module. Fixed: the four descriptions now state the VCF convention and say
+not to subtract one. `schema/tests/test_coordinate_convention.py` pins the prose against what
+`derive_vrs_allele_id` actually does with the number, so the two cannot drift apart again.
+
+**Nothing offline could catch it, and that part is by charter.** A uniformly shifted module passes
+`validate`, passes `compile --strict`, reports `fully_resolved: true`, and mints `ga4gh:VA.…` ids the
+compiler's VRS pass then reports **verified** — a content-addressed id is a correct digest of whatever
+it is handed, so it certifies the wrong locus perfectly happily (24 of 69 ids in the smallest module).
+The Class-2 coordinate cross-check (`resolution._verify`) was defeated for a second reason worth
+recording: the modules shipped their own hand-built `resolution.csv`, so **both sides of the redundancy
+check came from one author with one convention** and agreed exactly. Validate-by-redundancy assumes
+independence; authoring both sides removes it. AUTHORING.md §3 now says so under its own heading.
+
+**Fixed — the reference-allele check misdiagnosed the cause and reassured the author falsely.** It
+reported "authored ref 'T' disagrees with GRCh38 11:61790330, which is 'C'", pointing at a `ref` column
+that was correct, and then added "the minted allele id is still the true allele at this position" —
+true of the position recorded, worthless when the position is the defect. `verify_reference_alleles`
+now reads one base either side (one window read, so the diagnosis costs no extra round trip) and names
+a coordinate shift when it can establish one, withholding when both neighbours match and the direction
+is undetermined. `RefMismatch.distorts_the_allele_id` is true for a shifted row whatever the claimed
+length. On the real module: 56 single-line findings became two grouped ones, 41 of them named as
+"coordinate shifted 1 base to the right". Sensitivity is inherently partial — only rows whose
+neighbouring base differs from the authored `ref` are visible, ~3 in 4 — and the docs say so rather
+than implying a clean bill.
+
+**Fixed — one variant gnomAD has never heard of aborted the whole `frequencies` pass.** gnomAD answers
+an unknown `variantId` with `{"message": "Variant not found"}` carrying **no `path`**, while still
+returning `data` with a `null` at that alias. `_errors_by_alias` classed every pathless error as a
+broken query and raised, so `frequencies` died with a traceback on the bodybuilding module (6 of 13
+alleles absent) — even though the null node already *is* the per-row answer and `fetch_frequencies`
+handled it. The reasoning behind the old rule is right and stays: a genuinely broken query must never
+read as "nothing found". The premise was wrong for this API, so absence is now recognised by message
+and logged, and the batch keeps its good rows. `not_found` is what such a row was always meant to get.
+
+**Fixed — RM37: `content_signature` counted *where* a value was written.** `compile → reverse →
+compile` held `artifact.digest` and `resolution_signature` exactly but moved `content_signature` for
+any module filling `curator`/`method` on the row instead of in `defaults:`, because `reverse_module`
+re-emits the value in the other place and the hash read the CSVs before spec defaults applied. No
+reference example could show it — all eleven use `defaults:`, the canonical form reverse emits — so it
+took a module authored elsewhere, which is RM36's lesson again about an axis the corpus holds uniform.
+Fixed by `_resolve_spec_defaults`: `defaults:` is folded into each variant row immediately before
+hashing, making the signature a function of what the module means rather than where it was typed.
+
+Filed as *surfaced, not fixed* on compatibility grounds, then shipped once that objection was checked
+rather than assumed. **0.5 is unpublished**, which is where an identity change is cheap; and the change
+is narrower than it looked because it reuses RM36's `genome_build` normalization — an effective value
+equal to the `Defaults` model's own default is omitted from the hash, exactly as an unset optional
+column always was. Measured: **one of eleven reference examples moved** (`grch37_build`, which sets
+`curator: audit` with blank cells), itself a 0.5-era addition. It also closed an unfiled defect in the
+same stroke: `defaults:` reached the hash by no path at all, so two modules differing *only* in
+`defaults.curator` hashed **equal** — different content under one identity, which is what a dedup key
+must never do. `priority` is deliberately untouched and stays correct by the same rule (its model
+default is `None`, so an unset one is still omitted, and `reverse` still refuses to infer one).
+
+**Re-scoped.** The `weights.parquet` `end` item said it was blocked on "settling the coordinate
+convention". Half of that is now closed — the authored `start` is 1-based VCF POS and says so — and
+what remains is genuinely open: whether a second coordinate is interbase-half-open or inclusive, the
+same choice RM15 must make. The two stay paired for that reason and not the old one.
+
 ## 2026-08-06 — 0.5 readiness audit: the round trip moved a module to another assembly
 
 A pre-publication audit of 0.5. The suite was green (1178 passed) and all ten reference examples were

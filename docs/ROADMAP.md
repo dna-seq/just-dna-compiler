@@ -267,21 +267,6 @@ only ancestry stays genuinely injected. Still parked. It waits on a corpus to ge
 and supplements do not exist yet — because fixing a shape against four table kinds and then meeting
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
 
-
-The five items found by **dogfooding** on 2026-08-03 have **all shipped** — RM31, RM33, RM34 and RM35 in
-that window, and RM32 in its own run — so none of them lives here any more; their rationale, including
-the probe each rested on, is in [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md). The pattern worth carrying
-forward is that in three of the five, part of what made the item look hard turned out to be **wrong on
-probing** rather than merely cautious, so an entry's own reasoning is a starting point and not a finding.
-
-**Round-3 / on-demand (widen additively only if a real module hits it):**
-- **STR microvariant notation** — forensic loci use `full.partial` allele names (TH01 `"9.3"` = 9 full
-  `TCAT` repeats + 3 extra bases), which is *not* the decimal 9.3. A binning bound stays a plain
-  magnitude for ordering; the `full.partial` allele *name* is a distinct string (a candidate for the
-  reserved repeat motif-path / allele-string escape hatch), never smuggled into the float bound
-  (CONSUMER_ROUND2 C2). Pathogenic-threshold loci (HTT CAG) are unaffected.
-
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -374,15 +359,20 @@ numeric companion in 0.x if needed; retype/remove the string at 1.0 (breaking).
 
 ### `weights.parquet` `end` column
 
-**Severity** low · **Status** queued for 1.0 — blocked on the coordinate convention
+**Severity** low · **Status** queued for 1.0
 
 Always set equal to `start` — no source column feeds it. **Disposition:** Remove outright at 1.0
 (artifact-digest change, major-only) or wire it to a real end coordinate. **Re-examined in 0.5 and
-deliberately left here** rather than wired inside the window: an end coordinate needs the
-0-based/1-based convention settled first, and the repo currently has that inconsistency in the
-open (`start`'s docstring says 0-based while the pipeline stores Ensembl's 1-based position, per
-the CPIC/PharmVar gotcha). Wiring a second coordinate onto an unsettled first one buys an
-off-by-one, not a feature.
+deliberately left here** rather than wired inside the window: wiring a second coordinate buys an
+off-by-one unless the first one's convention is unambiguous, and half of that was still open — every
+tier *stored* Ensembl's 1-based position while `VariantRow.start`'s own description said "0-based",
+which is the text `describe`/`requirements`/`reference` print at an author.
+
+That half is now closed: the authored `start` descriptions say 1-based VCF POS, and
+`schema/tests/test_coordinate_convention.py` pins the prose to what the minting code actually does.
+What remains is the genuine design question — whether an `end` is interbase-half-open (VRS) or
+inclusive (VCF-ish), which is the same choice RM15 has to make for a build-agnostic identity, so the
+two stay paired.
 
 ### `weights.parquet` `likely_pathogenic` / `likely_benign`
 

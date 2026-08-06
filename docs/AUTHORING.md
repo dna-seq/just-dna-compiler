@@ -15,9 +15,13 @@ using it. Companions: [AUTHORING_TABLES.md](AUTHORING_TABLES.md) (which table ki
 1. **What is each row's subject?** A variant? A diplotype pair? A measured quantity? That picks the
    table kind, and a module includes **only** the kinds it uses — never an empty `variants.csv` to keep
    another table company. → [AUTHORING_TABLES.md](AUTHORING_TABLES.md)
-2. **Are the coordinates GRCh38?** If `genome_build` is anything else, `variant_key` falls back to a
-   **build-relative coordinate** and will not join against gnomAD, ClinVar or ClinGen. The compiler
-   warns; heed it. Publish GRCh38 coordinates unless you have a reason not to.
+2. **Are the coordinates GRCh38, and are they VCF positions?** Two separate questions, and the second
+   one has bitten harder. `start` is the **1-based VCF position** — the number Ensembl, dbSNP, ClinVar
+   and gnomAD all show you. Paste it; never convert it. Subtracting one to "make it 0-based" is the
+   single most expensive mistake available here, and §3 below says why nothing catches it. On build:
+   if `genome_build` is anything but GRCh38, `variant_key` falls back to a **build-relative
+   coordinate** and will not join against gnomAD, ClinVar or ClinGen. The compiler warns; heed it.
+   Publish GRCh38 coordinates unless you have a reason not to.
 3. **What is the source, and may you use it this way?** Every PGx upstream (ClinPGx, CPIC, PharmVar) is
    CC BY-SA **plus a no-sale clause**, so none is sellable — do not read a bare "CC BY-SA" as
    permission. Pass `--use unstated | non-commercial | commercial` to the commands that copy rows out
@@ -105,6 +109,39 @@ it from that source makes the check vacuous — worse, for an rsid-only row the 
 run at all, so the row moves from honestly unverified to apparently verified. `hint` shows you the value
 and comes back `applied=false` with the reason. That refusal is the feature, not a limitation.
 
+### The mistake nothing offline can catch
+
+Worth its own heading because it has now happened at scale, to a careful author, on 3,038 variants
+across four modules that all passed every gate.
+
+**`start` is the 1-based VCF position.** Copy it as printed. If you convert it — `pos - 1`, the
+reflex from BED and from VRS's own interbase model — here is what does *not* happen: `validate` passes,
+`compile --strict` passes, the manifest says `fully_resolved: true`, and every `ga4gh:VA.…` id is
+minted and then reported **verified** by the compiler's VRS pass. A content-addressed id is a correct
+digest of whatever it is given, so it certifies the wrong locus without hesitating. The module is
+internally consistent, reproducible, signed — and about the wrong bases.
+
+Two things conspire, and knowing them tells you what to actually do:
+
+- **A self-supplied `resolution.csv` defeats the coordinate cross-check.** `_verify` compares your
+  authored `chrom`/`start` against the resolution table, which is Class-2 validation — it works
+  because two *independently* produced values must agree. Generate both yourself with one convention
+  and they agree perfectly. The rule at the top of this section is usually read as "don't fill a cell
+  from the source that checks it"; this is its other half — **don't author both sides of a redundancy
+  check.** Let `enrich` produce `resolution.csv`.
+- **`--strict` means reproducible, not correct.** It refuses when resolution left something it could
+  not reproduce. It has no opinion about whether your coordinates name the variant you meant, and it
+  cannot have one: the compiler never fetches (Principle 2), so it has no reference sequence to ask.
+  [COMPILER.md](COMPILER.md) opens with the table of what this tier structurally cannot validate.
+
+So the only thing that catches it is `just-dna-enricher enrich`, online, which compares your `ref`
+against the actual genome and reports **`ref mismatch: N row(s) — coordinate shifted 1 base…`**. Run
+it, and read that line as being about `start`, not `ref`. Note it is a floor: it can only see rows
+where the neighbouring base differs from your `ref`, which is about three in four.
+
+If you already have a `resolution.csv` you did not generate and want to know whether it is right, move
+it aside and re-enrich — comparing the two is the check, and there is no command that does it for you.
+
 ## 4 — Enrich (the only tier that fetches)
 
 ```bash
@@ -145,7 +182,8 @@ just-dna-compiler sign    out/ --private-key key.pem
 just-dna-compiler verify  out/ --no-require-marketplace --public-key <base64>
 ```
 `--strict` means *reproducible artifact*: it refuses when resolution left something it could not
-reproduce. It is orthogonal to `--use`, which is about who may use the data.
+reproduce. It is orthogonal to `--use`, which is about who may use the data, and — see §3 — it is not a
+statement that the module is *right*.
 
 If you changed the schema (not just data), prove the round-trip:
 ```bash
@@ -153,12 +191,22 @@ just-dna-compiler reverse out/ rev/ && just-dna-compiler signature spec/ && just
 ```
 The two `content_signature` values must match — that is Principle 7's fixed point.
 
+It holds wherever you wrote a value. `curator` and `method` can live on the row or in
+`module_spec.yaml`'s `defaults:`, and `reverse` re-emits them in the other place; the signature folds
+`defaults:` into each row before hashing, so the two spellings are one content (**RM37**). Writing a
+shared value once under `defaults:` is still the tidier module — it just no longer changes the
+identity.
+
 ## Standing rules worth memorising
 
 - **One CSV = one concern.** Compose from optional table kinds; never add a foreign domain's columns to
   every row.
 - **Identity is filled whole or not at all** — the rsID, else the complete `chrom`/`start`/`ref`/`alts`.
   A partial coordinate silently changes *which variant the row is*.
+- **Prefer the rsID and let `enrich` find the coordinate.** A rsid-only row cannot carry a coordinate
+  mistake, and the resolution table it produces is the independent second value the cross-check needs.
+  Author coordinates when you have a reason to — a variant with no rsID, a non-GRCh38 module — not by
+  default.
 - **Withhold rather than assert.** Every binning table carries an `unresolved` sentinel a consumer
   selects when the measurement is absent — never the lowest bin. Set `requires_callable=true` (with
   `callable_from`) wherever the *absence* of a variant is the informative call: a no-call is not a

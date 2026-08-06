@@ -85,6 +85,7 @@ from just_dna_format.pgx import (
 )
 from just_dna_format.spec import (
     RESERVED_FLAGS,
+    Defaults,
     ModuleSpecConfig,
     StudyRow,
     VariantRow,
@@ -1467,6 +1468,39 @@ def validate_spec(
     )
 
 
+#: The `Defaults` fields a `VariantRow` may also carry on the row, resolved before hashing (RM37).
+_DEFAULTED_VARIANT_FIELDS: tuple[str, ...] = ("curator", "method", "priority")
+
+
+def _resolve_spec_defaults(rows: list[Any], defaults: Defaults) -> None:
+    """Replace each row's `curator`/`method`/`priority` with its **effective** value, in place (RM37).
+
+    `defaults:` in `module_spec.yaml` and the cell on the row are two spellings of one value, and
+    which one a module uses is a matter of where the author typed it. Hashing the cell alone made the
+    two spellings different content — so `compile → reverse → compile` moved `content_signature` for
+    any module that wrote the value per row, because `reverse_module` re-emits it in the other place
+    (it infers the module default from the commonest value and blanks the matching cells). The data
+    was never lost: `artifact.digest` was byte-identical, because the *compile* side has always
+    resolved the same `row value or default`. Only the pre-resolution identity disagreed with itself.
+
+    Resolving here makes the signature a function of what the module *means* rather than of where it
+    was written, which is the property a content-dedup key needs.
+
+    **A value equal to the `Defaults` model's own default is written back as `None`, not as itself.**
+    That is not a special case — it is the same normalization `integrity.content_signature` already
+    applies to `genome_build` and to every unset optional column (`exclude_none=True`), and it is what
+    keeps the change targeted: a module that never mentions `curator`/`method`, or names the built-in
+    values, keeps its existing signature byte for byte. What moves is a module that states something
+    else, which is exactly the module whose two spellings were being hashed apart.
+    """
+    model_defaults = {name: Defaults.model_fields[name].default for name in _DEFAULTED_VARIANT_FIELDS}
+    for row in rows:
+        for name, model_default in model_defaults.items():
+            authored = getattr(row, name)
+            effective = authored if authored is not None else getattr(defaults, name)
+            setattr(row, name, None if effective == model_default else effective)
+
+
 def content_signature(spec_dir: Path) -> str:
     """Stable content identity over the raw authored data CSVs — name- and Ensembl-independent.
 
@@ -1476,6 +1510,10 @@ def content_signature(spec_dir: Path) -> str:
     resolution, no parquet build), so this is cheap and reference-independent — a client can compute
     it without recompiling and dedup against a registry, surviving both metadata-strip and a recompile
     against a different reference. Raises `ValueError` if a present data CSV fails validation.
+
+    "As authored" means the *rows*, not the *spelling*: `module_spec.yaml`'s `defaults:` block is
+    folded into each variant row first (`_resolve_spec_defaults`, RM37), because a value written once
+    under `defaults:` and the same value written on every row are the same content.
     """
     spec_dir = Path(spec_dir)
     # The declared build is part of the content, not metadata about it: identical coordinate rows on
@@ -1497,6 +1535,10 @@ def content_signature(spec_dir: Path) -> str:
         rows, errors, _ = _load_csv_rows(path, model, csv_name, genome_build=declared_build)
         if errors:
             raise ValueError(f"cannot compute content_signature: {csv_name} is invalid: {errors[0]}")
+        if model is VariantRow:
+            # The only model carrying `Defaults`' fields. Safe to mutate: these rows were loaded here
+            # and go nowhere else — the compile path loads its own copy.
+            _resolve_spec_defaults(rows, config.defaults if config else Defaults())
         tables[csv_name] = rows
     return _content_signature(tables, declared_build)
 

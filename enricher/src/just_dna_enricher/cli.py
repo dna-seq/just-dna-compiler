@@ -21,6 +21,7 @@ from just_dna_format.vocab import VALID_DECLARED_USE
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
 from just_dna_enricher.enrich import EnrichmentError, enrich
+from just_dna_enricher.sequences import summarize_ref_mismatches
 from just_dna_enricher.lookup import (
     as_report_rows,
     lookup_citation,
@@ -135,10 +136,12 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             + " (--keep-par-twin records both)",
             fg=typer.colors.CYAN,
         )
-    for mismatch in result.ref_mismatches:
-        # Red rather than yellow even in best_effort: this is authored data contradicting the genome,
-        # which is a different (and worse) thing than a variant the chain could not find.
-        typer.secho(f"  ref mismatch: {mismatch}", fg=typer.colors.RED, err=True)
+    # Grouped by cause, not one line per row: a systematic mistake (every coordinate shifted one base)
+    # produces a finding per variant, and thousands of them hide both the shared cause and every other
+    # thing the run reported. Red rather than yellow even in best_effort — this is authored data
+    # contradicting the genome, a different and worse thing than a variant the chain could not find.
+    for line in summarize_ref_mismatches(result.ref_mismatches):
+        typer.secho(f"  ref mismatch: {line}", fg=typer.colors.RED, err=True)
     for stale in result.stale_rsids:
         typer.secho(f"  stale rsid: {stale}", fg=typer.colors.YELLOW, err=True)
     for conflict in result.clin_sig_conflicts:

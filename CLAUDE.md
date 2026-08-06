@@ -143,7 +143,15 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 - **Rate limits are load-bearing in `gnomad.py`.** 10 requests/IP/60s, so everything is batched (20
   aliases; 29 returns HTTP 400) behind a 6s pacing gate on an **injectable clock** — tests prove the
   interval without really sleeping. Per-alias GraphQL errors must never sink a batch; a *pathless* error
-  must raise (it's our broken query, and swallowing it looks like "nothing found").
+  must raise (it's our broken query, and swallowing it looks like "nothing found") — **except a pathless
+  error that says a record is simply absent.** gnomAD answers an unknown `variantId` with
+  `{"message": "Variant not found"}` and **no `path` key**, while still returning `data` with a `null` at
+  that alias, so the absence is already fully expressed by the node and the error is commentary. Treating
+  it as fatal made `frequencies` die with a traceback on any module carrying a variant gnomAD lacks —
+  which is ordinary, and is what `VALID_FREQUENCY_STATUS.not_found` exists for. `_ABSENCE_MESSAGES` is the
+  narrow exemption, matched on the message because with no path there is nothing else to match on. The
+  general lesson: "pathless ⇒ our bug" was a premise about the API, not a law — check what the API
+  actually does before deriving severity from a field's absence.
 - **Reverse dropping `rsid_alternates` is NOT a bug — closed, don't re-flag it.** This was filed as an
   open loose end and is neither open nor fixable in the writer. `_write_resolution_csv` rebuilds the
   table from `weights.parquet`, which by design carries **no provenance at all** (it already resets
@@ -307,16 +315,53 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `resolution.csv`. Subjects dedupe by `variant_key` with **`variants.csv` first** — it alone carries
   `alts`, a fact column, so a PGx row winning would move `artifact.digest`. PGx tables key **without**
   `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `hosting_verdict`.
-- **CPIC/PharmVar coordinates are 1-based — do NOT convert.** Despite the `start` docstring saying
-  "0-based", the pipeline stores Ensembl's 1-based position (`rs1135071` → 5226799 in both), and CPIC
-  `sequence_location.position` / PharmVar `NC_……:g.` use the same convention. The instinctive `-1`
-  introduces an off-by-one. Two more CPIC traps: `variantallele` carries values `HaplotypeRow.allele`
+- **Every `start` in this codebase is the 1-based VCF position — do NOT convert.** The pipeline stores
+  Ensembl's position (`rs1135071` → 5226799 everywhere), CPIC `sequence_location.position` and PharmVar
+  `NC_……:g.` use the same convention, and `derive_vrs_allele_id` does the interbase conversion itself,
+  once. The instinctive `-1` introduces an off-by-one. **This bullet used to open "Despite the `start`
+  docstring saying 0-based" — that docstring was the bug, and it was fixed on 2026-08-06 only after it
+  had cost someone 3,038 rows.** `describe`/`requirements`/`reference` print those descriptions, so they
+  are the authoring contract, not internal commentary; an external author followed them, shifted four
+  whole modules by one base, and every offline gate passed (`--strict` included, VRS ids minted *and*
+  reported verified — a content-addressed id is a correct digest of the wrong input). Two durable
+  lessons. **A known-but-unrated inconsistency in a printed contract is a live defect, not tidiness** —
+  it sat in the ROADMAP as a low-severity blocker for the `end` column precisely because nobody had
+  watched it produce a wrong module. And **Class-2 validate-by-redundancy assumes independence**: those
+  modules shipped their own hand-built `resolution.csv`, so `resolution._verify` compared the author's
+  convention against itself and agreed. `schema/tests/test_coordinate_convention.py` now pins the prose
+  to what the minting code does with the number. Two more CPIC traps: `variantallele` carries values `HaplotypeRow.allele`
   rejects, in **two different kinds** that must not be conflated — **IUPAC ambiguity codes** (`R`), an
   uncertainty CPIC recorded and never expressible, and **deletion/repeat notations** (`DELTCT`,
   `AAAGGGGCG(2)`, 23 in CYP2D6), a grammar gap (RM5) a release could widen; `cpic.unusable_allele_reason`
   names which, and calling the second an ambiguity code was a false claim that survived until a real
   CYP2D6 draft. And activity scores are **inequality strings** (`"≥3.0"`), not numbers, so they don't drop
   into `MeasureBinRow`'s numeric bounds.
+- **A "ref mismatch" has three causes, and the coordinate one is the common one.** `verify_reference_alleles`
+  reads **one window** spanning a base either side of the claimed span (not three reads — the rows needing
+  the diagnosis arrive in thousands) and reports a shifted `start` when exactly one neighbour carries the
+  authored `ref`. Both neighbours matching is ambiguous, so it withholds — tri-state, as everywhere else.
+  Don't "improve" it by inferring the direction from the module's dominant shift: that is a per-row claim
+  built from an aggregate. A shifted row sets `distorts_the_allele_id` **whatever the claimed length**,
+  because the id is minted at the authored position; the old length-only test plus its reassurance ("the
+  minted allele id is still the true allele at this position") was true of the recorded position and
+  worthless when the position is the defect. Sensitivity is structurally partial (~3 rows in 4 — a
+  neighbour that happens to equal `ref` hides it), and both docs say so rather than implying a clean bill.
+  Findings are grouped by **reason** via `summarize_ref_mismatches`; 56 lines became 2 on a 69-variant
+  module.
+- **`content_signature` hashes a variant row's EFFECTIVE `curator`/`method`/`priority`, not its cell
+  (RM37, shipped).** `defaults:` in `module_spec.yaml` and a per-row cell are two spellings of one value,
+  and `reverse_module` re-emits it in the other place (it infers the module default via `_most_common`
+  and blanks the matching cells), so hashing the cell made `compile → reverse → compile` move the
+  signature. `compiler._resolve_spec_defaults` folds the defaults in first. **The normalization is the
+  load-bearing part and must not be "simplified": a value equal to the `Defaults` model's own field
+  default is written back as `None`, so `exclude_none=True` omits it** — the same trick RM36 used for
+  `genome_build`, and what keeps existing signatures byte-identical (one of eleven reference examples
+  moved). It also fixed an unfiled defect: `defaults:` previously reached the hash by no path at all, so
+  two modules differing only in `defaults.curator` hashed **equal**. `priority` needs no special case —
+  its model default is `None`, so an unset one stays omitted, and `reverse` still rightly refuses to
+  infer a `priority` default (that would fabricate a value for rows that never set one). No reference
+  example could catch any of this: all eleven use `defaults:`, so an externally authored module found it
+  — the same corpus-uniformity lesson as RM36, on the axis "where the author chose to write it".
 - **A large star-allele gene is drafted with `draft --allele`, and the filter covers all three tables.**
   Unfiltered CYP2D6 is 16,290 diplotype rows (73% `Indeterminate`); the author's real bound is the allele
   set their caller emits, and *n* alleles is *n(n+1)/2* pairs. Filtering `diplotypes.csv` alone would

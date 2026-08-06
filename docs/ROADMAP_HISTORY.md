@@ -674,3 +674,61 @@ makes the diff legible.
 
 Still a hard **no**: a `sort`/`canonicalize` command. It moves every row at once for no authoring
 gain, and unlike a grouped append there is no local reason for any individual move.
+
+## RM37 — `content_signature` counted *where* a value was written
+
+**Severity** medium · **Status** ✅ shipped in 0.5 (filed and closed on 2026-08-06, in that order) ·
+**Owner** format (compiler) · **Motivating case** an externally drafted GWAS module
+
+**The finding.** `compile → reverse → compile` held `artifact.digest` and `resolution_signature`
+exactly, but moved `content_signature` for any module that filled `curator` or `method` **on the row**
+instead of in `module_spec.yaml`'s `defaults:`. `reverse_module` infers the module default from the
+commonest value (`_most_common`), writes it into the rebuilt `defaults:`, and blanks every cell that
+matches — so the value survives, in the other place. `content_signature` hashed the CSVs *before* spec
+defaults were applied, so it saw two different contents. AUTHORING.md §6 states the two values must
+match; for this shape they did not.
+
+**No reference example could have caught it.** All eleven put `curator`/`method` in `defaults:`, which
+is the canonical form reverse emits, so every one of them was already at the fixed point on the first
+pass. It took a module authored elsewhere — 207 rows carrying one per-row `method` string — to show
+it, which is the same lesson as RM36's: the corpus cannot probe an axis on which it is uniform, and
+"where the author chose to write this" is such an axis.
+
+**The repair, and why the other two stayed rejected.** The entry filed three candidates:
+
+- *Stop inferring defaults on reverse; always write cells explicitly.* Rejected — it mirrors the bug.
+  A module that legitimately uses `defaults:` would then round-trip into explicit per-row cells and
+  move its own signature. The asymmetry is unavoidable as long as one value has two homes and the
+  hash can see which one was used.
+- *Refuse a per-row `curator`/`method`.* Rejected — it deletes an authored column doing real work. A
+  module drawing rows from several sources genuinely has a per-row method, which is precisely what the
+  motivating module had.
+- *Apply spec defaults before hashing.* **Shipped.** It makes the signature a function of what the
+  module *means* rather than of where the author typed it, which is the property a content-dedup key
+  needs. `_resolve_spec_defaults` folds `defaults:` into each variant row (the only model carrying
+  those fields) immediately before hashing.
+
+**The objection to the shipped option was compatibility, and it was overtaken by two facts.** Filing
+it, the entry called this "a P3/P8 identity change" because it moves `content_signature` for already
+published modules. First: **0.5 is unpublished** — tags stop at `v0.4.0`, all three packages sit at
+`0.5.0` — and the unpublished window is exactly where an identity change is cheap. Second, and more
+useful, the change is **narrower than it looked**, because it reuses the normalization RM36 already
+established for `genome_build`: an effective value equal to the `Defaults` model's *own* field default
+is written back as `None` and therefore omitted from the hash (`exclude_none=True`), the same way an
+unset optional column always was. A module that says nothing about `curator`/`method`, or that names
+the built-in values, keeps its signature byte for byte. Measured rather than assumed: **one of eleven
+reference examples moved** (`grch37_build`, which sets `curator: audit` with blank cells), and it is
+itself a 0.5-era addition.
+
+**It closed a second defect nobody had filed.** Because `defaults:` reached the hash through no path
+at all, two modules whose *only* difference was `defaults.curator` hashed **equal** — different
+content, one identity, which is the same class of error as the pre-RM36 `genome_build` blindness and
+the thing a dedup key must never do. The test that pins it
+(`test_a_different_curator_is_still_different_content`) fails on the pre-fix code for that reason, not
+for the round-trip one.
+
+**Not touched, deliberately: `priority`.** `reverse_module` refuses to infer a default for it, and
+that stays right — `Defaults.priority` is `None`, so inferring from the mode would fabricate a value
+for rows that never set one, turning `['high', None]` into `['high', 'high']` on recompile. Resolving
+defaults before hashing handles `priority` correctly *by the same rule* (its model default is `None`,
+so an unset one stays omitted) without needing reverse to change its mind.

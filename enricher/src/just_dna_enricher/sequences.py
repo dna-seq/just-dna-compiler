@@ -33,6 +33,7 @@ one tier that has the sequence to do it with.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -105,7 +106,14 @@ class SequenceProxy:
 
 @dataclass
 class RefMismatch:
-    """One row whose authored reference allele disagrees with the reference sequence."""
+    """One row whose authored reference allele disagrees with the reference sequence.
+
+    A mismatch has two quite different causes, and the finding names which one it found. Either the
+    `ref` cell is wrong at a position that is right, or — the case that actually shows up in the wild
+    — the *position* is wrong and `ref` was correct all along for the variant the author meant. The
+    second is what a `pos - 1` conversion produces, and reporting it as a bad `ref` sends the author
+    to the wrong column while leaving them to wonder why their coordinate "validated" against dbSNP.
+    """
 
     variant_key: str
     chrom: str
@@ -113,25 +121,50 @@ class RefMismatch:
     claimed: str
     actual: str
     genome_build: str = "GRCh38"
+    #: Offset, in bases, at which the authored `ref` *is* the reference sequence — `+1` means the
+    #: variant sits one base to the right of the authored `start`, which is what subtracting one from
+    #: a VCF position produces. `None` when no neighbour explains it: unknown, so nothing is claimed.
+    shift: Optional[int] = None
 
     @property
     def distorts_the_allele_id(self) -> bool:
-        """Whether the wrong `ref` also makes the minted VRS id describe a **different allele**.
+        """Whether the mismatch also makes the minted VRS id describe a **different allele**.
 
-        The two failure modes differ in severity, and the difference is decided by the *claimed*
-        length, not by comparing lengths (the actual bases are always read at the claimed length, so
-        they cannot differ in length except at a contig edge):
+        Three cases, and the middle one is why this is not simply a length test:
 
-        - **A single-base claim: no.** The interval is one base wide whichever base the author thought
-          was there, so the minted id is the true allele at that position — correct, despite the row
-          being wrong. Only this check can surface it.
+        - **A single-base claim at a position that is right: no.** The interval is one base wide
+          whichever base the author thought was there, so the minted id is the true allele at that
+          position — correct, despite the row being wrong. Only this check can surface it.
+        - **A shifted coordinate: yes, whatever the length.** The id is minted at the authored
+          position, so a shift means it addresses a base the author never meant. The id is still a
+          correct digest of what it was given, which is exactly why nothing downstream can catch it:
+          the compiler's VRS pass recomputes the same wrong id and reports it *verified*.
         - **A longer claim: yes.** The claimed length *sets the interval*, so a wrong `ref` means the
-          allele spans the wrong bases and names an event the author did not intend. This is the
-          silent-corruption case, and nothing downstream can detect it.
+          allele spans the wrong bases and names an event the author did not intend.
         """
-        return len(self.claimed) != 1
+        return self.shift is not None or len(self.claimed) != 1
+
+    @property
+    def diagnosis(self) -> str:
+        """The cause, as far as it was established — the grouping key for a run's summary."""
+        if self.shift is not None:
+            direction = "right" if self.shift > 0 else "left"
+            return (
+                f"coordinate shifted {abs(self.shift)} base to the {direction}: `start` is the "
+                f"1-based VCF position and must not be converted"
+            )
+        if len(self.claimed) != 1:
+            return "multi-base ref disagrees, so the allele spans the wrong bases"
+        return "single-base ref disagrees at a position nothing else contradicts"
 
     def __str__(self) -> str:
+        if self.shift is not None:
+            return (
+                f"{self.variant_key}: {self.genome_build} {self.chrom}:{self.start} is "
+                f"{self.actual!r}, but the authored ref {self.claimed!r} is the base at "
+                f"{self.chrom}:{self.start + self.shift} — the coordinate is off by {self.shift}, "
+                f"not the ref. Any allele id minted for this row names the wrong position"
+            )
         consequence = (
             "the minted allele id therefore describes a DIFFERENT allele"
             if self.distorts_the_allele_id
@@ -141,6 +174,26 @@ class RefMismatch:
             f"{self.variant_key}: authored ref {self.claimed!r} disagrees with {self.genome_build} "
             f"{self.chrom}:{self.start}, which is {self.actual!r} — {consequence}"
         )
+
+
+def summarize_ref_mismatches(mismatches: Sequence[RefMismatch], *, examples: int = 3) -> list[str]:
+    """Group findings by cause: one line per diagnosis with a count and a few named rows.
+
+    A systematic mistake produces one finding per row — 56 lines for a 69-variant module, ~2,400 for a
+    large panel — and a wall that long buries every other thing the run reported. Grouping by *reason*
+    rather than by row is what makes the shared cause visible, which is the whole point: 2,400 rows
+    disagreeing on `ref` reads as hopeless, while "2,400 rows are shifted one base right" is a
+    one-line fix.
+    """
+    grouped: dict[str, list[RefMismatch]] = {}
+    for mismatch in mismatches:
+        grouped.setdefault(mismatch.diagnosis, []).append(mismatch)
+    lines: list[str] = []
+    for diagnosis, found in grouped.items():
+        named = ", ".join(m.variant_key for m in found[:examples])
+        more = f", and {len(found) - examples} more" if len(found) > examples else ""
+        lines.append(f"{len(found)} row(s) — {diagnosis} ({named}{more})")
+    return lines
 
 
 def verify_reference_alleles(
@@ -178,13 +231,47 @@ def verify_reference_alleles(
             continue
         if accession is None:
             continue
-        actual = sequences.subsequence(accession, row.start - 1, row.start - 1 + len(claimed))
+        actual, shift = _read_with_neighbours(sequences, accession, row.start, len(claimed), claimed)
         if actual is None or actual == claimed:
             continue
         mismatches.append(
             RefMismatch(
                 variant_key=row.variant_key, chrom=row.chrom, start=row.start,
-                claimed=claimed, actual=actual, genome_build=row.genome_build,
+                claimed=claimed, actual=actual, genome_build=row.genome_build, shift=shift,
             )
         )
     return mismatches
+
+
+def _read_with_neighbours(
+    sequences: SequenceProxy, accession: str, start: int, width: int, claimed: str
+) -> tuple[Optional[str], Optional[int]]:
+    """The bases at `start`, plus which neighbouring offset (if any) carries `claimed` instead.
+
+    One read, not three. The window spans one base either side of the claimed span, so establishing
+    the shift costs the same round trip as not establishing it — which matters, because the rows that
+    need the diagnosis are exactly the ones that come in thousands.
+
+    The shift is returned only when **exactly one** neighbour matches. A homopolymer matches on both
+    sides and settles nothing, so it reports `None` and the finding says only that the ref disagrees:
+    an ambiguous direction is an unknown, and this codebase withholds rather than picks.
+    """
+    left_edge = start - 2  # interbase index of the base one to the LEFT of the claimed span
+    if left_edge < 0:
+        # At the very start of a contig there is no left neighbour; ask the plain question.
+        actual = sequences.subsequence(accession, start - 1, start - 1 + width)
+        after = sequences.subsequence(accession, start, start + width)
+        return actual, (1 if after == claimed and actual != claimed else None)
+
+    window = sequences.subsequence(accession, left_edge, start + width)
+    if window is None or len(window) < width + 2:
+        # A short window means a contig edge on the right; fall back to the unadorned comparison
+        # rather than slicing a string that does not hold what the offsets assume.
+        return sequences.subsequence(accession, start - 1, start - 1 + width), None
+
+    actual = window[1 : 1 + width]
+    before, after = window[0:width], window[2 : 2 + width]
+    if actual == claimed:
+        return actual, None
+    candidates = [offset for offset, bases in ((-1, before), (1, after)) if bases == claimed]
+    return actual, candidates[0] if len(candidates) == 1 else None

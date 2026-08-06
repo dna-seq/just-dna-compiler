@@ -132,6 +132,24 @@ def test_per_alias_errors_do_not_discard_the_batch(payload: dict) -> None:
     assert set(result) == {"11-5227002-T-A", "1-11796321-G-A"}   # the failing alias is simply absent
 
 
+def test_a_pathless_not_found_keeps_the_batch(payload: dict) -> None:
+    """gnomAD reports an absent variant with **no `path`** — that must not read as a broken query.
+
+    The shape below is what the live API returns (probed 2026-08-06): a `null` at the missing alias
+    inside `data`, plus a bare `{"message": "Variant not found"}` in `errors[]` with no `path` key at
+    all. Classifying that as a whole-request failure aborted the entire `frequencies` pass with a
+    traceback the moment a module carried one variant gnomAD lacks — which is ordinary, and is what
+    `VALID_FREQUENCY_STATUS`'s `not_found` member exists to record.
+    """
+    remapped = {
+        "data": {"v0": payload["data"]["sickle"], "v1": None},
+        "errors": [{"message": "Variant not found"}],
+    }
+    client = _client(_Recorder([remapped]))
+    result = client.fetch_frequencies(["11-5227002-T-A", "1-176842737-C-G"])
+    assert set(result) == {"11-5227002-T-A"}   # the good row survives; the absent one is just absent
+
+
 def test_a_whole_request_error_is_raised_not_swallowed() -> None:
     # An error with no alias path is our bug (a bad query), not a missing record. Returning "nothing
     # found" would hide a broken query behind an innocent empty table.

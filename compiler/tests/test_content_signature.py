@@ -91,3 +91,113 @@ def test_signature_dedups_where_digest_cannot(tmp_path: Path) -> None:
     s2 = compile_module(_spec(tmp_path / "s2", name="two"), tmp_path / "o2", resolve_with_ensembl=False)
     assert s1.manifest.content_signature == s2.manifest.content_signature
     assert s1.manifest.artifact.digest != s2.manifest.artifact.digest
+
+
+# ── RM37: where a value was written is not part of the content ──────────────────────────────────
+
+_YAML_WITH_DEFAULTS = (
+    "schema_version: '1.0'\n"
+    "module:\n  name: demo\n  title: demo\n  description: d\n  report_title: demo\n"
+    "defaults:\n  curator: {curator}\n  method: {method}\n"
+)
+_CURATOR = "gwas-catalog-import"
+_METHOD = "GWAS Catalog p<5e-8; GRCh38 forward-strand validated"
+
+
+def _per_row(d: Path) -> Path:
+    """The value on every row, `defaults:` left at the built-in values."""
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "module_spec.yaml").write_text(_YAML.format(name="demo"), encoding="utf-8")
+    (d / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion,gene,curator,method\n"
+        f"rs1801133,A/G,risk,MTHFR risk,MTHFR,{_CURATOR},{_METHOD}\n"
+        f"rs4988235,C/T,protective,LCT persistence,MCM6,{_CURATOR},{_METHOD}\n",
+        encoding="utf-8",
+    )
+    (d / "studies.csv").write_text(_STUDIES, encoding="utf-8")
+    return d
+
+
+def _in_defaults(d: Path) -> Path:
+    """The same value stated once under `defaults:`, cells left blank — what `reverse` emits."""
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "module_spec.yaml").write_text(
+        _YAML_WITH_DEFAULTS.format(curator=_CURATOR, method=_METHOD), encoding="utf-8"
+    )
+    (d / "variants.csv").write_text(_VARIANTS, encoding="utf-8")
+    (d / "studies.csv").write_text(_STUDIES, encoding="utf-8")
+    return d
+
+
+def test_a_default_and_a_per_row_cell_are_the_same_content(tmp_path: Path) -> None:
+    """RM37: `curator`/`method` in `defaults:` or on every row is one value written two ways.
+
+    Hashing the cell alone made them different content, which is what moved `content_signature`
+    across `compile → reverse → compile`: reverse re-emits the value in the *other* place.
+    """
+    assert content_signature(_per_row(tmp_path / "rows")) == content_signature(
+        _in_defaults(tmp_path / "defaults")
+    )
+
+
+def test_the_round_trip_that_moved_the_signature_now_holds(tmp_path: Path) -> None:
+    """The actual RM37 reproduction: compile → reverse → compile on a per-row-authored module.
+
+    Every signature must hold from the first compile, not merely stabilize on the second — which is
+    what "a fixed point" means, and what the old behaviour only managed from the second onward.
+    """
+    from just_dna_compiler.compiler import reverse_module
+
+    spec = _per_row(tmp_path / "spec")
+    first = compile_module(spec, tmp_path / "out1", resolve_with_ensembl=False)
+    assert first.success, first.errors
+
+    reverse_module(tmp_path / "out1", tmp_path / "rev")
+    second = compile_module(tmp_path / "rev", tmp_path / "out2", resolve_with_ensembl=False)
+    assert second.success, second.errors
+
+    assert second.manifest.content_signature == first.manifest.content_signature
+    assert second.manifest.artifact.digest == first.manifest.artifact.digest
+    # And the standalone reader agrees with both manifests.
+    assert content_signature(tmp_path / "rev") == first.manifest.content_signature
+
+
+def test_naming_the_built_in_default_leaves_the_signature_untouched(tmp_path: Path) -> None:
+    """The normalization that keeps the change targeted, mirroring `genome_build`'s.
+
+    A module that says nothing about `curator`/`method`, and one that spells out the built-in values,
+    are the same content as each other — and as every module compiled before RM37, which is why no
+    existing signature moves.
+    """
+    silent = _spec(tmp_path / "silent")
+    spelled = tmp_path / "spelled"
+    spelled.mkdir()
+    (spelled / "module_spec.yaml").write_text(
+        _YAML_WITH_DEFAULTS.format(curator="ai-module-creator", method="literature-review"),
+        encoding="utf-8",
+    )
+    (spelled / "variants.csv").write_text(
+        _VARIANTS.replace(
+            "rsid,genotype,state,conclusion,gene\n",
+            "rsid,genotype,state,conclusion,gene,curator,method\n",
+        )
+        .replace("MTHFR risk,MTHFR\n", "MTHFR risk,MTHFR,ai-module-creator,literature-review\n")
+        .replace("LCT persistence,MCM6\n", "LCT persistence,MCM6,ai-module-creator,literature-review\n"),
+        encoding="utf-8",
+    )
+    (spelled / "studies.csv").write_text(_STUDIES, encoding="utf-8")
+
+    assert content_signature(spelled) == content_signature(silent)
+
+
+def test_a_different_curator_is_still_different_content(tmp_path: Path) -> None:
+    """Resolving defaults must not flatten a real distinction into agreement."""
+    a = _in_defaults(tmp_path / "a")
+    b = tmp_path / "b"
+    b.mkdir()
+    (b / "module_spec.yaml").write_text(
+        _YAML_WITH_DEFAULTS.format(curator="someone-else", method=_METHOD), encoding="utf-8"
+    )
+    (b / "variants.csv").write_text(_VARIANTS, encoding="utf-8")
+    (b / "studies.csv").write_text(_STUDIES, encoding="utf-8")
+    assert content_signature(a) != content_signature(b)

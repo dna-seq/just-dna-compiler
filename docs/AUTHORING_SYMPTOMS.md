@@ -101,9 +101,51 @@ The companion message at compile time, and it is a statement about the key, not 
 is **build-relative** — it will not join against a GRCh38-keyed module — which is true of coordinates and
 is said out loud rather than hidden behind an id that looks portable.
 
+**`ref mismatch: N row(s) — coordinate shifted 1 base to the right: `start` is the 1-based VCF position and must not be converted`**
+The one to read carefully, because the column it names is not the column you would have guessed. Your
+`ref` cells are **right**; your `start` cells are each one too low, which is what subtracting one from a
+VCF position produces. `VariantRow.start` is the 1-based VCF POS — the same number Ensembl, dbSNP,
+ClinVar and gnomAD show you — and nothing in this pipeline wants an interbase offset. Add one back to
+every `start`, delete `resolution.csv`, and re-enrich.
+
+Two things about how this reaches you. It is **not** caught offline: a uniformly shifted module passes
+`validate`, passes `compile --strict`, reports `fully_resolved: True`, and mints `ga4gh:VA.…` ids the
+compiler then reports as *verified* — a content-addressed id is a correct digest of whatever it is
+given, so it certifies the wrong locus perfectly happily. And it is caught here only for the rows where
+the neighbouring base differs from your `ref`; roughly one row in four escapes by coincidence, so treat
+the count as a floor, not a total. Every id minted for a shifted row names the wrong place and must be
+regenerated, not patched.
+
+**`ref mismatch: N row(s) — single-base ref disagrees at a position nothing else contradicts`**
+The residue after the shift check: the base at your coordinate is not the one you wrote, and neither
+neighbour explains it — either the `ref` cell really is wrong, or it is a shifted row whose neighbours
+happen to carry the same base so the direction could not be established. If the run also reported a
+shift group, assume these belong to it and fix them the same way. The minted id is the true allele *at
+the position recorded*, which is only reassuring if the position is right.
+
+**`ref mismatch: N row(s) — multi-base ref disagrees, so the allele spans the wrong bases`**
+The corrupting case, and the reason `ref` is checked at all. A multi-base `ref` *sets the interval*, so
+a wrong one mints a well-formed id for an allele you did not mean, and nothing downstream can notice.
+Fix the row.
+
+All three are **reported, never repaired** — the authored value survives so the evidence of the upstream
+mistake is not destroyed — and all three need sequence access, so `--offline` reports nothing here. A
+check that could not run is not a check that passed. They are grouped by cause rather than listed per
+row, so `N` is a count and only the first few keys are named.
+
 **A sidecar did not change after you edited the spec**
 An existing `resolution.csv` / `frequencies.csv` / `gene_metrics.csv` is authoritative and merged.
-**Delete the file** and re-run, or stale rows persist silently.
+**Delete the file** and re-run, or stale rows persist silently. This is also the only way to ask whether
+an injected `resolution.csv` still agrees with the sources: move it aside, enrich, and compare. The
+compiler cannot ask for you — it never fetches (Principle 2), so it takes the table you give it.
+
+**`no gnomAD frequency: [ga4gh:VA.…, …]`** (from `frequencies`)
+gnomAD has no record for those alleles, which is ordinary — a GWAS-tag SNP absent from the exome/genome
+callset, or a locus gnomAD does not cover. They are recorded as `not_found`, and the rest of the pass is
+unaffected. The keys are `variant_key`s, so a resolved substitution appears as its VA digest rather than
+its rsID; look it up in `resolution.csv`. Distinct from **`not_covered`**, which means the source cannot
+cover that locus at all (the Y PAR) — an absence nobody established is not a finding, and neither status
+fails `strict`.
 
 **`sources.csv has no row for … ['gnomad']`**
 A real finding now, not noise: a source contributed facts and the module records no terms for it. Fixed

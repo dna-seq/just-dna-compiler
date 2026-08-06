@@ -165,24 +165,45 @@ def _gql_string(value: str) -> str:
     return f'"{escaped}"'
 
 
-def _errors_by_alias(payload: dict) -> tuple[dict[str, str], list[str]]:
-    """Split GraphQL `errors[]` into per-alias failures and whole-request failures.
+#: Pathless error messages that are a **record being absent**, not the request being wrong.
+#:
+#: gnomAD answers an unknown `variantId` with `{"message": "Variant not found"}` and **no `path`
+#: key at all**, while still returning `data` with a `null` at that alias. So the absence is already
+#: fully represented in `data` — the error is commentary on it — and treating a pathless error as a
+#: broken query made one missing variant abort the whole `frequencies` pass with a traceback, taking
+#: the batch's good rows with it. A module carrying a variant gnomAD lacks is ordinary (that is what
+#: `VALID_FREQUENCY_STATUS`'s `not_found` member is for), so this was every real module.
+#:
+#: Matched on the message because there is nothing else to match on: with no path, the error cannot
+#: be attributed to an alias, and it does not need to be — the null node is the per-row answer.
+_ABSENCE_MESSAGES: frozenset[str] = frozenset({"variant not found"})
 
-    An error carries a `path` whose first element is the alias that failed; one with no usable path is
-    a whole-request problem (a syntax error, an unknown field) rather than one lookup missing. Telling
-    those apart is what lets a batch keep its 17 good rows while reporting its 3 bad ones — and what
-    stops a genuinely broken query from being mistaken for "nothing found".
+
+def _errors_by_alias(payload: dict) -> tuple[dict[str, str], list[str], list[str]]:
+    """Split GraphQL `errors[]` into per-alias failures, absences, and whole-request failures.
+
+    An error carrying a `path` names the alias that failed. One with no path is *usually* a
+    whole-request problem — a syntax error, an unknown field — and those must raise: swallowing a
+    broken query and returning "nothing found" would hide our own bug behind an innocent-looking
+    empty table. The exception is a pathless error that says a record is simply absent
+    (`_ABSENCE_MESSAGES`), which gnomAD reports alongside a `null` node for exactly that alias.
+
+    Telling the three apart is what lets a batch keep its 17 good rows while reporting its 3 bad ones,
+    and keeps a variant gnomAD has never heard of from being an error at all.
     """
     by_alias: dict[str, str] = {}
+    absences: list[str] = []
     fatal: list[str] = []
     for err in payload.get("errors") or []:
         path = err.get("path") or []
         message = str(err.get("message", "unknown error"))
         if path:
             by_alias[str(path[0])] = message
+        elif message.strip().lower() in _ABSENCE_MESSAGES:
+            absences.append(message)
         else:
             fatal.append(message)
-    return by_alias, fatal
+    return by_alias, absences, fatal
 
 
 def _loci_from_variant_ids(variant_ids: Iterable[str]) -> list[dict]:
@@ -315,14 +336,20 @@ class GnomadClient:
 
         The per-alias errors are handed back rather than swallowed because they are *data* to the
         caller: `resolve_rsids` reads them to spot the "Multiple variants found" case and reroute those
-        rsIDs through `variant_search`. A whole-request error (no alias path) IS raised — that is a bug
-        in our query, not a missing record, and returning "nothing found" would hide it behind an
-        innocent-looking empty table.
+        rsIDs through `variant_search`. A whole-request error IS raised — that is a bug in our query,
+        not a missing record, and returning "nothing found" would hide it behind an innocent-looking
+        empty table. A pathless *absence* is neither (see `_ABSENCE_MESSAGES`): the null node at that
+        alias already says it, so it is logged and the batch carries on.
         """
         payload = self._post("{\n" + "\n".join(fields) + "\n}")
-        by_alias, fatal = _errors_by_alias(payload)
+        by_alias, absences, fatal = _errors_by_alias(payload)
         if fatal:
             raise GnomadError(f"gnomAD {what} query failed: {'; '.join(fatal)}")
+        if absences:
+            logger.info(
+                "gnomAD %s: %d/%d of the batch are not in %s (recorded as not found)",
+                what, len(absences), len(fields), self.settings.dataset,
+            )
         if by_alias:
             logger.info(
                 "gnomAD %s: %d/%d aliases returned an error (partial results kept)",
