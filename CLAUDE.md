@@ -25,8 +25,25 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
 the three questions that close off wrong turns. Companions:
 [AUTHORING_TABLES.md](docs/AUTHORING_TABLES.md) (which table kind a finding belongs in) and
 [AUTHORING_SYMPTOMS.md](docs/AUTHORING_SYMPTOMS.md) (message → cause → action, keyed on the actual
-text). Every command in them was run end to end. `/write-module` invokes the same guide as a skill;
-`.claude/skills/write-module/SKILL.md` only dispatches, so there is one copy.
+text). Every command in them was run end to end. `/write-module` points at the same guide, so the
+**workflow** still has one copy — but `.claude/skills/write-module/SKILL.md` is no longer a pure
+dispatcher: it also carries the authoring **gotchas** inline, dereferenced from here and from the
+docs, because an author should not have to read 961 lines of contributor guidance to find the ten
+rules that apply to them. That duplication is deliberate and narrow. **Keep the two in sync in one
+direction only: a new authoring gotcha is added to the skill, and to this file only if a
+*contributor* also needs it.** Anything about why a bug existed, or what a repair rejected, belongs
+here or in ROADMAP_HISTORY — never in the skill, which is operative rules only.
+
+**`/create-module` is the same guidance for an author who has no checkout** — someone who ran
+`pip install just-dna-enricher` and can see the skill plus the CLI and nothing else. It is therefore
+fully dereferenced: `.claude/skills/create-module/SKILL.md` inlines the AUTHORING workflow and bundles
+`references/TABLES.md` and `references/SYMPTOMS.md` in place of the two companion docs, and it names no
+path outside its own directory — **no `docs/`, no `reference_examples/`, no Constitution, no bare `RMn`
+without saying what an RM is.** Adding anything there that a reader cannot reach breaks the only
+property it has. So a new authoring gotcha now lands in **both** skills; write it for `/write-module`
+first and port it, dropping any repo-relative pointer on the way. When a *published surface* changes
+(a flag, a command, a vocabulary), `/create-module`'s command-surface tables are the copy that goes
+stale silently, since nothing in the suite reads them — re-run `--help` against it.
 
 **Looking for a roadmap item?** [docs/RM_TOC.md](docs/RM_TOC.md) is the single complete list of every
 `RMn` — status, the doc that defines it, and every doc that mentions it — plus the unnumbered

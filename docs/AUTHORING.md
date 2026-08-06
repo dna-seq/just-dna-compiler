@@ -7,8 +7,9 @@ genotype under test, or a measured value: the consumer supplies the measurement 
 Read [CONSTITUTION.md](CONSTITUTION.md) before changing the *schema*. This guide is about
 using it. Companions: [AUTHORING_TABLES.md](AUTHORING_TABLES.md) (which table kind), [AUTHORING_SYMPTOMS.md](AUTHORING_SYMPTOMS.md) (message → cause → action).
 
-> Invoke it as a skill with `/write-module`; `.claude/skills/write-module/SKILL.md` dispatches here
-> so there is one copy of the workflow, not two.
+> Invoke it as a skill with `/write-module`. `.claude/skills/write-module/SKILL.md` points here for
+> the workflow — one copy, not two — and additionally carries the authoring gotchas inline, so a
+> reader who only needs the rules is not sent through the whole contributor guide to find them.
 
 ## Answer three questions first — each one closes off wrong turns later
 
