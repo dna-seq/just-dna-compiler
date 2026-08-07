@@ -12,7 +12,8 @@ sections below stay as the *shape* argument. Each README names **what building i
 point of having them: the module is the regression test and the README is the evidence. Highlights:
 `pathogenic_clinvar/` (the SNP core from a real ClinVar snapshot), `pgx_slco1b1_simvastatin/` (the PGx
 path — no `variants.csv`, and a `sources.csv` recording that the module is not sellable),
-`htt_repeat_expansion/` (the binning path, §7), `shox_par1/` + `par_boundary/` (pseudoautosomal
+`htt_repeat_expansion/` (the binning path, §7), `mt_heteroplasmy/` (§4 — two variants in one gene, two
+tissues, and the key that had to widen for it), `shox_par1/` + `par_boundary/` (pseudoautosomal
 selection, RM32) and `grch37_build/` (§11 — the non-GRCh38 case). Do not maintain a count here; the
 directory is the list, and `compiler/tests/test_reference_examples_roundtrip.py` sweeps all of them for
 the Principle 7 fixed point by discovery rather than by a second inventory.
@@ -115,9 +116,20 @@ rs5030868,X,C/C,neutral,benign,G6PD,G6PD deficiency,MONDO_0009905,"Normal"
 ## 4. Mitochondrial — homoplasmic (0.3 item 5b) + heteroplasmy (0.4 `heteroplasmy.csv`)
 
 Homoplasmic is reachable via a single-allele genotype on `variants.csv`; heteroplasmy is a
-`HeteroplasmyRow` binning table keyed on `(gene, reference_sequence)` — the reference accession is
-part of the key because rCRS/`NC_012920` vs legacy `NC_001807` disagree and `genome_build` does not
-disambiguate.
+`HeteroplasmyRow` binning table. Its bins group on `(gene, reference_sequence, tissue, variant_key)`
+plus `trait_efo_id` — the live list is `HeteroplasmyRow._KEY_FIELDS`, and `validate_bins` adds the trait.
+Each component earns its place: the **reference accession** because rCRS/`NC_012920` vs legacy
+`NC_001807` disagree and `genome_build` does not disambiguate; **tissue** because bins are
+tissue-conditional (below); and **`variant_key`** because a gene hosts more than one variant and their
+thresholds differ.
+
+**That last one is why this section is worth reading against the built module rather than copied from.**
+The illustration below carries one MT variant per gene, and the key was originally the gene — so a second
+real MELAS variant (m.3271T>C, whose blood threshold is ~15% where m.3243A>G's is ~30%) landed in the same
+group and `validate_bins` rejected the module as overlapping bins. The identity columns are **optional**,
+so the rows below still validate and bin exactly as they always did (P3/P8); a table describing two
+variants must fill them. `reference_examples/mt_heteroplasmy/` is that module — both variants, both
+tissues — and its README names what building it broke.
 
 Homoplasmic (`variants.csv`):
 ```csv

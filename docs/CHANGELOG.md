@@ -11,6 +11,166 @@ here so parallel work in the other repos isn't surprised. Newest first.
 and the label was relabelled to match. Keep it that way: a number here should answer "which published
 version introduced this", and a batch inside an unpublished release is not a version.
 
+## 2026-08-07 — a locus spelled `T>Y`: the right verdict with the wrong explanation, and a third compile-only check
+
+**A non-nucleotide allele made the compiler blame the genotype.** `hosting_verdict("C/T", "T", "Y")`
+returns `False`, and correctly — a substitution locus has no shared flank, so no spelling freedom, which
+is exactly what keeps the strand-flip check sharp. But the message built on that verdict said the
+genotype's alleles "are not among the alleles at this locus", and then explained it either as *the row
+contradicts itself* or as *the resolving source's allele list is incomplete*. Both are false when the
+locus itself is spelled with an IUPAC code or a symbolic allele: the author is sent to re-examine a
+genotype that was right, three steps from the cell that is wrong. `alleles.non_nucleotide_reason` /
+`non_nucleotide_alleles` (format tier, stdlib) classify the offender and both call sites — the
+expansion's dropped-locus warning and `_check_allele_membership` — now name which of the two it is.
+The verdict is untouched; only the explanation changed.
+
+**Two reasons, each carrying its own consequence.** An ambiguity code is a permanent uncertainty, never
+expanded into the alleles it could stand for; a symbolic/structural allele is a grammar gap (RM5) a
+release may close. The first cut of this message appended the ambiguity sentence to *both* branches, so
+a `<DEL>` locus was lectured about IUPAC — the identical conflation `cpic.unusable_allele_reason` was
+repaired to stop making, reintroduced inside the message that repair paid for. That provider now
+**delegates** to the format-tier classifier: one definition, two callers, each with its own wording.
+
+**Why the grammar was not tightened instead**, since that is the obvious move and it is wrong three
+ways: **no** `ref`/`alt`/`alts` column in the schema has a nucleotide grammar (eleven columns across six
+models; `vocab.validate_allele` has exactly one user, `HaplotypeRow.allele`), so adding one rejects
+`<DEL>` and `N` alongside a typo — tightening the field **RM5** exists to widen; a module with
+`alts="Y"` *compiles today* under `best_effort`, so refusing it stops an existing module validating
+(**Principle 3**); and the only non-ACGT allele that occurs in real variant records is `N`, which
+`clinvar_build` already filters at the snapshot boundary. Full probe in ROADMAP's 0.6 idea-book, kept
+because the reasons are reusable.
+
+**`_check_allele_membership` was compile-only, and it is a mode ladder — so `validate --strict` reported
+`valid` for a module `compile --strict` refused.** The third instance of the defect the 2026-08-07
+readiness audit fixed for `_verify_vrs_ids` and `_check_p_value_num`, and it survived that pass because
+the pass went **table by table**: this check reads *authored* rows rather than a sidecar, so "which
+tables does `validate` read" could not surface it. Its own docstring already said it runs on the
+authored rows *before* resolution expands them, which is precisely what makes it computable at
+pre-flight. Now in `validate_spec`, with the resolution table (empty when the module carries none — a
+row authoring its own `ref`/`alts` is judged from authored bytes alone). The compile-side call stays,
+because `compile_module` runs `validate_spec` in **best_effort** regardless of its own mode, so
+re-running is how a mode ladder reaches its real severity; its warnings are de-duplicated on the
+message, the same way `_check_contig_ploidy`'s already are. The lesson for the next audit of this kind:
+**enumerate checks, not tables.**
+
+## 2026-08-07 — a VA per ALT: the identity a multi-allelic row was refused, and the coverage nobody counted
+
+**`ResolutionRow.vrs_id` is one id per ALT, comma-joined and positionally aligned with `alts`.** It was
+a scalar, and the mint pass abstained on any comma-joined cell — `_single_alt`, whose docstring gave the
+reason as "a VA names exactly one allele, so a comma-joined cell has no single id; picking one would be
+a data error wearing an identifier". That argument belongs to `derive_variant_key`, where it is right:
+`variant_key` is one column naming one thing, so a plural cell must fall through to the coordinate key.
+It was wrong for `vrs_id`, a cross-reference the schema deliberately keeps **outside**
+`RESOLUTION_FACT_FIELDS`, on which no identity rests, and where nothing is picked because every ALT gets
+its own id. The tier was already giving the opposite answer one file away:
+`frequencies._alleles_from_resolution` expands a multi-allelic cell into one entry per ALT and always
+had. Cost, measured on a real externally-authored module: **909 of 1,613 rows carried no id at all**
+while every input needed to mint all 2,110 of their alleles sat in the same row, and all 2,110 were
+single-base substitutions — stdlib, offline, no seqrepo. Across the five modules in that corpus, 4,022
+allele identities that were computable and absent.
+
+Shape notes, all load-bearing:
+
+* **A parallel array, not one row per allele.** `resolve_from_table` groups resolution rows by
+  `variant_key` and reads `len(loci)` as a *locus* count, so three alt-rows at one position would enter
+  the one-to-many expansion path and be reported as three loci — and `locus_index` would then carry two
+  different kinds of "many" (P5). A single-alt row still spells a bare id, byte-identical to every file
+  already written.
+* **A hole is a value.** An empty member means "this allele's id could not be minted here" — a
+  substitution and an indel share plenty of sites, and losing the substitution's id to the indel beside
+  it would be the same abstention one level down.
+* **Desync is caught twice.** `ResolutionRow` refuses a pair of the wrong length at load; the compiler's
+  `_verify_vrs_ids` recomputes member by member, so a pair of the right length in the wrong *order* is a
+  mismatch — an error in both modes, like any other corrupt id.
+* **Nothing moved.** `vrs_id` is outside every signature and `reverse_module` does not re-emit it:
+  `artifact.digest`, `content_signature` and `resolution_signature` are byte-identical before and after
+  on all five modules, and `compile → reverse → compile` is still a fixed point.
+
+**Absence is now counted, because a VA is becoming a key.** `_verify_vrs_ids` only ever looks at ids
+that are *there* — "a row with no `vrs_id` is skipped entirely" — so a table where nothing was minted
+verified flawlessly. That was the right severity for a decorative cross-reference and the wrong one for
+an identity anything may join on: an identity scheme covering an unstated fraction of the table is not
+one a consumer can key on, and *unstated* is the defect. Both tiers now report coverage, and the counts
+reach `manifest.compilation.vrs_alleles` / `vrs_alleles_identified` so a shortfall outlives the terminal
+it scrolled past. Two counts rather than a ratio or a bool, for the same reason `fully_resolved` sits
+beside `resolution_mode`: the shortfall's *size* is the reliability figure, and "complete" is derived.
+The denominator is alleles, not rows. Gaps group by **reason class** — the first cut grouped on
+`_recompute_vrs_id`'s per-row prose and produced forty lines each naming a different indel, which is the
+per-row wall this codebase has now had to collapse five times. A shortfall **warns in both modes**: an
+indel offline or a build with no refget table is fixable by no authored edit, and `strict` means
+"reproducible artifact", which an incompletely-named table still is.
+
+**The check's first act was to indict this repo's own corpus.** Four reference examples had never been
+fully minted — `pathogenic_clinvar` at **52/474 (11%)**, `cyp2c19_star_alleles` 18/57,
+`shox_par1` 6/14, `pgx_slco1b1_simvastatin` 0/2 — and nothing had ever said so, because verification of
+present ids cannot see absent ones. All four are re-minted **online**, so the 187 indels went through
+seqrepo normalization too: every one is now 100%, and `artifact.digest`, `content_signature` and
+`resolution_signature` are identical to HEAD on all four. `grch37_build` carries no `resolution.csv`, so
+it reports nothing new — its existing RM15 warning (VA minting is GRCh38-only) already says what it has.
+
+## 2026-08-07 — pre-merge readiness audit: a green pre-flight that wasn't, and one timestamp in two spellings
+
+**Blocker — `validate` reported `valid` for modules `compile` refused, and the authoring skill promised
+it could not.** The 0.5 fix for this covered which *tables* `validate` reads; the exemption was then
+applied per table rather than per **check**, so two checks stayed compile-only that read nothing but
+injected or authored bytes. `_verify_vrs_ids` compares a `resolution.csv` row against its own
+content-addressed id and consults nothing else — a **mismatch is an error in both modes**, so a plain
+`compile` (no `--strict`) refused a module `validate` had just blessed as corrupt-free.
+`_check_p_value_num` compares two encodings of one p-value in `studies.csv`. Both now run in
+`validate_spec`, whose inputs already included them. The reason it hid: "it compares a sidecar" reads
+like "it is a cross-check", and the cross-checks genuinely do need resolved rows — but a *self*-check on
+one row does not. The line is **needs resolution**, not **touches a sidecar**.
+
+**`validate` gained `--strict/--best-effort`.** Several checks are a mode ladder, so a modeless
+pre-flight answered for the wrong compile: green under the default, refused under `compile --strict`.
+The flag changes severity only, never which findings exist, which is what keeps the two commands one
+contract. `test_validate_agrees_with_compile.py` pins both halves, including that an indel's
+*unverifiable* id appears in `warnings` at `best_effort` and in `errors` at `strict` with the same
+sentence.
+
+**One instant, two spellings, and it moved a digest.** `sources.csv` wrote
+`2026-08-03T02:03:23Z` (`strftime`) while `literature.csv` wrote `2026-08-01T20:55:37.406184+00:00`
+(`.isoformat()`) — twelve producers reaching for whichever was nearer. Both columns land in a parquet
+inside the Merkle root, so the same moment recorded two ways was two artifact identities for one set of
+facts. There is now a single producer (`normalize.now_utc_iso`, second resolution, `Z`) and
+`normalize_utc_timestamp` canonicalizes **on load** on all five models carrying `fetched_at`, so the
+column is canonical by construction rather than by convention at the point of writing. An offset is
+converted rather than truncated; an unreadable value raises instead of passing through, because this
+column is machine-written.
+
+*Digest move, one module:* `pathogenic_clinvar` (the only committed sidecar carrying the microsecond
+spelling). `content_signature` and every fact signature are unchanged — the spelling was never inside a
+fact set. Spent inside the unpublished window on purpose.
+
+**What was deliberately *not* changed: `fetched_at` stays inside `artifact.digest`.** Removing it was
+proposed and rejected. Two independent enrichments of one module legitimately happen at two moments, and
+making their digests equal would need each *source* to publish its own last-modified time so the stamp
+described the data rather than the fetch — unenforceable against upstreams that mostly do not offer one,
+and bound to break wherever it was assumed. The digest correctly says "two artifacts, built at two
+moments"; `content_signature` and the four fact signatures are the producer-independent identities, and
+they already exclude it. `test_ensembl_cache_wins_when_both_present` was asserting digest equality across
+two separately-enriched specs — a stronger claim than it meant, intermittently red on whether the two
+`enrich()` calls landed in the same second. It now compares `resolution_signature`, which is the
+instrument for "are these the same resolved facts".
+
+**Lint is a gate rather than noise.** `ruff` was a declared dev tool with no configuration, so
+`ruff check .` reported over a thousand findings — 808 of them one modernization nobody had decided on.
+`[tool.ruff]` now pins `target-version = "py313"` (every member requires ≥3.13), an explicit rule set,
+and the reasons `BLE001`/`ISC004`/`E501` are deliberately unselected. `Optional[X]` → `X | None`
+throughout, PEP 695 type parameters in `net.py`, and `ruff check .` is clean. The printed authoring
+reference is **byte-identical** across all of it — pydantic already normalized `Optional[str]` to
+`str | None`, so `describe`/`requirements`/`reference` never showed the old spelling. Two changes in
+that sweep were not cosmetic: `zip(..., strict=True)` on the PAR interval pairing in `vrs.par_partner`,
+where truncation would have kept PAR1 answering and silently dropped PAR2, and `raise ... from exc` in
+`integrity`'s signature-verify path, which had been dropping the cause chain.
+
+**Docs.** `REFERENCE_EXAMPLES.md` §4 claimed `HeteroplasmyRow` keys on `(gene, reference_sequence)`;
+the real key is `(gene, reference_sequence, tissue, variant_key)` plus `trait_efo_id`, and the section
+that stated it wrongly is the one whose one-variant-per-gene shape had already made a module
+uncompilable. It now names `_KEY_FIELDS` as the live list and points at `reference_examples/mt_heteroplasmy/`,
+which was the only built example named nowhere in that document. Three pointers to a deleted
+`docs/AUTHORING.md` now name where the material actually lives in the skill.
+
 ## 2026-08-06 — externally authored modules: the authoring contract said 0-based
 
 Five modules produced elsewhere (two Claude4Science bundles: a GWAS intelligence/personality catalogue
@@ -36,7 +196,9 @@ it is handed, so it certifies the wrong locus perfectly happily (24 of 69 ids in
 The Class-2 coordinate cross-check (`resolution._verify`) was defeated for a second reason worth
 recording: the modules shipped their own hand-built `resolution.csv`, so **both sides of the redundancy
 check came from one author with one convention** and agreed exactly. Validate-by-redundancy assumes
-independence; authoring both sides removes it. AUTHORING.md §3 now says so under its own heading.
+independence; authoring both sides removes it. The `create-module` skill says so under its own heading
+(*Never author both sides of a redundancy check*, in step 3 and again in *The checks, and the two ways to
+defeat them by accident*).
 
 **Fixed — the reference-allele check misdiagnosed the cause and reassured the author falsely.** It
 reported "authored ref 'T' disagrees with GRCh38 11:61790330, which is 'C'", pointing at a `ref` column
@@ -206,7 +368,8 @@ and its `artifact.digest` did not.
 
 **`validate` reported `valid` for modules `compile` then refused.** Both loops in `validate_spec` iterate
 `_TABLE_KINDS`, and `resolution.csv` plus the four fact sidecars are `_FACT_TABLES` — a tuple it never
-touched, though `compile_module` refuses on a bad row in any of them. AUTHORING.md § 6 puts `validate`
+touched, though `compile_module` refuses on a bad row in any of them. The `create-module` skill's step 6
+puts `validate`
 immediately before `compile`, so it is the author's pre-flight, and a green pre-flight followed by a refusal
 sends them hunting a change they did not make. Worst case, and the one that shipped: the **licence gate**
 reads `sources.csv` and nothing else, so a module drafted entirely from a no-sale source with no

@@ -685,8 +685,9 @@ exactly, but moved `content_signature` for any module that filled `curator` or `
 instead of in `module_spec.yaml`'s `defaults:`. `reverse_module` infers the module default from the
 commonest value (`_most_common`), writes it into the rebuilt `defaults:`, and blanks every cell that
 matches — so the value survives, in the other place. `content_signature` hashed the CSVs *before* spec
-defaults were applied, so it saw two different contents. AUTHORING.md §6 states the two values must
-match; for this shape they did not.
+defaults were applied, so it saw two different contents. The `create-module` skill states the two values
+must match (*Module structure* — "a value every row shares belongs in `defaults:`"); for this shape they
+did not.
 
 **No reference example could have caught it.** All eleven put `curator`/`method` in `defaults:`, which
 is the canonical form reverse emits, so every one of them was already at the fixed point on the first

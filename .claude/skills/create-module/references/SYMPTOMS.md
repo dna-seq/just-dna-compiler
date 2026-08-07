@@ -164,11 +164,66 @@ before the `authority` column existed simply says nothing here; re-enrich to fil
 ## Validation and compile
 
 **`validate` says `valid` and `compile` then refuses**
-It should not, and if it does, that is a bug worth reporting upstream rather than working around.
-`validate` covers `resolution.csv`, the four fact sidecars (`sources.csv`, `literature.csv`,
-`frequencies.csv`, `gene_metrics.csv`) and the licence gate. What still only appears at compile is
-anything computed from *resolved* rows — the expansion and hosting findings above — because resolution
-has not run when `validate` does.
+**Check the modes first — that is the likely cause.** Several checks are a ladder: a warning under
+`--best-effort` (the default for both commands) and an error under `--strict`. A bare `validate` followed
+by `compile --strict` is a pre-flight for the *other* compile, so pass the same flag to both:
+`validate spec/ --strict`.
+With the modes matched it should not happen, and if it does, that is a bug worth reporting upstream
+rather than working around. `validate` covers `resolution.csv`, the four fact sidecars (`sources.csv`,
+`literature.csv`, `frequencies.csv`, `gene_metrics.csv`), the licence gate, the stored `vrs_id`, the
+p-value pair, and whether every genotype and `effect_allele` names an allele its locus actually has.
+What still only appears at compile is anything computed from *resolved* rows — the expansion and hosting
+findings above — because resolution has not run when `validate` does.
+
+**`allele(s) C are not among the authored alleles at this locus (T/Y) — the genotype is not the problem:
+'Y' is an IUPAC ambiguity code`** — a warning under `--best-effort`, an error under `--strict`
+The genotype is fine; one cell of `ref`/`alts` is not a nucleotide. Two cases, and the message says which:
+
+* **an IUPAC ambiguity code** (`Y` is C-or-T, `R` is A-or-G, `N` is any base). It records an
+  *uncertainty*, so it is never expanded into the alleles it could stand for — expanding would assert
+  alleles your source declined to. Write the alleles the locus actually has: if the site really carries
+  both, `alts` is `C,T`, and each gets its own `ga4gh:VA.` id.
+* **a symbolic or structural allele** (`<DEL>`, a repeat notation). Not a grammar this release holds; the
+  variant cannot be expressed as a nucleotide string yet, so leave the row out rather than approximating
+  it.
+
+Without this the message blamed the genotype, which sent authors to re-check a correct cell.
+
+**`stored vrs_id ga4gh:VA.… does not match the id recomputed from 11:5225715 G>T`** — an **error in both
+modes**, so `--best-effort` will not get you past it
+A `ga4gh:VA.…` is content-addressed: for a substitution it is computed from the coordinate and the
+alleles alone, with no reference and no network, so the recomputation is deterministic and a
+disagreement can only mean the stored id is wrong. Nothing to decide — delete the `vrs_id` cell and let
+`vrs mint` write it, or fix whichever of `chrom`/`start`/`ref`/`alts` is wrong. Usual causes are a
+hand-built `resolution.csv`, a row copied between variants, or an id kept after the coordinate was
+edited.
+
+**`vrs_id ga4gh:VA.… could not be verified — …`** — a warning under `--best-effort`, an error under
+`--strict`
+Not the same claim as the one above: nothing was compared, so no verdict was reached. The compiler
+cannot recompute an id for an indel, an MNV, a position-only row, a row with no coordinate, an
+off-assembly contig, or a non-GRCh38 build — justifying those needs the reference sequence. A
+multi-allelic row is *not* in that list: `vrs_id` holds one id per ALT, comma-joined in the same order
+as `alts`, and each is checked on its own. Expected for an indel, and `--strict` refuses because it will
+not ship an identity it could not confirm: compile `--best-effort` (the id is carried, marked
+unverified), or drop the `vrs_id` if you would rather claim nothing.
+
+**`VRS allele identity covers 289/474 allele(s) … Anything keying on the VA sees only the covered
+fraction`** — a warning in both modes
+Not a defect in the module: it reports how much of your resolution table a `ga4gh:VA.` id actually
+names, with the remainder grouped by what each is blocked on. If a line says the ids are *computable
+offline*, the mint pass has not run — `just-dna-enricher vrs mint <spec_dir>` fills them. If it says
+indel/MNV, re-run that command **without** `--offline`, which is what lets it read the reference
+sequence. If it names a build with no refget table, nothing can be done today and the module is fine.
+It never refuses, in either mode, because the last two causes are fixable by no edit you could make.
+
+**`p_value '1.2e-14' reads as 1.2e-14, but p_value_num says 1.2e-41`** — a warning under
+`--best-effort`, an error under `--strict`
+Two encodings of one number disagree, so one is a transcription slip. `p_value` is the free-form record
+and `p_value_num` is what a consumer filters on, so the number is usually the one to fix. Compared
+relatively at 1%, so a rounding (`5.23e-8` beside `5.2e-8`) is silent — a wrong digit or a wrong power of
+ten is not. A string that does not denote one definite value (`<0.001`, `NS`, `5e-8 (adjusted)`) is
+skipped in silence and disagrees with nothing.
 
 **`module_spec.yaml is not valid YAML: … line 4, column 10`**
 A syntax error in your hand-written spec, with pyyaml's own line and column. The usual causes are an

@@ -296,7 +296,7 @@ acmg/` — and the check also stops needing the network.
 ## 6 — Compile, verify, publish
 
 ```bash
-just-dna-compiler validate spec/
+just-dna-compiler validate spec/ --strict
 just-dna-compiler compile  spec/ out/ --strict
 just-dna-compiler keygen --out key.pem              # prints the public key `verify` pins
 just-dna-compiler sign    out/ --private-key key.pem
@@ -304,7 +304,9 @@ just-dna-compiler verify  out/ --no-require-marketplace --public-key <base64>
 ```
 
 `validate` refuses everything `compile` refuses that does not need resolved rows, so a green pre-flight
-should mean a green compile. `--strict` means *reproducible artifact*: it refuses when resolution left
+should mean a green compile. **Pass it the same mode as the compile you intend to run** — several checks
+warn under `--best-effort` (the default) and refuse under `--strict`, so a modeless pre-flight answers
+for the other compile. `--strict` means *reproducible artifact*: it refuses when resolution left
 something it could not reproduce. It is orthogonal to `--use`, which is about who may use the data, and
 it is not a statement that the module is *right*.
 
@@ -497,7 +499,7 @@ workaround.
 | `describe <kind>` | full JSON: columns, vocabularies, pick-lists, requirements |
 | `reference` | every model at once. `--summary`, `--schemas` |
 | `hint <kind> --file F` | inspect authored rows; report wrong / rewritten / left-to-you. Writes nothing |
-| `validate <dir>` | full pre-flight, exit 1 if invalid |
+| `validate <dir>` | full pre-flight, exit 1 if invalid. `--strict/--best-effort` — pass the mode you will compile with |
 | `compile <dir> <out>` | parquet + `manifest.json`. `--strict`, `--compression`, `--compiled-by` |
 | `signature <dir>` | the content signature of the raw authored data — no compile, no reference |
 | `reverse <artifact> <out>` | artifact → authored spec DSL. `--resolution/--no-resolution`, `--genome-build` |
@@ -512,13 +514,13 @@ workaround.
 | `enrich <dir>` | → `resolution.csv`. `--strict`, `--offline`, `--no-clinvar`, `--no-gnomad`, `--no-vrs`, `--no-verify-ref/-clinsig/-rsids`, `--keep-par-twin`, `--ensembl-cache`, `--clinvar-cache` |
 | `frequencies <dir>` | → `frequencies.csv` from gnomAD. `--populations`, `--dataset`. Online only |
 | `gene-metrics <dir>` | → `gene_metrics.csv` constraint. Snapshot first, live API (v2.1.1) as fallback |
-| `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use` |
+| `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |
 | `literature <dir>` | → `literature.csv`. `--fulltext/--no-fulltext`, `--doi/--no-doi` |
 | `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--dry-run` |
 | `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--snapshot`, `--offline`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--use`, `--dry-run` |
-| `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
+| `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC). `--no-traits`, `--no-genes` |
-| `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline` |
+| `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |
 | `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use` |
 | `clinpgx check <dir> --snapshot S` | `pharm_variants.csv` vs the ClinPGx snapshot, offline-capable |
 | `hint variant\|citation\|trait\|gene` | look up one identifier. Writes nothing. `--json`, `--offline`, `--ambiguity`, `--frequencies` |
