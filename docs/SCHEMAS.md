@@ -306,8 +306,9 @@ Why this was legal now rather than at 1.0: `variant_key` is **derived and frozen
 (`_COMPILER_MANAGED_FIELDS`), so changing its derivation touches no authored schema, no DSL, and no human
 author — the human-authorability gate is untouched. It is major-only for exactly one reason: the column
 lives in `weights.parquet`, hence in `artifact.digest`. That gate is **publication**, not the version
-number — and 0.4 is the published line while 0.5.0 has never shipped. So it rides the same one-time
-pre-publication re-baseline the alt-carrying key already rode, and no published artifact moves.
+number — and when this shipped, 0.4 was the published line and 0.5.0 had never been cut. So it rode the
+same one-time pre-publication re-baseline the alt-carrying key already rode, and no published artifact
+moved. That window closed when 0.5.0 published on 2026-08-07; a further identity change is a 1.0 item.
 
 > **A VA does not encode `ref`.** VRS addresses the place and the alt; the reference base is *determined*
 > by the accession plus the interval (`sequence[start:end]` has exactly one answer), so storing it would

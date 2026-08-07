@@ -136,7 +136,8 @@ cycle* in `USE_CASES.md`.
   with no module-side meaning — while `reference_db`, a join-target-DB hint, was kept.)
 - **Additive within a major** (Principles 3/8): new columns are optional; a required field is never
   demoted; anything that changes `artifact.digest` bytes (parquet column set/types) is major-only —
-  *except* while a version is still unpublished, where the digest is not yet frozen.
+  *except* while a version is still unpublished, where the digest is not yet frozen. **No such exception
+  is open today**: 0.5.0 published on 2026-08-07, so the rule applies unqualified.
 - **Round-trip must stay lossless and idempotent** (Principle 7) — prove it with tests, don't assume.
 - **Dogfood a P7/dedup finding before you report it — construct a *real, sensible* example against
   the actual code paths, or it is not a finding.** A round-trip/dedup "loss" that is mechanically

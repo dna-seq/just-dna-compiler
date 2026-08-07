@@ -42,7 +42,7 @@ compiler" item (needs the `just-dna-datasets` package to coordinate against).* E
 0.5-and-beyond scope plus the open idea-book.
 
 
-## 0.5.0 (in progress, `enricher-0.5`) — the resolution-table + enricher rework
+## 0.5.0 (released 2026-08-07) — the resolution-table + enricher rework
 
 **0.5.0 is now the source-independent resolution-table rework** (see [PROPOSAL_0_5.md](PROPOSAL_0_5.md)
 and [CHANGELOG.md](CHANGELOG.md)): resolution becomes a persisted, source-independent `resolution.csv`
@@ -711,8 +711,8 @@ it, which is the same lesson as RM36's: the corpus cannot probe an axis on which
 
 **The objection to the shipped option was compatibility, and it was overtaken by two facts.** Filing
 it, the entry called this "a P3/P8 identity change" because it moves `content_signature` for already
-published modules. First: **0.5 is unpublished** — tags stop at `v0.4.0`, all three packages sit at
-`0.5.0` — and the unpublished window is exactly where an identity change is cheap. Second, and more
+published modules. First: **0.5 was unpublished when this landed** — tags stopped at `v0.4.0` and all
+three packages sat at `0.5.0` — and that window is exactly where an identity change is cheap. Second, and more
 useful, the change is **narrower than it looked**, because it reuses the normalization RM36 already
 established for `genome_build`: an effective value equal to the `Defaults` model's *own* field default
 is written back as `None` and therefore omitted from the hash (`exclude_none=True`), the same way an

@@ -135,7 +135,8 @@ which rsID belonged to which and its choice drifted across passes. The fix: **`v
 the alt** — `chrom:start:ref:alts` (normalized) — so the insertion is `11:5226762:C:CAAAG`, distinct
 from `11:5226762:C:CA`. (rsid keys, position-only keys, and the position-level study/consistency joins
 are unchanged — studies match a variant at `chrom:start:ref` regardless of allele.) This is exactly the
-kind of pre-freeze identity fix the dogfood exists to surface while `resolution.csv` is still provisional.
+kind of pre-freeze identity fix the dogfood exists to surface — taken while `resolution.csv` was still
+provisional, before 0.5.0 published on 2026-08-07 and froze it.
 
 ### 7. Why ClinVar collocates coord-only and rsID variants (the dbSNP data model)
 **This is structural in the ClinVar/dbSNP data model, not an oversight.** Variant identity is

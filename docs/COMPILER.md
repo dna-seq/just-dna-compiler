@@ -721,8 +721,10 @@ axes are optional, and `just_dna_format.derive` supplies fallbacks:
 
 - **`weights.parquet`/`studies.parquet` carry the 0.3 columns + a `phased` bit**, so a re-compile under
   this compiler changes `artifact.digest` for every module; reproducibility is pinned by
-  `compiler_version`, and published versions keep their digest until re-published. (Pre-1.0 digest moves
-  are still free to absorb while unpublished.)
+  `compiler_version`, and published versions keep their digest until re-published. (Digest moves were
+  free to absorb while a release was still unpublished; **0.5.0 is published**, so anything that moves a
+  compiled module's digest is now a 1.0 item — see
+  [ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits).)
 - **Round-trip is lossless and idempotent** (P7): `reverse_module` → recompile preserves every column
   including phase, and the same spec compiles twice to the same digest. In 0.5 the round-trip is
   additionally **offline** — reverse emits `resolution.csv`, so recompile needs no reference and no

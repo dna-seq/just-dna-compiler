@@ -15,17 +15,26 @@
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.4.0 is the published line** (tags stop at `v0.4.0`; `dist/` holds only 0.4.0 wheels).
-All three packages are at **`0.5.0`, unpublished**, on `enricher-0.5`; `schema_version` stays `"1.0"`.
+**Status:** **0.5.0 is the published line** — tagged `v0.5.0`, built into `dist/`, and released to PyPI
+on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package. `schema_version` stays
+`"1.0"`.
 
-**The unpublished window is load-bearing while it lasts.** `integrity.file_entries` skips missing
-files, so a **new optional table** never moves the digest of a module that does not carry it (additive
-any time), while a **new column on an existing parquet** moves every module's digest — major-only once
-0.5 ships. Anything digest-moving is therefore cheap now and expensive after the cut. Spent in this
-window so far: `ResolutionRow.authority` (provenance, so no signature moved), the continuous-bin
-semantics (`mt_heteroplasmy` re-authored), indel reconciliation (`shox_par1` gained a resolved
-coordinate), and pseudoautosomal locus selection (`shox_par1` halved, 20 rows to 10) — RM33, RM35, RM31
-and RM32 respectively. Only the last two moved an `artifact.digest`; neither moved a
+**The unpublished window is CLOSED, and that is now the rule rather than a caveat.** While 0.5.0 was
+unpublished anything digest-moving was free; it is not any more, and the asymmetry
+`integrity.file_entries` creates is what a minor has to route around:
+
+- **A new optional *table* is still additive at any time.** `file_entries` skips missing files, so a
+  module that does not carry the new parquet keeps its digest byte for byte. This is the shape 0.6 has
+  to use.
+- **A new *column* on an existing parquet is now major-only.** It moves the digest of every module
+  already compiled against 0.5.0, which is no longer a hypothetical set.
+
+Spent in the window while it was open, recorded so it is not re-litigated: the VRS identity switch
+(RM19) and the cofactor columns (RM29) — the two that actually needed it — plus
+`ResolutionRow.authority` (provenance, so no signature moved), the continuous-bin semantics
+(`mt_heteroplasmy` re-authored), indel reconciliation (`shox_par1` gained a resolved coordinate), and
+pseudoautosomal locus selection (`shox_par1` halved, 20 rows to 10) — RM33, RM35, RM31 and RM32
+respectively. Of the last four only RM31 and RM32 moved an `artifact.digest`; none moved a
 `content_signature`, which is pre-resolution by definition.
 
 **The 2026-08-06 readiness audit spent none of it**, which is worth recording because the findings were
@@ -40,6 +49,38 @@ comparing before and after, not assumed. The one addition is a new example
 
 Each entry below is `## RMn — name`, a metadata line (**severity**, **status**, **owner**, **motivating
 case**), then the detail. Severity is *how much it costs to do*, not how urgent.
+
+# 0.6 — what the closed window permits
+
+Sorting the active list by the rule above is a vindication of how 0.5 was cut rather than a new
+constraint on 0.6. **The pre-cut batch was columns precisely because columns needed the window**, and
+everything deferred past it was deferred on design or corpus questions, not on digest cost — so almost
+nothing left here wanted the window in the first place:
+
+| Item | Shape | Minor-legal now? |
+|---|---|---|
+| **RM23** `predictions.csv` | new optional table | ✅ |
+| **RM24** `gene_validity.csv` | new optional table | ✅ |
+| **RM25** ClinVar assertion tier | new optional table | ✅ |
+| **RM16** authored PRS weights | new optional table | ✅ |
+| **RM28** meta-conclusions | new optional table + injected cofactors | ✅ — parked on the corpus, not on the window |
+| **RM5** symbolic / structural alleles | *widens* a grammar | ✅ — P3 bars tightening, not widening |
+| **RM27** redistribution gate | a gate over a column that already ships | ✅ — reads `sources.csv`, writes no parquet |
+| **RM4** gene-panel materialization | compiler behaviour, opt-in per spec | ✅ — row-set expansion pinned on `compiler_version`; only a module that *declares* a panel gains rows |
+| **RM10** inheritance expectation | **undecided** | ⚠ — decide the placement first |
+| **RM15** multi-build identity | coordinates + identity across every table | ❌ — 1.0 |
+
+Two consequences worth stating outright:
+
+- **RM10 now has a gate it did not have.** It was "on demand only" and deliberately shapeless, so nobody
+  had to say where it lands. That is now the expensive half of the decision: on an existing table it is a
+  **column**, hence a major; as its own optional table, or as `module_spec.yaml` metadata that reaches
+  the manifest and no parquet, it stays a minor. Settle the placement before anyone writes it.
+- **The 1.0 pile is closed rather than merely queued.** `weights.parquet`'s `end` and the dead
+  `likely_pathogenic`/`likely_benign` pair were each re-examined *inside* the window and deliberately
+  left (see the tracker below). That was the last cheap moment for both, and passing was right in both
+  cases — `end` still lacks the coordinate convention it needs, and wiring the dead pair would have
+  spent the one free digest move on redundancy. They are 1.0 items now in fact, not just in status.
 
 # Active items
 
@@ -74,17 +115,23 @@ VCF alleles (round-2 §1b/3c).
 
 ## RM10 — Declarative inheritance-expectation field
 
-**Severity** low (on demand) · **Status** deferred, on demand only · **Owner** format (schema) ·
-**Motivating case** trio / multi-sample panels
+**Severity** low (on demand) · **Status** deferred, on demand only — **and the placement now decides the
+release** · **Owner** format (schema) · **Motivating case** trio / multi-sample panels
 
 An optional trio / de-novo / Mendelian-consistency assertion carried *as data* (the panel says
 what it expects; a consumer checks it). Only if a real module needs it.
 
+**Where it lands is no longer a detail.** With 0.5.0 published, a **column** on an existing table moves
+every compiled module's digest and is a 1.0 item; the same assertion as **its own optional table**, or as
+`module_spec.yaml` metadata that reaches `manifest.json` and no parquet, stays a minor. Settle that before
+writing any of it — the item was parked while shapeless, and the shape is now the expensive half.
+
 ## RM15 — Build-agnostic identity & multi-build support (other-builds-support)
 
-**Severity** large · **Status** deferred to 0.6+ — the build-naming half shipped as RM19 ·
-**Owner** format (schema + compiler) · **Motivating case** GRCh37 / T2T modules; cross-build
-annotatability
+**Severity** large · **Status** deferred to **1.0** — the build-naming half shipped as RM19, and the
+remaining half moves coordinates and identity across every table, which the closed digest window makes
+major-only · **Owner** format (schema + compiler) · **Motivating case** GRCh37 / T2T modules;
+cross-build annotatability
 
 Today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is
 authored/manifest metadata, but every `chrom/start/ref`, the Ensembl resolver, and all coord-based
@@ -296,7 +343,7 @@ the following can land in these libs no matter how useful it is:
   0.5 is an interpretation policy, not an annotation; RM23 carries the score and the dataset, never a
   verdict.
 - **ACMG rule application and incidental-findings reporting policy.** The format carries `acmg_sf` as a
-  flag and (with the pre-cut check) validates it against the published list; deciding what to report to
+  flag and (since 0.5) validates it against the published list; deciding what to report to
   whom is the consumer's.
 - **Lay-language rendering.** A module already carries the ontology CURIE and a human `conclusion`;
   turning a MONDO term into patient-facing prose is a presentation concern.
@@ -315,16 +362,18 @@ two-step deprecate→remove default — is a durable rule in [CONSTITUTION.md](C
 (Principle 3). This is the **living tracker** of concrete items queued for the `→ 1.0` break; add
 candidates as they surface.
 
-**Additivity has two axes.** A new version may expand the **column-set** (new optional columns —
-routine, digest-only-move while unpublished) *and* the **row-set** (one authored row compiling to
-several — e.g. a one-to-many rsid → one row per locus). Row-set expansion changes identity
+**Additivity has two axes.** A new version may expand the **column-set** (new optional columns) *and*
+the **row-set** (one authored row compiling to several — e.g. a one-to-many rsid → one row per locus).
+The two are no longer equally cheap: with 0.5.0 published, a new column on an existing parquet moves
+every compiled module's digest and is **major-only**, so the column-set axis now lands here rather than
+in a minor. Row-set expansion changes identity
 *cardinality* but is **not** a schema break: it is resolver behavior pinned on the `compiler_version`
 axis (P4 already pins the digest to the resolved reference), so the GRCh38 expansion ships now. Only
 the *build-aware* generalization (which/how-many loci per build, cross-build annotatability) is RM15.
 The idea is to pile genuinely rule-tripping edge-cases (requiredness demotions, retypes, identity-key
 *semantics* changes) on the 1.0/RM15 piles instead of forcing them into a minor.
 
-Version-axis note: `schema_version` is `"1.0"` while the packages are `0.x` (now `0.4.0`). At `1.0`,
+Version-axis note: `schema_version` is `"1.0"` while the packages are `0.x` (now `0.5.0`). At `1.0`,
 either align them or document explicitly that they track different things (wire format vs. package
 release).
 

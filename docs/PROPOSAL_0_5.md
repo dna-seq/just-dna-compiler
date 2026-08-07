@@ -1,10 +1,17 @@
 # Proposal — 0.5 design threads (carried forward from the 0.4 proposal)
 
-**Status: proposal / forward design — nothing here is shipped.** This is the *"means → draft schema
-→ decision"* stage of the design cycle (CLAUDE.md → *The design cycle*) for the **0.5** milestone. It
-holds the design threads that the 0.4 round **deliberately did not take**, moved here when the 0.4
-proposal was retired (its shipped decisions now live in [`CHANGELOG.md`](CHANGELOG.md), 2026-07-10 and
-the 0.4.0 branch-review passes).
+**Status: 0.5.0 shipped on 2026-08-07, so this is now a design record rather than a forward plan.** The
+threads marked **built in 0.5** below (G1, G2, and the items under *The rest of 0.5 scope*) are done —
+what shipped, and the several places probing overturned the plan, are in
+[`CHANGELOG.md`](CHANGELOG.md). What is still forward design is **D1 → RM16**, **D2 → RM5** and **G3 →
+RM28**, each of which is parked in [`ROADMAP.md`](ROADMAP.md) with its own reasons. The doc is kept
+whole rather than pruned, because the *arguments* — including the ones that lost — are what a later
+round needs; the 0.4 proposal was retired the same way.
+
+This is the *"means → draft schema → decision"* stage of the design cycle (CLAUDE.md → *The design
+cycle*) for the **0.5** milestone. It holds the design threads that the 0.4 round **deliberately did not
+take**, moved here when the 0.4 proposal was retired (its shipped decisions now live in
+[`CHANGELOG.md`](CHANGELOG.md), 2026-07-10 and the 0.4.0 branch-review passes).
 
 The concrete deferred-item tracker (`RMn`) stays in [`ROADMAP.md`](ROADMAP.md); this doc is the
 design discussion behind the 0.5-scope rows, the same way the 0.4 proposal sat beside the roadmap.
@@ -131,12 +138,13 @@ serialized over the location's *content*. It is not — the allele embeds the lo
 mechanism was wrong, and the serialization was settled empirically against recorded ids rather than by
 reading spec prose.
 
-**The identity switch rides 0.5.0's unpublished window.** `variant_key` derives from the VA for a
-resolved substitution. This is legal *now* because `variant_key` is derived and frozen, never authored —
+**The identity switch rode 0.5.0's unpublished window.** `variant_key` derives from the VA for a
+resolved substitution. That was legal *then* because `variant_key` is derived and frozen, never authored —
 so no authored schema, no DSL, and no human author is touched. It is "major-only" for exactly one reason:
 the column is in `weights.parquet`, hence in `artifact.digest`. That gate is **publication**, not the
-version number, and 0.4 is the published line while 0.5.0 never shipped. Doing it before any 0.5.0 module
-exists costs one re-baseline and breaks no published artifact.
+version number, and at the time 0.4 was the published line and 0.5.0 had never shipped. Doing it before
+any 0.5.0 module existed cost one re-baseline and broke no published artifact. **The window has since
+closed** — 0.5.0 published on 2026-08-07 — so the same move would now be a 1.0 item.
 
 **Substitutions only.** An indel keeps its coordinate key rather than an enricher-minted one. The plan
 wanted indels keyed on their normalized VA, but that cannot hold: the key is frozen at row load in the

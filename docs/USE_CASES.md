@@ -376,8 +376,9 @@ should still share one annotation row — dedup on the effect, not on the trigge
   gets `Sickle-cell disease`/`hematologic` back, not `A/T`'s. An older artifact whose `annotations`
   lacks a `conclusion` column falls back to the legacy `variant_key`-only probe (backward-compatible
   read).
-- **Digest.** `artifact.digest` moves **once** because `annotations.parquet` gained two columns —
-  free while 0.4 is unpublished (Principle 4); determinism + round-trip are the held invariants.
+- **Digest.** `artifact.digest` moved **once** because `annotations.parquet` gained two columns — free
+  at the time, since 0.4 was still unpublished (Principle 4); determinism + round-trip are the held
+  invariants. That window is gone: 0.5.0 published on 2026-08-07, so a further column would be 1.0.
 
 **Charter check:** data-agnostic ✓ (still pure annotation — no measurement; the sample's genotype is
 supplied by the consumer at query time); declarative ✓; P5 — this *unbundles* an overloaded identity

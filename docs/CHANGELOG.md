@@ -6,10 +6,52 @@ Shared change log for the just-dna module format/compiler ecosystem. Because
 here so parallel work in the other repos isn't surprised. Newest first.
 
 **A version heading names the release a change will ship in, not a development batch.** Entries dated
-2026-08-03 carried a `0.5.1:` label for a while; nothing 0.5.x has been published (tags stop at `v0.4.0`,
-`dist/` holds only 0.4.0 wheels) and all three packages are at `0.5.0`, so that work ships **as 0.5.0**
-and the label was relabelled to match. Keep it that way: a number here should answer "which published
-version introduced this", and a batch inside an unpublished release is not a version.
+2026-08-03 carried a `0.5.1:` label for a while; at the time nothing 0.5.x had been published, all three
+packages sat at `0.5.0`, and that work therefore shipped **as 0.5.0** — the label was relabelled to
+match. Keep it that way: a number here should answer "which published version introduced this", and a
+batch inside an unpublished release is not a version.
+
+**0.5.0 is published** — tagged `v0.5.0` and released to PyPI on 2026-08-07 (`just-dna-format`,
+`just-dna-compiler`, and `just-dna-enricher`, the last being that package's first release). Everything
+below dated 2026-08-07 or earlier is in it. The next heading is therefore a real new number: additive
+work is **0.6.0**, and anything that moves a compiled module's `artifact.digest` — a new column on an
+existing parquet, a requiredness or identity change — is **1.0**, because the digest window that made
+those free closed with this release. See [ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits).
+
+## 2026-08-07 — 0.5.0 published, and the CI that was meant to gate it never ran
+
+**0.5.0 is released** — tagged `v0.5.0`, built into `dist/`, and on PyPI for all three packages, with
+`just-dna-enricher` 0.5.0 the first release of that package. The docs are brought into line with that in
+one pass: every place that told a reader "0.4.0 is the published line" or that the digest window is open
+now says the opposite, and the historical rationales that were true when written are tense-corrected
+rather than deleted (the argument is the part worth keeping).
+
+**The digest window closing is the substantive change, not the version number.** `integrity.file_entries`
+skips missing files, so a **new optional table** is still additive at any time — a module that does not
+carry the new parquet keeps its digest byte for byte — while a **new column on an existing parquet** now
+moves the digest of every module compiled against 0.5.0, which is no longer a hypothetical set. Sorting
+the active roadmap by that rule turned out to be a vindication of how 0.5 was cut rather than a new
+constraint: the pre-cut batch was columns *precisely because* columns needed the window, and everything
+deferred past it was deferred on design or corpus questions. So 0.6 is unblocked by construction — RM23,
+RM24, RM25, RM16 and RM28 are all new tables, RM5 widens a grammar, RM27 is a gate over a column that
+already ships, and RM4 is compiler behaviour. Only two items move: **RM15** (multi-build identity) is now
+a 1.0 item rather than a minor, and **RM10** acquires a gate it never had — as a column on an existing
+table it is a major, as its own table or manifest metadata it stays a minor, and that placement is now
+the expensive half of the decision. The new table is in [ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits).
+
+**CI was red from the commit that added it, and not for any reason in the code.** All three jobs — ruff
+and both pytest legs — failed inside *Set up job*, before a single test ran: `astral-sh/setup-uv@v9`
+resolves against nothing, because astral-sh **stopped publishing floating major-version tags after
+`v7`**. Only exact `vX.Y.Z` tags exist from `v8.0.0` on, so `@v8` and `@v9` are equally unresolvable
+while `@v7` and `@v6` still work — which is the trap: the pin looks like every other action pin in the
+file and the failure mode is not "wrong version" but "no such ref". Pinned to `v9.0.0`. `actions/checkout@v5`
+and `actions/upload-artifact@v7` were checked against the same list and do resolve; they are left alone.
+
+The suite itself was never the problem — **1314 passed, 6 skipped** on both Python 3.13 and 3.14 locally,
+with `uv sync --locked` clean and `ruff check` clean. Worth recording as the lesson rather than the fix:
+a green local suite says nothing about a workflow that dies before it starts one, and the badge now in
+the README is there so the next such break is visible from the front page instead of from a failure
+notification nobody reads.
 
 ## 2026-08-07 — the enricher minted identities its own compiler refused
 
@@ -285,7 +327,7 @@ Fixed by `_resolve_spec_defaults`: `defaults:` is folded into each variant row i
 hashing, making the signature a function of what the module means rather than where it was typed.
 
 Filed as *surfaced, not fixed* on compatibility grounds, then shipped once that objection was checked
-rather than assumed. **0.5 is unpublished**, which is where an identity change is cheap; and the change
+rather than assumed. **0.5 was unpublished**, which is where an identity change is cheap; and the change
 is narrower than it looked because it reuses RM36's `genome_build` normalization — an effective value
 equal to the `Defaults` model's own default is omitted from the hash, exactly as an unset optional
 column always was. Measured: **one of eleven reference examples moved** (`grch37_build`, which sets
@@ -1085,8 +1127,8 @@ is not an operator problem. Still parked, on a smaller case than before.
 
 Three optional columns carrying single-subject cofactors with **no predicate language at all** —
 because a row's columns already conjoin, which is the whole reason RM29 was ever separable from RM28.
-Taken now because the digest window is still open: new columns on an existing parquet move every
-module's digest, and 0.5 is unpublished. Nothing in the repo pins a digest, so there was nothing to
+Taken then because the digest window was still open: new columns on an existing parquet move every
+module's digest, and 0.5 was unpublished. Nothing in the repo pins a digest, so there was nothing to
 re-baseline.
 
 **(a) `VariantRow.quality_from` + `min_quality`** — "assert this only where the call is at least this
@@ -2131,7 +2173,7 @@ needs nothing new, and the compiler's consumption contract is untouched.
   the canonical home; switch to a thin modules.yaml-aware re-export of
   `just_dna_enricher.upload` when pipelines adopts the enricher tier (`just-dna-enricher[dev]`).
 
-## 2026-07-23 — 0.5.0 (in progress, `enricher-0.5`) — source-independent resolution table
+## 2026-07-23 — 0.5.0 — source-independent resolution table
 
 The 0.5 rework begins: resolution moves from a *live-ish opaque reference the compiler queries* to a
 *persisted, source-independent table the compiler is handed*, so the compiler owns no source

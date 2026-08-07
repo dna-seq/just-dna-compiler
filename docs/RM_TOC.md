@@ -47,9 +47,9 @@ grepping.
 - **[RM37](ROADMAP_HISTORY.md#rm37--content_signature-counted-where-a-value-was-written)** — ✅ **shipped in 0.5**: `compile → reverse → compile` moved `content_signature` for a module authoring `curator`/`method` per row, because reverse re-emits the value under `defaults:` and the hash read the CSVs before defaults applied. Closed by resolving `defaults:` into each row *before* hashing, reusing RM36's omit-the-model-default normalization so only a module stating something non-built-in moves (one of eleven reference examples). Also closed an unfiled defect: two modules differing only in `defaults.curator` hashed **equal**. The other two candidate repairs stayed rejected, with reasons. · *also in* CLAUDE.md, create-module skill, CHANGELOG
 - **[RM36](ROADMAP_HISTORY.md#rm36--a-model-property-cannot-know-its-modules-build)** — ✅ **shipped in 0.5**: a model *property* that mints an identity had no module in scope, so `HeteroplasmyRow.variant_key` gave a GRCh37 module's locus a GRCh38 VA while `variants.csv` gave it a coordinate key. Closed by **injection** — the loader *tells* each row the build via a `PrivateAttr`, so the declaration stays in `module_spec.yaml` alone and reaches no CSV, parquet or digest. Per-row and per-CSV ("service row") declaration were both rejected, with reasons. Carried the correction that `content_signature` was **not** build-independent: it now hashes a non-default `genome_build`, leaving every GRCh38 module's signature untouched. · *also in* CLAUDE.md, SCHEMAS, CHANGELOG
 
-*The post-cut round of the same unpublished 0.5.0. These carried a `0.5.1` label for a while; nothing
-0.5.x has been published, so they ship as 0.5.0 like everything above — see the note at the top of
-[CHANGELOG.md](CHANGELOG.md).*
+*The post-cut round of the same 0.5.0, which was still unpublished at the time. These carried a `0.5.1`
+label for a while; no 0.5.x had been published, so they shipped as 0.5.0 like everything above — see the
+note at the top of [CHANGELOG.md](CHANGELOG.md). **0.5.0 released 2026-08-07.***
 
 - **[RM26](ROADMAP_HISTORY.md#rm26--all-three-drafting-providers)** — all three drafting providers: CPIC, ClinPGx, ClinVar. Partially dissolves RM4. · *also in* ENRICHER, CHANGELOG
 - **[RM29](ROADMAP_HISTORY.md#rm29--cofactor-columns)** — cofactor columns: `quality_from` / `min_quality` on `VariantRow`, `clinical_context` on `DiplotypeRow`. Dissolved the `draft --population` refusal. · *also in* CHANGELOG
@@ -58,10 +58,16 @@ grepping.
 
 ## ⏳ Deferred — additive, lands in a minor (0.6+)
 
+*Two of these no longer qualify unconditionally. With 0.5.0 published the digest window is closed, so a
+new **column** on an existing parquet is major-only while a new optional **table** stays additive —
+which makes **RM15** a 1.0 item and **RM10** conditional on where it lands. The full sort is
+[ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits); the rest of this list is unaffected,
+because everything else here is a table, a grammar widening, or compiler behaviour.*
+
 - **[RM4](ROADMAP.md#rm4--native-clinvar-gene-panel-materialization)** — native ClinVar gene-panel materialization at compile time. The injectable-reference half is unblocked; compile-time materialization is what stays parked. · *also in* USE_CASES, ENRICHER, CHANGELOG, PROPOSAL_0_5
 - **[RM5](ROADMAP.md#rm5--symbolic--structural-alleles)** — symbolic / structural alleles (`<DEL>`, 5-HTTLPR, ClinPGx `del`/`ins`, CPIC's `x≥3`). · *also in* CLAUDE.md, USE_CASES, SCHEMAS, ENRICHER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5
-- **[RM10](ROADMAP.md#rm10--declarative-inheritance-expectation-field)** — declarative inheritance-expectation field (trio / de-novo). *On demand only.* · *also in* USE_CASES, PROPOSAL_0_5
-- **[RM15](ROADMAP.md#rm15--build-agnostic-identity--multi-build-support-other-builds-support)** — build-agnostic identity & multi-build support (refget tables beyond GRCh38). Paired with the `end`-column item in the major bucket: both need the coordinate convention *for a second coordinate* settled (interbase-half-open vs inclusive). The authored-`start` half closed in 0.5 — it is 1-based VCF POS and now says so. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG, PROPOSAL_0_5
+- **[RM10](ROADMAP.md#rm10--declarative-inheritance-expectation-field)** — declarative inheritance-expectation field (trio / de-novo). *On demand only*, and now **⚠ conditional**: a column on an existing table is 1.0, its own table or manifest metadata is a minor. · *also in* USE_CASES, PROPOSAL_0_5
+- **[RM15](ROADMAP.md#rm15--build-agnostic-identity--multi-build-support-other-builds-support)** — build-agnostic identity & multi-build support (refget tables beyond GRCh38). **Now a 1.0 item, not a minor** — it changes coordinates and identity across every table, and the digest window closed with 0.5.0. Paired with the `end`-column item in the major bucket: both need the coordinate convention *for a second coordinate* settled (interbase-half-open vs inclusive). The authored-`start` half closed in 0.5 — it is 1-based VCF POS and now says so. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG, PROPOSAL_0_5
 - **[RM16](ROADMAP.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)** — authored PRS weights: a scoring file, not a `pgs.csv` manifest. · *also in* SCHEMAS, PROPOSAL_0_5
 - **[RM23](ROADMAP.md#rm23--computational-predictor-scores-as-a-table)** — computational predictor scores as a table (`predictions.csv`), long-form. Deferred on grain + acquisition, not on code. · *also in* CLAUDE.md, CHANGELOG
 - **[RM24](ROADMAP.md#rm24--genedisease-validity-as-a-table)** — gene–disease validity as a table (`gene_validity.csv`): ClinGen, GenCC, HPO from one shape. · *also in* CLAUDE.md

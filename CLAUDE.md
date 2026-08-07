@@ -474,11 +474,15 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   because a star name is gene-scoped. This was RM34. When counting what a filter dropped, count over the
   rows the filter actually judged: tallying the copy-number rows it deliberately passes through read
   "567 of 16836" for a six-allele set.
-- **The digest asymmetry decides what is urgent while 0.5 is unpublished.** `integrity.file_entries`
-  **skips missing files**, so a **new optional table** never moves the digest of a module that does not
-  carry it (additive any time), while a **new column on an existing parquet** moves every module's
-  digest (major-only once 0.5 ships). That is why the pre-cut batch is columns and the heavy items
-  (`predictions.csv`, `gene_validity.csv` — RM23/RM24) are roadmapped rather than rushed.
+- **The digest asymmetry decided what was urgent before 0.5 shipped, and now it decides what is
+  LEGAL. 0.5.0 published on 2026-08-07 — the window is closed.** `integrity.file_entries` **skips
+  missing files**, so a **new optional table** never moves the digest of a module that does not carry it
+  (additive any time, still true), while a **new column on an existing parquet** moves every compiled
+  module's digest — which was free while 0.5 was unpublished and is **major-only now**. That is why the
+  pre-cut batch was columns while the heavy items (`predictions.csv`, `gene_validity.csv` — RM23/RM24)
+  are tables and lost nothing by waiting. Before proposing a column on an existing parquet, check
+  [ROADMAP § 0.6](docs/ROADMAP.md#06--what-the-closed-window-permits): the answer is now "1.0", and the
+  question to ask instead is whether it wants to be its own table.
 - **Adding an authored column is exactly three touch points, and the third is the one that gets
   missed.** The pydantic model; the compile-side row dict + polars schema in `compiler.py`; and the
   **reverse-side `fieldnames` list + `_scalar_cell` mapping**. A column missing from the reverse list
@@ -597,8 +601,9 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   last one is the shape to watch for: a lookup bug that surfaces as a false finding about the module.
 - **Dogfood data is git-ignored** (`/data/` now in `.gitignore`): local ClinVar VCF at
   `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
-  is `data/interim/clinvar`. `resolution.csv` is provisional in 0.5, so `artifact.digest` changes for
-  alt-bearing coordinate modules are acceptable pre-freeze.
+  is `data/interim/clinvar`. (`resolution.csv` was provisional while 0.5 was unpublished, which is what
+  made `artifact.digest` changes for alt-bearing coordinate modules acceptable. **0.5.0 shipped on
+  2026-08-07 and it is frozen now** — see the digest-asymmetry bullet above.)
 - **A PUBLISHED snapshot accumulates — provisioning must fetch only its own files.** The publisher adds
   and never deletes, so `just-dna-seq/clinvar/data` still carries a 159 MB `clinvar.parquet` from the
   single-file era beside the 25 `clinvar-chr*.parquet`; its columns are the raw VCF INFO fields
@@ -861,7 +866,8 @@ cycle* in `USE_CASES.md`.
   with no module-side meaning — while `reference_db`, a join-target-DB hint, was kept.)
 - **Additive within a major** (Principles 3/8): new columns are optional; a required field is never
   demoted; anything that changes `artifact.digest` bytes (parquet column set/types) is major-only —
-  *except* while a version is still unpublished, where the digest is not yet frozen.
+  *except* while a version is still unpublished, where the digest is not yet frozen. **No such exception
+  is open today**: 0.5.0 published on 2026-08-07, so the rule applies unqualified.
 - **Round-trip must stay lossless and idempotent** (Principle 7) — prove it with tests, don't assume.
 - **CPIC recommendations are keyed by (gene phenotype, drug, POPULATION) — and the populations
   disagree.** Clopidogrel has three (`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI`); the same Poor
