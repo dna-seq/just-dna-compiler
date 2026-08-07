@@ -1,11 +1,14 @@
 name: CI
 
-# Runs on every branch, because the work here happens on long-lived branches (`enricher-0.5`) that are
-# merged rather than PR'd one commit at a time — CI that only watched `main` would first speak up after
-# the merge it was meant to gate.
+# Pushes are watched on `main` only. This fired on every branch through 0.5, because that work happened
+# on long-lived branches (`enricher-0.5`) merged wholesale rather than PR'd a commit at a time, and CI
+# watching `main` alone would have spoken up only after the merge it was meant to gate. With 0.5
+# released that shape is gone, and the full matrix on every push to every branch mostly spends minutes
+# on work in progress. Branch work is still gated: `pull_request` runs the same three jobs before a
+# merge can land, and `workflow_dispatch` covers checking a branch without opening a PR.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -22,7 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v9
+      # Pinned to the exact release, not a floating `@v9`: astral-sh stopped publishing major-version
+      # tags after `v7`, so `setup-uv@v8`/`@v9` resolve against nothing and every job dies in "Set up
+      # job" before a single test runs. Bump this to the next `vX.Y.Z` deliberately.
+      - uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
       # `--locked` fails when uv.lock does not match pyproject.toml, which makes a forgotten `uv lock`
@@ -41,7 +47,7 @@ jobs:
         python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v9
+      - uses: astral-sh/setup-uv@v9.0.0   # exact release — see the lint job
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
