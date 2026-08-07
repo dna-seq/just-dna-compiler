@@ -16,9 +16,8 @@ rows on `(locus_index, chrom, start, ref)`, matching the resolver's `ORDER BY id
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
-from just_dna_format.alleles import parsimony_reduce
+from just_dna_format.alleles import non_nucleotide_alleles, parsimony_reduce
 from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
@@ -121,17 +120,18 @@ def resolve_from_table(
                 for locus in rejected:
                     # Dropping a locus makes the emitted table smaller than the injected one, so the
                     # round-trip cannot reproduce it — strict must refuse rather than silently prune.
+                    caveat = spelling_caveat(locus.ref, locus.alts)
                     strict_errors.append(
                         f"{v.rsid}: locus {locus.chrom}:{locus.start} {locus.ref}>{locus.alts} "
                         f"cannot host the authored genotype {v.genotype}. Dropping it makes the "
                         f"compile non-reproducible from the injected table; fix the genotype or the "
-                        f"table, or compile without strict."
+                        f"table, or compile without strict.{caveat}"
                     )
                     warnings.append(
                         f"{v.rsid} maps to {locus.chrom}:{locus.start} {locus.ref}>{locus.alts}, "
                         f"which cannot host the authored genotype {v.genotype} — that locus is "
                         f"dropped from the expansion rather than emitted as a row asserting an "
-                        f"allele it does not have."
+                        f"allele it does not have.{caveat}"
                     )
                 if not usable:
                     # Every candidate contradicts the genotype: the rsid and the genotype cannot both
@@ -252,7 +252,7 @@ def _examples(labels: list[str], limit: int = 3) -> str:
 
 
 def _usable_loci(
-    rows: Optional[list[ResolutionRow]], genome_build: str
+    rows: list[ResolutionRow] | None, genome_build: str
 ) -> list[ResolutionRow]:
     """Rows that are for this build and record an actual locus (not a `not_found` sentinel)."""
     if not rows:
@@ -272,7 +272,7 @@ def _coord_update(row: ResolutionRow) -> dict[str, object]:
 _GENOTYPE_SEP = re.compile(r"[/|]")
 
 
-def hosting_verdict(genotype: str, ref: Optional[str], alts: Optional[str]) -> Optional[bool]:
+def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | None:
     """Can a locus spelling `{ref} ∪ alts` host `genotype`? **Three-valued** (RM31).
 
     `True` it can, `False` it positively cannot, `None` this tier cannot tell — the house algebra, and
@@ -340,7 +340,7 @@ def _indel_shaped(events: frozenset[str]) -> bool:
     return len({len(event) for event in events}) > 1
 
 
-def genotype_fits(genotype: str, ref: Optional[str], alts: Optional[str]) -> bool:
+def genotype_fits(genotype: str, ref: str | None, alts: str | None) -> bool:
     """Whether a locus can host `genotype`, collapsing "cannot tell" into "keep it".
 
     The boolean face of `hosting_verdict`, kept because both resolvers and three call sites read it, and
@@ -435,6 +435,58 @@ def _expansion_warning(rsid: str, usable: list[ResolutionRow], genome_build: str
         f"{len(usable)} rows (one per locus, each keyed by its coordinate — a consumer "
         f"can count them)."
     )
+
+
+def spelling_caveat(ref: str | None, alts: str | None) -> str:
+    """The clause to append when a "cannot host" verdict is really about allele *spelling*.
+
+    Empty for a locus spelled in nucleotides, which is nearly all of them, so a caller can append it
+    unconditionally.
+
+    `hosting_verdict` reaches `False` for a substitution locus by set difference, and it is right to: a
+    substitution has no shared flank, so no spelling freedom, so `A/G` at a `C>T` locus is a real
+    contradiction and must stay one — that is what makes the strand-flip check sharp. But it reaches the
+    same `False` when the locus is spelled `T>Y`, and there the mismatch is between the *cell* and the
+    nucleotide alphabet, not between the genotype and the variant. Reporting the generic message there
+    sends the author to re-examine a genotype that was correct all along.
+
+    Two reasons, kept apart, because what the author does next differs: an ambiguity code is an
+    uncertainty that can never be expanded into definite alleles (expanding `N` to `A,C,G,T` asserts four
+    alleles nobody stated), while a symbolic or structural notation is a grammar gap (RM5) a release may
+    widen. Neither is repaired here — this tier reports.
+    """
+    offenders = non_nucleotide_alleles(ref, alts)
+    if not offenders:
+        return ""
+    return (
+        " Read that as a spelling problem rather than a variant one: the locus records "
+        + _spelling_clauses(offenders)
+        + "."
+    )
+
+
+def _spelling_clauses(offenders: dict[str, str]) -> str:
+    """One clause per reason present, each carrying **its own** consequence.
+
+    Shared with `compiler._spelling_because` in spirit and deliberately not in code: the two sit in
+    different call sites of the same finding and read differently around it. What must not diverge is
+    the *classification*, and that is `alleles.non_nucleotide_reason`, imported by both.
+    """
+    ambiguity = sorted(a for a, reason in offenders.items() if reason == "ambiguity")
+    notation = sorted(a for a, reason in offenders.items() if reason == "notation")
+    parts: list[str] = []
+    if ambiguity:
+        parts.append(
+            f"{', '.join(repr(a) for a in ambiguity)} is an IUPAC ambiguity code rather than a "
+            f"definite nucleotide (`Y` is C-or-T) — an uncertainty, so it is never expanded into the "
+            f"alleles it could stand for and can match no genotype"
+        )
+    if notation:
+        parts.append(
+            f"{', '.join(repr(a) for a in notation)} is not a nucleotide string at all (a symbolic or "
+            f"structural allele) — a grammar gap (RM5) rather than a genotype error"
+        )
+    return "; and ".join(parts)
 
 
 def _sorted_loci(loci: list[ResolutionRow]) -> list[ResolutionRow]:

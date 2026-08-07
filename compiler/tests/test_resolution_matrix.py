@@ -184,7 +184,7 @@ def test_resolution_round_trip_contract(case: Case) -> None:
     after = _signatures(root / "rev", root / "o2")
 
     names = ("artifact.digest", "content_signature", "resolution_signature")
-    moved = [n for n, a, b in zip(names, before, after) if a != b]
+    moved = [n for n, a, b in zip(names, before, after, strict=True) if a != b]
     if case.stable:
         assert not moved, f"{case.label}: expected a fixed point, but {moved} moved"
     else:

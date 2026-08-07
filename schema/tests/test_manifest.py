@@ -3,8 +3,6 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from just_dna_format.integrity import build_artifact
 from just_dna_format.manifest import (
     Compilation,
@@ -16,6 +14,7 @@ from just_dna_format.manifest import (
     read_manifest,
     write_manifest,
 )
+from pydantic import ValidationError
 
 
 def _manifest(tmp_path: Path) -> ModuleManifest:
@@ -103,7 +102,8 @@ def test_contribution_kind_is_open_multivalued_and_normalized() -> None:
 
 def test_contribution_forbids_unknown_fields() -> None:
     with pytest.raises(ValidationError):
-        Contribution(who="x", role="created", kind=["human"], reviwer="typo")  # noqa: unexpected field
+        # `reviwer` is the misspelling under test — `extra="forbid"` must reject it.
+        Contribution(who="x", role="created", kind=["human"], reviwer="typo")
 
 
 def test_authorship_survives_manifest_write_read(tmp_path: Path) -> None:

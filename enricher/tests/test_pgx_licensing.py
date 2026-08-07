@@ -11,10 +11,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-
 from just_dna_compiler.compiler import _load_csv_rows
-from just_dna_format.sources import SourceRow
-
 from just_dna_enricher.cpic import CpicClient, map_function_status
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
@@ -35,6 +32,7 @@ from just_dna_enricher.pharmvar import (
     chrom_from_accession,
     parse_allele,
 )
+from just_dna_format.sources import SourceRow
 
 _YAML = (
     'schema_version: "1.0"\n'

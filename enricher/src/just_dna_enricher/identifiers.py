@@ -32,7 +32,7 @@ Ensembl alone would misclassify a merged rsID as unresolvable.
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from just_dna_format.spec import VariantRow
@@ -85,7 +85,7 @@ class RsidStatus:
 
     rsid: str
     state: str                       # live | merged | absent | withdrawn
-    current: Optional[str] = None    # the surviving rsID, when merged
+    current: str | None = None    # the surviving rsID, when merged
 
     @property
     def is_current(self) -> bool:
@@ -139,8 +139,8 @@ class TraitStatus:
 
     curie: str
     state: str                       # current | obsolete | absent | unchecked
-    label: Optional[str] = None
-    replaced_by: Optional[str] = None
+    label: str | None = None
+    replaced_by: str | None = None
 
     def __str__(self) -> str:
         if self.state == "obsolete":
@@ -165,8 +165,8 @@ class GeneStatus:
 
     symbol: str
     state: str                       # approved | retired | unknown
-    current: Optional[str] = None
-    hgnc_id: Optional[str] = None
+    current: str | None = None
+    hgnc_id: str | None = None
 
     def __str__(self) -> str:
         if self.state == "retired":
@@ -230,7 +230,7 @@ def classify_rsid(rsid: str, record: dict[str, Any]) -> RsidStatus:
     return RsidStatus(rsid=rsid, state="live")
 
 
-def check_rsids(rsids: list[str], *, client: Optional[EutilsClient] = None) -> list[RsidStatus]:
+def check_rsids(rsids: list[str], *, client: EutilsClient | None = None) -> list[RsidStatus]:
     """Current/merged/absent for each authored rsID, batched through `esummary db=snp`.
 
     **Report, never repair — and here that is load-bearing rather than tidy.** `weights.parquet`
@@ -269,8 +269,8 @@ class OntologyClient:
     hgnc_base: str = DEFAULT_HGNC_BASE
     min_request_interval: float = 0.2
     timeout: float = 30.0
-    gate: Optional[PacingGate] = None
-    _client: Optional[httpx.Client] = None
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
         if self.gate is None:
@@ -301,7 +301,7 @@ class OntologyClient:
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
-    def _get(self, url: str, params: Optional[dict] = None) -> httpx.Response:
+    def _get(self, url: str, params: dict | None = None) -> httpx.Response:
         assert self.gate is not None
         self.gate.wait()
         return self._http().get(url, params=params)
@@ -363,7 +363,7 @@ class OntologyClient:
         return (response.json().get("response") or {}).get("docs") or []
 
 
-def _curie_from_iri(iri: Optional[str]) -> Optional[str]:
+def _curie_from_iri(iri: str | None) -> str | None:
     """`http://purl.obolibrary.org/obo/MONDO_0005010` → `MONDO_0005010`."""
     if not iri:
         return None
@@ -392,7 +392,7 @@ def check_identifiers(
     *,
     check_traits: bool = True,
     check_genes: bool = True,
-    client: Optional[OntologyClient] = None,
+    client: OntologyClient | None = None,
 ) -> IdentifierReport:
     """Ontology-term and gene-symbol currency for one module's authored identifiers.
 

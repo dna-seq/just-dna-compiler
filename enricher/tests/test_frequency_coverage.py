@@ -23,13 +23,12 @@ from pathlib import Path
 
 import httpx
 import pytest
-from just_dna_format.frequency import FrequencyRow
-from just_dna_format.vocab import VALID_FREQUENCY_STATUS
-from just_dna_format.vrs import derive_vrs_allele_id
-
 from just_dna_enricher.frequencies import enrich_frequencies
 from just_dna_enricher.gnomad import GnomadClient, GnomadSettings, covers_locus
 from just_dna_enricher.net import PacingGate
+from just_dna_format.frequency import FrequencyRow
+from just_dna_format.vocab import VALID_FREQUENCY_STATUS
+from just_dna_format.vrs import derive_vrs_allele_id
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 
@@ -187,7 +186,7 @@ def test_selecting_the_x_spelling_leaves_nothing_uncovered(tmp_path: Path) -> No
 
 def test_the_status_column_is_a_closed_vocabulary_now() -> None:
     """It was free text on a fact table until 0.5.1."""
-    assert VALID_FREQUENCY_STATUS == {"resolved", "not_found", "not_covered"}
+    assert {"resolved", "not_found", "not_covered"} == VALID_FREQUENCY_STATUS
     valid = {"variant_key": "x", "population": "global", "dataset": "gnomad_v4.1_joint"}
     for member in VALID_FREQUENCY_STATUS:
         assert FrequencyRow(**valid, status=member).status == member

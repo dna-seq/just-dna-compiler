@@ -32,18 +32,17 @@ import logging
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import httpx
+from just_dna_format.vocab import normalize_population, population_sort_key
+from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from tenacity import (
     retry,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
 )
-
-from just_dna_format.vocab import normalize_population, population_sort_key
-from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 
 from just_dna_enricher.net import PacingGate, batched, dedupe
 
@@ -98,8 +97,8 @@ _VARIANT_ID_RE = re.compile(r"^(?P<chrom>[^-]+)-(?P<pos>\d+)-(?P<ref>[A-Za-z]+)-
 
 
 def covers_locus(
-    chrom: Optional[str], start: Optional[int], *, build: str = "GRCh38"
-) -> Optional[bool]:
+    chrom: str | None, start: int | None, *, build: str = "GRCh38"
+) -> bool | None:
     """Is this locus inside gnomAD's callset at all? **Three-valued**, and `None` means "cannot say".
 
     gnomAD excludes the **Y pseudoautosomal region**: like a standard GRCh38 analysis set it hard-masks
@@ -121,7 +120,9 @@ def covers_locus(
     if build != "GRCh38":
         return None
     in_par = in_pseudoautosomal_region(chrom, start, build=build)
-    if normalize_chrom(chrom) == "Y" and in_par is True:
+    # Left uncollapsed on purpose: `return not (...)` would read as a two-valued answer, and the
+    # `None` above is the third. Keeping the branches apart keeps the three outcomes visible.
+    if normalize_chrom(chrom) == "Y" and in_par is True:  # noqa: SIM103
         return False
     return True
 
@@ -278,8 +279,8 @@ class GnomadClient:
     """Batched, paced gnomAD GraphQL client. Reused across a pass, so one gate covers every request."""
 
     settings: GnomadSettings = field(default_factory=GnomadSettings)
-    gate: Optional[PacingGate] = None
-    _client: Optional[httpx.Client] = None
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
         if self.gate is None:

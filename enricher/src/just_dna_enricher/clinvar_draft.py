@@ -36,9 +36,9 @@ silently changes which variant the row *is*.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Sequence
 
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows, append_rows
 from just_dna_format.spec import StudyRow, VariantRow
@@ -115,7 +115,7 @@ def multi_allelic_rsids(records: Sequence[dict]) -> set[str]:
     return {site[0] for site, alts in alts_by_site.items() if len(alts) > 1}
 
 
-def _identity_cells(record: dict, *, force_coordinate: bool = False) -> Optional[dict]:
+def _identity_cells(record: dict, *, force_coordinate: bool = False) -> dict | None:
     """The identity half of a row: the rsID, else the whole coordinate. Never a mixture.
 
     `force_coordinate` is set for an rsID that names several alts here — the rsID is true of the row
@@ -214,7 +214,7 @@ def _genotype_worklist(records: Sequence[dict]) -> list[str]:
     return lines
 
 
-def _row_cells(record: dict, *, force_coordinate: bool = False) -> Optional[dict]:
+def _row_cells(record: dict, *, force_coordinate: bool = False) -> dict | None:
     """One ClinVar record → the authored cells this provider is willing to state."""
     identity = _identity_cells(record, force_coordinate=force_coordinate)
     if identity is None:
@@ -297,7 +297,7 @@ def _study_rows(
 
 
 def _resolve_snapshot(
-    snapshot: Optional[Path], *, offline: bool, download: bool
+    snapshot: Path | None, *, offline: bool, download: bool
 ) -> tuple[Path, list[str]]:
     """Find a ClinVar snapshot to draft from, provisioning the published one if there is none.
 
@@ -334,7 +334,7 @@ def draft_gene_panel(
     spec_dir: Path,
     genes: Sequence[str],
     *,
-    snapshot: Optional[Path] = None,
+    snapshot: Path | None = None,
     clin_sig: frozenset[str] = DEFAULT_CLIN_SIG,
     min_review_stars: int = 2,
     max_citations: int = DEFAULT_MAX_CITATIONS,

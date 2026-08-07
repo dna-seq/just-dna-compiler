@@ -14,7 +14,6 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Optional
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -43,7 +42,7 @@ class IntegrityError(Exception):
 
 
 def verify_signature(
-    digest: str, signature: Signature, *, trusted_public_key: Optional[str] = None
+    digest: str, signature: Signature, *, trusted_public_key: str | None = None
 ) -> None:
     """Verify a `Signature` over the `artifact.digest` string. Raises `IntegrityError` on failure.
 
@@ -59,7 +58,7 @@ def verify_signature(
         pub = ed25519.Ed25519PublicKey.from_public_bytes(base64.b64decode(signature.public_key))
         pub.verify(base64.b64decode(signature.signature), digest.encode("utf-8"))
     except (InvalidSignature, ValueError) as exc:
-        raise IntegrityError(f"artifact digest signature is invalid: {exc}")
+        raise IntegrityError(f"artifact digest signature is invalid: {exc}") from exc
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -278,7 +277,7 @@ def verify_manifest(
     check_logs: bool = False,
     check_provenance: bool = False,
     check_logo: bool = False,
-    public_key: Optional[str] = None,
+    public_key: str | None = None,
 ) -> None:
     """
     Verify a downloaded module against its manifest (SPEC §5 verify-then-install).

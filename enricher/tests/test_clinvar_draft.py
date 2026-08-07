@@ -10,8 +10,6 @@ import io
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import PartialRow, RowOutcome
 from just_dna_enricher.clinvar_draft import (
@@ -23,6 +21,7 @@ from just_dna_enricher.clinvar_draft import (
 )
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
+from pydantic import ValidationError
 
 _SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "interim" / "clinvar"
 _needs_snapshot = pytest.mark.skipif(

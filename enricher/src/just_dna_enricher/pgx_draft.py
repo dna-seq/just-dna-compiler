@@ -27,9 +27,9 @@ instinctive `-1` introduces an off-by-one.
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Sequence
 
 from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import STAR_ALLELE_PATTERN, AlleleFunctionRow, DiplotypeRow, HaplotypeRow
@@ -121,7 +121,7 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
     return rows, warnings
 
 
-def _split_diplotype(diplotype: str) -> Optional[tuple[str, str]]:
+def _split_diplotype(diplotype: str) -> tuple[str, str] | None:
     parts = [p.strip() for p in diplotype.split(_DIPLOTYPE_SEP)]
     if len(parts) != 2 or not all(STAR_ALLELE_PATTERN.match(p) for p in parts):
         return None
@@ -136,7 +136,7 @@ _REFERENCE_ALLELE = "*1"
 
 def _selected_alleles(
     requested: Sequence[str], published: Sequence[str], gene: str
-) -> Optional[frozenset[str]]:
+) -> frozenset[str] | None:
     """The allele set to draft, or `None` for "everything CPIC publishes" (no filter).
 
     **Why a filter exists at all.** `draft --gene CYP2D6` produces 16,290 diplotype rows, 73% of them
@@ -174,7 +174,7 @@ def _recommendation_rows(
     diplotypes: Sequence,
     recommendations: Sequence[CpicRecommendation],
     *,
-    population: Optional[str],
+    population: str | None,
 ) -> tuple[list[DiplotypeRow], list[str]]:
     """CPIC recommendations → drug-carrying `DiplotypeRow`s, joined on the phenotype.
 
@@ -246,10 +246,10 @@ def draft_gene(
     *,
     drugs: Sequence[str] = (),
     alleles: Sequence[str] = (),
-    population: Optional[str] = None,
+    population: str | None = None,
     declared_use: str = "unstated",
     dry_run: bool = False,
-    client: Optional[CpicClient] = None,
+    client: CpicClient | None = None,
 ) -> PgxDraftResult:
     """Draft one gene's `haplotypes.csv`, `allele_function.csv` and `diplotypes.csv` rows.
 

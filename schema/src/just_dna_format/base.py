@@ -25,7 +25,7 @@ Dependency-light: imports only `pydantic` + the stdlib `vocab` leaf, and nothing
 imports it back, so it introduces no cycle.
 """
 
-from typing import Any, ClassVar, Optional, get_args
+from typing import Any, ClassVar, get_args
 
 from pydantic import (
     BaseModel,
@@ -168,11 +168,11 @@ def field_vocabularies(model: type[BaseModel]) -> dict[str, dict]:
 
 
 def derive_variant_key(
-    rsid: Optional[str],
-    chrom: Optional[str],
-    start: Optional[int],
-    ref: Optional[str],
-    alts: Optional[str] = None,
+    rsid: str | None,
+    chrom: str | None,
+    start: int | None,
+    ref: str | None,
+    alts: str | None = None,
     *,
     build: str = "GRCh38",
 ) -> str:
@@ -223,8 +223,8 @@ def derive_variant_key(
 
 
 def _mint_vrs_key(
-    chrom: Optional[str], start: Optional[int], ref: Optional[str], alt: str, build: str
-) -> Optional[str]:
+    chrom: str | None, start: int | None, ref: str | None, alt: str, build: str
+) -> str | None:
     """Case 2 of `derive_variant_key`, isolated so the fallback path stays readable.
 
     Returns `None` for anything unmintable — including a build with no refget table, which
@@ -309,12 +309,12 @@ class AuthoredModel(BaseModel):
 
     @field_validator("rsid", check_fields=False)
     @classmethod
-    def _validate_rsid(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_rsid(cls, v: str | None) -> str | None:
         return validate_rsid(v)
 
     @field_validator("trait_efo_id", check_fields=False)
     @classmethod
-    def _validate_trait_efo_id(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_trait_efo_id(cls, v: str | None) -> str | None:
         return validate_trait_ids(v)
 
     # The four below read their vocabulary out of `SHARED_VOCABULARIES`, which is also what
@@ -323,18 +323,18 @@ class AuthoredModel(BaseModel):
     @field_validator("direction", "clin_sig", "stat_significance", "evidence_level",
                      check_fields=False)
     @classmethod
-    def _validate_shared_vocabulary(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+    def _validate_shared_vocabulary(cls, v: str | None, info: ValidationInfo) -> str | None:
         name = info.field_name or ""
         return check_vocab(v, SHARED_VOCABULARIES[name], name)
 
     @field_validator("effect_size", check_fields=False)
     @classmethod
-    def _validate_effect_size(cls, v: Optional[float]) -> Optional[float]:
+    def _validate_effect_size(cls, v: float | None) -> float | None:
         return validate_finite(v, "effect_size")
 
     @field_validator("source_field", "callable_from", "quality_from", check_fields=False)
     @classmethod
-    def _validate_vcf_field_pointer(cls, v: Optional[str], info: ValidationInfo) -> Optional[str]:
+    def _validate_vcf_field_pointer(cls, v: str | None, info: ValidationInfo) -> str | None:
         # Three columns point into a VCF the same way: `source_field` (where the measured quantity is,
         # on the binning tables), `callable_from` (where the callability signal is, on VariantRow) and
         # `quality_from` (which confidence field the row's `min_quality` floor is stated against).
@@ -342,7 +342,7 @@ class AuthoredModel(BaseModel):
 
     @field_validator("genotype", check_fields=False)
     @classmethod
-    def _validate_genotype(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_genotype(cls, v: str | None) -> str | None:
         # Optional on `PharmVariantRow`, required on `VariantRow` — pydantic enforces requiredness
         # from the annotation, so the shared grammar only has to let a genuine absence through.
         if v is None:

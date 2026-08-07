@@ -25,7 +25,6 @@ and `review_stars` is carried into the message so a reader can weigh the disagre
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
@@ -70,9 +69,9 @@ class ClinSigConflict:
     alt: str
     authored: str
     clinvar: str
-    review_stars: Optional[int]
-    review_status: Optional[str]
-    condition: Optional[str]
+    review_stars: int | None
+    review_status: str | None
+    condition: str | None
     #: True when the two are opposed calls (pathogenic-class vs benign-class) rather than merely
     #: different. An opposed pair is the finding worth acting on; the rest is worth knowing.
     opposed: bool = False
@@ -95,7 +94,7 @@ class ClinSigConflict:
         )
 
 
-def _effect_allele(variant: VariantRow, ref: str, alts: list[str]) -> Optional[str]:
+def _effect_allele(variant: VariantRow, ref: str, alts: list[str]) -> str | None:
     """The ALT the annotation is *about*, or `None` when it cannot be determined without guessing.
 
     `effect_allele` when the author stated it; otherwise the single genotype allele that is not the
@@ -120,7 +119,7 @@ def verify_clin_sig(
     variants: list[VariantRow],
     resolution_rows: list[ResolutionRow],
     *,
-    reference: Optional[Path],
+    reference: Path | None,
 ) -> list[ClinSigConflict]:
     """Compare each authored `clin_sig` against the ClinVar snapshot. Returns the disagreements.
 

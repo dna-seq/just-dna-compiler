@@ -18,9 +18,6 @@ import itertools
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Optional, TypeVar
-
-T = TypeVar("T")
 
 
 @dataclass
@@ -35,7 +32,7 @@ class PacingGate:
     interval: float
     clock: Callable[[], float] = time.monotonic
     sleeper: Callable[[float], None] = time.sleep
-    last: Optional[float] = None
+    last: float | None = None
 
     def wait(self) -> None:
         now = self.clock()
@@ -47,14 +44,14 @@ class PacingGate:
         self.last = now
 
 
-def batched(items: list[T], size: int) -> Iterator[list[T]]:
+def batched[T](items: list[T], size: int) -> Iterator[list[T]]:
     """Split into batches of at most `size`, preserving order (so emission stays deterministic)."""
     iterator = iter(items)
     while batch := list(itertools.islice(iterator, size)):
         yield batch
 
 
-def dedupe(items: Iterable[T]) -> list[T]:
+def dedupe[T](items: Iterable[T]) -> list[T]:
     """First-occurrence-order de-duplication (Principle 7: never `set` iteration for emitted order)."""
     seen: set[T] = set()
     out: list[T] = []

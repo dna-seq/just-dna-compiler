@@ -26,8 +26,8 @@ from just_dna_enricher import clinvar
 from just_dna_enricher.clinical import ClinSigConflict, verify_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.identifiers import RsidStatus, check_rsids
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
+from just_dna_enricher.identifiers import RsidStatus, check_rsids
 from just_dna_enricher.licensing import record_source_terms, resolution_authority
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
@@ -70,12 +70,12 @@ class _Subject:
     """
 
     variant_key: str
-    rsid: Optional[str]
-    chrom: Optional[str]
-    start: Optional[int]
-    ref: Optional[str]
-    alts: Optional[str]
-    constraint: Optional[str]
+    rsid: str | None
+    chrom: str | None
+    start: int | None
+    ref: str | None
+    alts: str | None
+    constraint: str | None
     origin: str
 
 
@@ -139,7 +139,7 @@ def _collect_subjects(
     return list(deduped.values())
 
 
-def _authored_alt(v: _Subject) -> Optional[str]:
+def _authored_alt(v: _Subject) -> str | None:
     """The single authored ALT for allele-aware reverse resolution, or None when absent or
     multi-allelic (fall back to position/ref-level matching, which may resolve as ambiguous)."""
     if v.alts and "," not in v.alts:
@@ -277,19 +277,19 @@ def enrich(
     *,
     mode: str = "best_effort",
     offline: bool = False,
-    ensembl_cache: Optional[Path] = None,
-    clinvar_cache: Optional[Path] = None,
+    ensembl_cache: Path | None = None,
+    clinvar_cache: Path | None = None,
     use_clinvar: bool = True,
     use_gnomad: bool = True,
     download: bool = True,
-    genome_build: Optional[str] = None,
+    genome_build: str | None = None,
     write: bool = True,
     mint_vrs: bool = True,
     verify_ref: bool = True,
     verify_clinsig: bool = True,
     verify_rsids: bool = True,
     keep_par_twin: bool = False,
-    resolver: Optional[EnsemblResolver] = None,
+    resolver: EnsemblResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
@@ -410,7 +410,7 @@ def enrich(
     # module's artifact.digest moves. Offline uses a local ClinVar cache only (no download).
     # Located once rather than inside the link, because the clin_sig cross-check below needs the same
     # snapshot even when every variant is already resolved and the link itself has nothing to do.
-    clinvar_ref: Optional[Path] = None
+    clinvar_ref: Path | None = None
     if (use_clinvar or verify_clinsig) and genome_build == "GRCh38":
         clinvar_ref = resolve_clinvar_reference(clinvar_cache)
         if clinvar_ref is None and not offline and download:
@@ -420,7 +420,8 @@ def enrich(
             except Exception as exc:  # provisioning is best-effort; degrade to live/offline
                 logger.warning("ClinVar snapshot provisioning failed (%s); continuing without it.", exc)
 
-    if use_clinvar and genome_build == "GRCh38" and (need_pos or need_rsid):
+    if use_clinvar and genome_build == "GRCh38" and (need_pos or need_rsid):  # noqa: SIM102
+        # Kept nested: the outer clause is the build/mode gate, the inner is whether a cache resolved.
         if clinvar_ref is not None:
             cv_rsids = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
             cv_positions = [pt for pt in positions if not rev_candidates.get(pt)]
@@ -626,6 +627,12 @@ def enrich(
             mint_result.minted, mint_result.minted_stdlib, mint_result.minted_normalized,
             mint_result.skipped_unmintable, mint_result.already_present,
         )
+        # The success count alone reads as a clean bill on a table that is half anonymous. Coverage is
+        # a WARNING because an identity scheme with an unstated shortfall is the thing a consumer keys
+        # on and gets wrong — and it stays a warning (never a refusal) because the usual causes, an
+        # indel offline or a build with no refget table, are fixable by no authored edit.
+        for line in mint_result.coverage_warnings():
+            logger.warning("VRS coverage — %s", line)
 
     # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
     ref_mismatches = (
@@ -689,8 +696,8 @@ def enrich(
             f"reference sequence. "
             + "; ".join(summarize_ref_mismatches(ref_mismatches))
             + ". Fix the authored coordinates (a shifted position, or a wrong ref length, silently "
-            f"mints a different allele id), or enrich with mode='best_effort' to record them as "
-            f"warnings."
+            "mints a different allele id), or enrich with mode='best_effort' to record them as "
+            "warnings."
         )
 
     withdrawn = [s for s in result.stale_rsids if s.is_fatal]

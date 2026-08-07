@@ -8,7 +8,6 @@ deterministic, and that a module composes from only the kinds it uses — includ
 from pathlib import Path
 
 import polars as pl
-
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_format.manifest import read_manifest
 

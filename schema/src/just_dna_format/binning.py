@@ -56,7 +56,8 @@ holds no measurement.
 
 import math
 from collections import defaultdict
-from typing import ClassVar, Optional, Sequence
+from collections.abc import Sequence
+from typing import ClassVar
 
 from pydantic import Field, field_validator, model_validator
 
@@ -94,7 +95,7 @@ class MeasureBinRow(AuthoredModel):
     """
 
     # Subclasses pin their measure_kind via this ClassVar (see `_validate_measure_kind`).
-    _EXPECTED_KIND: ClassVar[Optional[str]] = None
+    _EXPECTED_KIND: ClassVar[str | None] = None
     # The explicit key columns for this quantity (used by `validate_bins` to group rows). The unit
     # is part of the key (T3): a measurement is only comparable within its motif/reference/modifier.
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ()
@@ -103,28 +104,28 @@ class MeasureBinRow(AuthoredModel):
         json_schema_extra=vocabulary("measure_kind", VALID_MEASURE_KINDS),
         description="Measured quantity; one of VALID_MEASURE_KINDS",
     )
-    measure_min: Optional[float] = Field(
+    measure_min: float | None = Field(
         default=None,
         description=(
             "Inclusive lower bound; None = open below. On a continuous measure this is also the "
             "tie-break: a value two bins share belongs to the one with the greater measure_min."
         ),
     )
-    measure_max: Optional[float] = Field(
+    measure_max: float | None = Field(
         default=None,
         description=(
             "Inclusive upper bound; None = open above. Inclusive on every measure_kind — on a "
             "continuous measure the next bin may start on it, and then that bin owns the value."
         ),
     )
-    direction: Optional[str] = Field(
+    direction: str | None = Field(
         default=None, description="Effect direction: protective|risk|neutral|unknown"
     )
-    clin_sig: Optional[str] = Field(
+    clin_sig: str | None = Field(
         default=None, description="ClinVar/ACMG clinical significance (VEP CLIN_SIG vocabulary)"
     )
-    phenotype: Optional[str] = Field(default=None, description="Associated trait or phenotype")
-    trait_efo_id: Optional[str] = Field(
+    phenotype: str | None = Field(default=None, description="Associated trait or phenotype")
+    trait_efo_id: str | None = Field(
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s)"
     )
     conclusion: str = Field(description="Human-readable interpretation for this bin")
@@ -132,7 +133,7 @@ class MeasureBinRow(AuthoredModel):
         default=False,
         description="True on the sentinel row a consumer selects when the measurement is absent.",
     )
-    source_field: Optional[str] = Field(
+    source_field: str | None = Field(
         default=None,
         description=(
             "Optional VCF FORMAT/INFO field the consumer extracts this measure from (e.g. REPCN, "
@@ -146,7 +147,7 @@ class MeasureBinRow(AuthoredModel):
 
     @field_validator("measure_min", "measure_max")
     @classmethod
-    def _validate_bound_finite(cls, v: Optional[float]) -> Optional[float]:
+    def _validate_bound_finite(cls, v: float | None) -> float | None:
         return validate_finite(v, "measure bound")
 
     @field_validator("measure_kind")
@@ -218,10 +219,10 @@ class CopyNumberRow(MeasureBinRow):
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene", "modifier_gene", "modifier_cn")
 
     gene: str = Field(description="Gene symbol whose copy number is binned, e.g. SMN1")
-    modifier_gene: Optional[str] = Field(
+    modifier_gene: str | None = Field(
         default=None, description="Optional modifier locus read in context, e.g. SMN2"
     )
-    modifier_cn: Optional[int] = Field(
+    modifier_cn: int | None = Field(
         default=None, description="Copy number of the modifier locus (set with modifier_gene)"
     )
     measure_kind: str = Field(
@@ -311,22 +312,22 @@ class HeteroplasmyRow(MeasureBinRow):
     # (Principle 8 — a new field may not be unconditionally required), and a single-variant gene has
     # nothing to disambiguate. No `chromosome` vocabulary marker, matching the other tables that run
     # no chrom validator.
-    rsid: Optional[str] = Field(
+    rsid: str | None = Field(
         default=None, description="dbSNP id of the variant these bins are about, when it has one"
     )
-    chrom: Optional[str] = Field(default=None, description="Contig (MT), for a position-only variant")
-    start: Optional[int] = Field(
+    chrom: str | None = Field(default=None, description="Contig (MT), for a position-only variant")
+    start: int | None = Field(
         default=None, description="Position of the variant, e.g. 3243 for m.3243A>G"
     )
-    ref: Optional[str] = Field(default=None, description="Reference allele, e.g. A")
-    alts: Optional[str] = Field(default=None, description="Alternate allele(s), e.g. G")
+    ref: str | None = Field(default=None, description="Reference allele, e.g. A")
+    alts: str | None = Field(default=None, description="Alternate allele(s), e.g. G")
     reference_sequence: str = Field(
         description="MT reference accession, part of the key, e.g. NC_012920.1 (rCRS)"
     )
-    tissue: Optional[str] = Field(
+    tissue: str | None = Field(
         default=None, description="Tissue the bins assume, e.g. blood, muscle (bins are tissue-conditional)"
     )
-    assay_context: Optional[str] = Field(
+    assay_context: str | None = Field(
         default=None, description="Optional assay context, e.g. WGS, chip, amplicon"
     )
     measure_kind: str = Field(
@@ -341,7 +342,7 @@ class HeteroplasmyRow(MeasureBinRow):
     )
 
     @property
-    def variant_key(self) -> Optional[str]:
+    def variant_key(self) -> str | None:
         """Which variant these bins are about, or `None` when the table names only a gene.
 
         `None` is the pre-0.5 shape and groups exactly as it always did. A property rather than a

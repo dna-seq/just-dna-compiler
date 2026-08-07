@@ -12,7 +12,7 @@ manifest enforce exactly the same constraints.
 
 import math
 import re
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from pydantic import (
     BaseModel,
@@ -23,6 +23,7 @@ from pydantic import (
     model_validator,
 )
 
+from just_dna_format.base import COMPILER_MANAGED, AuthoredModel, derive_variant_key, vocabulary
 from just_dna_format.derive import (
     benign_from_clin_sig,
     clin_sig_from_booleans,
@@ -31,7 +32,6 @@ from just_dna_format.derive import (
     stat_significance_from_state,
     trimmed_state,
 )
-from just_dna_format.base import COMPILER_MANAGED, AuthoredModel, derive_variant_key, vocabulary
 from just_dna_format.identity import validate_name
 from just_dna_format.manifest import SCHEMA_VERSION, Contribution, Display, GenePanelSpec
 from just_dna_format.normalize import normalize_version
@@ -103,10 +103,10 @@ class ModuleInfo(Display):
 
     model_config = ConfigDict(extra="forbid")
 
-    _version_coerced_from: Optional[str] = PrivateAttr(default=None)
+    _version_coerced_from: str | None = PrivateAttr(default=None)
 
     name: str = Field(description="Machine name: lowercase, underscores, no spaces")
-    version: Optional[str] = Field(
+    version: str | None = Field(
         default=None,
         description=(
             "Authored **advisory** version — a human marker (informal `v2`/`3` or SemVer). The "
@@ -142,7 +142,7 @@ class ModuleInfo(Display):
         return self
 
     @property
-    def version_coerced_from(self) -> Optional[str]:
+    def version_coerced_from(self) -> str | None:
         """The authored `version` before SemVer coercion, or `None` if it was already SemVer.
 
         Not a field: it describes what happened during validation, not module content, so it stays out
@@ -165,7 +165,7 @@ class Defaults(BaseModel):
 
     curator: str = Field(default="ai-module-creator", description="Default curator identifier")
     method: str = Field(default="literature-review", description="Default annotation method")
-    priority: Optional[str] = Field(default=None, description="Default priority level")
+    priority: str | None = Field(default=None, description="Default priority level")
 
 
 class ModuleSpecConfig(BaseModel):
@@ -199,7 +199,7 @@ class ModuleSpecConfig(BaseModel):
             "checked cross-build). Build-aware identity/resolution is RM15 (other-builds-support)."
         ),
     )
-    panel: Optional[GenePanelSpec] = Field(
+    panel: GenePanelSpec | None = Field(
         default=None,
         description=(
             "Optional gene-panel declaration (ROADMAP item 7). Descriptive provenance for modules "
@@ -215,7 +215,7 @@ class ModuleSpecConfig(BaseModel):
             "`artifact.digest`. A joint contribution is two entries (a human and an ai)."
         ),
     )
-    license: Optional[str] = Field(
+    license: str | None = Field(
         default=None,
         description=(
             "Optional licence the author declares for the module as a whole, e.g. 'CC-BY-SA-4.0'. "
@@ -241,13 +241,13 @@ class VariantRow(AuthoredModel):
     field validators for `rsid`/`trait_efo_id`/`direction`/`clin_sig`/`stat_significance`/`effect_size`.
     """
 
-    rsid: Optional[str] = Field(default=None, description="dbSNP identifier, e.g. rs1801133")
-    chrom: Optional[str] = Field(
+    rsid: str | None = Field(default=None, description="dbSNP identifier, e.g. rs1801133")
+    chrom: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("chromosome", VALID_CHROMOSOMES),
         description="Chromosome without 'chr' prefix",
     )
-    start: Optional[int] = Field(
+    start: int | None = Field(
         default=None,
         ge=0,
         description=(
@@ -256,9 +256,9 @@ class VariantRow(AuthoredModel):
             "every check and every minted identity reads this column as VCF POS"
         ),
     )
-    ref: Optional[str] = Field(default=None, description="Reference allele")
-    alts: Optional[str] = Field(default=None, description="Alt allele(s), comma-separated")
-    variant_key: Optional[str] = Field(
+    ref: str | None = Field(default=None, description="Reference allele")
+    alts: str | None = Field(default=None, description="Alt allele(s), comma-separated")
+    variant_key: str | None = Field(
         default=None,
         json_schema_extra=COMPILER_MANAGED,
         description=(
@@ -269,7 +269,7 @@ class VariantRow(AuthoredModel):
             "materialized to weights.parquet, and never written back by reverse_module."
         ),
     )
-    authored_ident: Optional[list[str]] = Field(
+    authored_ident: list[str] | None = Field(
         default=None,
         json_schema_extra=COMPILER_MANAGED,
         description=(
@@ -287,53 +287,53 @@ class VariantRow(AuthoredModel):
     )
 
     genotype: str = Field(description="Slash-separated sorted alleles, e.g. A/G")
-    weight: Optional[float] = Field(default=None, description="Score (positive=protective)")
+    weight: float | None = Field(default=None, description="Score (positive=protective)")
     state: str = Field(
         json_schema_extra=vocabulary("state", VALID_STATES),
         description="One of: risk, protective, neutral, significant, alt, ref",
     )
     conclusion: str = Field(description="Human-readable interpretation for this genotype")
-    negatives: Optional[str] = Field(
+    negatives: str | None = Field(
         default=None,
         description=(
             "Optional free-text adverse/antagonistic-pleiotropy counterpart to `conclusion` "
             "(e.g. a protective allele's known trade-off). Consumers ignore it when absent."
         ),
     )
-    priority: Optional[str] = Field(default=None, description="Priority level override")
-    gene: Optional[str] = Field(default=None, description="Gene symbol, e.g. MTHFR")
-    phenotype: Optional[str] = Field(default=None, description="Associated trait or phenotype")
-    category: Optional[str] = Field(default=None, description="Grouping category within the module")
-    clinvar: Optional[bool] = Field(default=None, description="Is this variant in ClinVar?")
-    pathogenic: Optional[bool] = Field(default=None, description="ClinVar pathogenic flag")
-    benign: Optional[bool] = Field(default=None, description="ClinVar benign flag")
-    curator: Optional[str] = Field(default=None, description="Curator override")
-    method: Optional[str] = Field(default=None, description="Annotation method override")
+    priority: str | None = Field(default=None, description="Priority level override")
+    gene: str | None = Field(default=None, description="Gene symbol, e.g. MTHFR")
+    phenotype: str | None = Field(default=None, description="Associated trait or phenotype")
+    category: str | None = Field(default=None, description="Grouping category within the module")
+    clinvar: bool | None = Field(default=None, description="Is this variant in ClinVar?")
+    pathogenic: bool | None = Field(default=None, description="ClinVar pathogenic flag")
+    benign: bool | None = Field(default=None, description="ClinVar benign flag")
+    curator: str | None = Field(default=None, description="Curator override")
+    method: str | None = Field(default=None, description="Annotation method override")
 
     # ── 0.3 additive columns (all optional; shipped in 0.3 — see docs/CHANGELOG.md) ──
-    direction: Optional[str] = Field(
+    direction: str | None = Field(
         default=None,
         description="Effect direction: one of protective|risk|neutral|unknown. Orthogonal to `state`.",
     )
-    stat_significance: Optional[str] = Field(
+    stat_significance: str | None = Field(
         default=None,
         description="Statistical significance: significant|suggestive|not_significant|unknown.",
     )
-    effect_size: Optional[float] = Field(
+    effect_size: float | None = Field(
         default=None, description="Published effect magnitude (unit given by `effect_measure`)."
     )
-    effect_measure: Optional[str] = Field(
+    effect_measure: str | None = Field(
         default=None,
         json_schema_extra=vocabulary(
             "effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False
         ),
         description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended; not a closed set).",
     )
-    effect_allele: Optional[str] = Field(
+    effect_allele: str | None = Field(
         default=None,
         description="The allele that `direction`/`weight`/`effect_size` refer to (nucleotides).",
     )
-    flags: Optional[list[str]] = Field(
+    flags: list[str] | None = Field(
         default=None,
         json_schema_extra=vocabulary("reserved_flags", RESERVED_FLAGS, closed=False),
         description=(
@@ -341,11 +341,11 @@ class VariantRow(AuthoredModel):
             "tooling acts on: conditional|phased|pleiotropic; other tags are allowed (surfaced as INFO)."
         ),
     )
-    trait_efo_id: Optional[str] = Field(
+    trait_efo_id: str | None = Field(
         default=None,
         description="EFO/MONDO/OBA/HP trait ontology id(s), e.g. EFO_0004340 (matches just-prs).",
     )
-    clin_sig: Optional[str] = Field(
+    clin_sig: str | None = Field(
         default=None,
         description="ClinVar/ACMG clinical significance (VEP CLIN_SIG vocabulary).",
     )
@@ -353,7 +353,7 @@ class VariantRow(AuthoredModel):
     # ── 0.4 general annotation axes (all optional; retired from the reserved namespace) ──
     # General per-variant refinements — any variant finding may carry them, so they live here rather
     # than in a domain table. A sparse SNP CSV simply omits them.
-    requires_callable: Optional[bool] = Field(
+    requires_callable: bool | None = Field(
         default=None,
         description=(
             "True when the *absence* of this variant is the informative call (recessive carrier, "
@@ -361,10 +361,10 @@ class VariantRow(AuthoredModel):
             "then withhold the reference/absence conclusion, never assert it (no-call ≠ hom-ref)."
         ),
     )
-    acmg_sf: Optional[bool] = Field(
+    acmg_sf: bool | None = Field(
         default=None, description="True when the gene is on the ACMG secondary-findings list."
     )
-    actionability: Optional[str] = Field(
+    actionability: str | None = Field(
         default=None,
         # CLOSED, despite `ACTIONABILITY_SEED`'s name and its own docstring: `_validate_actionability`
         # below calls `check_vocab`, which rejects a non-member. The authoring reference advertised it
@@ -383,7 +383,7 @@ class VariantRow(AuthoredModel):
     # ── 0.5: the second half of RM6 (retired from the reserved namespace on build) ──
     # `requires_callable` above says a negative *must be proven*; this says where the proof lives.
     # Same declarative-pointer grammar as `source_field` — validated on `AuthoredModel`, shared.
-    callable_from: Optional[str] = Field(
+    callable_from: str | None = Field(
         default=None,
         description=(
             "Optional VCF FORMAT/INFO field(s) a consumer establishes callability from (e.g. DP, "
@@ -405,7 +405,7 @@ class VariantRow(AuthoredModel):
     # call — consumer-side measurement provenance with no module-side meaning. This states an
     # applicability bound the annotation itself carries, the same kind of thing `MeasureBinRow`'s
     # `[min, max]` states, and like those bounds it is inclusive.
-    quality_from: Optional[str] = Field(
+    quality_from: str | None = Field(
         default=None,
         description=(
             "Optional VCF FORMAT/INFO field the `min_quality` floor is stated against (e.g. GQ, "
@@ -413,7 +413,7 @@ class VariantRow(AuthoredModel):
             "never an expression."
         ),
     )
-    min_quality: Optional[float] = Field(
+    min_quality: float | None = Field(
         default=None,
         description=(
             "Inclusive floor on `quality_from`: withhold this row's conclusion where the consumer's "
@@ -424,7 +424,7 @@ class VariantRow(AuthoredModel):
 
     @field_validator("min_quality")
     @classmethod
-    def _validate_min_quality(cls, v: Optional[float]) -> Optional[float]:
+    def _validate_min_quality(cls, v: float | None) -> float | None:
         return validate_finite(v, "min_quality")
 
     @model_validator(mode="after")
@@ -491,21 +491,21 @@ class VariantRow(AuthoredModel):
         return self.stat_significance or stat_significance_from_state(self.state)
 
     @property
-    def effective_clin_sig(self) -> Optional[str]:
+    def effective_clin_sig(self) -> str | None:
         """`clin_sig` if set, else derived from the legacy ClinVar booleans (lossy)."""
         return self.clin_sig or clin_sig_from_booleans(
             self.pathogenic, self.benign, self.clinvar
         )
 
     @property
-    def effective_pathogenic(self) -> Optional[bool]:
+    def effective_pathogenic(self) -> bool | None:
         """The authoritative `pathogenic` boolean, or the one implied by `clin_sig` when unset."""
         if self.pathogenic is not None:
             return self.pathogenic
         return pathogenic_from_clin_sig(self.clin_sig)
 
     @property
-    def effective_benign(self) -> Optional[bool]:
+    def effective_benign(self) -> bool | None:
         """The authoritative `benign` boolean, or the one implied by `clin_sig` when unset."""
         if self.benign is not None:
             return self.benign
@@ -544,7 +544,7 @@ class VariantRow(AuthoredModel):
 
     @field_validator("chrom")
     @classmethod
-    def _validate_chrom(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_chrom(cls, v: str | None) -> str | None:
         if v is not None:
             normalized = v.removeprefix("chr")
             if normalized not in VALID_CHROMOSOMES:
@@ -559,17 +559,17 @@ class VariantRow(AuthoredModel):
 
     @field_validator("actionability")
     @classmethod
-    def _validate_actionability(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_actionability(cls, v: str | None) -> str | None:
         return check_vocab(v, ACTIONABILITY_SEED, "actionability")
 
     @field_validator("effect_allele")
     @classmethod
-    def _validate_effect_allele(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_effect_allele(cls, v: str | None) -> str | None:
         return validate_allele(v, "effect_allele")
 
     @field_validator("weight")
     @classmethod
-    def _validate_weight(cls, v: Optional[float]) -> Optional[float]:
+    def _validate_weight(cls, v: float | None) -> float | None:
         return validate_finite(v, "weight")
 
     @field_validator("flags", mode="before")
@@ -585,7 +585,7 @@ class VariantRow(AuthoredModel):
 
     @field_validator("flags")
     @classmethod
-    def _validate_flags(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+    def _validate_flags(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return v
         for tag in v:
@@ -622,16 +622,16 @@ class StudyRow(AuthoredModel):
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid`/`trait_efo_id`/
     `stat_significance`/`effect_size` validators)."""
 
-    rsid: Optional[str] = Field(default=None, description="dbSNP identifier or variant key")
+    rsid: str | None = Field(default=None, description="dbSNP identifier or variant key")
     # No `chromosome` marker: `StudyRow` runs no chrom validator (only `VariantRow` does), and a
     # marker must describe what actually rejects. Same call as the PGx tables — see `pgx.py`.
-    chrom: Optional[str] = Field(default=None, description="Chromosome (for position-only variants)")
-    start: Optional[int] = Field(
+    chrom: str | None = Field(default=None, description="Chromosome (for position-only variants)")
+    start: int | None = Field(
         default=None,
         ge=0,
         description="1-based position, VCF POS convention (position-only variants) — do not subtract one",
     )
-    ref: Optional[str] = Field(default=None, description="Reference allele (position-only variants)")
+    ref: str | None = Field(default=None, description="Reference allele (position-only variants)")
     #: rsid, or a bare chrom (no `start` — see `_validate_study_identification`).
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
         frozenset({"rsid"}),
@@ -639,46 +639,46 @@ class StudyRow(AuthoredModel):
     )
 
     pmid: str = Field(description="PubMed ID or reference — free-form, must be non-empty")
-    population: Optional[str] = Field(default=None, description="Study population")
-    p_value: Optional[str] = Field(default=None, description="Raw p-value string (free-form)")
-    conclusion: Optional[str] = Field(default=None, description="Study-specific conclusion")
-    study_design: Optional[str] = Field(default=None, description="e.g. meta-analysis, GWAS")
+    population: str | None = Field(default=None, description="Study population")
+    p_value: str | None = Field(default=None, description="Raw p-value string (free-form)")
+    conclusion: str | None = Field(default=None, description="Study-specific conclusion")
+    study_design: str | None = Field(default=None, description="e.g. meta-analysis, GWAS")
 
     # ── 0.3 additive columns (per-study evidence; shipped in 0.3 — see docs/CHANGELOG.md) ──
-    stat_significance: Optional[str] = Field(
+    stat_significance: str | None = Field(
         default=None,
         description="Per-study statistical significance: significant|suggestive|not_significant|unknown.",
     )
-    effect_size: Optional[float] = Field(
+    effect_size: float | None = Field(
         default=None, description="Per-study effect magnitude (unit given by `effect_measure`)."
     )
-    effect_measure: Optional[str] = Field(
+    effect_measure: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False),
         description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended, open).",
     )
-    trait_efo_id: Optional[str] = Field(
+    trait_efo_id: str | None = Field(
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s) for this study."
     )
 
     # ── 0.4 provenance columns (RM11/RM12, from the 0.5 scope; docs/USE_CASES.md §4a) ──
     # All optional → P3/P8 clean. They anchor a network-first validator (RM13) without the format
     # ever fetching: the module ships the pointer, the consumer supplies the source and does the check.
-    doi: Optional[str] = Field(
+    doi: str | None = Field(
         default=None,
         description=(
             "Digital Object Identifier — wider than `pmid` (covers preprints/books/datasets with no "
             "PubMed id). Free-form, kept verbatim; a validator may cross-fill doi↔pmid."
         ),
     )
-    provenance_quote: Optional[str] = Field(
+    provenance_quote: str | None = Field(
         default=None,
         description=(
             "Optional keyword phrase / literal passage locating this study's claim in the cited "
             "article's fulltext. Human-legible; a validator confirms fulltext-contains, yes/no."
         ),
     )
-    provenance_regex: Optional[str] = Field(
+    provenance_regex: str | None = Field(
         default=None,
         description=(
             "Optional regex locating the claim in fulltext — a declarative pattern grammar "
@@ -689,7 +689,7 @@ class StudyRow(AuthoredModel):
     # ── 0.5 additive column: the queryable form of `p_value` above ──
     # `p_value` stays the verbatim record (free-form, and kept by P8 — retyping or removing it is a
     # 1.0 item). This carries the same number in a form that sorts and thresholds.
-    p_value_num: Optional[float] = Field(
+    p_value_num: float | None = Field(
         default=None,
         gt=0.0,
         le=1.0,
@@ -707,7 +707,7 @@ class StudyRow(AuthoredModel):
         return derive_variant_key(self.rsid, self.chrom, self.start, self.ref)
 
     @property
-    def neg_log10_p(self) -> Optional[float]:
+    def neg_log10_p(self) -> float | None:
         """−log10(p) — derived on write, never stored. `None` when `p_value_num` is unset.
 
         The scale a consumer actually filters and plots on (`7.3` is genome-wide significance),
@@ -735,7 +735,7 @@ class StudyRow(AuthoredModel):
 
     @field_validator("doi")
     @classmethod
-    def _validate_doi(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_doi(cls, v: str | None) -> str | None:
         if v is None:
             return v
         if not DOI_PATTERN.search(v):
@@ -747,7 +747,7 @@ class StudyRow(AuthoredModel):
 
     @field_validator("provenance_regex")
     @classmethod
-    def _validate_provenance_regex(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_provenance_regex(cls, v: str | None) -> str | None:
         # Author-time sanity: the pattern must compile. ReDoS-safety is the consumer's concern —
         # it evaluates the pattern with a linear-time engine (Principle 1), never Python `re`.
         if v is None:

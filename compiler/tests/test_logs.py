@@ -4,10 +4,9 @@ import hashlib
 from pathlib import Path
 
 import yaml
+from just_dna_compiler.compiler import compile_module
 from just_dna_format.integrity import verify_manifest
 from just_dna_format.manifest import read_manifest
-
-from just_dna_compiler.compiler import compile_module
 
 _YAML = {
     "schema_version": "1.0",

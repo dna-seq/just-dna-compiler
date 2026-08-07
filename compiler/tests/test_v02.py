@@ -8,10 +8,9 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from just_dna_compiler.compiler import compile_module
 from just_dna_format.integrity import IntegrityError, sha256_file, verify_manifest
 from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem, sign_digest
-
-from just_dna_compiler.compiler import compile_module
 
 _YAML = """\
 schema_version: "1.0"

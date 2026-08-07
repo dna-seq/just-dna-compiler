@@ -36,7 +36,7 @@ import csv
 import io
 import json
 from dataclasses import asdict, dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from just_dna_format.base import authored_field_names, field_vocabularies
 from just_dna_format.binning import MeasureBinRow, validate_bins
@@ -96,7 +96,7 @@ class Alteration:
     kind: str
     applied: bool
     source: str = "model"
-    refusal: Optional[str] = None
+    refusal: str | None = None
     note: str = ""
 
 
@@ -104,8 +104,8 @@ class Alteration:
 class Finding:
     """Something worth telling the author about a cell or a row. Never fails a build."""
 
-    row: Optional[int]
-    column: Optional[str]
+    row: int | None
+    column: str | None
     level: str
     message: str
 
@@ -238,7 +238,7 @@ def inspect_rows(csv_name: str, csv_text: str) -> HintReport:
     )
 
     emitted: list[dict[str, str]] = []
-    parsed: list[Optional[BaseModel]] = []
+    parsed: list[BaseModel | None] = []
     for index, raw in enumerate(rows):
         cells = dict(raw)
         _check_placeholders(index, cells, report)
@@ -282,13 +282,13 @@ def _check_placeholders(index: int, cells: dict[str, str], report: HintReport) -
 
 def _validate_row(
     index: int, cells: dict[str, str], model: type[BaseModel], csv_name: str, report: HintReport
-) -> Optional[BaseModel]:
+) -> BaseModel | None:
     """Build the row, turning each validation error into a per-cell finding rather than an exception."""
     payload = {k: v for k, v in cells.items() if v != ""}
     try:
         return model.model_validate(payload)
     except Exception as exc:  # pydantic ValidationError
-        for error in getattr(exc, "errors", lambda: [])():
+        for error in getattr(exc, "errors", list)():
             location = error.get("loc") or (None,)
             column = location[0] if isinstance(location[0], str) else None
             report.findings.append(
@@ -365,7 +365,7 @@ def _flag_advisory_columns(
         )
 
 
-def _check_duplicate_keys(parsed: list[Optional[BaseModel]], report: HintReport) -> None:
+def _check_duplicate_keys(parsed: list[BaseModel | None], report: HintReport) -> None:
     """Two rows the compiler would reject as the same row. Uses the compiler's own key."""
     seen: dict[tuple, int] = {}
     for index, instance in enumerate(parsed):
@@ -383,7 +383,7 @@ def _check_duplicate_keys(parsed: list[Optional[BaseModel]], report: HintReport)
 
 
 def _check_bins(
-    parsed: list[Optional[BaseModel]], model: type[BaseModel], report: HintReport
+    parsed: list[BaseModel | None], model: type[BaseModel], report: HintReport
 ) -> None:
     """Overlap and coverage gaps, via the schema tier's own `validate_bins`.
 

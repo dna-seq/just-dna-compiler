@@ -1,6 +1,5 @@
 """Cross-version log aggregation (ROADMAP item 3): full provenance = union of every version's logs."""
 
-from typing import Optional
 
 from just_dna_format.aggregate import aggregate_logs, aggregate_provenance
 from just_dna_format.manifest import (
@@ -14,7 +13,7 @@ from just_dna_format.manifest import (
 
 
 def _manifest(
-    logs: Optional[list[FileEntry]] = None, provenance: Optional[Provenance] = None
+    logs: list[FileEntry] | None = None, provenance: Provenance | None = None
 ) -> ModuleManifest:
     return ModuleManifest(
         identity=Identity(name="m"),

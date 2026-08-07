@@ -29,9 +29,9 @@ Skipped, with a warning rather than a coercion: haplotype-keyed genotypes (`*1`,
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Sequence
 
 from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import PharmVariantRow
@@ -65,7 +65,7 @@ class ClinPgxDraftResult:
         return sum(len(r.differs) for r in self.reports)
 
 
-def _authored_genotype(raw: Optional[str]) -> Optional[str]:
+def _authored_genotype(raw: str | None) -> str | None:
     """`CC` → `C/C`. Only an unambiguous two-base call; anything else is the caller's to skip.
 
     Splitting is safe *here* precisely because the cell is two single bases: `CT` can only be `C/T`.
@@ -83,7 +83,7 @@ def _rows_from_snapshot(
     *,
     genes: Sequence[str],
     drugs: Sequence[str],
-    min_evidence_level: Optional[str],
+    min_evidence_level: str | None,
 ) -> tuple[list[PharmVariantRow], list[str]]:
     """Snapshot records → `PharmVariantRow`s, reporting everything the grammar cannot hold."""
     wanted_drugs = {d.strip().lower() for d in drugs if d.strip()}
@@ -142,7 +142,7 @@ def _rows_from_snapshot(
     return rows, warnings
 
 
-def _split_drugs(raw: Optional[str]) -> list[str]:
+def _split_drugs(raw: str | None) -> list[str]:
     """The `;`-joined drug list, de-duplicated, first-occurrence order (emitted order is digest-visible)."""
     if not raw:
         return []
@@ -160,7 +160,7 @@ def _split_drugs(raw: Optional[str]) -> list[str]:
 _LEVEL_ORDER: tuple[str, ...] = ("1A", "1B", "2A", "2B", "3", "4")
 
 
-def _meets_level(level: Optional[str], floor: str) -> bool:
+def _meets_level(level: str | None, floor: str) -> bool:
     """Is `level` at least as strong as `floor`? An unknown level is kept, never silently dropped."""
     if not level:
         return True
@@ -176,7 +176,7 @@ def draft_pharm_variants(
     snapshot: Path,
     genes: Sequence[str] = (),
     drugs: Sequence[str] = (),
-    min_evidence_level: Optional[str] = None,
+    min_evidence_level: str | None = None,
     declared_use: str = "unstated",
     dry_run: bool = False,
 ) -> ClinPgxDraftResult:

@@ -16,9 +16,9 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_format.frequency import FrequencyRow
+from just_dna_format.integrity import frequency_signature, source_signature
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
-from just_dna_format.integrity import frequency_signature, source_signature
 from just_dna_format.vrs import derive_vrs_allele_id
 
 _YAML = """\
@@ -47,6 +47,7 @@ _STUDIES = (
 )
 
 _SICKLE = derive_vrs_allele_id("11", 5227002, "T", "A")
+_SICKLE_G = derive_vrs_allele_id("11", 5227002, "T", "G")  # the same site's other ALT
 _MTHFR = derive_vrs_allele_id("1", 11796321, "G", "A")
 
 _FREQUENCIES = (
@@ -179,7 +180,7 @@ def test_manifest_blocks_summarize_the_sidecars(tmp_path: Path) -> None:
 
 def test_fact_signature_ignores_provenance_but_not_the_dataset(tmp_path: Path) -> None:
     """The two halves of what `dataset`-in-the-fact-set is for."""
-    base = dict(variant_key="k", population="global", allele_count=1, allele_number=10)
+    base = {"variant_key": "k", "population": "global", "allele_count": 1, "allele_number": 10}
     same_facts_other_producer = [
         FrequencyRow(**base, dataset="gnomad_v4.1_joint", source="gnomad", fetched_at="2026-01-01"),
     ]
@@ -268,7 +269,7 @@ def test_the_literature_fact_hash_ignores_open_access_and_coverage(tmp_path: Pat
     from just_dna_format.integrity import literature_signature
     from just_dna_format.literature import LiteratureRow
 
-    base = dict(pmid="29165669", doi="10.1093/nar/gkx1153", pmcid="PMC5753237", exists=True)
+    base = {"pmid": "29165669", "doi": "10.1093/nar/gkx1153", "pmcid": "PMC5753237", "exists": True}
     before = [LiteratureRow(**base, is_open_access=False, quotes_authored=1, quotes_found=None)]
     after = [LiteratureRow(**base, is_open_access=True, quotes_authored=1, quotes_found=1,
                            source="pubmed", fetched_at="2026-08-01T00:00:00Z")]
@@ -400,7 +401,7 @@ def test_two_rows_disagreeing_on_the_reference_base_are_an_error(tmp_path: Path)
 
 def _res_row(**kw):
     from just_dna_format.resolution import ResolutionRow
-    base = dict(variant_key="k", chrom="11", start=5227002, ref="T", alts="A")
+    base = {"variant_key": "k", "chrom": "11", "start": 5227002, "ref": "T", "alts": "A"}
     return ResolutionRow(**{**base, **kw})
 
 
@@ -412,25 +413,35 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
     [
         # (outcome in best_effort, outcome in strict): "pass" | "warn" | "error"
         ("no vrs_id — nothing to check",
-         dict(vrs_id=None), "pass", "pass"),
+         {"vrs_id": None}, "pass", "pass"),
         ("correct substitution — verified",
-         dict(vrs_id=_SICKLE), "pass", "pass"),
+         {"vrs_id": _SICKLE}, "pass", "pass"),
         ("tampered substitution — deterministic, so corruption",
-         dict(vrs_id=_WRONG_ALLELE), "error", "error"),
+         {"vrs_id": _WRONG_ALLELE}, "error", "error"),
         ("indel — needs a sequence proxy, so unverifiable",
-         dict(ref="C", alts="CA", vrs_id=_SICKLE), "warn", "error"),
-        ("multi-allelic — a VA names one allele",
-         dict(alts="A,G", vrs_id=_SICKLE), "warn", "error"),
+         {"ref": "C", "alts": "CA", "vrs_id": _SICKLE}, "warn", "error"),
+        # A multi-allelic site is now verified allele by allele. It used to be a blanket
+        # "unverifiable" on the grounds that a VA names one allele — true, and the reason `vrs_id` is
+        # a parallel array of `alts` rather than a scalar; with the pair aligned there is nothing left
+        # to be unsure about, and 909 of 1,613 rows in a real module stop being unverifiable.
+        ("multi-allelic, every allele named — verified",
+         {"alts": "A,G", "vrs_id": f"{_SICKLE},{_SICKLE_G}"}, "pass", "pass"),
+        ("multi-allelic with a hole — the named allele verifies, the hole is a non-event",
+         {"alts": "A,CA", "vrs_id": f"{_SICKLE},"}, "pass", "pass"),
+        ("multi-allelic, an id recorded against the indel member — unverifiable, not a mismatch",
+         {"alts": "A,CA", "vrs_id": f"{_SICKLE},{_MTHFR}"}, "warn", "error"),
+        ("multi-allelic, right length and wrong order — the desync the count check cannot see",
+         {"alts": "A,G", "vrs_id": f"{_SICKLE_G},{_SICKLE}"}, "error", "error"),
         ("position-only — no ALT to name",
-         dict(alts=None, vrs_id=_SICKLE), "warn", "error"),
+         {"alts": None, "vrs_id": _SICKLE}, "warn", "error"),
         ("no coordinate — nothing to recompute from",
-         dict(chrom=None, start=None, vrs_id=_SICKLE), "warn", "error"),
+         {"chrom": None, "start": None, "vrs_id": _SICKLE}, "warn", "error"),
         ("off-assembly contig — no refget accession",
-         dict(chrom="GL000009.2", start=100, vrs_id=_SICKLE), "warn", "error"),
+         {"chrom": "GL000009.2", "start": 100, "vrs_id": _SICKLE}, "warn", "error"),
         ("position past the end of the contig",
-         dict(chrom="MT", start=999999, vrs_id=_SICKLE), "warn", "error"),
+         {"chrom": "MT", "start": 999999, "vrs_id": _SICKLE}, "warn", "error"),
         ("non-GRCh38 build — no refget table (must not raise)",
-         dict(genome_build="GRCh37", vrs_id=_SICKLE), "warn", "error"),
+         {"genome_build": "GRCh37", "vrs_id": _SICKLE}, "warn", "error"),
     ],
 )
 def test_vrs_verify_matrix(label: str, row_kwargs: dict, best_effort: str, strict: str) -> None:
@@ -446,6 +457,83 @@ def test_vrs_verify_matrix(label: str, row_kwargs: dict, best_effort: str, stric
         errors, warnings = _verify_vrs_ids([_res_row(**row_kwargs)], strict=(mode == "strict"))
         actual = "error" if errors else ("warn" if warnings else "pass")
         assert actual == expected, f"{label} in {mode}: expected {expected}, got {actual}"
+
+
+def test_vrs_coverage_counts_alleles_and_groups_the_gaps_by_reason() -> None:
+    """Absence is invisible to `_verify_vrs_ids` by design — this is the pass that sees it.
+
+    Verification only ever looks at ids that are *there*, so a table where nothing was minted is
+    reported as flawless. That was tolerable while a VA was decorative; it is not now that a consumer
+    may key on one, and the number that matters is the *shortfall*, stated rather than implied.
+
+    Denominator is alleles, not rows: the multi-allelic row below is two identities.
+    """
+    from just_dna_compiler.compiler import _vrs_coverage, _vrs_coverage_warnings
+
+    rows = [
+        _res_row(vrs_id=_SICKLE),                                   # named
+        _res_row(alts="A,G", vrs_id=f"{_SICKLE},"),                 # one named, one hole
+        _res_row(vrs_id=None),                                      # mintable, nobody minted it
+        _res_row(ref="C", alts="CA", vrs_id=None),                  # indel: enricher's job
+        _res_row(chrom=None, start=None, vrs_id=None),              # nothing to mint from
+    ]
+    alleles, identified, gaps = _vrs_coverage(rows)
+
+    assert (alleles, identified) == (6, 2)
+    assert sum(gaps.values()) == alleles - identified
+    # Three *classes*, each once — not one line per row, and not one line per distinct allele pair.
+    assert len(gaps) == 3
+    assert any("computable offline" in reason for reason in gaps)
+    assert any("indel or MNV" in reason for reason in gaps)
+    assert any("no coordinate" in reason for reason in gaps)
+
+    warnings = _vrs_coverage_warnings(rows)
+    assert "2/6" in warnings[0] and "33%" in warnings[0]
+    assert len(warnings) == 1 + len(gaps)
+
+
+def test_the_manifest_records_vrs_coverage_as_two_counts(tmp_path: Path) -> None:
+    """Recorded, not only warned about: a terminal warning is gone by the time anything consumes this.
+
+    Two counts rather than a ratio or a bool, for the same reason `fully_resolved` sits beside
+    `resolution_mode`: a consumer deciding whether it can key on the VA needs the shortfall's size, and
+    "complete" is then derived (`identified == alleles`) rather than stored twice. Both `0` means no
+    resolution table was present — nothing attempted, which is not nothing achieved.
+    """
+    covered = compile_module(_with_resolution(tmp_path, _SICKLE), tmp_path / "c").manifest
+    assert (covered.compilation.vrs_alleles, covered.compilation.vrs_alleles_identified) == (1, 1)
+
+    gap = compile_module(
+        _with_resolution(tmp_path, "", ref="C", alts="CA"), tmp_path / "g"
+    ).manifest
+    assert (gap.compilation.vrs_alleles, gap.compilation.vrs_alleles_identified) == (1, 0)
+
+    bare = compile_module(_spec(tmp_path), tmp_path / "b", resolve_with_ensembl=False).manifest
+    assert (bare.compilation.vrs_alleles, bare.compilation.vrs_alleles_identified) == (0, 0)
+
+
+def test_full_vrs_coverage_says_nothing() -> None:
+    """A complete table produces no line at all — a warning that always fires is not a warning."""
+    from just_dna_compiler.compiler import _vrs_coverage_warnings
+
+    assert _vrs_coverage_warnings([_res_row(vrs_id=_SICKLE)]) == []
+    assert _vrs_coverage_warnings([]) == []
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_coverage_gap_never_refuses_a_compile(tmp_path: Path, strict: bool) -> None:
+    """Warning in both modes, and the reason is the same one that keeps `not_covered` out of strict.
+
+    An indel offline and a build with no refget table are fixable by no authored edit, so refusing
+    would make such a module uncompilable rather than telling its author anything. What `strict` does
+    refuse is a stored id it cannot confirm — a claim, not an absence. Proven with a row that has no
+    id at all *and* no way to mint one here.
+    """
+    spec = _with_resolution(tmp_path / ("s" if strict else "b"), "", ref="C", alts="CA")
+    result = compile_module(spec, tmp_path / ("o" if strict else "ob"), strict=strict)
+
+    assert result.success, result.errors
+    assert any("VRS allele identity covers" in w for w in result.warnings)
 
 
 def test_unverifiable_never_reported_as_a_mismatch() -> None:
@@ -580,7 +668,7 @@ def test_gene_metrics_interval_must_bracket_the_point_estimate(tmp_path: Path) -
 def _variant(**kw):
     from just_dna_format.spec import VariantRow
 
-    base = dict(genotype="A/T", state="risk", conclusion="c")
+    base = {"genotype": "A/T", "state": "risk", "conclusion": "c"}
     return VariantRow(**{**base, **kw})
 
 
@@ -588,28 +676,28 @@ def _variant(**kw):
     ("label", "variant_kwargs", "table", "expected"),
     [
         ("authored alleles agree with the genotype",
-         dict(chrom="11", start=5227002, ref="T", alts="A"), {}, "pass"),
+         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A"}, {}, "pass"),
         ("authored alleles contradict the genotype",
-         dict(chrom="11", start=5227002, ref="C", alts="G"), {}, "finding"),
+         {"chrom": "11", "start": 5227002, "ref": "C", "alts": "G"}, {}, "finding"),
         # The motivating real-world bug: a paper reports alleles on the gene's strand while dbSNP
         # reports the forward strand, so `A/G` gets authored at a `C>T` locus. Complementing the
         # genotype gives exactly {T,C} — which is why it looks plausible and compiles clean today.
         ("strand-flipped genotype (A/G authored at a C>T locus)",
-         dict(chrom="11", start=5227002, ref="C", alts="T", genotype="A/G"), {}, "finding"),
+         {"chrom": "11", "start": 5227002, "ref": "C", "alts": "T", "genotype": "A/G"}, {}, "finding"),
         ("hemizygous single allele, present",
-         dict(chrom="MT", start=100, ref="A", alts="T", genotype="T"), {}, "pass"),
+         {"chrom": "MT", "start": 100, "ref": "A", "alts": "T", "genotype": "T"}, {}, "pass"),
         ("hemizygous single allele, absent",
-         dict(chrom="MT", start=100, ref="A", alts="T", genotype="C"), {}, "finding"),
+         {"chrom": "MT", "start": 100, "ref": "A", "alts": "T", "genotype": "C"}, {}, "finding"),
         ("phased genotype is split on the pipe like any other",
-         dict(chrom="11", start=5227002, ref="T", alts="A", genotype="A|T"), {}, "pass"),
+         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "genotype": "A|T"}, {}, "pass"),
         ("ref authored but no alts — {ref} alone would flag every het row",
-         dict(chrom="11", start=5227002, ref="T"), {}, "pass"),
+         {"chrom": "11", "start": 5227002, "ref": "T"}, {}, "pass"),
         ("nothing known about the alleles at all",
-         dict(rsid="rs334"), {}, "pass"),
+         {"rsid": "rs334"}, {}, "pass"),
         ("effect_allele names an allele the locus does not have",
-         dict(chrom="11", start=5227002, ref="T", alts="A", effect_allele="G"), {}, "finding"),
+         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "effect_allele": "G"}, {}, "finding"),
         ("effect_allele names the reference, which is a real allele",
-         dict(chrom="11", start=5227002, ref="T", alts="A", effect_allele="T"), {}, "pass"),
+         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "effect_allele": "T"}, {}, "pass"),
     ],
 )
 def test_allele_membership_matrix(

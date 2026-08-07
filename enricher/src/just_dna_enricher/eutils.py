@@ -24,7 +24,7 @@ be worse than sending none, because it would misattribute the traffic to someone
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from tenacity import (
@@ -62,13 +62,13 @@ class EutilsRateLimitedError(EutilsError):
 class EutilsSettings:
     base_url: str = DEFAULT_EUTILS_BASE
     tool: str = DEFAULT_TOOL
-    email: Optional[str] = None
-    api_key: Optional[str] = None
+    email: str | None = None
+    api_key: str | None = None
     #: ids per request. NCBI accepts a few hundred for esummary; 200 is comfortably inside that and
     #: keeps a failed request from costing much.
     batch_size: int = 200
     #: Seconds between requests. Left None to be derived from whether an API key is available.
-    min_request_interval: Optional[float] = None
+    min_request_interval: float | None = None
     timeout: float = 30.0
 
     def __post_init__(self) -> None:
@@ -94,8 +94,8 @@ class EutilsClient:
     """Batched, paced esummary access. Reused across a pass, so one gate covers every request."""
 
     settings: EutilsSettings = field(default_factory=EutilsSettings)
-    gate: Optional[PacingGate] = None
-    _client: Optional[httpx.Client] = None
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
         if self.gate is None:

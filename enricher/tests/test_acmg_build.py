@@ -17,8 +17,6 @@ import json
 from pathlib import Path
 
 import pytest
-from just_dna_format.spec import VariantRow
-
 from just_dna_enricher.acmg import (
     KNOWN_LATEST_SF_VERSION,
     MIN_GENES,
@@ -32,6 +30,7 @@ from just_dna_enricher.acmg import (
     verify_acmg_sf,
 )
 from just_dna_enricher.acmg_build import build_acmg_snapshot, parse_acmg_workbook
+from just_dna_format.spec import VariantRow
 
 openpyxl = pytest.importorskip("openpyxl", reason="the workbook builder is a [dev] extra")
 

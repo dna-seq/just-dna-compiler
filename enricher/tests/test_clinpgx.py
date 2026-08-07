@@ -12,7 +12,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
 from just_dna_enricher.clinpgx_build import build_snapshot, read_created_date, read_license
 from just_dna_enricher.licensing import LicenseRefusal
@@ -22,21 +21,7 @@ _LICENSE = (
     "License.\nUnder no circumstances can ClinPGx data be sold for other's private or commercial use.\n"
 )
 # Three annotations, one variant, one drug, three categories -- the real collision.
-_SUMMARY = "\t".join([
-    "Clinical Annotation ID", "Variant/Haplotypes", "Gene", "Level of Evidence", "Level Override",
-    "Level Modifiers", "Score", "Phenotype Category", "PMID Count", "Evidence Count", "Drug(s)",
-    "Phenotype(s)", "Latest History Date (YYYY-MM-DD)", "URL", "Specialty Population",
-]) + "\n" + "\n".join([
-    "\t".join(["1449556772", "rs4149056", "SLCO1B1", "1A", "", "", "9", "Metabolism/PK", "5", "5",
-               "simvastatin;simvastatin acid", "", "2025-01-01", "u", ""]),
-    "\t".join(["1451356520", "rs4149056", "SLCO1B1", "3", "", "", "2", "Efficacy", "2", "2",
-               "simvastatin", "", "2025-01-01", "u", ""]),
-    "\t".join(["655384011", "rs4149056", "SLCO1B1", "1A", "", "", "9", "Toxicity", "9", "9",
-               "simvastatin", "", "2025-01-01", "u", ""]),
-    # a haplotype-keyed annotation: the subject is not an rsID, so `rsid` must stay null
-    "\t".join(["999000111", "CYP2C19*2", "CYP2C19", "1A", "", "", "9", "Efficacy", "9", "9",
-               "clopidogrel", "", "2025-01-01", "u", ""]),
-]) + "\n"
+_SUMMARY = "Clinical Annotation ID\tVariant/Haplotypes\tGene\tLevel of Evidence\tLevel Override\tLevel Modifiers\tScore\tPhenotype Category\tPMID Count\tEvidence Count\tDrug(s)\tPhenotype(s)\tLatest History Date (YYYY-MM-DD)\tURL\tSpecialty Population" + "\n" + "1449556772\trs4149056\tSLCO1B1\t1A\t\t\t9\tMetabolism/PK\t5\t5\tsimvastatin;simvastatin acid\t\t2025-01-01\tu\t\n1451356520\trs4149056\tSLCO1B1\t3\t\t\t2\tEfficacy\t2\t2\tsimvastatin\t\t2025-01-01\tu\t\n655384011\trs4149056\tSLCO1B1\t1A\t\t\t9\tToxicity\t9\t9\tsimvastatin\t\t2025-01-01\tu\t\n999000111\tCYP2C19*2\tCYP2C19\t1A\t\t\t9\tEfficacy\t9\t9\tclopidogrel\t\t2025-01-01\tu\t" + "\n"
 _ALLELES = "Clinical Annotation ID\tGenotype/Allele\tAnnotation Text\tAllele Function\n" + "\n".join(
     f"{aid}\t{gt}\ttext for {aid} {gt}\t"
     for aid in ("1449556772", "1451356520", "655384011")

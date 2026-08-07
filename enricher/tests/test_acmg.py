@@ -9,8 +9,6 @@ import re
 from pathlib import Path
 
 import pytest
-from just_dna_format.spec import VariantRow
-
 from just_dna_enricher.acmg import (
     EXPECTED_HEADERS,
     AcmgSfError,
@@ -18,6 +16,7 @@ from just_dna_enricher.acmg import (
     parse_acmg_page,
     verify_acmg_sf,
 )
+from just_dna_format.spec import VariantRow
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _PAGE = (_ASSETS / "ncbi_acmg_sf_v3.2.html").read_text(encoding="utf-8")
@@ -62,9 +61,9 @@ def test_the_naive_row_split_loses_genes_which_is_why_the_parser_counts_cells(sf
     asserts the naive result really is short, and names what it drops, so the guard is not
     cargo-culted.
     """
-    table = re.search(r"<table[^>]*>(.*?)</table>", _PAGE, re.S).group(1)
+    table = re.search(r"<table[^>]*>(.*?)</table>", _PAGE, re.DOTALL).group(1)
     naive = set()
-    for row in re.findall(r"<tr>(.*?)(?=<tr>|\Z)", table, re.S):
+    for row in re.findall(r"<tr>(.*?)(?=<tr>|\Z)", table, re.DOTALL):
         link = re.search(r'href="/(?:gtr/)?genes?/\d+/?"\s*>\s*([A-Za-z0-9_.\-]+)\s*</a>', row)
         if link:
             naive.add(link.group(1))

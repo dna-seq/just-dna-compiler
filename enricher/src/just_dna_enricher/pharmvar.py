@@ -32,7 +32,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from tenacity import (
@@ -67,7 +67,7 @@ class PharmVarError(RuntimeError):
     """A PharmVar request failed in a way the caller must see (auth, or a broken query)."""
 
 
-def chrom_from_accession(num: str) -> Optional[str]:
+def chrom_from_accession(num: str) -> str | None:
     """`NC_000010` → `10`, `NC_000023` → `X`. None for anything off the primary assembly.
 
     RefSeq numbers the chromosomes 1–22 then X (23), Y (24), MT (12920 as a special case). Returning
@@ -83,11 +83,11 @@ def chrom_from_accession(num: str) -> Optional[str]:
 class PharmVarVariant:
     """One defining variant of a star allele, at a genomic coordinate."""
 
-    rsid: Optional[str]
-    chrom: Optional[str]
-    start: Optional[int]
-    ref: Optional[str]
-    alt: Optional[str]
+    rsid: str | None
+    chrom: str | None
+    start: int | None
+    ref: str | None
+    alt: str | None
 
     @property
     def usable(self) -> bool:
@@ -101,9 +101,9 @@ class PharmVarAllele:
 
     gene: str
     allele: str
-    function: Optional[str] = None
-    activity_value: Optional[float] = None
-    evidence_level: Optional[str] = None
+    function: str | None = None
+    activity_value: float | None = None
+    evidence_level: str | None = None
     is_core: bool = True
     variants: list[PharmVarVariant] = field(default_factory=list)
 
@@ -141,9 +141,7 @@ def _merge_variants(entries: list[dict[str, Any]]) -> list[PharmVarVariant]:
         parsed = parse_genomic_variant(entry)
         key = parsed.rsid or f"{parsed.chrom}:{parsed.start}:{parsed.ref}"
         existing = merged.get(key)
-        if existing is None:
-            merged[key] = parsed
-        elif not existing.usable and parsed.usable:
+        if existing is None or not existing.usable and parsed.usable:
             merged[key] = parsed
     return list(merged.values())
 
@@ -177,9 +175,9 @@ class PharmVarClient:
         self,
         endpoint: str = DEFAULT_PHARMVAR_ENDPOINT,
         *,
-        api_key: Optional[str] = None,
-        client: Optional[httpx.Client] = None,
-        gate: Optional[PacingGate] = None,
+        api_key: str | None = None,
+        client: httpx.Client | None = None,
+        gate: PacingGate | None = None,
         timeout: float = 60.0,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
@@ -203,7 +201,7 @@ class PharmVarClient:
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
     )
-    def _get(self, path: str, params: Optional[dict[str, str]] = None) -> Any:
+    def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
         # Pace before retry, as in gnomad.py: retrying spends the same budget that caused the throttle.
         self._gate.wait()
         response = self._client.get(

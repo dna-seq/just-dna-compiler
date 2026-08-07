@@ -479,7 +479,7 @@ def test_defaulted_columns_are_written_out_not_left_blank(kind: str) -> None:
     model = model_for(kind)
     requirements = authoring_requirements(kind)
     header, first, *_ = stub_template(kind).splitlines()
-    cells = dict(zip(header.split(","), next(csv.reader([first]))))
+    cells = dict(zip(header.split(","), next(csv.reader([first])), strict=True))
     for column, rendered in requirements["defaulted"].items():
         assert cells[column] == rendered, f"{kind}:{column} should carry its default"
         assert field_category(model, column) == "defaulted"
@@ -503,7 +503,7 @@ def test_a_stub_offers_exactly_the_authored_surface(kind: str) -> None:
 def test_a_stub_asks_for_one_identity_group_not_every_alternative() -> None:
     """`rsid` OR `chrom`+`start` — stubbing both would tell the author to supply two identities."""
     header, first, *_ = stub_template("variants.csv").splitlines()
-    cells = dict(zip(header.split(","), next(csv.reader([first]))))
+    cells = dict(zip(header.split(","), next(csv.reader([first])), strict=True))
     assert cells["rsid"] == TEMPLATE_PLACEHOLDER
     assert cells["chrom"] == "" and cells["start"] == ""
 

@@ -35,7 +35,66 @@ the enricher must agree on it exactly — `genotype_fits` is shared three ways a
 two resolvers is a documented guarantee.
 """
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
+
+#: The four bases an allele column is expected to spell.
+NUCLEOTIDES: frozenset[str] = frozenset("ACGT")
+
+#: The IUPAC single-letter degenerate codes (bioinformatics.org/sms/iupac.html). `N` is here because it
+#: is one of them; it is also the **only** one that occurs in real variant records — probed across
+#: 4,439,382 ClinVar GRCh38 rows, where `R`/`Y`/`S`/`W`/`K`/`M`/`B`/`D`/`H`/`V` appear in neither REF nor
+#: ALT even once. They are a *sequence* and *genotype* notation, not a variant-record one.
+IUPAC_AMBIGUITY_CODES: frozenset[str] = frozenset("RYSWKMBDHVN")
+
+
+def non_nucleotide_reason(allele: str | None) -> str | None:
+    """Why `allele` is not a nucleotide string, or `None` when it is one.
+
+    Two answers, never one, and conflating them is a mistake this codebase has already made once and
+    repaired (`cpic.unusable_allele_reason`, which now delegates here): calling a deletion notation an
+    "ambiguity code" is a false claim about the data and points an author at the wrong thing.
+
+    * `"ambiguity"` — every character is a base or an IUPAC degenerate code. The value states an
+      *uncertainty*, so it can never be expanded into definite alleles: doing so would assert alleles the
+      source declined to. ClinVar's 35 `A>N` records are this shape.
+    * `"notation"` — not a nucleotide string at all: a symbolic allele (`<DEL>`), a repeat notation
+      (`AAAGGGGCG(2)`), a typo. A **grammar gap** (RM5) rather than an uncertainty, and a future release
+      may widen to hold it.
+
+    Note the third real shape this deliberately files under `"ambiguity"` rather than inventing a name
+    for: `N` *inside* a longer allele (633 ClinVar records spell a known-length insertion whose interior
+    is unknown, `TTTGG` + `NNNNNNNNNN` + `AAAA`). It is not a degenerate base standing alone, but it is
+    the same statement — part of this sequence is unknown — and the consequence is identical: nothing may
+    be expanded from it.
+    """
+    if allele is None:
+        return None
+    value = allele.strip().upper()
+    if not value or set(value) <= NUCLEOTIDES:
+        return None
+    return "ambiguity" if set(value) <= (NUCLEOTIDES | IUPAC_AMBIGUITY_CODES) else "notation"
+
+
+def non_nucleotide_alleles(ref: str | None, alts: str | None) -> dict[str, str]:
+    """`{allele: reason}` for every member of a locus that is not a nucleotide string.
+
+    Insertion-ordered (`ref` first, then `alts` as written), so a message built from it is deterministic.
+    Empty for the overwhelmingly common case, which is what lets a caller ask cheaply.
+
+    Exists because **no `ref`/`alt`/`alts` column in the schema has a nucleotide grammar** — eleven
+    columns across six models, and `vocab.validate_allele` has exactly one user, `HaplotypeRow.allele`.
+    Adding one would reject `<DEL>` and `N` alongside a genuine typo, tightening the field RM5 exists to
+    widen, and would stop an existing module validating (Principle 3). So the value is accepted and the
+    *diagnosis* improves instead: a non-nucleotide allele makes `hosting_verdict` return a confident
+    `False`, and without this the author is told their genotype contradicts their locus — true of the
+    cell, false of the variant, and three steps from the actual mistake.
+    """
+    found: dict[str, str] = {}
+    for allele in [ref, *(alts.split(",") if alts else [])]:
+        reason = non_nucleotide_reason(allele)
+        if reason is not None and allele is not None:
+            found.setdefault(allele.strip().upper(), reason)
+    return found
 
 
 def parsimony_reduce(alleles: Iterable[str]) -> frozenset[str]:
@@ -70,7 +129,7 @@ def parsimony_reduce(alleles: Iterable[str]) -> frozenset[str]:
     return frozenset(members)
 
 
-def event_profile(alleles: Iterable[str]) -> Optional[frozenset[int]]:
+def event_profile(alleles: Iterable[str]) -> frozenset[int] | None:
     """The length of each reduced allele — what left-alignment cannot change.
 
     Returns `None` when the collection cannot be reduced at all (fewer than two distinct alleles), which

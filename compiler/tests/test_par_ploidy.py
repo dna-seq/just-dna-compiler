@@ -19,7 +19,6 @@ Y:359845 (PAR1), `rs700442` to X:155767377 and Y:56953897 (PAR2), `rs2534636` to
 from pathlib import Path
 
 import pytest
-
 from just_dna_compiler.compiler import _check_contig_ploidy, compile_module, validate_spec
 from just_dna_compiler.resolution import _expansion_warning
 from just_dna_format.resolution import ResolutionRow

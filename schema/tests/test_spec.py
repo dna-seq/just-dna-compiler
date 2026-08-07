@@ -1,9 +1,8 @@
 """DSL spec model tests — validation mirrors the authored module_spec.yaml / CSV rules."""
 
 import pytest
-from pydantic import ValidationError
-
 from just_dna_format.spec import ModuleInfo, ModuleSpecConfig, StudyRow, VariantRow
+from pydantic import ValidationError
 
 
 def test_module_info_reuses_name_and_color_rules() -> None:

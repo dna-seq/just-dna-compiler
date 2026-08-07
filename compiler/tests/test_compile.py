@@ -8,10 +8,9 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from just_dna_compiler.compiler import compile_module, validate_spec
 from just_dna_format.integrity import IntegrityError, verify_manifest
 from just_dna_format.manifest import read_manifest
-
-from just_dna_compiler.compiler import compile_module, validate_spec
 
 _MODULE_YAML = """\
 schema_version: "1.0"

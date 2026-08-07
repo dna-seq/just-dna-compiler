@@ -6,9 +6,9 @@ its behaviour is pinned here rather than in any one caller. The monotonicity tes
 one that protects every already-compiled module: normalization may only ever *add* acceptances.
 """
 
+import csv
 from pathlib import Path
 
-import csv
 import pytest
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.resolution import genotype_fits, hosting_verdict
@@ -156,3 +156,72 @@ def test_no_real_example_row_became_undecidable() -> None:
         if hosting_verdict(genotype, ref, alts) is None
     ]
     assert undecided == []
+
+
+# ── a non-nucleotide allele is a SPELLING defect, and the message must say which ─────────────────
+
+
+def test_a_non_nucleotide_locus_allele_is_diagnosed_as_spelling_not_genotype() -> None:
+    """`hosting_verdict` is right to return `False` here, and the generic message is wrong about why.
+
+    A substitution locus has no shared flank, so no spelling freedom — which is exactly what keeps the
+    strand-flip check sharp, and it must stay. But the same `False` arrives when the locus itself is
+    spelled `T>Y`, and there the mismatch is between the *cell* and the nucleotide alphabet, not between
+    the genotype and the variant. The old wording sent an author to re-examine a correct genotype.
+    """
+    from just_dna_compiler.resolution import hosting_verdict, spelling_caveat
+
+    assert hosting_verdict("C/T", "T", "Y") is False        # unchanged: the verdict was never wrong
+    caveat = spelling_caveat("T", "Y")
+    assert "IUPAC ambiguity code" in caveat
+    assert "never expanded" in caveat                        # an uncertainty, so it cannot be resolved
+    assert spelling_caveat("T", "A,G") == ""                 # nucleotides say nothing extra
+
+
+def test_the_two_reasons_carry_their_own_consequence_and_never_each_others() -> None:
+    """The conflation `cpic.unusable_allele_reason` was repaired for, guarded at the second call site.
+
+    An ambiguity code is a permanent uncertainty; a symbolic allele is a grammar gap a release may
+    close. Telling a `<DEL>` author about ambiguity codes is the same false claim about the data, and
+    the first cut of this message made it by appending one consequence to both branches.
+    """
+    from just_dna_compiler.resolution import spelling_caveat
+
+    ambiguous = spelling_caveat("T", "Y")
+    symbolic = spelling_caveat("C", "<DEL>")
+
+    assert "ambiguity" in ambiguous and "RM5" not in ambiguous
+    assert "RM5" in symbolic and "ambiguity code" not in symbolic
+    # Both present: each names only its own alleles, and neither claim leaks onto the other.
+    both = spelling_caveat("T", "Y,<DEL>")
+    assert both.index("'Y'") < both.index("'<DEL>'")
+    assert "ambiguity code" in both and "RM5" in both
+
+
+def test_the_classifier_agrees_with_the_cpic_provider() -> None:
+    """One definition of "what kind of non-nucleotide is this", two callers.
+
+    `cpic.unusable_allele_reason` had its own copy; the compiler needed the same two-way split for a
+    locus's `ref`/`alts`, and a second copy is how the two drift into disagreeing about `DELTCT`.
+    """
+    from just_dna_enricher.cpic import unusable_allele_reason
+    from just_dna_format.alleles import non_nucleotide_reason
+
+    for value in ("ACGT", "A", "R", "N", "DELTCT", "AAAGGGGCG(2)", "<DEL>", ""):
+        assert non_nucleotide_reason(value) == unusable_allele_reason(value), value
+    assert non_nucleotide_reason("R") == "ambiguity"
+    assert non_nucleotide_reason("DELTCT") == "notation"
+    assert non_nucleotide_reason("ACGT") is None
+
+
+def test_n_inside_a_longer_allele_is_an_uncertainty_not_a_notation() -> None:
+    """633 real ClinVar records spell a known-length insertion whose interior is unknown.
+
+    `TTTGG` + `NNNNNNNNNN` + `AAAA` is not a degenerate base standing alone, but it makes the same
+    statement — part of this sequence is unknown — and carries the same consequence: nothing may be
+    expanded from it. Filing it as a structural *notation* would promise a future release could hold it.
+    """
+    from just_dna_format.alleles import non_nucleotide_reason
+
+    assert non_nucleotide_reason("TTTGGNNNNNNNNNNAAAA") == "ambiguity"
+    assert non_nucleotide_reason("N") == "ambiguity"

@@ -18,7 +18,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.literature import (
     CrossrefClient,

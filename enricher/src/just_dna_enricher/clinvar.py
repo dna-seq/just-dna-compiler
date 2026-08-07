@@ -20,7 +20,6 @@ The snapshot ships as parquet only (built by `clinvar_build`, `[dev]`); there is
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
 
 import duckdb
 
@@ -37,7 +36,7 @@ class ClinVarReferenceError(FileNotFoundError):
 def _connect(reference: Path) -> duckdb.DuckDBPyConnection:
     """Open an in-memory connection exposing a `clinvar` view over the reference's parquet files."""
     reference = Path(reference)
-    parquet_glob: Optional[Path] = None
+    parquet_glob: Path | None = None
     if (reference / "data").is_dir() and any((reference / "data").glob("*.parquet")):
         parquet_glob = reference / "data"
     elif reference.is_dir() and any(reference.glob("*.parquet")):
@@ -55,7 +54,7 @@ def _connect(reference: Path) -> duckdb.DuckDBPyConnection:
 def lookup_loci(
     reference: Path,
     rsids: list[str],
-    positions: list[tuple[Optional[str], Optional[int], Optional[str], Optional[str]]],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """`(rsid -> [loci], (chrom,start,ref,alt) -> [candidate rsids], warnings)` over ClinVar.
 
@@ -164,7 +163,7 @@ def select_by_gene(
     reference: Path,
     genes: list[str],
     *,
-    clin_sig: Optional[frozenset[str]] = None,
+    clin_sig: frozenset[str] | None = None,
     min_review_stars: int = 0,
 ) -> list[dict]:
     """Rows for a gene panel: the third reader over the same view, serving the drafting provider.
@@ -204,7 +203,7 @@ def select_by_gene(
             params,
         )
         columns = [d[0] for d in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
     finally:
         con.close()
 

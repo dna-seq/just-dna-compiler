@@ -11,17 +11,40 @@
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import typer
 from just_dna_compiler.compiler import compile_module
-
+from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_format.vocab import VALID_DECLARED_USE
 
-from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
+from just_dna_enricher.clingen import (
+    DEFAULT_CLINGEN_URL,
+    ClinGenError,
+    enrich_dosage_sensitivity,
+)
+from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
+from just_dna_enricher.clinpgx_build import (
+    DEFAULT_CLINPGX_URL,
+    download_clinpgx_zip,
+)
+from just_dna_enricher.clinpgx_build import (
+    build_snapshot as build_clinpgx_snapshot,
+)
+from just_dna_enricher.clinpgx_draft import draft_pharm_variants
+from just_dna_enricher.clinvar_build import (
+    DEFAULT_CITATIONS_URL,
+    build_citations,
+    download_var_citations,
+)
+from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
+from just_dna_enricher.cpic import CpicError
 from just_dna_enricher.enrich import EnrichmentError, enrich
-from just_dna_enricher.sequences import summarize_ref_mismatches
+from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
+from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
+from just_dna_enricher.licensing import CLINPGX_TERMS, LicenseRefusal, check_declared_use
+from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
+from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
 from just_dna_enricher.lookup import (
     as_report_rows,
     lookup_citation,
@@ -29,32 +52,9 @@ from just_dna_enricher.lookup import (
     lookup_trait,
     lookup_variant,
 )
-from just_dna_enricher.clinpgx_build import (
-    DEFAULT_CLINPGX_URL,
-    build_snapshot as build_clinpgx_snapshot,
-    download_clinpgx_zip,
-)
-from just_dna_enricher.licensing import CLINPGX_TERMS, LicenseRefusal, check_declared_use
-from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
-from just_dna_enricher.cpic import CpicError
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
-from just_dna_enricher.clinpgx_draft import draft_pharm_variants
-from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
-from just_dna_enricher.clinvar_build import (
-    DEFAULT_CITATIONS_URL,
-    build_citations,
-    download_var_citations,
-)
-from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
-from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
-from just_dna_enricher.clingen import (
-    DEFAULT_CLINGEN_URL,
-    ClinGenError,
-    enrich_dosage_sensitivity,
-)
-from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
-from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
+from just_dna_enricher.sequences import summarize_ref_mismatches
 
 app = typer.Typer(
     add_completion=False,
@@ -87,8 +87,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every variant resolves."),
     offline: bool = typer.Option(False, "--offline", help="Cache-only: never touch the network."),
-    ensembl_cache: Optional[Path] = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."),
-    clinvar_cache: Optional[Path] = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
+    ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."),
+    clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
     use_clinvar: bool = typer.Option(True, "--clinvar/--no-clinvar", help="Use the ClinVar link (after the Ensembl cache)."),
     use_gnomad: bool = typer.Option(True, "--gnomad/--no-gnomad", help="Use the gnomAD link (last, after live Ensembl)."),
     mint_vrs: bool = typer.Option(True, "--vrs/--no-vrs", help="Mint GA4GH VRS allele ids onto resolved rows."),
@@ -156,11 +156,11 @@ def frequencies_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every resolved allele has a frequency."),
     offline: bool = typer.Option(False, "--offline", help="No-op with a warning: gnomAD frequency has no offline snapshot."),
-    populations: Optional[str] = typer.Option(
+    populations: str | None = typer.Option(
         None, "--populations",
         help="Comma-separated ancestry groups to keep (e.g. 'global' for one row per allele). Default: all.",
     ),
-    dataset: Optional[str] = typer.Option(None, "--dataset", help="Override the dataset label recorded on each row."),
+    dataset: str | None = typer.Option(None, "--dataset", help="Override the dataset label recorded on each row."),
 ) -> None:
     """Fill frequencies.csv from the coordinates already in resolution.csv (pass 2, online only)."""
     from just_dna_enricher.gnomad import FREQUENCY_DATASET_LABEL
@@ -188,7 +188,7 @@ def gene_metrics_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every gene has constraint metrics."),
     offline: bool = typer.Option(False, "--offline", help="Snapshot only: never touch the network."),
-    constraint_cache: Optional[Path] = typer.Option(None, "--constraint-cache", help="Explicit gnomAD constraint snapshot dir."),
+    constraint_cache: Path | None = typer.Option(None, "--constraint-cache", help="Explicit gnomAD constraint snapshot dir."),
 ) -> None:
     """Fill gene_metrics.csv for the genes variants.csv mentions (pass 3, snapshot then live API).
 
@@ -328,7 +328,7 @@ app.add_typer(clinpgx_app, name="clinpgx")
 @clinpgx_app.command("build")
 def clinpgx_build_(
     out_dir: Path = typer.Option(..., "--out", help="Snapshot output directory."),
-    zip_path: Optional[Path] = typer.Option(None, "--zip", help="Existing clinicalAnnotations.zip (else downloaded)."),
+    zip_path: Path | None = typer.Option(None, "--zip", help="Existing clinicalAnnotations.zip (else downloaded)."),
     url: str = typer.Option(DEFAULT_CLINPGX_URL, "--url", help="ClinPGx bulk download URL."),
     use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
 ) -> None:
@@ -343,7 +343,7 @@ def clinpgx_build_(
     if reason is not None:
         typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(code=1)
-    source_sha: Optional[str] = None
+    source_sha: str | None = None
     if zip_path is None:
         zip_path, source_sha = download_clinpgx_zip(Path(out_dir) / "clinicalAnnotations.zip", url)
     result = build_clinpgx_snapshot(zip_path, out_dir, source_url=url, source_sha256=source_sha)
@@ -358,7 +358,7 @@ def clinpgx_build_(
 @clinpgx_app.command("check")
 def clinpgx_check_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    snapshot: Optional[Path] = typer.Option(None, "--snapshot", help="ClinPGx snapshot directory."),
+    snapshot: Path | None = typer.Option(None, "--snapshot", help="ClinPGx snapshot directory."),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail on a stale evidence level."),
     use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
 ) -> None:
@@ -396,7 +396,7 @@ def draft_(
             "diplotypes unfiltered. Requires a single --gene, since a star name is gene-scoped."
         ),
     ),
-    population: Optional[str] = typer.Option(
+    population: str | None = typer.Option(
         None, "--population",
         help="Draft only this CPIC clinical context (e.g. 'NVI'). Default: every context, as rows.",
     ),
@@ -520,7 +520,7 @@ def check_acmg_(
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Exit 1 if any acmg_sf disagrees."),
     offline: bool = typer.Option(False, "--offline", help="No network. Needs --sf-list, else nothing is checked."),
     url: str = typer.Option(DEFAULT_ACMG_URL, "--url", help="ACMG secondary-findings page URL (fallback)."),
-    sf_list: Optional[Path] = typer.Option(
+    sf_list: Path | None = typer.Option(
         None, "--sf-list", exists=True, file_okay=False,
         help="Built ACMG SF snapshot (see `acmg build`). Preferred: NCBI's page still serves v3.2.",
     ),
@@ -576,8 +576,8 @@ def enrich_and_compile(
     output_dir: Path = typer.Argument(..., file_okay=False, help="Output dir for parquet + manifest.json"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every variant resolves."),
     offline: bool = typer.Option(False, "--offline", help="Cache-only: never touch the network."),
-    ensembl_cache: Optional[Path] = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."),
-    clinvar_cache: Optional[Path] = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
+    ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."),
+    clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
     use_clinvar: bool = typer.Option(True, "--clinvar/--no-clinvar", help="Use the ClinVar link (after the Ensembl cache)."),
     use_gnomad: bool = typer.Option(True, "--gnomad/--no-gnomad", help="Use the gnomAD link (last, after live Ensembl)."),
     frequencies: bool = typer.Option(False, "--frequencies", help="Also run the frequency pass (writes frequencies.csv)."),
@@ -621,17 +621,17 @@ def upload_(
         file_okay=False,
         help="Compiled module directory (weights/annotations/studies.parquet + manifest.json).",
     ),
-    repo_id: Optional[str] = typer.Option(
+    repo_id: str | None = typer.Option(
         None,
         "--repo",
         help="Target HF dataset (owner/name). Default: just-dna-seq/annotators.",
     ),
-    name: Optional[str] = typer.Option(
+    name: str | None = typer.Option(
         None,
         "--name",
         help="Module name under data/<name>/ in the repo. Default: the directory basename.",
     ),
-    commit_message: Optional[str] = typer.Option(
+    commit_message: str | None = typer.Option(
         None,
         "--message",
         "-m",
@@ -689,10 +689,10 @@ def acmg_build_(
         Path("acmg_sf"), "--out", file_okay=False,
         help="Output snapshot directory (writes acmg_sf.csv + release.json).",
     ),
-    source_url: Optional[str] = typer.Option(
+    source_url: str | None = typer.Option(
         None, "--source-url", help="Where the workbook came from, recorded in release.json.",
     ),
-    doi: Optional[str] = typer.Option(
+    doi: str | None = typer.Option(
         None, "--doi", help="DOI of the statement the workbook accompanies, recorded in release.json.",
     ),
 ) -> None:
@@ -730,7 +730,7 @@ app.add_typer(clinvar_app, name="clinvar")
 
 @clinvar_app.command("build")
 def clinvar_build_(
-    vcf: Optional[Path] = typer.Option(
+    vcf: Path | None = typer.Option(
         None, "--vcf", exists=True, dir_okay=False,
         help="Local ClinVar VCF (.vcf.gz). Omit and pass --download to fetch from NCBI.",
     ),
@@ -771,10 +771,10 @@ def clinvar_publish_(
     snapshot_dir: Path = typer.Argument(
         ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
     ),
-    repo_id: Optional[str] = typer.Option(
+    repo_id: str | None = typer.Option(
         None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/clinvar.",
     ),
-    commit_message: Optional[str] = typer.Option(None, "--message", "-m", help="Commit message."),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be uploaded without contacting HuggingFace.",
     ),
@@ -816,7 +816,7 @@ gnomad_app.add_typer(constraint_app, name="constraint")
 
 @constraint_app.command("build")
 def constraint_build_(
-    tsv: Optional[Path] = typer.Option(
+    tsv: Path | None = typer.Option(
         None, "--tsv", exists=True, dir_okay=False,
         help="Local gnomAD constraint metrics TSV. Omit and pass --download to fetch it.",
     ),
@@ -856,10 +856,10 @@ def constraint_publish_(
     snapshot_dir: Path = typer.Argument(
         ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
     ),
-    repo_id: Optional[str] = typer.Option(
+    repo_id: str | None = typer.Option(
         None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/gnomad_constraint.",
     ),
-    commit_message: Optional[str] = typer.Option(None, "--message", "-m", help="Commit message."),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be uploaded without contacting HuggingFace.",
     ),
@@ -928,6 +928,9 @@ def vrs_mint_(
         f"stdlib: {result.minted_stdlib}  normalized: {result.minted_normalized}  "
         f"unmintable: {result.skipped_unmintable}  already present: {result.already_present}"
     )
+    typer.echo(f"coverage: {result.identified}/{result.alleles} allele(s) carry a ga4gh:VA. id")
+    for line in result.coverage_warnings():
+        typer.secho(f"  warning: {line}", fg=typer.colors.YELLOW, err=True)
     for mismatch in result.mismatches:
         typer.secho(f"  mismatch: {mismatch}", fg=typer.colors.YELLOW, err=True)
 
@@ -952,16 +955,16 @@ def _echo_hint(hint: object) -> None:
 
 @hint_app.command("variant")
 def hint_variant_(
-    rsid: Optional[str] = typer.Option(None, "--rsid", help="dbSNP id to look up."),
-    chrom: Optional[str] = typer.Option(None, "--chrom", help="Chromosome (with --start)."),
-    start: Optional[int] = typer.Option(None, "--start", help="1-based position (with --chrom)."),
-    ref: Optional[str] = typer.Option(None, "--ref", help="Reference allele, for an allele-exact lookup."),
-    alts: Optional[str] = typer.Option(None, "--alts", help="Alt allele(s), comma-separated."),
+    rsid: str | None = typer.Option(None, "--rsid", help="dbSNP id to look up."),
+    chrom: str | None = typer.Option(None, "--chrom", help="Chromosome (with --start)."),
+    start: int | None = typer.Option(None, "--start", help="1-based position (with --chrom)."),
+    ref: str | None = typer.Option(None, "--ref", help="Reference allele, for an allele-exact lookup."),
+    alts: str | None = typer.Option(None, "--alts", help="Alt allele(s), comma-separated."),
     ambiguity: bool = typer.Option(False, "--ambiguity", help="Warn when the answer is not unique."),
     frequencies: bool = typer.Option(False, "--frequencies", help="Add gnomAD populations (paced: ~6s)."),
     offline: bool = typer.Option(False, "--offline", help="Snapshots only; never touch the network."),
-    ensembl_cache: Optional[Path] = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache."),
-    clinvar_cache: Optional[Path] = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot."),
+    ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache."),
+    clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot."),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
 ) -> None:
     """Validity, coordinates, alleles, populations and clinical calls for one variant.
@@ -1007,8 +1010,8 @@ def hint_variant_(
 
 @hint_app.command("citation")
 def hint_citation_(
-    pmid: Optional[str] = typer.Option(None, "--pmid", help="PubMed id to check."),
-    doi: Optional[str] = typer.Option(None, "--doi", help="DOI to check (the one you authored)."),
+    pmid: str | None = typer.Option(None, "--pmid", help="PubMed id to check."),
+    doi: str | None = typer.Option(None, "--doi", help="DOI to check (the one you authored)."),
     offline: bool = typer.Option(False, "--offline", help="Skip the check and say so."),
 ) -> None:
     """Does this citation exist, and what is its other identifier?
@@ -1049,7 +1052,7 @@ def draft_clinpgx_(
     ),
     drug: list[str] = typer.Option([], "--drug", help="Only annotations naming this drug (repeatable)."),
     gene: list[str] = typer.Option([], "--gene", help="Reserved; the annotation snapshot has no gene column."),
-    min_evidence_level: Optional[str] = typer.Option(
+    min_evidence_level: str | None = typer.Option(
         None, "--min-evidence-level", help="Keep annotations at least this strong: 1A|1B|2A|2B|3|4."
     ),
     use: str = typer.Option(
@@ -1089,7 +1092,7 @@ def draft_clinpgx_(
 def draft_panel_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     gene: list[str] = typer.Option(..., "--gene", help="Gene to draft from ClinVar (repeatable)."),
-    snapshot: Optional[Path] = typer.Option(
+    snapshot: Path | None = typer.Option(
         None, "--snapshot", exists=True, file_okay=False,
         help=(
             "Built ClinVar snapshot (see `clinvar build`). Omit it and the cache is used, or the "
@@ -1100,7 +1103,7 @@ def draft_panel_(
     offline: bool = typer.Option(
         False, "--offline", help="Use a local snapshot only: never download one.",
     ),
-    clin_sig: Optional[str] = typer.Option(
+    clin_sig: str | None = typer.Option(
         None, "--clin-sig",
         help="Comma-separated calls to include. Default: pathogenic,likely_pathogenic.",
     ),
@@ -1156,7 +1159,7 @@ def draft_panel_(
 @clinvar_app.command("citations")
 def clinvar_citations_(
     out: Path = typer.Option(..., "--out", file_okay=False, help="Existing ClinVar snapshot dir."),
-    citations_txt: Optional[Path] = typer.Option(
+    citations_txt: Path | None = typer.Option(
         None, "--citations", exists=True, dir_okay=False, help="Local var_citations.txt."
     ),
     download: bool = typer.Option(False, "--download", help="Fetch var_citations.txt first."),
@@ -1171,7 +1174,7 @@ def clinvar_citations_(
     if citations_txt is None and not download:
         typer.secho("give --citations, or --download", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    source_sha: Optional[str] = None
+    source_sha: str | None = None
     if citations_txt is None:
         path, source_sha = download_var_citations(out / "var_citations.txt", url=url)
     else:

@@ -12,10 +12,8 @@ import logging
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Optional
 
 import duckdb
-
 from just_dna_compiler.resolution import genotype_fits
 from just_dna_format.base import derive_variant_key
 from just_dna_format.spec import VariantRow
@@ -33,9 +31,9 @@ def _has_ensembl_table(con: duckdb.DuckDBPyConnection) -> bool:
     return any(r[0] == "ensembl_variations" for r in con.execute("SHOW TABLES").fetchall())
 
 
-def _view_over_parquet(reference: Path) -> Optional[duckdb.DuckDBPyConnection]:
+def _view_over_parquet(reference: Path) -> duckdb.DuckDBPyConnection | None:
     """Build an in-memory `ensembl_variations` view over the cache's parquet files, or None."""
-    parquet_glob: Optional[Path] = None
+    parquet_glob: Path | None = None
     if (reference / "data").is_dir() and any((reference / "data").glob("*.parquet")):
         parquet_glob = reference / "data"
     elif reference.is_dir() and any(reference.glob("*.parquet")):
@@ -81,7 +79,7 @@ def _connect(reference: Path) -> duckdb.DuckDBPyConnection:
 
 def resolve_variants(
     variants: list[VariantRow],
-    ensembl_cache: Optional[Path] = None,
+    ensembl_cache: Path | None = None,
     genome_build: str = "GRCh38",
 ) -> tuple[list[VariantRow], list[str]]:
     """Fill in missing rsid or position from the injected Ensembl reference (GRCh38).
@@ -217,7 +215,7 @@ def resolve_variants(
 def lookup_loci(
     reference: Path,
     rsids: list[str],
-    positions: list[tuple[Optional[str], Optional[int], Optional[str], Optional[str]]],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """Public cache lookup the enricher uses to *build* a resolution table (0.5).
 
@@ -244,7 +242,7 @@ def _lookup_rsid_candidates(
     con: duckdb.DuckDBPyConnection,
     table: str,
     id_col: str,
-    positions: list[tuple[Optional[str], Optional[int], Optional[str], Optional[str]]],
+    positions: list[tuple[str | None, int | None, str | None, str | None]],
 ) -> dict[tuple, list[str]]:
     """Allele-aware reverse lookup: `(chrom,start,ref,alt) -> sorted [candidate rsids]`.
 
@@ -386,7 +384,7 @@ def _check_rsid_coord_consistency(
 
 def _lookup_rsid_sets_by_position(
     con: duckdb.DuckDBPyConnection,
-    positions: list[tuple[Optional[str], Optional[int], Optional[str]]],
+    positions: list[tuple[str | None, int | None, str | None]],
 ) -> dict[str, set[str]]:
     """Batch lookup: `chrom:start:ref` -> set of dbSNP ids at that exact position."""
     concrete = [(c, s, ref) for c, s, ref in positions if c is not None and s is not None]
@@ -409,7 +407,7 @@ def _lookup_rsid_sets_by_position(
 
 def _lookup_rsids_by_position(
     con: duckdb.DuckDBPyConnection,
-    positions: list[tuple[Optional[str], Optional[int], Optional[str]]],
+    positions: list[tuple[str | None, int | None, str | None]],
     warnings: list[str],
 ) -> dict[str, str]:
     """Batch lookup: (chrom, start, ref) -> rsid."""

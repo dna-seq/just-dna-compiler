@@ -19,7 +19,6 @@ require the prose to agree with it.
 from __future__ import annotations
 
 import pytest
-
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vrs import derive_vrs_allele_id, sequence_location_digest

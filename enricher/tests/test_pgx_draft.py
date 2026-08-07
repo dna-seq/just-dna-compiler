@@ -13,8 +13,6 @@ from pathlib import Path
 import httpx
 import pytest
 from just_dna_compiler.compiler import _load_csv_rows, validate_spec
-from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
-
 from just_dna_enricher.cpic import (
     CpicClient,
     CpicDefiningVariant,
@@ -25,6 +23,7 @@ from just_dna_enricher.cpic import (
 )
 from just_dna_enricher.licensing import LicenseRefusal
 from just_dna_enricher.pgx_draft import _haplotype_rows, _recommendation_rows, draft_gene
+from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 
 _YAML = (
     'schema_version: "1.0"\n'
@@ -202,8 +201,8 @@ def test_an_unstated_declaration_skips_rather_than_failing(tmp_path: Path) -> No
 
 
 def _variant(**kw) -> CpicDefiningVariant:
-    base = dict(gene="CYP2C9", allele="*57", rsid=None, chrom=None, start=None,
-                variant_allele="T", unusable=None)
+    base = {'gene': "CYP2C9", 'allele': "*57", 'rsid': None, 'chrom': None, 'start': None,
+                'variant_allele': "T", 'unusable': None}
     base.update(kw)
     return CpicDefiningVariant(**base)
 

@@ -22,7 +22,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from just_dna_enricher.enrich import enrich, select_par_representative
 
 _YAML = (

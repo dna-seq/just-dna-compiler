@@ -26,14 +26,12 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
+import duckdb
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
-
-import duckdb
 
 from just_dna_enricher.clinpgx_build import RELEASE_FILENAME
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
@@ -49,9 +47,9 @@ class ClinPgxEnrichmentError(RuntimeError):
 class EvidenceConflict:
     """An authored evidence level ClinPGx's own record does not support."""
 
-    rsid: Optional[str]
+    rsid: str | None
     drug: str
-    genotype: Optional[str]
+    genotype: str | None
     authored: str
     reported: str
 
@@ -68,12 +66,12 @@ class ClinPgxResult:
     conflicts: list[EvidenceConflict] = field(default_factory=list)
     unmatched: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    dataset: Optional[str] = None
+    dataset: str | None = None
     mode: str = "best_effort"
     declared_use: str = "unstated"
 
 
-def _normalize_genotype(value: Optional[str]) -> Optional[str]:
+def _normalize_genotype(value: str | None) -> str | None:
     """`C/T` (ours) and `CT` (ClinPGx's) name the same call — compare them on a common form.
 
     ClinPGx writes a diploid genotype concatenated; this workspace's canonical form is sorted and
@@ -87,7 +85,7 @@ def _normalize_genotype(value: Optional[str]) -> Optional[str]:
     return "".join(sorted(stripped)) if stripped else None
 
 
-def _normalize_category(value: Optional[str]) -> Optional[str]:
+def _normalize_category(value: str | None) -> str | None:
     """ClinPGx's `Metabolism/PK` and the authored `metabolism_pk` are the same category.
 
     Both sides go through the schema's own normalizer so the comparison cannot drift from the
@@ -125,7 +123,7 @@ def load_snapshot(reference: Path) -> tuple[list[dict], dict]:
             f"FROM read_parquet('{pattern}')"
         )
         columns = [d[0] for d in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()], release
+        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()], release
     finally:
         con.close()
 
@@ -135,7 +133,7 @@ def enrich_clinpgx(
     *,
     mode: str = "best_effort",
     declared_use: str = "unstated",
-    snapshot: Optional[Path] = None,
+    snapshot: Path | None = None,
     write: bool = True,
 ) -> ClinPgxResult:
     """Cross-check `pharm_variants.csv` against the ClinPGx snapshot and record the terms.
@@ -183,9 +181,9 @@ def enrich_clinpgx(
     # reported all three of this example's correctly-authored levels as stale. So the annotation id
     # is the primary key, the category is the secondary one, and the bare triple is a last resort
     # that reports ambiguity instead of guessing.
-    by_annotation: dict[tuple[str, Optional[str]], str] = {}
-    by_category: dict[tuple[str, str, Optional[str], Optional[str]], str] = {}
-    by_triple: dict[tuple[str, str, Optional[str]], set[str]] = {}
+    by_annotation: dict[tuple[str, str | None], str] = {}
+    by_category: dict[tuple[str, str, str | None, str | None], str] = {}
+    by_triple: dict[tuple[str, str, str | None], set[str]] = {}
     for row in snapshot_rows:
         rsid, level = row["rsid"], row["evidence_level"]
         if not rsid or not level:
@@ -205,7 +203,7 @@ def enrich_clinpgx(
             continue
         drug, genotype = row.drug.strip().lower(), _normalize_genotype(row.genotype)
         category = _normalize_category(row.phenotype_category)
-        reported: Optional[str] = None
+        reported: str | None = None
         if row.annotation_id:
             reported = by_annotation.get((row.annotation_id, genotype))
         if reported is None and category is not None:

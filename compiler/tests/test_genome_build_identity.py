@@ -17,7 +17,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from just_dna_compiler.compiler import _restamp_for_build, compile_module, validate_spec
 from just_dna_format.base import derive_variant_key
 from just_dna_format.spec import VariantRow

@@ -20,9 +20,10 @@ being scaffolded into the same module, or a module could never gain a second tab
 """
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any
 
 import yaml
 from just_dna_format.base import authored_field_names
@@ -79,7 +80,7 @@ def _stub_value(model: type[BaseModel], name: str) -> Any:
     return model.model_fields[name].get_default(call_default_factory=True)
 
 
-def module_spec_template(*, name: Optional[str] = None) -> str:
+def module_spec_template(*, name: str | None = None) -> str:
     """A `module_spec.yaml` skeleton generated from the live models.
 
     Required scalars carry the placeholder, so the file cannot compile until a human has filled them;
@@ -116,7 +117,7 @@ def scaffold_module(
     spec_dir: Path,
     *,
     kinds: Sequence[str] = (),
-    name: Optional[str] = None,
+    name: str | None = None,
     rows: int = 1,
     dry_run: bool = False,
 ) -> ScaffoldPlan:

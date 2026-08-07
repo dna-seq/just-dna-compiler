@@ -2,7 +2,6 @@
 
 import json
 
-
 from just_dna_format.base import authored_field_names
 from just_dna_format.binning import VALID_MEASURE_KINDS
 from just_dna_format.frequency import FrequencyRow
@@ -107,7 +106,7 @@ def test_recommended_palette_is_valid() -> None:
     for use, hex_code in RECOMMENDED_COLORS.items():
         assert COLOR_PATTERN.match(hex_code), f"{use} → {hex_code} not a 6-hex colour"
     for use, glyph in RECOMMENDED_ICONS.items():
-        assert glyph and isinstance(glyph, str)
+        assert glyph and isinstance(glyph, str), f"{use} → {glyph!r} is not a non-empty icon name"
     # the palette is surfaced through the reference too
     assert authoring_reference()["recommended_palette"]["colors"] == RECOMMENDED_COLORS
 
@@ -137,7 +136,7 @@ def _rejects_as_vocabulary(model, field: str) -> bool:
     try:
         model.model_validate({field: _JUNK})
     except Exception as exc:  # pydantic ValidationError
-        errors = getattr(exc, "errors", lambda: [])()
+        errors = getattr(exc, "errors", list)()
         return any(
             e.get("loc") == (field,) and "must be one of" in str(e.get("msg", ""))
             for e in errors

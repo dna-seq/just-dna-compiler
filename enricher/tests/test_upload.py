@@ -5,7 +5,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from just_dna_enricher.upload import (
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_REPO_ID,
@@ -97,9 +96,11 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
 
 def test_upload_module_requires_token(tmp_path: Path) -> None:
     module_dir = _compiled_module(tmp_path / "superhuman")
-    with patch("huggingface_hub.get_token", return_value=None):
-        with pytest.raises(PermissionError, match="No HuggingFace token"):
-            upload_module(module_dir, "superhuman")
+    with (
+        patch("huggingface_hub.get_token", return_value=None),
+        pytest.raises(PermissionError, match="No HuggingFace token"),
+    ):
+        upload_module(module_dir, "superhuman")
 
 
 # ── reference-snapshot publish (ClinVar/Ensembl parquet + release.json) ─────────────────────────
@@ -163,6 +164,8 @@ def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) ->
 
 def test_publish_reference_snapshot_requires_token(tmp_path: Path) -> None:
     snap = _snapshot(tmp_path / "snap")
-    with patch("huggingface_hub.get_token", return_value=None):
-        with pytest.raises(PermissionError, match="No HuggingFace token"):
-            publish_reference_snapshot(snap)
+    with (
+        patch("huggingface_hub.get_token", return_value=None),
+        pytest.raises(PermissionError, match="No HuggingFace token"),
+    ):
+        publish_reference_snapshot(snap)

@@ -19,7 +19,7 @@ multiplies by *total* CN gets it wrong.
 """
 
 import re
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
@@ -91,22 +91,22 @@ class HaplotypeRow(AuthoredModel):
     )
 
     haplotype_name: str = Field(description="Named haplotype/allele, e.g. *4 or e4")
-    rsid: Optional[str] = Field(default=None, description="dbSNP id of the defining variant")
+    rsid: str | None = Field(default=None, description="dbSNP id of the defining variant")
     # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
     # these two models run no chrom validator, so the set is not enforced. A marker claims "a
     # validator rejects anything outside this", and attaching one where nothing rejects would be the
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
-    chrom: Optional[str] = Field(default=None, description="Chromosome (position-only variants)")
-    start: Optional[int] = Field(
+    chrom: str | None = Field(default=None, description="Chromosome (position-only variants)")
+    start: int | None = Field(
         default=None,
         description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
         "this convention and it is stored as-is; do not subtract one",
     )
-    ref: Optional[str] = Field(default=None, description="Reference allele (position-only)")
+    ref: str | None = Field(default=None, description="Reference allele (position-only)")
     allele: str = Field(description="The defining (variant) allele on this haplotype, nucleotides")
-    gene: Optional[str] = Field(default=None, description="Gene symbol, e.g. CYP2D6")
+    gene: str | None = Field(default=None, description="Gene symbol, e.g. CYP2D6")
 
     @field_validator("allele")
     @classmethod
@@ -138,24 +138,24 @@ class AlleleFunctionRow(AuthoredModel):
 
     gene: str = Field(description="Gene symbol, e.g. CYP2D6")
     allele: str = Field(description="Star-allele string, verbatim canonical identity, e.g. *4")
-    activity_value: Optional[float] = Field(
+    activity_value: float | None = Field(
         default=None, description="Per-allele activity value (e.g. *1=1.0, *10=0.25, *4=0)"
     )
-    function_status: Optional[str] = Field(
+    function_status: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("function_status", VALID_FUNCTION_STATUS),
         description="CPIC function category (VALID_FUNCTION_STATUS)",
     )
-    suballele: Optional[str] = Field(
+    suballele: str | None = Field(
         default=None, description="Optional finer sub-allele, e.g. 1.001 (core star is the key)"
     )
-    copy_number: Optional[int] = Field(
+    copy_number: int | None = Field(
         default=None, description="Optional cis copy number of the allele-unit (e.g. *1x2 → 2)"
     )
-    sv_type: Optional[str] = Field(
+    sv_type: str | None = Field(
         default=None, description="Optional parsed SV type (duplication/deletion/hybrid)"
     )
-    hybrid_orientation: Optional[str] = Field(
+    hybrid_orientation: str | None = Field(
         default=None, description="Optional parsed tandem/hybrid orientation, e.g. *36+*10"
     )
 
@@ -169,12 +169,12 @@ class AlleleFunctionRow(AuthoredModel):
 
     @field_validator("activity_value")
     @classmethod
-    def _validate_activity_value(cls, v: Optional[float]) -> Optional[float]:
+    def _validate_activity_value(cls, v: float | None) -> float | None:
         return validate_finite(v, "activity_value")
 
     @field_validator("function_status")
     @classmethod
-    def _validate_function_status(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_function_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_FUNCTION_STATUS, "function_status")
 
 
@@ -189,26 +189,26 @@ class DiplotypeRow(AuthoredModel):
     gene: str = Field(description="Gene symbol, e.g. CYP2D6")
     haplotype_a: str = Field(description="First haplotype of the pair (canonicalized a <= b)")
     haplotype_b: str = Field(description="Second haplotype of the pair")
-    trait_efo_id: Optional[str] = Field(
+    trait_efo_id: str | None = Field(
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s)"
     )
-    direction: Optional[str] = Field(default=None, description="Effect direction")
-    clin_sig: Optional[str] = Field(default=None, description="Clinical significance")
-    phenotype: Optional[str] = Field(default=None, description="Metabolizer phenotype, e.g. PM/NM")
+    direction: str | None = Field(default=None, description="Effect direction")
+    clin_sig: str | None = Field(default=None, description="Clinical significance")
+    phenotype: str | None = Field(default=None, description="Metabolizer phenotype, e.g. PM/NM")
     conclusion: str = Field(description="Human-readable interpretation for this diplotype")
 
     # ── Optional PharmGKB drug context (item 9) — a diplotype → drug response. Diplotype-keyed, so it
     # rides here; single-variant drug response lives in the separate PharmVariantRow. ──
-    drug: Optional[str] = Field(default=None, description="Drug the response is about, e.g. codeine")
-    response: Optional[str] = Field(default=None, description="Drug response / phenotype, free-form")
-    evidence_level: Optional[str] = Field(
+    drug: str | None = Field(default=None, description="Drug the response is about, e.g. codeine")
+    response: str | None = Field(default=None, description="Drug response / phenotype, free-form")
+    evidence_level: str | None = Field(
         default=None, description="PharmGKB clinical-annotation evidence level (1A..4)"
     )
     # ── 0.5: CPIC's own grading of the prescribing action, a THIRD axis beside `response` (what to
     # do) and `evidence_level` (how well established the association is). CPIC classifies the
     # strength of the recommendation itself, and a well-evidenced association can still carry an
     # optional action — so the two grades are not interchangeable and must not share a column. ──
-    recommendation_strength: Optional[str] = Field(
+    recommendation_strength: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("recommendation_strength", VALID_RECOMMENDATION_STRENGTH),
         description=(
@@ -236,7 +236,7 @@ class DiplotypeRow(AuthoredModel):
     #
     # Open, not a vocabulary: CPIC's own set is open-ended and every other guideline body (DPWG, CPNDS)
     # scopes differently. A closed set here would reject the next authority's contexts.
-    clinical_context: Optional[str] = Field(
+    clinical_context: str | None = Field(
         default=None,
         description=(
             "Clinical setting this row applies to — indication, age band, prior treatment, dose "
@@ -248,12 +248,12 @@ class DiplotypeRow(AuthoredModel):
 
     @field_validator("recommendation_strength")
     @classmethod
-    def _validate_recommendation_strength(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_recommendation_strength(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RECOMMENDATION_STRENGTH, "recommendation_strength")
 
     @field_validator("clinical_context")
     @classmethod
-    def _normalize_clinical_context(cls, v: Optional[str]) -> Optional[str]:
+    def _normalize_clinical_context(cls, v: str | None) -> str | None:
         # CPIC ships trailing whitespace in three of its sixteen values (`'CVI ACS PCI '`,
         # `'CBZ use >3mos '`, `'OXC use >3 mos'`), and the column is part of the row key: unstripped,
         # `'CVI ACS PCI '` and `'CVI ACS PCI'` are two rows describing one setting.
@@ -304,22 +304,22 @@ class PharmVariantRow(AuthoredModel):
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid`/`evidence_level`/
     `trait_efo_id`/`genotype` validators)."""
 
-    rsid: Optional[str] = Field(default=None, description="dbSNP id of the variant, e.g. rs9923231")
+    rsid: str | None = Field(default=None, description="dbSNP id of the variant, e.g. rs9923231")
     # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
     # these two models run no chrom validator, so the set is not enforced. A marker claims "a
     # validator rejects anything outside this", and attaching one where nothing rejects would be the
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
-    chrom: Optional[str] = Field(default=None, description="Chromosome (position-only variants)")
-    start: Optional[int] = Field(
+    chrom: str | None = Field(default=None, description="Chromosome (position-only variants)")
+    start: int | None = Field(
         default=None,
         description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
         "this convention and it is stored as-is; do not subtract one",
     )
-    ref: Optional[str] = Field(default=None, description="Reference allele (position-only)")
-    gene: Optional[str] = Field(default=None, description="Gene symbol, e.g. VKORC1")
-    genotype: Optional[str] = Field(
+    ref: str | None = Field(default=None, description="Reference allele (position-only)")
+    gene: str | None = Field(default=None, description="Gene symbol, e.g. VKORC1")
+    genotype: str | None = Field(
         default=None,
         description="Genotype the response applies to, canonical sorted form, e.g. C/T",
     )
@@ -330,7 +330,7 @@ class PharmVariantRow(AuthoredModel):
     )
 
     drug: str = Field(description="Drug the response annotation is about, e.g. warfarin")
-    phenotype_category: Optional[str] = Field(
+    phenotype_category: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("phenotype_category", VALID_PHENOTYPE_CATEGORIES),
         description=(
@@ -339,7 +339,7 @@ class PharmVariantRow(AuthoredModel):
             "metabolism annotations."
         ),
     )
-    annotation_id: Optional[str] = Field(
+    annotation_id: str | None = Field(
         default=None,
         description=(
             "The source's own accession for this annotation, e.g. a PharmGKB clinical-annotation id. "
@@ -347,20 +347,20 @@ class PharmVariantRow(AuthoredModel):
             "a source accession is a legitimate identity for a curated record."
         ),
     )
-    response: Optional[str] = Field(
+    response: str | None = Field(
         default=None, description="Drug response / phenotype, free-form (e.g. 'reduced dose requirement')"
     )
-    evidence_level: Optional[str] = Field(
+    evidence_level: str | None = Field(
         default=None, description="PharmGKB clinical-annotation evidence level (1A..4)"
     )
-    trait_efo_id: Optional[str] = Field(
+    trait_efo_id: str | None = Field(
         default=None, description="Optional trait ontology id(s), for cross-module join"
     )
     conclusion: str = Field(description="Human-readable interpretation")
 
     @field_validator("phenotype_category")
     @classmethod
-    def _validate_phenotype_category(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_phenotype_category(cls, v: str | None) -> str | None:
         return validate_phenotype_categories(v)
 
     @property

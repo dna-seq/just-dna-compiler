@@ -322,7 +322,7 @@ def test_the_paired_intervals_have_equal_length_on_every_contig() -> None:
     """
     x_regions, y_regions = PAR_GRCh38["X"], PAR_GRCh38["Y"]
     assert len(x_regions) == len(y_regions)
-    for (x_low, x_high), (y_low, y_high) in zip(x_regions, y_regions):
+    for (x_low, x_high), (y_low, y_high) in zip(x_regions, y_regions, strict=True):
         assert x_high - x_low == y_high - y_low
 
 

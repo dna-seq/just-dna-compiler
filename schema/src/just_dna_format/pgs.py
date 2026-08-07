@@ -24,7 +24,6 @@ how to caveat them; no sample, genotype, or computed score lives here.
 """
 
 import re
-from typing import Optional
 
 from pydantic import Field, field_validator
 
@@ -43,12 +42,12 @@ class PgsRow(AuthoredModel):
     the namespace closed, + the shared `trait_efo_id` validator)."""
 
     pgs_id: str = Field(description="PGS Catalog id, e.g. PGS000135")
-    trait_efo_id: Optional[str] = Field(
+    trait_efo_id: str | None = Field(
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s) — joins with variant modules"
     )
-    note: Optional[str] = Field(default=None, description="Free-text note")
-    group: Optional[str] = Field(default=None, description="Grouping label within the module")
-    training_ancestry: Optional[list[str]] = Field(
+    note: str | None = Field(default=None, description="Free-text note")
+    group: str | None = Field(default=None, description="Grouping label within the module")
+    training_ancestry: list[str] | None = Field(
         default=None,
         # NOT `vocab.RECOMMENDED_ANCESTRY_GROUPS` — these are 1000G superpopulation codes and that is
         # a gnomAD population list. `vocab.py` forbids merging them; keying the marker by vocabulary
@@ -56,18 +55,18 @@ class PgsRow(AuthoredModel):
         json_schema_extra=vocabulary("training_ancestry", VALID_TRAINING_ANCESTRY),
         description="Superpopulation(s) the score was validated in (1000G superpop codes; multi-valued)",
     )
-    training_cohort: Optional[str] = Field(
+    training_cohort: str | None = Field(
         default=None,
         description="Optional free-form sub-superpop cohort, e.g. 'FIN', 'Ashkenazi', 'UK Biobank NW-EUR'",
     )
-    match_rate_floor: Optional[float] = Field(
+    match_rate_floor: float | None = Field(
         default=None,
         description=(
             "Author-set variant-match floor in [0,1]; a score computed below it is invalid. Only the "
             "floor lives in-module — the observed per-sample match rate is a measurement (consumer-side)."
         ),
     )
-    research_tier: Optional[str] = Field(
+    research_tier: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("research_tier", VALID_RESEARCH_TIERS),
         description="research_only | calibrated (VALID_RESEARCH_TIERS)",
@@ -91,7 +90,7 @@ class PgsRow(AuthoredModel):
 
     @field_validator("training_ancestry")
     @classmethod
-    def _validate_ancestry(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+    def _validate_ancestry(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return v
         for tok in v:
@@ -100,7 +99,7 @@ class PgsRow(AuthoredModel):
 
     @field_validator("match_rate_floor")
     @classmethod
-    def _validate_match_rate_floor(cls, v: Optional[float]) -> Optional[float]:
+    def _validate_match_rate_floor(cls, v: float | None) -> float | None:
         validate_finite(v, "match_rate_floor")
         if v is not None and not (0.0 <= v <= 1.0):
             raise ValueError(f"match_rate_floor must be within [0, 1], got {v}")
@@ -108,5 +107,5 @@ class PgsRow(AuthoredModel):
 
     @field_validator("research_tier")
     @classmethod
-    def _validate_research_tier(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_research_tier(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RESEARCH_TIERS, "research_tier")

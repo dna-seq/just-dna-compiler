@@ -13,7 +13,6 @@ diplotypes that share an unphased genotype while disagreeing about what it means
 from pathlib import Path
 
 import pytest
-
 from just_dna_compiler.compiler import (
     _cross_validate_phase_ambiguity,
     compile_module,

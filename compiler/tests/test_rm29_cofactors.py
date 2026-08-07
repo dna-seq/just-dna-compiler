@@ -10,8 +10,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from pydantic import ValidationError
-
 from just_dna_compiler.compiler import (
     _TABLE_DUPE_KEYS,
     _load_csv_rows,
@@ -22,6 +20,7 @@ from just_dna_compiler.compiler import (
 )
 from just_dna_format.pgx import DiplotypeRow
 from just_dna_format.spec import VariantRow
+from pydantic import ValidationError
 
 _YAML = (
     "schema_version: '1.0'\n"
@@ -62,7 +61,7 @@ def _write(d: Path) -> Path:
 
 
 def _variant(**kwargs) -> VariantRow:
-    base = dict(rsid="rs1800562", genotype="A/A", state="risk", conclusion="c")
+    base = {"rsid": "rs1800562", "genotype": "A/A", "state": "risk", "conclusion": "c"}
     return VariantRow(**{**base, **kwargs})
 
 

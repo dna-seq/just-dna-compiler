@@ -11,12 +11,11 @@ allele-exactness is not a refinement, it is the difference between a useful chec
 from pathlib import Path
 
 import pytest
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.spec import VariantRow
-
 from just_dna_enricher.clinical import verify_clin_sig
 from just_dna_enricher.clinvar_build import build_snapshot
 from just_dna_enricher.enrich import enrich
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.spec import VariantRow
 
 FIXTURE = Path(__file__).parents[2] / "assets" / "clinvar_GRCh38_slice.vcf.gz"
 

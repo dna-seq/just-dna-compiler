@@ -7,8 +7,6 @@ Mirrors test_v03.py's inline-dict + `model_validate` style and its guard-the-voc
 """
 
 import pytest
-from pydantic import ValidationError
-
 from just_dna_format.binning import (
     VALID_MEASURE_KINDS,
     ActivityPhenotypeRow,
@@ -37,6 +35,7 @@ from just_dna_format.vocab import (
     VALID_EVIDENCE_LEVELS,
     VALID_RECOMMENDATION_STRENGTH,
 )
+from pydantic import ValidationError
 
 
 # ── binning primitive ───────────────────────────────────────────────────────────────────────────
@@ -112,9 +111,9 @@ def test_measure_kind_is_pinned_per_table() -> None:
 
 
 def test_measure_kinds_vocabulary_is_frozen() -> None:
-    assert VALID_MEASURE_KINDS == frozenset(
+    assert frozenset(
         {"activity_score", "copy_number", "repeat_count", "allele_fraction", "prs_percentile"}
-    )
+    ) == VALID_MEASURE_KINDS
 
 
 # ── PGx four-table model ──────────────────────────────────────────────────────────────────────
@@ -153,12 +152,12 @@ def test_diplotype_pair_is_canonicalized() -> None:
 
 
 def test_function_status_vocabulary_is_frozen() -> None:
-    assert VALID_FUNCTION_STATUS == frozenset(
+    assert frozenset(
         {
             "no_function", "decreased_function", "normal_function",
             "increased_function", "uncertain_function", "unknown_function",
         }
-    )
+    ) == VALID_FUNCTION_STATUS
 
 
 # ── PGS declared interface ────────────────────────────────────────────────────────────────────
@@ -190,8 +189,8 @@ def test_pgs_row_rejects_bad_rows(kwargs: dict) -> None:
 
 
 def test_pgs_vocabularies_are_frozen() -> None:
-    assert VALID_TRAINING_ANCESTRY == frozenset({"EUR", "EAS", "AFR", "AMR", "SAS", "multi"})
-    assert VALID_RESEARCH_TIERS == frozenset({"research_only", "calibrated"})
+    assert frozenset({"EUR", "EAS", "AFR", "AMR", "SAS", "multi"}) == VALID_TRAINING_ANCESTRY
+    assert frozenset({"research_only", "calibrated"}) == VALID_RESEARCH_TIERS
 
 
 # ── reserved-namespace boundary: reserved ≠ arbitrary at the point of failure ───────────────────
@@ -200,14 +199,14 @@ def test_pgs_vocabularies_are_frozen() -> None:
 # diagnosis, a random/typo'd column with the generic message. Asserted uniformly across every authored
 # model — one valid construction each, then a bad column injected.
 _AUTHORED_MODELS = [
-    (VariantRow, dict(rsid="rs1", genotype="A/G", state="risk", conclusion="x")),
-    (StudyRow, dict(rsid="rs1", pmid="123")),
-    (RepeatAlleleRow, dict(gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="x")),
-    (HaplotypeRow, dict(haplotype_name="*4", rsid="rs1", allele="A")),
-    (AlleleFunctionRow, dict(gene="CYP2D6", allele="*4")),
-    (DiplotypeRow, dict(gene="CYP2D6", haplotype_a="*1", haplotype_b="*4", conclusion="x")),
-    (PharmVariantRow, dict(rsid="rs1", drug="warfarin", conclusion="x")),
-    (PgsRow, dict(pgs_id="PGS000135")),
+    (VariantRow, {"rsid": "rs1", "genotype": "A/G", "state": "risk", "conclusion": "x"}),
+    (StudyRow, {"rsid": "rs1", "pmid": "123"}),
+    (RepeatAlleleRow, {"gene": "HTT", "repeat_unit": "CAG", "measure_min": 40, "conclusion": "x"}),
+    (HaplotypeRow, {"haplotype_name": "*4", "rsid": "rs1", "allele": "A"}),
+    (AlleleFunctionRow, {"gene": "CYP2D6", "allele": "*4"}),
+    (DiplotypeRow, {"gene": "CYP2D6", "haplotype_a": "*1", "haplotype_b": "*4", "conclusion": "x"}),
+    (PharmVariantRow, {"rsid": "rs1", "drug": "warfarin", "conclusion": "x"}),
+    (PgsRow, {"pgs_id": "PGS000135"}),
 ]
 
 
@@ -224,7 +223,7 @@ def test_reserved_set_is_the_expected_shape() -> None:
     # built column unwritable. `caller`/`caller_version` were DROPPED for the opposite reason — they
     # name a consumer-side measurement (which tool made a call), so there is no future module axis to
     # reserve, and barring them by name would be arbitrary; `extra="forbid"` rejects them generically.
-    assert RESERVED_NAMES_0_4 == frozenset({"reference_db"})
+    assert frozenset({"reference_db"}) == RESERVED_NAMES_0_4
     assert set(RESERVED_NAME_REASONS) == RESERVED_NAMES_0_4  # every reserved name has a reason
 
 
@@ -329,7 +328,7 @@ def test_recommendation_strength_is_a_separate_axis_from_evidence_level() -> Non
     assert (d.evidence_level, d.recommendation_strength) == ("1A", "optional")
     assert set(VALID_RECOMMENDATION_STRENGTH).isdisjoint(VALID_EVIDENCE_LEVELS)
 
-    base = dict(gene="CYP2C19", haplotype_a="*1", haplotype_b="*2", conclusion="c")
+    base = {"gene": "CYP2C19", "haplotype_a": "*1", "haplotype_b": "*2", "conclusion": "c"}
     # Absent is a real state: CPIC's own "n/a" means it did not classify, which is an empty cell —
     # never a member, or "unclassified" would read as a classification.
     assert DiplotypeRow(**base).recommendation_strength is None

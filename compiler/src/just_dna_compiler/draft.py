@@ -38,11 +38,13 @@ nothing. `DraftReport.shifted` names every row whose line moved.
 """
 
 import csv
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence
+from typing import Any
 
-from just_dna_format.base import authored_field_names, field_category as base_field_category
+from just_dna_format.base import authored_field_names
+from just_dna_format.base import field_category as base_field_category
 from just_dna_format.binning import MeasureBinRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -81,7 +83,7 @@ class DraftError(RuntimeError):
 class RowOutcome:
     """What happened to one incoming row."""
 
-    key: Optional[tuple]
+    key: tuple | None
     status: str  #: added | already_present | differs | appended_unkeyed | invalid
     differences: dict[str, tuple[Any, Any]] = field(default_factory=dict)
 
@@ -140,7 +142,7 @@ def model_for(csv_name: str) -> type[BaseModel]:
     return model
 
 
-def natural_key(row: BaseModel) -> Optional[tuple]:
+def natural_key(row: BaseModel) -> tuple | None:
     """The identity that decides whether two rows are the same row, or `None` when the kind has none.
 
     Reuses the compiler's own `_TABLE_DUPE_KEYS` so an append can never produce a row the compiler
@@ -470,7 +472,7 @@ class PartialRow:
         except Exception as exc:  # pydantic ValidationError
             return [
                 f"{(error.get('loc') or ('?',))[0]}: {error.get('msg')}"
-                for error in getattr(exc, "errors", lambda: [])()
+                for error in getattr(exc, "errors", list)()
                 if (error.get("loc") or ("?",))[0] not in self.stubbed
             ]
         return []
@@ -556,7 +558,7 @@ def append_partial_rows(
 # because that is cheap and makes the diff legible.
 
 
-def group_of(cells: dict[str, str], columns: Sequence[str]) -> Optional[tuple]:
+def group_of(cells: dict[str, str], columns: Sequence[str]) -> tuple | None:
     """The block a row belongs to, or `None` when it declares no group (then it goes to the end)."""
     values = tuple((cells.get(column) or "").strip() for column in columns)
     return values if any(values) else None

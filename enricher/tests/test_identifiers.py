@@ -12,12 +12,9 @@ from pathlib import Path
 
 import httpx
 import pytest
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.spec import VariantRow
-from just_dna_format.vocab import VALID_RSID_STATUS
-
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.identifiers import (
+    _ONTOLOGY_IRI,
     OntologyClient,
     RsidStatus,
     check_identifiers,
@@ -25,8 +22,10 @@ from just_dna_enricher.identifiers import (
     classify_rsid,
     module_trait_ids,
 )
-from just_dna_enricher.identifiers import _ONTOLOGY_IRI
 from just_dna_enricher.net import PacingGate
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.spec import VariantRow
+from just_dna_format.vocab import VALID_RSID_STATUS
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _DBSNP = json.loads((_ASSETS / "dbsnp_esummary_payload.json").read_text())
@@ -67,7 +66,7 @@ def _ontology() -> OntologyClient:
 
 
 def _variant(**kw) -> VariantRow:
-    base = dict(genotype="A/T", state="risk", conclusion="c")
+    base = {"genotype": "A/T", "state": "risk", "conclusion": "c"}
     return VariantRow(**{**base, **kw})
 
 
@@ -134,7 +133,8 @@ def test_withdrawn_is_a_real_state_that_the_live_api_cannot_produce() -> None:
     # The automated path still cannot reach it — that is the finding, not an oversight.
     states = {classify_rsid(r, rec).state for r, rec in
               zip(("rs334", "rs3216883", _WITHDRAWN, _NEVER),
-                  (_DBSNP["result"][k] for k in ("334", "3216883", "11273140", "2000000000")))}
+                  (_DBSNP["result"][k] for k in ("334", "3216883", "11273140", "2000000000")),
+                  strict=True)}
     assert "withdrawn" not in states
 
 
@@ -233,7 +233,7 @@ def test_the_new_columns_stay_out_of_the_fact_set() -> None:
     assert "rsid_current" not in RESOLUTION_FACT_FIELDS
     assert "rsid_status" not in RESOLUTION_FACT_FIELDS
 
-    base = dict(variant_key="rs3216883", rsid="rs3216883", chrom="1", start=100, ref="A", alts="T")
+    base = {"variant_key": "rs3216883", "rsid": "rs3216883", "chrom": "1", "start": 100, "ref": "A", "alts": "T"}
     before = [ResolutionRow(**base)]
     after = [ResolutionRow(**base, rsid_status="merged", rsid_current="rs3051860")]
     assert resolution_signature(before) == resolution_signature(after)

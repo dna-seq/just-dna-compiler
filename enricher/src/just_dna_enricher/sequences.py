@@ -35,7 +35,6 @@ one tier that has the sequence to do it with.
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ga4gh.vrs.dataproxy import create_dataproxy
 from just_dna_format.resolution import ResolutionRow
@@ -65,7 +64,7 @@ class SequenceProxy:
     offline: bool = False
     _proxy: object = None
     _tried: bool = False
-    _cache: dict[tuple[str, int, int], Optional[str]] = field(default_factory=dict)
+    _cache: dict[tuple[str, int, int], str | None] = field(default_factory=dict)
 
     def proxy(self):
         """The underlying `ga4gh.vrs` data proxy, or `None` when offline or unreachable.
@@ -87,13 +86,13 @@ class SequenceProxy:
                 return None
         return self._proxy
 
-    def subsequence(self, accession: str, start: int, end: int) -> Optional[str]:
+    def subsequence(self, accession: str, start: int, end: int) -> str | None:
         """Uppercased reference bases over the interbase interval `[start, end)`, or `None`."""
         key = (accession, start, end)
         if key in self._cache:
             return self._cache[key]
         proxy = self.proxy()
-        result: Optional[str] = None
+        result: str | None = None
         if proxy is not None:
             try:
                 fetched = proxy.get_sequence(f"ga4gh:{accession}", start, end)
@@ -124,7 +123,7 @@ class RefMismatch:
     #: Offset, in bases, at which the authored `ref` *is* the reference sequence — `+1` means the
     #: variant sits one base to the right of the authored `start`, which is what subtracting one from
     #: a VCF position produces. `None` when no neighbour explains it: unknown, so nothing is claimed.
-    shift: Optional[int] = None
+    shift: int | None = None
 
     @property
     def distorts_the_allele_id(self) -> bool:
@@ -199,7 +198,7 @@ def summarize_ref_mismatches(mismatches: Sequence[RefMismatch], *, examples: int
 def verify_reference_alleles(
     rows: list[ResolutionRow],
     *,
-    sequences: Optional[SequenceProxy] = None,
+    sequences: SequenceProxy | None = None,
     offline: bool = False,
 ) -> list[RefMismatch]:
     """Compare each row's authored `ref` against the reference sequence. Returns the disagreements.
@@ -245,7 +244,7 @@ def verify_reference_alleles(
 
 def _read_with_neighbours(
     sequences: SequenceProxy, accession: str, start: int, width: int, claimed: str
-) -> tuple[Optional[str], Optional[int]]:
+) -> tuple[str | None, int | None]:
     """The bases at `start`, plus which neighbouring offset (if any) carries `claimed` instead.
 
     One read, not three. The window spans one base either side of the claimed span, so establishing

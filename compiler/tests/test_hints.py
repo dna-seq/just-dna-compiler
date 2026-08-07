@@ -11,7 +11,7 @@ import io
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.draft import DRAFTABLE, DraftError, stub_template
+from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for, stub_template
 from just_dna_compiler.hints import (
     ALTERATION_KINDS,
     REDUNDANCY_BEARING,
@@ -20,7 +20,6 @@ from just_dna_compiler.hints import (
     inspect_rows,
 )
 from just_dna_format.base import authored_field_names, field_vocabularies
-from just_dna_compiler.draft import model_for
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 

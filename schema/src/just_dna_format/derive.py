@@ -12,7 +12,6 @@ applying it to an already-derived value is a no-op (CONSTITUTION Principle 7). S
 "Upgrade derivation" section of docs/COMPILER.md.
 """
 
-from typing import Optional
 
 # The "Upgrade derivation" mapping (docs/COMPILER.md): legacy `state` → (direction, stat_significance).
 _STATE_TO_DIRECTION: dict[str, str] = {
@@ -40,7 +39,7 @@ _DIRECTION_TO_STATE: dict[str, str] = {
 }
 
 
-def direction_from_state(state: str, weight: Optional[float] = None) -> str:
+def direction_from_state(state: str, weight: float | None = None) -> str:
     """Derive `direction` from the legacy `state` (plus the `weight` sign when informative).
 
     `significant` carries no direction on its own, so it is refined from the weight sign when present
@@ -66,8 +65,8 @@ def trimmed_state(direction: str) -> str:
 
 
 def clin_sig_from_booleans(
-    pathogenic: Optional[bool], benign: Optional[bool], clinvar: Optional[bool]
-) -> Optional[str]:
+    pathogenic: bool | None, benign: bool | None, clinvar: bool | None
+) -> str | None:
     """Derive a `clin_sig` tier from the lossy legacy ClinVar booleans.
 
     `pathogenic` → pathogenic; `benign` → benign; in-ClinVar with neither flag →
@@ -82,7 +81,7 @@ def clin_sig_from_booleans(
     return None
 
 
-def pathogenic_from_clin_sig(clin_sig: Optional[str]) -> Optional[bool]:
+def pathogenic_from_clin_sig(clin_sig: str | None) -> bool | None:
     """The `pathogenic` boolean implied by a `clin_sig` tier: True for the pathogenic tiers, else
     None (the tier is silent on the boolean — we never fabricate a `False` a curator did not state)."""
     if clin_sig in {"pathogenic", "likely_pathogenic"}:
@@ -90,7 +89,7 @@ def pathogenic_from_clin_sig(clin_sig: Optional[str]) -> Optional[bool]:
     return None
 
 
-def benign_from_clin_sig(clin_sig: Optional[str]) -> Optional[bool]:
+def benign_from_clin_sig(clin_sig: str | None) -> bool | None:
     """The `benign` boolean implied by a `clin_sig` tier: True for the benign tiers, else None."""
     if clin_sig in {"benign", "likely_benign"}:
         return True

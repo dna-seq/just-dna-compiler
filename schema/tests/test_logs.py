@@ -3,7 +3,6 @@
 from pathlib import Path
 
 import pytest
-
 from just_dna_format.integrity import (
     IntegrityError,
     build_artifact,

@@ -1,7 +1,6 @@
 """Identity and versioning tests (SPEC §6)."""
 
 import pytest
-
 from just_dna_format.identity import (
     Version,
     canonical_id,

@@ -15,7 +15,6 @@ just-dna-lite's pipelines byte-for-byte so no drift is born.
 import logging
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Optional
 
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
@@ -200,7 +199,7 @@ def _provision_snapshot(
     return cache_dir
 
 
-def ensure_snapshot(ensembl_cache: Optional[Path] = None) -> Path:
+def ensure_snapshot(ensembl_cache: Path | None = None) -> Path:
     """Provision the Ensembl parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
     return _provision_snapshot(
@@ -209,7 +208,7 @@ def ensure_snapshot(ensembl_cache: Optional[Path] = None) -> Path:
     )
 
 
-def ensure_clinvar_snapshot(clinvar_cache: Optional[Path] = None) -> Path:
+def ensure_clinvar_snapshot(clinvar_cache: Path | None = None) -> Path:
     """Provision the ClinVar parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(clinvar_cache) if clinvar_cache is not None else default_clinvar_cache_dir()
     return _provision_snapshot(
@@ -218,7 +217,7 @@ def ensure_clinvar_snapshot(clinvar_cache: Optional[Path] = None) -> Path:
     )
 
 
-def ensure_constraint_snapshot(constraint_cache: Optional[Path] = None) -> Path:
+def ensure_constraint_snapshot(constraint_cache: Path | None = None) -> Path:
     """Provision the gnomAD constraint parquet cache from HuggingFace Hub.
 
     The third caller of one download body — the plumbing generalized when ClinVar landed, so this is

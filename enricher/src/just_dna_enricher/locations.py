@@ -18,7 +18,6 @@ resolver skips with a warning. Provisioning the reference is the deployment's jo
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from dotenv import find_dotenv, load_dotenv
 from platformdirs import user_cache_dir
@@ -66,7 +65,7 @@ CLINVAR_SUBDIR: str = "clinvar"
 CONSTRAINT_SUBDIR: str = "gnomad_constraint"
 
 
-def load_env(override: bool = False) -> Optional[str]:
+def load_env(override: bool = False) -> str | None:
     """Load the nearest `.env` (walking up from CWD), so cache paths can be set there.
     Returns the loaded path, or None."""
     env_path = find_dotenv(usecwd=True)
@@ -84,8 +83,8 @@ def default_ensembl_cache_dir() -> Path:
 
 
 def resolve_ensembl_reference(
-    ensembl_cache: Optional[Path] = None, *, load_dotenv_file: bool = True
-) -> Optional[Path]:
+    ensembl_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
     """Locate a usable Ensembl reference without downloading.
 
     Precedence: explicit `ensembl_cache` → ``$JUST_DNA_ENSEMBL_CACHE`` → the just-dna-lite layout
@@ -131,8 +130,8 @@ def default_constraint_cache_dir() -> Path:
 
 
 def resolve_constraint_reference(
-    constraint_cache: Optional[Path] = None, *, load_dotenv_file: bool = True
-) -> Optional[Path]:
+    constraint_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
     """Locate a usable gnomAD constraint snapshot without downloading.
 
     Same precedence ladder as the other two: explicit argument → ``$JUST_DNA_GNOMAD_CONSTRAINT_CACHE``
@@ -158,8 +157,8 @@ def resolve_constraint_reference(
 
 
 def resolve_clinvar_reference(
-    clinvar_cache: Optional[Path] = None, *, load_dotenv_file: bool = True
-) -> Optional[Path]:
+    clinvar_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
     """Locate a usable ClinVar reference without downloading.
 
     Mirrors `resolve_ensembl_reference`'s precedence: explicit `clinvar_cache` →

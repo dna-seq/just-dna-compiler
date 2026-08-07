@@ -19,7 +19,6 @@ Extracted from ``just_dna_pipelines.v1_port.publish`` (just-dna-lite); ``create_
 """
 
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -48,7 +47,7 @@ DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
 DEFAULT_CONSTRAINT_REPO_ID = "just-dna-seq/gnomad_constraint"
 
 
-def _hf_api(repo_id: str, token: Optional[str] = None):
+def _hf_api(repo_id: str, token: str | None = None):
     """Resolve a write token and return an authenticated ``HfApi``.
 
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent
@@ -70,7 +69,7 @@ def _hf_api(repo_id: str, token: Optional[str] = None):
     return HfApi(token=resolved_token)
 
 
-def ensure_repo(repo_id: str, token: Optional[str] = None):
+def ensure_repo(repo_id: str, token: str | None = None):
     """Create-or-update: ensure the dataset repo exists, returning the authenticated ``HfApi``.
 
     ``create_repo(..., exist_ok=True)`` is a no-op when the repo already exists, so create and update
@@ -94,7 +93,7 @@ class UploadPlan(BaseModel):
 def plan_upload(
     module_dir: Path,
     name: str,
-    repo_id: Optional[str] = None,
+    repo_id: str | None = None,
 ) -> UploadPlan:
     """Resolve the upload plan and validate the compiled artifacts are present."""
     resolved_repo = repo_id or DEFAULT_REPO_ID
@@ -117,9 +116,9 @@ def plan_upload(
 def upload_module(
     module_dir: Path,
     name: str,
-    repo_id: Optional[str] = None,
-    token: Optional[str] = None,
-    commit_message: Optional[str] = None,
+    repo_id: str | None = None,
+    token: str | None = None,
+    commit_message: str | None = None,
 ) -> UploadPlan:
     """Upload the compiled module to a HuggingFace dataset collection.
 
@@ -146,7 +145,7 @@ class SnapshotPlan(BaseModel):
     files: list[str] = Field(description="Repo-relative paths that will be uploaded")
 
 
-def plan_reference_snapshot(snapshot_dir: Path, repo_id: Optional[str] = None) -> SnapshotPlan:
+def plan_reference_snapshot(snapshot_dir: Path, repo_id: str | None = None) -> SnapshotPlan:
     """Resolve a snapshot publish plan and validate the built artifacts are present."""
     resolved_repo = repo_id or DEFAULT_CLINVAR_REPO_ID
     data_dir = snapshot_dir / SNAPSHOT_DATA_DIRNAME
@@ -170,9 +169,9 @@ def plan_reference_snapshot(snapshot_dir: Path, repo_id: Optional[str] = None) -
 
 def publish_reference_snapshot(
     snapshot_dir: Path,
-    repo_id: Optional[str] = None,
-    token: Optional[str] = None,
-    commit_message: Optional[str] = None,
+    repo_id: str | None = None,
+    token: str | None = None,
+    commit_message: str | None = None,
 ) -> SnapshotPlan:
     """Create-or-update a dataset repo and upload a built reference snapshot to its root.
 

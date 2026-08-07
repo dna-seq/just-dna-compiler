@@ -16,8 +16,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from just_dna_format.base import authored_field_names, field_category, field_vocabularies
 from just_dna_format.binning import (
-    VALID_MEASURE_KINDS,
     ActivityPhenotypeRow,
     CopyNumberRow,
     HeteroplasmyRow,
@@ -28,45 +28,29 @@ from just_dna_format.manifest import (
     RECOMMENDED_COLORS,
     RECOMMENDED_ICONS,
     SCHEMA_VERSION,
-    VALID_ICON_SETS,
     Contribution,
     Display,
     GenePanelSpec,
 )
+from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.pgs import (
-    VALID_RESEARCH_TIERS,
-    VALID_TRAINING_ANCESTRY,
     PgsRow,
 )
 from just_dna_format.pgx import (
-    VALID_FUNCTION_STATUS,
     AlleleFunctionRow,
     DiplotypeRow,
     HaplotypeRow,
     PharmVariantRow,
 )
 from just_dna_format.spec import (
-    RECOMMENDED_EFFECT_MEASURES,
-    RESERVED_FLAGS,
-    VALID_CHROMOSOMES,
-    VALID_CLIN_SIG,
-    VALID_DIRECTIONS,
-    VALID_SIGNIFICANCE,
-    VALID_STATES,
     Defaults,
     ModuleInfo,
     ModuleSpecConfig,
     StudyRow,
     VariantRow,
 )
-from just_dna_format.base import authored_field_names, field_category, field_vocabularies
-from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.vocab import (
-    ACTIONABILITY_SEED,
-    RECOMMENDED_AUTHOR_KINDS,
     RESERVED_NAMES_0_4,
-    VALID_AUTHOR_ROLES,
-    VALID_EVIDENCE_LEVELS,
 )
 
 # The authored surface, grouped by role. Order is the reading order for an author/agent.

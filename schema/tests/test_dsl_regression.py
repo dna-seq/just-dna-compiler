@@ -5,7 +5,6 @@ and these tests — are being removed from just-dna-lite.
 """
 
 import pytest
-
 from just_dna_format.spec import ModuleInfo, ModuleSpecConfig, StudyRow, VariantRow
 from just_dna_format.vrs import derive_vrs_allele_id
 
@@ -53,7 +52,7 @@ class TestVariantRow:
     def test_distinct_alleles_at_one_locus_get_distinct_keys(self) -> None:
         # Indels: no VRS id can be minted offline (justification needs the reference sequence), so
         # these keep the coordinate key — and it still carries the alt, so they stay distinct.
-        common = dict(chrom="11", start=5226762, ref="C", state="risk", conclusion="x")
+        common = {"chrom": "11", "start": 5226762, "ref": "C", "state": "risk", "conclusion": "x"}
         ins = VariantRow(alts="CAAAG", genotype="C/CAAAG", **common)
         dele = VariantRow(alts="CA", genotype="C/CA", **common)
         assert ins.variant_key == "11:5226762:C:CAAAG"
@@ -70,7 +69,7 @@ class TestVariantRow:
     def test_distinct_substitutions_at_one_locus_get_distinct_keys(self) -> None:
         # The substitution half of the same guarantee, now carried by the VA: a benign C>G beside a
         # pathogenic C>A at one position must not collide (the same-locus allele collision 0.5 fixed).
-        common = dict(chrom="11", start=5226762, ref="C", state="risk", conclusion="x")
+        common = {"chrom": "11", "start": 5226762, "ref": "C", "state": "risk", "conclusion": "x"}
         to_g = VariantRow(alts="G", genotype="C/G", **common)
         to_a = VariantRow(alts="A", genotype="A/C", **common)
         assert to_g.variant_key != to_a.variant_key

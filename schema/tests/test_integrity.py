@@ -4,7 +4,6 @@ import hashlib
 from pathlib import Path
 
 import pytest
-
 from just_dna_format.integrity import (
     IntegrityError,
     artifact_digest,

@@ -32,9 +32,10 @@ for rs4986893 (chr10:94780653) — which is what this pipeline already stores. D
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import httpx
+from just_dna_format.alleles import non_nucleotide_reason
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -46,17 +47,13 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CPIC_ENDPOINT = "https://api.cpicpgx.org/v1"
 CPIC_SOURCE = "cpic"
-# Plain nucleotides — what `HaplotypeRow.allele` accepts.
-_NUCLEOTIDES = frozenset("ACGT")
-# The IUPAC ambiguity codes, so a genuinely ambiguous base can be named as one.
-_IUPAC_AMBIGUITY = frozenset("RYSWKMBDHVN")
 
 
 class CpicError(RuntimeError):
     """A CPIC request failed in a way the caller must see."""
 
 
-def unusable_allele_reason(value: str) -> Optional[str]:
+def unusable_allele_reason(value: str) -> str | None:
     """Why `variantallele` cannot become a `HaplotypeRow.allele`, or `None` when it can.
 
     **Two distinct reasons, and calling both "an IUPAC ambiguity code" was wrong.** Drafting real CYP2D6
@@ -68,10 +65,13 @@ def unusable_allele_reason(value: str) -> Optional[str]:
 
     * `"ambiguity"` — every character is a nucleotide or an IUPAC ambiguity code (`R` = A or G).
     * `"notation"` — a deletion/insertion or repeat notation, not a nucleotide string at all.
+
+    The classification itself moved to `just_dna_format.alleles.non_nucleotide_reason` once the compiler
+    needed the same two-way split for a locus's own `ref`/`alts` (a `T>Y` locus can host no genotype, and
+    the generic "cannot host" message blamed the genotype). One definition, two callers, each keeping its
+    own wording — CPIC's is about a star allele's defining variant, the compiler's about a locus.
     """
-    if not value or set(value) <= _NUCLEOTIDES:
-        return None
-    return "ambiguity" if set(value) <= (_NUCLEOTIDES | _IUPAC_AMBIGUITY) else "notation"
+    return non_nucleotide_reason(value)
 
 
 #: What each `unusable_allele_reason` means, in the author's terms: what CPIC said, and what follows.
@@ -106,8 +106,8 @@ class CpicAllele:
 
     gene: str
     allele: str
-    activity_value: Optional[float] = None
-    function_status: Optional[str] = None
+    activity_value: float | None = None
+    function_status: str | None = None
 
 
 @dataclass
@@ -116,9 +116,9 @@ class CpicDiplotype:
 
     gene: str
     diplotype: str
-    phenotype: Optional[str] = None
+    phenotype: str | None = None
     # Deliberately a string: CPIC writes inequalities ("≥3.0"), which no float can represent.
-    activity_score: Optional[str] = None
+    activity_score: str | None = None
 
 
 @dataclass
@@ -127,13 +127,13 @@ class CpicDefiningVariant:
 
     gene: str
     allele: str
-    rsid: Optional[str]
-    chrom: Optional[str]
-    start: Optional[int]
-    variant_allele: Optional[str]
+    rsid: str | None
+    chrom: str | None
+    start: int | None
+    variant_allele: str | None
     #: Why the allele cannot be held (`unusable_allele_reason`), or None when it can. Was a bare
     #: `ambiguous: bool`, which named only one of the two real cases — a `DELTCT` row is not ambiguous.
-    unusable: Optional[str] = None
+    unusable: str | None = None
 
 
 @dataclass
@@ -148,10 +148,10 @@ class CpicRecommendation:
     phenotype: str
     drug: str
     population: str
-    classification: Optional[str] = None
-    recommendation: Optional[str] = None
-    implication: Optional[str] = None
-    activity_score: Optional[str] = None
+    classification: str | None = None
+    recommendation: str | None = None
+    implication: str | None = None
+    activity_score: str | None = None
 
 
 # CPIC's recommendation `classification` → `vocab.VALID_RECOMMENDATION_STRENGTH`. `n/a` is absent on
@@ -165,7 +165,7 @@ _CLASSIFICATION_MAP: dict[str, str] = {
 }
 
 
-def map_classification(raw: Optional[str]) -> Optional[str]:
+def map_classification(raw: str | None) -> str | None:
     """CPIC's recommendation strength → this format's vocabulary, or None when it did not classify."""
     if not raw:
         return None
@@ -186,7 +186,7 @@ _FUNCTION_MAP: dict[str, str] = {
 }
 
 
-def map_function_status(raw: Optional[str]) -> Optional[str]:
+def map_function_status(raw: str | None) -> str | None:
     """CPIC's prose → `pgx.VALID_FUNCTION_STATUS`, or None when it says something else.
 
     The two `possible …` values collapse to `uncertain_function`: CPIC uses them for a call it is not
@@ -198,7 +198,7 @@ def map_function_status(raw: Optional[str]) -> Optional[str]:
     return _FUNCTION_MAP.get(raw.strip().lower())
 
 
-def _float_or_none(value: Any) -> Optional[float]:
+def _float_or_none(value: Any) -> float | None:
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -212,7 +212,7 @@ class CpicClient:
         self,
         endpoint: str = DEFAULT_CPIC_ENDPOINT,
         *,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
         timeout: float = 60.0,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")

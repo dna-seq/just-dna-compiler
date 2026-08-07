@@ -15,7 +15,6 @@ triggers the V2→V1 fallback. All network lives here (never in format/compiler)
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 import httpx
 from tenacity import (
@@ -65,7 +64,7 @@ class EnsemblResolver:
     """Resolve a bare rsID to its GRCh38 loci via live Ensembl (V2 GraphQL → V1 REST fallback)."""
 
     settings: EnsemblSettings = field(default_factory=EnsemblSettings)
-    _client: Optional[httpx.Client] = None
+    _client: httpx.Client | None = None
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -77,7 +76,7 @@ class EnsemblResolver:
             self._client.close()
             self._client = None
 
-    def resolve_rsid(self, rsid: str) -> tuple[list[dict], Optional[str]]:
+    def resolve_rsid(self, rsid: str) -> tuple[list[dict], str | None]:
         """Return `([{chrom, start, ref, alts}, ...], source)` for a bare rsID, or `([], None)`.
 
         Tries V2 GraphQL, then falls back to V1 REST on a 5xx (or when V2 yields nothing). `source` is
@@ -156,7 +155,7 @@ def _loci_from_rest(payload: dict) -> list[dict]:
     return sorted(loci, key=lambda locus: (locus["chrom"], locus["start"], locus["ref"]))
 
 
-def _loci_from_graphql(variant: Optional[dict]) -> list[dict]:
+def _loci_from_graphql(variant: dict | None) -> list[dict]:
     """Parse a beta GraphQL variant node into GRCh38 loci (best-effort; shape mirrors ensembl-mcp)."""
     if not variant:
         return []

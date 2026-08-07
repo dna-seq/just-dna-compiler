@@ -13,7 +13,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from just_dna_enricher.constraint_build import _pick_row, build_snapshot
 
 _SLICE = Path(__file__).resolve().parents[2] / "assets" / "gnomad_v4.1_constraint_slice.tsv"

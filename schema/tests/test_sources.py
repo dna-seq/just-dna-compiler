@@ -7,8 +7,6 @@ the taint predicate.
 """
 
 import pytest
-from pydantic import ValidationError
-
 from just_dna_format.integrity import source_signature
 from just_dna_format.sources import (
     SOURCE_FACT_FIELDS,
@@ -17,6 +15,7 @@ from just_dna_format.sources import (
     taints_redistribution,
 )
 from just_dna_format.vocab import VALID_DECLARED_USE, VALID_SOURCE_LAYERS
+from pydantic import ValidationError
 
 
 def _row(**kw) -> SourceRow:
@@ -24,10 +23,10 @@ def _row(**kw) -> SourceRow:
 
 
 def test_layer_and_declared_use_are_closed_vocabularies() -> None:
-    assert VALID_SOURCE_LAYERS == {
+    assert {
         "resolution", "frequency", "gene_metrics", "literature", "annotation"
-    }
-    assert VALID_DECLARED_USE == {"unstated", "non_commercial", "commercial"}
+    } == VALID_SOURCE_LAYERS
+    assert {"unstated", "non_commercial", "commercial"} == VALID_DECLARED_USE
     with pytest.raises(ValidationError):
         _row(layer="annotations")          # plural typo
     with pytest.raises(ValidationError):
@@ -89,7 +88,7 @@ def test_redistribution_unknown_is_not_permission() -> None:
 
 
 def test_signature_is_producer_independent_but_fact_sensitive() -> None:
-    base = dict(license="CC-BY-SA-4.0", share_alike=True, commercial_use=False)
+    base = {"license": "CC-BY-SA-4.0", "share_alike": True, "commercial_use": False}
     # `fetched_at` is the only excluded column: when the terms were read is producer noise.
     assert "fetched_at" not in SOURCE_FACT_FIELDS
     assert source_signature([_row(**base, fetched_at="2026-08-02T00:00:00Z")]) == source_signature(

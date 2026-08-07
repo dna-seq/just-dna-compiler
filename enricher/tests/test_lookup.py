@@ -6,7 +6,6 @@ cross-examines comes back `applied=False` with a reason, and a check that could 
 """
 
 from pathlib import Path
-from typing import Optional
 
 import pytest
 from just_dna_compiler.hints import REDUNDANCY_BEARING
@@ -35,7 +34,7 @@ class _FakeEutils:
 
 
 class _FakeEuropePmc:
-    def __init__(self, records: Optional[dict] = None) -> None:
+    def __init__(self, records: dict | None = None) -> None:
         self.records = records or {}
 
     def lookup(self, pmids: list[str]) -> dict:
@@ -46,11 +45,11 @@ class _FakeEuropePmc:
 
 
 class _FakeCrossref:
-    def __init__(self, answer: Optional[bool]) -> None:
+    def __init__(self, answer: bool | None) -> None:
         self.answer = answer
         self.asked: list[str] = []
 
-    def exists(self, doi: str) -> Optional[bool]:
+    def exists(self, doi: str) -> bool | None:
         self.asked.append(doi)
         return self.answer
 
@@ -90,7 +89,7 @@ class _FakeEnsembl:
         self.source = source
         self.asked: list[str] = []
 
-    def resolve_rsid(self, rsid: str) -> tuple[list[dict], Optional[str]]:
+    def resolve_rsid(self, rsid: str) -> tuple[list[dict], str | None]:
         self.asked.append(rsid)
         return (list(self.loci), self.source) if self.loci else ([], None)
 

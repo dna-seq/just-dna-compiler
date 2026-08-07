@@ -10,7 +10,6 @@ from pathlib import Path
 
 import polars as pl
 import yaml
-
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 
 _MODULE_YAML = {
@@ -129,6 +128,7 @@ def test_annotations_deduplicated_by_variant_effect_pair(tmp_path: Path) -> None
             ann["variant_key"].to_list(),
             ann["conclusion"].to_list(),
             ann["negatives"].to_list(),
+            strict=True,
         )
     )
     assert len(keys) == len(set(keys))                   # one row per distinct variant-effect pair

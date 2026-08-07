@@ -15,14 +15,13 @@ import httpx
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import _load_csv_rows, compile_module
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.sources import SourceRow, taints_commercial_use
-from just_dna_format.vrs import derive_vrs_allele_id
-
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient
 from just_dna_enricher.net import PacingGate
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.sources import SourceRow, taints_commercial_use
+from just_dna_format.vrs import derive_vrs_allele_id
 
 _YAML = (
     "schema_version: '1.0'\n"

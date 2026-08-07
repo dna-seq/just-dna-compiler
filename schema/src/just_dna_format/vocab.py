@@ -12,7 +12,6 @@ constrained vocabularies are `frozenset[str]` + a validator, never `Enum`/`Liter
 
 import math
 import re
-from typing import Optional
 
 # ── Orthogonal axis vocabularies (the 0.3 split out of the overloaded `state`) ──────────────────
 # Effect direction — the clean phenotypic scalar. Orthogonal to `clin_sig` and `stat_significance`.
@@ -175,8 +174,8 @@ VALID_PHENOTYPE_CATEGORIES: frozenset[str] = frozenset(
 
 
 def validate_phenotype_categories(
-    value: Optional[str], field_name: str = "phenotype_category"
-) -> Optional[str]:
+    value: str | None, field_name: str = "phenotype_category"
+) -> str | None:
     """Validate a multi-valued phenotype-category cell against `VALID_PHENOTYPE_CATEGORIES`.
 
     Accepts ClinPGx's own spellings (`Metabolism/PK`) case-insensitively and normalizes them to the
@@ -423,7 +422,7 @@ def reject_reserved(data: object) -> object:
     return data
 
 
-def validate_field_token(value: Optional[str], field_name: str) -> Optional[str]:
+def validate_field_token(value: str | None, field_name: str) -> str | None:
     """Validate a **VCF field-name pointer**: one bare token, optionally `|`-alternated (`CN|DS`).
 
     The grammar is what keeps such a column a *pointer* and not an expression — no operators, no
@@ -441,7 +440,7 @@ def validate_field_token(value: Optional[str], field_name: str) -> Optional[str]
     return value
 
 
-def check_vocab(value: Optional[str], vocab: frozenset[str], field_name: str) -> Optional[str]:
+def check_vocab(value: str | None, vocab: frozenset[str], field_name: str) -> str | None:
     """Validate an optional categorical against a closed `frozenset` vocabulary (Principle 6).
 
     Passes `None` through (absent = unknown). The message format matches the pre-refactor
@@ -451,7 +450,7 @@ def check_vocab(value: Optional[str], vocab: frozenset[str], field_name: str) ->
     return value
 
 
-def validate_trait_ids(value: Optional[str], field_name: str = "trait_efo_id") -> Optional[str]:
+def validate_trait_ids(value: str | None, field_name: str = "trait_efo_id") -> str | None:
     """Validate a multi-valued CURIE cell: each `[,;|]`-split token must be an ontology CURIE."""
     if value is None:
         return value
@@ -465,14 +464,14 @@ def validate_trait_ids(value: Optional[str], field_name: str = "trait_efo_id") -
     return value
 
 
-def validate_allele(value: Optional[str], field_name: str = "allele") -> Optional[str]:
+def validate_allele(value: str | None, field_name: str = "allele") -> str | None:
     """Validate an optional nucleotide string (`^[ACGT]+$`, case-insensitive)."""
     if value is not None and not ALLELE_PATTERN.match(value):
         raise ValueError(f"{field_name} must be nucleotides (e.g. A, G, AC), got: {value!r}")
     return value
 
 
-def validate_rsid(value: Optional[str]) -> Optional[str]:
+def validate_rsid(value: str | None) -> str | None:
     """Validate an optional dbSNP identifier (`rs<digits>`)."""
     if value is not None and not RSID_PATTERN.match(value):
         raise ValueError(f"rsid must match rs<digits>, got: {value!r}")
@@ -514,7 +513,7 @@ def validate_population(value: str) -> str:
     return value
 
 
-def validate_finite(value: Optional[float], field_name: str) -> Optional[float]:
+def validate_finite(value: float | None, field_name: str) -> float | None:
     """Reject a non-finite float (`NaN`/`inf`). A `NaN` breaks round-trip equality (`NaN != NaN`
     makes `needs_upgrade`/idempotency checks oscillate) and serialises to the non-reloadable cell
     `"nan"`; an authored measure is always a finite number. Passes `None` through."""

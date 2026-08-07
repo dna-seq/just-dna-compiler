@@ -8,7 +8,6 @@ separated them, but only by giving one disease two ontology ids.
 """
 
 import pytest
-
 from just_dna_format.binning import HeteroplasmyRow, validate_bins
 
 

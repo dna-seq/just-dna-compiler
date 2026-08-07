@@ -14,16 +14,15 @@ extends it) can share one definition without pulling heavy transitive dependenci
 
 import re
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.base import vocabulary
 from just_dna_format.identity import (
     is_valid_version,
     validate_name,
     validate_namespace,
 )
-from just_dna_format.base import vocabulary
 from just_dna_format.vocab import (
     RECOMMENDED_AUTHOR_KINDS,
     VALID_AUTHOR_ROLES,
@@ -80,10 +79,10 @@ class Identity(BaseModel):
     the contract enforces exactly what just-dna-pipelines enforces on `module_spec.yaml`.
     """
 
-    namespace: Optional[str] = Field(default=None, description="Owning account/org slug")
+    namespace: str | None = Field(default=None, description="Owning account/org slug")
     name: str = Field(description="Machine name, matches ^[a-z][a-z0-9_]*$")
-    version: Optional[str] = Field(default=None, description="SemVer MAJOR.MINOR.PATCH")
-    canonical_id: Optional[str] = Field(
+    version: str | None = Field(default=None, description="SemVer MAJOR.MINOR.PATCH")
+    canonical_id: str | None = Field(
         default=None, description="namespace/name@version"
     )
 
@@ -94,12 +93,12 @@ class Identity(BaseModel):
 
     @field_validator("namespace")
     @classmethod
-    def _check_namespace(cls, v: Optional[str]) -> Optional[str]:
+    def _check_namespace(cls, v: str | None) -> str | None:
         return None if v is None else validate_namespace(v)
 
     @field_validator("version")
     @classmethod
-    def _check_version(cls, v: Optional[str]) -> Optional[str]:
+    def _check_version(cls, v: str | None) -> str | None:
         if v is not None and not is_valid_version(v):
             raise ValueError(f"version must be MAJOR.MINOR.PATCH, got: {v!r}")
         return v
@@ -160,14 +159,14 @@ class Compilation(BaseModel):
     """Provenance of the compile that produced this artifact (SPEC §5 trust fields)."""
 
     compile_success: bool = False
-    compiled_by: Optional[str] = Field(
+    compiled_by: str | None = Field(
         default=None, description="e.g. 'marketplace-server'; foreign values are untrusted"
     )
-    compiler_version: Optional[str] = None
-    ensembl_reference: Optional[str] = Field(
+    compiler_version: str | None = None
+    ensembl_reference: str | None = Field(
         default=None, description="Pinned Ensembl reference, e.g. org/repo@<rev>"
     )
-    compiled_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp")
+    compiled_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp")
     warnings: list[str] = Field(default_factory=list)
 
     # ── 0.5 resolution provenance (all optional, out of artifact.digest) ──
@@ -175,18 +174,32 @@ class Compilation(BaseModel):
     # is what was *requested*, `fully_resolved` is what was *achieved*. A consumer trusts a module when
     # `resolution_mode == "strict" or fully_resolved`; the "half-baked" product is
     # `best_effort and not fully_resolved`.
-    resolution_mode: Optional[str] = Field(
+    resolution_mode: str | None = Field(
         default=None, description="Resolution policy used: 'strict' | 'best_effort' (None = legacy/skipped)"
     )
     fully_resolved: bool = Field(
         default=False, description="Every in-scope VariantRow resolved to a genomic position (chrom+start)"
     )
-    resolution_signature: Optional[str] = Field(
+    resolution_signature: str | None = Field(
         default=None,
         description="Fact-hash of resolution.csv (integrity.resolution_signature); out of artifact.digest",
     )
     resolution_sources: list[str] = Field(
         default_factory=list, description="Sorted union of ResolutionRow.source values that filled the table"
+    )
+
+    # VA coverage, recorded as the two counts rather than a ratio or a bool. `fully_resolved` above is
+    # the precedent and the analogy is exact: policy vs outcome, and this is the outcome for the
+    # *content-addressed* identity where that one is the outcome for the coordinate. Two counts because
+    # a consumer deciding whether it can key on the VA needs the shortfall's size, not just its
+    # existence, and "complete" is then `vrs_alleles_identified == vrs_alleles` — derived, never stored
+    # twice (the house pattern: keep the parts, compute the convenience). Both `0` means no resolution
+    # table was present, i.e. nothing was attempted, which is not the same as nothing achieved.
+    vrs_alleles: int = Field(
+        default=0, description="Allele slots in resolution.csv (a multi-allelic site counts once per ALT)"
+    )
+    vrs_alleles_identified: int = Field(
+        default=0, description="Of those, how many carry a ga4gh:VA. allele id"
     )
 
 
@@ -198,7 +211,7 @@ class Frequency(BaseModel):
     release, and its own fact-hash. Absent on a module that carries no `frequencies.csv`.
     """
 
-    signature: Optional[str] = Field(
+    signature: str | None = Field(
         default=None,
         description="Fact-hash of frequencies.csv (integrity.frequency_signature); out of artifact.digest",
     )
@@ -226,7 +239,7 @@ class Frequency(BaseModel):
 class GeneMetrics(BaseModel):
     """Summary of a module's injected gene-constraint sidecar (0.5), out of `artifact.digest`."""
 
-    signature: Optional[str] = Field(
+    signature: str | None = Field(
         default=None,
         description="Fact-hash of gene_metrics.csv (integrity.gene_metrics_signature); out of artifact.digest",
     )
@@ -249,7 +262,7 @@ class Literature(BaseModel):
     hid that would read as "all citations verified" when most of them were never retrievable.
     """
 
-    signature: Optional[str] = Field(
+    signature: str | None = Field(
         default=None,
         description="Fact-hash of literature.csv (integrity.literature_signature); out of artifact.digest",
     )
@@ -303,7 +316,7 @@ class Sources(BaseModel):
     makes the whole module non-sellable, and mixing in a permissive source cannot launder it.
     """
 
-    signature: Optional[str] = Field(
+    signature: str | None = Field(
         default=None,
         description="Fact-hash of sources.csv (integrity.source_signature); out of artifact.digest",
     )
@@ -354,7 +367,7 @@ class Sources(BaseModel):
     declared_uses: list[str] = Field(
         default_factory=list, description="Sorted union of SourceRow.declared_use values"
     )
-    commercial_use: Optional[bool] = Field(
+    commercial_use: bool | None = Field(
         default=None,
         description=(
             "Derived module-wide verdict, most-restrictive-wins: false when ANY annotation-layer "
@@ -362,7 +375,7 @@ class Sources(BaseModel):
             "means undetermined, never permitted."
         ),
     )
-    redistribution: Optional[bool] = Field(
+    redistribution: bool | None = Field(
         default=None,
         description=(
             "Derived module-wide verdict on whether the module may be passed on at all, on the same "
@@ -404,10 +417,10 @@ class GenePanelSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str = Field(description="Reference the panel resolves against, e.g. 'clinvar'")
-    reference: Optional[str] = Field(
+    reference: str | None = Field(
         default=None, description="Reference release/version id, e.g. a ClinVar release date"
     )
-    reference_sha256: Optional[str] = Field(
+    reference_sha256: str | None = Field(
         default=None, description="Digest pinning the exact reference resource (sha256:...)"
     )
     genes: list[str] = Field(
@@ -424,9 +437,9 @@ class ProvenanceItem(BaseModel):
     document, not in the manifest — the manifest carries only the `Provenance` summary pointer."""
 
     variant_key: str = Field(description="rsid or chrom:start:ref, matching VariantRow.variant_key")
-    rationale: Optional[str] = Field(default=None, description="Why this annotation was made")
-    reviewer_verdict: Optional[str] = Field(default=None, description="Reviewer's verdict, if any")
-    confidence: Optional[float] = Field(default=None, description="Author/model confidence 0..1")
+    rationale: str | None = Field(default=None, description="Why this annotation was made")
+    reviewer_verdict: str | None = Field(default=None, description="Reviewer's verdict, if any")
+    confidence: float | None = Field(default=None, description="Author/model confidence 0..1")
     human_reviewed: bool = Field(default=False, description="A human reviewed this item")
 
 
@@ -435,9 +448,9 @@ class ProvenanceDoc(BaseModel):
     compiler reads and hashes it, then records the lean `Provenance` summary in the manifest so
     catalog cards can flag 'AI-authored · rationale available' without inlining the full text."""
 
-    generator: Optional[str] = Field(default=None, description="Tool/pipeline that produced items")
-    model: Optional[str] = Field(default=None, description="Model id, if AI-authored")
-    agent_version: Optional[str] = Field(default=None, description="Agent/framework version")
+    generator: str | None = Field(default=None, description="Tool/pipeline that produced items")
+    model: str | None = Field(default=None, description="Model id, if AI-authored")
+    agent_version: str | None = Field(default=None, description="Agent/framework version")
     items: list[ProvenanceItem] = Field(default_factory=list)
 
 
@@ -445,14 +458,14 @@ class Provenance(BaseModel):
     """Lean summary pointer to a version's `provenance.json` (SPEC ROADMAP item 1). The full items
     live in the hashed file (kept out of `artifact.digest`, like `logs`); this rides in the manifest."""
 
-    generator: Optional[str] = None
-    model: Optional[str] = None
-    agent_version: Optional[str] = None
+    generator: str | None = None
+    model: str | None = None
+    agent_version: str | None = None
     item_count: int = 0
-    file: Optional[str] = Field(
+    file: str | None = Field(
         default=None, description="Path to the provenance document relative to the module dir"
     )
-    sha256: Optional[str] = Field(default=None, description="sha256: of the provenance document")
+    sha256: str | None = Field(default=None, description="sha256: of the provenance document")
 
 
 class Contribution(BaseModel):
@@ -487,7 +500,7 @@ class Contribution(BaseModel):
             "scrutiny by it."
         ),
     )
-    at: Optional[str] = Field(default=None, description="ISO-8601 date/timestamp of the contribution")
+    at: str | None = Field(default=None, description="ISO-8601 date/timestamp of the contribution")
 
     @field_validator("who")
     @classmethod
@@ -531,7 +544,7 @@ class Signature(BaseModel):
     algorithm: str = Field(default="ed25519", description="Signature algorithm")
     public_key: str = Field(description="Base64 (raw) Ed25519 public key")
     signature: str = Field(description="Base64 signature over the artifact.digest string bytes")
-    signed_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp")
+    signed_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp")
 
 
 class ModuleManifest(BaseModel):
@@ -550,9 +563,9 @@ class ModuleManifest(BaseModel):
             "GRCh38-relative; other builds are recorded but not honored (RM15)."
         ),
     )
-    curator: Optional[str] = None
-    method: Optional[str] = None
-    license: Optional[str] = Field(
+    curator: str | None = None
+    method: str | None = None
+    license: str | None = Field(
         default=None,
         description=(
             "Module-wide licence. Author-declared via `module_spec.yaml`'s `license:` and copied "
@@ -561,7 +574,7 @@ class ModuleManifest(BaseModel):
         ),
     )
 
-    owner: Optional[str] = None
+    owner: str | None = None
     authors: list[str] = Field(default_factory=list)
     authorship: list[Contribution] = Field(
         default_factory=list,
@@ -572,12 +585,12 @@ class ModuleManifest(BaseModel):
             "compat; folding them in is a 1.0-cleanup item)."
         ),
     )
-    created_at: Optional[str] = None
-    published_at: Optional[str] = None
+    created_at: str | None = None
+    published_at: str | None = None
 
     stats: Stats = Field(default_factory=Stats)
     compilation: Compilation = Field(default_factory=Compilation)
-    frequency: Optional[Frequency] = Field(
+    frequency: Frequency | None = Field(
         default=None,
         description=(
             "Summary of the injected allele-frequency sidecar (0.5), when the module carries one. "
@@ -586,11 +599,11 @@ class ModuleManifest(BaseModel):
             "needs without reading the artifact."
         ),
     )
-    gene_metrics: Optional[GeneMetrics] = Field(
+    gene_metrics: GeneMetrics | None = Field(
         default=None,
         description="Summary of the injected gene-constraint sidecar (0.5), when the module carries one.",
     )
-    literature: Optional[Literature] = Field(
+    literature: Literature | None = Field(
         default=None,
         description=(
             "Summary of the injected citation sidecar (0.5), when the module carries one. Carries the "
@@ -598,7 +611,7 @@ class ModuleManifest(BaseModel):
             "nature and a consumer must be able to tell 'checked and found' from 'never retrievable'."
         ),
     )
-    sources: Optional[Sources] = Field(
+    sources: Sources | None = Field(
         default=None,
         description=(
             "Summary of the data-source licensing sidecar (0.5), when the module carries one. The "
@@ -608,7 +621,7 @@ class ModuleManifest(BaseModel):
         ),
     )
     inputs: list[FileEntry] = Field(default_factory=list)
-    content_signature: Optional[str] = Field(
+    content_signature: str | None = Field(
         default=None,
         description=(
             "Stable content identity over the RAW authored data rows (variants/studies + 0.4 table "
@@ -630,7 +643,7 @@ class ModuleManifest(BaseModel):
             "full cross-version provenance is the union of every version's logs."
         ),
     )
-    provenance: Optional[Provenance] = Field(
+    provenance: Provenance | None = Field(
         default=None,
         description=(
             "Optional summary of a version's structured per-variant provenance (SPEC ROADMAP item "
@@ -638,14 +651,14 @@ class ModuleManifest(BaseModel):
             "like `logs`); this field carries only the generator/model/count/hash pointer."
         ),
     )
-    panel: Optional[GenePanelSpec] = Field(
+    panel: GenePanelSpec | None = Field(
         default=None,
         description=(
             "Set when the module was authored as a gene panel (SPEC ROADMAP item 7). Descriptive "
             "only in this version — the variant set is still enumerated in the artifact."
         ),
     )
-    logo: Optional[FileEntry] = Field(
+    logo: FileEntry | None = Field(
         default=None,
         description=(
             "Optional module logo image (png/jpg/jpeg), hashed like `inputs`. Kept OUT of "
@@ -653,7 +666,7 @@ class ModuleManifest(BaseModel):
             "identity. Consumers fall back to `display.icon`/`icon_set` when absent."
         ),
     )
-    signature: Optional[Signature] = Field(
+    signature: Signature | None = Field(
         default=None,
         description="Optional detached Ed25519 signature over `artifact.digest` (SPEC §5).",
     )

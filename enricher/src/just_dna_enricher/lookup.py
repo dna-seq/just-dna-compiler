@@ -28,13 +28,14 @@ Offline is a first-class answer, not a failure: a check that could not run repor
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import duckdb
 from just_dna_compiler.hints import Alteration, Finding
 
 from just_dna_enricher.clinvar import lookup_clin_sig
 from just_dna_enricher.clinvar import lookup_loci as clinvar_lookup_loci
+from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.eutils import EutilsClient, is_missing
 from just_dna_enricher.gnomad import GnomadClient
 from just_dna_enricher.identifiers import (
@@ -45,7 +46,6 @@ from just_dna_enricher.identifiers import (
     check_rsids,
 )
 from just_dna_enricher.literature import CrossrefClient, EuropePmcClient, _identifiers
-from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 
@@ -79,12 +79,12 @@ class LookupClients:
     `httpx.Client`: a fresh one per question discards the rate-limit state that keeps gnomAD from
     refusing us, and reopens a connection for a single request."""
 
-    gnomad: Optional[GnomadClient] = None
-    eutils: Optional[EutilsClient] = None
-    europepmc: Optional[EuropePmcClient] = None
-    crossref: Optional[CrossrefClient] = None
-    ontology: Optional[OntologyClient] = None
-    ensembl: Optional[EnsemblResolver] = None
+    gnomad: GnomadClient | None = None
+    eutils: EutilsClient | None = None
+    europepmc: EuropePmcClient | None = None
+    crossref: CrossrefClient | None = None
+    ontology: OntologyClient | None = None
+    ensembl: EnsemblResolver | None = None
 
     def close(self) -> None:
         for client in (
@@ -102,13 +102,13 @@ class VariantHint:
     `loci` is the uniform locus shape every link in this package returns —
     `{chrom, start, ref, alts}` with `start` 1-based and `alts` comma-joined."""
 
-    rsid: Optional[str] = None
-    rsid_status: Optional[RsidStatus] = None
+    rsid: str | None = None
+    rsid_status: RsidStatus | None = None
     loci: list[dict] = field(default_factory=list)
     rsid_candidates: list[str] = field(default_factory=list)
     populations: list[dict] = field(default_factory=list)
     clin_sig: list[dict] = field(default_factory=list)
-    vrs_id: Optional[str] = None
+    vrs_id: str | None = None
     findings: list[Finding] = field(default_factory=list)
     alterations: list[Alteration] = field(default_factory=list)
     checked: set[str] = field(default_factory=set)
@@ -127,14 +127,14 @@ class VariantHint:
 class CitationHint:
     """What is known about one citation. Every existence answer is tri-state."""
 
-    pmid: Optional[str] = None
-    doi: Optional[str] = None
-    pmid_exists: Optional[bool] = None
-    doi_exists: Optional[bool] = None
-    registry_doi: Optional[str] = None
-    pmcid: Optional[str] = None
-    open_access: Optional[bool] = None
-    abstract_available: Optional[bool] = None
+    pmid: str | None = None
+    doi: str | None = None
+    pmid_exists: bool | None = None
+    doi_exists: bool | None = None
+    registry_doi: str | None = None
+    pmcid: str | None = None
+    open_access: bool | None = None
+    abstract_available: bool | None = None
     findings: list[Finding] = field(default_factory=list)
     alterations: list[Alteration] = field(default_factory=list)
 
@@ -159,17 +159,17 @@ def _advisory(column: str, value: str, source: str, note: str) -> Alteration:
 
 def lookup_variant(
     *,
-    rsid: Optional[str] = None,
-    chrom: Optional[str] = None,
-    start: Optional[int] = None,
-    ref: Optional[str] = None,
-    alts: Optional[str] = None,
+    rsid: str | None = None,
+    chrom: str | None = None,
+    start: int | None = None,
+    ref: str | None = None,
+    alts: str | None = None,
     ambiguity: bool = False,
     frequencies: bool = False,
     offline: bool = False,
-    ensembl_cache: Optional[Path] = None,
-    clinvar_cache: Optional[Path] = None,
-    clients: Optional[LookupClients] = None,
+    ensembl_cache: Path | None = None,
+    clinvar_cache: Path | None = None,
+    clients: LookupClients | None = None,
 ) -> VariantHint:
     """Answer "what is this variant?" — validity, coordinates, alleles, frequencies, clinical calls.
 
@@ -217,13 +217,13 @@ def lookup_variant(
 
 def _lookup_from_cache(
     hint: VariantHint,
-    rsid: Optional[str],
-    chrom: Optional[str],
-    start: Optional[int],
-    ref: Optional[str],
-    alts: Optional[str],
-    ensembl_cache: Optional[Path],
-    clinvar_cache: Optional[Path],
+    rsid: str | None,
+    chrom: str | None,
+    start: int | None,
+    ref: str | None,
+    alts: str | None,
+    ensembl_cache: Path | None,
+    clinvar_cache: Path | None,
 ) -> None:
     """The offline links: the Ensembl snapshot, then ClinVar, in `enrich()`'s own order.
 
@@ -270,7 +270,7 @@ def _lookup_from_cache(
         )
 
 
-def _lookup_live_loci(hint: VariantHint, rsid: Optional[str], clients: LookupClients) -> None:
+def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClients) -> None:
     """Live Ensembl (V2 GraphQL → V1 REST) for an rsID no local snapshot resolved.
 
     Runs **only** on a cache miss, so a provisioned snapshot still answers without egress and the
@@ -301,7 +301,7 @@ def _lookup_live_loci(hint: VariantHint, rsid: Optional[str], clients: LookupCli
     )
 
 
-def _check_rsid_currency(hint: VariantHint, rsid: Optional[str], clients: LookupClients) -> None:
+def _check_rsid_currency(hint: VariantHint, rsid: str | None, clients: LookupClients) -> None:
     """dbSNP is the oracle for merge status — Ensembl 400s on some merged ids and would misreport."""
     if not rsid:
         return
@@ -368,7 +368,7 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients) -> None:
         )
 
 
-def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Optional[Path]) -> None:
+def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Path | None) -> None:
     """ClinVar's own call at each resolved allele — advisory in the strongest sense.
 
     Writing it would have the format adopt ClinVar's clinical opinion, and the charter forbids the
@@ -439,10 +439,10 @@ def _offer_coordinates(hint: VariantHint) -> None:
 
 def lookup_citation(
     *,
-    pmid: Optional[str] = None,
-    doi: Optional[str] = None,
+    pmid: str | None = None,
+    doi: str | None = None,
     offline: bool = False,
-    clients: Optional[LookupClients] = None,
+    clients: LookupClients | None = None,
 ) -> CitationHint:
     """Answer "does this citation exist, and what is its other identifier?".
 
@@ -543,7 +543,7 @@ def _check_availability(hint: CitationHint, pmid: str, clients: LookupClients) -
         )
 
 
-def lookup_trait(curie: str, *, clients: Optional[LookupClients] = None) -> TraitStatus:
+def lookup_trait(curie: str, *, clients: LookupClients | None = None) -> TraitStatus:
     """Is this trait CURIE current, obsolete, or unknown? (OLS4; `unchecked` when it cannot be asked.)"""
     clients = clients or LookupClients()
     client = clients.ontology or OntologyClient()
@@ -554,7 +554,7 @@ def lookup_trait(curie: str, *, clients: Optional[LookupClients] = None) -> Trai
             client.close()
 
 
-def lookup_gene(symbol: str, *, clients: Optional[LookupClients] = None) -> GeneStatus:
+def lookup_gene(symbol: str, *, clients: LookupClients | None = None) -> GeneStatus:
     """Is this gene symbol approved or retired? (HGNC exact endpoints, never the fuzzy search.)"""
     clients = clients or LookupClients()
     client = clients.ontology or OntologyClient()

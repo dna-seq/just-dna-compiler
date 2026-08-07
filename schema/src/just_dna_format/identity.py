@@ -99,4 +99,4 @@ def latest(versions: list[str]) -> str:
     """Return the highest SemVer string from a non-empty list."""
     if not versions:
         raise ValueError("cannot pick latest from an empty version list")
-    return str(max((parse_version(v) for v in versions)))
+    return str(max(parse_version(v) for v in versions))

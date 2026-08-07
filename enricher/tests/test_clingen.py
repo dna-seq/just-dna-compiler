@@ -10,31 +10,18 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import _load_csv_rows
-from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.sources import SourceRow
-from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE, VALID_DOSAGE_SENSITIVITY
-
 from just_dna_enricher.clingen import (
     ClinGenError,
     decode_rating,
     enrich_dosage_sensitivity,
     parse_curation_list,
 )
+from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.sources import SourceRow
+from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE, VALID_DOSAGE_SENSITIVITY
 
 # Columns and values transcribed from ClinGen_gene_curation_list_GRCh38.tsv (2026-08-01 release).
-_CURATION_TSV = "\n".join(
-    [
-        "#ClinGen Gene Curation Results",
-        "#01 Aug,2026",
-        "#Genomic Locations are reported on GRCh38 (hg38): GCF_000001405.36",
-        "#Gene Symbol\tGene ID\tHaploinsufficiency Score\tHaploinsufficiency Description"
-        "\tTriplosensitivity Score\tTriplosensitivity Description",
-        "BRCA1\t672\t3\tSufficient evidence for dosage pathogenicity\t0\tNo evidence available",
-        "A4GALT\t53947\t30\tGene associated with autosomal recessive phenotype\t0\tNo evidence available",
-        "HBB\t3043\t40\tDosage sensitivity unlikely\tNot yet evaluated\t",
-        "MTHFR\t4524\t0\tNo evidence available\tNot yet evaluated\t",
-    ]
-)
+_CURATION_TSV = "#ClinGen Gene Curation Results\n#01 Aug,2026\n#Genomic Locations are reported on GRCh38 (hg38): GCF_000001405.36\n#Gene Symbol\tGene ID\tHaploinsufficiency Score\tHaploinsufficiency Description\tTriplosensitivity Score\tTriplosensitivity Description\nBRCA1\t672\t3\tSufficient evidence for dosage pathogenicity\t0\tNo evidence available\nA4GALT\t53947\t30\tGene associated with autosomal recessive phenotype\t0\tNo evidence available\nHBB\t3043\t40\tDosage sensitivity unlikely\tNot yet evaluated\t\nMTHFR\t4524\t0\tNo evidence available\tNot yet evaluated\t"
 
 _YAML = """\
 schema_version: "1.0"

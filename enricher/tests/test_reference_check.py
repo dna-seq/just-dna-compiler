@@ -26,9 +26,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vrs import derive_vrs_allele_id
-
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.sequences import (
     RefMismatch,
@@ -36,6 +33,8 @@ from just_dna_enricher.sequences import (
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.vrs import derive_vrs_allele_id
 
 # chr11:5227002 is the HBB sickle-cell locus; the reference base there is T (checked live, and it is
 # what the whole VA ground-truth table in schema/tests/test_vrs.py rests on).
@@ -77,7 +76,7 @@ class _FakeProxy(SequenceProxy):
         self.reads += 1
         # `start`/`end` are interbase; the window's first base is 1-based `_first`.
         lo, hi = start - (self._first - 1), end - (self._first - 1)
-        result = self._window[lo:hi] if 0 <= lo and hi <= len(self._window) else None
+        result = self._window[lo:hi] if lo >= 0 and hi <= len(self._window) else None
         if result is not None and len(result) != end - start:
             result = None
         self._cache[key] = result
@@ -85,7 +84,7 @@ class _FakeProxy(SequenceProxy):
 
 
 def _row(ref: str, **kw) -> ResolutionRow:
-    base = dict(variant_key="k", chrom="11", start=5227002, ref=ref, alts="A")
+    base = {"variant_key": "k", "chrom": "11", "start": 5227002, "ref": ref, "alts": "A"}
     return ResolutionRow(**{**base, **kw})
 
 

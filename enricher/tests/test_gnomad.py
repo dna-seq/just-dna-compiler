@@ -19,8 +19,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-from just_dna_format.vocab import POPULATION_ORDER
-
 from just_dna_enricher.gnomad import (
     GnomadClient,
     GnomadError,
@@ -29,6 +27,7 @@ from just_dna_enricher.gnomad import (
     _populations_from_joint,
 )
 from just_dna_enricher.net import PacingGate
+from just_dna_format.vocab import POPULATION_ORDER
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 

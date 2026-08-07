@@ -7,7 +7,7 @@ functions provide it so a consumer (e.g. the marketplace module-detail view) can
 deduplicated set across versions without reimplementing the dedup rule.
 """
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from just_dna_format.manifest import FileEntry, ModuleManifest, Provenance
 

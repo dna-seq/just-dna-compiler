@@ -31,7 +31,6 @@ with a bar on sale, and neither makes a module sellable.
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.pgx import AlleleFunctionRow, HaplotypeRow
@@ -60,8 +59,8 @@ class FunctionConflict:
 
     gene: str
     allele: str
-    authored: Optional[str]
-    reported: Optional[str]
+    authored: str | None
+    reported: str | None
     source: str
 
     def __str__(self) -> str:
@@ -117,12 +116,12 @@ def _authored_functions(spec_dir: Path) -> list[AlleleFunctionRow]:
 
 def _normalize_allele(gene: str, allele: str) -> str:
     """`CYP2C19*2` and `*2` are the same allele — PharmVar prefixes the gene, this workspace does not."""
-    return allele[len(gene):] if allele.startswith(gene) else allele
+    return allele.removeprefix(gene)
 
 
 def _compare(
     authored: list[AlleleFunctionRow],
-    reported: dict[tuple[str, str], Optional[str]],
+    reported: dict[tuple[str, str], str | None],
     source: str,
 ) -> list[FunctionConflict]:
     """Authored function vs a source's, for the alleles both name. Silence where either is unknown."""
@@ -147,8 +146,8 @@ def enrich_pgx(
     use_pharmvar: bool = True,
     use_cpic: bool = True,
     write: bool = True,
-    pharmvar_client: Optional[PharmVarClient] = None,
-    cpic_client: Optional[CpicClient] = None,
+    pharmvar_client: PharmVarClient | None = None,
+    cpic_client: CpicClient | None = None,
 ) -> PgxResult:
     """Cross-check the module's PGx tables and record what was consulted, into `sources.csv`.
 
@@ -206,7 +205,7 @@ def enrich_pgx(
         result.conflicts.extend(_compare(authored, reported, terms.source))
         emitted.append(terms.row("annotation", declared_use=declared_use))
 
-    def _pharmvar() -> tuple[dict[tuple[str, str], Optional[str]], list[str]]:
+    def _pharmvar() -> tuple[dict[tuple[str, str], str | None], list[str]]:
         owned = pharmvar_client is None
         client = pharmvar_client or PharmVarClient()
         if not client.configured:
@@ -217,7 +216,7 @@ def enrich_pgx(
                 "and is never stored in a module)"
             )
         try:
-            reported: dict[tuple[str, str], Optional[str]] = {}
+            reported: dict[tuple[str, str], str | None] = {}
             for gene in genes:
                 for allele in client.alleles_for_gene(gene):
                     key = (allele.gene, _normalize_allele(allele.gene, allele.allele))
@@ -227,11 +226,11 @@ def enrich_pgx(
             if owned:
                 client.close()
 
-    def _cpic() -> tuple[dict[tuple[str, str], Optional[str]], list[str]]:
+    def _cpic() -> tuple[dict[tuple[str, str], str | None], list[str]]:
         owned = cpic_client is None
         client = cpic_client or CpicClient()
         try:
-            reported: dict[tuple[str, str], Optional[str]] = {}
+            reported: dict[tuple[str, str], str | None] = {}
             for gene in genes:
                 for allele in client.alleles_for_gene(gene):
                     reported[(allele.gene, allele.allele)] = allele.function_status

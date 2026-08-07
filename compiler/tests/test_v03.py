@@ -12,6 +12,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_format.spec import (
     RESERVED_FLAGS,
     VALID_CLIN_SIG,
@@ -21,8 +22,6 @@ from just_dna_format.spec import (
     VariantRow,
 )
 from pydantic import ValidationError
-
-from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 
 _YAML = """\
 schema_version: "1.0"
@@ -108,10 +107,10 @@ def test_invalid_vocab_rejected(field: str, bad: str) -> None:
 
 def test_vocab_constants_are_the_contract() -> None:
     # Guard the enum sets so a silent vocab change is caught.
-    assert VALID_DIRECTIONS == {"protective", "risk", "neutral", "unknown"}
-    assert VALID_SIGNIFICANCE == {"significant", "suggestive", "not_significant", "unknown"}
+    assert {"protective", "risk", "neutral", "unknown"} == VALID_DIRECTIONS
+    assert {"significant", "suggestive", "not_significant", "unknown"} == VALID_SIGNIFICANCE
     assert {"pathogenic", "likely_pathogenic", "uncertain_significance", "benign"} <= VALID_CLIN_SIG
-    assert RESERVED_FLAGS == {"conditional", "phased", "pleiotropic"}
+    assert {"conditional", "phased", "pleiotropic"} == RESERVED_FLAGS
 
 
 def test_effect_measure_is_permissive() -> None:

@@ -14,7 +14,6 @@ self-contained).
 """
 
 import base64
-from typing import Optional
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -55,7 +54,7 @@ def generate_private_key_pem() -> bytes:
 
 
 def sign_digest(
-    digest: str, private_key_pem: bytes, *, signed_at: Optional[str] = None
+    digest: str, private_key_pem: bytes, *, signed_at: str | None = None
 ) -> Signature:
     """Sign the `artifact.digest` string with an Ed25519 PEM private key.
 

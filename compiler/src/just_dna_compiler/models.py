@@ -2,7 +2,7 @@
 `just_dna_format.manifest.ModuleManifest` — these wrap validation/compilation outcomes."""
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from just_dna_format.manifest import ModuleManifest
 from pydantic import BaseModel, Field
@@ -37,10 +37,10 @@ class CompilationResult(BaseModel):
     """Result of spec compilation, including the emitted manifest."""
 
     success: bool = Field(description="Whether compilation succeeded")
-    output_dir: Optional[Path] = Field(default=None, description="Directory with output parquets")
+    output_dir: Path | None = Field(default=None, description="Directory with output parquets")
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     stats: dict[str, Any] = Field(default_factory=dict)
-    manifest: Optional[ModuleManifest] = Field(
+    manifest: ModuleManifest | None = Field(
         default=None, description="The manifest written next to the parquets (None on failure)"
     )

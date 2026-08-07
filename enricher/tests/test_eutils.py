@@ -7,7 +7,6 @@ the whole basis of the existence checks built on top of this.
 
 import httpx
 import pytest
-
 from just_dna_enricher.eutils import (
     NO_SUMMARY,
     EutilsClient,

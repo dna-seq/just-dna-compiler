@@ -11,11 +11,9 @@ different schemas.
 """
 
 from pathlib import Path
-from typing import Optional
 
 import duckdb
 import pytest
-
 from just_dna_enricher import download as dl
 from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
 
@@ -39,7 +37,7 @@ class _FakeFS:
     which is what makes "an older repo has no `citations/` and no `release.json`" a real case here.
     """
 
-    def __init__(self, tree: dict[str, dict[str, str]], release: Optional[str] = None) -> None:
+    def __init__(self, tree: dict[str, dict[str, str]], release: str | None = None) -> None:
         self.tree = tree                     # dirname -> {filename: column name (its schema)}
         self.release = release               # the repo-root release.json body, or None
         self.fetched: list[str] = []
@@ -75,8 +73,8 @@ def fake_hub(monkeypatch, tmp_path: Path):
 
     def factory(
         data: dict[str, str],
-        release: Optional[str] = None,
-        citations: Optional[dict[str, str]] = None,
+        release: str | None = None,
+        citations: dict[str, str] | None = None,
     ) -> _FakeFS:
         tree = {"data": data}
         if citations is not None:
