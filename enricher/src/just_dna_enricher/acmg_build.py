@@ -42,9 +42,10 @@ import json
 import logging
 import re
 from dataclasses import asdict
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
+
+from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.acmg import (
     MIN_GENES,
@@ -104,7 +105,7 @@ _SNAPSHOT_FIELDS = (
 )
 
 
-def _text(value: Any) -> Optional[str]:
+def _text(value: Any) -> str | None:
     """A cell → its text with every run of whitespace collapsed, or None if it is empty.
 
     Collapsing rather than stripping: three cells in the real sheet carry embedded newlines
@@ -139,7 +140,7 @@ def parse_acmg_workbook(path: Path) -> AcmgSfList:
         )
     workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
     sheet = workbook.worksheets[0]
-    rows = [row for row in sheet.iter_rows(values_only=True)]
+    rows = list(sheet.iter_rows(values_only=True))
     if not rows:
         raise AcmgSfError(f"{path}: the first worksheet is empty")
 
@@ -201,7 +202,7 @@ def parse_acmg_workbook(path: Path) -> AcmgSfList:
     return AcmgSfList(
         version=version,
         findings=findings,
-        retrieved_at=datetime.now(timezone.utc).isoformat(),
+        retrieved_at=now_utc_iso(),
         source_url=str(path),
     )
 
@@ -254,7 +255,7 @@ def _resolve_columns(rows: list[tuple], path: Path) -> tuple[int, dict[str, int]
 
 
 def build_acmg_snapshot(
-    workbook: Path, out_dir: Path, *, source_url: Optional[str] = None, doi: Optional[str] = None
+    workbook: Path, out_dir: Path, *, source_url: str | None = None, doi: str | None = None
 ) -> AcmgSfList:
     """Workbook → `acmg_sf.csv` + `release.json` in `out_dir`, for `acmg.load_acmg_snapshot`.
 

@@ -53,13 +53,12 @@ import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import DOI_PATTERN, StudyRow, extract_pmids
 from tenacity import (
     retry,
@@ -162,8 +161,8 @@ class EuropePmcClient:
     batch_size: int = 25
     min_request_interval: float = 0.5
     timeout: float = 30.0
-    gate: Optional[PacingGate] = None
-    _client: Optional[httpx.Client] = None
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
         if self.gate is None:
@@ -191,7 +190,7 @@ class EuropePmcClient:
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
-    def _get(self, path: str, params: Optional[dict] = None) -> httpx.Response:
+    def _get(self, path: str, params: dict | None = None) -> httpx.Response:
         assert self.gate is not None
         self.gate.wait()
         response = self._http().get(f"{self.base_url.rstrip('/')}/{path}", params=params)
@@ -232,7 +231,7 @@ class EuropePmcClient:
                 }
         return out
 
-    def fulltext(self, pmcid: str) -> Optional[str]:
+    def fulltext(self, pmcid: str) -> str | None:
         """Whitespace-normalized article text, or `None` when it cannot be retrieved.
 
         `None` is a normal outcome, not an error: an embargoed or author-manuscript-only record answers
@@ -270,9 +269,9 @@ class CrossrefClient:
     base_url: str = DEFAULT_CROSSREF_BASE
     min_request_interval: float = 0.1
     timeout: float = 30.0
-    contact_email: Optional[str] = None
-    gate: Optional[PacingGate] = None
-    _client: Optional[httpx.Client] = None
+    contact_email: str | None = None
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
         if self.gate is None:
@@ -307,7 +306,7 @@ class CrossrefClient:
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
-    def exists(self, doi: str) -> Optional[bool]:
+    def exists(self, doi: str) -> bool | None:
         """`True`/`False`, or `None` when Crossref could not be asked.
 
         `None` rather than `False` on a transport failure or an unexpected status: "we could not
@@ -331,7 +330,7 @@ class CrossrefClient:
         return True
 
 
-def extract_text(xml: str) -> Optional[str]:
+def extract_text(xml: str) -> str | None:
     """JATS XML → one normalized string, or `None` if it does not parse.
 
     `itertext()` rather than a tag-stripping regex: real JATS carries nested inline markup inside
@@ -365,7 +364,7 @@ def _regex_worker(pattern: str, text: str, sink) -> None:
 
 def regex_matches(
     pattern: str, fulltext: str, *, timeout: float = DEFAULT_REGEX_TIMEOUT
-) -> Optional[bool]:
+) -> bool | None:
     """`True`/`False`, or **`None` when the match could not be completed in time**.
 
     The three-way return is the point: a pattern that runs long has not failed to match, it has failed
@@ -438,9 +437,9 @@ def enrich_literature(
     check_doi: bool = True,
     regex_timeout: float = DEFAULT_REGEX_TIMEOUT,
     write: bool = True,
-    eutils: Optional[EutilsClient] = None,
-    europepmc: Optional[EuropePmcClient] = None,
-    crossref: Optional[CrossrefClient] = None,
+    eutils: EutilsClient | None = None,
+    europepmc: EuropePmcClient | None = None,
+    crossref: CrossrefClient | None = None,
 ) -> LiteratureResult:
     """Fill `literature.csv` from the citations in `studies.csv`.
 
@@ -493,7 +492,7 @@ def enrich_literature(
         )
 
     wanted = [pmid for pmid in citations if pmid not in existing]
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = now_utc_iso()
     result = LiteratureResult(rows=list(existing.values()), mode=mode,
                               quotes_authored=authored_total)
 
@@ -534,7 +533,7 @@ def enrich_literature(
                 # dataset), which is the case this whole client is here for.
                 authored_doi = next((s.doi for s in citations[pmid] if s.doi), None)
                 target_doi = _doi_token(authored_doi) if authored_doi else (doi or None)
-                doi_exists: Optional[bool] = None
+                doi_exists: bool | None = None
                 if check_doi and target_doi:
                     doi_exists = crossref.exists(target_doi)
                     if doi_exists is False:
@@ -543,8 +542,8 @@ def enrich_literature(
                 quotes = [
                     s for s in citations[pmid] if s.provenance_quote or s.provenance_regex
                 ]
-                found: Optional[int] = None
-                quote_source: Optional[str] = None
+                found: int | None = None
+                quote_source: str | None = None
                 if check_fulltext and quotes:
                     text = epmc.fulltext(pmcid) if (is_open and pmcid) else None
                     if text is not None:
@@ -622,14 +621,14 @@ def enrich_literature(
     return result
 
 
-def _identifiers(summary: dict) -> dict[str, Optional[str]]:
+def _identifiers(summary: dict) -> dict[str, str | None]:
     """Pull `doi`/`pmcid` out of an esummary record's `articleids` block.
 
     Both arrive free with the existence check, which is what makes the PMC ID converter unnecessary.
     Note `pmcid` appears twice in `articleids` under different `idtype`s — as a bare `PMC…` under
     `pmc`, and wrapped as `pmc-id: PMC…;` under `pmcid`. The bare one is the usable form.
     """
-    out: dict[str, Optional[str]] = {"doi": None, "pmcid": None}
+    out: dict[str, str | None] = {"doi": None, "pmcid": None}
     for entry in summary.get("articleids") or []:
         idtype, value = entry.get("idtype"), entry.get("value")
         if not value:
@@ -642,7 +641,7 @@ def _identifiers(summary: dict) -> dict[str, Optional[str]]:
 
 
 def _doi_conflicts(
-    pmid: str, studies: list[StudyRow], registry_doi: Optional[str]
+    pmid: str, studies: list[StudyRow], registry_doi: str | None
 ) -> list[DoiConflict]:
     """Authored DOIs that disagree with the registry's, de-duplicated and order-stable.
 
@@ -662,7 +661,7 @@ def _doi_conflicts(
     return conflicts
 
 
-def _doi_token(raw: str) -> Optional[str]:
+def _doi_token(raw: str) -> str | None:
     """The bare `10.x/y` token inside a free-form DOI cell, lowercased (DOIs are case-insensitive)."""
     match = DOI_PATTERN.search(raw)
     return match.group(0).rstrip(".,;").casefold() if match else None
@@ -706,7 +705,7 @@ def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
             )
 
 
-def _bool_cell(value: Optional[bool]) -> str:
+def _bool_cell(value: bool | None) -> str:
     """`true`/`false`/empty — matching the compiler's `_scalar_cell`, so reverse and this agree."""
     if value is None:
         return ""

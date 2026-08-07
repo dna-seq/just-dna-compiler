@@ -23,10 +23,10 @@ idempotency hazard for the price of duplicating one fact in two columns. `faf95`
 unavoidable stored float, and it is canonicalized on write and covered by a round-trip test.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_FREQUENCY_STATUS,
     check_vocab,
@@ -82,13 +82,13 @@ class FrequencyRow(BaseModel):
     )
 
     # ── the allele this row is about ──
-    rsid: Optional[str] = Field(default=None, description="dbSNP identifier, when known")
-    chrom: Optional[str] = Field(default=None, description="Chromosome without 'chr' prefix")
-    start: Optional[int] = Field(
+    rsid: str | None = Field(default=None, description="dbSNP identifier, when known")
+    chrom: str | None = Field(default=None, description="Chromosome without 'chr' prefix")
+    start: int | None = Field(
         default=None, ge=0, description="1-based genomic position (VCF POS convention)"
     )
-    ref: Optional[str] = Field(default=None, description="Reference allele")
-    alt: Optional[str] = Field(
+    ref: str | None = Field(default=None, description="Reference allele")
+    alt: str | None = Field(
         default=None,
         description=(
             "The ONE alt allele this frequency is for — deliberately singular, unlike "
@@ -108,19 +108,19 @@ class FrequencyRow(BaseModel):
             "together with `dataset`."
         )
     )
-    allele_count: Optional[int] = Field(
+    allele_count: int | None = Field(
         default=None, ge=0, description="AC — observed copies of `alt` in this group"
     )
-    allele_number: Optional[int] = Field(
+    allele_number: int | None = Field(
         default=None, ge=0, description="AN — total called alleles in this group (the denominator)"
     )
-    homozygote_count: Optional[int] = Field(
+    homozygote_count: int | None = Field(
         default=None, ge=0, description="Individuals homozygous for `alt` in this group"
     )
-    hemizygote_count: Optional[int] = Field(
+    hemizygote_count: int | None = Field(
         default=None, ge=0, description="Hemizygous calls (X/Y outside the PAR, and MT)"
     )
-    faf95: Optional[float] = Field(
+    faf95: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
@@ -138,23 +138,23 @@ class FrequencyRow(BaseModel):
     )
 
     # ── cross-references (out of the fact set, like ResolutionRow's) ──
-    vrs_id: Optional[str] = Field(default=None, description="GA4GH VRS allele id (`ga4gh:VA.…`)")
-    caid: Optional[str] = Field(
+    vrs_id: str | None = Field(default=None, description="GA4GH VRS allele id (`ga4gh:VA.…`)")
+    caid: str | None = Field(
         default=None, description="ClinGen Allele Registry canonical allele id (`CA<digits>`)"
     )
 
     # ── provenance (EXCLUDED from frequency_signature) ──
-    source: Optional[str] = Field(
+    source: str | None = Field(
         default=None, description="Which link filled this: gnomad|manual|reversed (open)"
     )
-    status: Optional[str] = Field(
+    status: str | None = Field(
         default=None,
         description="Outcome: resolved|not_found|not_covered (VALID_FREQUENCY_STATUS)",
     )
-    fetched_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp, advisory")
+    fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
     @property
-    def allele_frequency(self) -> Optional[float]:
+    def allele_frequency(self) -> float | None:
         """AC/AN — derived, never stored. `None` when either count is absent, and when `AN` is 0.
 
         An `AN` of 0 is a real and common state (a group with no coverage at this site), and it means
@@ -172,17 +172,17 @@ class FrequencyRow(BaseModel):
 
     @field_validator("vrs_id")
     @classmethod
-    def _validate_vrs_id(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_vrs_id(cls, v: str | None) -> str | None:
         return validate_vrs_id(v)
 
     @field_validator("caid")
     @classmethod
-    def _validate_caid(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_caid(cls, v: str | None) -> str | None:
         return validate_caid(v)
 
     @field_validator("status")
     @classmethod
-    def _validate_status(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_status(cls, v: str | None) -> str | None:
         """A closed vocabulary since 0.5.1 — it was free text, on a fact table.
 
         The three members are not interchangeable and the distinction is the whole point: `not_found`
@@ -190,3 +190,9 @@ class FrequencyRow(BaseModel):
         `VALID_FREQUENCY_STATUS` for why the second exists.
         """
         return check_vocab(v, VALID_FREQUENCY_STATUS, "status")
+
+    @field_validator("fetched_at", mode="before")
+    @classmethod
+    def _canonical_fetched_at(cls, v: object) -> str | None:
+        """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
+        return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))

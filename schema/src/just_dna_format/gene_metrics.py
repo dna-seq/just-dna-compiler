@@ -15,10 +15,10 @@ integer form to round-trip through — so the canonical-formatting discipline ap
 rather than to one column, and the reverse writer's round-trip is covered by a test.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import VALID_DOSAGE_SENSITIVITY, check_vocab, validate_finite
 
 # Fact columns feeding `integrity.gene_metrics_signature` — everything but `source`/`status`/
@@ -62,7 +62,7 @@ class GeneMetricsRow(BaseModel):
     gene: str = Field(
         description="HGNC-style symbol, matching the `gene` column authored in variants.csv"
     )
-    gene_id: Optional[str] = Field(
+    gene_id: str | None = Field(
         default=None,
         description=(
             "Ensembl gene id (`ENSG…`) — the stable identity behind the mutable symbol. Carried "
@@ -70,10 +70,10 @@ class GeneMetricsRow(BaseModel):
             "authored against an old symbol can still be matched."
         ),
     )
-    transcript: Optional[str] = Field(
+    transcript: str | None = Field(
         default=None, description="Ensembl transcript (`ENST…`) the metrics were computed on"
     )
-    mane_select: Optional[bool] = Field(
+    mane_select: bool | None = Field(
         default=None,
         description=(
             "Whether `transcript` is the MANE Select transcript. Load-bearing for reproducibility, "
@@ -82,10 +82,10 @@ class GeneMetricsRow(BaseModel):
     )
 
     # ── loss-of-function constraint ──
-    pli: Optional[float] = Field(
+    pli: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Probability of being loss-of-function intolerant"
     )
-    loeuf: Optional[float] = Field(
+    loeuf: float | None = Field(
         default=None,
         ge=0.0,
         description=(
@@ -94,25 +94,25 @@ class GeneMetricsRow(BaseModel):
             "so the point estimate and the full interval are never lost."
         ),
     )
-    oe_lof: Optional[float] = Field(default=None, ge=0.0, description="LoF observed/expected ratio")
-    oe_lof_lower: Optional[float] = Field(
+    oe_lof: float | None = Field(default=None, ge=0.0, description="LoF observed/expected ratio")
+    oe_lof_lower: float | None = Field(
         default=None, ge=0.0, description="Lower bound of the LoF o/e 90% CI"
     )
-    lof_z: Optional[float] = Field(default=None, description="LoF constraint Z score")
-    obs_lof: Optional[int] = Field(default=None, ge=0, description="Observed LoF variant count")
-    exp_lof: Optional[float] = Field(default=None, ge=0.0, description="Expected LoF variant count")
+    lof_z: float | None = Field(default=None, description="LoF constraint Z score")
+    obs_lof: int | None = Field(default=None, ge=0, description="Observed LoF variant count")
+    exp_lof: float | None = Field(default=None, ge=0.0, description="Expected LoF variant count")
 
     # ── missense / synonymous constraint ──
-    oe_mis: Optional[float] = Field(
+    oe_mis: float | None = Field(
         default=None, ge=0.0, description="Missense observed/expected ratio"
     )
-    mis_z: Optional[float] = Field(default=None, description="Missense constraint Z score")
-    syn_z: Optional[float] = Field(
+    mis_z: float | None = Field(default=None, description="Missense constraint Z score")
+    syn_z: float | None = Field(
         default=None,
         description="Synonymous constraint Z score — near zero for a well-behaved gene, so it doubles as a sanity check",
     )
 
-    constraint_flags: Optional[str] = Field(
+    constraint_flags: str | None = Field(
         default=None,
         description=(
             "The source's own caveat list (e.g. 'no_exp_lof', 'outlier_detected'), kept verbatim and "
@@ -124,7 +124,7 @@ class GeneMetricsRow(BaseModel):
     # this sidecar rather than a table of its own — the grain is the same question ("what does a
     # reference say about this gene?"), only a second authority answering it. A ClinGen row and a
     # gnomAD row are separate rows sharing the gene, each naming its own `dataset`. ──
-    haploinsufficiency: Optional[str] = Field(
+    haploinsufficiency: str | None = Field(
         default=None,
         description=(
             "ClinGen haploinsufficiency rating: no_evidence|little_evidence|some_evidence|"
@@ -132,7 +132,7 @@ class GeneMetricsRow(BaseModel):
             "see VALID_DOSAGE_SENSITIVITY. A FACT."
         ),
     )
-    triplosensitivity: Optional[str] = Field(
+    triplosensitivity: str | None = Field(
         default=None,
         description=(
             "ClinGen triplosensitivity rating, same vocabulary. Empty where ClinGen says 'Not yet "
@@ -144,7 +144,7 @@ class GeneMetricsRow(BaseModel):
     )
 
     # ── provenance (EXCLUDED from gene_metrics_signature) ──
-    source: Optional[str] = Field(
+    source: str | None = Field(
         default=None,
         description=(
             "The licensed data source these metrics came from: gnomad|clingen|manual|reversed (open). "
@@ -153,14 +153,14 @@ class GeneMetricsRow(BaseModel):
             "different facts precisely because `dataset` is inside the fact set and this column is not."
         ),
     )
-    status: Optional[str] = Field(
+    status: str | None = Field(
         default=None, description="Outcome: resolved|not_found (the ResolutionRow vocabulary)"
     )
-    fetched_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp, advisory")
+    fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
     @field_validator("haploinsufficiency", "triplosensitivity")
     @classmethod
-    def _check_dosage(cls, v: Optional[str], info) -> Optional[str]:
+    def _check_dosage(cls, v: str | None, info) -> str | None:
         return check_vocab(v, VALID_DOSAGE_SENSITIVITY, info.field_name or "dosage sensitivity")
 
     @field_validator("gene")
@@ -174,8 +174,14 @@ class GeneMetricsRow(BaseModel):
     @field_validator("pli", "loeuf", "oe_lof", "oe_lof_lower", "lof_z", "mis_z", "syn_z",
                      "oe_mis", "exp_lof")
     @classmethod
-    def _check_finite(cls, v: Optional[float], info) -> Optional[float]:
+    def _check_finite(cls, v: float | None, info) -> float | None:
         # A NaN breaks round-trip equality (NaN != NaN makes idempotency checks oscillate) and
         # serialises to the non-reloadable cell "nan" — the same rule the authored models apply to
         # `effect_size`. A genuinely absent metric is null, never NaN.
         return validate_finite(v, info.field_name)
+
+    @field_validator("fetched_at", mode="before")
+    @classmethod
+    def _canonical_fetched_at(cls, v: object) -> str | None:
+        """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
+        return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))

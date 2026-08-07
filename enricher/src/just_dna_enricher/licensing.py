@@ -26,12 +26,12 @@ policy when the two merged. A recorded `license_sha256` turns the next such chan
 import csv
 import hashlib
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
 
 from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE
 
@@ -52,21 +52,21 @@ class SourceTerms:
     """The terms a service publishes, as far as they can be established without the payload."""
 
     source: str
-    license: Optional[str] = None
-    license_url: Optional[str] = None
-    attribution: Optional[str] = None
-    notice: Optional[str] = None
-    share_alike: Optional[bool] = None
-    commercial_use: Optional[bool] = None
-    redistribution: Optional[bool] = None
+    license: str | None = None
+    license_url: str | None = None
+    attribution: str | None = None
+    notice: str | None = None
+    share_alike: bool | None = None
+    commercial_use: bool | None = None
+    redistribution: bool | None = None
 
     def row(
         self,
         layer: str,
         *,
         declared_use: str,
-        dataset: Optional[str] = None,
-        license_text: Optional[str] = None,
+        dataset: str | None = None,
+        license_text: str | None = None,
     ) -> SourceRow:
         """A `SourceRow` for this source at `layer`.
 
@@ -90,7 +90,7 @@ class SourceTerms:
             redistribution=self.redistribution,
             declared_use=declared_use,
             dataset=dataset,
-            fetched_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            fetched_at=now_utc_iso(),
         )
 
 
@@ -262,7 +262,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
 }
 
 
-def resolution_authority(link: Optional[str]) -> Optional[str]:
+def resolution_authority(link: str | None) -> str | None:
     """The licensed source a resolution link speaks for, or `None` when there is no external one."""
     return RESOLUTION_AUTHORITY_BY_LINK.get(link or "")
 
@@ -303,7 +303,7 @@ def record_source_terms(
     )
 
 
-def check_declared_use(terms: SourceTerms, declared_use: str) -> Optional[str]:
+def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:
     """Decide whether a fetch may proceed. Returns a skip reason, or raises, or returns None to go.
 
     Three outcomes rather than two, and the middle one is the point:

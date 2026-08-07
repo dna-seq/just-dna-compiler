@@ -35,13 +35,13 @@ import csv
 import hashlib
 import json
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Iterator, Optional
 
 import httpx
+from just_dna_format.normalize import now_utc_iso
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -110,11 +110,11 @@ def _empty_schema() -> dict:
     }
 
 
-def _is_true(value: Optional[str]) -> bool:
+def _is_true(value: str | None) -> bool:
     return (value or "").strip().lower() == "true"
 
 
-def _is_ensembl_gene(gene_id: Optional[str]) -> bool:
+def _is_ensembl_gene(gene_id: str | None) -> bool:
     """Whether `gene_id` is an Ensembl gene id rather than a bare NCBI number.
 
     This one predicate is what separates the two `mane_select=true` rows for a gene, so it is a named
@@ -123,7 +123,7 @@ def _is_ensembl_gene(gene_id: Optional[str]) -> bool:
     return (gene_id or "").strip().upper().startswith("ENSG")
 
 
-def _pick_row(rows: list[dict]) -> Optional[dict]:
+def _pick_row(rows: list[dict]) -> dict | None:
     """Choose the one row whose metrics represent a gene, or `None` when no row qualifies.
 
     Order of preference: MANE Select on an ENSG gene id → canonical on an ENSG gene id → nothing.
@@ -142,7 +142,7 @@ def _pick_row(rows: list[dict]) -> Optional[dict]:
     return None
 
 
-def _coerce(field_name: str, raw: Optional[str]) -> object:
+def _coerce(field_name: str, raw: str | None) -> object:
     """Parse one TSV cell into its typed value, mapping gnomAD's `NA`/empty to `None`."""
     text = (raw or "").strip()
     if text in _NULLS:
@@ -171,7 +171,7 @@ def _gene_record(gene: str, row: dict) -> dict:
 def _iter_rows(tsv: Path) -> Iterator[dict]:
     """Stream the TSV as dicts. Streamed rather than read whole: the real file is 95.5 MB, and the
     output is three orders of magnitude smaller, so there is no reason to hold the input in memory."""
-    with open(tsv, "r", encoding="utf-8", newline="") as handle:
+    with open(tsv, encoding="utf-8", newline="") as handle:
         yield from csv.DictReader(handle, delimiter="\t")
 
 
@@ -310,7 +310,7 @@ def _write_release_json(
         "source_rows": source_rows,
         "unresolved_count": unresolved_count,
         "dataset": "gnomad_v4.1_constraint",
-        "built_at": datetime.now(timezone.utc).isoformat(),
+        "built_at": now_utc_iso(),
         "builder_version": _builder_version(),
     }
     path = out_dir / "release.json"

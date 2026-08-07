@@ -20,14 +20,13 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Iterator, Optional
 
 import httpx
-
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.vocab import VALID_CLIN_SIG
 
 from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
@@ -151,7 +150,7 @@ _REVIEW_STARS: dict[str, int] = {
 }
 
 
-def _normalize_clin_sig(raw: Optional[str]) -> str:
+def _normalize_clin_sig(raw: str | None) -> str:
     """Fold a raw CLNSIG value into a single `VALID_CLIN_SIG` member (most-severe wins)."""
     if not raw:
         return "not_provided"
@@ -166,7 +165,7 @@ def _normalize_clin_sig(raw: Optional[str]) -> str:
     return "other"
 
 
-def _review_stars(revstat: Optional[str]) -> int:
+def _review_stars(revstat: str | None) -> int:
     return _REVIEW_STARS.get((revstat or "").strip(), 0)
 
 
@@ -182,21 +181,21 @@ def _parse_info(info: str) -> dict[str, str]:
     return out
 
 
-def _genes(geneinfo: Optional[str]) -> list[str]:
+def _genes(geneinfo: str | None) -> list[str]:
     """GENEINFO is ``SYMBOL:id|SYMBOL2:id2`` — return the bare symbols in order."""
     if not geneinfo:
         return []
     return [pair.split(":", 1)[0] for pair in geneinfo.split("|") if pair]
 
 
-def _norm_chrom(raw: str) -> Optional[str]:
+def _norm_chrom(raw: str) -> str | None:
     c = raw.removeprefix("chr")
     if c in ("M", "MT", "chrM"):
         c = "MT"
     return c if c in _VALID_CHROMS else None
 
 
-def _molecular_consequence(mc: Optional[str]) -> Optional[str]:
+def _molecular_consequence(mc: str | None) -> str | None:
     """MC is ``SO:id|consequence`` entries, comma-separated — return the first consequence label."""
     if not mc:
         return None
@@ -204,14 +203,14 @@ def _molecular_consequence(mc: Optional[str]) -> Optional[str]:
     return first.split("|", 1)[1] if "|" in first else None
 
 
-def _condition(clndn: Optional[str]) -> Optional[str]:
+def _condition(clndn: str | None) -> str | None:
     """CLNDN preferred disease name; ClinVar underscore-encodes spaces."""
     if not clndn:
         return None
     return clndn.replace("_", " ").strip() or None
 
 
-def _read_file_date(vcf_path: Path) -> Optional[str]:
+def _read_file_date(vcf_path: Path) -> str | None:
     """The ClinVar release date from the ``##fileDate=YYYY-MM-DD`` header line."""
     with gzip.open(vcf_path, "rt") as handle:
         for line in handle:
@@ -262,7 +261,7 @@ class BuildResult:
     out_dir: Path
     parquet_files: list[Path]
     record_count: int
-    clinvar_file_date: Optional[str]
+    clinvar_file_date: str | None
     source_sha256: str
     chromosomes: list[str] = field(default_factory=list)
     skipped_non_acgt: int = 0
@@ -327,7 +326,7 @@ class CitationsResult:
     """What a citations build produced, and whether the snapshot now says so."""
 
     row_count: int
-    source_sha256: Optional[str] = None
+    source_sha256: str | None = None
     release_updated: bool = False
 
 
@@ -336,7 +335,7 @@ def build_citations(
     out_dir: Path,
     *,
     source_url: str = DEFAULT_CITATIONS_URL,
-    source_sha256: Optional[str] = None,
+    source_sha256: str | None = None,
 ) -> CitationsResult:
     """`var_citations.txt` → `out_dir/citations/citations.parquet`, PubMed rows only.
 
@@ -397,14 +396,14 @@ def build_citations(
             "source_url": source_url,
             "source_sha256": digest,
             "row_count": kept.height,
-            "built_at": datetime.now(timezone.utc).isoformat(),
+            "built_at": now_utc_iso(),
             "builder_version": _builder_version(),
         },
     )
     return CitationsResult(row_count=kept.height, source_sha256=digest, release_updated=updated)
 
 
-def _sha256_file(path: Path) -> Optional[str]:
+def _sha256_file(path: Path) -> str | None:
     """sha256 of a file, or `None` if it cannot be read (provenance is best-effort, never fatal)."""
     hasher = hashlib.sha256()
     try:
@@ -559,7 +558,7 @@ def build_snapshot(
 def _write_release_json(
     out_dir: Path,
     *,
-    clinvar_file_date: Optional[str],
+    clinvar_file_date: str | None,
     source_url: str,
     source_sha256: str,
     record_count: int,
@@ -571,7 +570,7 @@ def _write_release_json(
         "source_url": source_url,
         "source_sha256": source_sha256,
         "record_count": record_count,
-        "built_at": datetime.now(timezone.utc).isoformat(),
+        "built_at": now_utc_iso(),
         "builder_version": _builder_version(),
     }
     path = out_dir / RELEASE_FILENAME

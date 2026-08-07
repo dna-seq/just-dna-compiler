@@ -34,10 +34,10 @@ simplification available here. `LiteratureRow.quotes_found` carries the same nul
 contract for the same reason.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_DECLARED_USE,
     VALID_SOURCE_LAYERS,
@@ -98,7 +98,7 @@ class SourceRow(BaseModel):
     )
 
     # ── the terms ──
-    license: Optional[str] = Field(
+    license: str | None = Field(
         default=None,
         description=(
             "Licence identifier or name, e.g. 'CC-BY-SA-4.0'. Deliberately an open string rather "
@@ -106,10 +106,10 @@ class SourceRow(BaseModel):
             "licence PLUS a bespoke clause, which no single identifier expresses."
         ),
     )
-    license_url: Optional[str] = Field(
+    license_url: str | None = Field(
         default=None, description="Where the terms were read from"
     )
-    license_sha256: Optional[str] = Field(
+    license_sha256: str | None = Field(
         default=None,
         description=(
             "sha256: over the licence text as read, pinning the terms to the same moment as the "
@@ -117,11 +117,11 @@ class SourceRow(BaseModel):
             "rather than a silent pass."
         ),
     )
-    attribution: Optional[str] = Field(
+    attribution: str | None = Field(
         default=None,
         description="The credit line the licence requires — one lookup, not a reconstruction",
     )
-    notice: Optional[str] = Field(
+    notice: str | None = Field(
         default=None,
         description=(
             "Any use restriction the licence text states that is not captured by the flags below "
@@ -131,14 +131,14 @@ class SourceRow(BaseModel):
     )
 
     # ── the three orthogonal permissions, tri-state ──
-    share_alike: Optional[bool] = Field(
+    share_alike: bool | None = Field(
         default=None,
         description=(
             "Whether the licence imposes a ShareAlike/copyleft obligation on derivatives. "
             "None means UNKNOWN, never false."
         ),
     )
-    commercial_use: Optional[bool] = Field(
+    commercial_use: bool | None = Field(
         default=None,
         description=(
             "Whether commercial use/sale is permitted. Orthogonal to `share_alike` — CC BY-SA, "
@@ -148,7 +148,7 @@ class SourceRow(BaseModel):
         ),
     )
 
-    redistribution: Optional[bool] = Field(
+    redistribution: bool | None = Field(
         default=None,
         description=(
             "Whether the terms permit passing the data on to a third party at all. A THIRD axis, not "
@@ -160,7 +160,7 @@ class SourceRow(BaseModel):
     )
 
     # ── what the acquirer declared ──
-    declared_use: Optional[str] = Field(
+    declared_use: str | None = Field(
         default=None,
         description=(
             "The use declared when the data was fetched (VALID_DECLARED_USE). A claim about the "
@@ -169,12 +169,12 @@ class SourceRow(BaseModel):
     )
 
     # ── provenance ──
-    dataset: Optional[str] = Field(
+    dataset: str | None = Field(
         default=None,
         description="Which release the data came from, e.g. 'clinpgx_2026-07-05'",
     )
-    fetched_at: Optional[str] = Field(
-        default=None, description="ISO-8601 UTC timestamp; EXCLUDED from the fact set"
+    fetched_at: str | None = Field(
+        default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything"
     )
 
     @field_validator("layer")
@@ -187,8 +187,14 @@ class SourceRow(BaseModel):
 
     @field_validator("declared_use")
     @classmethod
-    def _validate_declared_use(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_declared_use(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_DECLARED_USE, "declared_use")
+    @field_validator("fetched_at", mode="before")
+    @classmethod
+    def _canonical_fetched_at(cls, v: object) -> str | None:
+        """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
+        return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
+
 
 
 def taints_commercial_use(row: SourceRow) -> bool:

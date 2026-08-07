@@ -26,10 +26,10 @@ exactly — the same reasoning that keeps `allele_count`/`allele_number` integra
 rather than storing a float.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.spec import DOI_PATTERN
 from just_dna_format.vocab import VALID_QUOTE_SOURCE, VALID_RESOLUTION_STATUS, check_vocab
 
@@ -72,7 +72,7 @@ class LiteratureRow(BaseModel):
     )
 
     # ── cross-registry identifiers (facts: which article this is) ──
-    doi: Optional[str] = Field(
+    doi: str | None = Field(
         default=None,
         description=(
             "Digital Object Identifier for this PMID, as the registry reports it. Filled here rather "
@@ -80,11 +80,11 @@ class LiteratureRow(BaseModel):
             "`content_signature` is defined as reference-independent."
         ),
     )
-    pmcid: Optional[str] = Field(
+    pmcid: str | None = Field(
         default=None,
         description="PubMed Central id (`PMC…`) when the article is in PMC — the key to fulltext.",
     )
-    exists: Optional[bool] = Field(
+    exists: bool | None = Field(
         default=None,
         description=(
             "Whether PubMed returned a document summary for this id. False is a FACT (the citation "
@@ -93,14 +93,14 @@ class LiteratureRow(BaseModel):
     )
 
     # ── provenance and time-varying state (excluded from the fact hash) ──
-    is_open_access: Optional[bool] = Field(
+    is_open_access: bool | None = Field(
         default=None,
         description=(
             "Whether Europe PMC reports retrievable open-access fulltext. Outside the fact set: "
             "embargoes lift, so this describes the world's state rather than the module's."
         ),
     )
-    quotes_authored: Optional[int] = Field(
+    quotes_authored: int | None = Field(
         default=None,
         ge=0,
         description=(
@@ -108,7 +108,7 @@ class LiteratureRow(BaseModel):
             "Derivable from studies.csv; carried here so the coverage figure is readable in one place."
         ),
     )
-    quotes_found: Optional[int] = Field(
+    quotes_found: int | None = Field(
         default=None,
         ge=0,
         description=(
@@ -118,7 +118,7 @@ class LiteratureRow(BaseModel):
             "quote may still be in the body."
         ),
     )
-    quote_source: Optional[str] = Field(
+    quote_source: str | None = Field(
         default=None,
         description=(
             "What the quotes were matched against: fulltext|abstract. Null when neither could be "
@@ -126,7 +126,7 @@ class LiteratureRow(BaseModel):
             "fulltext — which is why the two are recorded rather than collapsed."
         ),
     )
-    doi_exists: Optional[bool] = Field(
+    doi_exists: bool | None = Field(
         default=None,
         description=(
             "Whether the authored/derived DOI resolves in Crossref. Independent of `exists`, which is "
@@ -134,19 +134,16 @@ class LiteratureRow(BaseModel):
             "that covers citations PubMed does not index at all."
         ),
     )
-    source: Optional[str] = Field(
+    source: str | None = Field(
         default=None,
         description="Which service answered: pubmed|pmc-idconv|europepmc (open, like every source column).",
     )
-    status: Optional[str] = Field(
+    status: str | None = Field(
         default=None, description="Lookup outcome: resolved|not_found|ambiguous"
     )
-    fetched_at: Optional[str] = Field(
+    fetched_at: str | None = Field(
         default=None,
-        description=(
-            "ISO-8601 UTC timestamp. This table's only currency marker — PubMed and Europe PMC "
-            "publish no release identifier, so there is no `dataset` column to pin one."
-        ),
+        description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything",
     )
 
     @field_validator("pmid")
@@ -162,7 +159,7 @@ class LiteratureRow(BaseModel):
 
     @field_validator("doi")
     @classmethod
-    def _validate_doi(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_doi(cls, v: str | None) -> str | None:
         if v is None or not v.strip():
             return None
         v = v.strip()
@@ -172,7 +169,7 @@ class LiteratureRow(BaseModel):
 
     @field_validator("pmcid")
     @classmethod
-    def _validate_pmcid(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_pmcid(cls, v: str | None) -> str | None:
         if v is None or not v.strip():
             return None
         v = v.strip().upper()
@@ -182,10 +179,16 @@ class LiteratureRow(BaseModel):
 
     @field_validator("status")
     @classmethod
-    def _validate_status(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
 
     @field_validator("quote_source")
     @classmethod
-    def _validate_quote_source(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_quote_source(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_QUOTE_SOURCE, "quote_source")
+
+    @field_validator("fetched_at", mode="before")
+    @classmethod
+    def _canonical_fetched_at(cls, v: object) -> str | None:
+        """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
+        return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))

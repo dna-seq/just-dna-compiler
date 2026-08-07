@@ -6,20 +6,29 @@ independent of the compiler. Wiring into `validate_spec`/`compile_module` is cov
 `compiler/tests/test_authority_keys.py`.
 """
 
+from datetime import datetime
 from decimal import Decimal
 
+import pytest
+from just_dna_format.frequency import FrequencyRow
+from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.literature import LiteratureRow
 from just_dna_format.normalize import (
     IDENTITY_AUTHORITY_KEYS,
     IDENTITY_AUTHORITY_REASONS,
+    normalize_utc_timestamp,
     normalize_version,
+    now_utc_iso,
     parse_p_value,
     strip_authority_keys,
 )
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.sources import SourceRow
 
 
 def test_identity_authority_set_excludes_version() -> None:
     # version is a genuine authored field now, not something to strip.
-    assert IDENTITY_AUTHORITY_KEYS == frozenset({"namespace", "owner", "canonical_id"})
+    assert frozenset({"namespace", "owner", "canonical_id"}) == IDENTITY_AUTHORITY_KEYS
     assert "version" not in IDENTITY_AUTHORITY_KEYS
     assert set(IDENTITY_AUTHORITY_REASONS) == set(IDENTITY_AUTHORITY_KEYS)
 
@@ -103,3 +112,78 @@ def test_a_value_below_float_range_reads_as_indefinite_not_as_zero() -> None:
 def test_parse_p_value_orders_by_magnitude() -> None:
     written = ["0.05", "5e-8", "1.24e-320"]
     assert sorted(written, key=parse_p_value) == sorted(written, key=lambda t: float(Decimal(t)))
+
+
+# ── provenance timestamps: one spelling, enforced on load ───────────────────────────────────────
+
+
+def test_now_utc_iso_is_second_resolution_and_z_suffixed() -> None:
+    """The single producer. Sub-second precision is our HTTP latency, not a fact about a source, and
+    it is the part most likely to differ between two runs that found identical facts."""
+    stamp = now_utc_iso()
+    assert stamp == normalize_utc_timestamp(stamp), "the producer must emit the canonical spelling"
+    assert stamp.endswith("Z") and "." not in stamp
+    assert datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").tzinfo is None  # the format carries no offset
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # The two spellings that were actually in the tree: `.isoformat()` (literature.csv) and
+        # `strftime` (sources.csv). Same instant, and they must land on the same string.
+        ("2026-08-01T20:55:37.406184+00:00", "2026-08-01T20:55:37Z"),
+        ("2026-08-01T20:55:37Z", "2026-08-01T20:55:37Z"),
+        # An offset is converted rather than truncated — 22:55+02:00 *is* 20:55Z.
+        ("2026-08-01T22:55:37+02:00", "2026-08-01T20:55:37Z"),
+        # Naive is read as UTC, which is what the column is documented to be.
+        ("2026-08-01T20:55:37", "2026-08-01T20:55:37Z"),
+        ("  2026-08-01T20:55:37Z  ", "2026-08-01T20:55:37Z"),
+        (None, None),
+        ("", None),
+    ],
+)
+def test_normalize_utc_timestamp_canonicalizes(raw: str | None, expected: str | None) -> None:
+    assert normalize_utc_timestamp(raw) == expected
+
+
+def test_normalize_utc_timestamp_is_idempotent() -> None:
+    """P7: a normalizer that shifted its own output would move a digest on every recompile."""
+    once = normalize_utc_timestamp("2026-08-01T22:55:37+02:00")
+    assert normalize_utc_timestamp(once) == once
+
+
+def test_an_unreadable_timestamp_raises_rather_than_passing_through() -> None:
+    """This column is machine-written, so an unreadable value is a producer bug or a hand-edit that
+    meant something else. Passing it through would reintroduce the drift being removed here."""
+    with pytest.raises(ValueError, match="not an ISO-8601 timestamp"):
+        normalize_utc_timestamp("last Tuesday")
+
+
+@pytest.mark.parametrize(
+    "model,kwargs",
+    [
+        (SourceRow, {"source": "gnomad", "layer": "annotation"}),
+        (LiteratureRow, {"pmid": "8696333"}),
+        (ResolutionRow, {"variant_key": "rs334", "source": "cache", "status": "resolved"}),
+        (
+            FrequencyRow,
+            {"variant_key": "rs334", "population": "global", "dataset": "gnomad_v4.1_joint",
+             "source": "gnomad", "status": "resolved"},
+        ),
+        (
+            GeneMetricsRow,
+            {"gene": "HFE", "dataset": "gnomad_v4.1_constraint", "source": "gnomad",
+             "status": "resolved"},
+        ),
+    ],
+)
+def test_every_model_carrying_fetched_at_canonicalizes_on_load(model: type, kwargs: dict) -> None:
+    """Bound on all five, not just the two whose column reaches a parquet today.
+
+    `sources.parquet` and `literature.parquet` are the ones inside `artifact.digest` right now, so those
+    two are where a second spelling would mint a second artifact identity for one set of facts. The
+    other three get it anyway: which sidecars are materialized has changed once already, and a column
+    that is canonical only where it currently happens to matter is a column that drifts back.
+    """
+    row = model(**kwargs, fetched_at="2026-08-01T20:55:37.406184+00:00")
+    assert row.fetched_at == "2026-08-01T20:55:37Z"

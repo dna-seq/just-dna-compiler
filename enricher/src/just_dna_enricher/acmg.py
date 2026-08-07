@@ -65,11 +65,10 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
 
 logger = logging.getLogger(__name__)
@@ -125,8 +124,8 @@ class SecondaryFinding:
 
     gene: str
     gene_id: int
-    gene_mim: Optional[str] = None
-    disease: Optional[str] = None
+    gene_mim: str | None = None
+    disease: str | None = None
     disease_mims: tuple[str, ...] = ()
     medgen_ids: tuple[str, ...] = ()
 
@@ -135,13 +134,13 @@ class SecondaryFinding:
     # consulted by any verdict. `variants_to_report` in particular is ACMG's scope-of-reporting text
     # ("All P and LP", "p.C282Y homozygotes only") — reporting policy, which the roadmap files as
     # explicitly outside format scope. It is recorded so an author can read it, never applied.
-    phenotype_category: Optional[str] = None
-    inheritance: Optional[str] = None
-    since_version: Optional[str] = None
-    variants_to_report: Optional[str] = None
+    phenotype_category: str | None = None
+    inheritance: str | None = None
+    since_version: str | None = None
+    variants_to_report: str | None = None
 
 
-def parse_sf_version(text: str) -> Optional[str]:
+def parse_sf_version(text: str) -> str | None:
     """`ACMG SF v3.3` / `ACMG Secondary Findings v3.3` in `text` → `"3.3"`, else None."""
     match = _VERSION_RE.search(text)
     return match.group(1) if match else None
@@ -175,7 +174,7 @@ class AcmgSfList:
         return f"acmg_sf_v{self.version}"
 
     @property
-    def superseded_by(self) -> Optional[str]:
+    def superseded_by(self) -> str | None:
         """The newer SF version this package knows about, or None when this list is the newest known.
 
         Drives the demotion of every disagreement to `unverifiable`: a list that is a release behind
@@ -206,15 +205,15 @@ class AcmgVerdict:
     """
 
     row: int
-    gene: Optional[str]
-    authored: Optional[bool]
+    gene: str | None
+    authored: bool | None
     verdict: str
     message: str = ""
 
 
 @dataclass
 class AcmgReport:
-    version: Optional[str]
+    version: str | None
     verdicts: list[AcmgVerdict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -335,7 +334,7 @@ def parse_acmg_page(text: str, *, source_url: str = DEFAULT_ACMG_URL) -> AcmgSfL
     return AcmgSfList(
         version=version,
         findings=findings,
-        retrieved_at=datetime.now(timezone.utc).isoformat(),
+        retrieved_at=now_utc_iso(),
         source_url=source_url,
     )
 
@@ -345,7 +344,7 @@ def _select_table(text: str, source_url: str) -> str:
 
     The page has exactly one today, but selecting by header rather than by position means a future
     navigation or footer table cannot silently become "the list"."""
-    for match in re.finditer(r"<table[^>]*>(.*?)</table>", text, re.S):
+    for match in re.finditer(r"<table[^>]*>(.*?)</table>", text, re.DOTALL):
         body = match.group(1)
         header_end = body.find("</tr>")
         header = body[: header_end if header_end != -1 else len(body)]
@@ -506,8 +505,8 @@ def verify_acmg_sf(
     mode: str = "best_effort",
     offline: bool = False,
     url: str = DEFAULT_ACMG_URL,
-    page_text: Optional[str] = None,
-    snapshot_dir: Optional[Path] = None,
+    page_text: str | None = None,
+    snapshot_dir: Path | None = None,
 ) -> AcmgReport:
     """Read the list — injected snapshot first, then the live page — and check `variants` against it.
 

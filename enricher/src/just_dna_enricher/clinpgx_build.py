@@ -31,11 +31,10 @@ import logging
 import re
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
+from just_dna_format.normalize import now_utc_iso
 
 try:  # polars is a `[dev]` dependency — the runtime pass reads parquet, only the builder writes it
     import polars as pl
@@ -60,9 +59,9 @@ class ClinPgxBuildResult:
     parquet_path: Path
     row_count: int
     annotation_count: int
-    created_date: Optional[str]
+    created_date: str | None
     source_sha256: str
-    license_sha256: Optional[str]
+    license_sha256: str | None
     genes: list[str] = field(default_factory=list)
 
 
@@ -105,7 +104,7 @@ def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Pa
     return dest, digest
 
 
-def read_license(archive: zipfile.ZipFile) -> Optional[str]:
+def read_license(archive: zipfile.ZipFile) -> str | None:
     """The `LICENSE.txt` ClinPGx bundles with the data, or None if the archive has none.
 
     Read from the archive rather than fetched separately on purpose: the terms that govern *these*
@@ -117,7 +116,7 @@ def read_license(archive: zipfile.ZipFile) -> Optional[str]:
     return None
 
 
-def read_created_date(archive: zipfile.ZipFile) -> Optional[str]:
+def read_created_date(archive: zipfile.ZipFile) -> str | None:
     """The `CREATED_<date>.txt` marker — ClinPGx's only release identifier."""
     for name in archive.namelist():
         match = _CREATED_RE.match(Path(name).name)
@@ -142,7 +141,7 @@ def _member(archive: zipfile.ZipFile, filename: str) -> str:
 
 def build_snapshot(
     zip_path: Path, out_dir: Path, *, source_url: str = DEFAULT_CLINPGX_URL,
-    source_sha256: Optional[str] = None,
+    source_sha256: str | None = None,
 ) -> ClinPgxBuildResult:
     """`clinicalAnnotations.zip` → `clinpgx/data/annotations.parquet` + `release.json` + `LICENSE.txt`.
 
@@ -217,7 +216,7 @@ def build_snapshot(
         "license_sha256": license_sha,
         "row_count": len(records),
         "annotation_count": len(by_id),
-        "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "built_at": now_utc_iso(),
     }
     (out_dir / RELEASE_FILENAME).write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
 

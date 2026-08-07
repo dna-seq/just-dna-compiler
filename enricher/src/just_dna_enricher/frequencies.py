@@ -19,13 +19,12 @@ written it *is* the pin, and every later compile reads it offline and determinis
 import csv
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.base import derive_variant_key
 from just_dna_format.frequency import FrequencyRow
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import population_sort_key
 
@@ -64,7 +63,7 @@ class FrequencyResult:
     skipped_offline: bool = False
 
 
-def format_faf95(value: Optional[float]) -> str:
+def format_faf95(value: float | None) -> str:
     """Render `faf95` to a canonical cell — the one stored float in the table.
 
     Every other number here is an integer count precisely so CSV round-trips are exact; `faf95` has no
@@ -136,10 +135,10 @@ def enrich_frequencies(
     *,
     mode: str = "best_effort",
     offline: bool = False,
-    populations: Optional[list[str]] = None,
+    populations: list[str] | None = None,
     dataset: str = FREQUENCY_DATASET_LABEL,
     write: bool = True,
-    client: Optional[GnomadClient] = None,
+    client: GnomadClient | None = None,
 ) -> FrequencyResult:
     """Fill `frequencies.csv` from the coordinates already in `resolution.csv`.
 
@@ -221,7 +220,7 @@ def enrich_frequencies(
             if owned:
                 gnomad.close()
 
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = now_utc_iso()
     out: list[FrequencyRow] = list(existing.values())
     covered: list[str] = []
     missing: list[str] = []

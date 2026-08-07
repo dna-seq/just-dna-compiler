@@ -24,21 +24,20 @@ is about*; querying anything else would be inventing scope the author did not as
 import csv
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import duckdb
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
 
+from just_dna_enricher.download import ensure_constraint_snapshot
 from just_dna_enricher.gnomad import (
     API_CONSTRAINT_DATASET_LABEL,
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
 )
-from just_dna_enricher.download import ensure_constraint_snapshot
 from just_dna_enricher.licensing import record_source_terms
 from just_dna_enricher.locations import resolve_constraint_reference
 
@@ -114,10 +113,11 @@ def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
         columns = [d[0] for d in con.description]
     finally:
         con.close()
-    return {dict(zip(columns, row))["gene"]: dict(zip(columns, row)) for row in rows}
+    records = [dict(zip(columns, row, strict=True)) for row in rows]
+    return {record["gene"]: record for record in records}
 
 
-def _snapshot_parquet(reference: Optional[Path]) -> Optional[str]:
+def _snapshot_parquet(reference: Path | None) -> str | None:
     """The glob a DuckDB view should read for a provisioned constraint snapshot, or `None`."""
     if reference is None:
         return None
@@ -135,11 +135,11 @@ def enrich_gene_metrics(
     *,
     mode: str = "best_effort",
     offline: bool = False,
-    constraint_cache: Optional[Path] = None,
+    constraint_cache: Path | None = None,
     dataset: str = CONSTRAINT_DATASET_LABEL,
     download: bool = True,
     write: bool = True,
-    client: Optional[GnomadClient] = None,
+    client: GnomadClient | None = None,
 ) -> GeneMetricsResult:
     """Fill `gene_metrics.csv` for the genes `variants.csv` mentions.
 
@@ -170,7 +170,7 @@ def enrich_gene_metrics(
     # the dataset label (which differs between the snapshot and the API routes).
     done = {row.gene for row in existing.values() if (row.source or "").startswith("gnomad")}
     wanted = [g for g in genes if g not in done]
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = now_utc_iso()
     out: list[GeneMetricsRow] = list(existing.values())
     covered: list[str] = []
     missing: list[str] = []

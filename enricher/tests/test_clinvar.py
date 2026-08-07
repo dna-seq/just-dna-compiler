@@ -14,13 +14,12 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import _load_csv_rows, compile_module
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vocab import VALID_CLIN_SIG
-
 from just_dna_enricher import clinvar
 from just_dna_enricher.clinvar_build import build_snapshot
 from just_dna_enricher.enrich import enrich
 from just_dna_enricher.locations import resolve_clinvar_reference
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.vocab import VALID_CLIN_SIG
 
 FIXTURE = Path(__file__).parents[2] / "assets" / "clinvar_GRCh38_slice.vcf.gz"
 REAL_VCF = Path("/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz")
@@ -157,7 +156,7 @@ def test_build_is_byte_identical_on_rebuild(tmp_path: Path) -> None:
     a = sorted((tmp_path / "a" / "data").glob("*.parquet"))
     b = sorted((tmp_path / "b" / "data").glob("*.parquet"))
     assert [p.name for p in a] == [p.name for p in b]
-    for pa, pb in zip(a, b):
+    for pa, pb in zip(a, b, strict=True):
         assert pa.read_bytes() == pb.read_bytes()  # parquet is reproducible (release.json's built_at is not)
 
 
@@ -241,7 +240,21 @@ def test_enrich_clinvar_only_then_compile(tmp_path: Path) -> None:
     assert (spec / "resolution.csv").read_text() == before
 
 
-def test_ensembl_cache_wins_when_both_present_no_digest_move(tmp_path: Path) -> None:
+def test_ensembl_cache_wins_when_both_present(tmp_path: Path) -> None:
+    """With both caches provisioned the Ensembl one answers, so the resolved facts are its facts.
+
+    **Compares `resolution_signature`, not `artifact.digest`, and that is the point of this docstring.**
+    It asserted digest equality across two *separately enriched* specs and was intermittently red —
+    passing or failing on whether the two `enrich()` calls landed in the same wall-clock second. Every
+    sidecar carries a `fetched_at`, that column reaches `sources.parquet`, and the parquet is inside the
+    Merkle root, so two runs that found byte-identical facts still mint two artifact identities.
+
+    Making them equal is not achievable here and would not be worth it: it needs each *source* to
+    publish its own last-modified time so the stamp could describe the data rather than the fetch, which
+    is unenforceable against upstreams that mostly do not offer one. So the test asserts what it
+    actually means — the facts and the authored content agree — and leaves the artifact digest to say
+    what it correctly says, that these are two artifacts built at two moments.
+    """
     cv = tmp_path / "cv"
     build_snapshot(FIXTURE, cv)
     ens = _ensembl_cache(tmp_path)
@@ -253,7 +266,7 @@ def test_ensembl_cache_wins_when_both_present_no_digest_move(tmp_path: Path) -> 
     dig_e = compile_module(spec_e, tmp_path / "oe", ensembl_cache=None)
     assert dig_e.success, dig_e.errors
 
-    # Both caches present: the Ensembl cache wins (ClinVar sits after it), so nothing moves.
+    # Both caches present: the Ensembl cache wins, because ClinVar sits after it in the chain.
     spec_b = _spec(tmp_path / "sb", variants)
     enrich(spec_b, offline=True, ensembl_cache=ens, clinvar_cache=cv)
     dig_b = compile_module(spec_b, tmp_path / "ob", ensembl_cache=None)
@@ -261,13 +274,21 @@ def test_ensembl_cache_wins_when_both_present_no_digest_move(tmp_path: Path) -> 
     assert rows_b[0].source == "cache"
     assert rows_b[0].alts == "A,C,G"  # Ensembl's alleles, not ClinVar's A,G
     assert dig_b.manifest.compilation.resolution_sources == ["cache"]
-    assert dig_b.manifest.artifact.digest == dig_e.manifest.artifact.digest
+    # The fact hash is the right instrument: producer-independent by construction, so it answers
+    # "are these the same resolved facts" without answering "were they fetched at the same instant".
+    assert (
+        dig_b.manifest.compilation.resolution_signature
+        == dig_e.manifest.compilation.resolution_signature
+    )
 
-    # ClinVar-only WOULD move the digest (alts differ) — the reason it must sit after the cache.
+    # ClinVar-only genuinely resolves different facts (alts differ) — the reason it sits after the cache.
     spec_c = _spec(tmp_path / "sc", variants)
     enrich(spec_c, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
     dig_c = compile_module(spec_c, tmp_path / "oc", ensembl_cache=None)
-    assert dig_c.manifest.artifact.digest != dig_e.manifest.artifact.digest
+    assert (
+        dig_c.manifest.compilation.resolution_signature
+        != dig_e.manifest.compilation.resolution_signature
+    )
     # ...yet the authored content is identical across all three (only resolution-side identity moves).
     assert dig_c.manifest.content_signature == dig_e.manifest.content_signature
     assert dig_b.manifest.content_signature == dig_e.manifest.content_signature

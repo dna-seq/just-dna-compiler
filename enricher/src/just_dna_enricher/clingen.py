@@ -32,13 +32,12 @@ import csv
 import io
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from just_dna_compiler.compiler import _load_csv_rows
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
@@ -63,8 +62,8 @@ class DosageRating:
     """One gene's curated dosage sensitivity, decoded."""
 
     gene: str
-    haploinsufficiency: Optional[str] = None
-    triplosensitivity: Optional[str] = None
+    haploinsufficiency: str | None = None
+    triplosensitivity: str | None = None
 
 
 @dataclass
@@ -76,7 +75,7 @@ class ClinGenResult:
     source_row: SourceRow
 
 
-def decode_rating(cell: Optional[str]) -> Optional[str]:
+def decode_rating(cell: str | None) -> str | None:
     """One ClinGen score cell → a `VALID_DOSAGE_SENSITIVITY` term, or `None`.
 
     `None` for blank, for `"Not yet evaluated"`, and for any code the mapping does not know — an
@@ -146,7 +145,7 @@ def enrich_dosage_sensitivity(
     mode: str = "best_effort",
     declared_use: str = "unstated",
     write: bool = True,
-    curation_text: Optional[str] = None,
+    curation_text: str | None = None,
     url: str = DEFAULT_CLINGEN_URL,
 ) -> ClinGenResult:
     """Add ClinGen dosage rows to `gene_metrics.csv` for the genes `variants.csv` names.
@@ -168,7 +167,7 @@ def enrich_dosage_sensitivity(
 
     ratings, released = parse_curation_list(curation_text or fetch_curation_list(url))
     dataset = f"clingen_dosage_{released}"
-    fetched_at = datetime.now(timezone.utc).isoformat()
+    fetched_at = now_utc_iso()
 
     out: list[GeneMetricsRow] = list(existing.values())
     covered: list[str] = []

@@ -20,14 +20,19 @@ set. The validator itself stays strict — if a stripper is skipped or a key sli
   denote a definite value. Same shape as the two above: a pure, total, re-runnable read of informal
   authored text, used by the compiler to cross-check the typed `p_value_num` against the string
   beside it (0.5).
+- `now_utc_iso` / `normalize_utc_timestamp` — the single spelling of a provenance timestamp, and the
+  canonicalizer that enforces it on load. Unlike the three above these are *not* read-only previews:
+  the value lands in `sources.parquet`/`literature.parquet` and so in `artifact.digest`, where two
+  spellings of one instant would be two identities for one set of facts.
 
 Dependency-light (stdlib only), like `vocab` — it is a leaf usable by any consumer without the
 compiler.
 """
 
 import re
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Iterable, Mapping, Optional
 
 # ── Registry/authority-owned identity keys (inject-only) ────────────────────────────────────────
 # Identity keys the format *knows about* (they map onto `manifest.Identity` / `manifest.owner`) but
@@ -104,7 +109,7 @@ def normalize_version(raw: str) -> str:
     return ".".join(nums)
 
 
-def parse_p_value(raw: Optional[str]) -> Optional[float]:
+def parse_p_value(raw: str | None) -> float | None:
     """Read a free-form `p_value` string as a number.
 
     Returns `None` whenever the string does not denote one definite value — an unreadable cell is not
@@ -137,3 +142,51 @@ def parse_p_value(raw: Optional[str]) -> Optional[float]:
     except (InvalidOperation, ValueError, OverflowError):
         return None
     return value or None
+
+
+UTC_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def now_utc_iso() -> str:
+    """The one producer of a provenance timestamp: ISO-8601 UTC, second resolution, `Z`-suffixed.
+
+    Every pass that stamps `fetched_at` calls this, because two producers of one column reliably
+    disagree: `sources.csv` was written `2026-08-03T02:03:23Z` while `literature.csv` was written
+    `2026-08-01T20:55:37.406184+00:00` — the same instant in two spellings, from two `datetime.now(UTC)`
+    calls that differed only in whether `.isoformat()` or `strftime` was reached for.
+
+    Second resolution rather than microsecond is deliberate. Sub-second precision says nothing true
+    about when a *source* published anything — it is the latency of our own HTTP call — and it is the
+    part most likely to differ between two runs that found identical facts.
+    """
+    return datetime.now(UTC).strftime(UTC_TIMESTAMP_FORMAT)
+
+
+def normalize_utc_timestamp(raw: str | None) -> str | None:
+    """Canonicalize any ISO-8601 timestamp to `now_utc_iso()`'s spelling, or raise if it is not one.
+
+    Applied as a `mode="before"` validator on every model carrying `fetched_at`, so the column is
+    canonical *on load* rather than merely by convention at the point of writing. That matters because
+    the value reaches `sources.parquet`/`literature.parquet` and therefore `artifact.digest`: two
+    spellings of one instant would otherwise be two artifact identities for one set of facts.
+
+    Offsets are converted to UTC and a naive value is *read* as UTC (the column is documented UTC).
+    Sub-second precision is dropped rather than rounded — see `now_utc_iso`. A value `fromisoformat`
+    cannot read raises instead of being passed through: this field is machine-written, so an unreadable
+    one is a bug in a producer or a hand-edit that meant something else, and silently keeping it would
+    reintroduce exactly the drift this function exists to end.
+    """
+    if raw is None:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(
+            f"not an ISO-8601 timestamp: {raw!r} (expected e.g. '2026-08-03T02:03:23Z')"
+        ) from exc
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC).strftime(UTC_TIMESTAMP_FORMAT)
