@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import derive_variant_key
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.normalize import now_utc_iso
@@ -159,13 +159,13 @@ def enrich_frequencies(
             f"no resolution.csv in {spec_dir} — the frequency pass reads resolved coordinates, so run "
             f"`just-dna-enricher enrich` first."
         )
-    resolution_rows, errors, _ = _load_csv_rows(resolution_path, ResolutionRow, "resolution.csv")
+    resolution_rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, "resolution.csv")
     if errors:
         raise FrequencyEnrichmentError(f"resolution.csv is invalid: {errors[0]}")
 
     existing: dict[tuple[str, str], FrequencyRow] = {}
     if frequencies_path.exists():
-        rows, errors, _ = _load_csv_rows(frequencies_path, FrequencyRow, "frequencies.csv")
+        rows, errors, _ = load_csv_rows(frequencies_path, FrequencyRow, "frequencies.csv")
         if errors:
             raise FrequencyEnrichmentError(f"existing frequencies.csv is invalid: {errors[0]}")
         for row in rows:

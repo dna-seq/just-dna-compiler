@@ -472,10 +472,25 @@ def _load_yaml(
         return None, errors, dropped
 
 
-def _load_csv_rows(
+def load_csv_rows(
     path: Path, row_model: type, file_label: str, genome_build: str = DEFAULT_GENOME_BUILD
 ) -> tuple[list[Any], list[str], list[str]]:
     """Load a CSV and validate each row against a Pydantic model. Returns (rows, errors, warnings).
+
+    **Public as of 0.5.1 (RM41), and it was public in practice long before.** This is the only correct
+    way to turn an authored CSV into row models, `just-dna-enricher` consumes it across a package
+    boundary in a dozen places, and a downstream consumer wiring the pipeline server-side had the
+    choice of reaching for a private symbol or re-implementing it. Re-implementing is a trap rather
+    than a chore, because it is not `csv.DictReader` plus `Model(**row)` — it carries the two rules
+    below, each of which this workspace has already had to fix once:
+
+    * **an empty cell becomes `None`, and the key is kept.** `MeasureBinRow.measure_kind` has a
+      default, so `is_required()` is `False`, but the model then receives `None` rather than its
+      default and fails on type. A `""` where this would have put `None` is a different failure again.
+    * **`genome_build` is told to each row** (below), so a loader that omits it mints GRCh38
+      identities for a GRCh37 module.
+
+    `_load_csv_rows` remains as an alias so no caller breaks.
 
     `genome_build` is **told to each row**, not read from it. A coordinate is not absolute, so a row
     deriving an identity from one needs the module's assembly — and a pydantic model built from a CSV
@@ -520,6 +535,40 @@ def _load_csv_rows(
                     loc = " → ".join(str(x) for x in err["loc"])
                     errors.append(f"{file_label} line {line_num} [{loc}]: {err['msg']}")
     return rows, errors, []
+
+
+#: The pre-0.5.1 spelling. Kept because it is imported across a package boundary and by consumers
+#: outside this workspace; a rename that breaks them buys nothing. Not deprecated — same function,
+#: two names, one of which no longer lies about being internal.
+_load_csv_rows = load_csv_rows
+
+
+def load_spec_variants(spec_dir: Path) -> tuple[list[VariantRow], list[str], list[str]]:
+    """A spec directory's `variants.csv`, loaded and re-stamped for the build the module declares.
+
+    The other half of RM41. Two enricher checks take rows rather than a `spec_dir` —
+    `acmg.verify_acmg_sf` and `identifiers.check_identifiers` — unlike every other pass, so a caller
+    has to do this itself, and doing it *right* means three steps rather than one: read the declared
+    build out of `module_spec.yaml`, inject it into every row, and then re-stamp the identities, since
+    `VariantRow._freeze_identity` runs at construction where the yaml is not in scope.
+
+    Missing or unreadable yaml falls back to `DEFAULT_GENOME_BUILD`, matching what compiling that
+    directory would assume — this is a read-only check helper, not the enrichment path, which refuses
+    rather than choose a build for a module whose declaration cannot be read (it writes facts back).
+
+    Returns `(variants, errors, warnings)`; an absent `variants.csv` is an empty list and one error,
+    exactly as `load_csv_rows` reports it.
+    """
+    spec_dir = Path(spec_dir)
+    config = None
+    if (spec_dir / "module_spec.yaml").exists():
+        config, _, _ = _load_yaml(spec_dir / "module_spec.yaml")
+    build = config.genome_build if config else DEFAULT_GENOME_BUILD
+    variants, errors, warnings = load_csv_rows(
+        spec_dir / "variants.csv", VariantRow, "variants.csv", genome_build=build
+    )
+    warnings.extend(_restamp_for_build(variants, build))
+    return variants, errors, warnings
 
 
 # ── Cross-row validation ───────────────────────────────────────────────────────

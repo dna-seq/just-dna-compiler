@@ -30,7 +30,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE
@@ -404,7 +404,7 @@ def merge_sources_file(
     """
     existing: list[SourceRow] = []
     if path.exists():
-        parsed, errors, _ = _load_csv_rows(path, SourceRow, "sources.csv")
+        parsed, errors, _ = load_csv_rows(path, SourceRow, "sources.csv")
         if errors:
             raise error(f"existing sources.csv is invalid: {errors[0]}")
         existing = parsed

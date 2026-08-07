@@ -53,6 +53,15 @@ SNAPSHOT_SIDECAR_DIRNAMES: tuple[str, ...] = (CITATIONS_DIRNAME,)
 #: `release.json` documents half of it: ClinVar publishes `var_citations.txt` on its own cadence, so the
 #: records and the citations in one snapshot need not come from the same release.
 RELEASE_FILENAME = "release.json"
+
+#: The terms a snapshot was taken under, kept beside the bytes they govern. ClinPGx bundles a
+#: `LICENSE.txt` inside `clinicalAnnotations.zip`, and the builder extracts it precisely so a holder of
+#: the snapshot can read the terms without the archive — which only works if the publisher sends it and
+#: the provisioner fetches it. It was in neither: `upload`'s allow-patterns were `data/*.parquet`,
+#: `citations/*.parquet` and `release.json`, so publishing a share-alike snapshot silently dropped the
+#: one file the pinned-licence design exists for. Fifth party to the layout agreement, same as the rest.
+SNAPSHOT_LICENSE_FILENAME = "LICENSE.txt"
+
 ENSEMBL_SUBDIR: str = "ensembl_variations"
 DUCKDB_NAME: str = "ensembl_variations.duckdb"
 # ClinVar reference snapshot — a second, complementary reference beside Ensembl (clinically-curated
@@ -63,6 +72,28 @@ CLINVAR_SUBDIR: str = "clinvar"
 # single-digit MB as parquet, versus ClinVar's ~200 MB and an Ensembl slice). Small enough to ship
 # offline is exactly why gene constraint gets a snapshot while allele frequency cannot.
 CONSTRAINT_SUBDIR: str = "gnomad_constraint"
+
+# ── the licence-gated caches (RM38) ─────────────────────────────────────────────────────────────
+#
+# The three PGx sources are the only `licensing.TERMS` entries with `commercial_use=False`, and they
+# were the only ones with no cache at all — which is the *same* set, and not a coincidence worth
+# leaving as one: Ensembl, ClinVar and gnomAD constraint are each snapshot-first already, so a hosted
+# `enrich()` never reaches them live per request, while a hosted PGx check had exactly two options,
+# fetch on the operator's own credentials or skip. Two independent reasons make that wrong for a
+# service (the operator's acceptance and *personal* PharmVar key stand in for every caller's, and every
+# published rate figure is per-IP so a server multiplies its callers onto one allowance), and either
+# alone is enough.
+#
+# `clinpgx` had a builder and nothing else — no resolver, no `ensure_*` — so its snapshot was orphaned
+# from the plumbing and `enrich_clinpgx` skipped silently unless handed `--snapshot` by hand.
+CLINPGX_SUBDIR: str = "clinpgx"
+CPIC_SUBDIR: str = "cpic"
+#: PharmVar's cache is **operator-built and inject-only**: it is fetched under a key PharmVar's terms §2
+#: make personal and non-transferable, and no axis `SourceTerms` records covers passing that on, so the
+#: permission is unestablished — and an unestablished permission is never a permission (`None` ≠ `False`,
+#: the same rule as `share_alike`/`commercial_use`). Hence a `resolve_` and a builder here, and
+#: deliberately no `download.ensure_pharmvar_snapshot` and no publish command.
+PHARMVAR_SUBDIR: str = "pharmvar"
 
 
 def load_env(override: bool = False) -> str | None:
@@ -77,9 +108,7 @@ def load_env(override: bool = False) -> str | None:
 
 def default_ensembl_cache_dir() -> Path:
     """The `<base>/ensembl_variations` directory, matching just-dna-lite's convention."""
-    base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
-    root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
-    return root / ENSEMBL_SUBDIR
+    return _cache_dir(ENSEMBL_SUBDIR)
 
 
 def resolve_ensembl_reference(
@@ -115,18 +144,77 @@ def resolve_ensembl_reference(
     return None
 
 
-def default_clinvar_cache_dir() -> Path:
-    """The `<base>/clinvar` directory (same base as the Ensembl cache)."""
+def _cache_dir(subdir: str) -> Path:
+    """`<base>/<subdir>`, where `<base>` is `$JUST_DNA_PIPELINES_CACHE_DIR` or the platformdirs cache.
+
+    Every snapshot shares one base so a single just-dna-lite deployment's cache serves all of them.
+    Read at call time rather than at import, because a `.env` loaded by `load_env` has to be able to
+    change the answer.
+    """
     base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
     root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
-    return root / CLINVAR_SUBDIR
+    return root / subdir
+
+
+def _resolve_parquet_cache(
+    explicit: Path | None,
+    env_var: str,
+    default_dir: Path,
+    *,
+    load_dotenv_file: bool = True,
+    accept_bare_file: bool = False,
+) -> Path | None:
+    """The precedence ladder every parquet snapshot shares: explicit → `$env_var` → the default dir.
+
+    Returns the cache **directory** when it holds `data/*.parquet` (or bare `*.parquet`), else `None`.
+    Never downloads — provisioning is `download.ensure_*` or the deployment's job. `accept_bare_file`
+    additionally lets a caller point straight at one `.parquet`, which only the constraint snapshot
+    (a single file) has ever wanted.
+
+    Six snapshots now share this body; it was copied per snapshot, and the copies had already drifted
+    in exactly the way a copy does — the ClinVar one silently lacked the file case its sibling had.
+    """
+    if load_dotenv_file:
+        load_env()
+
+    candidate = explicit or os.getenv(env_var)
+    search_dir = Path(candidate) if candidate else default_dir
+
+    if accept_bare_file and search_dir.is_file() and search_dir.suffix == ".parquet":
+        return search_dir
+    if search_dir.is_dir():
+        data_dir = search_dir / SNAPSHOT_DATA_DIRNAME
+        has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
+            search_dir.glob("*.parquet")
+        )
+        if has_parquet:
+            return search_dir
+    return None
+
+
+def default_clinvar_cache_dir() -> Path:
+    """The `<base>/clinvar` directory (same base as the Ensembl cache)."""
+    return _cache_dir(CLINVAR_SUBDIR)
 
 
 def default_constraint_cache_dir() -> Path:
     """The `<base>/gnomad_constraint` directory (same base as the other two caches)."""
-    base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
-    root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
-    return root / CONSTRAINT_SUBDIR
+    return _cache_dir(CONSTRAINT_SUBDIR)
+
+
+def default_clinpgx_cache_dir() -> Path:
+    """The `<base>/clinpgx` directory — the ClinPGx clinical-annotation snapshot."""
+    return _cache_dir(CLINPGX_SUBDIR)
+
+
+def default_cpic_cache_dir() -> Path:
+    """The `<base>/cpic` directory — the CPIC allele/diplotype/recommendation snapshot."""
+    return _cache_dir(CPIC_SUBDIR)
+
+
+def default_pharmvar_cache_dir() -> Path:
+    """The `<base>/pharmvar` directory — operator-built only (see `PHARMVAR_SUBDIR`)."""
+    return _cache_dir(PHARMVAR_SUBDIR)
 
 
 def resolve_constraint_reference(
@@ -134,26 +222,14 @@ def resolve_constraint_reference(
 ) -> Path | None:
     """Locate a usable gnomAD constraint snapshot without downloading.
 
-    Same precedence ladder as the other two: explicit argument → ``$JUST_DNA_GNOMAD_CONSTRAINT_CACHE``
-    → ``$JUST_DNA_PIPELINES_CACHE_DIR``/platformdirs ``gnomad_constraint/``. Parquet only (like
-    ClinVar, there is no prebuilt ``.duckdb``). Never downloads.
+    Explicit argument → ``$JUST_DNA_GNOMAD_CONSTRAINT_CACHE`` → ``$JUST_DNA_PIPELINES_CACHE_DIR``
+    /platformdirs ``gnomad_constraint/``. Parquet only (like ClinVar, there is no prebuilt
+    ``.duckdb``), and a bare ``.parquet`` may be pointed at directly since the snapshot is one file.
     """
-    if load_dotenv_file:
-        load_env()
-
-    candidate = constraint_cache or os.getenv("JUST_DNA_GNOMAD_CONSTRAINT_CACHE")
-    search_dir = Path(candidate) if candidate else default_constraint_cache_dir()
-
-    if search_dir.is_file() and search_dir.suffix == ".parquet":
-        return search_dir
-    if search_dir.is_dir():
-        data_dir = search_dir / "data"
-        has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
-            search_dir.glob("*.parquet")
-        )
-        if has_parquet:
-            return search_dir
-    return None
+    return _resolve_parquet_cache(
+        constraint_cache, "JUST_DNA_GNOMAD_CONSTRAINT_CACHE", default_constraint_cache_dir(),
+        load_dotenv_file=load_dotenv_file, accept_bare_file=True,
+    )
 
 
 def resolve_clinvar_reference(
@@ -167,17 +243,48 @@ def resolve_clinvar_reference(
     holds ``data/*.parquet`` (or bare ``*.parquet``), else ``None``. Never downloads — provisioning is
     the enricher's `download.ensure_clinvar_snapshot` or the deployment's job.
     """
-    if load_dotenv_file:
-        load_env()
+    return _resolve_parquet_cache(
+        clinvar_cache, "JUST_DNA_CLINVAR_CACHE", default_clinvar_cache_dir(),
+        load_dotenv_file=load_dotenv_file,
+    )
 
-    candidate = clinvar_cache or os.getenv("JUST_DNA_CLINVAR_CACHE")
-    search_dir = Path(candidate) if candidate else default_clinvar_cache_dir()
 
-    if search_dir.is_dir():
-        data_dir = search_dir / "data"
-        has_parquet = (data_dir.is_dir() and any(data_dir.glob("*.parquet"))) or any(
-            search_dir.glob("*.parquet")
-        )
-        if has_parquet:
-            return search_dir
-    return None
+def resolve_clinpgx_reference(
+    clinpgx_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built ClinPGx snapshot without downloading (`$JUST_DNA_CLINPGX_CACHE`).
+
+    The builder shipped a release before this existed, so the snapshot was reachable only by handing
+    `enrich_clinpgx` an explicit `--snapshot`; with no path the pass skipped itself and said so, which
+    on a hosted deployment is the check simply not running. Provisioning is
+    `download.ensure_clinpgx_snapshot`.
+    """
+    return _resolve_parquet_cache(
+        clinpgx_cache, "JUST_DNA_CLINPGX_CACHE", default_clinpgx_cache_dir(),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def resolve_cpic_reference(
+    cpic_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built CPIC snapshot without downloading (`$JUST_DNA_CPIC_CACHE`)."""
+    return _resolve_parquet_cache(
+        cpic_cache, "JUST_DNA_CPIC_CACHE", default_cpic_cache_dir(),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def resolve_pharmvar_reference(
+    pharmvar_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate an **operator-built** PharmVar snapshot (`$JUST_DNA_PHARMVAR_CACHE`).
+
+    There is deliberately no `download.ensure_pharmvar_snapshot` to pair with this — see
+    `PHARMVAR_SUBDIR`. A deployment builds its own with its own key, or this returns `None` and the
+    PharmVar leg degrades exactly as it does when no key is configured.
+    """
+    return _resolve_parquet_cache(
+        pharmvar_cache, "JUST_DNA_PHARMVAR_CACHE", default_pharmvar_cache_dir(),
+        load_dotenv_file=load_dotenv_file,
+    )

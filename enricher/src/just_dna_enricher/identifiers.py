@@ -32,20 +32,21 @@ Ensembl alone would misclassify a merged rsID as unresolvable.
 import logging
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
+from just_dna_compiler.compiler import load_spec_variants
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import MULTI_SEP
 from tenacity import (
     retry,
     retry_if_exception_type,
-    stop_after_attempt,
     wait_exponential_jitter,
 )
 
 from just_dna_enricher.eutils import EutilsClient, is_missing
-from just_dna_enricher.net import PacingGate, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, dedupe
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +297,7 @@ class OntologyClient:
         self.close()
 
     @retry(
-        stop=stop_after_attempt(3),
+        stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
@@ -388,8 +389,9 @@ def module_trait_ids(variants: list[VariantRow]) -> list[str]:
 
 
 def check_identifiers(
-    variants: list[VariantRow],
+    variants: list[VariantRow] | None = None,
     *,
+    spec_dir: Path | None = None,
     check_traits: bool = True,
     check_genes: bool = True,
     client: OntologyClient | None = None,
@@ -398,7 +400,20 @@ def check_identifiers(
 
     rsIDs are deliberately **not** done here: they are checked inside `enrich()`, because their verdict
     lands on `resolution.csv` columns rather than being a standalone report. See `check_rsids`.
+
+    **Pass either `variants` or `spec_dir` (RM41)** — the row-taking form is right for an in-process
+    caller that already holds the rows, and `spec_dir=` is the shape every other pass in this tier has.
+    Exactly one, never both: two answers in mind, and silently preferring one is a guess.
     """
+    if (variants is None) == (spec_dir is None):
+        raise ValueError(
+            "pass exactly one of variants= (rows you already hold) or spec_dir= (a module spec "
+            "directory, loaded with the module's declared genome_build)"
+        )
+    if variants is None:
+        variants, errors, _ = load_spec_variants(Path(spec_dir))
+        if errors:
+            raise ValueError(f"variants.csv is invalid: {errors[0]}")
     report = IdentifierReport()
     traits = module_trait_ids(variants) if check_traits else []
     genes = dedupe(v.gene for v in variants if v.gene) if check_genes else []

@@ -36,6 +36,8 @@ from pathlib import Path
 import httpx
 from just_dna_format.normalize import now_utc_iso
 
+from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
+
 try:  # polars is a `[dev]` dependency — the runtime pass reads parquet, only the builder writes it
     import polars as pl
 except ImportError:  # pragma: no cover - exercised only where the [dev] extra is absent
@@ -44,9 +46,10 @@ except ImportError:  # pragma: no cover - exercised only where the [dev] extra i
 logger = logging.getLogger(__name__)
 
 DEFAULT_CLINPGX_URL = "https://api.clinpgx.org/v1/download/file/data/clinicalAnnotations.zip"
-SNAPSHOT_DIRNAME = "clinpgx"
-RELEASE_FILENAME = "release.json"
-LICENSE_FILENAME = "LICENSE.txt"
+#: The archive member the terms arrive in. A source-format detail, so it stays here — unlike the name
+#: the *snapshot* stores it under, which is `locations.SNAPSHOT_LICENSE_FILENAME` because four other
+#: parties have to agree on it. They are the same string today and are not the same fact.
+ARCHIVE_LICENSE_MEMBER = "LICENSE.txt"
 _CREATED_RE = re.compile(r"^CREATED_(?P<date>\d{4}-\d{2}-\d{2})\.txt$")
 # The per-genotype annotation text routinely runs to several hundred characters; the field limit
 # csv defaults to is smaller than some of them.
@@ -111,7 +114,7 @@ def read_license(archive: zipfile.ZipFile) -> str | None:
     bytes are the ones shipped alongside them.
     """
     for name in archive.namelist():
-        if Path(name).name == LICENSE_FILENAME:
+        if Path(name).name == ARCHIVE_LICENSE_MEMBER:
             return archive.read(name).decode("utf-8", errors="replace")
     return None
 
@@ -204,7 +207,7 @@ def build_snapshot(
     )
     if license_text is not None:
         # Kept beside the data so a holder of the snapshot can read the terms without the archive.
-        (out_dir / LICENSE_FILENAME).write_text(license_text, encoding="utf-8")
+        (out_dir / SNAPSHOT_LICENSE_FILENAME).write_text(license_text, encoding="utf-8")
 
     genes = sorted({r["gene"] for r in records if r["gene"]})
     digest = source_sha256 or _sha256_file(zip_path)

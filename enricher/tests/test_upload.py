@@ -158,8 +158,27 @@ def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) ->
     assert kwargs["path_in_repo"] == ""
     assert kwargs["repo_id"] == "just-dna-seq/clinvar"
     assert kwargs["repo_type"] == "dataset"
-    assert kwargs["allow_patterns"] == ["data/*.parquet", "citations/*.parquet", "release.json"]
+    assert kwargs["allow_patterns"] == [
+        "data/*.parquet", "citations/*.parquet", "release.json", "LICENSE.txt",
+    ]
     assert plan.repo_id == "just-dna-seq/clinvar"
+
+
+def test_a_snapshots_licence_travels_with_its_bytes(tmp_path: Path) -> None:
+    """A share-alike snapshot published without its `LICENSE.txt` is the pinned-licence design broken.
+
+    ClinPGx bundles its terms inside the same archive as the data and the builder extracts them so a
+    holder of the snapshot can read what governs the bytes — which `license_sha256` pins. The publisher
+    was dropping the file: it was not in the allow-patterns and not in the plan. Demonstrated on the old
+    behaviour by leaving it out, which is also the honest normal case (only ClinPGx has one).
+    """
+    without = _snapshot(tmp_path / "plain")
+    assert plan_reference_snapshot(without).files == ["data/clinvar-chr1.parquet", "release.json"]
+
+    with_licence = _snapshot(tmp_path / "clinpgx")
+    (with_licence / "LICENSE.txt").write_text("CC BY-SA 4.0 …", encoding="utf-8")
+    plan = plan_reference_snapshot(with_licence, "just-dna-seq/clinpgx")
+    assert plan.files == ["data/clinvar-chr1.parquet", "release.json", "LICENSE.txt"]
 
 
 def test_publish_reference_snapshot_requires_token(tmp_path: Path) -> None:

@@ -733,3 +733,263 @@ that stays right — `Defaults.priority` is `None`, so inferring from the mode w
 for rows that never set one, turning `['high', None]` into `['high', 'high']` on recompile. Resolving
 defaults before hashing handles `priority` correctly *by the same rule* (its model default is `None`,
 so an unset one stays omitted) without needing reverse to change its mind.
+
+## RM38 — A cache for every gated source (the hosted enricher)
+
+**Severity** medium · **Status** ✅ **shipped in `just-dna-enricher` 0.5.1** (2026-08-07) · **Owner**
+enricher · **Motivating case** the marketplace's hosted `POST …/check?pgx=true` surface
+
+The entry below is kept as it was filed, because the survey in it is the reasoning worth not
+re-deriving; what shipped is recorded against it at the end.
+
+**Why 0.5.1 and not 0.6.0.** Two independent reasons, both worth recording so the next reader does not
+file the number as an error:
+
+- *It is legal there.* The 0.6 table above sorts items by **digest legality** — it is about the
+  format/compiler schema surface, where a new column moves every compiled module's identity. RM38 touches
+  no parquet, no model and no manifest field. It is confined to `just-dna-enricher`, which is a separately
+  versioned package: all three sit at 0.5.0 in the uv workspace, publish independently, and the enricher
+  depends on the other two by `>=`. So the network tier can take a patch release with format and compiler
+  untouched.
+- *It is wanted there.* The cache is what unblocks a deployment, and 0.6 is schema work (RM23, RM24,
+  RM25, RM16, RM28 — all new tables). Coupling an enricher fix to a schema minor would be the tail wagging
+  the dog.
+
+**What differs between a host and a service.** An author running the enricher on their own machine
+accepts the source's terms themselves, spends their own rate budget, and holds their own PharmVar key.
+That case needs nothing. A hosted enricher is a different act for two reasons that are worth keeping
+apart, because either alone justifies the cache and they have different consequences: the operator's
+acceptance and *personal, non-transferable* PharmVar key stand in for every end user's (there is no
+per-user switch — the key's presence in the environment *is* the switch), and every published rate figure
+is **per IP**, so a server multiplies its callers onto one allowance rather than getting one each.
+
+**Current state, so this is actionable as written.** The gated set is exactly the three PGx sources — the
+only `licensing.TERMS` entries with `commercial_use=False`; Ensembl, ClinVar, gnomAD and ClinGen are all
+`True` and already snapshot-first, so resolution needs no change at all.
+
+| Gated source | Builder | `locations` resolver | `download.ensure_*` | Publish | Runtime pass |
+|---|---|---|---|---|---|
+| **ClinPGx** | ✅ `clinpgx_build.py` | ❌ | ❌ | ❌ | `clinpgx.py:164-169` — skips silently when `snapshot=None` |
+| **CPIC** | ❌ | ❌ | ❌ | ❌ | `pgx.py`, `pgx_draft.py` — always live |
+| **PharmVar** | ❌ | ❌ | ❌ | ❌ | `pgx.py` — always live |
+
+`pgx.py:162-167` makes `--offline` a no-op that warns and returns; `pgx_draft.py` has no `offline`
+parameter at all. `locations.py` knows three caches, `download.py` fetches those same three, and
+ClinPGx's snapshot is orphaned from all of that plumbing.
+
+**This is demand, not speculation.** `just-dna-marketplace` reaches all three live, per request, from
+`services/enrich.py`, on a deployment where self-registration is open and the only requirement is
+`PUBLISH` on a namespace one proof-of-work away. Its own API reference already states the consequence —
+that a public deployment means third parties query PharmVar on the operator's account — and its enrich
+service already comments that the passes are skipped offline because there is no PGx snapshot to fall
+back on the way resolution falls back to Ensembl/ClinVar. It has also already hand-built the workaround
+for the one source that *has* a snapshot: a `clinpgx_snapshot` setting, skipped with a message naming
+`just-dna-enricher clinpgx build`. RM38 generalizes a pattern a consumer already needed.
+
+**The shape, following ClinVar/constraint exactly.** `cpic_build.py` and `pharmvar_build.py` (`[dev]`,
+polars, guarded import) → `data/*.parquet` + `release.json`. `locations` gains `CPIC_SUBDIR` /
+`PHARMVAR_SUBDIR` / `CLINPGX_SUBDIR`, the matching `default_*_cache_dir` and `resolve_*_reference`, and
+the `$JUST_DNA_{CPIC,PHARMVAR,CLINPGX}_CACHE` overrides. Runtime passes read with **duckdb** — the house
+convention is builder in polars, runtime pass in duckdb, and it is what keeps the declared dependency set
+honest about what the runtime needs. `--offline` becomes real for `pgx` and arrives on `draft`. The
+snapshot route records which release answered in `dataset`, the way the two gnomAD constraint routes
+already do, so a module can say whether a live API or a pinned file gave it the answer.
+
+**Three things it must not do**, each for a reason that is the actionable part of this entry:
+
+- **No PharmVar publish.** Recorded terms permit redistribution for all three, so ClinPGx and CPIC can
+  follow the full build → publish → `ensure_*` path. PharmVar cannot: bulk data pulled under a personal,
+  non-transferable key is not covered by any axis the terms record, and an unestablished permission is
+  never a permission (`None` ≠ `False`, the same rule as `share_alike`/`commercial_use`). It stays
+  operator-built and inject-only.
+- **No new `SourceRow` column** for research-use-only or personal-key. PharmVar's restriction is
+  genuinely narrower than `commercial_use=False` and today lives only in `notice` as prose — but a new
+  column on an existing parquet moves every compiled module's digest, so it is **1.0**, not a minor. It
+  is surfaced here and belongs to the RM27 design round, which already owns "the recorded axes do not
+  cover every real restriction".
+- **No second CLI flag.** `--offline` is the switch and an explicit `--snapshot`/`--*-cache` path is the
+  inject-only escape hatch. A `--use-snapshot` would be the second flag the `ensure_*` shape exists to
+  avoid.
+
+**Two prerequisite defects found while surveying**, worth fixing on the way through rather than leaving
+for the next reader to rediscover:
+
+- `upload.py`'s snapshot allow-patterns are `data/*.parquet`, `citations/*.parquet` and `release.json`,
+  so publishing a ClinPGx snapshot would **silently drop its `LICENSE.txt`** — the pinned-licence design
+  is the entire reason that file is extracted from the archive. Any share-alike snapshot publish needs
+  the licence to travel with the bytes.
+- `clinpgx.py:36` imports `RELEASE_FILENAME` **from the `[dev]` builder** `clinpgx_build.py`, and
+  `clinpgx_build.SNAPSHOT_DIRNAME` is dead code referenced nowhere. `acmg.py:83-85` documents this exact
+  inversion as the thing to avoid; a layout constant belongs in `locations`, where the
+  builder/publisher/provisioner/reader rule already puts the others.
+
+### What shipped, against the plan above
+
+Every item, and the plan held. `cpic_build.py` and `pharmvar_build.py` (`[dev]`, polars, guarded
+import); `locations` gained `CPIC_SUBDIR`/`PHARMVAR_SUBDIR`/`CLINPGX_SUBDIR`, their `default_*_cache_dir`
+and `resolve_*_reference`, and the three `$JUST_DNA_*_CACHE` overrides; `download.ensure_cpic_snapshot`
+and `ensure_clinpgx_snapshot` (**and no `ensure_pharmvar_snapshot`**); duckdb snapshot clients
+duck-typed against the live ones, so `enrich_pgx`/`draft_gene` needed no branch; `--offline` became real
+for `pgx` and arrived on `draft`; the snapshot's release lands in `dataset`. Both prerequisite defects
+were fixed on the way. Sizes, measured rather than estimated: the whole CPIC database is **256 KB** of
+zstd parquet (132 genes, 120,778 rows) and PharmVar is **36 KB** (15 genes, 1,173 alleles).
+
+Five things worth recording that the plan did not anticipate:
+
+- **A `cache` command group, because the plan described plumbing and not an operation.** `cache status`
+  and `cache pull` are what an operator actually runs, and having no single entry point would have left
+  the documented provisioning step as a Python snippet per snapshot. `pull` gates the two sellable-
+  forbidding snapshots on `--use` for the reason the rest of the tier does: under a data-usage policy the
+  terms are accepted when the data is **taken**, and a download is taking it.
+- **`clinpgx` provisions automatically; `pgx` and `draft` fall back to live.** The asymmetry is not
+  inconsistency — ClinPGx has no live route at all (`api.pharmgkb.org` was retired), so there is nothing
+  to degrade to, while pulling a whole database to answer one gene would be the wrong default for an
+  author on a laptop. Neither adds a second flag.
+- **`offline` outranks an injected client, decided on the type.** An injected client is the inject-only
+  escape hatch, but a *live* one under `--offline` would egress from a run documented as making none,
+  which is the failure this item exists to close. A snapshot client is exempt because reading a local
+  parquet is not egress. Deliberately not decided on `configured`: a live client with a perfectly good
+  key is exactly the one that must not be used.
+- **PharmVar's coordinates were wrong, and only a snapshot would have shown it.** PharmVar publishes each
+  defining variant against **both** assemblies and lists GRCh37 first, and `_merge_variants` was
+  first-wins over any `NC_` row — so **451 of 739** rsID-keyed defining variants carried a GRCh37
+  position. It had never bitten because nothing consumed `PharmVarAllele.variants`; a snapshot stores
+  them, which is what turns a latent wrong number into a written one. The accession *version* cannot
+  separate the two (chr10 is `.10`/`.11`, and so is chr22) — `referenceCollections` can, exactly. Fourth
+  build confusion in this workspace, hence `pharmvar.PHARMVAR_GENOME_BUILD` as a named constant, on the
+  `gnomad.FREQUENCY_GENOME_BUILD` precedent. The test fixture carried only a GRCh38 row, which is the
+  corpus-uniformity lesson again: it now carries both, in the order the real payload uses.
+- **CPIC does publish a chromosome, and the old comment saying otherwise was a probe artefact.** The
+  2026-08-03 probe read `sequence_location` alone — which genuinely has genesymbol/dbsnpid/position and
+  no chromosome — and concluded CPIC has none, so `pgx_draft` skipped every defining variant CPIC gives
+  no rsID for: 18 in CYP2C9, 14 in TPMT, 4 in NUDT15. `gene.chr` carries it (`chr10` for CYP2C9), and
+  joining on the symbol the location row already names is a lookup in CPIC's own tables rather than the
+  inference that probe rightly refused. `draft --gene CYP2C9` now writes 17 coordinate-only haplotype
+  rows it used to drop, and the module validates. The general lesson is the one already in this file
+  under a different name: **a negative finding about a source is only as wide as the table you looked
+  at** — say which table, so the next reader knows what was not checked.
+
+## RM39 — one pass in the family ignored `offline`
+
+**Severity** low · **Status** ✅ **shipped in `just-dna-enricher` 0.5.1** · **Owner** enricher ·
+**Motivating case** a `just-dna-registry` field report
+
+Every other pass took `offline: bool` and degraded on it; `clingen.enrich_dosage_sensitivity` did not,
+and downloaded ClinGen's curation TSV unconditionally. The only way to stop it was to inject
+`curation_text=`, which requires the caller to have fetched the thing already — i.e. to have solved the
+problem the parameter would solve. The `dosage` command had no `--offline` either, so the asymmetry was
+user-visible.
+
+**The cost is not the flag, it is the shape.** ENRICHER.md documents `--offline` as *clamps to local
+caches / sidecars*, and a consumer advertises the same guarantee, so a caller running the family under
+one switch had to know out of band that one member did not honour it and hoist a `if not offline:`
+around that call specifically. The failure mode of forgetting is **silent egress from a path documented
+as having none** — and it is a guard every consumer has to re-derive.
+
+`enrich_frequencies` was the model: online-only, `--offline` makes it a **no-op with a warning**,
+reported as `skipped_offline`. That is a first-class answer a caller can render (*"the dosage pass did
+not run because this deployment is offline"*), and it is different both from "it ran and found nothing"
+(`missing`) and from a failure. `ClinGenResult` now carries the same field.
+
+**An injected `curation_text` still wins, deliberately** — handing over bytes you already hold is not
+egress, and refusing it would break the inject-only escape hatch every pass in this tier keeps.
+
+**Not done, and it was asked for explicitly: a ClinGen *snapshot*.** That is RM38's family and a much
+bigger question. This was only about the flag meaning the same thing in every function that takes one.
+
+## RM40 — VRS coverage was computed and thrown away
+
+**Severity** low · **Status** ✅ **shipped in `just-dna-enricher` 0.5.1** · **Owner** enricher ·
+**Motivating case** a publish dry run that wants to report coverage before compiling
+
+`vrs.mint_resolution_rows` returns a `MintResult` carrying exactly the two numbers `compile_module`
+later stamps into `manifest.compilation.vrs_alleles` / `vrs_alleles_identified` — plus
+`unmintable_reasons`, the grouped-by-reason breakdown that is the *actionable* half — and `enrich()`
+logged `coverage_warnings()` and dropped the object.
+
+**Why that is a defect rather than a missing convenience.** The whole point of the coverage counters is
+that a consumer can *read* the reliability of the identity scheme instead of inferring it. A consumer
+that wants to read it **before** a compile — which is what a publish dry run is — could not, so it
+re-implemented the counting over `EnrichmentResult.rows`, and had to get two non-obvious rules right to
+agree with the manifest a publish would produce: count per **ALT slot**, not per row, because `vrs_id`
+is a parallel array of `alts`; and treat an *absent* cell as `len(alts)` unnamed slots rather than zero
+slots, or a table where nothing minted reports flawless coverage out of a denominator of nothing. Both
+are in `MintResult`'s own docstring, and a consumer reading only the field list gets the second one
+wrong in the direction that reports a problem as a success — the exact failure the two-counters-not-a-
+ratio design exists to prevent.
+
+**And the reasons were unreachable at all.** `unmintable_reasons` is where *"no refget table for build
+'GRCh37'"* and *"needs the reference sequence"* live — the difference between a finding an author can
+act on and one that is the tier's own limit, which is the distinction the verify pass's three-outcome
+table is built on. As a log line, a service reporting to a publisher over HTTP could show the shortfall
+and not the reason for it.
+
+`EnrichmentResult.vrs: MintResult | None`, populated when `mint_vrs=True` and `None` when the pass did
+not run — `None` ≠ a coverage of zero, the house rule. Purely additive: a dataclass field with a
+default, no behaviour change, no signature change.
+
+## RM41 — the only correct CSV loader was private
+
+**Severity** low · **Status** ✅ **shipped in `just-dna-compiler` / `just-dna-enricher` 0.5.1** ·
+**Owner** compiler + enricher · **Motivating case** a consumer wiring the 0.5 pipeline server-side
+
+Two checks take rows rather than a spec directory — `acmg.verify_acmg_sf` and
+`identifiers.check_identifiers` — unlike every other pass. So a caller had to turn `variants.csv` into
+`VariantRow`s itself, and the only thing that does that correctly was
+`just_dna_compiler.compiler._load_csv_rows`, which was private. This workspace's own enricher CLI
+reached across the package boundary for it in both `check-acmg` and `check-identifiers`, which is the
+definition of de-facto public.
+
+**Re-implementing it is a trap rather than a chore.** It is not `csv.DictReader` plus `Model(**row)`:
+
+- **an empty cell becomes `None`, and the key is kept.** `MeasureBinRow.measure_kind` has a default, so
+  `is_required()` is `False`, but the model then receives `None` rather than its default and **fails on
+  type**. A `""` where the loader would have put `None` is a different failure again.
+- **`genome_build` is told to each row, not read from it.** A pydantic model built from a CSV dict has
+  no `module_spec.yaml` in scope, so a loader that does not inject the module's declared build mints
+  GRCh38 identities for a GRCh37 module — the exact bug `_restamp_for_build` exists to fix, one layer up.
+
+Both halves shipped, as the entry preferred. `compiler.load_csv_rows` is public (`_load_csv_rows` kept
+as an alias, so nothing breaks); `compiler.load_spec_variants(spec_dir)` does the yaml read, the
+injection and the re-stamp in one call; and both checks accept `spec_dir=` beside the existing
+`variants=`. **Exactly one, never both** — a caller passing both has two answers in mind and only one is
+right, and silently preferring either is the guess this tier does not make anywhere else. The row-taking
+form stays: it is the right thing for an in-process caller that already holds the rows.
+
+This is the one item that touches the **compiler**, which is why 0.5.1 is a two-package cut. Nothing in
+the format tier changed, and no parquet, model or manifest field moved.
+
+## RM42 — the retry ceiling was an import-time constant
+
+**Severity** low · **Status** ✅ **shipped in `just-dna-enricher` 0.5.1** · **Owner** enricher ·
+**Motivating case** an unattended server-side publish
+
+Nine clients retry with a sound policy — tenacity, exponential jitter, on transport errors and the two
+clients' own rate-limit exceptions, and (the part that makes this safe to touch at all) **paced before
+the retry**, so an extra attempt spends a slot of the published budget rather than bursting past it.
+What a caller could not do is choose *how many*: the policies were `@retry(stop=stop_after_attempt(3))`
+— or `(4)` for gnomAD and eutils — evaluated at import, with no parameter, setting or variable.
+
+**One number cannot serve both callers.** Three attempts is right for the audience the CLI was written
+for: an author at a terminal who would rather see a failure in ten seconds than wait out a flapping
+upstream. It is wrong for the other deployment shape the 0.5 tiering created — a **server** running
+`enrich()` inside a publish. That work is unattended and already queued, nobody is watching a spinner,
+and giving up on a transient 502 does not cost ten seconds: it costs the publisher a whole re-upload of
+a module the server had already accepted, validated and dedup-checked. Two callers wanting opposite
+things from one constant is the definition of a knob.
+
+`net.attempt_floor(default)` is a tenacity `stop_base` that resolves per call, reading
+`$JUST_DNA_HTTP_RETRY_ATTEMPTS`. Two shape decisions, both from the entry and both kept:
+
+- **A floor, not a setting per client.** The per-client differences are deliberate — gnomAD and eutils
+  are at 4 because their budgets are tightest — so a single number that *raises* everything to at least
+  `n` preserves that tuning, where one that *sets* it would flatten it. Below a client's own default it
+  is a no-op: there is no deployment that wants *less* persistence than an author at a terminal, and
+  allowing it would turn one variable into a footgun.
+- **Leave a composed `stop` alone.** `stop_after_attempt(3) | stop_after_delay(60)` means both, and
+  raising one term silently changes a policy whose author meant the conjunction. None of the nine is
+  composed today; the rule matters the day one is, so only bare `stop_after_attempt`s were replaced.
+
+What this replaces on the consumer side is a walk over the package reassigning `policy.stop` — which
+worked, and was pinned by a test, and was still a consumer reaching into another package's decorator
+state to change behaviour its author had not exposed. That is what an RM is for.

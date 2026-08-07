@@ -26,6 +26,7 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.pgx import enrich_pgx
 from just_dna_enricher.pharmvar import (
+    API_KEY_ENV,
     API_KEY_HEADER,
     PharmVarClient,
     PharmVarError,
@@ -33,6 +34,25 @@ from just_dna_enricher.pharmvar import (
     parse_allele,
 )
 from just_dna_format.sources import SourceRow
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_pharmvar_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Neutralize a developer's real `PHARMVAR_API_KEY` for every test in this module.
+
+    `PharmVarClient(api_key=None)` does **not** mean "no key" — the constructor falls through to
+    `os.environ`, so an explicit `None` is indistinguishable from "not passed". Without this, a
+    machine that has legitimately configured a key builds a *configured* client where the test
+    intended a keyless one, PharmVar answers the `MockTransport` happily, and the assertions about
+    degrading-without-a-key fail. The suite passed on CI and only ever broke for whoever had a key,
+    which is the wrong way round. `test_eutils.py` already does this for `NCBI_API_KEY`.
+
+    Set to empty rather than deleted, deliberately: `locations.load_env()` reloads the repo's `.env`
+    into `os.environ` from any test that resolves a cache path, and `load_dotenv(override=False)`
+    skips a key that is merely *present* — so an empty value survives that reload where a deleted one
+    would be silently restored. Both readers treat empty as absent (`api_key or environ.get(...)`).
+    """
+    monkeypatch.setenv(API_KEY_ENV, "")
 
 _YAML = (
     'schema_version: "1.0"\n'
@@ -57,10 +77,19 @@ _PHARMVAR_GENE = {
         {
             "geneSymbol": "CYP2C19", "alleleName": "CYP2C19*2", "alleleType": "Core",
             "function": "no function",
+            # The real payload's shape, and the fixture used to be missing half of it. PharmVar emits
+            # one row per reference sequence — transcript, then **GRCh37**, then GRCh38 — and lists
+            # GRCh37 first, which is what made the first-wins merge store the wrong coordinate for 451
+            # of 739 real defining variants. A one-assembly fixture could not see that; this one can.
             "variants": [
                 {"rsId": "rs4244285", "referenceSequence": "NM_000769.4",
+                 "referenceCollections": ["RefSeqTranscript"],
                  "hgvs": "NM_000769.4:c.681G>A"},
+                {"rsId": "rs4244285", "referenceSequence": "NC_000010.10",
+                 "referenceCollections": ["GRCh37"],
+                 "hgvs": "NC_000010.10:g.96541616G>A"},
                 {"rsId": "rs4244285", "referenceSequence": "NC_000010.11",
+                 "referenceCollections": ["GRCh38"],
                  "hgvs": "NC_000010.11:g.94781859G>A"},
             ],
         },
@@ -195,9 +224,31 @@ def test_pharmvar_parses_only_the_genomic_reference_sequence() -> None:
     """A variant repeats per reference sequence; only `NC_` is a genomic coordinate."""
     allele = parse_allele(_PHARMVAR_GENE["alleles"][1])
     assert allele.allele == "CYP2C19*2" and allele.function == "no function"
-    assert len(allele.variants) == 1          # the transcript row merged into the genomic one
+    # Three source rows — transcript, GRCh37, GRCh38 — one variant.
+    assert len(allele.variants) == 1
     v = allele.variants[0]
     assert (v.rsid, v.chrom, v.start, v.ref, v.alt) == ("rs4244285", "10", 94781859, "G", "A")
+
+
+def test_pharmvar_takes_the_coordinate_from_grch38_not_the_first_nc_row() -> None:
+    """PharmVar lists GRCh37 first, and first-wins stored it. rs4244285 is 96541616 on GRCh37.
+
+    Demonstrated on the old behaviour rather than asserted about it: dropping the assembly filter
+    (`build=""` matches no `referenceCollections` entry, so nothing is taken; `build="GRCh37"` is the
+    coordinate the unfiltered merge used to return) shows both halves of the fix.
+    """
+    payload = _PHARMVAR_GENE["alleles"][1]
+    grch37 = parse_allele(payload, build="GRCh37").variants[0]
+    grch38 = parse_allele(payload, build="GRCh38").variants[0]
+    assert grch37.start == 96541616 and grch38.start == 94781859
+    assert grch37.rsid == grch38.rsid == "rs4244285"     # same variant, two frames
+    # 227 bp apart at this locus — silently wrong, never absent, which is the dangerous shape.
+    assert grch37.start != grch38.start
+
+    # And a build the payload does not carry yields no position at all rather than a guessed one,
+    # while keeping the identity: the row is honestly unplaced, not fabricated.
+    unplaced = parse_allele(payload, build="GRCh39").variants[0]
+    assert unplaced.rsid == "rs4244285" and unplaced.start is None and unplaced.chrom is None
 
 
 def test_pharmvar_positions_are_one_based() -> None:
@@ -291,13 +342,23 @@ def test_pass_cross_checks_and_records_terms(tmp_path: Path) -> None:
     assert (spec / "sources.csv").is_file()
 
 
-def test_offline_is_a_noop_not_a_failure(tmp_path: Path) -> None:
+def test_offline_with_no_snapshot_makes_zero_requests_and_says_why(tmp_path: Path) -> None:
+    """`--offline` was a no-op that warned; now it is snapshot-only, and the guarantee is the same.
+
+    An **injected live client is not a loophole**: `offline` outranks the injection, because a live
+    client under a flag documented as making no egress is exactly the failure RM38 closes. With no
+    snapshot to fall back to, each leg lands in `skipped_offline` — which is a third state, not a
+    warning and not a silent pass.
+    """
     recorder: list[httpx.Request] = []
     result = enrich_pgx(
         _spec(tmp_path), offline=True, declared_use="non_commercial",
         pharmvar_client=_pharmvar_client(recorder), cpic_client=_cpic_client(),
+        cpic_cache=tmp_path / "absent", pharmvar_cache=tmp_path / "absent",
     )
-    assert recorder == [] and result.rows == [] and result.warnings
+    assert recorder == [] and result.rows == [] and result.routes == {}
+    assert len(result.skipped_offline) == 2
+    assert {"pharmvar", "cpic"} == {w.split(":")[0] for w in result.skipped_offline}
 
 
 def test_existing_sources_rows_are_never_clobbered(tmp_path: Path) -> None:

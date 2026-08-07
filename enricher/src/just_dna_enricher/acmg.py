@@ -68,6 +68,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
+from just_dna_compiler.compiler import load_spec_variants
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
 
@@ -499,9 +500,32 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
     )
 
 
+def _resolve_variants(
+    variants: list[VariantRow] | None, spec_dir: Path | None
+) -> list[VariantRow]:
+    """Exactly one of `variants` / `spec_dir`, resolved to rows (RM41).
+
+    Refuses both and refuses neither, rather than picking: a caller that passed both has two answers in
+    mind and only one of them is right, and silently preferring either is the kind of guess this tier
+    does not make anywhere else.
+    """
+    if (variants is None) == (spec_dir is None):
+        raise AcmgSfError(
+            "pass exactly one of variants= (rows you already hold) or spec_dir= (a module spec "
+            "directory, loaded with the module\'s declared genome_build)"
+        )
+    if variants is not None:
+        return variants
+    loaded, errors, _ = load_spec_variants(Path(spec_dir))
+    if errors:
+        raise AcmgSfError(f"variants.csv is invalid: {errors[0]}")
+    return loaded
+
+
 def verify_acmg_sf(
-    variants: list[VariantRow],
+    variants: list[VariantRow] | None = None,
     *,
+    spec_dir: Path | None = None,
     mode: str = "best_effort",
     offline: bool = False,
     url: str = DEFAULT_ACMG_URL,
@@ -509,6 +533,11 @@ def verify_acmg_sf(
     snapshot_dir: Path | None = None,
 ) -> AcmgReport:
     """Read the list — injected snapshot first, then the live page — and check `variants` against it.
+
+    **Pass either `variants` or `spec_dir` (RM41).** The row-taking form stays, because it is the right
+    thing for an in-process caller that already holds the rows; `spec_dir=` matches the shape every
+    other pass in this tier has, and spares a caller re-deriving the load — which is not
+    `csv.DictReader` plus `Model(**row)` (see `compiler.load_spec_variants`).
 
     An injected `snapshot_dir` wins over the network unconditionally, which is the whole point: it is
     both the newer list and the one that works `--offline`. With no snapshot, `offline` reports nothing
@@ -519,6 +548,7 @@ def verify_acmg_sf(
     judgement, so unlike the `clin_sig` cross-check there is no reason to hold this one at a warning.
     It does **not** escalate an `unverifiable` — see `_disagreement`.
     """
+    variants = _resolve_variants(variants, spec_dir)
     if snapshot_dir is not None:
         sf_list = load_acmg_snapshot(snapshot_dir)
     elif offline and page_text is None:

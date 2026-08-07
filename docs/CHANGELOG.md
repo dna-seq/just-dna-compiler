@@ -18,6 +18,113 @@ work is **0.6.0**, and anything that moves a compiled module's `artifact.digest`
 existing parquet, a requiredness or identity change — is **1.0**, because the digest window that made
 those free closed with this release. See [ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits).
 
+**That rule is about the schema surface, and the three packages version independently — so
+`just-dna-enricher` can take a patch.** "Additive work is 0.6.0" sorts changes by what they do to a
+compiled module's identity, which is a *format/compiler* question. Work confined to the network tier
+touches no parquet, no model and no manifest field, so it can ship as an enricher patch release while
+format and compiler stay where they are. The first of those is **`just-dna-enricher` 0.5.1**, whose
+content is [RM38](ROADMAP.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher) — a cache for the
+licence-gated sources, so a hosted enricher stops fetching them live per request. This does **not**
+reopen the paragraph above: that one is about labelling a batch inside an *unpublished* release, which
+0.5.1 is not — 0.5.0 shipped, so 0.5.1 is a real next number rather than a name for work in progress.
+
+## 2026-08-07 — `just-dna-enricher` / `just-dna-compiler` 0.5.1: the hosted tier
+
+**A network-tier patch, and `just-dna-format` does not move.** Nothing here touches a parquet, a model
+or a manifest field, which is exactly what makes it legal inside the closed 0.5 digest window (P3/P8).
+Format stays at **0.5.0**; compiler and enricher cut **0.5.1**, and the enricher's floor rises with it
+(one item, RM41, adds a compiler symbol the enricher now uses).
+
+### RM38 — a cache for every licence-gated source
+
+The three PGx sources (ClinPGx, CPIC, PharmVar) were the only `licensing.TERMS` entries with
+`commercial_use=False` **and** the only ones with no cache — the same set, and not a coincidence worth
+leaving. Ensembl, ClinVar and gnomAD constraint were already snapshot-first, so a hosted `enrich()` was
+cache-served; a hosted PGx check had two options, fetch a gated source live per request on the
+operator's own credentials or skip. Two independent reasons make the first wrong for a service, and
+either alone is enough: the operator's acceptance and *personal, non-transferable* PharmVar key stand in
+for every caller's, and every published rate figure is **per IP**, so a server multiplies its callers
+onto one allowance rather than getting one each.
+
+- **Builders** (`[dev]`, polars): `cpic_build` pulls the whole CPIC PostgREST database into five
+  parquets — 132 genes, 120,778 rows, **256 KB** — with no gene filter, because a snapshot covering only
+  the genes the operator thought of answers "CPIC has nothing" for the next one. `pharmvar_build` takes
+  the single `/genes` call (15 genes, 1,173 core alleles, **36 KB**). Both store the source's values
+  **verbatim** and map to this workspace's vocabularies at read time, so a mapping fix reaches a
+  snapshot built last month and a live answer and a snapshot answer are the same object by construction.
+- **Plumbing**: `locations` gains `CPIC_SUBDIR` / `PHARMVAR_SUBDIR` / `CLINPGX_SUBDIR`, their
+  `default_*_cache_dir` / `resolve_*_reference`, and `$JUST_DNA_{CPIC,PHARMVAR,CLINPGX}_CACHE`. Six
+  resolvers now share one body; they had been copied per snapshot and had already drifted.
+  `download.ensure_cpic_snapshot` / `ensure_clinpgx_snapshot` provision from HuggingFace.
+- **Readers**: duckdb snapshot clients duck-typed against the live ones, so `enrich_pgx` and
+  `draft_gene` needed no branch. Builder in polars, runtime pass in duckdb — the house convention.
+- **`--offline` is real**: it was a no-op that warned and returned for `pgx`, and absent entirely from
+  `draft`. Each leg is now snapshot → live → **skipped with a reason** (`PgxResult.skipped_offline`),
+  and `offline` outranks an injected *live* client, decided on the type — a snapshot client is exempt
+  because reading a local parquet is not egress. `clinpgx check` provisions automatically instead of
+  skipping silently, because unlike the other two it has no live route to fall back to.
+- **The route is recorded, not implied**: `PgxResult.routes` says `snapshot` or `live` per source, and a
+  snapshot stamps its own release into `SourceRow.dataset`, as the two gnomAD constraint routes already
+  do. A consumer must be able to tell a pinned file from a live API.
+- **`cache status` / `cache pull`** are the operator's entry point; `pull` gates ClinPGx and CPIC on
+  `--use`, because under a data-usage policy the terms are accepted when the data is **taken**.
+- **PharmVar is build-only, and that is the design.** Its bulk data is pulled under a key its terms §2
+  make personal and non-transferable, and no axis `SourceTerms` records covers passing that on —
+  `redistribution=True` describes the CC BY-SA grant over the *content*, not a clause about the
+  *account*. An unestablished permission is never a permission, so: a resolver and a builder, and
+  deliberately no `ensure_pharmvar_snapshot` and no `pharmvar publish`.
+
+**Two prerequisite defects, fixed on the way.** Publishing a snapshot silently dropped its
+`LICENSE.txt` — the allow-patterns were `data/*.parquet`, `citations/*.parquet` and `release.json` — so
+the pinned-licence design pinned nothing for anyone who *downloaded* rather than built. Both ends fixed.
+And `clinpgx.py` imported its layout constants from the `[dev]` builder; they live in `locations` with
+the rest, where the builder/publisher/provisioner/reader rule already puts them.
+
+**Two integration defects, found by probing the real sources rather than their docs.**
+
+- **PharmVar publishes every defining variant against *both* assemblies and lists GRCh37 first**, and
+  `_merge_variants` was first-wins over any `NC_` row, so **451 of 739** rsID-keyed defining variants
+  would have carried a GRCh37 position (DPYD rs868235016 at chr1:97547910 rather than its GRCh38 place).
+  The accession *version* cannot separate them — chr10 is `.10`/`.11` and so is chr22 — but
+  `referenceCollections` can, exactly. Latent until now because nothing consumed
+  `PharmVarAllele.variants`; a snapshot stores them, which is what turns a latent wrong number into a
+  written one. Fourth build confusion here, hence `pharmvar.PHARMVAR_GENOME_BUILD` as a named constant.
+  The test fixture carried only a GRCh38 row — corpus uniformity again — and now carries both, in the
+  real payload's order.
+- **CPIC does publish a chromosome, on `gene.chr`.** A 2026-08-03 probe read `sequence_location` alone,
+  which genuinely has none, and concluded CPIC has none at all — so the drafting provider skipped every
+  defining variant CPIC gives no rsID for: 18 in CYP2C9, 14 in TPMT, 4 in NUDT15. Joining `gene.chr` onto
+  the symbol the location row already names is a lookup in CPIC's own tables, not the inference that
+  probe rightly refused. `draft --gene CYP2C9` now writes 17 coordinate-only haplotype rows it dropped,
+  and the module validates.
+
+### RM39–RM42 — four seams a consumer could not cross
+
+From a `just-dna-registry` field report, and one argument each time: **a number this workspace computed
+and then discarded gets recomputed by every consumer, and a recomputation is a place to drift.**
+
+- **RM39** — `enrich_dosage_sensitivity` was the only pass with no `offline`, so a caller running the
+  family under one flag had to know out of band that one member ignored it; forgetting meant silent
+  egress from a path documented as making none. Now a no-op with a warning, reported as
+  `ClinGenResult.skipped_offline`, with `--offline` on `dosage`. An injected `curation_text` still wins.
+- **RM40** — `EnrichmentResult.vrs` carries the `MintResult` `enrich()` already computed: the two
+  counters the compiler later stamps into the manifest, plus `unmintable_reasons`. `None` when the pass
+  did not run, never a coverage of zero.
+- **RM41** — `compiler.load_csv_rows` is public (`_load_csv_rows` kept as an alias), and
+  `compiler.load_spec_variants` does the yaml read + build injection + re-stamp in one call.
+  `verify_acmg_sf` and `check_identifiers` accept `spec_dir=` beside `variants=` — exactly one, never
+  both. This is the item that makes 0.5.1 a two-package cut.
+- **RM42** — the nine `stop_after_attempt(3..4)` decorator arguments are now `net.attempt_floor(n)`,
+  reading `$JUST_DNA_HTTP_RETRY_ATTEMPTS` per call. A **floor**, so gnomAD and eutils keep their higher
+  default; below a client's own number it is a no-op. Safe to raise because every gated client paces
+  *before* it retries. Only bare `stop_after_attempt`s were replaced — a composed policy means the
+  conjunction its author wrote.
+
+Also: `PharmVarClient` loads `.env` where it reads the key, rather than relying on some *other* call
+having resolved a cache path first — which worked for `enrich_pgx` by accident and not at all for the
+new builder. And ENRICHER.md gains a **cache chapter**: all six snapshots, their env vars, the layout,
+how to pre-cache from HuggingFace, and what to do when one is broken.
+
 ## 2026-08-07 — 0.5.0 published, and the CI that was meant to gate it never ran
 
 **0.5.0 is released** — tagged `v0.5.0`, built into `dist/`, and on PyPI for all three packages, with

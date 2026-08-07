@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from just_dna_compiler.compiler import _load_csv_rows, _load_yaml, _restamp_for_build
+from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_rows
 from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
@@ -37,7 +37,7 @@ from just_dna_enricher.sequences import (
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
-from just_dna_enricher.vrs import VrsMinter, mint_resolution_rows
+from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ def _collect_subjects(
 
     pharm_path = spec_dir / "pharm_variants.csv"
     if pharm_path.exists():
-        rows, errors, _ = _load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
+        rows, errors, _ = load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
         if errors:
             raise EnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
         subjects.extend(
@@ -124,7 +124,7 @@ def _collect_subjects(
 
     hap_path = spec_dir / "haplotypes.csv"
     if hap_path.exists():
-        rows, errors, _ = _load_csv_rows(hap_path, HaplotypeRow, "haplotypes.csv")
+        rows, errors, _ = load_csv_rows(hap_path, HaplotypeRow, "haplotypes.csv")
         if errors:
             raise EnrichmentError(f"haplotypes.csv is invalid: {errors[0]}")
         subjects.extend(
@@ -266,6 +266,20 @@ class EnrichmentResult:
     # selection nobody can see is indistinguishable from a silent repair. See
     # `select_par_representative`. Empty with `keep_par_twin`, and on every non-PAR module.
     par_twins_dropped: list[tuple[str, str, int]] = field(default_factory=list)
+    # What the VRS minting pass did (RM40) — the same `MintResult` whose two counters `compile_module`
+    # later stamps into `manifest.compilation.vrs_alleles` / `vrs_alleles_identified`, plus
+    # `unmintable_reasons`, the grouped breakdown that is the actionable half.
+    #
+    # It was computed here and thrown away, so a consumer wanting to read coverage **before** a compile
+    # — which is what a publish dry run is — had to re-implement the counting, and had to get two
+    # non-obvious rules right to agree with the manifest a publish would produce: count per **ALT slot**
+    # (`vrs_id` is a parallel array of `alts`), and treat an *absent* cell as `len(alts)` unnamed slots
+    # rather than zero, or a table where nothing minted reports flawless coverage out of a denominator
+    # of nothing. A number this workspace computed and discarded gets recomputed by every consumer, and
+    # a recomputation is a place to drift.
+    #
+    # `None` — never a coverage of zero — when the pass did not run (`mint_vrs=False`). The house rule.
+    vrs: MintResult | None = None
 
     @property
     def fully_resolved(self) -> bool:
@@ -331,7 +345,7 @@ def enrich(
     variants: list[VariantRow] = []
     variants_path = spec_dir / "variants.csv"
     if variants_path.exists():
-        variants, errors, _ = _load_csv_rows(variants_path, VariantRow, "variants.csv")
+        variants, errors, _ = load_csv_rows(variants_path, VariantRow, "variants.csv")
         if errors:
             raise EnrichmentError(f"variants.csv is invalid: {errors[0]}")
         # The **third** load site for `variants.csv`, and it needs the same re-stamp the compiler's two
@@ -349,7 +363,7 @@ def enrich(
     existing: dict[str, list[ResolutionRow]] = {}
     resolution_path = spec_dir / "resolution.csv"
     if resolution_path.exists():
-        rows, errors, _ = _load_csv_rows(resolution_path, ResolutionRow, "resolution.csv")
+        rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, "resolution.csv")
         if errors:
             raise EnrichmentError(f"existing resolution.csv is invalid: {errors[0]}")
         for row in rows:
@@ -618,6 +632,7 @@ def enrich(
     # nothing to mint from before that). Existing ids are never overwritten.
     # One proxy, one read cache, shared by minting and the reference check below.
     sequences = SequenceProxy(offline=offline)
+    mint_result: MintResult | None = None
     if mint_vrs:
         mint_result = mint_resolution_rows(
             out, minter=VrsMinter(offline=offline, sequences=sequences)
@@ -685,6 +700,7 @@ def enrich(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
+        vrs=mint_result,
     )
 
     if mode == "strict" and ref_mismatches:

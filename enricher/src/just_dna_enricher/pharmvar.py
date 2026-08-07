@@ -28,21 +28,24 @@ genomic coordinate, and it is **1-based**, which matches what this pipeline alre
 resolution table): the instinctive conversion to 0-based would introduce an off-by-one.
 """
 
+import json
 import logging
 import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+import duckdb
 import httpx
 from tenacity import (
     retry,
     retry_if_exception_type,
-    stop_after_attempt,
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.net import PacingGate
+from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME, load_env
+from just_dna_enricher.net import PacingGate, attempt_floor
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,27 @@ PHARMVAR_SOURCE = "pharmvar"
 _NC_HGVS = re.compile(
     r"^(?P<accession>NC_(?P<num>\d+)\.\d+):g\.(?P<pos>\d+)(?P<ref>[ACGT]+)>(?P<alt>[ACGT]+)$"
 )
+
+#: The assembly this pipeline stores, and the only one a coordinate is taken from here.
+#:
+#: **PharmVar publishes each variant against BOTH assemblies, and lists GRCh37 first.** Every
+#: defining variant appears once per reference sequence — `NM_` transcript, `NG_` gene region, and
+#: **two** `NC_` chromosome rows, one GRCh37 and one GRCh38 — and `_merge_variants` keeps the first row
+#: it sees for an rsID. Probed against the live `/genes` payload (15 genes, 1,173 core alleles, 12,925
+#: variant rows): **451 of the 739 rsID-keyed defining variants would come back carrying a GRCh37
+#: coordinate**, e.g. DPYD rs868235016 as chr1:97547910 (GRCh37) rather than its GRCh38 position.
+#:
+#: The accession *version* cannot separate them — chr10 is `NC_000010.10`/`.11` while chr22 is
+#: `NC_000022.10`/`.11`, so `.10` appears under both assemblies — but `referenceCollections` says
+#: which, exactly (`["GRCh37"]` × 1,995, `["GRCh38"]` × 2,004, and nothing else on an `NC_` row).
+#: A row that does not say GRCh38 yields **no position**, rather than a guessed one: it still carries
+#: the rsID, so the merge keeps the identity and loses only the coordinate we could not place.
+#:
+#: This was latent until RM38 — nothing consumed `PharmVarAllele.variants` — and a snapshot stores
+#: them, which is what turns a latent wrong number into a written one. Third build confusion in this
+#: workspace, hence a named constant rather than a literal (`gnomad.FREQUENCY_GENOME_BUILD` is the
+#: precedent).
+PHARMVAR_GENOME_BUILD = "GRCh38"
 
 
 class PharmVarError(RuntimeError):
@@ -108,16 +132,23 @@ class PharmVarAllele:
     variants: list[PharmVarVariant] = field(default_factory=list)
 
 
-def parse_genomic_variant(payload: dict[str, Any]) -> PharmVarVariant:
-    """One `variants[]` entry → a coordinate, when it names one.
+def parse_genomic_variant(
+    payload: dict[str, Any], *, build: str = PHARMVAR_GENOME_BUILD
+) -> PharmVarVariant:
+    """One `variants[]` entry → a coordinate, when it names one **on `build`**.
 
     A variant appears several times per allele, once per reference sequence. Only the `NC_` genomic
     row yields a position; the transcript rows still carry the rsID, so the caller merges by rsID
     rather than discarding them.
+
+    And only the `NC_` row whose `referenceCollections` names `build` does — PharmVar publishes both
+    assemblies and lists GRCh37 first, so accepting any `NC_` row stores the wrong coordinate for most
+    variants. See `PHARMVAR_GENOME_BUILD`.
     """
     rsid = payload.get("rsId") or None
     match = _NC_HGVS.match(str(payload.get("hgvs") or payload.get("position") or ""))
-    if match is None:
+    collections = payload.get("referenceCollections") or []
+    if match is None or build not in collections:
         return PharmVarVariant(rsid=rsid, chrom=None, start=None, ref=None, alt=None)
     return PharmVarVariant(
         rsid=rsid,
@@ -129,24 +160,34 @@ def parse_genomic_variant(payload: dict[str, Any]) -> PharmVarVariant:
     )
 
 
-def _merge_variants(entries: list[dict[str, Any]]) -> list[PharmVarVariant]:
+def _merge_variants(
+    entries: list[dict[str, Any]], *, build: str = PHARMVAR_GENOME_BUILD
+) -> list[PharmVarVariant]:
     """Collapse an allele's per-reference-sequence rows to one entry per variant.
 
-    Keyed by rsID where there is one, else by the coordinate; a genomic row supersedes a
-    transcript-only row for the same variant, so the merged entry has both the id and the position.
+    Keyed by rsID where there is one, else by the coordinate; a row carrying a `build` coordinate
+    supersedes a positionless one for the same variant, so the merged entry has both the id and the
+    position. That supersede rule is what makes the assembly filter safe: the GRCh37 row now yields no
+    position, so the GRCh38 row wins wherever both exist, whichever order they arrive in.
     First-occurrence order is preserved — emitted order feeds `artifact.digest` (Principle 7).
+
+    A row with neither an rsID nor a coordinate is dropped rather than merged. It has nothing to
+    identify it, and every such row keyed to the same `None:None:None` string, so they collapsed into
+    one blank entry that named no variant at all.
     """
     merged: dict[str, PharmVarVariant] = {}
     for entry in entries:
-        parsed = parse_genomic_variant(entry)
+        parsed = parse_genomic_variant(entry, build=build)
+        if parsed.rsid is None and not parsed.usable:
+            continue
         key = parsed.rsid or f"{parsed.chrom}:{parsed.start}:{parsed.ref}"
         existing = merged.get(key)
-        if existing is None or not existing.usable and parsed.usable:
+        if existing is None or (not existing.usable and parsed.usable):
             merged[key] = parsed
     return list(merged.values())
 
 
-def parse_allele(payload: dict[str, Any]) -> PharmVarAllele:
+def parse_allele(payload: dict[str, Any], *, build: str = PHARMVAR_GENOME_BUILD) -> PharmVarAllele:
     """One `/alleles` entry → a `PharmVarAllele`.
 
     `activityScore` is absent for most alleles and non-numeric for some ("n/a"), so it is parsed
@@ -164,7 +205,7 @@ def parse_allele(payload: dict[str, Any]) -> PharmVarAllele:
         activity_value=activity,
         evidence_level=payload.get("evidenceLevel") or None,
         is_core=(payload.get("alleleType") or "").lower() != "sub",
-        variants=_merge_variants(list(payload.get("variants") or [])),
+        variants=_merge_variants(list(payload.get("variants") or []), build=build),
     )
 
 
@@ -181,6 +222,13 @@ class PharmVarClient:
         timeout: float = 60.0,
     ) -> None:
         self.endpoint = endpoint.rstrip("/")
+        # `.env` is where a developer actually keeps this key, and until now it only reached
+        # `os.environ` as a side effect of some *other* call resolving a cache path. That worked for
+        # `enrich_pgx` by accident and not at all for the snapshot builder, which resolves nothing —
+        # `pharmvar build` reported "no PharmVar API key" on a machine that had one in `.env`. Loading
+        # it where the key is read makes the credential path independent of unrelated calls.
+        # `override=False`, so a real environment variable and a test's neutralizing `""` both win.
+        load_env()
         self._api_key = api_key or os.environ.get(API_KEY_ENV)
         self._client = client or httpx.Client(timeout=timeout)
         self._owned = client is None
@@ -197,7 +245,7 @@ class PharmVarClient:
 
     @retry(
         retry=retry_if_exception_type((httpx.TransportError, httpx.HTTPStatusError)),
-        stop=stop_after_attempt(3),
+        stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
     )
@@ -236,3 +284,126 @@ class PharmVarClient:
         if not include_sub_alleles:
             alleles = [a for a in alleles if a.is_core]
         return alleles
+
+    def all_genes(self, *, include_sub_alleles: bool = False) -> dict[str, list[PharmVarAllele]]:
+        """Every gene PharmVar defines, with its alleles — **one request** for the whole database.
+
+        `/genes` returns the same shape as `/genes/{symbol}` for all fifteen genes at once (1,173 core
+        alleles, ~5 MB), which at 2 rps is the difference between one call and fifteen. That matters
+        only for the snapshot builder, which is its only caller; the runtime passes stay gene-scoped
+        because a module's own tables say which genes it is about.
+        """
+        payload = self._get(
+            "genes", params={"exclude-sub-alleles": "true"} if not include_sub_alleles else {},
+        )
+        entries = payload if isinstance(payload, list) else [payload]
+        out: dict[str, list[PharmVarAllele]] = {}
+        for entry in entries:
+            symbol = str(entry.get("geneSymbol") or "")
+            if not symbol:
+                continue
+            alleles = [parse_allele(a) for a in (entry.get("alleles") or [])]
+            if not include_sub_alleles:
+                alleles = [a for a in alleles if a.is_core]
+            out[symbol] = alleles
+        return out
+
+
+class PharmVarSnapshotClient:
+    """`alleles_for_gene` answered from an **operator-built** snapshot (RM38).
+
+    Duck-typed against `PharmVarClient` so `enrich_pgx` needs no branch, and `configured` is True
+    because the question it answers — "can this leg run?" — is about reachability, not about a key. A
+    snapshot exists or it does not, and `locations.resolve_pharmvar_reference` already decided that
+    before this is constructed.
+
+    There is no `all_genes` here: that endpoint exists to *build* a snapshot, and a snapshot does not
+    build itself. Read with duckdb (core) rather than polars (`[dev]`, builder-only).
+    """
+
+    def __init__(self, reference: Path) -> None:
+        self.reference = Path(reference)
+        data_dir = self.reference / SNAPSHOT_DATA_DIRNAME
+        if not (data_dir / "alleles.parquet").is_file():
+            raise PharmVarError(
+                f"no PharmVar snapshot at {data_dir} — build one with "
+                f"`just-dna-enricher pharmvar build` (it needs your own PHARMVAR_API_KEY; the "
+                f"snapshot is never published, see the terms §2 note)"
+            )
+        self._data_dir = data_dir
+        release_path = self.reference / RELEASE_FILENAME
+        self.release: dict[str, Any] = (
+            json.loads(release_path.read_text()) if release_path.is_file() else {}
+        )
+
+    @property
+    def configured(self) -> bool:
+        """True: a resolved snapshot is the credential's stand-in, and it is already in hand."""
+        return True
+
+    @property
+    def dataset(self) -> str | None:
+        """Which snapshot answered, for `SourceRow.dataset`."""
+        return self.release.get("dataset")
+
+    @property
+    def genome_build(self) -> str:
+        """The assembly the stored coordinates are on. Recorded by the builder, never assumed."""
+        return self.release.get("genome_build") or PHARMVAR_GENOME_BUILD
+
+    def close(self) -> None:
+        """No-op, so a caller can `close()` this and a live client identically."""
+
+    def _query(self, sql: str, params: list[Any]) -> list[dict]:
+        con = duckdb.connect(":memory:")
+        try:
+            cursor = con.execute(sql, params)
+            columns = [d[0] for d in cursor.description]
+            return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+        finally:
+            con.close()
+
+    def alleles_for_gene(self, gene: str, *, include_sub_alleles: bool = False) -> list[PharmVarAllele]:
+        """Every allele the snapshot holds for one gene, with its defining variants.
+
+        `include_sub_alleles` is accepted for signature parity and cannot be honoured: the builder
+        fetches core alleles only, so asking for sub-alleles here would be answered with a subset while
+        looking like a full answer. It raises instead — a wrong answer that looks right is the one
+        outcome worth refusing.
+        """
+        if include_sub_alleles:
+            raise PharmVarError(
+                "the PharmVar snapshot holds core alleles only; sub-alleles need the live API. "
+                "Rebuild with --sub-alleles, or run this leg online."
+            )
+        alleles_path = str(self._data_dir / "alleles.parquet").replace("'", "''")
+        variants_path = str(self._data_dir / "variants.parquet").replace("'", "''")
+        rows = self._query(
+            f"SELECT gene, allele, function, activity_value, evidence_level "
+            f"FROM read_parquet('{alleles_path}') WHERE gene = ? ORDER BY allele",
+            [gene],
+        )
+        variants = self._query(
+            f"SELECT allele, rsid, chrom, start, ref, alt FROM read_parquet('{variants_path}') "
+            f"WHERE gene = ? ORDER BY allele, variant_index",
+            [gene],
+        )
+        by_allele: dict[str, list[PharmVarVariant]] = {}
+        for v in variants:
+            by_allele.setdefault(v["allele"], []).append(
+                PharmVarVariant(
+                    rsid=v["rsid"], chrom=v["chrom"], start=v["start"], ref=v["ref"], alt=v["alt"]
+                )
+            )
+        return [
+            PharmVarAllele(
+                gene=r["gene"],
+                allele=r["allele"],
+                function=r["function"],
+                activity_value=r["activity_value"],
+                evidence_level=r["evidence_level"],
+                is_core=True,
+                variants=by_allele.get(r["allele"], []),
+            )
+            for r in rows
+        ]

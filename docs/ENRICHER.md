@@ -112,16 +112,101 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
 | `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
-| `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `_load_csv_rows`, format |
+| `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `load_csv_rows`, format |
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `sequences` | reference-sequence access (cached) + the reference-allele check | `ga4gh.vrs` |
-| `locations` | cache-location resolution + `.env` (moved from the compiler) | `platformdirs`, `python-dotenv` |
-| `download` | HuggingFace **snapshot** download (Ensembl + ClinVar + gnomAD constraint; footer-checked, atomic) | `huggingface_hub` (lazy) |
+| `locations` | cache-location resolution for all **six** snapshots + `.env` (moved from the compiler) | `platformdirs`, `python-dotenv` |
+| `download` | HuggingFace **snapshot** download (Ensembl, ClinVar, constraint, ClinPGx, CPIC; footer-checked, atomic). **No PharmVar** — see *The caches* | `huggingface_hub` (lazy) |
+| `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
+| `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `enrich-and-compile`, `upload`, `clinvar`/`gnomad constraint` build+publish, `vrs mint` | `typer` |
+| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar` build+publish, `vrs mint` | `typer` |
+
+## Rate limits (public APIs)
+
+Every live client that can fire more than a handful of requests goes through `net.PacingGate`
+(injectable clock, pace-before-retry). Snapshot / one-shot downloads are listed too so the full
+egress surface is in one place. **Published** is what the service documents; **our pace** is what
+the client actually waits; when the source publishes nothing, the gate is a courtesy, not a claim
+that the ceiling is known.
+
+| Service | Used by | Published budget | Our pace / batching | Auth / identity |
+|---|---|---|---|---|
+| **gnomAD GraphQL** | `gnomad` (resolve, frequencies, live constraint) | **10 req / IP / 60 s** | `min_request_interval=6.0` (exactly that budget); GraphQL alias batches of **20** (25 worked live; 29 → HTTP 400) ≈ 200 variants/min | none |
+| **NCBI E-utilities** | `eutils` → literature + rsID currency | **3 req/s** without a key; **10 req/s** with `NCBI_API_KEY` | `1/3 s` or `1/10 s` from whether the key is present; esummary batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set; key optional |
+| **PharmVar** | `pharmvar` / `pgx` | **2 req/s** (OpenAPI “Limitations”) | `PHARMVAR_MIN_INTERVAL=0.5` | `Api-Key` header from `PHARMVAR_API_KEY` (personal; never written to a module) |
+| **Crossref** | `literature.CrossrefClient` (DOI existence) | **polite pool**: 10 req/s single-DOI (5 public); concurrency 3 polite / 1 public (Crossref docs, Dec 2025 revision) | `min_request_interval=0.1` (10/s — polite single-DOI ceiling) | User-Agent `just-dna-enricher (mailto:…)` when `JUST_DNA_CONTACT_EMAIL` is set → polite pool; omitted rather than invented |
+| **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
+| **OLS4 + HGNC** | `identifiers.OntologyClient` | neither publishes a documented limit | `min_request_interval=0.2` (courtesy — GET-per-id, unbatched) | `Accept: application/json` |
+| **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — live path is the last link after cache/snapshot, so volume stays low; tenacity on transport only | none |
+| **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
+| **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
+| **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
+| **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
+| **ClinGen** dosage TSV | `clingen` | n/a (one file) | single download, then local parse | none |
+| **ACMG SF list** | `acmg` | n/a | one HTML GET (~75 KB) or a local `--sf-list` workbook | none |
+| **Hugging Face Hub** | `download` (snapshots), `upload` (modules / references) | **5-minute fixed windows**, three buckets — see below | **no custom gate**; `huggingface_hub` handles 429 via `RateLimit` / `RateLimit-Policy` headers (smart retry in 1.2+) | `HF_TOKEN` / `hf auth login` — anonymous shares a per-IP pool; a free token is the usual fix |
+
+### Hugging Face Hub tiers (as of Sep 2025)
+
+Quotas are per **5-minute** window. Snapshot provisioning (`ensure_*`) and publisher upload both hit
+**API** (listing / commits) and **Resolvers** (`/resolve/` file bytes). Pages is the website and is
+not on our path. Numbers marked `*` are subject to change with platform health.
+
+| Plan | API | Resolvers | Pages |
+|---|---|---|---|
+| Anonymous (per IP) | 500 * | 3,000 * | 100 * |
+| Free user | 1,000 * | 5,000 * | 200 * |
+| PRO | 2,500 | 12,000 | 400 |
+| Team org | 3,000 | 20,000 | 400 |
+| Enterprise | 6,000 | 50,000 | 600 |
+| Enterprise Plus | 10,000 | 100,000 | 1,000 |
+| Enterprise Plus + org IP ranges | 100,000 | 500,000 | 10,000 |
+| Academia Hub org | 3,000 | 20,000 | 400 |
+
+Org limits apply **per member**, not shared. Source of truth:
+[huggingface.co/docs/hub/rate-limits](https://huggingface.co/docs/hub/en/rate-limits). Always pass
+`HF_TOKEN` for snapshot download when possible — anonymous traffic is the usual cause of a “stuck”
+`ensure_snapshot` (the client is sleeping on a 429, not hanging).
+
+### Rules that follow from the table
+
+- **Pace before retry.** `tenacity` backs off on transport / 429, but a blind retry spends the same
+  budget that caused the 429; every gated client waits first.
+- **Reuse clients.** A `PacingGate` is per-client state — constructing a fresh gnomAD / eutils client
+  per lookup throws the interval away (`lookup` holds them for that reason).
+- **Batch where the API allows it.** gnomAD aliases (20) and NCBI esummary (200) exist because the
+  published ceilings make one-id-per-request unusable; PharmVar is the opposite — 2 rps forces
+  gene-scoped endpoints, never per-allele.
+- **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
+  / OLS4 / HGNC / live Ensembl are paced only. Persistence is the authored sidecars
+  (`resolution.csv`, `frequencies.csv`, …) and the HF parquet snapshots (Ensembl, ClinVar, gnomAD
+  constraint) — delete a sidecar to force a refetch. Note which entries in that list are also the
+  **licence-gated** ones: CPIC and PharmVar are paced-only *and* forbid sale, so they are the two RM38
+  gives a snapshot (see *On a host, or in a service* below).
+- **A shared IP shares one budget.** Every figure above is per-IP or per-token, never per caller, so a
+  hosted deployment multiplies its users onto one allowance rather than getting one each. This is a
+  *separate* reason from licensing for reaching a source through a snapshot, and it applies to ungated
+  sources too — it just happens that the gated ones are where both reasons land at once.
+- **`--offline`** clamps to local caches / sidecars; it does not invent a budget for a live API.
+- **The retry ceiling is a floor a deployment can raise — `$JUST_DNA_HTTP_RETRY_ATTEMPTS` (RM42).**
+  Three attempts is right for the audience the CLI was written for: a person who would rather see a
+  failure in ten seconds than wait out a flapping upstream. It is wrong for the other shape the 0.5
+  tiering created — a **server** running `enrich()` inside an unattended publish, where giving up on a
+  transient 502 costs the publisher a whole re-upload rather than ten seconds. Two callers wanting
+  opposite things from one constant is a knob, and it was an import-time decorator argument with no
+  parameter, so a consumer's only route was to walk the package and reassign `policy.stop`.
+
+  `net.attempt_floor(n)` resolves per call. It **raises** each client to at least the configured value
+  and never lowers one, so the deliberate per-client tuning survives — gnomAD and eutils sit at 4
+  because their budgets are tightest, and a value that *set* every client would flatten that. Safe to
+  raise precisely because every gated client paces *before* it retries: an extra attempt spends a slot
+  of the published budget rather than bursting past it. Only a bare `stop_after_attempt` is replaced —
+  a composed `stop_after_attempt(3) | stop_after_delay(60)` means *both*, and raising one term would
+  silently change a policy whose author meant the conjunction. None of the nine is composed today.
 
 ## `enrich()` — the resolver chain
 
@@ -224,6 +309,17 @@ genome is a worse diagnosis than a row the chain could not find, so it should be
 sees. `EnrichmentResult` carries `rows`,
 `unresolved` (variant_keys with no position), `sources`, `mode`, and a `fully_resolved` property.
 
+**`EnrichmentResult.vrs` is the `MintResult` this call computed (RM40, 0.5.1).** It carries exactly the
+two counters `compile_module` later stamps into `manifest.compilation.vrs_alleles` /
+`vrs_alleles_identified`, plus `unmintable_reasons` — the grouped-by-reason breakdown that is the
+*actionable* half, where *"no refget table for build 'GRCh37'"* and *"needs the reference sequence"*
+live. It used to be logged and dropped, so a consumer reading coverage **before** a compile — which is
+what a publish dry run is — had to re-implement the counting, and get two non-obvious rules right to
+agree with the manifest a publish would produce: count per **ALT slot** (`vrs_id` is a parallel array of
+`alts`), and treat an *absent* cell as `len(alts)` unnamed slots rather than zero, or a table where
+nothing minted reports flawless coverage out of a denominator of nothing. `None` when `mint_vrs=False`
+— never a coverage of zero.
+
 ### Resolution is allele-aware in **both** directions
 
 A rsID is a *position/multi-allelic* dbSNP tag, so one id routinely names several genuinely different
@@ -311,7 +407,165 @@ the fallback triggers.
 > line but mostly hands off. Adding a REST→composite-id step (a follow-up) would make V2 a genuine first
 > responder. Endpoints and the human GRCh38 genome id are configurable via `EnsemblSettings`.
 
-## Cache, locations, and snapshot download
+## The caches
+
+**Six parquet snapshots, one base directory, one rule: locate, never download — except where you ask.**
+Every live source this tier reaches has (or can have) a local copy, and the whole reason is in the rate
+table above: *a shared IP shares one budget.* An author on their own machine can go live for everything;
+a **host** cannot, and for the three licence-gated sources it should not (see *On a host, or in a
+service* below). Pre-provisioning is therefore a deployment step, not an optimization.
+
+| Cache | Subdir | Override | `ensure_*` | Published at | Serves |
+|---|---|---|---|---|---|
+| **Ensembl** | `ensembl_variations/` | `$JUST_DNA_ENSEMBL_CACHE` | `ensure_snapshot` | `just-dna-seq/ensembl_variations` | rsID → coordinate (`enrich`) |
+| **ClinVar** | `clinvar/` | `$JUST_DNA_CLINVAR_CACHE` | `ensure_clinvar_snapshot` | `just-dna-seq/clinvar` | records + `citations/` (`enrich`, `draft-panel`) |
+| **gnomAD constraint** | `gnomad_constraint/` | `$JUST_DNA_GNOMAD_CONSTRAINT_CACHE` | `ensure_constraint_snapshot` | `just-dna-seq/gnomad_constraint` | v4.1 gene constraint (`gene-metrics`) |
+| **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `just-dna-seq/clinpgx` | clinical annotations (`clinpgx check`) |
+| **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `just-dna-seq/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
+| **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
+
+🔒 = licence-gated (`commercial_use=False`). The bottom three are RM38, new in 0.5.1.
+
+**One base, so a single just-dna-lite deployment's cache serves all of them.** Each subdir sits under
+`$JUST_DNA_PIPELINES_CACHE_DIR`, or platformdirs' user cache for `just-dna-pipelines`
+(`~/.cache/just-dna-pipelines` on Linux) when that is unset. Precedence per cache is **explicit argument
+→ its own `$JUST_DNA_*_CACHE` → the base**, and a `.env` beside the working directory is loaded
+automatically (`locations.load_env`, walking up from CWD). Every resolver returns `None` rather than
+guessing when nothing is there.
+
+Inside a cache the layout is fixed, because **four parties have to agree on it** — builder writes,
+publisher uploads, provisioner fetches, reader queries — and every past disagreement was silent:
+
+```
+<base>/<subdir>/
+  data/*.parquet          # the records; the readers glob exactly this
+  citations/*.parquet     # optional sidecar, a SIBLING of data/ (ClinVar only)
+  release.json            # which release this is — what reference_sha256 pins against (RM4)
+  LICENSE.txt             # the terms, for a snapshot that ships its own (ClinPGx)
+```
+
+### Pre-caching the published snapshots from HuggingFace
+
+```bash
+just-dna-enricher cache status                       # what is present, where, which release
+just-dna-enricher cache pull                         # the ungated three
+just-dna-enricher cache pull --use non-commercial    # …and the gated ones you may hold
+just-dna-enricher cache pull --only clinvar --only cpic --use non-commercial
+```
+
+`cache pull` is **re-runnable and cheap**: a complete cache is trusted without touching the network, and
+only an empty or corrupt one refetches. One snapshot failing does not sink the rest — each reports its
+own line, and the command exits 1 if any failed.
+
+Four things worth knowing before you run it on a server:
+
+- **Set `HF_TOKEN`.** Anonymous traffic shares a per-IP pool (500 API / 3,000 resolver calls per 5-minute
+  window); a free token roughly doubles it. The usual symptom of not having one is an `ensure_*` that
+  looks hung — the client is sleeping on a 429, not stuck.
+- **`--use` is required for the gated pair, and it is not ceremony.** ClinPGx and CPIC forbid sale, and
+  under a data-usage policy the terms are accepted when the data is **taken** — so downloading is the
+  act being gated. `unstated` skips them with a reason, `commercial` refuses, `non-commercial`
+  proceeds. Same three states as everywhere else; the tool will not assert a purpose for you.
+- **`just-dna-seq/cpic` and `just-dna-seq/clinpgx` have to exist first.** They are new with 0.5.1, so
+  until somebody publishes them `cache pull` reports `repository not found` for those two — which is
+  honest rather than a bug. Build and publish them once (below), or point at a locally built directory.
+- **A published dataset accumulates.** Each `ensure_*` fetches only the files its own snapshot is made
+  of, because the ClinVar repo still carries a 159 MB `clinvar.parquet` from the single-file era whose
+  columns are raw VCF INFO fields. The readers glob `data/*.parquet`, so one foreign file puts two
+  schemas under one DuckDB relation and every query dies on `Referenced column "clin_sig" not found`.
+
+If you prefer the Hub CLI, the layout is plain and the same files are all there is:
+
+```bash
+hf download just-dna-seq/clinvar --repo-type dataset \
+    --include 'data/clinvar-*.parquet' 'citations/*.parquet' 'release.json' \
+    --local-dir "$JUST_DNA_PIPELINES_CACHE_DIR/clinvar"
+```
+
+Note the `--include`: `data/*.parquet` alone would drag in the stale flat file above. In Python it is
+`from just_dna_enricher.download import ensure_clinvar_snapshot; ensure_clinvar_snapshot()`, which does
+the filtering, the footer check and the atomic rename for you.
+
+### Building the three that are not (fully) published
+
+```bash
+# CPIC — open and unauthenticated, so this is about a host's shared budget, not access.
+just-dna-enricher cpic build --out ./cpic --use non-commercial      # 132 genes, ~120k rows, ~256 KB
+just-dna-enricher cpic publish ./cpic --repo <org>/cpic             # optional; redistribution is granted
+
+# ClinPGx — the bulk archive; its LICENSE.txt is extracted and travels with the parquet.
+just-dna-enricher clinpgx build --out ./clinpgx --use non-commercial
+just-dna-enricher clinpgx publish ./clinpgx --repo <org>/clinpgx
+
+# PharmVar — needs YOUR key, and there is no publish command.
+PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --out ./pharmvar --use non-commercial
+```
+
+Then point at them, or move them under the base directory so the default resolvers find them:
+
+```bash
+export JUST_DNA_CPIC_CACHE=./cpic
+export JUST_DNA_PHARMVAR_CACHE=./pharmvar
+just-dna-enricher pgx spec/ --offline --use non-commercial   # zero egress, both legs answered
+```
+
+**Why PharmVar has no publish command, and will not get one.** Its bulk data is pulled under a key its
+terms §2 make **personal and non-transferable**, and no axis `SourceTerms` records covers passing that
+on — `redistribution=True` describes the CC BY-SA grant over the *content*, not a clause about the
+*account*. An unestablished permission is never a permission, the same `None` ≠ `False` rule that
+governs `share_alike` and `commercial_use`. So the snapshot is operator-built and inject-only, its
+`release.json` says so (`"redistributable": false`), and the build command prints the same warning.
+
+### Snapshot-first, live second, `--offline` first-only
+
+Every pass follows one of two shapes, and which one it follows depends on whether a live route exists
+at all:
+
+| Pass | With a snapshot | Without one, online | Without one, `--offline` |
+|---|---|---|---|
+| `enrich` | cache | provision, else live Ensembl/ClinVar/gnomAD | cache only |
+| `gene-metrics` | snapshot (v4.1) | provision, else live API (**v2.1.1** — `dataset` says which) | snapshot only |
+| `pgx` | snapshot | live PharmVar/CPIC | **skipped, with a reason** |
+| `draft` | snapshot | live CPIC | skipped, with a reason |
+| `clinpgx check` | snapshot | provision (no live route exists — the API was retired) | skipped, with a reason |
+| `dosage`, `literature`, `frequencies` | — | live | no-op + warning (no snapshot exists) |
+
+The asymmetry in the middle column is deliberate. `clinpgx` provisions automatically because there is
+no live fallback to degrade to; `pgx` and `draft` fall back to live because there is one, and pulling a
+whole database to answer one gene would be the wrong default for an author on a laptop. Neither adds a
+second flag — **`--offline` is the switch**, and an explicit `--*-cache` / `--snapshot` path is the
+inject-only escape hatch, never second-guessed.
+
+Which route actually answered is **recorded, not implied**: `PgxResult.routes` reports `snapshot` or
+`live` per source, and a snapshot stamps its own release into `SourceRow.dataset` (`cpic_snapshot_<12
+hex>`), exactly as the two gnomAD constraint routes already distinguish themselves. A consumer must be
+able to tell a pinned file from a live API, because the two can differ by a release.
+
+A pass that could run *neither* way is a third state, never a silent pass: `PgxResult.skipped_offline`
+and `ClinGenResult.skipped_offline` carry the reason, distinct both from "ran and found nothing" and
+from a failure.
+
+### Two caches that are not in the table
+
+- **The ACMG secondary-findings snapshot** (`acmg build` → `check-acmg --sf-list`) is inject-only and
+  has no `locations` entry: it is a single small CSV an author points at, not a shared reference. It is
+  also the one list with no machine-readable upstream — see the ACMG section.
+- **No response cache for the live clients.** NCBI, PharmVar's live path, gnomAD GraphQL, Crossref,
+  Europe PMC, OLS4, HGNC and live Ensembl are **paced only**. Persistence is the authored sidecars
+  (`resolution.csv`, `frequencies.csv`, …) — delete a sidecar to force a refetch, because `enrich()`
+  treats an existing one as authoritative and merges into it rather than clobbering it.
+
+### When something is wrong with a cache
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Referenced column "clin_sig" not found` | a foreign parquet in `data/` (stale layout, or an old builder) | `cache status`, then move the file aside and rebuild |
+| "present but not queryable" | as above, or a truncated download | remove the file; `cache pull` refetches it |
+| `ensure_*` appears to hang | anonymous 429 backoff | set `HF_TOKEN` |
+| a pass says a source was "skipped: --offline and no built snapshot" | exactly what it says | `cache pull`, or `<source> build` |
+| `repository not found` for cpic/clinpgx | nobody has published that snapshot yet | build it locally and point `$JUST_DNA_*_CACHE` at it |
+
+## Cache internals — locations, resolver, download
 
 - **`locations.py`** (moved from `just_dna_compiler.cache`) — `resolve_ensembl_reference` locates a usable
   reference by precedence (explicit arg → `$JUST_DNA_ENSEMBL_CACHE` → `$JUST_DNA_PIPELINES_CACHE_DIR` →
@@ -324,6 +578,12 @@ the fallback triggers.
   (explicit arg → `$JUST_DNA_CLINVAR_CACHE` → `$JUST_DNA_PIPELINES_CACHE_DIR`/platformdirs, under a
   `clinvar/` subdir), also **never downloading**. The ClinVar snapshot ships as parquet only (no prebuilt
   `.duckdb`).
+- **One resolver body, six callers.** `_resolve_parquet_cache(explicit, env_var, default_dir)` is that
+  ladder, written once: it was copied per snapshot and the copies had already drifted (ClinVar's silently
+  lacked the bare-`.parquet` case its constraint sibling had). `accept_bare_file=True` is the one
+  difference, and only the single-file constraint snapshot wants it. `_cache_dir(subdir)` reads
+  `$JUST_DNA_PIPELINES_CACHE_DIR` **at call time**, not at import, so a `.env` loaded by `load_env` can
+  still change the answer.
 - **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
   the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations` / `just-dna-seq/clinvar` /
   `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body. A complete parquet
@@ -340,6 +600,13 @@ the fallback triggers.
   `release.json` comes down with the data, so a provisioned snapshot can state its own release — it is
   what `GenePanelSpec.reference_sha256` pins against (RM4), and a cache that cannot state its
   `source_sha256` is only a cache. A repo without one still provisions; absence is not an error.
+  **`LICENSE.txt` rides along on the same rule, and it did not until 0.5.1.** `upload`'s allow-patterns
+  were `data/*.parquet`, `citations/*.parquet` and `release.json`, so publishing a share-alike snapshot
+  silently dropped the one file the pinned-licence design exists for — `clinpgx_build` extracts ClinPGx's
+  terms out of the very archive the data came from precisely so a *holder of the snapshot* can read what
+  governs the bytes, and `license_sha256` pins nothing for someone who never received them. Both halves
+  are fixed: the publisher sends it and the provisioner fetches it. Absence stays normal (only ClinPGx
+  ships one).
 
 ## gnomAD v4.1 — three roles, one endpoint (`gnomad.py`)
 
@@ -483,6 +750,18 @@ canonicality. This check buys it back on the one tier that has the sequence to d
 - **a multi-base claim** — corrupting. The claimed length *sets the interval*, so a wrong `ref` makes
   the id span the wrong bases and name an event the author did not intend. `RefMismatch.distorts_the_allele_id`
   reports which case a finding is.
+
+**`RefMismatch.shift` is the field to surface first, and it names a third cause.** A mismatch does not
+only mean the `ref` cell is wrong; far more often in the wild the *position* is wrong and `ref` was
+right all along for the variant the author meant. `shift` is the offset, in bases, at which the
+authored `ref` **is** the reference sequence — `+1` meaning the variant sits one base right of the
+authored `start`, which is exactly what subtracting one from a 1-based VCF `POS` produces. It is
+`None` when no neighbour explains it, so nothing is claimed; `diagnosis` renders whichever cause was
+established and is the grouping key for a run's summary. The distinction is not cosmetic. Reporting a
+shifted coordinate as a bad `ref` sends the author to the wrong column while leaving them to wonder
+why their coordinate validated against dbSNP — and a shifted row **always** distorts the allele id
+whatever its length, because the id is minted at the authored position, so the compiler's VRS pass
+recomputes the same wrong id and reports it *verified*.
 
 **It reports; it never repairs.** The row is left exactly as authored. Rewriting it would destroy the
 evidence that something upstream is wrong and silence a problem the author needs to decide about.
@@ -821,6 +1100,44 @@ Pass 5 cross-checks a module's star-allele tables against the nomenclature autho
 **what was consulted and on what terms** into `sources.csv`. It is the first pass whose primary output
 is provenance rather than facts.
 
+### The bottom line first: a PGx module is non-commercial only
+
+**Every PGx upstream forbids sale, and PGx tables are the layer that taints, so one drafted row settles
+it for the whole module.** ClinPGx, CPIC and PharmVar each carry CC BY-SA 4.0 *plus* a contractual bar on
+selling the data, which `licensing.{CLINPGX,CPIC,PHARMVAR}_TERMS` each record as
+`commercial_use=False`. The PGx tables —
+`haplotypes.csv`, `allele_function.csv`, `diplotypes.csv`, `pharm_variants.csv` — are the module's own
+authored annotation, so their `SourceRow` sits at the `annotation` layer, and that is the one layer
+`sources.taints_commercial_use` treats as tainting. The verdict is **most-restrictive-wins, module-wide**:
+mixing in a permissive source cannot launder a restricted one, and the compile refuses in **both** modes
+unless `sources.csv` records `declared_use=non_commercial` for every tainting source. `unstated` is not a
+loophole — it is the absence of a declaration, which is exactly what the gate is looking for.
+
+`reference_examples/cyp2c19_star_alleles/sources.csv` is the shape: one CPIC row,
+`commercial_use=false`, `declared_use=non_commercial`.
+`reference_examples/pgx_slco1b1_simvastatin/sources.csv` is the same with a licence hash pinned from the
+bytes it was read out of (`license_sha256`, `dataset=clinpgx_2025-07-05`).
+
+And **declaring is asserting, not proving** — the gate's own closing sentence says so. Recording
+`non_commercial` states how the module will be used; nothing in the compiler can check that, and it does
+not pretend to.
+
+Two things the flat "non-commercial" summary does *not* say, both of which matter:
+
+- **It is not "unrestricted if you give it away."** Sale and distribution are different rights.
+  `redistribution` is a third recorded axis and it is deliberately **not gated** (RM27) — all three PGx
+  sources record `redistribution=true`, since CC BY-SA expressly permits sharing under share-alike plus
+  attribution, so nothing in this workspace trips it today. But the axis exists precisely because
+  academic-use-only sources (OMIM, dbNSFP) permit neither, and "non-commercial" is the reading that would
+  hide the difference.
+- **PharmVar is stricter than any column can express.** Its recorded `notice` reads *research use only …
+  not intended for direct diagnostic use or medical decision-making*, and its API key is **personal and
+  non-transferable** under its terms §2. `commercial_use=False` is the nearest a column gets; the rest
+  stays prose in `notice`, on purpose rather than by omission — a fourth licensing axis means a new
+  `SourceRow` column, and a new column on an existing parquet moves every compiled module's digest, so it
+  is a **1.0** change and not a minor one. The restriction is therefore recorded and legible; it is not
+  machine-enforced, and nobody should file the column as cheap.
+
 ### The licensing picture, probed 2026-08-02
 
 | Source | Endpoint | Auth | Licence | Sellable |
@@ -839,8 +1156,9 @@ formats unchanged. ClinPGx is the umbrella that merged PharmGKB, CPIC and PharmC
 policy, so CPIC carries ClinPGx's terms. Preferring PharmVar for the star-allele layer is a
 *data-authority* choice — it is the naming authority for CYP star alleles — not a licensing one.
 
-**No PGx source is sellable.** Each layers a contractual bar on sale *on top of* the CC grant, so a
-bare "CC BY-SA 4.0" line is not permission to sell; read the surrounding terms. Since the coordinate
+**No PGx source is sellable** — the consequence for a module is drawn out above. Each layers a
+contractual bar on sale *on top of* the CC grant, so a bare "CC BY-SA 4.0" line is not permission to
+sell; read the surrounding terms. Since the coordinate
 layer is already covered by Ensembl/dbSNP, ClinPGx and CPIC are deliberately **never** wired as
 resolution links — that keeps coordinates unrestricted and leaves nothing to declare there.
 
@@ -867,7 +1185,8 @@ are accepted, and because refusing here means nothing is fetched rather than mer
 
 ### Where the terms come from
 
-`licensing.TERMS` holds only the residue that cannot be read from a payload. Where a source ships its
+The per-source `SourceTerms` constants (`CPIC_TERMS`, `PHARMVAR_TERMS`, …, collected in
+`licensing.TERMS_BY_SOURCE`) hold only the residue that cannot be read from a payload. Where a source ships its
 own licence — ClinPGx bundles a `LICENSE.txt` inside every archive — the pass reads it from the same
 bytes it took the data from and records `license_sha256`, which makes the recorded terms provably
 contemporaneous with the recorded data instead of a lookup that was true once. Both halves of a static
@@ -876,6 +1195,68 @@ next such change into a finding.
 
 The compiler holds **no** source→licence map — that would give it a source convention (Principle 2)
 and an un-injected reference. It reads only what the enricher recorded.
+
+### On a host, or in a service — the gated sources need a cache (RM38)
+
+Everything above assumes the shape this tier was written for: an author runs the enricher on their own
+machine. That case is fine as it stands, and the reason is worth naming, because it is exactly what stops
+being true elsewhere. The author accepts the source's terms themselves, spends their own rate budget, and
+holds their own PharmVar key.
+
+A **hosted** enricher — the same functions behind an HTTP endpoint, enriching modules for whoever is
+calling — is a different act, for two independent reasons. Either one alone justifies the conclusion, and
+they have different consequences, so they are worth keeping apart:
+
+- **Terms and identity.** The operator's acceptance stands in for every end user's, and the operator's
+  *personal, non-transferable* PharmVar key becomes the key third parties query on. There is no per-user
+  switch: the presence of `PHARMVAR_API_KEY` in the server's environment *is* the switch.
+- **One shared budget.** Every published figure in the rate table is **per IP**, so a server does not get
+  a budget per caller — it multiplies its callers onto one allowance. PharmVar's 2 rps and gnomAD's
+  10-per-60s are the whole deployment's, and an overspend limits the service rather than the caller who
+  caused it.
+
+**The resolution half always handled this, which is why only the gated sources were at issue.** Ensembl,
+ClinVar and gnomAD constraint each have a snapshot, a `locations` resolver and an `ensure_*`, so a hosted
+`enrich()` is cache-served and `--offline` is genuinely zero-egress — and all three are
+`commercial_use=True`, so there is nothing to gate anyway. The gated set is precisely the three PGx
+sources, and until 0.5.1 none of them had a working cache path:
+
+| Gated source | Snapshot builder | `locations` resolver | `ensure_*` | Runtime pass |
+|---|---|---|---|---|
+| **ClinPGx** | `clinpgx_build.py` (shipped 0.5) | ✅ 0.5.1 | ✅ 0.5.1 | resolve → provision → skip with a reason |
+| **CPIC** | ✅ `cpic_build.py` (0.5.1) | ✅ 0.5.1 | ✅ 0.5.1 | snapshot → live → skip with a reason |
+| **PharmVar** | ✅ `pharmvar_build.py` (0.5.1) | ✅ 0.5.1 | **none, by design** | snapshot → live → skip with a reason |
+
+Before that, `--offline` was a **no-op** for `pgx` (it warned and returned, because there was nothing to
+fall back to) and was **absent entirely** from `draft`, so a hosted PGx path had two options — fetch, or
+skip the check — and neither was the one it wanted. See *The caches* above for the operator's side.
+
+**The rule this tier follows:** a hosted surface reaches a gated source through a snapshot the operator
+built **once**, never live per request. `--offline` is the only switch and an explicit `--snapshot` /
+`--*-cache` path is the inject-only escape hatch — the same shape the ClinVar and constraint snapshots
+already use, and deliberately not a second flag.
+
+**One asymmetry in publishing such a snapshot.** The recorded terms permit redistribution for all three,
+so ClinPGx and CPIC snapshots follow the full ClinVar pattern — build, publish, `ensure_*`. PharmVar
+cannot: bulk data pulled under a personal, non-transferable key is not covered by any axis the terms
+record, and an unestablished permission is never a permission here — the same `None` ≠ `False` rule that
+governs `share_alike` and `commercial_use`, applied to a clause no column models. A PharmVar snapshot
+therefore stays operator-built and inject-only: a `resolve_pharmvar_reference` and a builder, and
+deliberately no `ensure_pharmvar_snapshot` and no `pharmvar publish`.
+
+**And a coordinate bug the snapshot turned from latent into written.** PharmVar publishes each defining
+variant against **both** assemblies and lists GRCh37 first; `_merge_variants` was first-wins over any
+`NC_` row, so **451 of the 739** rsID-keyed defining variants would have carried a GRCh37 position
+(DPYD rs868235016 as chr1:97547910 rather than its GRCh38 place). The accession *version* cannot separate
+them — chr10 is `.10`/`.11` and so is chr22 — but `referenceCollections` does, exactly. Nothing consumed
+`PharmVarAllele.variants` before, which is why it never bit; a snapshot stores them. See
+`pharmvar.PHARMVAR_GENOME_BUILD`.
+
+**CPIC does publish a chromosome, on `gene.chr`.** An earlier probe read `sequence_location` alone — which
+genuinely has none — and concluded CPIC publishes none at all, so the drafting provider skipped every
+defining variant CPIC gives no rsID for: 18 in CYP2C9, 14 in TPMT, 4 in NUDT15. Joining `gene.chr` onto the
+symbol the location row already carries is a lookup in CPIC's own tables, not the inference that probe
+rightly refused, and `draft --gene CYP2C9` now writes 17 coordinate-only haplotype rows it used to drop.
 
 ### Every pass records what it consulted — and a link is not a source (RM33)
 
@@ -1088,6 +1469,20 @@ just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseu
 just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC)
+just-dna-enricher dosage spec/ --offline           # no-op with a warning (ClinGen has no snapshot)
+
+# Caches — provision once, then every gated pass runs with zero egress. See "The caches".
+just-dna-enricher cache status                     # what is present, where, which release
+just-dna-enricher cache pull                       # the ungated three, from HuggingFace
+just-dna-enricher cache pull --use non-commercial  # …and ClinPGx + CPIC, which forbid sale
+just-dna-enricher cache pull --only clinvar
+just-dna-enricher cpic build --out cpic/ --use non-commercial     # whole CPIC → parquet ([dev])
+just-dna-enricher cpic publish cpic/ --repo org/cpic              # redistribution is granted
+just-dna-enricher clinpgx publish cp/ --repo org/clinpgx          # LICENSE.txt travels with it
+just-dna-enricher pharmvar build --out pv/ --use non-commercial   # YOUR key; never published
+just-dna-enricher pgx spec/ --offline --use non-commercial        # both legs off snapshots
+just-dna-enricher pgx spec/ --cpic-cache cpic/ --pharmvar-cache pv/
+just-dna-enricher draft spec/ --gene CYP2C9 --offline --use non-commercial
 just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx --out acmg/   # once: the SF v3.3 snapshot
 just-dna-enricher check-acmg spec/ --sf-list acmg/  # acmg_sf vs the ACMG SF gene list (offline-capable)
 
@@ -1145,6 +1540,9 @@ directly to compose passes, inject clients, or run in-process.
 | `pgx` | `pgx.enrich_pgx` |
 | `check-identifiers` | `identifiers.check_identifiers` |
 | `check-acmg` | `acmg.verify_acmg_sf` (+ `AcmgReport.by_gene` for the grouped view) |
+| `cache status` / `cache pull` | `locations.resolve_*_reference` / `download.ensure_*_snapshot` |
+| `cpic build` / `publish` | `cpic_build.build_snapshot` / `upload.publish_reference_snapshot` |
+| `pharmvar build` | `pharmvar_build.build_snapshot` (no publish — see *The caches*) |
 | `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
@@ -1162,6 +1560,17 @@ directly to compose passes, inject clients, or run in-process.
 `sequences.verify_reference_alleles` are checks that run *inside* `enrich` (`--verify-clinsig`,
 `--verify-ref`), because their verdicts land on `resolution.csv` and on the enrichment report. Running
 either standalone would compute a finding with nowhere to put it.
+
+**And two take rows rather than a `spec_dir` — both now take either (RM41, 0.5.1).**
+`acmg.verify_acmg_sf` and `identifiers.check_identifiers` are the only passes whose input is a list of
+`VariantRow`, which left every caller turning `variants.csv` into models itself — and the only thing that
+does that correctly is `just_dna_compiler.load_csv_rows`, which was private until 0.5.1. Re-implementing
+it is a trap rather than a chore: **an empty cell becomes `None` with the key kept** (so a defaulted-but-
+not-`Optional` field like `MeasureBinRow.measure_kind` fails on type rather than taking its default),
+and **`genome_build` is told to each row**, so a loader that omits it mints GRCh38 identities for a
+GRCh37 module. `compiler.load_spec_variants(spec_dir)` does the load, the injection and the
+`_restamp_for_build` in one call, and both checks accept `spec_dir=` alongside the existing `variants=`.
+Exactly one, never both — two answers in mind, and silently preferring one is a guess.
 
 **`template` is the one command that duplicates the compiler's**, and the other four offline authoring
 commands (`stub`, `requirements`, `describe`, `hint`, `scaffold`) are deliberately *not* mirrored. The

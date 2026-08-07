@@ -19,6 +19,16 @@ to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package. `schema_version` stays
 `"1.0"`.
 
+**Shipped since: `just-dna-enricher` + `just-dna-compiler` 0.5.1** — [RM38](ROADMAP_HISTORY.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher)
+(a cache for every licence-gated source, so a hosted enricher never reaches one live per request) plus
+[RM39–RM42](PROPOSAL_0_5_1.md) from a consumer field report. The three packages version independently, so
+the network tier took a patch while `just-dna-format` stayed at 0.5.0; RM41 is the one item that also
+touches the compiler, which is why that package moved too. None of it touches a parquet, a model or a
+manifest field — which is what made a patch legal inside the closed digest window, and why none of it is
+in the 0.6 table below. **That table is *format/compiler schema* work, sorted by digest legality**, and
+enricher-only work sits outside it entirely; do not read "additive work is 0.6" as covering the network
+tier.
+
 **The unpublished window is CLOSED, and that is now the rule rather than a caveat.** While 0.5.0 was
 unpublished anything digest-moving was free; it is not any more, and the asymmetry
 `integrity.file_entries` creates is what a minor has to route around:
@@ -69,6 +79,7 @@ nothing left here wanted the window in the first place:
 | **RM4** gene-panel materialization | compiler behaviour, opt-in per spec | ✅ — row-set expansion pinned on `compiler_version`; only a module that *declares* a panel gains rows |
 | **RM10** inheritance expectation | **undecided** | ⚠ — decide the placement first |
 | **RM15** multi-build identity | coordinates + identity across every table | ❌ — 1.0 |
+| ~~**RM38** gated-source cache~~ | enricher-only: new builders + cache resolvers, no parquet touched | ✅ **shipped in `just-dna-enricher` 0.5.1** — never a 0.6 item; kept here so the *reason* an enricher change bypasses this table stays visible |
 
 Two consequences worth stating outright:
 

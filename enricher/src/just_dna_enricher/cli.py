@@ -38,13 +38,38 @@ from just_dna_enricher.clinvar_build import (
     download_var_citations,
 )
 from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
-from just_dna_enricher.cpic import CpicError
+from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicError
+from just_dna_enricher.cpic_build import CpicBuildError
+from just_dna_enricher.cpic_build import build_snapshot as build_cpic_snapshot
+from just_dna_enricher.download import (
+    ensure_clinpgx_snapshot,
+    ensure_clinvar_snapshot,
+    ensure_constraint_snapshot,
+    ensure_cpic_snapshot,
+    ensure_snapshot,
+)
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
-from just_dna_enricher.licensing import CLINPGX_TERMS, LicenseRefusal, check_declared_use
+from just_dna_enricher.identifiers import check_identifiers
+from just_dna_enricher.licensing import (
+    CLINPGX_TERMS,
+    CPIC_TERMS,
+    PHARMVAR_TERMS,
+    LicenseRefusal,
+    check_declared_use,
+)
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
-from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
+from just_dna_enricher.locations import (
+    CITATIONS_DIRNAME,
+    RELEASE_FILENAME,
+    resolve_clinpgx_reference,
+    resolve_clinvar_reference,
+    resolve_constraint_reference,
+    resolve_cpic_reference,
+    resolve_ensembl_reference,
+    resolve_pharmvar_reference,
+)
 from just_dna_enricher.lookup import (
     as_report_rows,
     lookup_citation,
@@ -54,7 +79,10 @@ from just_dna_enricher.lookup import (
 )
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
+from just_dna_enricher.pharmvar import PharmVarError
+from just_dna_enricher.pharmvar_build import build_snapshot as build_pharmvar_snapshot
 from just_dna_enricher.sequences import summarize_ref_mismatches
+from just_dna_enricher.upload import DEFAULT_CLINPGX_REPO_ID, DEFAULT_CPIC_REPO_ID
 
 app = typer.Typer(
     add_completion=False,
@@ -214,6 +242,10 @@ def gene_metrics_(
 def dosage_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every gene is ClinGen-curated."),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="No-op with a warning: ClinGen's curation list is a live download with no snapshot.",
+    ),
     url: str = typer.Option(DEFAULT_CLINGEN_URL, "--url", help="ClinGen gene-curation list URL."),
     use: str = typer.Option(
         "unstated", "--use",
@@ -226,11 +258,17 @@ def dosage_(
     """Add ClinGen dosage-sensitivity rows to gene_metrics.csv (haploinsufficiency/triplosensitivity)."""
     try:
         result = enrich_dosage_sensitivity(
-            spec_dir, mode=_mode(strict), declared_use=_use(use), url=url
+            spec_dir, mode=_mode(strict), declared_use=_use(use), offline=offline, url=url
         )
     except ClinGenError as exc:
         typer.secho(f"DOSAGE FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
+    if result.skipped_offline:
+        typer.secho(
+            "skipped: --offline (ClinGen's curation list has no offline snapshot)",
+            fg=typer.colors.YELLOW,
+        )
+        return
     typer.secho(f"dosage sensitivity: {spec_dir / 'gene_metrics.csv'}", fg=typer.colors.GREEN)
     typer.echo(f"dataset: {result.dataset}  genes curated: {len(result.covered)}")
     if result.missing:
@@ -281,7 +319,9 @@ def literature_(
 def pgx_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail on an allele-function discrepancy."),
-    offline: bool = typer.Option(False, "--offline", help="No-op: PharmVar/CPIC are live-only."),
+    offline: bool = typer.Option(
+        False, "--offline", help="Snapshots only: never reach PharmVar or CPIC live.",
+    ),
     use: str = typer.Option(
         "unstated", "--use",
         help=(
@@ -291,12 +331,20 @@ def pgx_(
     ),
     use_pharmvar: bool = typer.Option(True, "--pharmvar/--no-pharmvar", help="Consult PharmVar (needs PHARMVAR_API_KEY)."),
     use_cpic: bool = typer.Option(True, "--cpic/--no-cpic", help="Consult CPIC (open, no key)."),
+    cpic_cache: Path | None = typer.Option(None, "--cpic-cache", help="Explicit CPIC snapshot dir."),
+    pharmvar_cache: Path | None = typer.Option(None, "--pharmvar-cache", help="Explicit PharmVar snapshot dir."),
 ) -> None:
-    """Cross-check star-allele tables against PharmVar/CPIC and record terms into sources.csv."""
+    """Cross-check star-allele tables against PharmVar/CPIC and record terms into sources.csv.
+
+    Snapshot first, live second (RM38). A built snapshot serves the check without egress and without
+    spending a shared per-IP budget; `--offline` says snapshot-only, and a leg with neither is skipped
+    with a reason rather than silently passing.
+    """
     try:
         result = enrich_pgx(
             spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use),
             use_pharmvar=use_pharmvar, use_cpic=use_cpic,
+            cpic_cache=cpic_cache, pharmvar_cache=pharmvar_cache,
         )
     except LicenseRefusal as exc:
         typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
@@ -307,6 +355,10 @@ def pgx_(
     if result.rows:
         typer.secho(f"sources: {spec_dir / 'sources.csv'}", fg=typer.colors.GREEN)
     typer.echo(f"sources recorded: {len(result.rows)}  declared use: {result.declared_use}")
+    if result.routes:
+        typer.echo("  routes: " + ", ".join(f"{s}={r}" for s, r in sorted(result.routes.items())))
+    for reason in result.skipped_offline:
+        typer.secho(f"  {reason}", fg=typer.colors.YELLOW, err=True)
     for reason in result.skipped:
         typer.secho(f"  skipped: {reason}", fg=typer.colors.YELLOW, err=True)
     for warning in result.warnings:
@@ -358,14 +410,25 @@ def clinpgx_build_(
 @clinpgx_app.command("check")
 def clinpgx_check_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    snapshot: Path | None = typer.Option(None, "--snapshot", help="ClinPGx snapshot directory."),
+    snapshot: Path | None = typer.Option(
+        None, "--snapshot",
+        help="Explicit ClinPGx snapshot dir. Omit it and the cache is used, or one is downloaded.",
+    ),
+    offline: bool = typer.Option(
+        False, "--offline", help="Use a local snapshot only: never download one.",
+    ),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail on a stale evidence level."),
     use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
 ) -> None:
-    """Cross-check pharm_variants.csv against the ClinPGx snapshot (offline-capable)."""
+    """Cross-check pharm_variants.csv against the ClinPGx snapshot.
+
+    The snapshot no longer has to be handed over by hand (RM38): explicit path → `$JUST_DNA_CLINPGX_CACHE`
+    / the default cache → downloaded from HuggingFace. `--offline` stops at the second step.
+    """
     try:
         result = enrich_clinpgx(
             spec_dir, mode=_mode(strict), declared_use=_use(use), snapshot=snapshot,
+            offline=offline,
         )
     except LicenseRefusal as exc:
         typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
@@ -407,6 +470,10 @@ def draft_(
             "SKIPPED when unstated and REFUSED when commercial."
         ),
     ),
+    offline: bool = typer.Option(
+        False, "--offline", help="Draft from a built CPIC snapshot only; never reach CPIC live.",
+    ),
+    cpic_cache: Path | None = typer.Option(None, "--cpic-cache", help="Explicit CPIC snapshot dir."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
 ) -> None:
     """Draft PGx tables for one or more genes from CPIC — appends rows, never overwrites one.
@@ -431,7 +498,7 @@ def draft_(
         try:
             result = draft_gene(
                 spec_dir, name, drugs=drug, alleles=allele, population=population,
-                declared_use=declared, dry_run=dry_run,
+                declared_use=declared, dry_run=dry_run, offline=offline, cpic_cache=cpic_cache,
             )
         except (CpicError, DraftError) as exc:
             typer.secho(f"DRAFT FAILED ({name}): {exc}", fg=typer.colors.RED, err=True)
@@ -490,21 +557,16 @@ def check_identifiers_(
     Writes nothing: unlike the rsID check (whose verdict lands on resolution.csv), these are module-
     level identifiers with no sidecar column to record, so the report is the whole output.
     """
-    from just_dna_compiler.compiler import _load_csv_rows
-    from just_dna_format.spec import VariantRow
-
-    from just_dna_enricher.identifiers import check_identifiers
-
-    variants_path = spec_dir / "variants.csv"
-    if not variants_path.exists():
+    if not (spec_dir / "variants.csv").exists():
         typer.secho("no variants.csv — nothing to check", fg=typer.colors.YELLOW)
         return
-    variants, errors, _ = _load_csv_rows(variants_path, VariantRow, "variants.csv")
-    if errors:
-        typer.secho(f"variants.csv is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
-
-    report = check_identifiers(variants, check_traits=traits, check_genes=genes)
+    try:
+        # `spec_dir=` rather than loading the rows here (RM41). This command was the workspace's own
+        # evidence that the row-taking form leaves every caller reaching for a private loader.
+        report = check_identifiers(spec_dir=spec_dir, check_traits=traits, check_genes=genes)
+    except ValueError as exc:
+        typer.secho(f"{exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"traits checked: {len(report.traits)}  genes checked: {len(report.genes)}")
     for finding in [*report.stale_traits, *report.stale_genes]:
         typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
@@ -531,21 +593,12 @@ def check_acmg_(
     cell this asks a registry about, not a fact this pass contributes. Filling it here would break the
     check — see `hints.REDUNDANCY_BEARING`.
     """
-    from just_dna_compiler.compiler import _load_csv_rows
-    from just_dna_format.spec import VariantRow
-
-    variants_path = spec_dir / "variants.csv"
-    if not variants_path.exists():
+    if not (spec_dir / "variants.csv").exists():
         typer.secho("no variants.csv — nothing to check", fg=typer.colors.YELLOW)
         return
-    variants, errors, _ = _load_csv_rows(variants_path, VariantRow, "variants.csv")
-    if errors:
-        typer.secho(f"variants.csv is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
-
     try:
         report = verify_acmg_sf(
-            variants, mode=_mode(strict), offline=offline, url=url, snapshot_dir=sf_list
+            spec_dir=spec_dir, mode=_mode(strict), offline=offline, url=url, snapshot_dir=sf_list
         )
     except AcmgSfError as exc:
         typer.secho(f"ACMG CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -798,6 +851,267 @@ def clinvar_publish_(
     )
 
 
+# ── the caches (pre-provision, and say what is where) ───────────────────────────────────────────
+
+cache_app = typer.Typer(
+    add_completion=False,
+    help="Pre-provision the parquet snapshots, and report which are present.",
+    no_args_is_help=True,
+)
+app.add_typer(cache_app, name="cache")
+
+#: `name -> (resolve, ensure or None, what it serves)`. One table, because the whole point of a cache
+#: chapter is that a deployment can see all of them at once — and because the *shape* of the row is the
+#: licensing story: PharmVar has no `ensure_*` and never will (personal, non-transferable key).
+_CACHES: list[tuple[str, object, object, str]] = [
+    ("ensembl", resolve_ensembl_reference, ensure_snapshot, "rsID → coordinate (enrich)"),
+    ("clinvar", resolve_clinvar_reference, ensure_clinvar_snapshot, "clinical records (enrich, draft-panel)"),
+    ("constraint", resolve_constraint_reference, ensure_constraint_snapshot, "gnomAD v4.1 gene constraint (gene-metrics)"),
+    ("clinpgx", resolve_clinpgx_reference, ensure_clinpgx_snapshot, "clinical annotations (clinpgx check)"),
+    ("cpic", resolve_cpic_reference, ensure_cpic_snapshot, "alleles/diplotypes/recommendations (pgx, draft)"),
+    ("pharmvar", resolve_pharmvar_reference, None, "star alleles (pgx) — build your own, never published"),
+]
+
+
+@cache_app.command("status")
+def cache_status_() -> None:
+    """Say which snapshots are present, where, and which release each holds.
+
+    Reads only: nothing is downloaded, so this is safe on a machine with no network and it is the first
+    thing to run when a pass reports that a source was skipped.
+    """
+    for name, resolve, ensure, serves in _CACHES:
+        path = resolve()
+        if path is None:
+            how = "`cache pull`" if ensure is not None else f"`{name} build`"
+            typer.secho(f"  {name:11} absent   — {serves}; provision with {how}", fg=typer.colors.YELLOW)
+            continue
+        release = path / RELEASE_FILENAME
+        label = ""
+        if release.is_file():
+            try:
+                label = json.loads(release.read_text()).get("dataset") or ""
+            except (OSError, json.JSONDecodeError):
+                # A provenance failure is not a data failure — the snapshot is still usable.
+                label = "(unreadable release.json)"
+        typer.secho(f"  {name:11} present  {path}  {label}", fg=typer.colors.GREEN)
+
+
+@cache_app.command("pull")
+def cache_pull_(
+    only: list[str] = typer.Option(
+        [], "--only", help="Pull just these caches (repeatable). Default: every publishable one.",
+    ),
+    use: str = typer.Option(
+        "unstated", "--use",
+        help=(
+            "Declared use for the licence-gated snapshots (clinpgx, cpic). They forbid sale, so they "
+            "are SKIPPED when unstated and REFUSED when commercial — downloading is taking the data."
+        ),
+    ),
+) -> None:
+    """Download the published parquet snapshots from HuggingFace into the local caches.
+
+    The provisioning step a hosted deployment runs **once**, so no pass ever reaches a source live per
+    request. Already-complete caches are trusted without touching the network, so this is re-runnable
+    and cheap; a truncated file is removed and refetched.
+
+    PharmVar is deliberately not here: its bulk data is pulled under a personal, non-transferable key,
+    so there is nothing published to pull. Build it with `pharmvar build --out <dir>`.
+    """
+    declared = _use(use)
+    wanted = {n.strip().lower() for n in only if n.strip()}
+    known = {name for name, _, ensure, _ in _CACHES if ensure is not None}
+    unknown = sorted(wanted - {name for name, *_ in _CACHES})
+    if unknown:
+        raise typer.BadParameter(f"unknown cache(s) {unknown}. Known: {sorted(n for n, *_ in _CACHES)}")
+
+    gated = {"clinpgx": CLINPGX_TERMS, "cpic": CPIC_TERMS}
+    failures = 0
+    for name, _resolve, ensure, _serves in _CACHES:
+        if wanted and name not in wanted:
+            continue
+        if ensure is None:
+            if name in wanted:   # asked for by name, so say why it is not coming
+                typer.secho(
+                    f"  {name}: nothing published to pull — build it with `{name} build --out <dir>`.",
+                    fg=typer.colors.YELLOW, err=True,
+                )
+            continue
+        if name in gated:
+            # The terms are accepted when the data is TAKEN, and a download is taking it.
+            try:
+                reason = check_declared_use(gated[name], declared)
+            except LicenseRefusal as exc:
+                typer.secho(f"  {name}: REFUSED — {exc}", fg=typer.colors.RED, err=True)
+                failures += 1
+                continue
+            if reason is not None:
+                typer.secho(f"  {name}: skipped — {reason}", fg=typer.colors.YELLOW, err=True)
+                continue
+        try:
+            path = ensure()
+        except Exception as exc:  # noqa: BLE001 - one snapshot failing must not sink the rest
+            typer.secho(f"  {name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
+            failures += 1
+            continue
+        typer.secho(f"  {name}: {path}", fg=typer.colors.GREEN)
+    if failures:
+        raise typer.Exit(code=1)
+    typer.echo(f"caches available: {', '.join(sorted(known))}. Run `cache status` to confirm.")
+
+
+# ── the licence-gated snapshots (build + publish, publisher/dev surface) — RM38 ─────────────────
+#
+# Three sources, three shapes, and the differences are the licensing argument rather than plumbing:
+#
+#   clinpgx   build → publish → ensure_*   (snapshot existed; the plumbing did not)
+#   cpic      build → publish → ensure_*   (new; open source, but a host must not spend one shared
+#                                           per-IP budget on every caller's request)
+#   pharmvar  build only                   (personal, non-transferable key: no publish, no ensure_*)
+
+cpic_app = typer.Typer(
+    add_completion=False,
+    help="Build and publish the CPIC snapshot, so a hosted enricher never reaches CPIC per request.",
+    no_args_is_help=True,
+)
+app.add_typer(cpic_app, name="cpic")
+
+
+@cpic_app.command("build")
+def cpic_build_(
+    out_dir: Path = typer.Option(..., "--out", file_okay=False, help="Snapshot output directory."),
+    endpoint: str = typer.Option(DEFAULT_CPIC_ENDPOINT, "--endpoint", help="CPIC PostgREST base URL."),
+    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+) -> None:
+    """Fetch CPIC whole into `data/*.parquet` + release.json (dev surface; needs polars).
+
+    No gene filter, deliberately: the whole database is ~120k narrow rows, and a snapshot covering only
+    the genes the operator thought of answers "CPIC has nothing" for the next one.
+    """
+    declared = _use(use)
+    try:
+        # The terms are accepted when the data is TAKEN, so the gate runs before the fetch.
+        reason = check_declared_use(CPIC_TERMS, declared)
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if reason is not None:
+        typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(code=1)
+    try:
+        result = build_cpic_snapshot(out_dir, endpoint=endpoint)
+    except (CpicError, CpicBuildError) as exc:
+        typer.secho(f"CPIC BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"cpic snapshot: {result.out_dir / 'data'}", fg=typer.colors.GREEN)
+    typer.echo(f"genes: {result.gene_count}  rows: {result.total_rows}  dataset: {result.dataset}")
+    for name, count in sorted(result.row_counts.items()):
+        typer.echo(f"  {name}: {count}")
+
+
+@cpic_app.command("publish")
+def cpic_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
+    ),
+    repo: str = typer.Option(
+        DEFAULT_CPIC_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Create-or-update the dataset repo and upload the built CPIC snapshot (publisher/dev).
+
+    Publishable because CPIC's recorded terms permit redistribution — CC BY-SA grants sharing under
+    share-alike plus attribution, which `sources.csv` carries. PharmVar has no equivalent command, and
+    that is the design rather than an omission.
+    """
+    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+
+    if dry_run:
+        plan = plan_reference_snapshot(snapshot_dir, repo)
+        typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+        return
+    plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    typer.secho(
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+    )
+
+
+@clinpgx_app.command("publish")
+def clinpgx_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
+    ),
+    repo: str = typer.Option(
+        DEFAULT_CLINPGX_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Publish a built ClinPGx snapshot so `clinpgx check` can provision it (publisher/dev).
+
+    `LICENSE.txt` travels with the parquet — the terms ClinPGx ships inside its own archive are what
+    `license_sha256` pins, and a published snapshot without them pins nothing for whoever downloads it.
+    """
+    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+
+    if dry_run:
+        plan = plan_reference_snapshot(snapshot_dir, repo)
+        typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+        return
+    plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    typer.secho(
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+    )
+
+
+pharmvar_app = typer.Typer(
+    add_completion=False,
+    help="Build the PharmVar snapshot with your own key. Operator-built and inject-only; never published.",
+    no_args_is_help=True,
+)
+app.add_typer(pharmvar_app, name="pharmvar")
+
+
+@pharmvar_app.command("build")
+def pharmvar_build_(
+    out_dir: Path = typer.Option(..., "--out", file_okay=False, help="Snapshot output directory."),
+    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+) -> None:
+    """Fetch PharmVar whole into `data/*.parquet` + release.json (dev surface; needs polars + a key).
+
+    **There is no `pharmvar publish`, and there will not be.** The data is pulled under a key
+    PharmVar's terms §2 make personal and non-transferable, and no axis `SourceTerms` records covers
+    passing that on — an unestablished permission is not a permission. Build your own; point at it with
+    `$JUST_DNA_PHARMVAR_CACHE` or `--pharmvar-cache`.
+    """
+    declared = _use(use)
+    try:
+        reason = check_declared_use(PHARMVAR_TERMS, declared)
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if reason is not None:
+        typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(code=1)
+    try:
+        result = build_pharmvar_snapshot(out_dir)
+    except PharmVarError as exc:
+        typer.secho(f"PHARMVAR BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"pharmvar snapshot: {result.out_dir / 'data'}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"genes: {result.gene_count}  alleles: {result.allele_count}  "
+        f"variants: {result.variant_count} on {result.genome_build}  dataset: {result.dataset}"
+    )
+    typer.secho(
+        "  operator-built and inject-only: do not publish or pass this snapshot on (terms §2).",
+        fg=typer.colors.YELLOW,
+    )
+
+
 # ── gnomAD constraint snapshot (build + publish, publisher/dev surface) ─────────────────────────
 
 gnomad_app = typer.Typer(
@@ -907,7 +1221,7 @@ def vrs_mint_(
     ),
 ) -> None:
     """Stamp ga4gh:VA.… allele ids onto resolution.csv (substitutions offline, indels online)."""
-    from just_dna_compiler.compiler import _load_csv_rows
+    from just_dna_compiler.compiler import load_csv_rows
     from just_dna_format.resolution import ResolutionRow
 
     from just_dna_enricher.enrich import _write_resolution_csv
@@ -917,7 +1231,7 @@ def vrs_mint_(
     if not path.exists():
         typer.secho(f"no resolution.csv in {spec_dir} — run `enrich` first.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    rows, errors, _ = _load_csv_rows(path, ResolutionRow, "resolution.csv")
+    rows, errors, _ = load_csv_rows(path, ResolutionRow, "resolution.csv")
     if errors:
         typer.secho(f"resolution.csv is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)

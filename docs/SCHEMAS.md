@@ -19,7 +19,7 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 | `identity` | `namespace/name` rules, SemVer `Version`, `canonical_id` | — (stdlib leaf) |
 | `derive` | Legacy→0.3 column derivations + read-time aliases | — (stdlib leaf) |
 | `normalize` | Inject-only authority-key stripper, `normalize_version` | — (stdlib leaf) |
-| `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table (stdlib only) | — (stdlib leaf) |
+| `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table, the `vrs_id` cell codec and the PAR geometry (stdlib only) | — (stdlib leaf) |
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) | — (stdlib leaf) |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
@@ -75,8 +75,12 @@ the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literat
 - **Vocabulary idiom (Principle 6).** A constrained vocabulary is a `frozenset[str]` + a validator,
   never `Enum`/`Literal` — additive and inspectable. Live sets in `vocab.py`: `VALID_DIRECTIONS`,
   `VALID_SIGNIFICANCE`, `VALID_CLIN_SIG`, `VALID_EVIDENCE_LEVELS`, `VALID_RESOLUTION_STATUS`,
-  `VALID_FREQUENCY_STATUS`, `VALID_RSID_STATUS`, `VALID_AUTHOR_ROLES`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`,
-  `ACTIONABILITY_SEED`.
+  `VALID_FREQUENCY_STATUS`, `VALID_RSID_STATUS`, `VALID_AUTHOR_ROLES`, `VALID_DOSAGE_SENSITIVITY`,
+  `VALID_PHENOTYPE_CATEGORIES`, `VALID_QUOTE_SOURCE`, `VALID_RECOMMENDATION_STRENGTH`,
+  `VALID_SOURCE_LAYERS`, `VALID_DECLARED_USE`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`,
+  `ACTIONABILITY_SEED`. (The rest live with the models that own them — `pgs.VALID_TRAINING_ANCESTRY`,
+  `pgx.VALID_FUNCTION_STATUS` — which is why `authoring_reference()` reads the fields' own markers
+  rather than this module.)
 - **`derive_variant_key(rsid, chrom, start, ref, alts=None)` (`base.py`).** The single source of a
   variant's natural identity: the rsid when present, else `chrom:start:ref`, or `chrom:start:ref:alts`
   (alts normalized/sorted) when an alt is given — so distinct alleles at one locus don't collide. Never
@@ -294,6 +298,35 @@ the public seqrepo REST, because a mistyped accession would mint well-formed ids
 and nothing downstream could detect it. Asking for a build with no table raises `UnsupportedBuildError`
 rather than quietly answering in GRCh38.
 
+### The rest of the module's public surface
+
+`derive_vrs_allele_id` mints **one** id, but `resolution.csv`'s `vrs_id` is a *cell* — a comma-joined
+parallel array of `alts`, one member per ALT, empty where nothing was minted. That codec is public,
+because every consumer that reads the column has to agree on it and a second implementation of
+"split on commas, keep the holes" is a second chance to lose the alignment:
+
+- **`split_vrs_ids(value) -> list[str | None]`** — the cell → one entry per ALT, `None` for a hole.
+  `join_vrs_ids` is the inverse. The pairing with `alts` is positional, so a member is only
+  interpretable beside the ALT at the same index; this is what lets the compiler's verify pass give
+  each ALT its own verdict, and what makes a swapped pair a mismatch rather than an invisible desync.
+  A consumer counting identity coverage counts **slots**, not rows: a two-ALT row where only the
+  substitution minted is `(2, 1)`.
+- **`validate_vrs_id` / `validate_vrs_id_list` / `validate_caid`** — the grammars, shared by every
+  model that declares one of these columns, so `ga4gh:VA.…` means the same thing in every table.
+- **`is_substitution(ref, alt)`** — the predicate behind minting's "substitutions only" rule, exposed
+  so a caller can ask *before* getting a `None` back and having to guess which of the several reasons
+  applied.
+- **`normalize_chrom` / `refget_accession`** — contig spelling and the accession lookup.
+  `refget_accession` **raises** `UnsupportedBuildError` for a build with no table rather than
+  returning `None`; a caller that treats one unaddressable row as a finding rather than a failure has
+  to catch it (the compiler's verify pass learned this the expensive way — the exception escaped and
+  aborted a whole compile over a single row it could not check).
+- **`PAR_GRCh38` / `in_pseudoautosomal_region` / `par_partner`** — the pseudoautosomal *geometry*,
+  here rather than in the enricher because it is a fact about the assembly. The pairing is an offset,
+  not an equality: PAR1 shares coordinates between X and Y and PAR2 does not, so a "same base on both
+  contigs" shortcut passes a PAR1 module and silently fails a PAR2 one. Which contig a *source*
+  publishes is a different question and stays in the enricher (P2).
+
 ### The identity switch — `variant_key` derives from the VA
 
 `base.derive_variant_key` has three cases, in precedence order:
@@ -458,7 +491,8 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
   `not_found` = "looked, genuinely absent"; `ambiguous` = a reverse position→rsid back-fill hit several
   rsids for the exact allele — a dbSNP merge), `rsid_alternates?` (the full candidate list when
   `ambiguous`; `rsid` holds the deterministic pick), `rsid_current?` / `rsid_status?`
-  (`VALID_RSID_STATUS = {live, merged, absent}` — what dbSNP says about `rsid` today), `fetched_at?`.
+  (`VALID_RSID_STATUS = {live, merged, absent, withdrawn}` — what dbSNP says about `rsid` today),
+  `fetched_at?`.
 - **`source` names the link; `authority` names the licensed source it speaks for (RM33).** `source` is
   `ensembl-rest`/`ensembl-graphql`/`cache`/`clinvar`/`gnomad`/`authored`/`reversed`/`manual` — *which link
   answered*, which matters for diagnosing a compile and has no other home. `authority` is the thing
@@ -475,8 +509,16 @@ Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit 
   own content. The value is also **recorded, never substituted** — `weights.parquet` carries `rsid` as
   identity, so writing a merged-into label into the artifact would migrate `variant_key` by network
   lookup and break the round-trip fixed point (see ROADMAP § *the stale-identifier collision*).
-  `absent` deliberately covers both "never assigned" and "withdrawn": no live endpoint separates them,
-  so a fourth vocabulary member would be a value nothing could legitimately produce.
+  `absent` deliberately covers both "never assigned" and "withdrawn" *as an automated verdict*: no
+  live endpoint separates them (`rs11273140`, retracted, and `rs2000000000`, never assigned, return
+  byte-identical responses), so `identifiers.classify_rsid` reports `absent` and names both readings
+  rather than guessing. **`withdrawn` is nevertheless a real fourth member**, and the distinction
+  between "nothing produces it today" and "nothing could" is the whole reason it is one: a curator who
+  has established a retraction can record it and have the tooling honour it, and a future source that
+  can tell the two apart starts emitting it without a vocabulary change — which Principle 3 would
+  otherwise make a one-way door. Its severity is deliberately not `absent`'s. A merged or absent rsID
+  leaves the annotation intact (dated, or unserved); a retracted variant may leave it describing
+  nothing, so `withdrawn` is the one resolution finding that is **fatal in `best_effort` too**.
 - **Reverse emits facts and drops provenance, by design.** `reverse_module` rebuilds this table from
   `weights.parquet`, which holds no provenance at all — it resets `source` to `reversed`, `status` to
   `resolved`, blanks `fetched_at`, and cannot emit `authority`/`rsid_alternates`/`rsid_current`/`rsid_status`
@@ -545,11 +587,26 @@ Reproducibility identity is the triple **`(content_signature, resolution_signatu
 `manifest.py` holds the `manifest.json` contract. `ModuleManifest` is the root: `manifest_version` /
 `schema_version` (both `"1.0"`), `identity`, `display`, `genome_build`, curator/method/license/owner,
 `authors` + `authorship` (`Contribution`: `who`/`role`/`kind`), timestamps, `stats`, `compilation`,
-`inputs`, `content_signature?`, `artifact`, `logs`, `provenance?`, `panel?`, `logo?`, `signature?`. The
-0.5 additions live on **`Compilation`**: `resolution_mode?` (policy — `strict`/`best_effort`),
-`fully_resolved` (outcome — orthogonal axis, P5), `resolution_signature?`, `resolution_sources`. `Display`
-is the base of `spec.ModuleInfo`; `GenePanelSpec` and `Contribution` are authored via `ModuleSpecConfig`.
-Everything else in `manifest.py` is manifest-only, never authored into a CSV.
+`inputs`, `content_signature?`, `artifact`, `logs`, `provenance?`, `panel?`, `logo?`, `signature?`, and
+one block per derived-fact sidecar the module carries — `frequency?`, `gene_metrics?`, `literature?`,
+`sources?`. Each carries `signature` / `sources` / `row_count` plus whatever its own table makes
+answerable: `datasets` on the two that have releases to name (gnomAD ships numbered ones; PubMed and
+the licence table do not), `populations`/`variant_count` on `frequency`, `genes` on `gene_metrics`,
+the quote and open-access counters on `literature`, and the licence roll-up on `sources`
+(`licenses`, `attributions`, the per-layer facets and the derived `commercial_use` /
+`redistribution`). All four are out of `artifact.digest`.
+
+The 0.5 additions on **`Compilation`** are two groups, and they answer different questions.
+Resolution *policy and outcome*: `resolution_mode?` (`strict`/`best_effort`), `fully_resolved`
+(outcome — orthogonal axis, P5), `resolution_signature?`, `resolution_sources`. Allele-identity
+*coverage*: `vrs_alleles` and `vrs_alleles_identified`, the counts `_vrs_coverage_warnings` reports,
+so a consumer can read how completely the identity scheme names this module's alleles instead of
+inferring it from the absence of warnings. "Complete" is `identified == alleles`, derived rather than
+stored twice. Together `resolution_mode == "strict" or fully_resolved` tells a catalog a trustworthy
+module from a best-effort half-baked one.
+
+`Display` is the base of `spec.ModuleInfo`; `GenePanelSpec` and `Contribution` are authored via
+`ModuleSpecConfig`. Everything else in `manifest.py` is manifest-only, never authored into a CSV.
 
 ## Generated authoring reference & aggregation
 
@@ -567,7 +624,7 @@ Everything else in `manifest.py` is manifest-only, never authored into a CSV.
 
   Each field carries **`category`** (`required` / `defaulted` / `optional`) beside pydantic's two-way
   `required`. The middle one is the trap: `MeasureBinRow.measure_kind` and `unresolved` have defaults
-  so `is_required()` is `False`, but `_load_csv_rows` turns an empty cell into `None` and keeps the
+  so `is_required()` is `False`, but `load_csv_rows` turns an empty cell into `None` and keeps the
   key, so the model receives `None` instead of its default and fails on type. `just_dna_compiler.draft`
   was fixed to the three-way split; this surface was not, until both were pointed at one definition in
   **`base.field_category`** — which lives here because the format tier is the only one both can import

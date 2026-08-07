@@ -39,8 +39,10 @@ from just_dna_enricher.cpic import (
     CpicDefiningVariant,
     CpicError,
     CpicRecommendation,
+    CpicSnapshotClient,
 )
 from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.locations import resolve_cpic_reference
 
 logger = logging.getLogger(__name__)
 
@@ -86,11 +88,14 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
             )
             continue
         # Mirror `HaplotypeRow._validate_identification` exactly: rsid, or chrom AND start. The
-        # guard used to accept a bare `start`, and CPIC never publishes a chromosome — its
-        # `sequence_location` has no such column — so `draft --gene CYP2C9` built a row with a
-        # position, no chromosome and no rsID and died on an unhandled pydantic error. 18 CYP2C9
-        # variants are shaped that way, 14 TPMT, 4 NUDT15; CYP2C19 has none, which is why the
-        # provider looked fine. A guard that does not match the model it builds is not a guard.
+        # guard used to accept a bare `start`, so `draft --gene CYP2C9` built a row with a position,
+        # no chromosome and no rsID and died on an unhandled pydantic error. A guard that does not
+        # match the model it builds is not a guard.
+        #
+        # Those 36 rows (18 CYP2C9, 14 TPMT, 4 NUDT15) are now *drafted* rather than skipped: the
+        # chromosome they were missing is published on CPIC's `gene` table, and `defining_variants`
+        # joins it (see `cpic.py`). What is left here is the genuine residue — a variant CPIC gives
+        # neither an rsID nor a position for, or a gene whose `chr` cell is blank.
         if variant.rsid is None and (variant.chrom is None or variant.start is None):
             no_locus.append(f"{variant.allele}@{variant.start}")
             continue
@@ -114,9 +119,9 @@ def _haplotype_rows(variants: list[CpicDefiningVariant]) -> tuple[list[Haplotype
         shown = ", ".join(no_locus[:3])
         rest = f" (+{len(no_locus) - 3} more)" if len(no_locus) > 3 else ""
         warnings.append(
-            f"{gene}: {len(no_locus)} defining variant(s) skipped — CPIC gives no rsID and publishes "
-            f"no chromosome, and a haplotype row with a bare position resolves to nothing. "
-            f"e.g. {shown}{rest}."
+            f"{gene}: {len(no_locus)} defining variant(s) skipped — CPIC gives no rsID and no usable "
+            f"locus for them (no position, or no `chr` on the gene), and a haplotype row identified "
+            f"by neither resolves to nothing. e.g. {shown}{rest}."
         )
     return rows, warnings
 
@@ -249,7 +254,9 @@ def draft_gene(
     population: str | None = None,
     declared_use: str = "unstated",
     dry_run: bool = False,
-    client: CpicClient | None = None,
+    offline: bool = False,
+    cpic_cache: Path | None = None,
+    client: CpicClient | CpicSnapshotClient | None = None,
 ) -> PgxDraftResult:
     """Draft one gene's `haplotypes.csv`, `allele_function.csv` and `diplotypes.csv` rows.
 
@@ -261,6 +268,11 @@ def draft_gene(
     halves are in the set. Filtering one table and not the others would leave a module naming alleles it
     never defines, which is precisely what `_cross_validate_haplotype_definitions` warns about. `*1` is
     always kept; empty means everything CPIC publishes, exactly as before.
+
+    `offline` (0.5.1, RM38) is the flag this provider simply did not have — every sibling pass took one,
+    so a caller running the family under one switch had to know out of band that drafting ignored it,
+    and forgetting meant silent egress from a run documented as making none. A built CPIC snapshot
+    serves the draft; with none and `offline` set, nothing is drafted and the reason is returned.
     """
     skip_reason = check_declared_use(CPIC_TERMS, declared_use)
     if skip_reason:
@@ -268,7 +280,23 @@ def draft_gene(
         return PgxDraftResult(warnings=[skip_reason], skipped=True)
 
     owned = client is None
-    cpic = client or CpicClient()
+    if client is not None:
+        cpic = client
+    else:
+        reference = resolve_cpic_reference(cpic_cache)
+        if reference is not None:
+            cpic = CpicSnapshotClient(reference)
+        elif offline:
+            return PgxDraftResult(
+                warnings=[
+                    "CPIC draft skipped: --offline and no built snapshot. Build one with "
+                    "`just-dna-enricher cpic build --out <dir>`, or point at it with "
+                    "$JUST_DNA_CPIC_CACHE."
+                ],
+                skipped=True,
+            )
+        else:
+            cpic = CpicClient()
     try:
         published = cpic.alleles_for_gene(gene)
         diplotypes = cpic.diplotypes_for_gene(gene)

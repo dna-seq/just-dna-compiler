@@ -28,20 +28,34 @@ coerced:**
 
 Coordinates from `sequence_location.position` are GRCh38 and **1-based** — checked against Ensembl
 for rs4986893 (chr10:94780653) — which is what this pipeline already stores. Do not convert.
+
+**CPIC does publish a chromosome; it is on `gene`, not on `sequence_location`.** An earlier probe
+looked at `sequence_location` alone (genesymbol / dbsnpid / position / chromosomelocation — no
+chromosome), concluded CPIC has none, and the drafting provider therefore skipped every defining
+variant CPIC gives no rsID for: 18 in CYP2C9, 14 in TPMT, 4 in NUDT15. `gene.chr` carries `chr10` for
+CYP2C9, `chr6` for TPMT, `chr13` for NUDT15 (probed 2026-08-07, 132 genes). Joining it onto
+`sequence_location.genesymbol` is a lookup in CPIC's own tables, not the inference the old comment
+rightly refused — a star allele's defining variant is in the gene the allele belongs to, and the
+location row already names that gene.
 """
 
+import json
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+import duckdb
 import httpx
 from just_dna_format.alleles import non_nucleotide_reason
 from tenacity import (
     retry,
     retry_if_exception_type,
-    stop_after_attempt,
     wait_exponential_jitter,
 )
+
+from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.net import attempt_floor
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +212,18 @@ def map_function_status(raw: str | None) -> str | None:
     return _FUNCTION_MAP.get(raw.strip().lower())
 
 
+def normalize_chrom(value: str | None) -> str | None:
+    """CPIC's `gene.chr` (`chr10`, `chrX`) → this workspace's bare contig name (`10`, `X`).
+
+    `None` for a blank or an unplaced spelling, rather than a guess — the same rule
+    `chrom_from_accession` follows in the PharmVar client.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None
+    return text.removeprefix("chr").removeprefix("CHR").strip() or None
+
+
 def _float_or_none(value: Any) -> float | None:
     try:
         return float(value)
@@ -225,7 +251,7 @@ class CpicClient:
 
     @retry(
         retry=retry_if_exception_type((httpx.TransportError, httpx.HTTPStatusError)),
-        stop=stop_after_attempt(3),
+        stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
     )
@@ -236,6 +262,40 @@ class CpicClient:
         if not isinstance(payload, list):
             raise CpicError(f"CPIC {path} returned {type(payload).__name__}, expected a list")
         return payload
+
+    def row_count(self, table: str) -> int | None:
+        """How many rows CPIC says a table holds, or `None` when it does not answer with a count.
+
+        PostgREST reports it in `Content-Range` when asked with `Prefer: count=exact`. Used by the
+        snapshot builder to refuse a short read: the service imposes no default limit today, but that
+        is a fact about a deployment rather than a contract, and a silently truncated snapshot reads
+        as "CPIC has nothing for this gene".
+        """
+        response = self._client.get(
+            f"{self.endpoint}/{table}",
+            params={"select": "count"},
+            headers={"Prefer": "count=exact", "Range-Unit": "items", "Range": "0-0"},
+        )
+        header = response.headers.get("content-range", "")
+        total = header.rsplit("/", 1)[-1] if "/" in header else ""
+        return int(total) if total.isdigit() else None
+
+    def fetch_table(self, table: str, select: str) -> list[dict[str, Any]]:
+        """One whole CPIC table as raw rows — the snapshot builder's read.
+
+        Public because the builder is a separate module and reaching for `_get` across it is the
+        private-symbol reach RM41 exists to stop doing.
+        """
+        return self._get(table, {"select": select})
+
+    def chrom_for_gene(self, gene: str) -> str | None:
+        """The contig CPIC places a gene on, from its own `gene` table, or `None` if it names none.
+
+        Separate request rather than a PostgREST embed: `sequence_location` has no foreign key to
+        `gene` (it joins on the symbol string), so there is nothing to embed through.
+        """
+        rows = self._get("gene", {"symbol": f"eq.{gene}", "select": "symbol,chr"})
+        return normalize_chrom(rows[0].get("chr")) if rows else None
 
     def alleles_for_gene(self, gene: str) -> list[CpicAllele]:
         """Allele function + activity value for one gene."""
@@ -336,6 +396,10 @@ class CpicClient:
         )
         if not definitions:
             return [], []
+        # One extra request per gene, and it is what makes a coordinate-only defining variant usable:
+        # `HaplotypeRow` wants rsid **or** chrom AND start, and 36 of CPIC's defining variants across
+        # CYP2C9/TPMT/NUDT15 have a position and no rsID. See the module docstring.
+        chrom = self.chrom_for_gene(gene)
         by_id = {d["id"]: d["name"] for d in definitions}
         ids = ",".join(str(i) for i in by_id)
         rows = self._get(
@@ -366,13 +430,177 @@ class CpicClient:
                     gene=location.get("genesymbol") or gene,
                     allele=by_id.get(r["alleledefinitionid"], ""),
                     rsid=location.get("dbsnpid") or None,
-                    # GRCh38, 1-based, matching Ensembl — no conversion. `chrom` stays None because
-                    # CPIC does not publish one: `sequence_location` has genesymbol/dbsnpid/position/
-                    # chromosomelocation and no chromosome column (probed 2026-08-03). Deriving it
-                    # from the gene symbol would be inference, so the drafting provider must not
-                    # write a bare `start` — see `pgx_draft._haplotype_rows`.
-                    chrom=None,
+                    # GRCh38, 1-based, matching Ensembl — no conversion. `chrom` comes from CPIC's own
+                    # `gene` table: `sequence_location` really does have no chromosome column, which
+                    # is what the 2026-08-03 probe saw, but `gene.chr` does and joining on the symbol
+                    # the location row already carries is a lookup rather than the inference that
+                    # probe rightly refused. Still `None` when CPIC leaves `chr` blank.
+                    chrom=chrom,
                     start=location.get("position"),
+                    variant_allele=allele_value or None,
+                    unusable=reason,
+                )
+            )
+        return out, _unusable_warnings(gene, unusable)
+
+
+class CpicSnapshotClient:
+    """The same four questions, answered from a built snapshot instead of the live service (RM38).
+
+    **Duck-typed against `CpicClient`, deliberately, and not a subclass of it.** `enrich_pgx` and
+    `pgx_draft.draft_gene` already take an injected client, so a reader with the same four methods needs
+    no branch in either — which is what keeps "snapshot or live" out of the passes entirely. It is not a
+    subclass because it shares no implementation: there is no endpoint, no pacing, no retry.
+
+    **The vocabulary mapping happens here, not in the builder.** The parquet holds CPIC's own prose
+    verbatim (`"No function"`, `"Strong"`) and `map_function_status` / `map_classification` run on the
+    way out — the same functions the live client calls, so a snapshot answer and a live answer are the
+    same object by construction, and a mapping fix reaches a snapshot built last month.
+
+    Read with **duckdb**, which is a core dependency, rather than polars, which is `[dev]` and only the
+    builder needs. That is the house convention (builder in polars, runtime pass in duckdb), and it is
+    what keeps the declared runtime dependency set honest about what the runtime actually requires.
+    """
+
+    def __init__(self, reference: Path) -> None:
+        self.reference = Path(reference)
+        data_dir = self.reference / SNAPSHOT_DATA_DIRNAME
+        if not data_dir.is_dir() or not any(data_dir.glob("*.parquet")):
+            raise CpicError(
+                f"no CPIC snapshot at {data_dir} — build one with `just-dna-enricher cpic build`"
+            )
+        self._data_dir = data_dir
+        release_path = self.reference / RELEASE_FILENAME
+        self.release: dict[str, Any] = (
+            json.loads(release_path.read_text()) if release_path.is_file() else {}
+        )
+
+    @property
+    def dataset(self) -> str | None:
+        """Which snapshot answered — recorded onto `SourceRow.dataset`, as the gnomAD routes are.
+
+        A consumer must be able to tell a pinned file from a live API: the two can differ by a release,
+        and `dataset` is inside the fact set where `source` is not.
+        """
+        return self.release.get("dataset")
+
+    def close(self) -> None:
+        """No-op, so a caller can `close()` this and a live client identically."""
+
+    def _rows(
+        self, parquet: str, where: str, params: list[Any], select: str, order: str = ""
+    ) -> list[dict]:
+        path = self._data_dir / parquet
+        if not path.is_file():
+            # A snapshot built by an older builder can legitimately lack a table this one reads. An
+            # empty answer, not a crash — the pass then reports "CPIC has nothing", which is wrong,
+            # so say which file is missing instead of returning silence.
+            raise CpicError(
+                f"{parquet} is not in the CPIC snapshot at {self.reference} — it was built by an "
+                f"older builder; rebuild it with `just-dna-enricher cpic build`."
+            )
+        pattern = str(path).replace("'", "''")
+        con = duckdb.connect(":memory:")
+        try:
+            clause = f" ORDER BY {order}" if order else ""
+            cursor = con.execute(
+                f"SELECT {select} FROM read_parquet('{pattern}') WHERE {where}{clause}", params
+            )
+            columns = [d[0] for d in cursor.description]
+            return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+        finally:
+            con.close()
+
+    def chrom_for_gene(self, gene: str) -> str | None:
+        rows = self._rows("genes.parquet", "gene = ?", [gene], "chrom")
+        return rows[0]["chrom"] if rows else None
+
+    def alleles_for_gene(self, gene: str) -> list[CpicAllele]:
+        rows = self._rows(
+            "alleles.parquet", "gene = ?", [gene],
+            "gene, allele, activity_value, clinical_function_status", "allele",
+        )
+        return [
+            CpicAllele(
+                gene=r["gene"],
+                allele=r["allele"],
+                activity_value=_float_or_none(r["activity_value"]),
+                function_status=map_function_status(r["clinical_function_status"]),
+            )
+            for r in rows
+        ]
+
+    def diplotypes_for_gene(self, gene: str) -> list[CpicDiplotype]:
+        rows = self._rows(
+            "diplotypes.parquet", "gene = ?", [gene],
+            "gene, diplotype, phenotype, activity_score", "diplotype",
+        )
+        return [
+            CpicDiplotype(
+                gene=r["gene"],
+                diplotype=r["diplotype"],
+                phenotype=r["phenotype"] or None,
+                activity_score=r["activity_score"] or None,
+            )
+            for r in rows
+        ]
+
+    def recommendations(self, gene: str, drug: str) -> list[CpicRecommendation]:
+        """One gene/drug pair's recommendations across every population.
+
+        `gene_count = 1` reproduces the live client's `len(phenotypes) != 1` filter exactly: the builder
+        flattens a recommendation's `phenotypes` map to one row per gene and carries how many there
+        were, because a row about CYP2C19 *and* CYP2D6 is not a statement about CYP2C19 alone.
+        """
+        rows = self._rows(
+            "recommendations.parquet",
+            "gene = ? AND drug = ? AND gene_count = 1",
+            [gene, drug.strip().lower()],
+            "gene, phenotype, drug, population, classification, recommendation, implication, "
+            "activity_score",
+        )
+        out = [
+            CpicRecommendation(
+                gene=r["gene"],
+                phenotype=r["phenotype"],
+                drug=r["drug"],
+                population=(r["population"] or "").strip(),
+                classification=map_classification(r["classification"]),
+                recommendation=(r["recommendation"] or "").strip() or None,
+                implication=(r["implication"] or "").strip() or None,
+                activity_score=r["activity_score"] or None,
+            )
+            for r in rows
+        ]
+        # Same deterministic order the live client emits (Principle 7).
+        return sorted(out, key=lambda r: (r.population, r.phenotype))
+
+    def defining_variants(self, gene: str) -> tuple[list[CpicDefiningVariant], list[str]]:
+        """Star-allele defining variants, with the same aggregated unusable-allele warnings.
+
+        The classification runs here rather than being stored, for the reason the whole snapshot
+        follows: `unusable_allele_reason` is a *judgement this workspace makes* about CPIC's value, so
+        freezing it into the parquet would pin one release's opinion into every snapshot built under it.
+        """
+        rows = self._rows(
+            "allele_definitions.parquet", "gene = ?", [gene],
+            "gene, allele, rsid, chrom, start, variant_allele",
+            "allele, start, variant_allele",
+        )
+        out: list[CpicDefiningVariant] = []
+        unusable: dict[str, list[str]] = {}
+        for r in rows:
+            allele_value = (r["variant_allele"] or "").strip().upper()
+            reason = unusable_allele_reason(allele_value)
+            if reason is not None:
+                unusable.setdefault(reason, []).append(f"{r['allele']}={allele_value}")
+            out.append(
+                CpicDefiningVariant(
+                    gene=r["gene"] or gene,
+                    allele=r["allele"] or "",
+                    rsid=r["rsid"] or None,
+                    chrom=r["chrom"] or None,
+                    start=r["start"],
                     variant_allele=allele_value or None,
                     unusable=reason,
                 )

@@ -20,6 +20,7 @@ from just_dna_enricher.cpic import (
     CpicError,
     CpicRecommendation,
     map_classification,
+    normalize_chrom,
 )
 from just_dna_enricher.licensing import LicenseRefusal
 from just_dna_enricher.pgx_draft import _haplotype_rows, _recommendation_rows, draft_gene
@@ -63,9 +64,18 @@ _LOCATIONS = [
 ]
 
 
+# CPIC's `gene` table — where the chromosome actually lives. `sequence_location` has none, which is
+# what an earlier probe saw and concluded CPIC publishes none at all; `gene.chr` does, and joining it
+# on the symbol the location row already carries is what makes a coordinate-only defining variant
+# draftable instead of skipped.
+_GENES = [{"symbol": "CYP2C19", "chr": "chr10"}]
+
+
 def _client() -> CpicClient:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        if path.endswith("/gene"):
+            return httpx.Response(200, json=_GENES)
         if path.endswith("/allele"):
             return httpx.Response(200, json=_ALLELES)
         if path.endswith("/diplotype"):
@@ -208,12 +218,66 @@ def _variant(**kw) -> CpicDefiningVariant:
 
 
 def test_a_position_without_a_chromosome_is_skipped_not_written() -> None:
-    """The crash: the guard accepted a bare `start`, but `HaplotypeRow` needs rsid, or chrom AND
-    start — and CPIC publishes no chromosome, so the row could never validate. 18 CYP2C9 defining
-    variants are shaped this way (also 14 in TPMT, 4 in NUDT15); CYP2C19 has none."""
+    """The crash: the guard accepted a bare `start`, but `HaplotypeRow` needs rsid, or chrom AND start.
+
+    Still refused, and it must be — a bare position identifies no locus. What changed in 0.5.1 is that
+    far fewer rows arrive this way: the chromosome those 36 real variants (18 CYP2C9, 14 TPMT, 4
+    NUDT15) were missing is published on CPIC's `gene` table, so `defining_variants` now supplies it and
+    the row below is the residue rather than the common case. The guard is unchanged.
+    """
     rows, warnings = _haplotype_rows([_variant(start=94947907)])
     assert rows == []
-    assert warnings and "no rsID and publishes no chromosome" in warnings[0]
+    assert warnings and "no usable locus" in warnings[0]
+
+
+def test_cpic_supplies_the_chromosome_from_its_gene_table(tmp_path: Path) -> None:
+    """The 36 coordinate-only defining variants are drafted now, not skipped.
+
+    Demonstrated on the old behaviour: with `gene.chr` withheld — which is what the client used to do
+    unconditionally, since it never asked — the row is refused by the very guard above, and with it
+    supplied the row is written and validates. Real CYP2C9 shape: a position and no rsID.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/gene"):
+            return httpx.Response(200, json=[{"symbol": "CYP2C9", "chr": "chr10"}])
+        if path.endswith("/allele"):
+            return httpx.Response(200, json=[
+                {"genesymbol": "CYP2C9", "name": "*57", "activityvalue": None,
+                 "clinicalfunctionalstatus": "Uncertain function"},
+            ])
+        if path.endswith("/diplotype"):
+            return httpx.Response(200, json=[])
+        if path.endswith("/allele_definition"):
+            return httpx.Response(200, json=[{"id": 9, "name": "*57", "genesymbol": "CYP2C9"}])
+        if path.endswith("/allele_location_value"):
+            return httpx.Response(200, json=[
+                # CPIC's real shape for these: a position, no dbsnpid.
+                {"alleledefinitionid": 9, "variantallele": "G",
+                 "sequence_location": {"genesymbol": "CYP2C9", "dbsnpid": None,
+                                       "position": 94947907}},
+            ])
+        return httpx.Response(404, json=[])
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    variants, _ = client.defining_variants("CYP2C9")
+    assert [(v.rsid, v.chrom, v.start) for v in variants] == [(None, "10", 94947907)]
+
+    # The old behaviour, reproduced: no chromosome, so the guard refuses and nothing is written.
+    without_chrom = [_variant(allele="*57", gene="CYP2C9", start=94947907)]
+    assert _haplotype_rows(without_chrom)[0] == []
+    # With it, the row exists and the model accepts it.
+    drafted, warnings = _haplotype_rows(variants)
+    assert [(r.haplotype_name, r.chrom, r.start) for r in drafted] == [("*57", "10", 94947907)]
+    assert warnings == []
+
+
+def test_cpic_chrom_spelling_is_normalized_and_never_guessed() -> None:
+    """`chr10` → `10`; a blank cell stays `None` rather than becoming an empty contig."""
+    assert normalize_chrom("chr10") == "10"
+    assert normalize_chrom("chrX") == "X"
+    assert normalize_chrom("22") == "22"
+    assert normalize_chrom("") is None and normalize_chrom(None) is None
 
 
 def test_the_guard_matches_the_models_own_rule() -> None:

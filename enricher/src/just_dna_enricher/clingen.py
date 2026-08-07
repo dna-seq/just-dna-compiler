@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
@@ -72,7 +72,12 @@ class ClinGenResult:
     covered: list[str]
     missing: list[str]
     dataset: str
-    source_row: SourceRow
+    source_row: SourceRow | None = None
+    #: The pass did not run because the deployment is offline and ClinGen is a live download (RM39).
+    #: A first-class answer a caller can render — *"the dosage pass did not run because this
+    #: deployment is offline"* — and distinct both from "it ran and found nothing" (`missing`) and
+    #: from a failure. `FrequencyResult.skipped_offline` is the shape this copies.
+    skipped_offline: bool = False
 
 
 def decode_rating(cell: str | None) -> str | None:
@@ -144,6 +149,7 @@ def enrich_dosage_sensitivity(
     *,
     mode: str = "best_effort",
     declared_use: str = "unstated",
+    offline: bool = False,
     write: bool = True,
     curation_text: str | None = None,
     url: str = DEFAULT_CLINGEN_URL,
@@ -153,13 +159,34 @@ def enrich_dosage_sensitivity(
     Existing rows are authoritative and merged, never clobbered — the standing rule for every pass.
     A gene ClinGen has not curated is reported as missing and gets no row: unlike gnomAD's
     "looked up, genuinely absent", ClinGen's silence means *nobody has assessed this yet*, which is
-    not a fact about the gene."""
+    not a fact about the gene.
+
+    **`offline` (RM39).** This was the one pass in the family without the flag, so it downloaded the
+    curation TSV unconditionally and the only way to stop it was to inject `curation_text=` — which
+    requires the caller to have fetched the thing already, i.e. to have solved the problem the
+    parameter would solve. A caller running the family under one switch had to know, out of band, that
+    one member ignored it, and the cost of forgetting was silent egress from a path
+    [ENRICHER.md](../../docs/ENRICHER.md) documents as making none. `enrich_frequencies` is the shape
+    copied: a **no-op with a warning**, reported as `skipped_offline`, never a failure. An injected
+    `curation_text` still wins, because that is not egress; ClinGen has no snapshot and this
+    deliberately does not add one (that is RM38's family, and a much bigger question).
+    """
     spec_dir = Path(spec_dir)
     output_path = spec_dir / "gene_metrics.csv"
 
+    if offline and curation_text is None:
+        logger.warning(
+            "ClinGen dosage pass skipped: --offline. The gene-curation list is a live download with "
+            "no snapshot, so this pass is a no-op offline rather than a failure. Inject the file with "
+            "curation_text= if you already hold it."
+        )
+        return ClinGenResult(
+            rows=[], covered=[], missing=[], dataset="", source_row=None, skipped_offline=True
+        )
+
     existing: dict[tuple[str, str], GeneMetricsRow] = {}
     if output_path.exists():
-        rows, errors, _ = _load_csv_rows(output_path, GeneMetricsRow, "gene_metrics.csv")
+        rows, errors, _ = load_csv_rows(output_path, GeneMetricsRow, "gene_metrics.csv")
         if errors:
             raise ClinGenError(f"existing gene_metrics.csv is invalid: {errors[0]}")
         for row in rows:

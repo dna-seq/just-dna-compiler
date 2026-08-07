@@ -26,17 +26,28 @@ reader can weigh it.
 Source order for the star-allele layer is **PharmVar then CPIC**, on data-authority grounds: PharmVar
 is the naming authority for CYP star alleles. It is *not* a licensing preference — both are CC BY-SA
 with a bar on sale, and neither makes a module sellable.
+
+**Snapshot first, live second, and `--offline` means the first only (RM38).** Both sources were
+live-only, so `--offline` was a no-op that warned and returned, and a *hosted* enricher had exactly two
+options: fetch a licence-gated source per request on the operator's own credentials, or skip the check.
+Each leg now resolves a built snapshot first (`locations.resolve_{cpic,pharmvar}_reference`, or an
+explicit path) and falls back to the live service only when there is none and the run is online. No
+second flag: `--offline` is the switch and an explicit cache path is the inject-only escape hatch.
+
+The route is **recorded, not implied** — `PgxResult.routes` says which answered, and a snapshot stamps
+its release into `SourceRow.dataset`, the way the two gnomAD constraint routes already do. A consumer
+must be able to tell a pinned file from a live API, because the two can differ by a release.
 """
 
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.pgx import AlleleFunctionRow, HaplotypeRow
 from just_dna_format.sources import SourceRow
 
-from just_dna_enricher.cpic import CpicClient, CpicError
+from just_dna_enricher.cpic import CpicClient, CpicError, CpicSnapshotClient
 from just_dna_enricher.licensing import (
     CPIC_TERMS,
     PHARMVAR_TERMS,
@@ -44,7 +55,8 @@ from just_dna_enricher.licensing import (
     check_declared_use,
     write_sources_csv,
 )
-from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError
+from just_dna_enricher.locations import resolve_cpic_reference, resolve_pharmvar_reference
+from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarSnapshotClient
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +90,14 @@ class PgxResult:
     warnings: list[str] = field(default_factory=list)
     mode: str = "best_effort"
     declared_use: str = "unstated"
+    #: `source -> "snapshot" | "live"` for each leg that actually answered (RM38). A first-class
+    #: answer rather than a log line: on a hosted deployment "did this reach PharmVar live?" is the
+    #: question the whole cache exists to make answerable, and a caller renders it.
+    routes: dict[str, str] = field(default_factory=dict)
+    #: Legs that could run neither offline nor live, and why. Distinct from `skipped` (a licensing
+    #: refusal) and from a `warning` (the source answered and something was odd) — tri-state, as
+    #: everywhere: "did not run" is not "ran and found nothing".
+    skipped_offline: list[str] = field(default_factory=list)
 
 
 def _module_genes(spec_dir: Path) -> list[str]:
@@ -94,7 +114,7 @@ def _module_genes(spec_dir: Path) -> list[str]:
         path = spec_dir / name
         if not path.exists():
             continue
-        rows, errors, _ = _load_csv_rows(path, model, name)
+        rows, errors, _ = load_csv_rows(path, model, name)
         if errors:
             raise PgxEnrichmentError(f"{name} is invalid: {errors[0]}")
         for row in rows:
@@ -108,7 +128,7 @@ def _authored_functions(spec_dir: Path) -> list[AlleleFunctionRow]:
     path = spec_dir / "allele_function.csv"
     if not path.exists():
         return []
-    rows, errors, _ = _load_csv_rows(path, AlleleFunctionRow, "allele_function.csv")
+    rows, errors, _ = load_csv_rows(path, AlleleFunctionRow, "allele_function.csv")
     if errors:
         raise PgxEnrichmentError(f"allele_function.csv is invalid: {errors[0]}")
     return rows
@@ -146,8 +166,10 @@ def enrich_pgx(
     use_pharmvar: bool = True,
     use_cpic: bool = True,
     write: bool = True,
-    pharmvar_client: PharmVarClient | None = None,
-    cpic_client: CpicClient | None = None,
+    cpic_cache: Path | None = None,
+    pharmvar_cache: Path | None = None,
+    pharmvar_client: PharmVarClient | PharmVarSnapshotClient | None = None,
+    cpic_client: CpicClient | CpicSnapshotClient | None = None,
 ) -> PgxResult:
     """Cross-check the module's PGx tables and record what was consulted, into `sources.csv`.
 
@@ -155,16 +177,14 @@ def enrich_pgx(
     on a finding, this says who is using the data and why. A source that forbids sale is *skipped*
     when nothing was declared (conservative — the tool must not assert a purpose for the user) and
     *refuses* when `commercial` was declared (a direct contradiction).
+
+    `offline` is real as of 0.5.1: each leg resolves a built snapshot first and only reaches the live
+    service when there is none and the run is online. Offline with no snapshot is a **skip with a
+    reason** (`skipped_offline`), never a silent pass and never a failure — a source the deployment
+    cannot reach is not a finding about the module.
     """
     spec_dir = Path(spec_dir)
     result = PgxResult(mode=mode, declared_use=declared_use)
-
-    if offline:
-        result.warnings.append(
-            "PGx cross-check skipped: --offline. PharmVar and CPIC are live-only (no snapshot), so "
-            "this pass is a no-op offline rather than a failure."
-        )
-        return result
 
     genes = _module_genes(spec_dir)
     if not genes:
@@ -179,15 +199,19 @@ def enrich_pgx(
     existing_path = spec_dir / "sources.csv"
     existing: dict[tuple[str, str], SourceRow] = {}
     if existing_path.exists():
-        rows, errors, _ = _load_csv_rows(existing_path, SourceRow, "sources.csv")
+        rows, errors, _ = load_csv_rows(existing_path, SourceRow, "sources.csv")
         if errors:
             raise PgxEnrichmentError(f"existing sources.csv is invalid: {errors[0]}")
         existing = {(r.source, r.layer): r for r in rows}
 
     emitted: list[SourceRow] = []
 
-    def consult(terms: SourceTerms, enabled: bool, fetch) -> None:
-        """Run one source through the declared-use gate, then its fetch. Records terms either way."""
+    def consult(terms: SourceTerms, enabled: bool, resolve, read) -> None:
+        """Gate one source on the declared use, pick its route, read it. Records terms either way.
+
+        `resolve` returns `(client, owned, route)` or `None` when neither a snapshot nor a live route
+        is available — which is a *skip with a reason*, not a failure.
+        """
         if not enabled:
             return
         reason = check_declared_use(terms, declared_use)  # raises LicenseRefusal on `commercial`
@@ -196,53 +220,112 @@ def enrich_pgx(
             logger.warning("%s", reason)
             return
         try:
-            reported, notes = fetch()
+            resolved = resolve()
+        except (PharmVarError, CpicError) as exc:
+            result.warnings.append(f"{terms.source} unavailable ({exc}); continuing without it.")
+            return
+        if resolved is None:
+            note = (
+                f"{terms.source}: skipped — --offline and no built snapshot. Build one with "
+                f"`just-dna-enricher {terms.source} build`, or point at it with "
+                f"$JUST_DNA_{terms.source.upper()}_CACHE."
+            )
+            result.skipped_offline.append(note)
+            logger.warning("%s", note)
+            return
+        client, owned, route = resolved
+        try:
+            reported, notes = read(client)
         except (PharmVarError, CpicError) as exc:
             # One source failing must not sink the pass — the other may still answer.
             result.warnings.append(f"{terms.source} unavailable ({exc}); continuing without it.")
             return
+        finally:
+            if owned:
+                client.close()
+        result.routes[terms.source] = route
         result.warnings.extend(notes)
         result.conflicts.extend(_compare(authored, reported, terms.source))
-        emitted.append(terms.row("annotation", declared_use=declared_use))
+        emitted.append(
+            terms.row(
+                "annotation",
+                declared_use=declared_use,
+                dataset=getattr(client, "dataset", None),
+            )
+        )
 
-    def _pharmvar() -> tuple[dict[tuple[str, str], str | None], list[str]]:
-        owned = pharmvar_client is None
-        client = pharmvar_client or PharmVarClient()
+    def _injected(client) -> tuple[object, bool, str] | None:
+        """An injected client's route — and `None` when `offline` forbids using it.
+
+        **`offline` wins over an injection, and the type is what decides.** An injected client is the
+        inject-only escape hatch, but a *live* one under `--offline` would egress from a run documented
+        as making none, which is the whole failure RM38 exists to close. A snapshot client is exempt
+        because reading a local parquet is not egress. Not decided on `configured`: a live client with a
+        perfectly good key is exactly the one that must not be used here.
+        """
+        if client is None:
+            return None
+        is_snapshot = isinstance(client, CpicSnapshotClient | PharmVarSnapshotClient)
+        if offline and not is_snapshot:
+            return None
+        return client, False, "snapshot" if is_snapshot else "injected"
+
+    def _resolve_pharmvar():
+        if pharmvar_client is not None:
+            resolved = _injected(pharmvar_client)
+            # "No key" is still the caller's answer to hear: a keyless client would 401 every gene, and
+            # the CPIC leg must survive that. `PharmVarSnapshotClient.configured` is True, so a
+            # snapshot passes unchanged.
+            if resolved is not None and not pharmvar_client.configured:
+                raise PharmVarError(
+                    "no PharmVar API key: set PHARMVAR_API_KEY (the key is personal to your account "
+                    "and is never stored in a module)"
+                )
+            return resolved
+        reference = resolve_pharmvar_reference(pharmvar_cache)
+        if reference is not None:
+            return PharmVarSnapshotClient(reference), True, "snapshot"
+        if offline:
+            return None
+        client = PharmVarClient()
         if not client.configured:
-            if owned:
-                client.close()
+            client.close()
             raise PharmVarError(
                 "no PharmVar API key: set PHARMVAR_API_KEY (the key is personal to your account "
-                "and is never stored in a module)"
+                "and is never stored in a module), or build a snapshot with "
+                "`just-dna-enricher pharmvar build`"
             )
-        try:
-            reported: dict[tuple[str, str], str | None] = {}
-            for gene in genes:
-                for allele in client.alleles_for_gene(gene):
-                    key = (allele.gene, _normalize_allele(allele.gene, allele.allele))
-                    reported[key] = (allele.function or "").replace(" ", "_").lower() or None
-            return reported, []
-        finally:
-            if owned:
-                client.close()
+        return client, True, "live"
 
-    def _cpic() -> tuple[dict[tuple[str, str], str | None], list[str]]:
-        owned = cpic_client is None
-        client = cpic_client or CpicClient()
-        try:
-            reported: dict[tuple[str, str], str | None] = {}
-            for gene in genes:
-                for allele in client.alleles_for_gene(gene):
-                    reported[(allele.gene, allele.allele)] = allele.function_status
-            return reported, []
-        finally:
-            if owned:
-                client.close()
+    def _resolve_cpic():
+        if cpic_client is not None:
+            return _injected(cpic_client)
+        reference = resolve_cpic_reference(cpic_cache)
+        if reference is not None:
+            return CpicSnapshotClient(reference), True, "snapshot"
+        if offline:
+            return None
+        return CpicClient(), True, "live"
+
+    def _read_pharmvar(client) -> tuple[dict[tuple[str, str], str | None], list[str]]:
+        reported: dict[tuple[str, str], str | None] = {}
+        for gene in genes:
+            for allele in client.alleles_for_gene(gene):
+                key = (allele.gene, _normalize_allele(allele.gene, allele.allele))
+                reported[key] = (allele.function or "").replace(" ", "_").lower() or None
+        return reported, []
+
+    def _read_cpic(client) -> tuple[dict[tuple[str, str], str | None], list[str]]:
+        reported: dict[tuple[str, str], str | None] = {}
+        for gene in genes:
+            for allele in client.alleles_for_gene(gene):
+                reported[(allele.gene, allele.allele)] = allele.function_status
+        return reported, []
 
     # PharmVar first on data-authority grounds (the naming authority for CYP star alleles), not
     # licensing — neither source is sellable.
-    consult(PHARMVAR_TERMS, use_pharmvar, _pharmvar)
-    consult(CPIC_TERMS, use_cpic, _cpic)
+    consult(PHARMVAR_TERMS, use_pharmvar, _resolve_pharmvar, _read_pharmvar)
+    consult(CPIC_TERMS, use_cpic, _resolve_cpic, _read_cpic)
 
     for conflict in result.conflicts:
         logger.warning("PGx allele-function difference — %s", conflict)

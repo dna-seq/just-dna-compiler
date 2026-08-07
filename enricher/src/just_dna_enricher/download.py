@@ -19,9 +19,12 @@ from pathlib import Path
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
+    SNAPSHOT_LICENSE_FILENAME,
     SNAPSHOT_SIDECAR_DIRNAMES,
+    default_clinpgx_cache_dir,
     default_clinvar_cache_dir,
     default_constraint_cache_dir,
+    default_cpic_cache_dir,
     default_ensembl_cache_dir,
 )
 from just_dna_enricher.resolver import EnsemblReferenceError
@@ -49,10 +52,27 @@ _CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
 _ENSEMBL_FILES = "homo_sapiens-*.parquet"
 _CLINVAR_FILES = "clinvar-*.parquet"          # deliberately excludes the flat `clinvar.parquet`
 _CONSTRAINT_FILES = "gnomad_constraint.parquet"
+# The two gated snapshots that may be published (RM38). Both are multi-table, so the glob is the whole
+# directory rather than one name — `cpic_build` writes five parquets and `clinpgx_build` one, and both
+# sets are this snapshot's own; nothing foreign has ever been published into either repo.
+_CLINPGX_FILES = "*.parquet"
+_CPIC_FILES = "*.parquet"
+
+_CLINPGX_HF_PREFIX = "datasets/just-dna-seq/clinpgx/data"
+_CPIC_HF_PREFIX = "datasets/just-dna-seq/cpic/data"
 
 
 class ConstraintReferenceError(FileNotFoundError):
     """Raised when the gnomAD constraint snapshot cannot be provisioned or has no usable parquet."""
+
+
+class GatedSnapshotError(FileNotFoundError):
+    """Raised when a licence-gated snapshot (ClinPGx, CPIC) cannot be provisioned.
+
+    One class for both because a caller's recovery is identical — build it locally, or point at a
+    cache — and because the two are the same act: reaching a source that forbids sale through bytes the
+    operator took once instead of live per request.
+    """
 
 
 def _parquet_footer_ok(path: Path) -> bool:
@@ -190,11 +210,17 @@ def _provision_snapshot(
     # fetched. It also describes the sidecars (the citations builder merges its own block in), which is
     # what keeps a two-release artifact from being silent about it. Absence is not an error: a repo
     # published before the builder wrote one is still usable.
-    try:
-        fs.get(f"{repo_root}/{RELEASE_FILENAME}", str(cache_dir / RELEASE_FILENAME))
-    except Exception as exc:
-        logger.info("No %s in the %s repo (%s); the cache carries data only.",
-                    RELEASE_FILENAME, label, type(exc).__name__)
+    #
+    # `LICENSE.txt` rides along for the same reason, one step further: a share-alike snapshot's terms
+    # are pinned by `license_sha256`, and a consumer that holds the bytes must be able to read what
+    # governs them without going back to the source archive. The publisher was dropping it; fetching it
+    # here is the other half, so a *provisioned* snapshot is the same artifact a *built* one is.
+    for optional in (RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME):
+        try:
+            fs.get(f"{repo_root}/{optional}", str(cache_dir / optional))
+        except Exception as exc:
+            logger.info("No %s in the %s repo (%s); the cache carries data only.",
+                        optional, label, type(exc).__name__)
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 
@@ -229,4 +255,39 @@ def ensure_constraint_snapshot(constraint_cache: Path | None = None) -> Path:
     return _provision_snapshot(
         cache_dir, _CONSTRAINT_HF_PREFIX, label="gnomAD constraint",
         error_cls=ConstraintReferenceError, filename_glob=_CONSTRAINT_FILES,
+    )
+
+
+def ensure_clinpgx_snapshot(clinpgx_cache: Path | None = None) -> Path:
+    """Provision the ClinPGx clinical-annotation snapshot from HuggingFace Hub (RM38).
+
+    The builder shipped a release ahead of this, so the snapshot existed and no code path could reach
+    it: `enrich_clinpgx` skipped itself unless a caller passed `--snapshot` by hand, which on a hosted
+    deployment means the check simply never ran. Publishable because ClinPGx's recorded terms permit
+    redistribution — and the `LICENSE.txt` the builder extracted travels with the parquet, which is what
+    makes `license_sha256` pin anything for whoever downloads it.
+    """
+    cache_dir = Path(clinpgx_cache) if clinpgx_cache is not None else default_clinpgx_cache_dir()
+    return _provision_snapshot(
+        cache_dir, _CLINPGX_HF_PREFIX, label="ClinPGx", error_cls=GatedSnapshotError,
+        filename_glob=_CLINPGX_FILES,
+    )
+
+
+def ensure_cpic_snapshot(cpic_cache: Path | None = None) -> Path:
+    """Provision the CPIC snapshot from HuggingFace Hub (RM38).
+
+    CPIC is open and unauthenticated, so the cache is not about access — it is about a *host* not
+    spending one shared per-IP allowance on every caller's request, and about the terms being accepted
+    once by the operator who built it rather than implicitly per request.
+
+    There is deliberately **no `ensure_pharmvar_snapshot`** beside this. PharmVar's bulk data is pulled
+    under a key its terms §2 make personal and non-transferable, and no axis `SourceTerms` records
+    covers passing that on — an unestablished permission is not a permission. That snapshot stays
+    operator-built and inject-only (`locations.resolve_pharmvar_reference`).
+    """
+    cache_dir = Path(cpic_cache) if cpic_cache is not None else default_cpic_cache_dir()
+    return _provision_snapshot(
+        cache_dir, _CPIC_HF_PREFIX, label="CPIC", error_cls=GatedSnapshotError,
+        filename_glob=_CPIC_FILES,
     )

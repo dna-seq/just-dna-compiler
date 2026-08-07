@@ -364,6 +364,36 @@ def test_enrich_mints_vrs_ids_onto_resolved_rows(cache: Path, tmp_path: Path) ->
     assert row.vrs_spec == "2.0"
 
 
+def test_the_mint_result_survives_the_call_instead_of_being_logged_away(
+    cache: Path, tmp_path: Path
+) -> None:
+    """RM40: `enrich()` computed the coverage counters and threw them away.
+
+    They are the same two numbers `compile_module` later stamps into
+    `manifest.compilation.vrs_alleles` / `vrs_alleles_identified`, so a consumer reading coverage
+    **before** a compile — which is what a publish dry run is — had to re-implement the counting, and
+    had to get two non-obvious rules right to agree with the manifest a publish would produce. And
+    `unmintable_reasons`, the actionable half, survived only as a log line.
+
+    `None` when the pass did not run, never a coverage of zero — the house tri-state.
+    """
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n")
+    result = enrich(spec, offline=True, ensembl_cache=cache, clinvar_cache=tmp_path / "no_clinvar")
+    assert result.vrs is not None
+    # Per ALT slot, not per row — and the denominator is what makes a shortfall legible at all.
+    assert result.vrs.alleles == 1 and result.vrs.identified == 1
+    assert result.vrs.complete is True and result.vrs.coverage_warnings() == []
+    # It is the object the compiler stamps, so the numbers a consumer reads here are the manifest's.
+    assert result.vrs.minted_stdlib == 1
+
+    off = _spec(tmp_path / "spec2", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n")
+    skipped = enrich(
+        off, offline=True, ensembl_cache=cache, clinvar_cache=tmp_path / "no_clinvar",
+        mint_vrs=False,
+    )
+    assert skipped.vrs is None
+
+
 def test_unqueryable_clinvar_cache_degrades_instead_of_crashing(
     cache: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

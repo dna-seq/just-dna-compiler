@@ -30,11 +30,10 @@ import httpx
 from tenacity import (
     retry,
     retry_if_exception_type,
-    stop_after_attempt,
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.net import PacingGate, batched, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +118,7 @@ class EutilsClient:
         self.close()
 
     @retry(
-        stop=stop_after_attempt(4),
+        stop=attempt_floor(4),
         wait=wait_exponential_jitter(initial=1.0, max=20.0),
         retry=retry_if_exception_type(
             (EutilsRateLimitedError, httpx.TransportError, httpx.TimeoutException)

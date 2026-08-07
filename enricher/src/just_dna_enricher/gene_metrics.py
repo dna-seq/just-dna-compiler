@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
@@ -77,7 +77,7 @@ def module_genes(spec_dir: Path) -> list[str]:
     variants_path = Path(spec_dir) / "variants.csv"
     if not variants_path.exists():
         return []
-    variants, errors, _ = _load_csv_rows(variants_path, VariantRow, "variants.csv")
+    variants, errors, _ = load_csv_rows(variants_path, VariantRow, "variants.csv")
     if errors:
         raise GeneMetricsEnrichmentError(f"variants.csv is invalid: {errors[0]}")
     seen: set[str] = set()
@@ -159,7 +159,7 @@ def enrich_gene_metrics(
     # gene alone made a second authority's row look like this pass's own work and suppressed the fetch.
     existing: dict[tuple[str, str], GeneMetricsRow] = {}
     if output_path.exists():
-        rows, errors, _ = _load_csv_rows(output_path, GeneMetricsRow, "gene_metrics.csv")
+        rows, errors, _ = load_csv_rows(output_path, GeneMetricsRow, "gene_metrics.csv")
         if errors:
             raise GeneMetricsEnrichmentError(f"existing gene_metrics.csv is invalid: {errors[0]}")
         for row in rows:

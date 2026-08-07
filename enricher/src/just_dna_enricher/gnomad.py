@@ -40,11 +40,10 @@ from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from tenacity import (
     retry,
     retry_if_exception_type,
-    stop_after_attempt,
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.net import PacingGate, batched, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +303,7 @@ class GnomadClient:
 
     # ── transport ──────────────────────────────────────────────────────────────────────────────
     @retry(
-        stop=stop_after_attempt(4),
+        stop=attempt_floor(4),
         wait=wait_exponential_jitter(initial=2.0, max=30.0),
         retry=retry_if_exception_type(
             (RateLimitedError, httpx.TransportError, httpx.TimeoutException)

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
+    SNAPSHOT_LICENSE_FILENAME,
     SNAPSHOT_SIDECAR_DIRNAMES,
 )
 
@@ -36,15 +37,28 @@ _ALLOW_PATTERNS = [*_REQUIRED, "manifest.json", "logo.png", "logo.jpg"]
 # disagree about it. **The sidecars were the gap this closes:** ClinVar's `citations/` was built and
 # never published, so anyone who *downloaded* the snapshot instead of building it had no PMIDs — and a
 # drafted gene panel cannot compile without them, because `studies.csv` is mandatory.
+#
+# **`LICENSE.txt` was the second gap, and it is worse than the sidecars were.** ClinPGx ships its terms
+# *inside* the archive the data came from, and the builder extracts them precisely so a holder of the
+# snapshot can read what governs the bytes without going back to the archive — the whole pinned-licence
+# design (`license_sha256`) rests on that file travelling with them. It was not in these patterns, so
+# publishing a share-alike snapshot dropped it silently. Absent is normal (only ClinPGx has one).
 _SNAPSHOT_ALLOW_PATTERNS = [
     f"{SNAPSHOT_DATA_DIRNAME}/*.parquet",
     *(f"{name}/*.parquet" for name in SNAPSHOT_SIDECAR_DIRNAMES),
     RELEASE_FILENAME,
+    SNAPSHOT_LICENSE_FILENAME,
 ]
 
 DEFAULT_REPO_ID = "just-dna-seq/annotators"
 DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
 DEFAULT_CONSTRAINT_REPO_ID = "just-dna-seq/gnomad_constraint"
+# The two licence-gated snapshots that may be published (RM38): both record `redistribution=True`, and
+# CC BY-SA grants sharing under share-alike plus attribution. **PharmVar has no entry here on purpose** —
+# its bulk data is pulled under a personal, non-transferable key and no recorded axis covers passing
+# that on, so an unestablished permission stays a refusal.
+DEFAULT_CLINPGX_REPO_ID = "just-dna-seq/clinpgx"
+DEFAULT_CPIC_REPO_ID = "just-dna-seq/cpic"
 
 
 def _hf_api(repo_id: str, token: str | None = None):
@@ -162,8 +176,9 @@ def plan_reference_snapshot(snapshot_dir: Path, repo_id: str | None = None) -> S
         directory = snapshot_dir / sidecar
         if directory.is_dir():
             files.extend(f"{sidecar}/{p.name}" for p in sorted(directory.glob("*.parquet")))
-    if (snapshot_dir / RELEASE_FILENAME).is_file():
-        files.append(RELEASE_FILENAME)
+    for name in (RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME):
+        if (snapshot_dir / name).is_file():
+            files.append(name)
     return SnapshotPlan(repo_id=resolved_repo, files=files)
 
 

@@ -355,6 +355,86 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   dependency set honest about what its runtime actually needs, so the tier could stop pulling polars
   transitively without every pass breaking — but do not repeat the broken-install claim, and do not
   reason from it when judging a new pass.
+- **Every gated source now has a cache, and PharmVar's is deliberately unpublishable (RM38, shipped in
+  enricher 0.5.1).** The three PGx sources were the only `commercial_use=False` entries *and* the only
+  ones with no cache — the same set, because every ungated link was already snapshot-first. A hosted
+  surface therefore had two options, fetch live per request on the operator's own credentials or skip
+  the check. Six things to keep straight now that it is built:
+  - **The route is snapshot → live → skip-with-a-reason, and `--offline` means the first only.**
+    `PgxResult.routes` records which answered and a snapshot stamps its release into `SourceRow.dataset`
+    (the gnomAD-constraint precedent: a consumer must be able to tell a pinned file from a live API).
+    `skipped_offline` is a third state, never a silent pass.
+  - **`clinpgx` provisions automatically; `pgx`/`draft` fall back to live.** Not an inconsistency —
+    ClinPGx has no live route at all (the API was retired), so there is nothing to degrade to, while
+    downloading a whole database to answer one gene is the wrong default for an author on a laptop.
+  - **`offline` outranks an injected client, decided on the TYPE not on `configured`.** A live client
+    under `--offline` would egress from a run documented as making none; a snapshot client is exempt
+    because reading a local parquet is not egress. A live client with a perfectly good key is exactly
+    the one that must not be used there.
+  - **No `ensure_pharmvar_snapshot`, no `pharmvar publish`, ever.** Its bulk data comes under a key its
+    terms §2 make personal and non-transferable, and `redistribution=True` describes the CC BY-SA grant
+    over the *content*, not a clause about the *account* — an unestablished permission is not a
+    permission. Also still don't add a `SourceRow` column for research-use-only: a new column on an
+    existing parquet is 1.0, and it belongs to RM27's design round.
+  - **The builders store values verbatim and map at READ time.** `cpic_build` writes CPIC's own prose
+    (`"No function"`, `"Strong"`) and the snapshot client calls the same `map_function_status` /
+    `map_classification` the live client does — so a mapping fix reaches an already-built snapshot, and
+    the two routes return the same object by construction rather than by inspection. Same rule for
+    `unusable_allele_reason`: it is a *judgement this workspace makes* about CPIC's value, so freezing
+    it into the parquet would pin one release's opinion into every snapshot built under it.
+  - **A flattened JSON map must carry what the flattening lost.** `recommendation.phenotypes` is a
+    `{gene: phenotype}` dict and the live client keeps only single-gene rows; the snapshot is one row
+    per gene named, so `gene_count` travels with it and the reader applies the identical rule. Without
+    it, flattening silently promotes multi-gene recommendations.
+- **A negative finding about a source is only as wide as the table you looked at — say which.** The
+  comment "CPIC publishes no chromosome" was true of `sequence_location` and false of CPIC: `gene.chr`
+  has it, and the drafting provider had been skipping 36 real defining variants (18 CYP2C9, 14 TPMT, 4
+  NUDT15) for a year on the strength of a probe that named no table. Joining `gene.chr` on the symbol the
+  location row already carries is a **lookup in the source's own tables**, not the inference the original
+  comment rightly refused — that distinction is the whole difference between the two.
+- **A source that publishes both assemblies will list the wrong one first.** PharmVar emits each defining
+  variant once per reference sequence — transcript, GRCh37, GRCh38 — with **GRCh37 first**, and
+  `_merge_variants` was first-wins, so 451 of 739 rsID-keyed variants carried a GRCh37 coordinate. The
+  accession *version* cannot separate them (chr10 is `.10`/`.11`, and so is chr22); `referenceCollections`
+  can. Two durable points. **Filter on the field that names the assembly, never on the accession.** And
+  it was latent for a release because nothing consumed `PharmVarAllele.variants` — **a snapshot is what
+  turns a latent wrong number into a written one**, so re-check every parsed-but-unused field the first
+  time something persists it. `pharmvar.PHARMVAR_GENOME_BUILD` is the named constant (fourth build
+  confusion here; `gnomad.FREQUENCY_GENOME_BUILD` is the precedent).
+- **A credential must be loaded where it is read.** `PharmVarClient` read `os.environ` and `.env` only
+  ever reached it as a side effect of some *other* call resolving a cache path — which worked for
+  `enrich_pgx` by accident and not at all for `pharmvar build`, which resolves nothing and reported "no
+  PharmVar API key" on a machine that had one. `load_env()` now runs in `__init__`, `override=False`, so
+  a real environment variable and a test's neutralizing `""` both still win.
+- **A flag must mean the same thing in every function that takes one (RM39).** `enrich_dosage_sensitivity`
+  was the only pass without `offline`, so a caller running the family under one switch had to know, out
+  of band, that one member ignored it — and the cost of forgetting was silent egress from a path the
+  docs call zero-egress. The shape to copy is `enrich_frequencies`: a **no-op with a warning**, reported
+  as `skipped_offline`, which is a first-class answer distinct from "ran and found nothing" and from a
+  failure. An *injected* payload (`curation_text=`) still wins — handing over bytes you already hold is
+  not egress, and refusing it would break the inject-only escape hatch. Corollary from the same round:
+  **"a flag with one legal value" is a claim about the current wiring, not about the function.** That
+  was the standing reason `enrich_clinpgx` had no `offline`, and RM38 gave it a second value the same
+  week — re-ask the question whenever the wiring changes.
+- **A number this workspace computes and discards gets recomputed by every consumer (RM40/RM41).** Two
+  instances, one argument. `enrich()` computed the `MintResult` the compiler later stamps into the
+  manifest and dropped it, so a pre-compile consumer re-implemented per-ALT-slot counting and could
+  disagree with the manifest a publish would produce; it is now `EnrichmentResult.vrs` (`None` when the
+  pass did not run — never a coverage of zero). And `_load_csv_rows` was the only correct authored-CSV
+  loader *and* private, so a consumer chose between a private symbol and a re-implementation with two
+  known traps; it is now `compiler.load_csv_rows`, with `compiler.load_spec_variants` for the
+  build-injection-and-restamp, and `verify_acmg_sf`/`check_identifiers` take `spec_dir=` beside
+  `variants=` (**exactly one, never both** — a caller passing both has two answers in mind). Before
+  logging a computed value and returning, ask whether a caller would have to recompute it.
+- **A constant two deployment shapes want different values of is a knob (RM42).** Nine
+  `stop_after_attempt(3..4)` were decorator arguments evaluated at import, so a *server* inside an
+  unattended publish could not ask for more persistence than an author at a terminal wants — and a
+  consumer was walking the package reassigning `policy.stop`. `net.attempt_floor` reads
+  `$JUST_DNA_HTTP_RETRY_ATTEMPTS` per call. Two shape rules worth reusing: **a floor, not a flat set**
+  (the per-client differences are deliberate — gnomAD and eutils are at 4 because their budgets are
+  tightest — and below a client's own default it is a no-op, since nothing wants *less* persistence),
+  and **leave a composed policy alone** (`stop_after_attempt(3) | stop_after_delay(60)` means both, and
+  raising one term changes something whose author meant the conjunction).
 - **Licensing lives as DATA in `sources.csv`, never as a table in the compiler.** A source→licence map
   in `just_dna_compiler` would give it a source convention (Principle 2, tightened in 0.5) and an
   un-injected reference — and it goes stale (both halves of one did inside 0.5). The enricher reads the
@@ -515,7 +595,7 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   no marker, and the guard test catches it in both directions.
 - **Requiredness has THREE shapes, and the middle one is invisible to pydantic.** `is_required()` is
   false for `MeasureBinRow.measure_kind` and `unresolved` — they have defaults — but they are not
-  `Optional`, and `_load_csv_rows` turns an empty cell into `None` **and keeps the key**, so the model
+  `Optional`, and `load_csv_rows` turns an empty cell into `None` **and keeps the key**, so the model
   gets `None` instead of its default and fails on type. `blank_template` + `required_fields` therefore
   told an author to fill three columns and produced a file the compiler refused, naming a fourth.
   Use `draft.field_category` (`required` / `defaulted` / `optional`) and `draft.authoring_requirements`
@@ -674,7 +754,7 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 - **The build is INJECTED into a row, never authored on one — `AuthoredModel._genome_build` (RM36).** A
   model built from a CSV dict has no `module_spec.yaml` in scope, and a *property* (unlike
   `VariantRow.variant_key`) has no stored field for `_restamp_for_build` to correct afterwards — which is
-  why `HeteroplasmyRow.variant_key` minted a GRCh38 VA on a GRCh37 module. `_load_csv_rows` tells every
+  why `HeteroplasmyRow.variant_key` minted a GRCh38 VA on a GRCh37 module. `load_csv_rows` tells every
   row it builds; the attribute is **private**, so it is not a column, reaches no CSV or parquet, moves no
   digest, and `extra="forbid"` still rejects an author who writes one. Two shapes that were **rejected**,
   so don't re-propose them: per-row declaration (overkill — the build is module-wide) and **per-CSV, as a
@@ -1014,6 +1094,28 @@ cycle* in `USE_CASES.md`.
   above; a mechanically-possible loss with no real instantiation is not a finding.
 - **Async tests use `pytest-asyncio`** (kept in the dev deps for when async paths land; today there
   are none).
+- **A test that means "no credential" must SAY so — `api_key=None` does not, and `.env` leaks across
+  the whole session.** Two mechanisms compound here, and neither is visible on CI:
+  - **`api_key=None` is indistinguishable from "not passed."** `PharmVarClient.__init__` does
+    `api_key or os.environ.get(API_KEY_ENV)` (`EutilsSettings` the same for `NCBI_API_KEY`), so an
+    explicit `None` still picks up a real key. `test_one_source_failing_does_not_sink_the_pass` built
+    a "keyless" client that was configured, PharmVar answered its `MockTransport` happily, and the
+    assertions about degrading-without-a-key failed — **only for a developer who had legitimately
+    configured a key**. Green on CI, broken on the machine that owns the credential, which is exactly
+    the wrong way round.
+  - **`.env` reaches `os.environ` from an unrelated test and stays there.** `locations.load_env()`
+    runs inside each `resolve_*_reference`, so *any* test that resolves a cache path loads the repo's
+    `.env` into the process environment and every later test inherits it. Run that file alone and it
+    passes; run the suite and it fails. **Suspect ordering whenever a test passes in isolation and
+    fails in the suite** — the pollution is a global `os.environ` mutation, not a fixture.
+
+  So neutralize the variable in an autouse fixture, and **`setenv(VAR, "")`, not `delenv`**:
+  `load_dotenv(override=False)` skips a key that is merely *present*, so an empty value survives a
+  later reload where a deleted one is silently restored. Every reader treats empty as absent
+  (`x or environ.get(...)`). `test_eutils.py` had the idiom right for `NCBI_API_KEY` all along;
+  `test_pgx_licensing.py` now carries it for `PHARMVAR_API_KEY`. Three real credentials sit in `.env`
+  (`HF_TOKEN`, `PHARMVAR_API_KEY`, `NCBI_API_KEY`), so this applies to any new test that asserts
+  unkeyed behaviour — a pacing interval, a skip, a degradation warning.
 
 ## Documentation & prose style
 

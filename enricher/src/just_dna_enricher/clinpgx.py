@@ -28,13 +28,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
-from just_dna_enricher.clinpgx_build import RELEASE_FILENAME
+from just_dna_enricher.download import ensure_clinpgx_snapshot
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.locations import (
+    RELEASE_FILENAME,
+    SNAPSHOT_DATA_DIRNAME,
+    resolve_clinpgx_reference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +114,7 @@ def load_snapshot(reference: Path) -> tuple[list[dict], dict]:
     for the same reason.
     """
     reference = Path(reference)
-    parquet = reference / "data" / "annotations.parquet"
+    parquet = reference / SNAPSHOT_DATA_DIRNAME / "annotations.parquet"
     if not parquet.is_file():
         raise ClinPgxEnrichmentError(f"no ClinPGx snapshot at {parquet}")
     release_path = reference / RELEASE_FILENAME
@@ -134,13 +139,25 @@ def enrich_clinpgx(
     mode: str = "best_effort",
     declared_use: str = "unstated",
     snapshot: Path | None = None,
+    offline: bool = False,
+    download: bool = True,
     write: bool = True,
 ) -> ClinPgxResult:
     """Cross-check `pharm_variants.csv` against the ClinPGx snapshot and record the terms.
 
-    Offline-capable by design: the snapshot is local, so unlike `pgx.py` this pass needs no network
-    and `--offline` does not disable it. What it still honours is the declared-use gate — the terms
-    were accepted when the snapshot was *built*, and using it without a declaration is the same act.
+    Offline-capable by design: the snapshot is local, so unlike `pgx.py` this pass needs no network to
+    *read*, and the declared-use gate still applies — the terms were accepted when the snapshot was
+    built, and using it without a declaration is the same act.
+
+    **Finding a snapshot, though, was the gap (RM38).** The builder shipped a release ahead of any
+    plumbing: there was no `locations` resolver and no `ensure_*`, so with no explicit `snapshot=` this
+    pass skipped itself and said so — which on a hosted deployment is the check simply never running.
+    The chain now is: explicit path → resolved cache → provisioned from HuggingFace. The last step is
+    what `offline` turns off, and it is why this pass grew an `offline` parameter it was previously
+    right not to have: it now has something to decline to do.
+
+    Unlike `pgx`, there is no live fallback and there cannot be — `api.pharmgkb.org` was retired on
+    2026-07-20 — which is exactly why provisioning is automatic here and a fallback elsewhere.
     """
     spec_dir = Path(spec_dir)
     result = ClinPgxResult(mode=mode, declared_use=declared_use)
@@ -151,7 +168,7 @@ def enrich_clinpgx(
             "ClinPGx cross-check skipped: the module carries no pharm_variants.csv."
         )
         return result
-    authored, errors, _ = _load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
+    authored, errors, _ = load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
     if errors:
         raise ClinPgxEnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
 
@@ -161,14 +178,26 @@ def enrich_clinpgx(
         logger.warning("%s", reason)
         return result
 
-    if snapshot is None:
+    reference = Path(snapshot) if snapshot is not None else resolve_clinpgx_reference()
+    if reference is None and not offline and download:
+        # Same shape as `enrich()`: provision only when the local resolve came back empty, and degrade
+        # to the honest skip on failure rather than raising — a snapshot that cannot be fetched is not
+        # a finding about the module.
+        try:
+            reference = ensure_clinpgx_snapshot()
+        except Exception as exc:  # noqa: BLE001 - the next step is the same whatever failed
+            logger.info("Could not provision the ClinPGx snapshot (%s).", exc)
+            reference = None
+    if reference is None:
         result.warnings.append(
-            "ClinPGx cross-check skipped: no snapshot provisioned. Build one with "
-            "`just-dna-enricher clinpgx build`."
+            "ClinPGx cross-check skipped: no snapshot available"
+            + (" and --offline" if offline else "")
+            + ". Build one with `just-dna-enricher clinpgx build --out <dir>`, or point at it with "
+            "$JUST_DNA_CLINPGX_CACHE."
         )
         return result
 
-    snapshot_rows, release = load_snapshot(snapshot)
+    snapshot_rows, release = load_snapshot(reference)
     result.dataset = release.get("dataset")
 
     # Index the snapshot. Drugs are `;`-separated upstream, so the cell is exploded — a row about

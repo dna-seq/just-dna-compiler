@@ -56,19 +56,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
-from just_dna_compiler.compiler import _load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import DOI_PATTERN, StudyRow, extract_pmids
 from tenacity import (
     retry,
     retry_if_exception_type,
-    stop_after_attempt,
     wait_exponential_jitter,
 )
 
 from just_dna_enricher.eutils import EutilsClient, is_missing
-from just_dna_enricher.net import PacingGate, batched, dedupe
+from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +184,7 @@ class EuropePmcClient:
         self.close()
 
     @retry(
-        stop=stop_after_attempt(3),
+        stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
@@ -301,7 +300,7 @@ class CrossrefClient:
         self.close()
 
     @retry(
-        stop=stop_after_attempt(3),
+        stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1.0, max=10.0),
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
@@ -460,13 +459,13 @@ def enrich_literature(
             f"no studies.csv in {spec_dir} — the literature pass checks the citations a module makes, "
             f"so there is nothing to do without one."
         )
-    studies, errors, _ = _load_csv_rows(studies_path, StudyRow, "studies.csv")
+    studies, errors, _ = load_csv_rows(studies_path, StudyRow, "studies.csv")
     if errors:
         raise LiteratureEnrichmentError(f"studies.csv is invalid: {errors[0]}")
 
     existing: dict[str, LiteratureRow] = {}
     if output_path.exists():
-        rows, errors, _ = _load_csv_rows(output_path, LiteratureRow, "literature.csv")
+        rows, errors, _ = load_csv_rows(output_path, LiteratureRow, "literature.csv")
         if errors:
             raise LiteratureEnrichmentError(f"existing literature.csv is invalid: {errors[0]}")
         for row in rows:

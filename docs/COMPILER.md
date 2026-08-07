@@ -19,22 +19,47 @@ kinds materialize with enforced table-level coherence.
 
 Import from `just_dna_compiler.compiler`.
 
-- **`validate_spec(spec_dir, authority_keys=None) -> ValidationResult`** — validate a spec dir without
-  producing output; strips inject-only authority keys pre-validation (dropped keys → `.info`), runs
-  `validate_bins` and the duplicate/identity checks, populates `.stats`.
+- **`validate_spec(spec_dir, authority_keys=None, *, strict=False) -> ValidationResult`** — validate a
+  spec dir without producing output; strips inject-only authority keys pre-validation (dropped keys →
+  `.info`), runs `validate_bins` and the duplicate/identity checks, populates `.stats`. `strict` grades
+  the mode-ladder findings at the severity a `strict` compile would, so a caller can *report* what
+  strict would refuse without building anything — note it cannot see the unresolved-position gate,
+  which lives in `compile_module` and needs a resolution table.
 - **`content_signature(spec_dir) -> str`** — the stable, name-/Ensembl-independent content identity over
   the raw authored data CSVs (no compile, no resolution); raises `ValueError` if a present data CSV is
   invalid. See [SCHEMAS.md § identity & integrity](SCHEMAS.md#identity--integrity).
 - **`compile_module(spec_dir, output_dir, compression="zstd", resolve_with_ensembl=True,
   ensembl_cache=None, compiled_by=None, ensembl_reference=None, log_files=None, provenance_file=None,
-  logo_file=None, authority_keys=None, strict=False) -> CompilationResult`** — compile to parquet +
-  `manifest.json`. `resolve_with_ensembl`/`ensembl_cache` are **deprecated (removed at 1.0)** — see the
-  precedence block.
+  logo_file=None, authority_keys=None, strict=False, ba1_threshold=0.05) -> CompilationResult`** —
+  compile to parquet + `manifest.json`. `ensembl_cache` is **deprecated (removed at 1.0)** — see the
+  precedence block. `resolve_with_ensembl` is not deprecated and is misnamed: since 0.5 it is the
+  master switch for consuming `resolution.csv` at all, so turning it off ignores an injected table
+  and has nothing to do with Ensembl. `ba1_threshold` is the ACMG BA1 allele-frequency cutoff — a
+  parameter rather than a constant, because the right value is disease-specific.
 - **`reverse_module(parquet_dir, output_dir, module_name=None, title=None, description=None,
   report_title=None, icon="database", color="#6435c9", version=None, write_resolution=True,
   genome_build=None) -> Path`** — reverse a compiled artifact back to the authored DSL.
   `genome_build=None` reads it from the artifact's own `manifest.json` (it lives in no parquet
   column); pass it only for a bare parquet directory carrying no manifest.
+
+- **`load_csv_rows(path, row_model, file_label, genome_build=DEFAULT_GENOME_BUILD) -> (rows, errors,
+  warnings)`** — the authored-CSV loader, **public since 0.5.1** (RM41). It was `_load_csv_rows`, and it
+  was public in practice: `just-dna-enricher` consumes it across a package boundary in a dozen places,
+  and a consumer wiring the pipeline server-side had the choice of a private symbol or a
+  re-implementation. Re-implementing is a trap, not a chore — it is not `csv.DictReader` plus
+  `Model(**row)`, because **an empty cell becomes `None` with the key kept** (so a defaulted-but-not-
+  `Optional` field like `MeasureBinRow.measure_kind` receives `None` rather than its default and fails
+  on *type*) and **`genome_build` is told to each row** rather than read from it. `_load_csv_rows`
+  remains as an alias, so nothing that imported it breaks.
+- **`load_spec_variants(spec_dir) -> (variants, errors, warnings)`** — a spec directory's
+  `variants.csv`, loaded with the build the module declares **and re-stamped for it**. Three steps, not
+  one: read `genome_build` out of `module_spec.yaml`, inject it into every row, then `_restamp_for_build`
+  — because `VariantRow._freeze_identity` runs at construction, where the yaml is not in scope, so a
+  loader that skips either step mints GRCh38 identities for a GRCh37 module. Missing or unreadable yaml
+  falls back to `DEFAULT_GENOME_BUILD`, matching what compiling that directory would assume; this is a
+  read-only check helper, unlike the enrichment path, which refuses rather than choose a build for a
+  module whose declaration cannot be read (it writes facts back). Added for the two enricher checks that
+  take rows rather than a `spec_dir` — `verify_acmg_sf` and `check_identifiers`, which now accept both.
 
 `models.py`: **`ValidationResult`** (`valid`, `errors`, `warnings`, `info`, `stats`) — the `.stats` key
 contract is `variant_count`/`unique_rsids`/`gene_count`/`genes`/`categories`/`study_count`/
