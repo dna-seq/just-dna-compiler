@@ -4,7 +4,76 @@ members = ["schema", "compiler", "enricher"]
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
     "ruff>=0.8.0",
+]
+
+[tool.ruff]
+# Unconfigured, ruff enables ~826 rules and `ruff check .` reported over a thousand findings — most of
+# them one modernization the project had not decided on yet. The point of this section is that the
+# declared dev tool states what the project follows, so the count is a gate rather than noise.
+#
+# Every member pins `requires-python = ">=3.13"`. Saying so here is load-bearing: the rules that offer a
+# modern spelling (PEP 604 `X | None`) resolve against the floor, not against whichever interpreter runs.
+target-version = "py313"
+# Not enforced as a lint (E501 is deliberately unselected) — this is what `ruff format` would wrap to,
+# and it matches the prose-heavy docstrings and long diagnostic strings the codebase actually has.
+line-length = 110
+
+[tool.ruff.lint]
+select = [
+    "E4", "E7", "E9",   # pycodestyle, minus the purely-formatting opinions
+    "F",                # pyflakes
+    "I",                # import order — "absolute imports only" is a house rule; this keeps it stable
+    "UP",               # pyupgrade. The floor is 3.13, so the modern spelling is always available
+    "B",                # bugbear
+    "C4",               # comprehensions
+    "SIM", "FURB", "PIE", "FLY",
+]
+ignore = [
+    # Typer's entire API is `def cmd(x: T = typer.Option(...))`: the call in the default *is* the
+    # declaration, and "Typer for every CLI" is a house rule, so there is no alternative spelling.
+    "B008",
+]
+
+# Deliberately NOT selected, so the reasons are recorded rather than rediscovered:
+#   BLE001 — `except Exception` around a network call is this tier's contract, not a swallowed error.
+#            Every site logs or records a finding (a failed link degrades to the next one; `--offline`
+#            reports `unchecked`). Blanket breadth is correct when the next link must run whatever
+#            the cause was.
+#   ISC004 — a long diagnostic written as one implicitly-concatenated f-string inside a single-element
+#            list is the idiom of every check in `compiler.py`. Consistent and intentional.
+#   E501   — see `line-length` above.
+
+[tool.ruff.lint.per-file-ignores]
+# A test that asserts a bad row is rejected does not care which exception class carries the rejection —
+# the point is that *something* refuses it.
+"*/tests/*" = ["B017"]
+
+[tool.coverage.run]
+# Named here rather than as `--cov=` flags so `uv run pytest --cov` means the same thing locally and in
+# CI. Source dirs only — measuring the tests themselves inflates the number with code that is executed
+# by definition.
+source = [
+    "schema/src/just_dna_format",
+    "compiler/src/just_dna_compiler",
+    "enricher/src/just_dna_enricher",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# **A floor, not a target, and deliberately below the current number.** Measured 86% locally and **85%
+# in a CI-shaped run** — CI has no Ensembl/ClinVar cache and no `JUST_DNA_NETWORK_TESTS`, so ten more
+# tests skip there and the figure is legitimately lower. A threshold set at the observed value would go
+# red the first time a skip count moved. Ratchet it upward when the margin is real, never to chase a
+# number: this repo's demonstrated failure mode is a *uniform corpus* (every reference example on one
+# build hid four live bugs while every line was covered), which no line-coverage figure can see.
+fail_under = 83
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(typing\\.)?overload",
 ]
 
 [tool.pytest.ini_options]
