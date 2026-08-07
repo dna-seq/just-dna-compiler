@@ -19,38 +19,56 @@ import shutil
 import types
 import warnings
 from collections import defaultdict
-from datetime import datetime, timezone
+from collections.abc import Callable, Iterable
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional, Union, get_args, get_origin
+from typing import Any, Union, get_args, get_origin
 
 import polars as pl
 import yaml
+from just_dna_format.alleles import non_nucleotide_reason
 from just_dna_format.base import (
     DEFAULT_GENOME_BUILD,
     AuthoredModel,
     authored_field_names,
     derive_variant_key,
 )
+from just_dna_format.binning import (
+    ActivityPhenotypeRow,
+    CopyNumberRow,
+    HeteroplasmyRow,
+    MeasureBinRow,
+    RepeatAlleleRow,
+    validate_bins,
+)
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import (
     build_artifact,
-    content_signature as _content_signature,
     file_entries,
     file_entry,
-    frequency_signature as _frequency_signature,
-    gene_metrics_signature as _gene_metrics_signature,
-    literature_signature as _literature_signature,
-    resolution_signature as _resolution_signature,
     sha256_file,
+)
+from just_dna_format.integrity import (
+    content_signature as _content_signature,
+)
+from just_dna_format.integrity import (
+    frequency_signature as _frequency_signature,
+)
+from just_dna_format.integrity import (
+    gene_metrics_signature as _gene_metrics_signature,
+)
+from just_dna_format.integrity import (
+    literature_signature as _literature_signature,
+)
+from just_dna_format.integrity import (
+    resolution_signature as _resolution_signature,
+)
+from just_dna_format.integrity import (
     source_signature as _source_signature,
 )
 from just_dna_format.literature import LiteratureRow
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
-from just_dna_format.normalize import parse_p_value, strip_authority_keys
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     Compilation,
@@ -68,14 +86,7 @@ from just_dna_format.manifest import (
     read_manifest,
     write_manifest,
 )
-from just_dna_format.binning import (
-    ActivityPhenotypeRow,
-    CopyNumberRow,
-    HeteroplasmyRow,
-    MeasureBinRow,
-    RepeatAlleleRow,
-    validate_bins,
-)
+from just_dna_format.normalize import now_utc_iso, parse_p_value, strip_authority_keys
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import (
     AlleleFunctionRow,
@@ -83,6 +94,8 @@ from just_dna_format.pgx import (
     HaplotypeRow,
     PharmVariantRow,
 )
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
 from just_dna_format.spec import (
     RESERVED_FLAGS,
     Defaults,
@@ -97,6 +110,7 @@ from just_dna_format.vrs import (
     derive_vrs_allele_id,
     in_pseudoautosomal_region,
     is_substitution,
+    split_vrs_ids,
 )
 from pydantic import BaseModel, ValidationError
 
@@ -274,7 +288,7 @@ def _scalar_cell(value: Any) -> str:
     return str(value)
 
 
-def _list_cell(value: Optional[list]) -> str:
+def _list_cell(value: list | None) -> str:
     """Render a list column to a pipe-joined CSV cell (empty/None → "")."""
     return "|".join(value) if value else ""
 
@@ -308,11 +322,15 @@ def _compiler_version() -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """The manifest's stamp, from the format tier's single producer (`normalize.now_utc_iso`).
+
+    Already this spelling before it moved — kept as a thin alias so there is exactly one place
+    that decides what a timestamp looks like across all three tiers."""
+    return now_utc_iso()
 
 
 def _collect_logs(
-    spec_dir: Path, output_dir: Path, explicit: Optional[list[Path]]
+    spec_dir: Path, output_dir: Path, explicit: list[Path] | None
 ) -> list[FileEntry]:
     """Gather optional run/provenance logs into the module dir and hash them.
 
@@ -352,8 +370,8 @@ def _collect_logs(
 
 
 def _collect_provenance(
-    spec_dir: Path, output_dir: Path, explicit: Optional[Path]
-) -> Optional[Provenance]:
+    spec_dir: Path, output_dir: Path, explicit: Path | None
+) -> Provenance | None:
     """Discover an optional `provenance.json`, validate it, ship it, and summarize it.
 
     Auto-discovers `spec_dir/provenance.json` (or uses an explicit path). The full per-variant
@@ -380,8 +398,8 @@ def _collect_provenance(
 
 
 def _collect_logo(
-    spec_dir: Path, output_dir: Path, explicit: Optional[Path]
-) -> Optional[FileEntry]:
+    spec_dir: Path, output_dir: Path, explicit: Path | None
+) -> FileEntry | None:
     """Discover an optional module logo (`logo.png`/`.jpg`/`.jpeg`), ship it, and hash it.
 
     Uses an explicit path if given, else the first `logo.<ext>` (in `LOGO_EXTENSIONS` order) found
@@ -390,7 +408,7 @@ def _collect_logo(
     logo → `None`. Raises `ValueError` on an unsupported extension.
     """
     if explicit is not None:
-        src: Optional[Path] = Path(explicit)
+        src: Path | None = Path(explicit)
     else:
         src = next(
             (spec_dir / f"logo.{ext}" for ext in sorted(LOGO_EXTENSIONS)
@@ -413,8 +431,8 @@ def _collect_logo(
 
 
 def _load_yaml(
-    path: Path, authority_keys: Optional[Iterable[str]] = None
-) -> tuple[Optional[ModuleSpecConfig], list[str], list[str]]:
+    path: Path, authority_keys: Iterable[str] | None = None
+) -> tuple[ModuleSpecConfig | None, list[str], list[str]]:
     """Load and validate module_spec.yaml. Returns (config, errors, dropped_authority_keys).
 
     When `authority_keys` is given, the format's reference stripper removes those consumer/registry-
@@ -676,7 +694,7 @@ def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38
 
 def _allowed_alleles(
     variant: VariantRow, resolution_table: dict[str, list[ResolutionRow]]
-) -> tuple[Optional[set[str]], str]:
+) -> tuple[set[str] | None, str]:
     """`(allele set, provenance)` for one variant — `(None, "unknown")` when nothing is comparable.
 
     The provenance shapes the diagnosis — it says where to go and look — but deliberately **not** the
@@ -714,7 +732,7 @@ def _allowed_alleles(
 
 def _allele_verdict(
     call: str, variant: VariantRow, resolution_table: dict[str, list[ResolutionRow]]
-) -> Optional[bool]:
+) -> bool | None:
     """Can any locus this row is about host `call`? The shared tri-state predicate, Kleene-OR'd.
 
     **This must be the same question resolution asked, or the compiler contradicts itself.** The two
@@ -740,6 +758,51 @@ def _allele_verdict(
     if any(verdict is True for verdict in verdicts):
         return True
     return None if any(verdict is None for verdict in verdicts) else False
+
+
+def _spelling_because(allowed: set[str]) -> str | None:
+    """The explanation to use when the locus's own alleles are not nucleotides, else `None`.
+
+    Takes the allele *set* rather than a `ref`/`alts` pair because `_allowed_alleles` has already
+    unioned across every locus the key resolves to, and the finding is stated against that union — a
+    caveat derived from anything narrower could name an allele the message does not.
+    """
+    offenders = {a: non_nucleotide_reason(a) for a in sorted(allowed)}
+    offenders = {a: reason for a, reason in offenders.items() if reason is not None}
+    if not offenders:
+        return None
+    return (
+        "the genotype is not the problem: "
+        + _spelling_clauses(offenders)
+        + " — replace it with the alleles the locus actually has"
+    )
+
+
+def _spelling_clauses(offenders: dict[str, str]) -> str:
+    """One clause per reason present, and **only** per reason present.
+
+    The consequence sentence belongs *inside* the branch it is true of. The first cut appended "an
+    ambiguity code is an uncertainty and is never expanded…" to every finding, so a `<DEL>` locus was
+    told about ambiguity codes — the identical conflation `cpic.unusable_allele_reason` was repaired to
+    stop making, reintroduced in the message that repair paid for. Two reasons, two consequences: an
+    uncertainty is permanent, a grammar gap is a release away.
+    """
+    ambiguity = [a for a, reason in offenders.items() if reason == "ambiguity"]
+    notation = [a for a, reason in offenders.items() if reason == "notation"]
+    parts: list[str] = []
+    if ambiguity:
+        parts.append(
+            f"{', '.join(repr(a) for a in ambiguity)} is an IUPAC ambiguity code rather than a definite "
+            f"nucleotide (`Y` is C-or-T) — an uncertainty, so it is never expanded into the alleles it "
+            f"could stand for and can match no genotype"
+        )
+    if notation:
+        parts.append(
+            f"{', '.join(repr(a) for a in notation)} is not a nucleotide string at all (a symbolic or "
+            f"structural allele) — a grammar gap (RM5) rather than a genotype error, and a future "
+            f"release may widen to hold it"
+        )
+    return "; and ".join(parts)
 
 
 def _check_allele_membership(
@@ -785,7 +848,15 @@ def _check_allele_membership(
         if allowed is None:
             continue
         shown = "/".join(sorted(allowed))
-        if provenance == "authored":
+        # A locus spelled with a non-nucleotide replaces the explanation rather than decorating it: both
+        # stories below are *false* for that row. "The row contradicts itself" and "the source's allele
+        # list is incomplete" each send the author to re-examine a genotype that was correct, when the
+        # defect is one cell of the allele column. Checked against `allowed` (the union the verdict was
+        # taken over), so it describes the same alleles the finding names.
+        spelling = _spelling_because(allowed)
+        if spelling is not None:
+            because = spelling
+        elif provenance == "authored":
             because = (
                 "the row carries both `ref` and `alts`, so it contradicts itself — either the genotype "
                 "or the alleles is wrong, or this row is one locus of a one-to-many rsid whose genotype "
@@ -886,42 +957,145 @@ def _verify_vrs_ids(
     because "unchecked" and "correct" are different things, and its contract is a reproducible artifact.
 
     A row with no `vrs_id` is skipped entirely — there is nothing to check, which is not the same as
-    something that could not be checked.
+    something that could not be checked. The same goes for a **hole** in a multi-allelic cell: `vrs_id`
+    is positionally aligned with `alts`, so each allele is verified on its own and an empty member is
+    the same non-event as an empty cell. That alignment is the second thing this pass now guards —
+    `ResolutionRow` refuses a pair of the wrong *length*, and recomputing member by member catches a
+    pair of the right length in the wrong *order*, which is the failure mode a parallel array has and a
+    scalar column does not.
     """
     errors: list[str] = []
     warnings_out: list[str] = []
     for row in resolution_rows:
         if row.vrs_id is None:
             continue
-        recomputed, reason = _recompute_vrs_id(row)
-        if recomputed is None:
-            message = f"{row.variant_key}: vrs_id {row.vrs_id} could not be verified — {reason}"
-            if strict:
+        stored = split_vrs_ids(row.vrs_id)
+        alts = [alt.strip() for alt in row.alts.split(",")] if row.alts else []
+        for index, vrs_id in enumerate(stored):
+            if vrs_id is None:
+                # A hole: this allele has no id to check. Same non-event as a row with no `vrs_id`.
+                continue
+            alt = alts[index] if index < len(alts) else None
+            where = f"{row.variant_key} allele {alt}" if len(stored) > 1 else str(row.variant_key)
+            recomputed, reason = _recompute_vrs_id(row, alt)
+            if recomputed is None:
+                message = f"{where}: vrs_id {vrs_id} could not be verified — {reason}"
+                if strict:
+                    errors.append(
+                        f"{message}. A strict compile will not carry an identity it cannot confirm; "
+                        f"recompile without strict to keep it as a warning, or drop the vrs_id."
+                    )
+                else:
+                    warnings_out.append(f"{message}; carried unverified.")
+                continue
+            if recomputed != vrs_id:
                 errors.append(
-                    f"{message}. A strict compile will not carry an identity it cannot confirm; "
-                    f"recompile without strict to keep it as a warning, or drop the vrs_id."
+                    f"{where}: stored vrs_id {vrs_id} does not match the id recomputed "
+                    f"from {row.chrom}:{row.start} {row.ref}>{alt} ({recomputed}) — a substitution's "
+                    f"id is deterministic here, so this is corruption, not a difference of opinion."
                 )
-            else:
-                warnings_out.append(f"{message}; carried unverified.")
-            continue
-        if recomputed != row.vrs_id:
-            errors.append(
-                f"{row.variant_key}: stored vrs_id {row.vrs_id} does not match the id recomputed "
-                f"from {row.chrom}:{row.start} {row.ref}>{row.alts} ({recomputed}) — a substitution's "
-                f"id is deterministic here, so this is corruption, not a difference of opinion."
-            )
     return errors, warnings_out
 
 
-def _recompute_vrs_id(row: ResolutionRow) -> tuple[Optional[str], Optional[str]]:
-    """`(recomputed_id, reason_it_could_not_be)` — exactly one of the two is non-`None`.
+def _vrs_coverage(resolution_rows: list[ResolutionRow]) -> tuple[int, int, dict[str, int]]:
+    """`(alleles, identified, gaps_by_reason)` — how much of the table a VA actually names.
 
-    The four reasons a row is unverifiable here, each a genuine limit of a no-network tier rather than
-    a defect in the row:
+    The counterpart to `_verify_vrs_ids`, and the thing that pass structurally cannot see: it verifies
+    ids that are *there*, and an absent id is "nothing to check". That was the right severity while a
+    VA was a decorative cross-reference. It is the wrong one now that `variant_key` derives from a VA
+    for a resolved substitution and the id is headed for primary-key status — an identity scheme
+    covering an unstated fraction of the table is not one anything can key on, and *unstated* is the
+    defect. So absence is counted and reported; a consumer can then decide.
+
+    The denominator is **alleles, not rows** — one multi-allelic site is several identities — and a row
+    with no ALT at all counts as one unnamed slot rather than vanishing from the ratio.
+
+    Gaps are grouped by *why*, because the reasons have completely different remedies and a bare
+    "N missing" hides which one you have. The sharpest is the first: an allele this tier could mint
+    **right now, offline**, which means nothing minted it, not that anything is hard.
+    """
+    alleles = identified = 0
+    gaps: dict[str, int] = {}
+    for row in resolution_rows:
+        stored = split_vrs_ids(row.vrs_id)
+        alts = [alt.strip() for alt in row.alts.split(",")] if row.alts else [None]
+        for index, alt in enumerate(alts):
+            alleles += 1
+            if index < len(stored) and stored[index] is not None:
+                identified += 1
+                continue
+            reason = _vrs_gap_reason(row, alt)
+            gaps[reason] = gaps.get(reason, 0) + 1
+    return alleles, identified, gaps
+
+
+def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
+    """Which *class* of gap this is — a bucket, deliberately not `_recompute_vrs_id`'s prose.
+
+    That function names the alleles (`AG>A is not a single-base substitution…`) because it is
+    diagnosing one row, and it is right to. Grouping on it produced 40-odd lines that all said the same
+    thing about a different indel — a per-row wall wearing an aggregate's clothes. There are five
+    reasons an allele has no id here, and a reader needs the five.
+    """
+    if row.chrom is None or row.start is None:
+        return "no coordinate to mint from (an unresolved row)"
+    if not alt:
+        return "no ALT recorded, and a VRS allele id names exactly one allele"
+    try:
+        recomputed = derive_vrs_allele_id(row.chrom, row.start, row.ref, alt, build=row.genome_build)
+    except UnsupportedBuildError as exc:
+        return str(exc)
+    if recomputed is not None:
+        # The sharp one: nothing was blocking this. Either the mint pass never ran, or it ran before
+        # multi-allelic cells were minted per ALT.
+        return "no id recorded, though one is computable offline — run `just-dna-enricher vrs mint`"
+    if not is_substitution(row.ref, alt):
+        return (
+            "an indel or MNV: justification needs the reference sequence, so only the enricher can "
+            "mint it (re-run it online)"
+        )
+    return "outside the primary assembly, or past the end of the contig — no refget accession"
+
+
+def _vrs_coverage_warnings(resolution_rows: list[ResolutionRow]) -> list[str]:
+    """One line for the shortfall, one per reason — never one per row.
+
+    A **warning in both modes**, deliberately, and for the same reason `not_covered` sits outside the
+    strict gate: the commonest gaps (an indel with no sequence proxy, a build with no refget table)
+    are fixable by no authored edit, so refusing would make such a module uncompilable rather than
+    telling its author anything. `strict` means "reproducible artifact", which an incomplete identity
+    scheme still is. What strict *does* refuse is a stored id it cannot confirm — a claim, not an
+    absence.
+    """
+    if not resolution_rows:
+        return []
+    alleles, identified, gaps = _vrs_coverage(resolution_rows)
+    if not alleles or identified == alleles:
+        return []
+    findings = [
+        f"VRS allele identity covers {identified}/{alleles} allele(s) in resolution.csv "
+        f"({identified / alleles:.0%}) — {alleles - identified} carry no ga4gh:VA. id. Anything "
+        f"keying on the VA sees only the covered fraction."
+    ]
+    findings.extend(
+        f"  {count} allele(s): {reason}"
+        for reason, count in sorted(gaps.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+    return findings
+
+
+def _recompute_vrs_id(row: ResolutionRow, alt: str | None) -> tuple[str | None, str | None]:
+    """`(recomputed_id, reason_it_could_not_be)` for ONE allele — exactly one of the two is non-`None`.
+
+    The four reasons an allele is unverifiable here, each a genuine limit of a no-network tier rather
+    than a defect in the row:
 
     1. **no coordinate** — nothing to recompute from (an unresolved rsid row carrying an external id);
-    2. **no single ALT** — position-only, or multi-allelic; a VRS allele id names exactly one allele,
-       and picking one from a comma-joined cell would be inventing data;
+    2. **no ALT** — a position-only row, so there is no allele to name. This used to also cover
+       *multi-allelic*, on the reasoning that "picking one from a comma-joined cell would be inventing
+       data". Nothing is picked now: `vrs_id` is positionally aligned with `alts`, so the caller walks
+       the pair and asks about allele *i* — and a multi-allelic site of substitutions verifies as
+       completely as a bi-allelic one;
     3. **not a single-base substitution** — an indel or MNV must be justified against the reference
        sequence, which this tier has no access to and will never fetch (Principle 2);
     4. **outside the primary assembly, or a build with no refget table** — no accession to address the
@@ -932,10 +1106,9 @@ def _recompute_vrs_id(row: ResolutionRow) -> tuple[Optional[str], Optional[str]]
     """
     if row.chrom is None or row.start is None:
         return None, "the row carries no coordinate to recompute from"
-    alt = row.alts if row.alts and "," not in row.alts else None
-    if alt is None:
+    if not alt:
         return None, (
-            "the row names no single ALT (position-only, or multi-allelic), and a VRS allele id "
+            "the row records an id against no ALT (a position-only row), and a VRS allele id "
             "names exactly one allele"
         )
     if not is_substitution(row.ref, alt):
@@ -1247,7 +1420,10 @@ def _validate_table_kind(
 
 
 def validate_spec(
-    spec_dir: Path, authority_keys: Optional[Iterable[str]] = None
+    spec_dir: Path,
+    authority_keys: Iterable[str] | None = None,
+    *,
+    strict: bool = False,
 ) -> ValidationResult:
     """Validate a module spec directory without producing output.
 
@@ -1256,6 +1432,13 @@ def validate_spec(
     IDENTITY_AUTHORITY_KEYS` (or your own set) so a legacy spec carrying `namespace:`/`owner:`/
     `canonical_id:` validates; the format applies none by default. Stripped keys are surfaced on
     `.info`. Everything else still trips `extra="forbid"`.
+
+    `strict` mirrors `compile_module`'s flag and exists for one reason: several checks are a **mode
+    ladder** (warning in `best_effort`, error in `strict`), so without a mode here the pre-flight
+    could not answer the question the author actually asked — the documented order is `validate` then
+    `compile --strict`, and a modeless `validate` is a pre-flight for the *other* compile. It changes
+    severity only; it never adds or removes a finding, which is what keeps the two commands one
+    contract rather than two.
 
     Stats include `genes`/`categories` as lists (filtering None) plus `variant_count`,
     `gene_count`, `study_count`, and the ClinVar quality counts
@@ -1353,15 +1536,21 @@ def validate_spec(
         )
     )
 
+    # Filled from `resolution.csv` below when it is present, and deliberately usable empty: allele
+    # membership needs it only for a row that did not author its own `ref`/`alts`.
+    membership_table: dict[str, list[ResolutionRow]] = {}
+
     # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
     # live in the spec directory and `compile_module` **refuses** on a bad row in any of them, so
     # leaving them out here made `validate` report `valid` for a directory `compile` then rejected.
     # That is the one thing this command must never do: the documented authoring order puts `validate`
     # immediately before `compile`, so it is the author's pre-flight, and a green pre-flight followed by
-    # a refusal sends them looking for a change they did not make. Row-level validation only — the cross-checks
-    # that compare a sidecar against the module's variants produce *warnings*, and several of them need
-    # rows that only exist after resolution has run.
+    # a refusal sends them looking for a change they did not make. Row-level validation, plus the
+    # *self*-checks below — what stays compile-only is a check that needs **resolved** rows, which is a
+    # narrower exemption than "a cross-check": `_verify_vrs_ids` compares a `resolution.csv` row against
+    # its own content-addressed id and consults nothing else, so being a sidecar check never made it a
+    # cross-check. Lumping the two together is how it stayed compile-only.
     for csv_name, model in (
         ("resolution.csv", ResolutionRow),
         *((name, model) for name, _parquet, model in _FACT_TABLES),
@@ -1374,6 +1563,22 @@ def validate_spec(
         )
         all_errors.extend(injected_errors)
         all_warnings.extend(injected_warnings)
+        if model is ResolutionRow and not injected_errors:
+            for injected_row in injected_rows:
+                membership_table.setdefault(injected_row.variant_key, []).append(injected_row)
+            # A `ga4gh:VA.…` is the one column checkable with no reference, no network and no
+            # dependency, so there is nothing about it that needs an `output_dir`. A **mismatch** is an
+            # error in *both* modes, which is why this gap was reachable without `--strict` at all:
+            # `validate` reported `valid` for a module a plain `compile` then refused as corrupt.
+            # Gated on `not injected_errors` for the same reason `compile_module` is — a row that
+            # failed to load cannot be re-derived from.
+            vrs_errors, vrs_warnings = _verify_vrs_ids(injected_rows, strict=strict)
+            all_errors.extend(vrs_errors)
+            all_warnings.extend(vrs_warnings)
+            # Coverage rides along for the same reason: counting absent ids reads injected bytes and
+            # nothing else. It reports here too so an author sees the shortfall at pre-flight, where
+            # the remedy (re-run the mint pass) is still cheap.
+            all_warnings.extend(_vrs_coverage_warnings(injected_rows))
         if model is SourceRow and not injected_errors:
             # The licence gate, run here for the same reason. It refuses in **both** modes and is pure
             # computation over injected bytes (the compiler holds no source→licence map, P2), so there
@@ -1403,6 +1608,12 @@ def validate_spec(
             all_errors.append(
                 "studies.csv is present but has no study rows. Grounding evidence is mandatory."
             )
+        # Two encodings of one p-value, compared against each other — authored bytes only, no
+        # resolution and no reference, so this belongs to the pre-flight as much as to the compile.
+        # It is a pure mode ladder, which is what `strict` above is for.
+        p_value_errors, p_value_warnings = _check_p_value_num(studies, strict=strict)
+        all_errors.extend(p_value_errors)
+        all_warnings.extend(p_value_warnings)
     elif has_variants:
         all_errors.append(
             "studies.csv is missing. Grounding evidence is mandatory; add study rows with PMIDs."
@@ -1412,6 +1623,21 @@ def validate_spec(
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
         all_warnings.extend(cross_warnings)
+        # Allele membership, which was compile-only and should never have been. It is pure computation
+        # over authored rows plus the injected table, needs no `output_dir` — the standing rule for what
+        # belongs here — and it is a **mode ladder**, so `validate --strict` reported `valid` for a
+        # module `compile --strict` then refused. The same defect the 2026-08-07 audit fixed for
+        # `_verify_vrs_ids` and `_check_p_value_num`; this one sat beside them and was missed because
+        # that pass went table by table rather than check by check. Its docstring already says it runs
+        # on the AUTHORED rows *before* resolution expands them, which is exactly what makes it
+        # computable here, where there is no resolution step at all. `membership_table` is empty when
+        # the module carries no `resolution.csv`, and that is a working input: a row authoring its own
+        # `ref`/`alts` is judged against those, and a row with neither is skipped either way.
+        membership_errors, membership_warnings = _check_allele_membership(
+            variants, membership_table, strict=strict
+        )
+        all_errors.extend(membership_errors)
+        all_warnings.extend(membership_warnings)
         # Ploidy runs here *and* post-resolution in `compile_module`, because the two passes see
         # different rows. Here it catches a hand-written `MT,3243,A/G` on the standalone `validate`
         # command, where there is no resolution step at all; there it catches the rsID-authored form,
@@ -1548,13 +1774,13 @@ def compile_module(
     output_dir: Path,
     compression: str = "zstd",
     resolve_with_ensembl: bool = True,
-    ensembl_cache: Optional[Path] = None,
-    compiled_by: Optional[str] = None,
-    ensembl_reference: Optional[str] = None,
-    log_files: Optional[list[Path]] = None,
-    provenance_file: Optional[Path] = None,
-    logo_file: Optional[Path] = None,
-    authority_keys: Optional[Iterable[str]] = None,
+    ensembl_cache: Path | None = None,
+    compiled_by: str | None = None,
+    ensembl_reference: str | None = None,
+    log_files: list[Path] | None = None,
+    provenance_file: Path | None = None,
+    logo_file: Path | None = None,
+    authority_keys: Iterable[str] | None = None,
     strict: bool = False,
     ba1_threshold: float = BA1_ALLELE_FREQUENCY_THRESHOLD,
 ) -> CompilationResult:
@@ -1630,6 +1856,9 @@ def compile_module(
     # (Principle 2). An injected `ensembl_cache` (the DuckDB path) is the superseded fallback (P3).
     resolution_rows: list[ResolutionRow] = []
     resolution_table: dict[str, list[ResolutionRow]] = {}
+    # 0/0 for a module with no resolution table: no allele identities were attempted, which is a
+    # different statement from "none were achieved" and is what the manifest should carry.
+    vrs_alleles = vrs_identified = 0
     resolution_path = spec_dir / "resolution.csv"
     if resolution_path.exists():
         resolution_rows, res_errors, _ = _load_csv_rows(
@@ -1645,6 +1874,8 @@ def compile_module(
         all_warnings.extend(vrs_warnings)
         if vrs_errors:
             return CompilationResult(success=False, errors=vrs_errors, warnings=all_warnings)
+        all_warnings.extend(_vrs_coverage_warnings(resolution_rows))
+        vrs_alleles, vrs_identified, _gaps = _vrs_coverage(resolution_rows)
 
     # Do the alleles the module *states* exist at the loci it points at? Runs here, on the AUTHORED
     # rows, because resolution may expand one rsid into several loci that share this genotype — after
@@ -1652,7 +1883,12 @@ def compile_module(
     allele_errors, allele_warnings = _check_allele_membership(
         variants, resolution_table, strict=strict
     )
-    all_warnings.extend(allele_warnings)
+    # De-duplicated on the message, the same way `_check_contig_ploidy` below is and for the same
+    # reason: `compile_module` runs `validate_spec` first, in **best_effort** regardless of this
+    # compile's mode, so a check living in both places emits its warning twice. Re-running it here is
+    # not redundant — it is how a mode ladder reaches its real severity, since the inner pass cannot
+    # know `strict`. What is redundant is printing the identical sentence a second time.
+    all_warnings.extend(w for w in allele_warnings if w not in all_warnings)
     if allele_errors:
         return CompilationResult(success=False, errors=allele_errors, warnings=all_warnings)
 
@@ -1661,9 +1897,9 @@ def compile_module(
     if p_value_errors:
         return CompilationResult(success=False, errors=p_value_errors, warnings=all_warnings)
 
-    resolution_mode: Optional[str] = None
+    resolution_mode: str | None = None
     resolution_sources: list[str] = []
-    resolution_sig: Optional[str] = None
+    resolution_sig: str | None = None
     if resolve_with_ensembl and variants:
         resolution_mode = "strict" if strict else "best_effort"
         resolve_warnings: list[str] = []
@@ -1930,6 +2166,8 @@ def compile_module(
         content_sig=content_signature(spec_dir),
         resolution_mode=resolution_mode,
         fully_resolved=fully_resolved,
+        vrs_alleles=vrs_alleles,
+        vrs_alleles_identified=vrs_identified,
         resolution_sig=resolution_sig,
         resolution_sources=resolution_sources,
         frequency=_frequency_block(frequency_rows),
@@ -1956,7 +2194,7 @@ def compile_module(
     )
 
 
-def _frequency_block(rows: list[FrequencyRow]) -> Optional[Frequency]:
+def _frequency_block(rows: list[FrequencyRow]) -> Frequency | None:
     """The manifest's `frequency` summary, or `None` when the module carries no frequency sidecar.
 
     `populations` is emitted in the canonical order rather than sorted alphabetically, so it reads the
@@ -1976,7 +2214,7 @@ def _frequency_block(rows: list[FrequencyRow]) -> Optional[Frequency]:
     )
 
 
-def _gene_metrics_block(rows: list[GeneMetricsRow]) -> Optional[GeneMetrics]:
+def _gene_metrics_block(rows: list[GeneMetricsRow]) -> GeneMetrics | None:
     """The manifest's `gene_metrics` summary, or `None` when the module carries no such sidecar."""
     if not rows:
         return None
@@ -2066,7 +2304,7 @@ def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
 
 
 def _check_declared_license_agrees(
-    rows: list[SourceRow], declared_license: Optional[str]
+    rows: list[SourceRow], declared_license: str | None
 ) -> list[str]:
     """Warn when `module_spec.yaml`'s `license:` contradicts an annotation-layer source's.
 
@@ -2094,7 +2332,7 @@ def _check_declared_license_agrees(
     ]
 
 
-def _sources_block(rows: list[SourceRow]) -> Optional[Sources]:
+def _sources_block(rows: list[SourceRow]) -> Sources | None:
     """The manifest's `sources` summary, or `None` when the module carries no licensing sidecar.
 
     The per-layer facets stay lists (see `Sources`); only `commercial_use` collapses, because it is
@@ -2104,7 +2342,7 @@ def _sources_block(rows: list[SourceRow]) -> Optional[Sources]:
     """
     if not rows:
         return None
-    def _verdict(taints, is_unknown) -> Optional[bool]:
+    def _verdict(taints, is_unknown) -> bool | None:
         # Most-restrictive-first: a forbidding source makes it False; failing that, an unknown makes
         # it None (undetermined, never permitted); only an all-known, none-forbidding set makes True.
         if any(taints(r) for r in rows):
@@ -2132,7 +2370,7 @@ def _sources_block(rows: list[SourceRow]) -> Optional[Sources]:
     )
 
 
-def _literature_block(rows: list[LiteratureRow]) -> Optional[Literature]:
+def _literature_block(rows: list[LiteratureRow]) -> Literature | None:
     """The manifest's `literature` summary, or `None` when the module carries no citation sidecar.
 
     The counters are summed rather than recomputed so the manifest cannot claim more coverage than the
@@ -2163,20 +2401,22 @@ def _build_manifest(
     validation: ValidationResult,
     weights_rows: int,
     warnings: list[str],
-    compiled_by: Optional[str],
-    ensembl_reference: Optional[str],
+    compiled_by: str | None,
+    ensembl_reference: str | None,
     logs: list[FileEntry],
-    provenance: Optional[Provenance],
-    logo: Optional[FileEntry],
-    content_sig: Optional[str] = None,
-    resolution_mode: Optional[str] = None,
+    provenance: Provenance | None,
+    logo: FileEntry | None,
+    content_sig: str | None = None,
+    resolution_mode: str | None = None,
     fully_resolved: bool = False,
-    resolution_sig: Optional[str] = None,
-    resolution_sources: Optional[list[str]] = None,
-    frequency: Optional[Frequency] = None,
-    gene_metrics: Optional[GeneMetrics] = None,
-    literature: Optional[Literature] = None,
-    sources: Optional[Sources] = None,
+    resolution_sig: str | None = None,
+    resolution_sources: list[str] | None = None,
+    vrs_alleles: int = 0,
+    vrs_alleles_identified: int = 0,
+    frequency: Frequency | None = None,
+    gene_metrics: GeneMetrics | None = None,
+    literature: Literature | None = None,
+    sources: Sources | None = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -2222,6 +2462,8 @@ def _build_manifest(
             fully_resolved=fully_resolved,
             resolution_signature=resolution_sig,
             resolution_sources=resolution_sources or [],
+            vrs_alleles=vrs_alleles,
+            vrs_alleles_identified=vrs_alleles_identified,
         ),
         frequency=frequency,
         gene_metrics=gene_metrics,
@@ -2415,7 +2657,9 @@ def _check_frequency_arithmetic(rows: list[FrequencyRow]) -> tuple[list[str], li
                 f"allele_count is {ac} — each homozygote contributes two"
             )
         frequency = row.allele_frequency
-        if row.faf95 is not None and frequency is not None and row.faf95 > frequency:
+        if row.faf95 is not None and frequency is not None and row.faf95 > frequency:  # noqa: SIM102
+            # Separate layer on purpose: the outer asks whether it is above, this asks whether it is
+            # above by more than float tolerance.
             if not _close(row.faf95, frequency):
                 warnings_out.append(
                     f"{where}: faf95 {row.faf95} exceeds the group's own allele frequency "
@@ -2629,8 +2873,8 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
     `weights.parquet` on reverse (each weights row rebuilds the same triple), and an explicit
     `variant_key` (rsid, else `chrom:start:ref`) so a **position-only** variant's annotation survives
     (rsid is null for such a row)."""
-    seen_keys: set[tuple[str, Optional[str], Optional[str]]] = set()
-    records: list[dict[str, Optional[str]]] = []
+    seen_keys: set[tuple[str, str | None, str | None]] = set()
+    records: list[dict[str, str | None]] = []
     for v in variants:
         key = (v.variant_key, v.conclusion, v.negatives)
         if key not in seen_keys:
@@ -2724,7 +2968,7 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
 # ── Reverse engineering ────────────────────────────────────────────────────────
 
 
-def _module_name_from_parquets(parquet_dir: Path) -> Optional[str]:
+def _module_name_from_parquets(parquet_dir: Path) -> str | None:
     """Recover the module name from the `module` column of the first present parquet — so a module
     with no `weights.parquet` (a PGx/PharmGKB/PRS-only module) still reverses (RM2)."""
     for name in ("weights.parquet", "annotations.parquet", "studies.parquet", *(
@@ -2736,13 +2980,13 @@ def _module_name_from_parquets(parquet_dir: Path) -> Optional[str]:
             if "module" in df.columns:
                 values = df["module"].drop_nulls().unique().to_list()
                 if values:
-                    # polars `unique()` order is unstable; sort for a deterministic pick (a
+                    # polars `unique()` order is unstable; `min` is the deterministic pick (a
                     # well-formed module has one value here, so this only matters defensively).
-                    return sorted(values)[0]
+                    return min(values)
     return None
 
 
-def _genome_build_from_artifact(parquet_dir: Path) -> Optional[str]:
+def _genome_build_from_artifact(parquet_dir: Path) -> str | None:
     """Recover the module's declared `genome_build` from the artifact's own `manifest.json`.
 
     `genome_build` is authored `module_spec.yaml` metadata that reaches the artifact through the
@@ -2768,15 +3012,15 @@ def _genome_build_from_artifact(parquet_dir: Path) -> Optional[str]:
 def reverse_module(
     parquet_dir: Path,
     output_dir: Path,
-    module_name: Optional[str] = None,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
-    report_title: Optional[str] = None,
+    module_name: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    report_title: str | None = None,
     icon: str = "database",
     color: str = "#6435c9",
-    version: Optional[str] = None,
+    version: str | None = None,
     write_resolution: bool = True,
-    genome_build: Optional[str] = None,
+    genome_build: str | None = None,
 ) -> Path:
     """Reverse-engineer a parquet module back into the spec DSL (yaml + csv). Returns output_dir.
 
@@ -2818,7 +3062,7 @@ def reverse_module(
     # so a null priority is *authored-absent*. Inferring a default from the mode would fabricate a
     # value for rows that never set one — turning weights `['high', None]` into `['high', 'high']`
     # on recompile (a Principle 7 idempotency break). It is written verbatim, per row, instead.
-    default_priority: Optional[str] = None
+    default_priority: str | None = None
     if weights_df is not None:
         default_curator = _most_common(weights_df, "curator") or "unknown"
         default_method = _most_common(weights_df, "method") or "unknown"
@@ -3002,7 +3246,7 @@ def _write_resolution_csv(
             )
 
 
-def _most_common(df: pl.DataFrame, col: str) -> Optional[str]:
+def _most_common(df: pl.DataFrame, col: str) -> str | None:
     """Return the most common non-null value in a column, or None.
 
     On a tie, polars `mode()` gives no ordering guarantee (its result order is unstable even
@@ -3023,7 +3267,7 @@ def _write_variants_csv(
     ann_keyed_by_effect: bool,
     default_curator: str,
     default_method: str,
-    default_priority: Optional[str],
+    default_priority: str | None,
     output_path: Path,
     genome_build: str = "GRCh38",
 ) -> None:

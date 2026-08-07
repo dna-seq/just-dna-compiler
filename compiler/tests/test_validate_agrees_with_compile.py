@@ -17,12 +17,26 @@ clean and then refused to compile, for a reason no authored table showed.
 
 Findings that need *resolved* rows still belong to compile alone, and stay there — this is about the
 error channel, which must agree.
+
+**The same gap then reopened one level down: the exemption was applied per *table*, not per *check*.**
+Two checks stayed compile-only that read nothing but injected/authored bytes — `_verify_vrs_ids` (a
+`resolution.csv` row against its own content-addressed id) and `_check_p_value_num` (two encodings of
+one p-value against each other). Neither needs a resolved row; the first is not even mode-dependent,
+so `validate` reported `valid` for a module a **plain** `compile` refused as corrupt. `_verify_vrs_ids`
+slipped through because "it compares a sidecar" reads like "it is a cross-check", and the cross-checks
+genuinely do need resolution — but a self-check on one row consults nothing else.
+
+That also forced the mode question this file now pins: `validate` had no mode at all, so a check whose
+severity is the ladder (warning in `best_effort`, error in `strict`) could not be answered for the
+compile the author was actually about to run. `validate_spec(strict=…)` mirrors the flag and changes
+*severity only* — never which findings exist — which is what keeps one contract instead of two.
 """
 
 from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import compile_module, validate_spec
+from just_dna_format.vrs import derive_vrs_allele_id
 
 _YAML = """\
 schema_version: "1.0"
@@ -168,3 +182,181 @@ def test_a_yaml_scalar_is_reported_as_the_wrong_shape(tmp_path: Path) -> None:
     result = validate_spec(spec)
     assert not result.valid
     assert any("must be a mapping" in e for e in result.errors), result.errors
+
+
+# ── The per-check half: injected/authored bytes only, so both commands must see them ───────────────
+
+# Real rows. rs334 (sickle-cell, HbS) at GRCh38 11:5227002 T>A, and MTHFR 677 at 1:11796321 G>A — the
+# id is computed here rather than pasted so the fixture cannot drift from the minting code.
+_HBS = derive_vrs_allele_id("11", 5227002, "T", "A")
+_MTHFR_677 = derive_vrs_allele_id("1", 11796321, "G", "A")
+
+_RESOLUTION_HEADER = (
+    "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,source,status\n"
+)
+
+
+def _resolution(vrs_id: str) -> str:
+    """rs334's real locus, carrying whichever `vrs_id` the caller wants tested against it."""
+    return _RESOLUTION_HEADER + (
+        f"{_HBS},rs334,11,5227002,T,A,GRCh38,0,{vrs_id},2.0,gnomad,resolved\n"
+    )
+
+
+def _studies(p_value: str, p_value_num: str) -> str:
+    """One real citation (PMID 16199547, an HbS association) carrying the two p-value encodings."""
+    return "rsid,pmid,p_value,p_value_num\n" f"rs334,16199547,{p_value},{p_value_num}\n"
+
+
+def _agree(spec: Path, out: Path, *, strict: bool) -> tuple[bool, bool]:
+    """(validate said valid, compile succeeded) at one mode — the pair that must never disagree."""
+    return (
+        validate_spec(spec, strict=strict).valid,
+        compile_module(spec, out, resolve_with_ensembl=False, strict=strict).success,
+    )
+
+
+def test_a_correct_vrs_id_is_clean_on_both_sides(tmp_path: Path) -> None:
+    """The negative control, and it matters here: the check must not refuse a correctly minted id, or
+    the two tests below would pass for the wrong reason."""
+    spec = _spec(tmp_path, resolution__csv=_resolution(_HBS))
+    assert _agree(spec, tmp_path / "out", strict=False) == (True, True)
+    assert _agree(spec, tmp_path / "out_s", strict=True) == (True, True)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_corrupt_vrs_id_refuses_at_validate_too_in_both_modes(
+    tmp_path: Path, strict: bool
+) -> None:
+    """A substitution's VA is deterministic with no reference, so a mismatch can only be corruption —
+    an error in *both* modes. This is the case that made the gap reachable without `--strict` at all:
+    `validate` blessed a module a plain `compile` then rejected.
+
+    The id carried is a *real other allele's* (MTHFR 677) rather than a mangled string, so the row is
+    well-formed and only the identity is wrong — the shape a hand-built or externally produced
+    `resolution.csv` actually fails in.
+    """
+    spec = _spec(tmp_path, resolution__csv=_resolution(_MTHFR_677))
+    result = validate_spec(spec, strict=strict)
+    compiled = compile_module(
+        spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict
+    )
+
+    assert not result.valid and not compiled.success
+    assert any("does not match the id recomputed" in e for e in result.errors), result.errors
+    assert set(result.errors) <= set(compiled.errors)
+
+
+def test_a_p_value_transcription_slip_follows_the_mode_ladder_on_both_sides(
+    tmp_path: Path,
+) -> None:
+    """`p_value="1.2e-14"` beside `p_value_num=1.2e-41` — the exponent digits transposed on the way
+    into the queryable column. The string is the record; the number is what a consumer filters on, so
+    they disagree by ten orders of magnitude with nothing malformed about either cell.
+
+    Severity is the ladder, and `validate` must report the same rung as the compile the author is
+    about to run: a warning that still validates in `best_effort`, a refusal in `strict`.
+    """
+    spec = _spec(tmp_path, studies__csv=_studies("1.2e-14", "1.2e-41"))
+
+    assert _agree(spec, tmp_path / "be", strict=False) == (True, True)
+    assert _agree(spec, tmp_path / "st", strict=True) == (False, False)
+
+    lenient = validate_spec(spec, strict=False)
+    assert any("p_value_num says" in w for w in lenient.warnings), lenient.warnings
+    strict_result = validate_spec(spec, strict=True)
+    assert any("p_value_num says" in e for e in strict_result.errors), strict_result.errors
+
+
+def test_an_agreeing_p_value_pair_is_silent(tmp_path: Path) -> None:
+    """A rounding is not a contradiction: the comparison is relative at 1%, so the transcription that
+    dropped a digit still agrees with its string."""
+    spec = _spec(tmp_path, studies__csv=_studies("5.23e-8", "5.2e-8"))
+    assert _agree(spec, tmp_path / "out", strict=True) == (True, True)
+    assert not any("p_value_num" in m for m in validate_spec(spec, strict=True).warnings)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_the_mode_changes_severity_and_never_the_finding_set(tmp_path: Path, strict: bool) -> None:
+    """`strict` is a severity dial, not a second set of rules. An indel's id cannot be recomputed in
+    this tier — justifying one needs the reference sequence — so it is *unverifiable*, the ladder's
+    other rung, and the same sentence must appear either way: in `warnings` at `best_effort` and in
+    `errors` at `strict`. The wording is pinned too, because "could not be verified" and "does not
+    match" are different claims and only one of them was reached."""
+    indel = "ga4gh:VA.LNB3XTeT4xdXxnKyg_RjJhLp5RnUlMpL"  # a real VA, for a 1 bp insertion
+    spec = _spec(
+        tmp_path,
+        resolution__csv=_RESOLUTION_HEADER
+        + f"{_HBS},rs334,11,5227002,C,CA,GRCh38,0,{indel},2.0,clinvar,resolved\n",
+    )
+    result = validate_spec(spec, strict=strict)
+    channel = result.errors if strict else result.warnings
+    assert result.valid is not strict
+    assert any("could not be verified" in m for m in channel), (result.errors, result.warnings)
+    assert not any("does not match" in m for m in result.errors + result.warnings)
+
+
+# ── allele membership: the third check that was compile-only, found the same way ─────────────────
+
+_MEMBERSHIP_VARIANTS = (
+    "chrom,start,ref,alts,genotype,state,conclusion,gene\n"
+    "19,44908684,T,{alts},C/T,risk,fixture,APOE\n"
+)
+_MEMBERSHIP_STUDIES = "chrom,start,ref,pmid,conclusion\n19,44908684,T,16199547,fixture\n"
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_allele_membership_answers_at_validate_too(tmp_path: Path, strict: bool) -> None:
+    """`_check_allele_membership` was compile-only, and it is a mode ladder — so `validate --strict`
+    reported `valid` for a module `compile --strict` refused.
+
+    The same defect this file exists for, one check further along: the 2026-08-07 pass went table by
+    table, and this one reads *authored* rows rather than a sidecar, so "which tables does validate
+    read" could not surface it. Its own docstring already says it runs on the authored rows **before**
+    resolution expands them, which is precisely why it is computable with no resolution step.
+
+    Uses a non-nucleotide locus allele because that shape needs no `resolution.csv` at all — the row
+    authors its own `ref`/`alts`, so the membership set is decided from authored bytes alone, which is
+    the property that makes the check belong at pre-flight.
+    """
+    spec = _spec(
+        tmp_path / f"m{int(strict)}",
+        variants__csv=_MEMBERSHIP_VARIANTS.format(alts="Y"),
+        studies__csv=_MEMBERSHIP_STUDIES,
+    )
+    validated, compiled = _agree(spec, tmp_path / f"o{int(strict)}", strict=strict)
+
+    assert validated == compiled, "validate and compile disagreed about the same module"
+    assert validated is not strict, "a mode ladder: clean in best_effort, refused under strict"
+
+
+def test_a_nucleotide_locus_is_clean_on_both_sides(tmp_path: Path) -> None:
+    """Negative control: the check must not fire on an ordinary locus, or the test above passes for
+    the wrong reason — and `alts=C` is the very allele the ambiguity code `Y` stands for."""
+    spec = _spec(
+        tmp_path / "ok",
+        variants__csv=_MEMBERSHIP_VARIANTS.format(alts="C"),
+        studies__csv=_MEMBERSHIP_STUDIES,
+    )
+    assert _agree(spec, tmp_path / "ok_out", strict=False) == (True, True)
+    assert _agree(spec, tmp_path / "ok_out_s", strict=True) == (True, True)
+
+
+def test_the_membership_message_is_identical_on_both_sides(tmp_path: Path) -> None:
+    """Same finding, same words. Two phrasings of one defect is how the two commands drift into
+    being two contracts, which is what the module docstring above is about."""
+    spec = _spec(
+        tmp_path / "msg",
+        variants__csv=_MEMBERSHIP_VARIANTS.format(alts="Y"),
+        studies__csv=_MEMBERSHIP_STUDIES,
+    )
+    from_validate = [w for w in validate_spec(spec).warnings if "not among the" in w]
+    from_compile = [
+        w
+        for w in compile_module(
+            spec, tmp_path / "msg_out", resolve_with_ensembl=False
+        ).warnings
+        if "not among the" in w
+    ]
+    assert from_validate == from_compile != []
+    assert "IUPAC ambiguity code" in from_validate[0]

@@ -17,7 +17,6 @@ Exit codes are CI/registry-gateable: `0` success, `1` failure (invalid spec / fa
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import typer
 from just_dna_format.integrity import IntegrityError, verify_manifest
@@ -32,6 +31,12 @@ from just_dna_format.signing import (
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import ValidationError
 
+from just_dna_compiler.compiler import (
+    compile_module,
+    content_signature,
+    reverse_module,
+    validate_spec,
+)
 from just_dna_compiler.draft import (
     DraftError,
     authoring_requirements,
@@ -40,12 +45,6 @@ from just_dna_compiler.draft import (
 )
 from just_dna_compiler.hints import describe_table, inspect_rows
 from just_dna_compiler.scaffold import scaffold_module
-from just_dna_compiler.compiler import (
-    compile_module,
-    content_signature,
-    reverse_module,
-    validate_spec,
-)
 
 app = typer.Typer(
     add_completion=False,
@@ -54,7 +53,7 @@ app = typer.Typer(
 )
 
 
-def _authority_keys(strip_identity: bool, authority_key: list[str]) -> Optional[set[str]]:
+def _authority_keys(strip_identity: bool, authority_key: list[str]) -> set[str] | None:
     """Assemble the inject-only authority-key set from the two flags, or None if neither is given."""
     keys: set[str] = set(authority_key)
     if strip_identity:
@@ -81,9 +80,18 @@ def validate(
     authority_key: list[str] = typer.Option(
         [], "--authority-key", help="Extra authority-owned module key to strip (repeatable)."
     ),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort",
+        help="Pre-flight for a strict compile: escalate the mode-laddered findings to errors, as "
+             "`compile --strict` does. Use it whenever the compile you intend to run is strict.",
+    ),
 ) -> None:
     """Validate a spec directory without producing output. Exit 1 if invalid."""
-    result = validate_spec(spec_dir, authority_keys=_authority_keys(strip_identity, authority_key))
+    result = validate_spec(
+        spec_dir,
+        authority_keys=_authority_keys(strip_identity, authority_key),
+        strict=strict,
+    )
     _echo_messages(result)
     if result.valid:
         typer.secho(f"valid: {spec_dir}", fg=typer.colors.GREEN)
@@ -99,7 +107,7 @@ def compile(  # noqa: A001 — the verb is the command name; shadowing builtins.
     strict: bool = typer.Option(
         False, "--strict/--no-strict", help="All-or-nothing: fail rather than emit a partial artifact with unresolved positions."
     ),
-    ensembl_cache: Optional[Path] = typer.Option(
+    ensembl_cache: Path | None = typer.Option(
         None, "--ensembl-cache",
         help="DEPRECATED (removed at 1.0): Ensembl reference (.duckdb/parquet dir); routes to "
              "just-dna-enricher. Prefer producing resolution.csv with `just-dna-enricher enrich`.",
@@ -108,7 +116,7 @@ def compile(  # noqa: A001 — the verb is the command name; shadowing builtins.
         True, "--resolve/--no-resolve", help="Resolve missing rsid/position via the injected Ensembl reference."
     ),
     compression: str = typer.Option("zstd", "--compression", help="Parquet compression codec."),
-    compiled_by: Optional[str] = typer.Option(
+    compiled_by: str | None = typer.Option(
         None, "--compiled-by", help="Provenance tag for the manifest (e.g. marketplace-server)."
     ),
     strip_identity: bool = typer.Option(
@@ -189,7 +197,7 @@ def verify(
         "--require-marketplace/--no-require-marketplace",
         help="Demand compile_success and compiled_by=marketplace-server. Off for a local artifact.",
     ),
-    public_key: Optional[str] = typer.Option(
+    public_key: str | None = typer.Option(
         None, "--public-key", help="Base64 raw Ed25519 key the manifest signature MUST verify against."
     ),
     check_inputs: bool = typer.Option(False, "--check-inputs", help="Also hash the declared inputs[]."),
@@ -257,7 +265,7 @@ def sign(
 
 @app.command()
 def keygen(
-    out: Optional[Path] = typer.Option(
+    out: Path | None = typer.Option(
         None, "--out", dir_okay=False,
         help="Write the private key PEM here (refuses to overwrite). Omit to print it to stdout.",
     ),
@@ -335,18 +343,18 @@ def reference(
 def reverse(
     parquet_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Compiled parquet directory"),
     output_dir: Path = typer.Argument(..., file_okay=False, help="Output dir for the reconstructed spec"),
-    module_name: Optional[str] = typer.Option(None, "--module-name", help="Override the recovered module name."),
-    title: Optional[str] = typer.Option(None, "--title"),
-    description: Optional[str] = typer.Option(None, "--description"),
-    report_title: Optional[str] = typer.Option(None, "--report-title"),
+    module_name: str | None = typer.Option(None, "--module-name", help="Override the recovered module name."),
+    title: str | None = typer.Option(None, "--title"),
+    description: str | None = typer.Option(None, "--description"),
+    report_title: str | None = typer.Option(None, "--report-title"),
     icon: str = typer.Option("database", "--icon"),
     color: str = typer.Option("#6435c9", "--color"),
-    version: Optional[str] = typer.Option(None, "--version", help="Advisory module.version to re-emit into the spec."),
+    version: str | None = typer.Option(None, "--version", help="Advisory module.version to re-emit into the spec."),
     resolution: bool = typer.Option(
         True, "--resolution/--no-resolution",
         help="Also emit resolution.csv (the resolved facts), so reverse→compile is fully offline.",
     ),
-    genome_build: Optional[str] = typer.Option(
+    genome_build: str | None = typer.Option(
         None, "--genome-build",
         help="Override the build. Read from the artifact's manifest.json by default; only needed for "
              "a bare parquet directory that carries no manifest.",
@@ -448,7 +456,7 @@ def requirements(
 def scaffold(
     spec_dir: Path = typer.Argument(..., file_okay=False, help="Module spec directory to create"),
     kind: list[str] = typer.Option([], "--kind", help="Authored table kind to stub (repeatable)."),
-    name: Optional[str] = typer.Option(None, "--name", help="Machine name for the module block."),
+    name: str | None = typer.Option(None, "--name", help="Machine name for the module block."),
     rows: int = typer.Option(1, "--rows", min=1, help="Stub rows per table."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report the plan; write nothing."),
 ) -> None:
@@ -490,10 +498,10 @@ def describe(
 @app.command()
 def hint(
     kind: str = typer.Argument(..., help="Authored CSV the rows belong to"),
-    rows_file: Optional[Path] = typer.Option(
+    rows_file: Path | None = typer.Option(
         None, "--file", exists=True, dir_okay=False, help="Read the CSV text from a file."
     ),
-    row: Optional[str] = typer.Option(None, "--row", help="A single CSV row (or header+rows) inline."),
+    row: str | None = typer.Option(None, "--row", help="A single CSV row (or header+rows) inline."),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine report."),
 ) -> None:
     """Inspect authored CSV rows and report what is wrong, what the model rewrites, and what is left
