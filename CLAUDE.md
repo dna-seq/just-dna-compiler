@@ -119,6 +119,63 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   haplotype dedup — deliberately calls it **without** `alts`, so it never mints a VA (a study matches a
   variant at `chrom:start:ref` regardless of allele). Mixing these up would orphan every study *and*
   reintroduce the same-locus allele collision.
+- **`ResolutionRow.vrs_id` is ONE ID PER ALT, positionally aligned with `alts` — and the rule it used to
+  follow was borrowed from the wrong function.** The mint pass abstained on any comma-joined cell,
+  quoting `derive_variant_key`'s reason ("a VA names exactly one allele; picking one would be a data
+  error wearing an identifier"). True *there* — `variant_key` is one column naming one thing, so a plural
+  cell falls through to the coordinate key — and false for `vrs_id`, which the schema keeps **outside**
+  `RESOLUTION_FACT_FIELDS`, which no identity rests on, and where nothing is picked because every ALT is
+  named. `frequencies._alleles_from_resolution` had reasoned it out correctly all along, so the tier was
+  answering the same question two opposite ways. It cost 909 of 1,613 rows their id on a real module
+  whose 2,110 alleles were all offline-mintable substitutions. Four things not to redo:
+  - **A parallel array, never one row per allele.** `resolve_from_table` groups by `variant_key` and
+    reads `len(loci)` as a *locus* count, so per-allele rows would enter the one-to-many expansion path,
+    and `locus_index` would carry two kinds of "many" (P5). A single-alt row still spells a bare id.
+  - **An empty member is a hole, and holes are kept.** A site can carry a substitution and an indel;
+    dropping the whole row's ids over the one that will not mint offline is the same abstention again.
+  - **Desync is guarded twice, because a parallel array has a failure mode a scalar does not.** The model
+    refuses a wrong-*length* pair at load; `_verify_vrs_ids` recomputes member by member, so a
+    right-length pair in the wrong *order* is a mismatch (error in both modes).
+  - **It moves nothing.** `vrs_id` is outside every signature and `reverse_module` never re-emits it —
+    verified byte-identical `artifact.digest`/`content_signature`/`resolution_signature` on five modules.
+- **A pass that only checks what is PRESENT must also count what is ABSENT — `_vrs_coverage`,
+  `MintResult.coverage_warnings`.** `_verify_vrs_ids` verifies stored ids, so "a row with no `vrs_id` is
+  skipped entirely" and a table where nothing was minted verified flawlessly. Fine for a decorative
+  cross-reference, wrong for an identity a consumer may key on: coverage of an unstated fraction is not
+  something anything can key on, and *unstated* is the defect. Both tiers report it, the counts land in
+  `manifest.compilation.vrs_alleles`/`vrs_alleles_identified` (two counts, not a ratio or a bool — same
+  reason `fully_resolved` sits beside `resolution_mode`; "complete" is derived), the denominator is
+  **alleles not rows**, and gaps group by **reason class** — grouping on `_recompute_vrs_id`'s per-row
+  prose produced forty lines each naming a different indel. It **warns in both modes**: an indel offline
+  or a build with no refget table is fixable by no authored edit, and `strict` means "reproducible
+  artifact", an unrelated axis. Generalize it: when you add a check that inspects recorded values, ask
+  what it says about the records that carry none.
+- **A non-nucleotide allele in `ref`/`alts` is a SPELLING defect, and the tempting repair is illegal
+  three ways.** `hosting_verdict("C/T", "T", "Y")` is `False` and rightly so — a substitution locus has
+  no shared flank, which is what keeps the strand-flip check sharp — but the message then blamed the
+  *genotype* ("the row contradicts itself" / "the source's allele list is incomplete"), both false when
+  the locus is the thing misspelled. Fixed as a **diagnosis**: `alleles.non_nucleotide_reason` /
+  `non_nucleotide_alleles` classify it, both "cannot host" sites name which, and
+  `cpic.unusable_allele_reason` delegates to the same function rather than keeping its copy. Do **not**
+  "fix" it by adding a nucleotide grammar to `alts`: **no `ref`/`alt`/`alts` column has one** (eleven
+  columns, six models; `validate_allele`'s only user is `HaplotypeRow.allele`), so a grammar rejects
+  `<DEL>` and `N` too — tightening the field **RM5** exists to widen; a module with `alts="Y"` compiles
+  today under `best_effort`, so refusing it breaks **P3**; and the only non-ACGT allele in real variant
+  records is `N`, already filtered by `clinvar_build` at the snapshot boundary. And do not "expand"
+  `Y`→`C,T`: probed across **4,439,382** ClinVar rows and all sixteen modules, `R/Y/S/W/K/M/B/D/H/V`
+  appear in REF or ALT **zero** times — the compressed-ALT-set reading that argument rests on has no
+  instantiation. Full probe in ROADMAP's 0.6 idea-book. Keep the two reasons' **consequences** separate
+  (an uncertainty is permanent, a grammar gap is a release away); appending one to both branches is the
+  CPIC conflation, and it was reintroduced once already inside its own fix.
+- **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**
+  `_check_allele_membership` stayed compile-only through the pass that fixed `_verify_vrs_ids` and
+  `_check_p_value_num`, because that pass asked *which tables does validate read* and this check reads
+  **authored** rows. It is a mode ladder, so `validate --strict` blessed modules `compile --strict`
+  refused. The rule is unchanged and now applies to three checks: pure computation over injected or
+  authored bytes with no `output_dir` belongs in `validate_spec` too. Two mechanics to copy when moving
+  one: `compile_module` runs `validate_spec` in **best_effort** whatever its own mode, so the compile
+  side must still re-run the check to reach the real severity, and its warnings need de-duplicating on
+  the message (`_check_contig_ploidy` is the existing model).
 - **A VA does not encode `ref`.** VRS names the place and the alt; the reference base is determined by
   the accession + interval, so it is not a digest component. Two consequences, both guarded, both of
   which must stay: the compiler has an **"inconsistent reference allele"** error (two rows sharing a key

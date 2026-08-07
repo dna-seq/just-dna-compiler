@@ -17,17 +17,17 @@ are deliberately excluded from it (a human-filled and an Ensembl-filled table wi
 must hash equal — see `RESOLUTION_FACT_FIELDS`).
 """
 
-from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_RESOLUTION_STATUS,
     VALID_RSID_STATUS,
     check_vocab,
     validate_rsid,
 )
-from just_dna_format.vrs import validate_caid, validate_vrs_id
+from just_dna_format.vrs import split_vrs_ids, validate_caid, validate_vrs_id_list
 
 # The fact columns that feed `integrity.resolution_signature` — the reproducibility-relevant facts,
 # deliberately EXCLUDING the provenance columns (`source`/`status`/`fetched_at`) so a human-filled and
@@ -62,15 +62,15 @@ class ResolutionRow(BaseModel):
     )
 
     # ── resolved facts (feed resolution_signature) ──
-    rsid: Optional[str] = Field(default=None, description="Resolved dbSNP identifier")
-    chrom: Optional[str] = Field(default=None, description="Chromosome without 'chr' prefix")
-    start: Optional[int] = Field(
+    rsid: str | None = Field(default=None, description="Resolved dbSNP identifier")
+    chrom: str | None = Field(default=None, description="Chromosome without 'chr' prefix")
+    start: int | None = Field(
         default=None,
         ge=0,
         description="1-based genomic position (VCF POS convention; matches the Ensembl and ClinVar snapshots)",
     )
-    ref: Optional[str] = Field(default=None, description="Reference allele")
-    alts: Optional[str] = Field(default=None, description="Alt allele(s), comma-separated")
+    ref: str | None = Field(default=None, description="Reference allele")
+    alts: str | None = Field(default=None, description="Alt allele(s), comma-separated")
     genome_build: str = Field(
         default="GRCh38",
         description="Assembly the coordinate is in (the RM15 forward hook; GRCh38 today)",
@@ -88,15 +88,19 @@ class ResolutionRow(BaseModel):
     # them moves no existing `resolution_signature` while the columns bed in — the identity they carry
     # reaches the artifact through `variant_key` (which derives from the VA for a resolved
     # substitution), so the fact set does not need them.
-    vrs_id: Optional[str] = Field(
+    vrs_id: str | None = Field(
         default=None,
         description=(
-            "GA4GH VRS allele id (`ga4gh:VA.…`). Minted locally by `vrs.derive_vrs_allele_id` for a "
-            "substitution, by the enricher's [dev] normalization path for an indel, and cross-checked "
-            "against a source's own id (gnomAD serves one) where available."
+            "GA4GH VRS allele id (`ga4gh:VA.…`) — one per ALT, comma-joined and **positionally "
+            "aligned with `alts`**, so a single-alt row carries a bare id and a multi-allelic one "
+            "names each of its alleles in the same order. An empty member is a hole: that allele's id "
+            "could not be minted (an indel in an offline run, an off-assembly contig). Minted locally "
+            "by `vrs.derive_vrs_allele_id` for a substitution, by the enricher's normalization path "
+            "for an indel, and cross-checked against a source's own id (gnomAD serves one) where "
+            "available."
         ),
     )
-    vrs_spec: Optional[str] = Field(
+    vrs_spec: str | None = Field(
         default=None,
         description=(
             "VRS spec version the id was minted under ('2.0'). Recorded to disambiguate an embedded "
@@ -104,12 +108,12 @@ class ResolutionRow(BaseModel):
             "1.x and 2.0."
         ),
     )
-    caid: Optional[str] = Field(
+    caid: str | None = Field(
         default=None, description="ClinGen Allele Registry canonical allele id (`CA<digits>`)"
     )
 
     # ── provenance (EXCLUDED from resolution_signature; who/what/when filled this) ──
-    source: Optional[str] = Field(
+    source: str | None = Field(
         default=None,
         description="Which link filled this: cache|ensembl-graphql|ensembl-rest|manual|reversed (open)",
     )
@@ -125,7 +129,7 @@ class ResolutionRow(BaseModel):
     # `resolution.csv` already written carries link values there, so re-pointing the name would silently
     # change what existing data says. The map from link to authority lives in the enricher, the only
     # tier permitted to know one.
-    authority: Optional[str] = Field(
+    authority: str | None = Field(
         default=None,
         description=(
             "The licensed data source the link speaks for — `ensembl` for `ensembl-rest`/"
@@ -134,10 +138,10 @@ class ResolutionRow(BaseModel):
             "(`authored`, `reversed`, `manual`: the module's own bytes or a human)."
         ),
     )
-    status: Optional[str] = Field(
+    status: str | None = Field(
         default=None, description="Resolution outcome: resolved|not_found|ambiguous"
     )
-    rsid_alternates: Optional[str] = Field(
+    rsid_alternates: str | None = Field(
         default=None,
         description=(
             "When a reverse (position→rsid) back-fill hit several candidate rsIDs for the *same exact "
@@ -146,7 +150,7 @@ class ResolutionRow(BaseModel):
             "Provenance — EXCLUDED from resolution_signature (0.5, provisional)."
         ),
     )
-    rsid_current: Optional[str] = Field(
+    rsid_current: str | None = Field(
         default=None,
         description=(
             "The rsID dbSNP serves today when the authored one has been merged away (e.g. `rs3051860` "
@@ -155,7 +159,7 @@ class ResolutionRow(BaseModel):
             "`variant_key` by network lookup and break the round-trip fixed point (Principle 7)."
         ),
     )
-    rsid_status: Optional[str] = Field(
+    rsid_status: str | None = Field(
         default=None,
         description=(
             "What dbSNP currently says about `rsid`: live|merged|absent|withdrawn. The automated "
@@ -167,34 +171,66 @@ class ResolutionRow(BaseModel):
             "Provenance — EXCLUDED from resolution_signature (time-varying external state)."
         ),
     )
-    fetched_at: Optional[str] = Field(default=None, description="ISO-8601 UTC timestamp, advisory")
+    fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
     @field_validator("rsid")
     @classmethod
-    def _validate_rsid(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_rsid(cls, v: str | None) -> str | None:
         return validate_rsid(v)
 
     @field_validator("status")
     @classmethod
-    def _validate_status(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
 
     @field_validator("rsid_current")
     @classmethod
-    def _validate_rsid_current(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_rsid_current(cls, v: str | None) -> str | None:
         return validate_rsid(v)
 
     @field_validator("rsid_status")
     @classmethod
-    def _validate_rsid_status(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_rsid_status(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_RSID_STATUS, "rsid_status")
 
     @field_validator("vrs_id")
     @classmethod
-    def _validate_vrs_id(cls, v: Optional[str]) -> Optional[str]:
-        return validate_vrs_id(v)
+    def _validate_vrs_id(cls, v: str | None) -> str | None:
+        return validate_vrs_id_list(v)
+
+    @model_validator(mode="after")
+    def _vrs_ids_align_with_alts(self) -> "ResolutionRow":
+        """`vrs_id` is a parallel array of `alts`, so a desynced pair is caught at load.
+
+        Positional coupling between two columns is the price of not multiplying the table into one row
+        per allele, and this is what makes it safe: a human who edits `alts` and forgets `vrs_id` gets a
+        refusal here rather than a silently re-pointed identity. (The compiler's `_verify_vrs_ids` is
+        the second net — it recomputes every member offline, so a *reordered* pair that still counts
+        right is caught there as a mismatch.)
+
+        Only checked when both columns are filled. A `vrs_id` on a row with no `alts` is left alone: the
+        enricher never writes one, but a hand-filled table naming an allele it did not record in `alts`
+        is under-specified, not contradictory, and refusing it would be this tier inventing a rule.
+        """
+        if not self.alts or self.vrs_id is None:
+            return self
+        alts = self.alts.split(",")
+        ids = split_vrs_ids(self.vrs_id)
+        if len(ids) != len(alts):
+            raise ValueError(
+                f"vrs_id names {len(ids)} allele id(s) but alts names {len(alts)} allele(s) "
+                f"({self.alts!r}) — vrs_id is positionally aligned with alts, one member per ALT "
+                f"(empty where no id could be minted), so the two must have the same length"
+            )
+        return self
 
     @field_validator("caid")
     @classmethod
-    def _validate_caid(cls, v: Optional[str]) -> Optional[str]:
+    def _validate_caid(cls, v: str | None) -> str | None:
         return validate_caid(v)
+
+    @field_validator("fetched_at", mode="before")
+    @classmethod
+    def _canonical_fetched_at(cls, v: object) -> str | None:
+        """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
+        return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))

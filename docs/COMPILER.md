@@ -275,20 +275,41 @@ unconfirmed identity is visible to a consumer rather than only to whoever ran th
 
 #### Every flow path
 
-`_recompute_vrs_id` returns either the recomputed id or the reason there is none. The four reasons are
-limits of a no-network tier, not defects in the row:
+`_recompute_vrs_id` returns either the recomputed id or the reason there is none, **for one allele**.
+`vrs_id` is a comma-joined parallel array of `alts`, so the pass walks the two together and each ALT
+gets its own verdict; an empty member is a hole and reads exactly like an empty cell. The four reasons
+are limits of a no-network tier, not defects in the row:
 
 | Row | Path | `best_effort` | `strict` |
 |---|---|---|---|
-| no `vrs_id` | nothing to check — **not** the same as "could not check" | silent | silent |
+| no `vrs_id`, or a hole in one | nothing to check — **not** the same as "could not check" | silent | silent |
 | substitution, id agrees | verified | silent | silent |
 | substitution, id differs | **mismatch** | error | error |
+| multi-allelic, every member agrees | verified allele by allele | silent | silent |
+| multi-allelic, members swapped | **mismatch** — the desync a length check cannot see | error | error |
 | indel / MNV (`C>CA`) | needs the reference sequence — minted upstream, not recomputable here | warning | error |
-| multi-allelic (`alts="A,G"`) | a VA names exactly one allele; picking one would invent data | warning | error |
 | position-only (no `alts`) | no ALT to name | warning | error |
 | no coordinate | nothing to recompute from (an rsid row carrying an external id) | warning | error |
 | off-assembly contig, or a position past the contig end | no refget accession to address the sequence by | warning | error |
 | non-GRCh38 `genome_build` | no refget table for that build (RM15) | warning | error |
+
+Multi-allelic used to be one row of this table, blanket-unverifiable, "a VA names exactly one allele;
+picking one would invent data". The premise is `derive_variant_key`'s and it is right there — a
+`variant_key` names one thing, so a plural cell falls through to the coordinate key. It was wrong here,
+where nothing is picked because every ALT is named. It cost the id on 909 of 1,613 rows in one real
+module while every input needed to mint all 2,110 of them sat in the same row.
+
+#### Coverage — what a VA does *not* name
+
+Verification only ever looks at ids that are present, so a table where nothing was minted verifies
+flawlessly. `_vrs_coverage_warnings` reports the other half: allele slots seen, how many carry an id,
+and the remainder grouped **by reason class** (not by row, and not by `_recompute_vrs_id`'s per-row
+prose — grouping on that produced forty lines each naming a different indel). The counts are recorded
+in `manifest.compilation.vrs_alleles` / `vrs_alleles_identified`, so a consumer can read the
+reliability of the identity scheme instead of inferring it; "complete" is `identified == alleles`,
+derived rather than stored twice. A shortfall is a **warning in both modes** — the usual causes (an
+indel with no sequence proxy, a build with no refget table) are fixable by no authored edit, and
+`strict` means "reproducible artifact", which an incompletely-named table still is.
 
 The last row is a fixed bug worth naming: `refget_accession` **raises** `UnsupportedBuildError` rather
 than returning `None` — deliberately, so a caller asking for GRCh37 hears "not built yet" instead of
@@ -593,7 +614,7 @@ would break scripts for no gain.
 | strict compile (0.4.1) | ✅ `strict=True` fails (pre-write) on an unresolved `(chrom, start)` | — (refuses a partial) | — | complete (opt-in) |
 | `content_signature` (0.4.1) | ✅ over raw authored rows, normalized+sorted, name-/Ensembl-independent | ✅ **manifest** (out of digest); `signature` CLI computes it without recompiling | — | complete (canonical dedup identity) |
 | **`resolution.csv` path (0.5)** | ✅ `resolve_from_table` consumes injected facts; digest-parity with the DuckDB path proven; **provisional shape** (§ note) | ✅ drives `weights.parquet` coords; `resolution_signature`/`resolution_mode`/`fully_resolved`/`resolution_sources` → **manifest** (out of digest) | ✅ fill / expand / verify (pure, no duckdb) | complete (preferred path) |
-| **VRS allele identity (0.5)** | ✅ stdlib `derive_vrs_allele_id`; stored `vrs_id` recomputed and verified (mode-dependent severity) | ✅ `variant_key` **is** the VA for a resolved substitution → `weights`/`annotations.parquet` | ✅ minted from `(chrom, start, ref, alt)`; indels/MNVs/multi-allelic keep the coordinate key | complete (GRCh38-only; multi-build is RM15) |
+| **VRS allele identity (0.5)** | ✅ stdlib `derive_vrs_allele_id`; every member of `vrs_id` recomputed and verified per ALT, plus a coverage report (mode-dependent severity) | ✅ `variant_key` **is** the VA for a resolved substitution → `weights`/`annotations.parquet` | ✅ minted per ALT from `(chrom, start, ref, alt)`; a multi-allelic site names each allele, and the *key* still falls through to the coordinate for indels/MNVs/multi-allelic | complete (GRCh38-only; multi-build is RM15) |
 | **`frequencies.csv` path (0.5)** | ✅ `FrequencyRow`; coordinate cross-check → warning; **provisional shape** | ✅ `frequencies.parquet` (in `artifact.digest`); `frequency_signature`/`sources`/`datasets`/`populations` → **manifest** (out of digest) | ✅ `allele_frequency` = AC/AN materialized as `Float64` (never stored in the CSV) | complete (injected; enricher produces it) |
 | **`gene_metrics.csv` path (0.5)** | ✅ `GeneMetricsRow`; gene cross-check → warning; **provisional shape** | ✅ `gene_metrics.parquet` (in digest); `gene_metrics_signature`/`genes`/`datasets` → **manifest** | — | complete (injected; offline-capable upstream) |
 | **`literature.csv` path (0.5)** | ✅ `LiteratureRow`; citation cross-check + nonexistent-PMID warning; **provisional shape** | ✅ `literature.parquet` (in digest); `literature_signature`/`sources`/coverage counters → **manifest** | — | complete (injected; enricher produces it) |

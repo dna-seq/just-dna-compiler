@@ -13,14 +13,9 @@ from pathlib import Path
 import httpx
 import polars as pl
 import pytest
-from just_dna_format.frequency import FrequencyRow
-from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vrs import derive_vrs_allele_id
-
+from just_dna_enricher import gene_metrics
 from just_dna_enricher.constraint_build import build_snapshot
 from just_dna_enricher.frequencies import enrich_frequencies, format_faf95
-from just_dna_enricher import gene_metrics
 from just_dna_enricher.gene_metrics import enrich_gene_metrics
 from just_dna_enricher.gnomad import (
     API_CONSTRAINT_DATASET_LABEL,
@@ -30,6 +25,11 @@ from just_dna_enricher.gnomad import (
 )
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.vrs import VrsMinter, mint_resolution_rows
+from just_dna_format.frequency import FrequencyRow
+from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.vrs import derive_vrs_allele_id, split_vrs_ids
+from pydantic import ValidationError
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _VARIANTS = (
@@ -346,9 +346,104 @@ def test_minting_stamps_substitutions_with_no_network() -> None:
     result = mint_resolution_rows(rows, offline=True)
     assert rows[0].vrs_id == derive_vrs_allele_id("11", 5227002, "T", "A")
     assert rows[0].vrs_spec == "2.0"
-    assert [r.vrs_id for r in rows[1:]] == [None, None, None]
-    assert result.minted_stdlib == 1
-    assert result.skipped_unmintable == 3
+    assert [r.vrs_id for r in rows[1::2]] == [None, None]  # the indel and the coordinate-less row
+    # The multi-allelic row mints BOTH of its alleles: nothing is being picked, so the old refusal
+    # (`_single_alt`, which returned None for any comma-joined cell) was throwing away two ids it had
+    # every input for. Counters are per ALLELE — 1 + 2 minted, the indel and the no-coord row skipped.
+    assert rows[2].vrs_id == ",".join(
+        [derive_vrs_allele_id("11", 5227002, "T", "A"), derive_vrs_allele_id("11", 5227002, "T", "G")]
+    )
+    assert result.minted_stdlib == 3
+    assert result.skipped_unmintable == 2
+
+
+def test_a_multi_allelic_row_keeps_the_ids_it_can_mint_beside_the_ones_it_cannot() -> None:
+    """A site carrying a substitution *and* an indel mints a hole, not an empty row.
+
+    Offline, the indel has no justification path, so its member is empty — and the substitutions
+    beside it keep their ids. Refusing the whole row over one unmintable allele would repeat the
+    abstention this shape was built to remove, one level down.
+    """
+    row = ResolutionRow(variant_key="k", chrom="11", start=5227002, ref="T", alts="A,TCC,G")
+    result = mint_resolution_rows([row], offline=True)
+
+    assert split_vrs_ids(row.vrs_id) == [
+        derive_vrs_allele_id("11", 5227002, "T", "A"),
+        None,
+        derive_vrs_allele_id("11", 5227002, "T", "G"),
+    ]
+    assert row.vrs_spec == "2.0"
+    assert (result.minted_stdlib, result.skipped_unmintable) == (2, 1)
+
+
+def test_the_mint_pass_reports_its_shortfall_not_only_its_successes() -> None:
+    """A success count on a half-anonymous table reads as a clean bill.
+
+    The counters said "minted 237" for a module where 185 alleles came out with no id, and nothing
+    said the second number. That matters now in a way it did not when a VA was decorative: it is
+    becoming the key these tables are joined on, so the covered *fraction* is the reliability figure a
+    consumer needs, and an unstated one is the defect.
+
+    Grouped by reason, one line each — the alternative is a per-row wall that buries every other
+    finding a run produces.
+    """
+    rows = [
+        ResolutionRow(variant_key="k1", chrom="11", start=5227002, ref="T", alts="A,G"),  # mints 2
+        ResolutionRow(variant_key="k2", chrom="11", start=5226762, ref="C", alts="CA"),   # indel
+        ResolutionRow(variant_key="k3", chrom="11", start=5226763, ref="G", alts="GT"),   # indel
+        ResolutionRow(variant_key="k4", rsid="rs1"),                                      # no coord
+    ]
+    result = mint_resolution_rows(rows, offline=True)
+
+    assert (result.alleles, result.identified) == (5, 2)
+    assert not result.complete
+    lines = result.coverage_warnings()
+    assert "2/5" in lines[0] and "40%" in lines[0]
+    # Two reasons, not four rows: the two indels share one line, and it names the remedy that works.
+    assert len(lines) == 3
+    assert any("2 allele(s)" in line and "--offline" in line for line in lines[1:])
+    assert any("1 allele(s)" in line and "no coordinate" in line for line in lines[1:])
+
+
+def test_a_fully_minted_table_reports_no_shortfall() -> None:
+    """`complete` is the question a caller has, and a warning that always fires is not a warning."""
+    rows = [ResolutionRow(variant_key="k", chrom="11", start=5227002, ref="T", alts="A,G")]
+    result = mint_resolution_rows(rows, offline=True)
+
+    assert result.complete and (result.alleles, result.identified) == (2, 2)
+    assert result.coverage_warnings() == []
+
+
+def test_a_hole_in_a_pre_existing_cell_is_not_counted_as_covered() -> None:
+    """`already_present` is a per-ROW verdict, and coverage is a per-ALLELE one.
+
+    A hand-filled cell naming one of two alleles is left alone — the pass never reaches inside a cell
+    it did not write — but reporting that row as fully covered would launder the hole into a number a
+    consumer trusts.
+    """
+    row = ResolutionRow(
+        variant_key="k", chrom="11", start=5227002, ref="T", alts="A,G",
+        vrs_id=f"{derive_vrs_allele_id('11', 5227002, 'T', 'A')},",
+    )
+    result = mint_resolution_rows([row], offline=True)
+
+    assert result.already_present == 1
+    assert (result.alleles, result.identified) == (2, 1)
+    assert not result.complete
+
+
+def test_a_vrs_id_cell_must_stay_aligned_with_alts() -> None:
+    """The cost of a parallel array is desync, so the model refuses one at load.
+
+    Both directions: too few ids for the alleles, and too many. The compiler's verify pass is the
+    second net, for a pair that counts right and is ordered wrong.
+    """
+    one = derive_vrs_allele_id("11", 5227002, "T", "A")
+    for alts, vrs_id in [("A,G", one), ("A", f"{one},{one}")]:
+        with pytest.raises(ValidationError, match="positionally aligned with alts"):
+            ResolutionRow(
+                variant_key="k", chrom="11", start=5227002, ref="T", alts=alts, vrs_id=vrs_id
+            )
 
 
 def test_minting_never_overwrites_an_existing_id() -> None:

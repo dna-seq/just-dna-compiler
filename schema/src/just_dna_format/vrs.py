@@ -27,7 +27,7 @@ import base64
 import hashlib
 import json
 import re
-from typing import Optional
+from collections.abc import Sequence
 
 # Namespace prefixes of the two GA4GH-shaped cross-references carried on a resolution row.
 VRS_ALLELE_PREFIX: str = "ga4gh:VA."
@@ -115,7 +115,7 @@ def _canonical(obj: dict) -> bytes:
     return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def normalize_chrom(chrom: Optional[str]) -> Optional[str]:
+def normalize_chrom(chrom: str | None) -> str | None:
     """Fold a chromosome label to this module's key form (`chr7` → `7`, `M`/`chrM` → `MT`)."""
     if chrom is None:
         return None
@@ -145,8 +145,8 @@ PAR_GRCh38: dict[str, tuple[tuple[int, int], ...]] = {
 
 
 def in_pseudoautosomal_region(
-    chrom: Optional[str], start: Optional[int], *, build: str = "GRCh38"
-) -> Optional[bool]:
+    chrom: str | None, start: int | None, *, build: str = "GRCh38"
+) -> bool | None:
     """Is this locus in a PAR? **Three-valued** — `True`, `False`, or `None` for "cannot say".
 
     `None` when there is no coordinate, when the contig is not X or Y, or when the build is one this
@@ -171,8 +171,8 @@ _PAR_PARTNER_CONTIG = {"X": "Y", "Y": "X"}
 
 
 def par_partner(
-    chrom: Optional[str], start: Optional[int], *, build: str = "GRCh38"
-) -> Optional[tuple[str, int]]:
+    chrom: str | None, start: int | None, *, build: str = "GRCh38"
+) -> tuple[str, int] | None:
     """Where this pseudoautosomal locus is spelled on the *other* sex contig.
 
     Returns `(contig, position)` — `("Y", 640851)` for `("X", 640851)` — or `None`, which is the
@@ -198,13 +198,17 @@ def par_partner(
     if other is None:
         return None
     here, there = PAR_GRCh38[contig], PAR_GRCh38[other]
-    for (low, high), (other_low, _other_high) in zip(here, there):
+    # `strict=True` on purpose: the pairing is **index-matched**, PAR1 to PAR1 and PAR2 to PAR2, so a
+    # table that ever gained an interval on one contig and not the other must fail loudly. Truncating
+    # would keep PAR1 working and silently stop answering for PAR2 — the exact asymmetry that makes a
+    # PAR bug hard to see, since PAR1 is the one every casual test uses.
+    for (low, high), (other_low, _other_high) in zip(here, there, strict=True):
         if low <= start <= high:
             return other, start - low + other_low
     return None
 
 
-def refget_accession(chrom: Optional[str], build: str = "GRCh38") -> Optional[str]:
+def refget_accession(chrom: str | None, build: str = "GRCh38") -> str | None:
     """The refget accession for a contig on `build`, or `None` for a contig outside the table.
 
     Raises `UnsupportedBuildError` for a build with no table — a caller asking for GRCh37 today gets a
@@ -219,8 +223,8 @@ def refget_accession(chrom: Optional[str], build: str = "GRCh38") -> Optional[st
 
 
 def sequence_location_digest(
-    chrom: Optional[str], start: int, end: int, *, build: str = "GRCh38"
-) -> Optional[str]:
+    chrom: str | None, start: int, end: int, *, build: str = "GRCh38"
+) -> str | None:
     """The bare `sha512t24u` of a VRS `SequenceLocation` over interbase `[start, end)`.
 
     `start`/`end` are **interbase** (0-based, half-open) — VRS's coordinate convention, not VCF's.
@@ -242,7 +246,7 @@ def sequence_location_digest(
     )
 
 
-def is_substitution(ref: Optional[str], alt: Optional[str]) -> bool:
+def is_substitution(ref: str | None, alt: str | None) -> bool:
     """Whether `(ref, alt)` is a single-base substitution — the normalization-invariant case.
 
     This is exactly the class `derive_vrs_allele_id` will mint: one ACGT base to a *different* one ACGT
@@ -256,13 +260,13 @@ def is_substitution(ref: Optional[str], alt: Optional[str]) -> bool:
 
 
 def derive_vrs_allele_id(
-    chrom: Optional[str],
-    start: Optional[int],
-    ref: Optional[str],
-    alt: Optional[str],
+    chrom: str | None,
+    start: int | None,
+    ref: str | None,
+    alt: str | None,
     *,
     build: str = "GRCh38",
-) -> Optional[str]:
+) -> str | None:
     """The `ga4gh:VA.…` allele id for a resolved substitution, or `None` when it cannot be minted.
 
     `start` is the **1-based VCF position** (the convention `ResolutionRow.start` and the Ensembl /
@@ -274,7 +278,9 @@ def derive_vrs_allele_id(
     - no coordinate (an rsid-only row, pre-resolution): there is nothing to address;
     - an indel or MNV: justification needs the reference sequence (see the module docstring);
     - a multi-allelic cell (`alt` carrying a comma): a VA names *one* allele, so the caller must split
-      first — silently picking one would be a data error wearing an id;
+      first — silently picking one would be a data error wearing an id. "Split first" is the whole
+      instruction: refusing to *pick* is not a reason to mint *nothing*, which is the mistake
+      `split_vrs_ids`/`join_vrs_ids` exist to stop a caller making (see their docstrings);
     - a contig outside the primary assembly, or a position past the end of it.
 
     It **raises** `UnsupportedBuildError` for exactly one input: a `build` with no refget table (today,
@@ -310,7 +316,53 @@ def derive_vrs_allele_id(
     return VRS_ALLELE_PREFIX + sha512t24u(_canonical(allele))
 
 
-def validate_vrs_id(value: Optional[str], field_name: str = "vrs_id") -> Optional[str]:
+def split_vrs_ids(value: str | None) -> list[str | None]:
+    """A comma-joined `vrs_id` cell → one entry per ALT, `None` where no id was minted.
+
+    A VRS allele id names **one** allele, and `alts` is a column that may name several. Two ways to
+    reconcile that, and only one of them is honest. The first — mint nothing for a multi-allelic row —
+    is what this codebase did, borrowing `derive_vrs_allele_id`'s refusal to *pick* an allele and
+    applying it to a column where nothing is being picked. It cost the id on 909 of 1,613 rows in one
+    real module while every input needed to compute all 2,110 of them sat in the same row.
+
+    The second is this: `vrs_id` is a **parallel array of `alts`**, so member *i* names alt *i*. A hole
+    (an empty member) is a real value — "this allele's id could not be minted here" — because a
+    substitution and an indel can share one site and only one of them mints offline. Losing the whole
+    row's ids to the indel beside them would be the same abstention one level down.
+
+    A single-alt row degenerates to a bare id, byte-identical to what every existing file carries, so
+    this widening reaches no module that does not need it. It also moves no signature: `vrs_id` is
+    outside `RESOLUTION_FACT_FIELDS` and `reverse_module` does not re-emit it.
+    """
+    if not value:
+        return []
+    return [member.strip() or None for member in value.split(",")]
+
+
+def join_vrs_ids(ids: Sequence[str | None]) -> str | None:
+    """Per-allele ids → the comma-joined cell, or `None` when not one of them was minted.
+
+    Holes are kept, so position is preserved; an all-holes result is `None` rather than `",,"`, since
+    a row that minted nothing is exactly the row that used to carry no id at all.
+    """
+    if not any(ids):
+        return None
+    return ",".join(vrs_id or "" for vrs_id in ids)
+
+
+def validate_vrs_id_list(value: str | None, field_name: str = "vrs_id") -> str | None:
+    """Validate a comma-joined `vrs_id` cell member by member, returning the canonical spelling.
+
+    Each member is either a well-formed VRS id or empty. Alignment with `alts` is *not* checked here —
+    a field validator cannot see a sibling field — so `ResolutionRow` checks the count itself.
+    """
+    ids = split_vrs_ids(value)
+    for index, member in enumerate(ids):
+        validate_vrs_id(member, f"{field_name}[{index}]" if len(ids) > 1 else field_name)
+    return join_vrs_ids(ids)
+
+
+def validate_vrs_id(value: str | None, field_name: str = "vrs_id") -> str | None:
     """Validate an optional GA4GH VRS identifier (`ga4gh:<TYPE>.<32-char digest>`)."""
     if value is not None and not VRS_ID_PATTERN.match(value):
         raise ValueError(
@@ -320,7 +372,7 @@ def validate_vrs_id(value: Optional[str], field_name: str = "vrs_id") -> Optiona
     return value
 
 
-def validate_caid(value: Optional[str], field_name: str = "caid") -> Optional[str]:
+def validate_caid(value: str | None, field_name: str = "caid") -> str | None:
     """Validate an optional ClinGen Allele Registry canonical allele id (`CA<digits>`)."""
     if value is not None and not CAID_PATTERN.match(value):
         raise ValueError(

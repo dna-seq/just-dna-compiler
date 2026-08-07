@@ -1,2 +1,2 @@
-variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,status,rsid_alternates,rsid_current,rsid_status,fetched_at
-rs4149056,rs4149056,12,21178615,T,"A,C",GRCh38,0,,,,cache,resolved,,,,
+variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,authority,status,rsid_alternates,rsid_current,rsid_status,fetched_at
+rs4149056,rs4149056,12,21178615,T,"A,C",GRCh38,0,"ga4gh:VA.wuzV3WaSq99gJymIAmdsFxJYgpl9khp7,ga4gh:VA.pkH_WU1HceQETGSXva0mv0NM1KhOb3pJ",2.0,,cache,,resolved,,,,

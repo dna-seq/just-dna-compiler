@@ -660,6 +660,66 @@ cannot drift. The obsolescence check is therefore the standing cost of the rsID 
 already offers the escape — author coordinates and carry the rsID as data (reverse already emits
 coord-keyed rows as position-only). A strict failure is the nudge toward the drift-proof key.
 
+## Freeform suggestions — the 0.6 idea-book
+
+- ~~**IUPAC ambiguity codes in `ref`/`alts` — expand `Y` to `C,T`**~~ — **probed and rejected as
+  specified; one small real defect survives it.**
+  ([the code table](https://www.bioinformatics.org/sms/iupac.html): `R`=A/G, `Y`=C/T, `S`=G/C, `W`=A/T,
+  `K`=G/T, `M`=A/C, `B`/`D`/`H`/`V` for the three-base sets, `N`=any, `.`/`-` a gap.) Recorded in full
+  because the *reasons* it fails are reusable, and because the first draft of this entry asserted a
+  premise nobody had checked.
+
+  **The load-bearing premise has no instantiation.** The proposal rested on a code in an ALT column
+  being a *compressed ALT set* — `Y` written once instead of `C,T`. Probed: **zero** occurrences of
+  `R`/`Y`/`S`/`W`/`K`/`M`/`B`/`D`/`H`/`V` in REF or ALT across all **4,439,382** ClinVar GRCh38 records,
+  and zero across all sixteen modules in this tree. Genuine ambiguity codes live in *sequence* contexts
+  (consensus FASTA, array-manifest probes) and in *genotype* contexts (a Sanger heterozygote written
+  `Y`) — the second of which is a **measurement**, so it is the consumer's by charter, and
+  `AuthoredModel`'s genotype validator already refuses it with a clear message. Not one of them is a
+  variant record's ALT. This is the "mechanically possible, never instantiated" anti-finding the
+  dogfooding rule exists to catch, and the first draft of this entry walked straight into it.
+
+  **The non-ACGT alleles that *are* real are `N`, and they are two different things, neither
+  expandable.** 35 ClinVar records carry a single-base `A>N` — *the substituted base is unknown*, so
+  expanding to `A,C,G,T` would assert four alleles ClinVar never stated. 633 more carry `N` **inside** a
+  longer allele (`TAAAAAT…TTTGG` + `NNNNNNNNNN` + `AAAA…`) — unknown *interior* of a known-length
+  insertion, not an ambiguity code at all, and 4¹⁰ expansions of nonsense. A rule keyed on "every
+  character is a nucleotide or an IUPAC code" files the second as an ambiguity code, which is precisely
+  the false claim `cpic.unusable_allele_reason` was already repaired to stop making about `DELTCT`.
+
+  **And it is already solved, in the right place.** `clinvar_build` filters `^[ACGT]+$` on both alleles
+  at the **snapshot builder** and counts what it skipped, so none of those 668 records ever reaches a
+  drafted module. Skip-at-the-source-boundary is the pattern; it is implemented; for the only non-ACGT
+  ALT that exists in real data it is the correct answer.
+
+  **Both halves of the proposed repair were also wrong on their own terms**, and these are the parts to
+  remember:
+
+  * *"Normalize at the enricher boundary, like ClinGen's dosage codes."* The analogy does not hold.
+    Those are decoded while **reading a source into rows the enricher authors**. An ambiguity code in
+    `variants.csv` is **authored data**, where the enricher's standing rule is *report, never repair* —
+    rewriting an authored value destroys the evidence of the upstream bug. The only legitimate site is a
+    drafting provider at the moment of transcription, and every provider that meets one already refuses
+    correctly.
+  * *"Have the compiler reject the code by name."* Far larger than it sounds, and pointed the wrong way.
+    **No nucleotide grammar exists on any of the eleven `ref`/`alt`/`alts` columns across six models** —
+    `vocab.validate_allele` has exactly one user, `HaplotypeRow.allele`. Introducing one would reject
+    `<DEL>` and `N` alongside `Y`, i.e. tighten the very field **RM5** exists to widen. It is also
+    **Principle 3-illegal on the published line**: a module with `alts="Y"` *compiles today* under
+    `best_effort` (the locus is dropped with a warning), so a grammar would stop an existing module
+    validating. The first draft claimed such a module "is already broken by it" — checked, and false.
+
+  **What survived was small, and it shipped.** `hosting_verdict("C/T", "T", "Y")` returns a confident
+  **`False`**: a substitution locus has no spelling freedom, so a non-nucleotide alt reads as a positive
+  contradiction. The author was told *their genotype does not fit their own locus* — true of the cell,
+  false of the variant, and three steps from the actual mistake. A **diagnosis** defect rather than a
+  grammar one, so fixing it needed no decision about what `Y` means:
+  `alleles.non_nucleotide_reason`/`non_nucleotide_alleles` (format tier, the single definition
+  `cpic.unusable_allele_reason` now delegates to) classify the offending allele, and both "cannot host"
+  call sites say which of the two it is. Additive, digest-neutral, tightens nothing, orthogonal to RM5.
+  The verdict itself is untouched — `False` was never the wrong answer, only the wrong explanation.
+
+
 New ideas enter here as freeform suggestions, then graduate through the design cycle
 (feedback → USE_CASES lens → PROPOSAL → shipped or parked as an `RMn` above).
 
