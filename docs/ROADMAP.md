@@ -617,10 +617,16 @@ authored label. Writing the *updated* label into the artifact is not a one-time 
 identity would drift without any authored edit, and the round-trip would stop being a fixed point.
 
 So the rule is the one every other check here follows: **report, never repair.** Severity follows the
-mode, matching the VRS-unverifiable decision exactly — `best_effort` warns and compiles with the
-authored label (digest stable, round-trip intact), `strict` **refuses**, on the grounds that an
-all-or-nothing artifact should not be built on an identifier its own source has retired. Failing is the
-honest move because it pushes the fix to where it belongs: an authored edit.
+mode — `best_effort` warns and compiles with the authored label (digest stable, round-trip intact),
+`strict` **refuses**, on the grounds that an all-or-nothing artifact should not be built on an
+identifier its own source has retired. Failing is the honest move because it pushes the fix to where it
+belongs: an authored edit.
+
+That last clause is now load-bearing rather than rhetorical, and it is what qualifies this check for a
+mode ladder at all. This entry used to cite "the VRS-unverifiable decision" as its precedent; that
+decision was reversed in 0.5 for the half of it where **no authored edit could clear the finding** (an
+indel the compiler cannot recompute stays a warning in both modes), which is precisely the test this
+item passes and that one did not. An obsolete rsID is a cell a human can rewrite.
 
 Two refinements, both now settled by the 0.5 implementation:
 

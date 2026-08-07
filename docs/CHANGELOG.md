@@ -11,6 +11,60 @@ here so parallel work in the other repos isn't surprised. Newest first.
 and the label was relabelled to match. Keep it that way: a number here should answer "which published
 version introduced this", and a batch inside an unpublished release is not a version.
 
+## 2026-08-07 — the enricher minted identities its own compiler refused
+
+**`compile --strict` rejected two of the eleven reference examples, one of which documents that exact
+command as its point.** Found by the pre-release audit, running the *shipped wheels* against the corpus
+rather than the test suite: `pathogenic_clinvar` failed on 185 alleles and `shox_par1` on 2. Bisected to
+the per-ALT `vrs_id` change earlier the same day — regenerating that example's `resolution.csv` online
+took it from 52 identities (all offline-mintable substitutions) to 289 substitutions **plus 185 indels**,
+and `_verify_vrs_ids` escalated every unverifiable allele under `--strict`.
+
+**The severity was the defect, not the data.** Minting indel ids over the seqrepo proxy is exactly what
+`just-dna-enricher` exists to do, so the two tiers had been shipped disagreeing: the network tier
+produced identities the compile tier refused to carry, and the error's own two remedies were *recompile
+without strict* and *drop the vrs_id* — lower the guarantee, or delete a correct identity, the latter
+being the same abstention the per-ALT fix had just finished removing one file away. The blast radius was
+never only the examples: every ClinVar-derived module contains indels, and the authoring skill's step 6
+tells every author to run `validate --strict` then `compile --strict`.
+
+**`strict` means *reproducible artifact*, and an injected indel VA reproduces perfectly** — the bytes
+come from the table, the compile is deterministic, recompiling gives the same digest. What is out of
+reach here is the *verification*, not the reproduction, and escalating on that conflates "I could not
+check this" with "this cannot be rebuilt". Two sibling checks had already reasoned it out correctly and
+the pass beside them had not: `_vrs_coverage_warnings` warns in both modes because "an indel with no
+sequence proxy, a build with no refget table" is fixable by no authored edit, and `frequencies`'
+`not_covered` sits outside the strict gate for the same reason.
+
+So the outcome now splits on **whose limit the finding is**, which is the distinction that was missing:
+
+* **the tier's limit — warning in both modes.** Indel/MNV, off-assembly contig, non-GRCh38 build.
+  Nothing an author could write would let this compiler recompute them.
+* **the row contradicting itself — error in both modes** (it was strict-only). A `vrs_id` recorded
+  against no coordinate, or against no ALT: the row asserts an identity while withholding what that
+  identity is a digest of, so nothing anywhere could check it. Same class as *inconsistent reference
+  allele*.
+* **mismatch — error in both modes**, unchanged.
+
+`_verify_vrs_ids` now takes **no mode argument at all**, which is the honest signature: there is nothing
+left for it to switch on. Nothing moved — `artifact.digest`, `content_signature` and
+`resolution_signature` are byte-identical on all eleven examples, in both modes, since only severity and
+reporting changed.
+
+**Two things came out with it.** The warnings were **duplicated**, because the pass runs in
+`validate_spec` and again in `compile_module` and `all_warnings` is seeded from the first — harmless
+while these were strict-mode errors (which return early), and 370 lines for 185 alleles once they became
+warnings. De-duplicated on the message, the way `_check_contig_ploidy` and allele membership already
+were. And the corpus sweep gained a **strict pass** (`test_reference_example_compiles_under_strict`):
+every other check over `reference_examples/` ran in `best_effort`, which is the default an inline fixture
+reaches for, so a release's worth of examples could fail the command their own READMEs print with the
+suite green. 1303 tests → 1314.
+
+The general lesson, and it is the audit method rather than the bug: **a mode that no test exercises over
+the real corpus is a mode nobody is checking.** The suite had 1303 passing tests and a dedicated
+`validate`-agrees-with-`compile` file, and neither could see this, because both asked whether the two
+commands agreed — and they agreed perfectly, on refusing.
+
 ## 2026-08-07 — a locus spelled `T>Y`: the right verdict with the wrong explanation, and a third compile-only check
 
 **A non-nucleotide allele made the compiler blame the genotype.** `hosting_verdict("C/T", "T", "Y")`

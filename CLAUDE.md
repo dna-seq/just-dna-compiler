@@ -197,13 +197,30 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   repairs** — rewriting an authored value destroys the evidence of an upstream bug — and severity
   follows the mode (`best_effort` warns, `strict` refuses). Add new checks in that shape; see the table
   at the top of [ENRICHER.md](docs/ENRICHER.md).
-- **The compiler's VRS check has THREE outcomes, not two.** *verified* (silent), *mismatch*
-  (recomputed and different — **error in both modes**, since a substitution's id is deterministic here
-  so a difference can only be corruption), and *unverifiable* (**could not be recomputed at all** —
-  warning in `best_effort`, error in `strict`). An indel is **never** a "mismatch": this tier cannot
-  recompute one, so it can only report that it did not check, and saying otherwise would claim a
-  verdict never reached. Unverifiable covers indel/MNV, multi-allelic, position-only, no-coordinate,
-  off-assembly contig, and non-GRCh38 build. Full matrix in [COMPILER.md](docs/COMPILER.md).
+- **The compiler's VRS check has THREE outcomes, and NONE of them is a mode ladder.** *verified*
+  (silent), *mismatch* (recomputed and different — **error in both modes**, since a substitution's id
+  is deterministic here so a difference can only be corruption), and *unverifiable* (**could not be
+  recomputed at all**), whose severity comes from **whose limit it is** rather than from the mode:
+  - **the tier's limit → warning in both modes.** Indel/MNV, off-assembly contig, non-GRCh38 build.
+    This escalated under `strict` for one cycle and the consequence was that the enricher's own online
+    indel minting produced modules its own compiler refused — `pathogenic_clinvar` (185 alleles) and
+    `shox_par1` (2) stopped compiling in the mode their READMEs print, and the skill's step 6 tells
+    every author to run it. `strict` means *reproducible artifact*, and an injected indel VA
+    reproduces perfectly; only the **verification** is out of reach, which is a different claim.
+    Same rule as `_vrs_coverage_warnings` and `not_covered`: **a finding no authored edit could clear
+    is not a `strict` matter** (P5 — orthogonal axes stay orthogonal). The old error's own remedies
+    gave it away: *lower your guarantee*, or *delete a correct identity*.
+  - **the row's contradiction → error in both modes.** An id recorded against no coordinate or no ALT:
+    the row asserts an identity while withholding what that identity is a digest of, so nothing
+    anywhere could check it. Same class as *inconsistent reference allele*, catchable offline.
+
+  An indel is **never** a "mismatch": this tier cannot recompute one, so it can only report that it did
+  not check, and saying otherwise would claim a verdict never reached. Multi-allelic is not
+  unverifiable either — `vrs_id` is one id per ALT and each is checked alone. Full matrix in
+  [COMPILER.md](docs/COMPILER.md). Two mechanics that came with it: `_verify_vrs_ids` takes **no mode
+  argument** (there is nothing left for it to switch on), and because it runs in both `validate_spec`
+  and `compile_module`, its warnings are **de-duplicated on the message** the way ploidy's already
+  were — otherwise 185 alleles print 370 lines.
 - **`refget_accession` RAISES for a non-GRCh38 build** (it must — a caller asking for GRCh37 should
   hear "not built", not get a GRCh38 answer). Every call site therefore has to catch
   `UnsupportedBuildError`; one that didn't used to abort a whole compile over a single row.

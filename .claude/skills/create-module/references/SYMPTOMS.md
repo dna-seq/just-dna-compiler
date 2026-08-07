@@ -198,15 +198,19 @@ disagreement can only mean the stored id is wrong. Nothing to decide — delete 
 hand-built `resolution.csv`, a row copied between variants, or an id kept after the coordinate was
 edited.
 
-**`vrs_id ga4gh:VA.… could not be verified — …`** — a warning under `--best-effort`, an error under
-`--strict`
+**`vrs_id ga4gh:VA.… could not be verified — …`** — a warning in both modes
 Not the same claim as the one above: nothing was compared, so no verdict was reached. The compiler
-cannot recompute an id for an indel, an MNV, a position-only row, a row with no coordinate, an
-off-assembly contig, or a non-GRCh38 build — justifying those needs the reference sequence. A
-multi-allelic row is *not* in that list: `vrs_id` holds one id per ALT, comma-joined in the same order
-as `alts`, and each is checked on its own. Expected for an indel, and `--strict` refuses because it will
-not ship an identity it could not confirm: compile `--best-effort` (the id is carried, marked
-unverified), or drop the `vrs_id` if you would rather claim nothing.
+cannot recompute an id for an indel, an MNV, an off-assembly contig, or a non-GRCh38 build — justifying
+those needs the reference sequence, which this tier never fetches. **Nothing is wrong with your
+module**, and `--strict` does not refuse it: the id was minted upstream by the enricher, which does have
+sequence access, and it is carried and marked unverified. A multi-allelic row is *not* in that list:
+`vrs_id` holds one id per ALT, comma-joined in the same order as `alts`, and each is checked on its own.
+
+**`vrs_id … could not be verified — the row carries no coordinate` / `… against no ALT`** — an error in
+both modes
+The other half of the same message, and this one *is* about your data. An id is a digest of a place and
+an allele, so a row asserting one while recording neither cannot be checked by anything, ever. Re-run
+the enricher so the row resolves, or drop the `vrs_id` if the row is meant to stay unresolved.
 
 **`VRS allele identity covers 289/474 allele(s) … Anything keying on the VA sees only the covered
 fraction`** — a warning in both modes

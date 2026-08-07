@@ -349,23 +349,30 @@ def test_a_tampered_substitution_id_hard_fails_in_both_modes(tmp_path: Path) -> 
         assert any("does not match the id recomputed" in e for e in result.errors)
 
 
-def test_an_indel_id_warns_in_best_effort_and_fails_in_strict(tmp_path: Path) -> None:
-    """It cannot be recomputed without a sequence proxy, so severity follows the mode.
+def test_an_indel_id_warns_in_both_modes_and_is_never_duplicated(tmp_path: Path) -> None:
+    """An indel's id cannot be recomputed without a sequence proxy — a limit of this tier, not a defect.
 
-    best_effort carries it and says so; strict refuses to ship an identity it cannot confirm. Note the
-    wording the assertions pin: the finding is *unverifiable*, never a "mismatch" — nothing was
-    compared, so no verdict was reached.
+    So it warns in `best_effort` *and* in `strict`, which is the repair for a real regression: minting
+    indel ids online is what `just-dna-enricher` is for, and while this escalated under `--strict` the
+    enricher produced modules its own compiler refused. Two reference examples stopped compiling in the
+    mode their READMEs document. `strict` means *reproducible artifact* — these bytes are injected and
+    the compile is deterministic, so the artifact reproduces perfectly; only the verification is out of
+    reach, and the remedies the old error offered were to lower the guarantee or delete a correct id.
+
+    The assertions also pin the wording (*unverifiable*, never a "mismatch" — nothing was compared, so
+    no verdict was reached) and the count, because the pass runs twice: once in the `validate_spec`
+    pre-flight `compile_module` performs, once on its own resolved rows.
     """
     indel_id = "ga4gh:VA.LNB3XTeT4xdXxnKyg_RjJhLp5RnUlMpL"
     spec = _with_resolution(tmp_path, indel_id, ref="C", alts="CA")
 
-    lenient = compile_module(spec, tmp_path / "lenient", strict=False)
-    assert lenient.success
-    assert any("could not be verified" in w for w in lenient.warnings)
-
-    strict = compile_module(spec, tmp_path / "strict", strict=True)
-    assert not strict.success
-    assert any("cannot confirm" in e for e in strict.errors)
+    for strict in (False, True):
+        result = compile_module(spec, tmp_path / f"out_{strict}", strict=strict)
+        assert result.success, result.errors
+        unverifiable = [w for w in result.warnings if "could not be verified" in w]
+        assert len(unverifiable) == 1, unverifiable
+        assert "not a single-base substitution" in unverifiable[0]
+        assert "does not match" not in unverifiable[0]
 
 
 def test_rows_without_a_vrs_id_are_simply_not_checked(tmp_path: Path) -> None:
@@ -409,54 +416,64 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
 
 
 @pytest.mark.parametrize(
-    ("label", "row_kwargs", "best_effort", "strict"),
+    ("label", "row_kwargs", "outcome"),
     [
-        # (outcome in best_effort, outcome in strict): "pass" | "warn" | "error"
+        # "pass" | "warn" | "error" — and it is ONE column, not one per mode, which is the property
+        # this table now pins: severity here follows whose limit the finding is, never the mode.
         ("no vrs_id — nothing to check",
-         {"vrs_id": None}, "pass", "pass"),
+         {"vrs_id": None}, "pass"),
         ("correct substitution — verified",
-         {"vrs_id": _SICKLE}, "pass", "pass"),
+         {"vrs_id": _SICKLE}, "pass"),
         ("tampered substitution — deterministic, so corruption",
-         {"vrs_id": _WRONG_ALLELE}, "error", "error"),
+         {"vrs_id": _WRONG_ALLELE}, "error"),
+        # ---- the tier's own limits: warnings, in both modes -------------------------------------
+        # Each of these is unverifiable because *this compiler* cannot reach a reference sequence, and
+        # no edit an author could make to the module would change that. They used to be errors under
+        # `--strict`, which made the enricher's own online indel minting produce artifacts its own
+        # compiler refused (`pathogenic_clinvar`: 185 alleles; `shox_par1`: 2).
         ("indel — needs a sequence proxy, so unverifiable",
-         {"ref": "C", "alts": "CA", "vrs_id": _SICKLE}, "warn", "error"),
+         {"ref": "C", "alts": "CA", "vrs_id": _SICKLE}, "warn"),
+        ("off-assembly contig — no refget accession",
+         {"chrom": "GL000009.2", "start": 100, "vrs_id": _SICKLE}, "warn"),
+        ("position past the end of the contig",
+         {"chrom": "MT", "start": 999999, "vrs_id": _SICKLE}, "warn"),
+        ("non-GRCh38 build — no refget table (must not raise)",
+         {"genome_build": "GRCh37", "vrs_id": _SICKLE}, "warn"),
+        # ---- the row contradicting itself: errors, in both modes ---------------------------------
+        # Not a limit of this tier. The row asserts an identity while withholding the very thing that
+        # identity is a digest of, so nothing anywhere could ever check it.
+        ("position-only — an id recorded against no ALT",
+         {"alts": None, "vrs_id": _SICKLE}, "error"),
+        ("no coordinate — an id recorded against no place",
+         {"chrom": None, "start": None, "vrs_id": _SICKLE}, "error"),
         # A multi-allelic site is now verified allele by allele. It used to be a blanket
         # "unverifiable" on the grounds that a VA names one allele — true, and the reason `vrs_id` is
         # a parallel array of `alts` rather than a scalar; with the pair aligned there is nothing left
         # to be unsure about, and 909 of 1,613 rows in a real module stop being unverifiable.
         ("multi-allelic, every allele named — verified",
-         {"alts": "A,G", "vrs_id": f"{_SICKLE},{_SICKLE_G}"}, "pass", "pass"),
+         {"alts": "A,G", "vrs_id": f"{_SICKLE},{_SICKLE_G}"}, "pass"),
         ("multi-allelic with a hole — the named allele verifies, the hole is a non-event",
-         {"alts": "A,CA", "vrs_id": f"{_SICKLE},"}, "pass", "pass"),
+         {"alts": "A,CA", "vrs_id": f"{_SICKLE},"}, "pass"),
         ("multi-allelic, an id recorded against the indel member — unverifiable, not a mismatch",
-         {"alts": "A,CA", "vrs_id": f"{_SICKLE},{_MTHFR}"}, "warn", "error"),
+         {"alts": "A,CA", "vrs_id": f"{_SICKLE},{_MTHFR}"}, "warn"),
         ("multi-allelic, right length and wrong order — the desync the count check cannot see",
-         {"alts": "A,G", "vrs_id": f"{_SICKLE_G},{_SICKLE}"}, "error", "error"),
-        ("position-only — no ALT to name",
-         {"alts": None, "vrs_id": _SICKLE}, "warn", "error"),
-        ("no coordinate — nothing to recompute from",
-         {"chrom": None, "start": None, "vrs_id": _SICKLE}, "warn", "error"),
-        ("off-assembly contig — no refget accession",
-         {"chrom": "GL000009.2", "start": 100, "vrs_id": _SICKLE}, "warn", "error"),
-        ("position past the end of the contig",
-         {"chrom": "MT", "start": 999999, "vrs_id": _SICKLE}, "warn", "error"),
-        ("non-GRCh38 build — no refget table (must not raise)",
-         {"genome_build": "GRCh37", "vrs_id": _SICKLE}, "warn", "error"),
+         {"alts": "A,G", "vrs_id": f"{_SICKLE_G},{_SICKLE}"}, "error"),
     ],
 )
-def test_vrs_verify_matrix(label: str, row_kwargs: dict, best_effort: str, strict: str) -> None:
+def test_vrs_verify_matrix(label: str, row_kwargs: dict, outcome: str) -> None:
     """Three outcomes, never conflated: verified / mismatch / **unverifiable**.
 
-    The distinction the table encodes is that an indel is *never* reported as a mismatch — this tier
-    cannot recompute one, so it can only say it did not check. `strict` refuses such a row because
-    "unchecked" and "correct" are different things; `best_effort` carries it and says so.
+    Two distinctions the table encodes. An indel is *never* reported as a mismatch — this tier cannot
+    recompute one, so it can only say it did not check. And an unverifiable allele's severity comes
+    from **whose limit** it is, not from the mode: the tier's own limits warn, a row that records an id
+    against no ALT or no coordinate is an error. Both are mode-independent, which is why the expectation
+    is a single column and the assertion runs it under both.
     """
     from just_dna_compiler.compiler import _verify_vrs_ids
 
-    for mode, expected in (("best_effort", best_effort), ("strict", strict)):
-        errors, warnings = _verify_vrs_ids([_res_row(**row_kwargs)], strict=(mode == "strict"))
-        actual = "error" if errors else ("warn" if warnings else "pass")
-        assert actual == expected, f"{label} in {mode}: expected {expected}, got {actual}"
+    errors, warnings = _verify_vrs_ids([_res_row(**row_kwargs)])
+    actual = "error" if errors else ("warn" if warnings else "pass")
+    assert actual == outcome, f"{label}: expected {outcome}, got {actual}"
 
 
 def test_vrs_coverage_counts_alleles_and_groups_the_gaps_by_reason() -> None:
@@ -540,9 +557,7 @@ def test_unverifiable_never_reported_as_a_mismatch() -> None:
     """Wording matters here: claiming a mismatch would assert a verdict that was never reached."""
     from just_dna_compiler.compiler import _verify_vrs_ids
 
-    _errors, warnings = _verify_vrs_ids(
-        [_res_row(ref="C", alts="CA", vrs_id=_SICKLE)], strict=False
-    )
+    _errors, warnings = _verify_vrs_ids([_res_row(ref="C", alts="CA", vrs_id=_SICKLE)])
     assert "could not be verified" in warnings[0]
     assert "does not match" not in warnings[0]
 

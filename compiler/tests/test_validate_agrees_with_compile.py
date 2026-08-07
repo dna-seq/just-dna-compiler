@@ -277,22 +277,32 @@ def test_an_agreeing_p_value_pair_is_silent(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("strict", [False, True])
-def test_the_mode_changes_severity_and_never_the_finding_set(tmp_path: Path, strict: bool) -> None:
-    """`strict` is a severity dial, not a second set of rules. An indel's id cannot be recomputed in
-    this tier — justifying one needs the reference sequence — so it is *unverifiable*, the ladder's
-    other rung, and the same sentence must appear either way: in `warnings` at `best_effort` and in
-    `errors` at `strict`. The wording is pinned too, because "could not be verified" and "does not
-    match" are different claims and only one of them was reached."""
+def test_an_unverifiable_indel_reads_the_same_in_both_modes_and_both_commands(
+    tmp_path: Path, strict: bool
+) -> None:
+    """`strict` is a severity dial over findings the mode is *about* — and this one it is not about.
+
+    An indel's id cannot be recomputed in this tier: justifying one needs the reference sequence, which
+    the compiler has no access to and will never fetch. That is a limit of the tier, unfixable by any
+    edit to the module, so it warns on every rung — and it must read identically from `validate` and
+    from `compile`, which is what this file exists to guarantee. It used to escalate under `--strict`,
+    and the consequence was that the enricher's own online indel minting produced modules the compiler
+    refused; the mode-ladder findings this file pins elsewhere (`p_value_num`, allele membership) are
+    the ones where an author really can act on the report.
+
+    The wording is pinned too, because "could not be verified" and "does not match" are different
+    claims and only one of them was reached.
+    """
     indel = "ga4gh:VA.LNB3XTeT4xdXxnKyg_RjJhLp5RnUlMpL"  # a real VA, for a 1 bp insertion
     spec = _spec(
         tmp_path,
         resolution__csv=_RESOLUTION_HEADER
         + f"{_HBS},rs334,11,5227002,C,CA,GRCh38,0,{indel},2.0,clinvar,resolved\n",
     )
+    assert _agree(spec, tmp_path / f"out_{strict}", strict=strict) == (True, True)
+
     result = validate_spec(spec, strict=strict)
-    channel = result.errors if strict else result.warnings
-    assert result.valid is not strict
-    assert any("could not be verified" in m for m in channel), (result.errors, result.warnings)
+    assert any("could not be verified" in w for w in result.warnings), result.warnings
     assert not any("does not match" in m for m in result.errors + result.warnings)
 
 

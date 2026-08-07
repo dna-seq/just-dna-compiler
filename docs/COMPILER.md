@@ -155,7 +155,7 @@ covers what.
 |---|---|---|
 | **Is a single-sourced number right?** An AC/AN, a pLI, a `clin_sig` — one source, no redundancy to exploit. A transcription error is indistinguishable from a correct value. | Nothing to check it against without fetching (Principle 2). | Records `dataset` (which release) and `source` (which link) so the number is *attributable*, and fact-hashes it so it cannot change unnoticed. |
 | **Is the reference base right?** A wrong single-base `ref` mints the *correct* VA, so the artifact is self-consistent and wrong. | The compiler holds no sequence. | The **enricher** checks it (`sequences.verify_reference_alleles`); the compiler catches only two rows *contradicting each other*. |
-| **Is an indel's `vrs_id` right?** Cannot be recomputed without justification against the sequence. | Same. | Reported as *unverifiable* (never as verified); `strict` refuses it. |
+| **Is an indel's `vrs_id` right?** Cannot be recomputed without justification against the sequence. | Same. | Reported as *unverifiable* (never as verified), and carried with that said out loud — a warning in **both** modes, since no authored edit could clear it. |
 | **Is the coordinate the variant the author meant?** A perfectly valid VA for the wrong locus is indistinguishable from the right one. | Requires knowing intent. | `provenance.json`, `authorship`, and the studies table make the claim auditable by a human. |
 | **Is the annotation medically correct?** Whether `A/T at HBB → sickle-cell carrier` is *true*. | Out of scope by charter — the format supplies annotation tables and never a gene–disease inference. | `authorship.kind` lets a consumer route scrutiny (AI vs human-certified); `curator`/`method` record who decided. |
 | **Does the cited study support the row?** `pmid` is grammar-checked; nobody reads the paper. | Requires the literature. | **Partly closed by the enricher (0.5).** Its literature pass confirms the PMID resolves, cross-fills the DOI/PMCID, and matches `provenance_quote`/`provenance_regex` against fulltext — for the **open-access subset only**, with coverage reported as a fraction so an unread paper is never mistaken for a failed quote. The compiler still reads nothing; it surfaces the recorded verdict from `literature.csv`. |
@@ -260,7 +260,11 @@ is the point of the whole design, and conflating them would be a lie about what 
 |---|---|---|---|
 | **verified** | recomputed, and equal | silent | silent |
 | **mismatch** | recomputed, and **different** | **error** | **error** |
-| **unverifiable** | **could not be recomputed at all** | **warning** | **error** |
+| **unverifiable**, the *tier's* limit | could not be recomputed **here**, and no edit would change that | **warning** | **warning** |
+| **unverifiable**, the *row's* contradiction | an id recorded against nothing to check it with | **error** | **error** |
+
+Note what the mode column does here: **nothing**. This pass is not a mode ladder. Severity comes from
+*whose limit the finding is*, and both answers are the same on both rungs.
 
 **A mismatch is always fatal, in both modes.** A substitution's id is fully deterministic here — same
 inputs, same 20 lines of `hashlib`, same answer — so a disagreement cannot be a difference of opinion
@@ -268,10 +272,31 @@ between implementations. It is corruption, and there is no mode in which carryin
 
 **An indel is never reported as a mismatch, because it is never compared.** This tier cannot recompute
 an indel's id (justification needs the reference sequence), so it can only report that it *did not
-check*. Saying "mismatch" would assert a verdict that was never reached. `strict` refuses such a row
-because *unchecked* and *correct* are different things and its contract is a reproducible artifact;
-`best_effort` carries it and says so out loud. Warnings land in `manifest.compilation.warnings`, so an
-unconfirmed identity is visible to a consumer rather than only to whoever ran the compile.
+check*. Saying "mismatch" would assert a verdict that was never reached. Warnings land in
+`manifest.compilation.warnings`, so an unconfirmed identity is visible to a consumer rather than only
+to whoever ran the compile.
+
+**Why the tier's own limits do not escalate under `strict`.** They did, for one release cycle, on the
+reasoning that *unchecked* and *correct* are different things and `strict`'s contract is a reproducible
+artifact. The first half is true and is why the outcome exists at all; the second half does not follow.
+An enricher-minted indel VA **is** reproducible — the bytes are injected, the compile is deterministic,
+and recompiling yields the same digest. What is out of reach is the *verification*, not the
+reproduction, and escalating on that conflates "I could not check this" with "this cannot be rebuilt".
+
+The cost was concrete rather than theoretical. Minting indel ids online is exactly what
+`just-dna-enricher` exists to do, so every ClinVar-derived module acquired identities that
+`compile --strict` then refused, and the two remedies the error offered were *lower your guarantee* or
+*delete a correct identity*. Two reference examples — `pathogenic_clinvar` (185 alleles) and
+`shox_par1` (2) — stopped compiling in the mode their own READMEs document, and the authoring skill's
+step 6 tells every author to run exactly that mode. The rule now matches the one
+`_vrs_coverage_warnings` and `frequencies`' `not_covered` already followed: **a finding no authored
+edit could clear is not a `strict` matter** — `strict` is orthogonal, and P5 says orthogonal axes stay
+orthogonal.
+
+**What still errors, and in both modes, is the row contradicting itself**: a `vrs_id` recorded against
+no coordinate, or against no ALT. That is not a limit of this tier — the row asserts an identity while
+withholding the very thing that identity is a digest of, so nothing anywhere could check it. Same class
+as the *inconsistent reference allele* error, and catchable offline.
 
 #### Every flow path
 
@@ -280,18 +305,18 @@ unconfirmed identity is visible to a consumer rather than only to whoever ran th
 gets its own verdict; an empty member is a hole and reads exactly like an empty cell. The four reasons
 are limits of a no-network tier, not defects in the row:
 
-| Row | Path | `best_effort` | `strict` |
-|---|---|---|---|
-| no `vrs_id`, or a hole in one | nothing to check — **not** the same as "could not check" | silent | silent |
-| substitution, id agrees | verified | silent | silent |
-| substitution, id differs | **mismatch** | error | error |
-| multi-allelic, every member agrees | verified allele by allele | silent | silent |
-| multi-allelic, members swapped | **mismatch** — the desync a length check cannot see | error | error |
-| indel / MNV (`C>CA`) | needs the reference sequence — minted upstream, not recomputable here | warning | error |
-| position-only (no `alts`) | no ALT to name | warning | error |
-| no coordinate | nothing to recompute from (an rsid row carrying an external id) | warning | error |
-| off-assembly contig, or a position past the contig end | no refget accession to address the sequence by | warning | error |
-| non-GRCh38 `genome_build` | no refget table for that build (RM15) | warning | error |
+| Row | Path | Both modes |
+|---|---|---|
+| no `vrs_id`, or a hole in one | nothing to check — **not** the same as "could not check" | silent |
+| substitution, id agrees | verified | silent |
+| substitution, id differs | **mismatch** | error |
+| multi-allelic, every member agrees | verified allele by allele | silent |
+| multi-allelic, members swapped | **mismatch** — the desync a length check cannot see | error |
+| indel / MNV (`C>CA`) | needs the reference sequence — minted upstream, not recomputable here | warning |
+| off-assembly contig, or a position past the contig end | no refget accession to address the sequence by | warning |
+| non-GRCh38 `genome_build` | no refget table for that build (RM15) | warning |
+| position-only (no `alts`) | an id against no ALT — the **row's** contradiction, not the tier's | error |
+| no coordinate | an id against no place (an rsid row carrying an external id) | error |
 
 Multi-allelic used to be one row of this table, blanket-unverifiable, "a VA names exactly one allele;
 picking one would invent data". The premise is `derive_variant_key`'s and it is right there — a
@@ -315,7 +340,7 @@ The last row is a fixed bug worth naming: `refget_accession` **raises** `Unsuppo
 than returning `None` — deliberately, so a caller asking for GRCh37 hears "not built yet" instead of
 receiving a GRCh38-flavoured answer. That exception used to escape the verify pass and abort the whole
 compile over a single unverifiable row. It is now caught and turned into a reason, which is the correct
-severity: one row this tier cannot check should not fail a `best_effort` build.
+severity: one row this tier cannot check should not fail a build in either mode.
 
 
 ### The inconsistent-reference-allele check (0.5)

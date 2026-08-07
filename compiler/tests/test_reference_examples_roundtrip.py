@@ -99,6 +99,32 @@ def test_reference_example_declared_build_survives(spec: Path, tmp_path: Path) -
     assert compile_module(tmp_path / "rev", tmp_path / "a2").manifest.genome_build == build
 
 
+@pytest.mark.parametrize("spec", _specs(), ids=lambda p: p.name)
+def test_reference_example_compiles_under_strict(spec: Path, tmp_path: Path) -> None:
+    """The mode the READMEs and the authoring skill's step 6 actually tell an author to use.
+
+    Every check above runs in `best_effort`, which is the default and therefore the one an inline
+    fixture reaches for — and that is how a whole release's worth of examples came to fail the command
+    their own documentation prints. `reference_examples/pathogenic_clinvar/README.md` says "it compiles
+    under `--strict`, which is the point" and gives the line twice; regenerating its `resolution.csv`
+    online added 185 enricher-minted indel identities, `_verify_vrs_ids` escalated every one of them
+    under `strict`, and nothing noticed because no test in the suite passed `strict=True` over the
+    corpus. `shox_par1` went the same way, for two alleles.
+
+    So this is not a duplicate of the idempotency sweep with a flag flipped. It is the assertion that
+    the corpus still satisfies the *documented* contract, and it is the one that fails when a severity
+    decision quietly makes the strictest mode unreachable for real modules.
+
+    `validate` is asserted alongside, in the same mode, because the skill puts it immediately before
+    the compile as a pre-flight — a green pre-flight that precedes a refusal is its own defect.
+    """
+    pre_flight = validate_spec(spec, strict=True)
+    assert pre_flight.valid, pre_flight.errors
+
+    result = compile_module(spec, tmp_path / "strict", strict=True)
+    assert result.success, result.errors
+
+
 def test_the_corpus_covers_more_than_one_build() -> None:
     """The sweep above only has teeth if the corpus is not uniform.
 

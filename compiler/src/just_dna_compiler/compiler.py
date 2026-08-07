@@ -931,10 +931,11 @@ def _check_p_value_num(
     return errors, warnings_out
 
 
-def _verify_vrs_ids(
-    resolution_rows: list[ResolutionRow], *, strict: bool
-) -> tuple[list[str], list[str]]:
+def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], list[str]]:
     """Recompute every stored `vrs_id` and report disagreements. Returns (errors, warnings).
+
+    Takes no `mode`: every outcome below is the same in `best_effort` and `strict`, which is the point
+    of the split. It was a mode ladder until the severity was rethought — see the *unverifiable* bullet.
 
     The integrity check the whole minting story earns: a `ga4gh:VA.…` is *content-addressed*, so it is
     the one column in the whole artifact that can be checked against itself with no reference, no
@@ -949,12 +950,29 @@ def _verify_vrs_ids(
     - **mismatch** — recomputed and *different*. Always an **error**, in both modes: this computation
       is fully deterministic here, so a disagreement can only mean the stored id is corrupt.
     - **unverifiable** — could not be recomputed at all (see `_recompute_vrs_id` for the four reasons).
-      **Warning** in `best_effort`, **error** in `strict`.
+      Severity follows **whose limit it is**, not the mode alone: `_BLAME_ROW` is an **error** in both
+      modes, `_BLAME_TIER` is a **warning** in both.
 
     The third case is emphatically *not* "an indel mismatch". This tier cannot recompute an indel's id,
     so it can never detect that one disagrees — it can only report that it did not check. Calling that
-    a mismatch would claim a verdict that was never reached; `strict` refuses such a row precisely
-    because "unchecked" and "correct" are different things, and its contract is a reproducible artifact.
+    a mismatch would claim a verdict that was never reached.
+
+    **Why the tier's own limits do not escalate under `strict`, though they used to.** `strict` means
+    *reproducible artifact*, and an enricher-minted indel VA is perfectly reproducible: the bytes are
+    injected, the compile is deterministic, and recompiling yields the same digest. What is impossible
+    here is the *verification*, not the reproduction — and escalating on that conflates "I could not
+    check this" with "this cannot be rebuilt". The cost was not hypothetical: minting indel ids online
+    is exactly what `just-dna-enricher` is for, so every ClinVar-derived module acquired ids that
+    `compile --strict` then refused, and the two remedies the message offered were *lower your
+    guarantee* or *delete a correct identity* — the second being the same abstention the per-ALT fix had
+    just finished removing one file away. Two reference examples (`pathogenic_clinvar`, `shox_par1`)
+    stopped compiling in the mode their own README documents. The rule this now follows is the one
+    `_vrs_coverage_warnings` and `frequencies`' `not_covered` already followed: **a finding no authored
+    edit could clear is not a `strict` matter.**
+
+    `_BLAME_ROW` keeps the error, in *both* modes rather than only `strict`. A row asserting a `vrs_id`
+    while carrying no coordinate or no ALT is not a limit of this tier — it is a table contradicting
+    itself, catchable offline, and it is the same class as the "inconsistent reference allele" error.
 
     A row with no `vrs_id` is skipped entirely — there is nothing to check, which is not the same as
     something that could not be checked. The same goes for a **hole** in a multi-allelic cell: `vrs_id`
@@ -977,13 +995,14 @@ def _verify_vrs_ids(
                 continue
             alt = alts[index] if index < len(alts) else None
             where = f"{row.variant_key} allele {alt}" if len(stored) > 1 else str(row.variant_key)
-            recomputed, reason = _recompute_vrs_id(row, alt)
+            recomputed, reason, blame = _recompute_vrs_id(row, alt)
             if recomputed is None:
                 message = f"{where}: vrs_id {vrs_id} could not be verified — {reason}"
-                if strict:
+                if blame == _BLAME_ROW:
                     errors.append(
-                        f"{message}. A strict compile will not carry an identity it cannot confirm; "
-                        f"recompile without strict to keep it as a warning, or drop the vrs_id."
+                        f"{message}. An id recorded against nothing to check it with is a "
+                        f"contradiction in the table, not a limit of this tier: resolve the row, or "
+                        f"drop the vrs_id."
                     )
                 else:
                     warnings_out.append(f"{message}; carried unverified.")
@@ -1084,50 +1103,68 @@ def _vrs_coverage_warnings(resolution_rows: list[ResolutionRow]) -> list[str]:
     return findings
 
 
-def _recompute_vrs_id(row: ResolutionRow, alt: str | None) -> tuple[str | None, str | None]:
-    """`(recomputed_id, reason_it_could_not_be)` for ONE allele — exactly one of the two is non-`None`.
+#: Whose limit made an allele unverifiable — the classification `_verify_vrs_ids` takes its severity
+#: from. `TIER` is *this compiler cannot do it, and no edit to the module would change that*; `ROW` is
+#: *the row does not carry what a check needs*, which a producer can fix. See `_recompute_vrs_id`.
+_BLAME_TIER = "tier"
+_BLAME_ROW = "row"
 
-    The four reasons an allele is unverifiable here, each a genuine limit of a no-network tier rather
-    than a defect in the row:
 
-    1. **no coordinate** — nothing to recompute from (an unresolved rsid row carrying an external id);
-    2. **no ALT** — a position-only row, so there is no allele to name. This used to also cover
-       *multi-allelic*, on the reasoning that "picking one from a comma-joined cell would be inventing
-       data". Nothing is picked now: `vrs_id` is positionally aligned with `alts`, so the caller walks
-       the pair and asks about allele *i* — and a multi-allelic site of substitutions verifies as
-       completely as a bi-allelic one;
+def _recompute_vrs_id(
+    row: ResolutionRow, alt: str | None
+) -> tuple[str | None, str | None, str | None]:
+    """`(recomputed_id, reason, blame)` for ONE allele — either the id is set, or the other two are.
+
+    The four reasons an allele is unverifiable here, split by **whose limit each one is**, because that
+    is what decides severity upstream (`_BLAME_TIER` / `_BLAME_ROW`):
+
+    1. **no coordinate** — nothing to recompute from (an unresolved rsid row carrying an external id).
+       `_BLAME_ROW`: the row asserts an identity while withholding the coordinate that identity is a
+       digest of, so nothing can ever check it — an internal contradiction, catchable offline;
+    2. **no ALT** — a position-only row, so there is no allele to name. `_BLAME_ROW`, same shape: a VA
+       names exactly one allele and the row names none. This used to also cover *multi-allelic*, on the
+       reasoning that "picking one from a comma-joined cell would be inventing data". Nothing is picked
+       now: `vrs_id` is positionally aligned with `alts`, so the caller walks the pair and asks about
+       allele *i* — and a multi-allelic site of substitutions verifies as completely as a bi-allelic one;
     3. **not a single-base substitution** — an indel or MNV must be justified against the reference
-       sequence, which this tier has no access to and will never fetch (Principle 2);
+       sequence, which this tier has no access to and will never fetch (Principle 2). `_BLAME_TIER`;
     4. **outside the primary assembly, or a build with no refget table** — no accession to address the
-       sequence by. The build case is *raised* by `refget_accession` rather than returned, deliberately
-       (a caller asking for GRCh37 should hear "not built" rather than get a GRCh38-flavoured answer),
-       so it is caught here and turned into a reason. Letting it propagate would abort the whole
-       compile over one unverifiable row, which is the wrong severity for `best_effort`.
+       sequence by. `_BLAME_TIER` for both. The build case is *raised* by `refget_accession` rather than
+       returned, deliberately (a caller asking for GRCh37 should hear "not built" rather than get a
+       GRCh38-flavoured answer), so it is caught here and turned into a reason. Letting it propagate
+       would abort the whole compile over one unverifiable row, which is the wrong severity for
+       `best_effort`.
     """
     if row.chrom is None or row.start is None:
-        return None, "the row carries no coordinate to recompute from"
+        return None, "the row carries no coordinate to recompute from", _BLAME_ROW
     if not alt:
-        return None, (
+        return (
+            None,
             "the row records an id against no ALT (a position-only row), and a VRS allele id "
-            "names exactly one allele"
+            "names exactly one allele",
+            _BLAME_ROW,
         )
     if not is_substitution(row.ref, alt):
-        return None, (
+        return (
+            None,
             f"{row.ref}>{alt} is not a single-base substitution, so justifying it needs the reference "
-            f"sequence — minted upstream by the enricher, not recomputable here"
+            f"sequence — minted upstream by the enricher, not recomputable here",
+            _BLAME_TIER,
         )
     try:
         recomputed = derive_vrs_allele_id(
             row.chrom, row.start, row.ref, alt, build=row.genome_build
         )
     except UnsupportedBuildError as exc:
-        return None, str(exc)
+        return None, str(exc), _BLAME_TIER
     if recomputed is None:
-        return None, (
+        return (
+            None,
             f"{row.chrom}:{row.start} is outside the primary assembly (no refget accession for the "
-            f"contig, or the position is past its end)"
+            f"contig, or the position is past its end)",
+            _BLAME_TIER,
         )
-    return recomputed, None
+    return recomputed, None, None
 
 
 #: The reference star allele. Defined by carrying **none** of a gene's variants, so it can never
@@ -1572,7 +1609,7 @@ def validate_spec(
             # `validate` reported `valid` for a module a plain `compile` then refused as corrupt.
             # Gated on `not injected_errors` for the same reason `compile_module` is — a row that
             # failed to load cannot be re-derived from.
-            vrs_errors, vrs_warnings = _verify_vrs_ids(injected_rows, strict=strict)
+            vrs_errors, vrs_warnings = _verify_vrs_ids(injected_rows)
             all_errors.extend(vrs_errors)
             all_warnings.extend(vrs_warnings)
             # Coverage rides along for the same reason: counting absent ids reads injected bytes and
@@ -1870,11 +1907,19 @@ def compile_module(
             resolution_table.setdefault(row.variant_key, []).append(row)
         # Content-addressed identities are checkable against themselves — do it before anything is
         # written, so a tampered id never reaches an artifact. Dep-free (stdlib), see `_verify_vrs_ids`.
-        vrs_errors, vrs_warnings = _verify_vrs_ids(resolution_rows, strict=strict)
-        all_warnings.extend(vrs_warnings)
+        # De-duplicated on the message, the same way ploidy and allele-membership are: `validate_spec`
+        # ran this pass over the same injected rows and `all_warnings` was seeded from its result, so
+        # every finding is already in the list once. Harmless while these were strict-mode *errors*
+        # (which return early) and merely untidy for the coverage line (one per module); now that an
+        # unverifiable allele warns in every mode it is one duplicated line per allele, and
+        # `pathogenic_clinvar` alone would print 185 of them twice.
+        vrs_errors, vrs_warnings = _verify_vrs_ids(resolution_rows)
+        all_warnings.extend(w for w in vrs_warnings if w not in all_warnings)
         if vrs_errors:
             return CompilationResult(success=False, errors=vrs_errors, warnings=all_warnings)
-        all_warnings.extend(_vrs_coverage_warnings(resolution_rows))
+        all_warnings.extend(
+            w for w in _vrs_coverage_warnings(resolution_rows) if w not in all_warnings
+        )
         vrs_alleles, vrs_identified, _gaps = _vrs_coverage(resolution_rows)
 
     # Do the alleles the module *states* exist at the loci it points at? Runs here, on the AUTHORED
