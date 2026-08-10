@@ -26,10 +26,12 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from just_dna_format.manifest import GenePanelSpec
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.clinvar import lookup_clin_sig
+from just_dna_enricher.locations import read_release
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +115,52 @@ def _effect_allele(variant: VariantRow, ref: str, alts: list[str]) -> str | None
     if len(non_reference) == 1 and non_reference[0] in {a.upper() for a in alts}:
         return non_reference[0]
     return None
+
+
+def tautology_reason(panel: GenePanelSpec | None, reference: Path | None) -> str | None:
+    """Why this check cannot fail on this module, or `None` when it genuinely can (S4).
+
+    A module drafted by `clinvar_draft` copied its `clin_sig` **out of the snapshot this check reads**,
+    so the comparison is a value against itself: on a 7,818-row panel a consumer measured 27.1 s with
+    the check on and 2.6 s with it off, byte-identical output, and 0 conflicts either way — necessarily
+    0. Reporting "0 conflicts" there is mild misinformation, since it looks like evidence and is not,
+    and the cost is real: 90% of the resolve time on a panel, ~83 s per batch on a genome-wide one.
+
+    The check itself is one of the best things in this tier wherever a **human** typed the value, so
+    the default does not change; what was missing was any way for a provider-drafted module to say
+    "this came from you". `GenePanelSpec.reference` / `reference_sha256` (RM4) is exactly that
+    declaration, and `release.json` is the snapshot's own answer to the same question, so the two are
+    compared and nothing is inferred.
+
+    Three-valued in the usual way: a module with no `panel:` block, a panel over another source, an
+    unstated pin, an unreadable `release.json`, or a **different** release all return `None` and the
+    check runs. Only an *established* match skips it — an unknown is never a permission to skip.
+    """
+    if panel is None or reference is None or (panel.source or "").strip().lower() != "clinvar":
+        return None
+    release = read_release(reference)
+    if not release:
+        return None
+    # Both halves must be declared and both must agree. The digest is the strong half — a release date
+    # is a label, a sha256 is the bytes — but a panel that pins only the date still says something the
+    # snapshot can confirm, so either pin alone is accepted when the other is unstated on both sides.
+    pins = (
+        ("release", (panel.reference or "").strip(), str(release.get("clinvar_file_date") or "")),
+        ("sha256", _bare_digest(panel.reference_sha256), str(release.get("source_sha256") or "")),
+    )
+    stated = [(name, authored, actual) for name, authored, actual in pins if authored and actual]
+    if not stated or any(authored != actual for _, authored, actual in stated):
+        return None
+    matched = ", ".join(f"{name} {authored}" for name, authored, _ in stated)
+    return (
+        f"this module declares it was drafted from the very snapshot the check reads ({matched}), so "
+        f"every authored clin_sig is a copy of the value it would be compared against"
+    )
+
+
+def _bare_digest(value: str | None) -> str:
+    """`sha256:abc…` and `abc…` are the same pin; `release.json` records the bare form."""
+    return (value or "").strip().removeprefix("sha256:")
 
 
 def verify_clin_sig(

@@ -1876,8 +1876,11 @@ def compile_module(
         spec_dir: Path to the module spec directory.
         output_dir: Directory for output parquet files + manifest.json.
         compression: Parquet compression codec.
-        resolve_with_ensembl: Master switch for resolution. With a `resolution.csv` present it drives
-            the preferred, source-independent table path; `ensembl_cache` is the deprecated fallback.
+        resolve_with_ensembl: Master switch for resolution — of **every** kind, despite the name.
+            With a `resolution.csv` present it drives the preferred, source-independent table path;
+            `ensembl_cache` is the deprecated fallback. Setting it False with a `resolution.csv`
+            present disables that table too, and warns, because the compile then succeeds with no
+            resolved position on any row.
         ensembl_cache: **Deprecated (removed at 1.0).** Path to a prebuilt Ensembl DuckDB or parquet
             cache dir. In-compiler DuckDB resolution has moved to `just-dna-enricher`; when given, this
             emits a `DeprecationWarning` and routes to the enricher (which must be installed). Prefer
@@ -1994,6 +1997,20 @@ def compile_module(
     resolution_mode: str | None = None
     resolution_sources: list[str] = []
     resolution_sig: str | None = None
+    # The flag reads as "do not use Ensembl", and since 0.5 made the compiler inject-only that is
+    # exactly what a consumer migrating to `resolution.csv` expects it to mean. It is actually the
+    # master switch for resolution *of any kind*, so turning it off with a complete, correct table
+    # sitting beside the spec compiles **successfully** with `chrom=None` on every weight row — rows
+    # that can never match a VCF. A silent success is the worst shape a mistake can take, so the
+    # combination that cannot be intended says so. (Renaming it is a 1.0 conversation: the parameter
+    # is part of a published signature.)
+    if not resolve_with_ensembl and resolution_table:
+        all_warnings.append(
+            "--no-resolve (resolve_with_ensembl=False) switches off resolution entirely, including "
+            "the injected resolution.csv beside this spec — every variant will compile with no "
+            "chrom/start and match no VCF. The flag names Ensembl but is the master switch; drop it "
+            "to use the injected table (no reference and no network are involved either way)."
+        )
     if resolve_with_ensembl and variants:
         resolution_mode = "strict" if strict else "best_effort"
         resolve_warnings: list[str] = []

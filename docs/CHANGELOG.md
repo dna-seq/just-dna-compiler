@@ -27,6 +27,186 @@ content is [RM38](ROADMAP.md#rm38--a-cache-for-every-gated-source-the-hosted-enr
 licence-gated sources, so a hosted enricher stops fetching them live per request. This does **not**
 reopen the paragraph above: that one is about labelling a batch inside an *unpublished* release, which
 0.5.1 is not — 0.5.0 shipped, so 0.5.1 is a real next number rather than a name for work in progress.
+**0.5.2 follows the same rule** and stretches it by one package: its ClinVar-drafting, query-shape and
+cache-location work is enricher-only, and the one compiler change (a warning when
+`resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
+signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
+
+## 2026-08-10 — `just-dna-enricher` + `just-dna-compiler` 0.5.2: the quirks a panel-scale consumer hit
+
+Everything in this cut came from `just-dna-lite` rebuilding all ten `just-dna-seq` modules on the 0.5
+route (S3–S6 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md), plus five freeform items). None of
+it touches a model, a parquet column or a manifest field, which is what makes it patch-legal inside the
+closed digest window — **verified rather than assumed**: all eleven `reference_examples/` modules
+recompile to byte-identical `artifact.digest`, `content_signature` and `resolution_signature`, compared
+against `HEAD` in a detached worktree. `just-dna-format` stays at 0.5.0.
+
+**A batch lookup has to hash its probe, and that is why a gene panel never finished (S3).** DuckDB
+cannot fold a disjunction of equality *conjunctions* into a hash probe, so
+`WHERE (chrom=? AND start=? AND ref=? AND alt=?) OR …` was evaluated against every row of the
+reference and the cost grew with `alleles × rows`. The consumer's 297-gene panel ran two hours at 12%
+CPU with no disk I/O — which reads like a deadlock and was one large expression tree — and only became
+buildable by slicing `variants.csv` into 10,000-row batches to cap the quadratic term. Measured here on
+the 4,431,781-record snapshot, 5,000 alleles, same connection, identical output: **88 s → 0.21 s**.
+`clinvar.lookup_clin_sig` and `resolver._lookup_rsid_candidates` now join a temp probe table
+(`resolver.probe_table`); `clinvar.select_by_gene` is single-column and became `gene IN (…)` — 20.9 s →
+6.6 s, because `IN` is pushed into the parquet reader and an OR-chain is not. `_lookup_positions_by_rsid`
+and `citations_for` already used `IN` and were left alone.
+
+Two findings inside that one worth keeping. **The join was never the cost — parameter binding was.**
+Same query, same data: literal `VALUES` 0.21 s, a composite-key `IN (?, …)` 1.04 s, a parameterized
+`UNNEST(?::VARCHAR[])` 3.51 s, `executemany` 8.6 s. So the probe rows are rendered as escaped SQL
+literals (the way `_connect` already renders the parquet path) and parameterizing it back would give up
+most of the win. And the **first** benchmark was misleading: a sample taken with `LIMIT 5000` is
+clustered on one contig, where row-group statistics prune the OR-chain and the speed-up reads as ~1×.
+The realistic shape is alleles spread across the genome. `test_query_shapes.py` pins both halves — the
+query *plan* must contain a hash join (no clock involved), and both shapes are timed in one process so
+a slow runner moves both numbers together.
+
+**A check that cannot fail is not run, and the run says so (S4).** Where a module declares it was
+drafted from the very ClinVar snapshot the `clin_sig` cross-check reads, every authored value is a copy
+of what it would be compared against: 27.1 s against 2.6 s on a 7,818-row panel, byte-identical output,
+and 0 conflicts either way — *necessarily* 0. The zero was the defect rather than the cost, because it
+looks like evidence. `clinical.tautology_reason` compares the module's `panel:` pin
+(`GenePanelSpec.reference`/`reference_sha256`) against the snapshot's `release.json`
+(`clinvar_file_date`/`source_sha256`) and skips only on an **established match**; no `panel:` block, a
+panel over another source, an unstated pin, a different release or an unreadable `release.json` all
+leave the check running, because an unknown is never a permission to skip. The reason travels on
+`EnrichmentResult.clin_sig_not_checked` (`not_requested` / `no_snapshot` / the tautology sentence /
+`None`), since an empty conflict list otherwise says two opposite things. `locations.read_release` is the
+first reader of `release.json` outside `cache status` — it was written by every builder and consulted by
+nothing.
+
+**A placeholder that protects a decision nobody has to make (S6).** `draft_gene_panel` left `genotype`
+as `<<REPLACE>>` on every row, including the mitochondrial genome (haploid) and chrY outside PAR1/PAR2
+(hemizygous), where exactly one genotype is expressible — so every consumer independently rediscovered
+that the natural "write both zygosities" fill is wrong there, and one wrote `A/G` and `A/A` across 264
+mitochondrial loci in a genome-wide panel and 260 in a cardiac one, each asserting a second copy that is
+not there. `sole_expressible_genotype` now writes the ALT where the contig leaves nothing open, keeping
+the stub everywhere else; Y is decided **per locus** through the three-valued
+`vrs.in_pseudoautosomal_region` (`XG` and `SPRY3` straddle a boundary), and both `True` and `None` keep
+the placeholder. The run reports what it committed to in one aggregated line — those rows read as
+homoplasmic/hemizygous, and a heteroplasmic *level* belongs in `heteroplasmy.csv`. Row counts do not
+change: the doubling the consumer saw is their own `fill_genotypes` step, which now has no placeholder
+to expand.
+
+**The chrY half of that report was checked and does not reproduce**, which is why nothing in the
+compiler moved: a real `SRY` row (`rs104894976`, Y:2787207, genotype `A/G`) enriched from the snapshot
+and compiled produces the ploidy warning exactly as MT does. The consumer's own note has since been
+corrected the same way; what they were seeing was their output truncating the tail.
+
+**One bad citation used to kill a 297-gene draft.** ClinVar files 218 of 3,952,341 `PubMed` rows under
+an id that is not a PMID (Variation 12606 cites `168335863`, nine digits; PubMed is at eight), so
+`StudyRow` refused it — correctly — as an unhandled `ValidationError` in the middle of drafting.
+`clinvar_build.build_citations` now drops them at the snapshot boundary using the format's own
+`extract_pmids` grammar rather than a restated regex, and `_study_rows` skips-and-counts anyway, because
+every snapshot already published carries them. The two shortfalls are reported apart: `--max-citations`
+is a choice this run made, an unusable id is a defect in the source.
+
+**One ordering bug, three bug reports.** `_resolve_parquet_cache` calls `load_env()` inside itself, but
+every `resolve_*_reference` passed `default_*_cache_dir()` as an *argument* — evaluated first. With the
+cache base set only in `.env`, the **first** resolve in a process therefore computed its default from
+platformdirs and returned `None`, while every later one was correct. That produced `cache pull` writing
+into `~/.cache` while `cache status` looked in the configured directory and reported *absent* moments
+after a successful pull, `draft-panel --offline` refusing with "no ClinVar snapshot found" for a
+snapshot `cache status` called present, and a test module whose first skip-guard silently skipped.
+`_cache_dir` now loads the environment itself: one load, six resolvers, both CLI paths.
+`test_locations.py` runs in a subprocess and demonstrates the old asymmetry rather than asserting about
+it — in-process it would neither reproduce nor stay isolated, since `load_env` mutates `os.environ` for
+the whole session.
+
+**`compile_module(resolve_with_ensembl=False)` now says what it just did.** The flag names Ensembl and
+is the master switch for resolution of every kind, so turning it off with a complete `resolution.csv`
+beside the spec compiled **successfully** with `chrom=None` on every weight row — rows that can never
+match a VCF. The silent success is the defect; the combination now warns. The rename the report also
+suggested is a published-signature change and stays a 1.0 item.
+
+**Documentation, from the same batch (S5).** COMPILER.md's coverage table split the `direction` row so
+each tick names its tier, and § Upgrade derivation now states outright that `weights.parquet` carries
+the **authored** value only, that an empty column on a legacy module is correct, and that a
+parquet-side consumer applies `derive.direction_from_state(state, weight)` itself. The compiler does not
+and should not fill it: `state='significant'` carries no direction, so the derivation refines one from
+the weight sign — sound as a reader's fallback, a fabricated fact in a published table. Whether an
+artifact should ever carry the derived axes is a 1.0 question and is parked as such.
+
+**Consciously not done:** one DuckDB connection per `enrich()` run. At 0.07 s a connect it is not where
+the time goes, and threading one connection through three call sites is a refactor with its own risk.
+
+## 2026-08-09 (later) — consumer note: `just-dna-lite` rebuilt all ten modules on the 0.5 route
+
+Recorded from the consumer side, per the working agreement. **Nothing is being requested here**; five
+findings that belong to this tree are filed as freeform items at the end of
+[ROADMAP.md](ROADMAP.md#freeform-suggestions--the-06-idea-book) (the `clinvar_draft` citation crash,
+`cache pull` writing where `resolve_*` does not look, the first-resolve-in-a-process ordering,
+`draft-panel --offline`, and the `resolve_with_ensembl=False` naming trap).
+
+**What the consumer built.** The six curated Generation-I ports moved off
+`compile_module(ensembl_cache=…)` onto `just-dna-enricher enrich` → `resolution.csv` → inject-only
+compile, and gained `literature.csv`. The three ClinVar modules (`cardio`, `cancer`, `pathogenic`) were
+**rebuilt rather than re-ported** — the old route scanned the raw ClinVar VCF and baked coordinates;
+the new one drives `clinvar_draft.draft_gene_panel` over the published snapshot, so variants are
+authored by identity, carry a typed `clin_sig`, sit above a stated review-status floor, and are grounded
+on ClinVar's own per-variant literature links instead of one blanket citation of the resource paper.
+`module_spec.yaml` carries a `panel:` block pinning `clinvar_file_date` + `source_sha256`. A tenth
+module, `pharmgkb`, is new: the ClinPGx clinical annotations at evidence 1A/1B/2A/2B, which is the first
+`pharm_variants.csv` module outside this tree's reference examples.
+
+**Two things the reference examples do not show, which a second implementor will hit.**
+
+1. **A drafted panel needs a zygosity decision per row, and at panel scale it cannot be per row.**
+   `draft_gene_panel` leaves `genotype` as `<<REPLACE>>` for good reasons, and `_genotype_worklist`
+   reports the alleles rather than writing them — right for a curated module, but `cardio` is 57,696
+   records. The consumer expands each stub into **both zygosities a diploid caller can emit** (`ref/alt`
+   and `alt/alt`) and says so in the conclusion, which is a transcription of zygosity rather than a claim
+   about its consequence, and matches what the Generation-I modules did. Worth a sentence in the panel
+   docs either way, since "what do I do with 57k placeholders" is the first question the command raises.
+2. **The licence cross-check compares spellings, not grants.** A ClinVar panel that declares
+   `license: CC0-1.0` warns, because the `SourceRow` says `public-domain`; they are the same grant. Not
+   asking for an equivalence table — the warning is explicitly "not adjudicated here" — just noting that
+   the obvious SPDX id for a US-government work is the one that trips it.
+
+**The registry's `/check` endpoint earned its keep.** `POST /api/v1/modules/{ns}/{name}/check` graded
+`longevitymap` **invalid** where the local best-effort compile passed: four rows whose genotype is not
+among the locus's resolved alleles (`rs699 A/T` and `T/T` against `A/G`; `rs1207362 C/C` against `G/T`;
+`rs2107538 A/A` against `C/T`). That is Generation-I curation following a paper's strand rather than the
+reference's, and it is *not* a reverse-complement away — `rs699`'s authored pair mixes one forward-strand
+allele with one reverse-strand one, so no transformation recovers it. The consumer drops such rows
+(named in its log) because a genotype whose alleles are not at the locus can never match a VCF; the
+repair is curation against the original papers. Four rows in one module, found by a check that costs
+nothing — the strict/best-effort split is doing exactly what it was designed to do.
+
+## 2026-08-09 — consumer note: `just-dna-lite` is on the 0.5 line
+
+Recorded from the consumer side, per the working agreement — no change is being requested here.
+`just-dna-lite` now pins `just-dna-format>=0.5.0`, `just-dna-compiler>=0.5.1`,
+`just-dna-enricher>=0.5.1`. Two import sites had to move, and neither is greppable from its old name:
+
+- `RSID_PATTERN` from `just_dna_format.spec` to `.vocab`. `ALLELE_PATTERN` is still re-exported from
+  `spec`, which makes the pair look inconsistent from outside — worth a line in the 0.5 notes if
+  other consumers hit it.
+- `just_dna_compiler.resolver` to `just_dna_enricher.resolver`. Same `resolve_variants` signature and
+  `EnsemblReferenceError`, so it was a one-line change once located.
+
+**Round-trip audit of all five published modules** (`just-dna-seq/annotators`: longevitymap,
+lipidmetabolism, vo2max, superhuman, coronary), download -> `reverse_module` -> `validate_spec` ->
+`compile_module` -> diff. All five reverse, validate and recompile **cleanly**, and no column is ever
+dropped. The deltas, for anyone sizing the same migration:
+
+- `weights` 19-20 -> 37 columns; `annotations` 5 -> 8; `studies` 7 -> 19.
+- `weights` and `studies` row counts unchanged for every module. `annotations` grows only where a
+  variant carries multiple genotypes, now keyed by `variant_key` instead of collapsed per rsID:
+  lipidmetabolism 15 -> 41, vo2max 13 -> 28, coronary 27 -> 77; superhuman and longevitymap unchanged.
+
+So republishing under 0.5 is a rebuild, not a data repair — worth knowing before someone budgets it
+as the latter. Full write-up in `just-dna-lite/docs/MODULE_FORMAT_0_5_MIGRATION.md`.
+
+**One thing that cost time and might be worth a docs line upstream:** `compile_module` called without
+`ensembl_cache=` returns `success=True` with `chrom=None` rather than warning that resolution was
+skipped. Combined with an Ensembl cache that is merely *incomplete*, the failure is silent in the same
+way — variants on missing chromosomes come back unresolved and the module still compiles. We hit both
+at once and it read as a resolver bug for a while. The deprecation notice pointing at
+`just-dna-enricher enrich` -> `resolution.csv` is clear, and we will migrate off `ensembl_cache=`
+before 1.0.
 
 ## 2026-08-07 — `just-dna-enricher` / `just-dna-compiler` 0.5.1: the hosted tier
 

@@ -176,7 +176,19 @@ makes the panel compilable, since a variant row needs grounding evidence.
 job to report, not drafting's to fix. Re-run per gene as the module grows; `--dry-run` first.
 
 **Read the warnings. They are the interesting output**: skipped rows, aggregated counts, and the allele
-pairs you need for step 3.
+pairs you need for step 3. Two you will see on a real ClinVar panel and should not chase: *"N row(s) on
+non-diploid contigs were written with a single-allele genotype"* is the provider filling a cell where
+nothing was open to decide (those rows read as homoplasmic/hemizygous; a heteroplasmic *level* is a
+different question and belongs in `heteroplasmy.csv`), and *"N ClinVar citation(s) skipped: the id
+ClinVar filed under PubMed is not a PMID"* is a defect in the source, not in your module — a few hundred
+of ClinVar's citation ids are nine digits where a PMID is eight. Both are counted rather than listed.
+
+**Pin the release you drafted from.** If you write a `panel:` block naming the source and the snapshot
+(`reference`, `reference_sha256` — the snapshot's `release.json` carries `clinvar_file_date` and
+`source_sha256`), `enrich` recognises that its ClinVar cross-check would be comparing your `clin_sig`
+against the file it came out of, skips it, and says so instead of reporting a zero it could not have
+avoided. Leave the block out and the check runs as usual, which is what you want the moment a human has
+touched those calls.
 
 ## 3 — Curate what only a human can decide
 
@@ -184,7 +196,7 @@ Nothing automated fills these, on purpose:
 
 | Cell | Why it is yours |
 |---|---|
-| `genotype` | Sources publish **alleles, not genotypes**. Whether one copy is informative follows from the condition's inheritance mode. Write it from the allele pair the draft reported. |
+| `genotype` | Sources publish **alleles, not genotypes**. Whether one copy is informative follows from the condition's inheritance mode. Write it from the allele pair the draft reported. **Except on a non-diploid contig**, where only one genotype is expressible and `draft-panel` therefore writes it for you: MT always, chrY outside the pseudoautosomal regions. Those rows arrive complete, and the draft says so in one line. |
 | `state` (when stubbed) | The record is `uncertain_significance` or otherwise undecided, and no vocabulary member means "undecided" — `neutral` says benign, `risk` says a direction. If you can justify neither, drop the row rather than pick one to make the compile pass. |
 | `weight`, `direction`, `effect_size` | Your model of the finding. ClinVar publishes no effect statistic. |
 | `trait_efo_id` | A source's condition is free text / MedGen. Mapping it to an ontology is inference. |
@@ -339,6 +351,11 @@ each row before hashing and the two spellings are one content. Writing a shared 
 - **Identity is filled whole or not at all** — the rsID, else the complete `chrom`/`start`/`ref`/`alts`.
   A lone `alts` on a position-only row changes *which variant the row is*: it makes the key a VRS
   `ga4gh:VA.…` id instead of `chrom:start:ref`.
+- **An rsID row's `variant_key` stays the rsID — VRS ids are not the key.** The key is the rsID when
+  you wrote one, the `ga4gh:VA.…` id only for a coordinate-authored substitution, and the coordinate
+  otherwise. Enrichment never re-keys a row. The VRS ids you are looking for are in `resolution.csv`'s
+  `vrs_id`, **one per ALT, positionally aligned with `alts`** — an empty member there is a site whose
+  id could not be minted (an indel offline), not a hole to fill by hand.
 - **A genotype is `C/C`, not `CC`.** `CC` parses as a single two-base allele. Sources (ClinPGx) write
   the unslashed form; disambiguate using the resolved ref/alt.
 - **Off GRCh38, expect less and say so.** rsIDs resolve against GRCh38 only, so a `genome_build:
@@ -358,6 +375,15 @@ each row before hashing and the two spellings are one content. Writing a shared 
 - **`direction` is not a magnitude.** Its members are the same axis as `state`
   (`neutral`/`protective`/`risk`/`unknown`), not `increase`/`decrease`. Ask
   `just-dna-compiler describe variants.csv` before writing any vocabulary cell from intuition.
+- **`direction` is authored or it is empty — nothing computes it for you.** `state` is the required
+  legacy axis and `direction`/`stat_significance`/`clin_sig` are the orthogonal ones that replaced it;
+  the compiler copies whatever you wrote into the artifact and never fills a blank from `state`, since
+  that would be asserting a claim you did not make (`state='significant'` names no direction at all).
+  So a module that carries only `state` compiles fine and ships an empty `direction` column, and a
+  consumer keying on `direction` sees nothing. If you want the newer axis read, write it — on every row
+  it applies to, not on some. Reading back: `VariantRow.effective_direction` returns the authored value
+  else the `state`-derived fallback, and `just_dna_format.derive.direction_from_state(state, weight)` is
+  that fallback as a plain function, for a consumer working from the parquet rather than the models.
 
 ## The checks, and the two ways to defeat them by accident
 

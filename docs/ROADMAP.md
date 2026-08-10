@@ -19,9 +19,14 @@ to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package. `schema_version` stays
 `"1.0"`.
 
-**Shipped since: `just-dna-enricher` + `just-dna-compiler` 0.5.1** — [RM38](ROADMAP_HISTORY.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher)
+**Shipped since: `just-dna-enricher` + `just-dna-compiler` 0.5.1 and 0.5.2** — 0.5.1 was
+[RM38](ROADMAP_HISTORY.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher)
 (a cache for every licence-gated source, so a hosted enricher never reaches one live per request) plus
-[RM39–RM42](PROPOSAL_0_5_1.md) from a consumer field report. The three packages version independently, so
+[RM39–RM42](PROPOSAL_0_5_1.md) from a consumer field report; **0.5.2** is the panel-scale batch behind
+S3–S6 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) — the quadratic DuckDB probe that stopped a
+gene panel finishing, a `clin_sig` cross-check that no longer reports a structurally guaranteed zero, a
+drafted genotype on the contigs where only one is expressible, and the `.env`-ordering bug behind three
+separate "the cache is right there" reports (see [CHANGELOG.md](CHANGELOG.md)). The three packages version independently, so
 the network tier took a patch while `just-dna-format` stayed at 0.5.0; RM41 is the one item that also
 touches the compiler, which is why that package moved too. None of it touches a parquet, a model or a
 manifest field — which is what made a patch legal inside the closed digest window, and why none of it is
@@ -785,6 +790,27 @@ coord-keyed rows as position-only). A strict failure is the nudge toward the dri
   call sites say which of the two it is. Additive, digest-neutral, tightens nothing, orthogonal to RM5.
   The verdict itself is untouched — `False` was never the wrong answer, only the wrong explanation.
 
+
+- **What an artifact should carry of the 0.3 axes — the residue of the `direction` report, and a 1.0
+  question.** The documentation half shipped in 0.5.2: COMPILER.md's coverage row now names the tier
+  each tick belongs to, and § Upgrade derivation says outright that `weights.parquet` carries the
+  **authored** `direction` only, that an empty one on a legacy module is correct, and that a
+  parquet-side consumer applies `derive.direction_from_state(state, weight)` itself. What is not
+  settled is whether the artifact should ever carry the derived axes at all. It cannot be a patch
+  either way: filling the column moves every compiled module's parquet bytes, and the digest window
+  closed when 0.5.0 published. The candidate repairs and why each is wrong today —
+  *populate at compile* asserts an axis no curator wrote (`state='significant'` has no direction, so
+  one gets invented from the weight sign), *trim `state` to a derived mirror on load* is `upgraded()`,
+  which belongs to the publisher's `needs_upgrade` flow rather than to the compiler, and `state` stays
+  required under P8 regardless. Note for whoever picks it up: there is no numbered `RMn` for the 0.3
+  orthogonal-axes work — it shipped in 0.3 and is tracked only in COMPILER.md, which is part of why
+  this gap sat unattended. Reported as S5 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md).
+
+- **Rename the compiler's resolution master switch.** `compile_module(resolve_with_ensembl=False)`
+  now *warns* when an injected `resolution.csv` is present and being ignored (0.5.2), which closes the
+  silent-success half. The name is still wrong — it says Ensembl and means resolution of every kind —
+  and a rename is a published-signature change, so `resolve` / `resolution=off|table|cache` is a 1.0
+  item rather than a patch.
 
 New ideas enter here as freeform suggestions, then graduate through the design cycle
 (feedback → USE_CASES lens → PROPOSAL → shipped or parked as an `RMn` above).

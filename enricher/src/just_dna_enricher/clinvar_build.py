@@ -27,6 +27,7 @@ from pathlib import Path
 
 import httpx
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.spec import extract_pmids
 from just_dna_format.vocab import VALID_CLIN_SIG
 
 from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
@@ -328,6 +329,9 @@ class CitationsResult:
     row_count: int
     source_sha256: str | None = None
     release_updated: bool = False
+    #: Rows ClinVar filed under `PubMed` whose id is not a PMID, dropped rather than stored. Reported
+    #: because a silent drop reads as "this is everything ClinVar links", which it is not.
+    unusable_citations: int = 0
 
 
 def build_citations(
@@ -371,7 +375,7 @@ def build_citations(
             f"unexpected var_citations.txt columns: {frame.columns}. Refusing rather than guessing — "
             f"a silently mis-parsed citations table would ground module rows in the wrong papers."
         )
-    kept = (
+    published = (
         frame.filter(pl.col(source) == "PubMed")
         .select(
             pl.col(variation).cast(pl.Utf8).alias("variation_id"),
@@ -380,6 +384,22 @@ def build_citations(
         .unique()
         .sort(["variation_id", "pmid"])
     )
+    # ClinVar files a handful of ids under `PubMed` that are not PMIDs — 218 of 3,952,341 rows in the
+    # 2026-06-27 file, all nine digits (Variation 12606 cites `168335863`; PubMed is at eight). The
+    # grammar is the format's own, not a second opinion restated here, so a future widening of
+    # `StudyRow.pmid` reaches this filter too. They are dropped rather than stored, because a citation
+    # nothing can key on grounds a module row in a paper nobody can look up — and because a snapshot
+    # that carries one turns into an unhandled `ValidationError` in the middle of drafting a panel,
+    # which is how this was found (one bad row killed a 297-gene draft).
+    kept = published.filter(
+        pl.col("pmid").map_elements(lambda v: bool(extract_pmids(v or "")), return_dtype=pl.Boolean)
+    )
+    unusable = published.height - kept.height
+    if unusable:
+        logger.warning(
+            "Dropped %d citation(s) filed under PubMed whose id is not a PMID (kept %d).",
+            unusable, kept.height,
+        )
     target = Path(out_dir) / CITATIONS_DIRNAME
     target.mkdir(parents=True, exist_ok=True)
     kept.write_parquet(target / "citations.parquet")
@@ -400,7 +420,10 @@ def build_citations(
             "builder_version": _builder_version(),
         },
     )
-    return CitationsResult(row_count=kept.height, source_sha256=digest, release_updated=updated)
+    return CitationsResult(
+        row_count=kept.height, source_sha256=digest, release_updated=updated,
+        unusable_citations=unusable,
+    )
 
 
 def _sha256_file(path: Path) -> str | None:

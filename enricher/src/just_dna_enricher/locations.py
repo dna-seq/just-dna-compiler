@@ -16,11 +16,15 @@ This module **never downloads**: if no cache is present, resolution returns ``No
 resolver skips with a warning. Provisioning the reference is the deployment's job.
 """
 
+import json
+import logging
 import os
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 from platformdirs import user_cache_dir
+
+logger = logging.getLogger(__name__)
 
 APPNAME: str = "just-dna-pipelines"
 
@@ -96,6 +100,26 @@ CPIC_SUBDIR: str = "cpic"
 PHARMVAR_SUBDIR: str = "pharmvar"
 
 
+def read_release(reference: Path) -> dict | None:
+    """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
+
+    Sixth party to the layout agreement above, and the first *reader* of it outside `cache status`:
+    the file was written by every builder and consulted by nothing, so a caller who needed to know
+    which release a local snapshot is could only guess. `None` is the honest answer for both absence
+    and corruption — a caller must not be able to mistake "this snapshot does not say" for a release
+    id, so callers branch on `None` rather than on a default (the tri-state rule).
+    """
+    path = Path(reference) / RELEASE_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Could not read %s (%s); treating the release as unstated.", path, exc)
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def load_env(override: bool = False) -> str | None:
     """Load the nearest `.env` (walking up from CWD), so cache paths can be set there.
     Returns the loaded path, or None."""
@@ -150,7 +174,21 @@ def _cache_dir(subdir: str) -> Path:
     Every snapshot shares one base so a single just-dna-lite deployment's cache serves all of them.
     Read at call time rather than at import, because a `.env` loaded by `load_env` has to be able to
     change the answer.
+
+    **It loads the `.env` itself, and that is the fix for a whole family of "the cache is right there"
+    reports.** `_resolve_parquet_cache` calls `load_env()` inside itself, but each `resolve_*_reference`
+    passes `default_*_cache_dir()` as an *argument* — evaluated before the call, therefore before the
+    environment is loaded. So with the base set only in `.env`, the **first** resolve in a process
+    computed its default from platformdirs and returned `None`, while every later one was correct
+    (the environment was loaded by then). That asymmetry is nearly invisible and produced three
+    separate bug reports: `cache pull` writing into `~/.cache` while `cache status` looked in the
+    configured directory and reported *absent* right after a successful pull, `draft-panel --offline`
+    refusing with "no ClinVar snapshot found" for a snapshot `cache status` called present, and a test
+    module whose first skip-guard silently skipped. Loading here fixes all six resolvers and both CLI
+    paths at once, because this is the one function all of them go through. `override=False`, so a
+    real environment variable — and a test's deliberately empty one — still wins.
     """
+    load_env()
     base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
     root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
     return root / subdir

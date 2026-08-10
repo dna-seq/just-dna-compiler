@@ -175,6 +175,12 @@ p-value pair, and whether every genotype and `effect_allele` names an allele its
 What still only appears at compile is anything computed from *resolved* rows — the expansion and hosting
 findings above — because resolution has not run when `validate` does.
 
+**`--no-resolve switches off resolution entirely, including the injected resolution.csv`**
+You passed `--no-resolve` (or `resolve_with_ensembl=False`) with a `resolution.csv` beside the spec. The
+flag reads as "do not use Ensembl" and is actually the master switch for resolution of *every* kind, so
+the compile succeeds and writes a module whose every row has no `chrom`/`start` — rows no VCF can match.
+Drop the flag: consuming an injected table involves no reference and no network either way.
+
 **`allele(s) C are not among the authored alleles at this locus (T/Y) — the genotype is not the problem:
 'Y' is an IUPAC ambiguity code`** — a warning under `--best-effort`, an error under `--strict`
 The genotype is fine; one cell of `ref`/`alts` is not a nucleotide. Two cases, and the message says which:
@@ -310,6 +316,38 @@ also works `--offline`.
 
 **A note saying a gene is listed and `acmg_sf` is blank**
 Informational, never a defect, and `--strict` does not escalate it. Blank is a legitimate answer.
+
+**`clin_sig cross-check not run: this module declares it was drafted from the very snapshot the check
+reads`**
+Working as intended, and more honest than the alternative. Your `panel:` block pins the release the
+rows were drafted from, and it is the release the check would compare them against — so every value
+would be matched with its own source and the answer would be zero conflicts whatever the data said. A
+guaranteed zero looks like evidence without being any. The moment a human edits those calls, drop or
+change the pin and the check runs again. `--no-verify-clinsig` is the manual switch and reports
+`not_requested`.
+
+**`clin_sig cross-check not run: no ClinVar snapshot this run`**
+Different sentence, different meaning: nothing was compared because there was nothing to compare
+against. Provision a snapshot (`just-dna-enricher cache pull --only clinvar`) or pass
+`--clinvar-cache`. An unasked question is never a passed check.
+
+**`N ClinVar citation(s) skipped: the id ClinVar filed under PubMed is not a PMID`**
+A defect in the source, not in your module, and nothing to fix by hand: a few hundred of ClinVar's
+citation ids are nine digits where a PMID is eight. They are counted rather than listed, and the
+remaining citations for the same variant are drafted normally. Rebuilding the snapshot from a current
+`clinvar citations` drops them at the source. Reported apart from the `--max-citations` line, which is
+about a cap you chose.
+
+**`N row(s) on non-diploid contigs were written with a single-allele genotype`**
+Not a warning about a mistake — it is the provider telling you which cells it filled. MT is haploid and
+chrY outside the pseudoautosomal regions is hemizygous, so exactly one genotype is expressible and
+nothing was pre-empted. Those rows read as homoplasmic/hemizygous; if you mean a heteroplasmic
+*fraction*, that is `heteroplasmy.csv`, not a second allele here. A chrY row *inside* PAR1/PAR2 keeps
+its placeholder, because there the locus really is diploid.
+
+**`chrom=MT is not diploid here — use a single-allele genotype`**
+You (or a tool of your own) wrote `A/G` where only one copy exists. Write the single allele. The same
+message covers chrY outside PAR1/PAR2; inside them a pair is correct and no warning is emitted.
 
 **`clin_sig` differs from ClinVar's** and `--strict` did not fail
 Deliberate. Two opinions differing is not a factual error, and ClinVar is not truth — a curator who has

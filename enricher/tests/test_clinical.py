@@ -8,12 +8,15 @@ clinical calls. A cross-check keyed on rsID would report a module that is simply
 allele-exactness is not a refinement, it is the difference between a useful check and a noisy one.
 """
 
+import json
+import shutil
 from pathlib import Path
 
 import pytest
 from just_dna_enricher.clinical import verify_clin_sig
 from just_dna_enricher.clinvar_build import build_snapshot
 from just_dna_enricher.enrich import enrich
+from just_dna_enricher.locations import RELEASE_FILENAME
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
@@ -184,6 +187,112 @@ def test_the_check_is_skipped_when_no_snapshot_is_provisioned(tmp_path: Path) ->
     """A check that could not run is not a check that passed; it returns nothing and says so."""
     variant = _variant("benign", "A/T")
     assert verify_clin_sig([variant], _resolution(variant), reference=None) == []
+
+
+# ── S4: a module drafted from this very snapshot cannot fail this check ─────────────────────────
+
+
+def _release(snapshot: Path) -> dict:
+    return json.loads((snapshot / RELEASE_FILENAME).read_text(encoding="utf-8"))
+
+
+def _panel_spec(d: Path, clin_sig: str, genotype: str, panel: str) -> Path:
+    """`_spec` plus an authored `panel:` block — the RM4 declaration this skip keys on."""
+    spec = _spec(d, clin_sig, genotype)
+    (d / "module_spec.yaml").write_text(_YAML + panel, encoding="utf-8")
+    return spec
+
+
+def test_the_check_is_skipped_when_the_module_was_drafted_from_this_release(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """The pin matches the snapshot, so every authored `clin_sig` is a copy of what it is compared to.
+
+    Without the skip this reports a confident "0 conflicts" that no data could have made non-zero —
+    which reads as evidence and is not. The conflicting call is deliberately left in place: it proves
+    the check really was skipped rather than merely finding nothing.
+    """
+    release = _release(snapshot)
+    spec = _panel_spec(
+        tmp_path / "pinned", "benign", "A/T",
+        f"panel:\n  source: clinvar\n  reference: '{release['clinvar_file_date']}'\n"
+        f"  reference_sha256: 'sha256:{release['source_sha256']}'\n",
+    )
+    result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+
+    assert result.clin_sig_conflicts == []
+    assert "drafted from the very snapshot" in (result.clin_sig_not_checked or "")
+    # Same module without the declaration: the check runs and finds the disagreement.
+    unpinned = enrich(
+        _spec(tmp_path / "unpinned", "benign", "A/T"),
+        offline=True, clinvar_cache=snapshot, use_gnomad=False,
+    )
+    assert len(unpinned.clin_sig_conflicts) == 1
+    assert unpinned.clin_sig_not_checked is None
+
+
+def test_a_pin_on_another_release_still_runs_the_check(snapshot: Path, tmp_path: Path) -> None:
+    """A different release is not this one, so the comparison is real again — and one byte is enough."""
+    release = _release(snapshot)
+    spec = _panel_spec(
+        tmp_path / "stale", "benign", "A/T",
+        f"panel:\n  source: clinvar\n  reference: '{release['clinvar_file_date']}'\n"
+        f"  reference_sha256: 'sha256:{'0' + release['source_sha256'][1:]}'\n",
+    )
+    result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+
+    assert len(result.clin_sig_conflicts) == 1
+    assert result.clin_sig_not_checked is None
+
+
+@pytest.mark.parametrize(
+    "panel",
+    [
+        # No pin at all — a panel that declares its source and nothing else establishes nothing.
+        "panel:\n  source: clinvar\n",
+        # A panel over some other reference: this snapshot is not what it was drafted from.
+        "panel:\n  source: pharmvar\n  reference: '2026-06-27'\n",
+    ],
+)
+def test_an_unestablished_pin_is_not_permission_to_skip(
+    snapshot: Path, tmp_path: Path, panel: str
+) -> None:
+    """The tri-state rule: only a match skips. Absence and mismatch both mean "check it"."""
+    spec = _panel_spec(tmp_path / str(abs(hash(panel))), "benign", "A/T", panel)
+    result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+
+    assert result.clin_sig_not_checked is None
+    assert len(result.clin_sig_conflicts) == 1
+
+
+def test_a_release_the_snapshot_cannot_state_does_not_skip(snapshot: Path, tmp_path: Path) -> None:
+    """An unreadable `release.json` is an unknown, and an unknown never authorizes skipping."""
+    release = _release(snapshot)
+    copy = tmp_path / "unreadable"
+    shutil.copytree(snapshot, copy)
+    (copy / RELEASE_FILENAME).write_text("{not json at all", encoding="utf-8")
+    spec = _panel_spec(
+        tmp_path / "pinned-unreadable", "benign", "A/T",
+        f"panel:\n  source: clinvar\n  reference: '{release['clinvar_file_date']}'\n",
+    )
+    result = enrich(spec, offline=True, clinvar_cache=copy, use_gnomad=False)
+
+    assert result.clin_sig_not_checked is None
+    assert len(result.clin_sig_conflicts) == 1
+
+
+def test_not_running_the_check_is_distinguishable_from_running_it(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """An empty conflict list means two opposite things, so the reason travels beside it."""
+    spec = _spec(tmp_path / "off", "pathogenic", "A/T")
+    off = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False, verify_clinsig=False)
+    on = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    none = enrich(spec, offline=True, clinvar_cache=tmp_path / "nothing-here", use_gnomad=False)
+
+    assert (off.clin_sig_conflicts, off.clin_sig_not_checked) == ([], "not_requested")
+    assert (on.clin_sig_conflicts, on.clin_sig_not_checked) == ([], None)
+    assert (none.clin_sig_conflicts, none.clin_sig_not_checked) == ([], "no_snapshot")
 
 
 def test_an_unusable_snapshot_degrades_instead_of_raising(tmp_path: Path) -> None:

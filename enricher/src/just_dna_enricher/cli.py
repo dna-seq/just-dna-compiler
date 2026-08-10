@@ -177,6 +177,16 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         # contradicting a fact. An opposed call still deserves the author's attention.
         label = "clin_sig conflict" if conflict.opposed else "clin_sig differs"
         typer.secho(f"  {label}: {conflict}", fg=typer.colors.YELLOW, err=True)
+    # Say when the check did not run. Silence here reads as "checked, all clear" — which is the one
+    # thing it must never mean (S4). `not_requested` is the author's own `--no-verify-clinsig` and
+    # needs no echo back.
+    if result.clin_sig_not_checked and result.clin_sig_not_checked != "not_requested":
+        reason = (
+            "no ClinVar snapshot this run"
+            if result.clin_sig_not_checked == "no_snapshot"
+            else result.clin_sig_not_checked
+        )
+        typer.secho(f"  clin_sig cross-check not run: {reason}", fg=typer.colors.CYAN)
 
 
 @app.command("frequencies")

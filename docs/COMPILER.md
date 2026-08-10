@@ -647,8 +647,8 @@ would break scripts for no gain.
 
 | 0.3 / 0.4 feature | Validated | Materialized (→ parquet) | Computed / derived | Status |
 |---|---|---|---|---|
-| `direction` (`VariantRow`) | ✅ full vocab | ✅ `weights.parquet` | ✅ `effective_direction` / `upgraded()` from `state`(+`weight`) | complete |
-| `stat_significance` (`VariantRow`, `StudyRow`) | ✅ full vocab | ✅ | ✅ derived from `state` (not inferred from `p_value`) | complete |
+| `direction` (`VariantRow`) | ✅ full vocab | ✅ `weights.parquet` — the **authored** value only, never a derivation | ✅ **Python read-time only**: `effective_direction` / `upgraded()` from `state`(+`weight`) | complete — but read the two cells apart: a `state`-only module ships an empty column |
+| `stat_significance` (`VariantRow`, `StudyRow`) | ✅ full vocab | ✅ authored value only | ✅ Python read-time, derived from `state` (not inferred from `p_value`) | complete, same split as `direction` |
 | `effect_size` (`VariantRow`, `StudyRow`) | ✅ float | ✅ | — | complete |
 | `effect_measure` (`VariantRow`, `StudyRow`) | ✅ permissive (open) | ✅ | — | complete (intentionally open) |
 | `effect_allele` (`VariantRow`) | ✅ nucleotides | ✅ | ✅ **membership in `{ref} ∪ alts`** (0.5) → warning / error in `strict`; ⛔ still no strand reconciliation | validate + membership check |
@@ -715,6 +715,27 @@ axes are optional, and `just_dna_format.derive` supplies fallbacks:
 - **Materializing:** `VariantRow.upgraded()` fills those axes and trims `state` to `{protective, risk,
   neutral}` (kept as a derived mirror of `direction`). `needs_upgrade` is the signal the marketplace
   `revalidate`/`needs_upgrade` flow consumes. Both idempotent (P7).
+
+### The parquet column is the authored value, and the derivation is not in the artifact
+
+The `direction` column in `weights.parquet` is a **materialized passthrough**: whatever the author
+wrote, or empty. The compiler never fills it from `state`, and should not — `state='significant'`
+carries no direction at all, so the derivation refines one from the *weight sign*, which is a sound
+fallback for a reader and a fabricated fact in a published table. Every module authored against 0.2
+therefore ships an empty `direction`, correctly.
+
+The consequence to plan for, if you read the artifact rather than the models: **the fallback lives in
+Python and does not travel with the parquet.** A consumer querying `weights.parquet` with SQL or
+polars sees the empty column and nothing else, so a migration from `state` to `direction` reads every
+legacy module as directionless. Apply the derivation yourself —
+`just_dna_format.derive.direction_from_state(state, weight)` is a pure leaf function published for
+exactly this (it imports nothing from `spec`, so the marketplace `revalidate` flow already uses it
+that way) — or go through `VariantRow.effective_direction`, which returns the authored value when
+there is one and the derivation when there is not.
+
+Whether an artifact should ever carry the derived axes is open, and it is a 1.0 question rather than a
+patch: filling the column moves every compiled module's parquet bytes, and the digest window closed
+when 0.5.0 published (2026-08-07).
 
 ## Intentionally unimplemented — and why
 

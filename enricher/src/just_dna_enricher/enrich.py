@@ -17,13 +17,14 @@ from typing import Optional
 from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_rows
 from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
+from just_dna_format.manifest import GenePanelSpec
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
-from just_dna_enricher.clinical import ClinSigConflict, verify_clin_sig
+from just_dna_enricher.clinical import ClinSigConflict, tautology_reason, verify_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
@@ -246,6 +247,20 @@ def spec_genome_build(spec_dir: Path) -> str:
     return config.genome_build
 
 
+def spec_panel(spec_dir: Path) -> GenePanelSpec | None:
+    """The module's `panel:` declaration, or `None` when it has none (or no readable yaml).
+
+    Deliberately gentler than `spec_genome_build`, which raises on an unreadable spec: a build is
+    something enrichment *must* know before it writes anything, while a panel declaration only ever
+    lets a check be skipped. An unreadable spec therefore means "no declaration", so the checks all
+    run — the conservative direction.
+    """
+    if not (spec_dir / "module_spec.yaml").exists():
+        return None
+    config, _errors, _ = _load_yaml(spec_dir / "module_spec.yaml")
+    return config.panel if config is not None else None
+
+
 @dataclass
 class EnrichmentResult:
     rows: list[ResolutionRow]
@@ -258,6 +273,12 @@ class EnrichmentResult:
     # Authored `clin_sig` values ClinVar's own records do not support. Warnings in BOTH modes on
     # purpose — see `clinical.verify_clin_sig`. Empty when no snapshot was provisioned.
     clin_sig_conflicts: list[ClinSigConflict] = field(default_factory=list)
+    # Why the cross-check above did not run, or `None` when it did. An empty `clin_sig_conflicts` says
+    # two opposite things on its own — "compared everything, nothing disagreed" and "never compared" —
+    # and a consumer reading the first when the second happened is being told a check passed that was
+    # never put. So the skip carries its reason (S4): `not_requested`, `no_snapshot`, or the
+    # drafted-from-this-release tautology, which is the one that used to report a confident zero.
+    clin_sig_not_checked: str | None = None
     # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
     # columns and reported; never substituted — see `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = field(default_factory=list)
@@ -660,9 +681,22 @@ def enrich(
     # (the snapshot is local), and — unlike every other check here — it stays a warning in `strict`
     # too. See `clinical.verify_clin_sig`: escalating would make the format arbitrate a clinical
     # disagreement, and a curator is allowed to disagree with a one-star submission.
-    clin_sig_conflicts = (
-        verify_clin_sig(variants, out, reference=clinvar_ref) if verify_clinsig else []
-    )
+    # It is also **skipped when it cannot fail**: a module that declares it was drafted from this very
+    # snapshot would be compared against its own source, and reporting "0 conflicts" for a structurally
+    # guaranteed result looks like evidence without being any (S4). The skip states its reason rather
+    # than quietly returning the same empty list a real pass returns.
+    clin_sig_conflicts: list[ClinSigConflict] = []
+    clin_sig_not_checked: str | None = None
+    if not verify_clinsig:
+        clin_sig_not_checked = "not_requested"
+    elif clinvar_ref is None:
+        clin_sig_not_checked = "no_snapshot"
+    else:
+        clin_sig_not_checked = tautology_reason(spec_panel(spec_dir), clinvar_ref)
+        if clin_sig_not_checked is None:
+            clin_sig_conflicts = verify_clin_sig(variants, out, reference=clinvar_ref)
+        else:
+            logger.info("ClinVar clin_sig cross-check not run: %s.", clin_sig_not_checked)
     for conflict in clin_sig_conflicts:
         logger.warning("ClinVar clin_sig %s — %s",
                        "conflict" if conflict.opposed else "difference", conflict)
@@ -699,6 +733,7 @@ def enrich(
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
+        clin_sig_not_checked=clin_sig_not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result,
     )

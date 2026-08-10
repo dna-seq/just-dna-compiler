@@ -17,10 +17,13 @@ from just_dna_enricher.clinvar_draft import (
     _identity_cells,
     _refusal_summary,
     _row_cells,
+    _study_rows,
     draft_gene_panel,
+    sole_expressible_genotype,
 )
-from just_dna_format.spec import VariantRow
+from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
+from just_dna_format.vrs import in_pseudoautosomal_region
 from pydantic import ValidationError
 
 _SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "interim" / "clinvar"
@@ -335,3 +338,121 @@ def test_added_is_reported_per_table_because_a_total_matches_neither(tmp_path: P
     assert result.added == variants + studies
     assert result.added != variants, "the total is not the variant count — hence the per-table report"
     assert {r.csv_name for r in result.reports} == {"variants.csv", "studies.csv"}
+
+
+# ── non-diploid contigs: the placeholder protects a decision that does not exist there (S6) ──────
+
+
+def test_the_mitochondrial_genotype_is_written_because_only_one_is_expressible() -> None:
+    """MT is haploid: `A/G` there asserts a second copy that is not present."""
+    mt = {**_RECORD, "chrom": "MT", "start": 3243, "ref": "A", "alt": "G", "gene": "MT-TL1"}
+    assert sole_expressible_genotype(mt) == "G"
+    assert _row_cells(mt)["genotype"] == "G"
+    # …and a diploid contig is untouched: the zygosity there is a real judgement.
+    assert sole_expressible_genotype(_RECORD) is None
+    assert "genotype" not in _row_cells(_RECORD)
+
+
+def test_chr_y_is_decided_per_locus_because_par1_and_par2_are_diploid() -> None:
+    """`XG` and `SPRY3` straddle a PAR boundary, so a contig-wide verdict is wrong for half of either.
+
+    The expectation is computed from the same predicate the compiler's ploidy check uses rather than
+    hardcoded, so a corrected PAR interval moves both together.
+    """
+    par = {**_RECORD, "chrom": "Y", "start": 500_000, "ref": "C", "alt": "T"}   # inside PAR1
+    outside = {**_RECORD, "chrom": "Y", "start": 2_787_207, "ref": "G", "alt": "A"}  # SRY
+    assert in_pseudoautosomal_region("Y", par["start"]) is True
+    assert in_pseudoautosomal_region("Y", outside["start"]) is False
+
+    assert sole_expressible_genotype(par) is None, "diploid here — the author still decides"
+    assert sole_expressible_genotype(outside) == "A"
+
+
+def test_an_undecidable_ploidy_keeps_the_placeholder() -> None:
+    """Three-valued, and only `False` writes: `None` means the question could not be put."""
+    no_position = {**_RECORD, "chrom": "Y", "start": None, "ref": "G", "alt": "A"}
+    assert sole_expressible_genotype(no_position) is None
+    multi_allelic = {**_RECORD, "chrom": "MT", "start": 3243, "ref": "A", "alt": "G,T"}
+    assert sole_expressible_genotype(multi_allelic) is None
+
+
+@_needs_snapshot
+def test_a_mitochondrial_panel_drafts_compilable_rows_and_says_what_it_committed_to(
+    tmp_path: Path,
+) -> None:
+    """The whole point: no placeholder to expand, so the consumer never writes the impossible pair."""
+    result = draft_gene_panel(tmp_path, ["MT-TL1"], snapshot=_SNAPSHOT, min_review_stars=1)
+    rows = _rows(tmp_path / "variants.csv")
+    assert rows and result.added_for("variants.csv") == len(rows)
+    assert TEMPLATE_PLACEHOLDER not in {r["genotype"] for r in rows}
+    assert all("/" not in r["genotype"] and r["genotype"] for r in rows)
+    # every written genotype is the record's own ALT, matched back through the row's identity
+    assert not [w for w in result.warnings if w.strip().startswith("genotype for ")]
+
+    # one aggregated line, naming the contig and the reading — never one per row
+    notice = [w for w in result.warnings if "non-diploid contigs" in w]
+    assert len(notice) == 1
+    assert f"{len(rows)} row(s)" in notice[0] and "MT" in notice[0]
+    assert "heteroplasmy.csv" in notice[0]
+
+
+@_needs_snapshot
+def test_the_compiler_accepts_what_the_provider_wrote_for_a_haploid_contig(tmp_path: Path) -> None:
+    """The rows the old draft produced were refused (placeholder) or wrong (`A/G` on MT). Neither now.
+
+    Demonstrated against the compiler's own non-diploid guardrail: the drafted rows raise no ploidy
+    warning, while the two-allele spelling of the same rows does.
+    """
+    draft_gene_panel(tmp_path, ["MT-TL1"], snapshot=_SNAPSHOT, min_review_stars=1)
+    (tmp_path / "module_spec.yaml").write_text(
+        "schema_version: '1.0'\nmodule:\n  name: mt\n  title: MT\n  description: d\n"
+        "  report_title: MT\n",
+        encoding="utf-8",
+    )
+    drafted = compile_module(tmp_path, tmp_path / "out", resolve_with_ensembl=False)
+    assert drafted.success, drafted.errors
+    assert not [w for w in drafted.warnings if "not diploid" in w]
+
+    # the same rows written the way a diploid fill would have written them
+    text = (tmp_path / "variants.csv").read_text()
+    header, *body = text.splitlines()
+    genotype_at = header.split(",").index("genotype")
+    faked = [header]
+    for line in body:
+        cells = line.split(",")
+        cells[genotype_at] = f"{cells[genotype_at]}/{cells[genotype_at]}"
+        faked.append(",".join(cells))
+    (tmp_path / "variants.csv").write_text("\n".join(faked) + "\n", encoding="utf-8")
+    diploid = compile_module(tmp_path, tmp_path / "out2", resolve_with_ensembl=False)
+    assert [w for w in diploid.warnings if "not diploid" in w], "the guardrail must still fire"
+
+
+# ── ClinVar files non-PMIDs under PubMed, and one used to kill a whole panel ─────────────────────
+
+
+def test_a_citation_that_is_not_a_pmid_is_skipped_and_counted_not_raised() -> None:
+    """Variation 12606 cites `168335863` — nine digits, where PubMed is at eight.
+
+    The refusal is right (`StudyRow.pmid` cannot key on it); raising it out of a panel draft was not.
+    The demonstration is the old behaviour on the same input: constructing the row directly still
+    raises, so the skip is doing real work rather than describing an impossibility.
+    """
+    with pytest.raises(ValidationError):
+        StudyRow(rsid="rs104894228", pmid="168335863")
+
+    records = [{**_RECORD, "variation_id": "12606", "rsid": "rs104894228"}]
+    links = {"12606": ["168335863", "20613862"]}
+    rows, dropped, unusable = _study_rows(records, links, 3, set())
+
+    assert [r.pmid for r in rows] == ["20613862"], "the usable citation still lands"
+    assert (dropped, unusable) == (0, 1)
+
+
+@_needs_snapshot
+def test_the_two_citation_shortfalls_are_reported_apart(tmp_path: Path) -> None:
+    """A cap is a choice this run made; an unusable id is a defect in the source. Different sentences."""
+    result = draft_gene_panel(tmp_path, ["MTHFR"], snapshot=_SNAPSHOT, max_citations=1)
+    capped = [w for w in result.warnings if "--max-citations" in w]
+    unusable = [w for w in result.warnings if "is not a\nPMID" in w or "is not a PMID" in w]
+    assert len(capped) == 1
+    assert not unusable, "MTHFR has no malformed citation; the sentence must not appear anyway"

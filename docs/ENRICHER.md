@@ -574,6 +574,26 @@ from a failure.
   `_view_over_parquet` over a `.duckdb` file or a `data/*.parquet` dir, `resolve_variants` (fill/expand/
   verify with the one-to-many `ORDER BY id, chrom, start, ref` expansion), and the public `lookup_loci`
   the enricher and (until 1.0) the compiler's deprecated path share so they never drift.
+- **`resolver.probe_table` — a batch lookup must HASH its probe, and this is why a panel used to never
+  finish (0.5.2).** DuckDB cannot fold a disjunction of equality *conjunctions* into a hash probe, so
+  `WHERE (chrom=? AND start=? AND ref=? AND alt=?) OR …` is evaluated against every row of the
+  reference: cost grows with `alleles × rows`, quadratically in the module. A 297-gene panel ran two
+  hours at 12% CPU with no I/O and looked like a deadlock. Measured on the 4,431,781-record snapshot,
+  same 5,000 alleles, same connection: **88 s** OR-chained against **0.21 s** joined against a temp
+  table. Three call sites moved (`clinvar.lookup_clin_sig`, `resolver._lookup_rsid_candidates`, and
+  `clinvar.select_by_gene`, which is single-column and became `gene IN (…)` — 20.9 s → 6.6 s, since
+  `IN` is pushed into the parquet reader and an OR-chain is not). `_lookup_positions_by_rsid` and
+  `citations_for` already used `IN` and were left alone.
+
+  Two things about it that must not be "simplified". **The probe rows are rendered as SQL literals**,
+  escaped the way `_connect` escapes the parquet path, because DuckDB's Python *parameter binding* is
+  where the remaining time goes — same query, same data: literals **0.21 s**, a composite-key
+  `IN (?, …)` **1.04 s**, a parameterized `UNNEST(?::VARCHAR[])` **3.51 s**, `executemany` **8.6 s**.
+  Parameterizing it back gives up most of the win, so re-measure before changing it. And every caller
+  keeps its own `ORDER BY`: a join reorders nothing by itself, and emitted row order is digest-visible
+  (Principle 7). A regression guard lives in `test_query_shapes.py` — it asserts the *plan* contains a
+  hash join (no clock involved) and, separately, times both shapes in one process so a slow runner
+  moves both numbers together.
 - **ClinVar cache location** — `locations.resolve_clinvar_reference` mirrors the Ensembl ladder
   (explicit arg → `$JUST_DNA_CLINVAR_CACHE` → `$JUST_DNA_PIPELINES_CACHE_DIR`/platformdirs, under a
   `clinvar/` subdir), also **never downloading**. The ClinVar snapshot ships as parquet only (no prebuilt
@@ -583,7 +603,21 @@ from a failure.
   lacked the bare-`.parquet` case its constraint sibling had). `accept_bare_file=True` is the one
   difference, and only the single-file constraint snapshot wants it. `_cache_dir(subdir)` reads
   `$JUST_DNA_PIPELINES_CACHE_DIR` **at call time**, not at import, so a `.env` loaded by `load_env` can
-  still change the answer.
+  still change the answer — **and since 0.5.2 it calls `load_env()` itself**, which is the fix for a
+  family of "the cache is right there" reports. `_resolve_parquet_cache` loads the environment inside
+  itself, but each `resolve_*_reference` passes `default_*_cache_dir()` as an *argument*, evaluated
+  before the call: with the base set only in `.env`, the **first** resolve in a process computed its
+  default from platformdirs and returned `None`, and every later one was correct. That asymmetry
+  produced three separate bug reports — `cache pull` writing into `~/.cache` while `cache status`
+  looked in the configured directory and called the snapshot absent moments after a successful pull,
+  `draft-panel --offline` refusing with *"no ClinVar snapshot found"* for a snapshot `cache status`
+  reported present, and a test module whose first skip-guard silently skipped. One load, six resolvers,
+  both CLI paths; `override=False`, so a real environment variable still wins.
+- **`locations.read_release(reference)`** — a snapshot's `release.json` as a dict, or `None` when it is
+  absent or unreadable. Written by every builder and, until 0.5.2, read by nothing but `cache status`;
+  it is what lets `enrich()` compare a module's `panel:` pin against the snapshot in front of it. `None`
+  for both absence and corruption on purpose: a caller must not be able to mistake "this snapshot does
+  not say" for a release id.
 - **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
   the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations` / `just-dna-seq/clinvar` /
   `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body. A complete parquet
@@ -891,6 +925,23 @@ is a difference of confidence inside one conclusion, not a conflict, and anythin
 `uncertain_significance`/`conflicting`/`not_provided` is not a conflict either — ClinVar has no opinion
 to disagree with. Opposed calls (pathogenic-class vs benign-class) are the finding worth acting on and
 are flagged as such.
+
+**A module drafted from this very snapshot is not checked, and the run says so (0.5.2).** Where the
+`clin_sig` came out of `draft_gene_panel`, the comparison is a value against itself: a consumer
+measured 27.1 s with the check on and 2.6 s with it off on a 7,818-row panel, byte-identical output,
+and 0 conflicts either way — necessarily 0. That zero is the problem rather than the cost: it looks
+like evidence and is none. `clinical.tautology_reason` compares the module's `panel:` declaration
+(`GenePanelSpec.reference` / `reference_sha256`, RM4) against the snapshot's own `release.json`
+(`clinvar_file_date` / `source_sha256`), and only an **established match** skips the pass. No `panel:`
+block, a panel over another source, an unstated pin, a different release, or a `release.json` that
+cannot be read all leave the check running — an unknown is never a permission to skip.
+
+The skip carries its reason on `EnrichmentResult.clin_sig_not_checked`, because an empty
+`clin_sig_conflicts` says two opposite things on its own ("compared everything, nothing disagreed" and
+"never compared"), and a consumer reading the first when the second happened has been told a check
+passed that was never put. Its values are `not_requested` (the author's own `--no-verify-clinsig`),
+`no_snapshot`, the tautology sentence, or `None` when the check really ran. Where a **human** typed the
+`clin_sig`, nothing changes — that is the case this check exists for.
 
 ## The literature pack (`literature.py`, online only)
 
@@ -1311,6 +1362,28 @@ What it does not fill is as deliberate as what it does — no `weight`, `directi
 (ClinVar publishes none), no `trait_efo_id` (its `condition` is free text and MedGen, not EFO), no
 `acmg_sf`, and no `curator`/`method` (the spec's `defaults:` block owns those).
 
+**A non-diploid contig gets its genotype written, because there is no judgement there to protect
+(0.5.2).** MT is haploid and chrY outside PAR1/PAR2 is hemizygous: exactly one genotype is expressible
+per allele, so `sole_expressible_genotype` writes the ALT and the row arrives complete. The rule the
+placeholder encodes is unchanged — it exists for a decision the source does not make — and this is the
+case where that decision does not exist. Y is decided **per locus** through the same three-valued
+`vrs.in_pseudoautosomal_region` the compiler's ploidy guard uses (`XG` and `SPRY3` straddle a
+boundary), and both `True` (diploid) and `None` (no PAR table for this build) keep the stub, which is
+the house rule about unknowns. The run reports what it committed to in **one aggregated line** naming
+the contigs: those rows read as homoplasmic/hemizygous, and a heteroplasmic *level* is a different
+question with its own table kind. Without this every consumer rediscovered it the hard way — one
+wrote `A/G` and `A/A` across 264 mitochondrial loci in a genome-wide panel and 260 in a cardiac one,
+each asserting a second copy that is not there.
+
+**A citation ClinVar files under `PubMed` that is not a PMID is skipped and counted, never raised.**
+218 of the 3,952,341 PubMed rows in the 2026-06-27 file carry a nine-digit id (Variation 12606 cites
+`168335863`; PubMed is at eight), and `StudyRow.pmid` rightly refuses them — but the refusal used to
+surface as an unhandled `ValidationError` that aborted a 297-gene draft over one row in one gene. The
+builder now drops them at the snapshot boundary using the format's own `extract_pmids` grammar rather
+than a second opinion restated here, and the drafter survives one anyway, since every snapshot already
+published carries them. The two shortfalls are reported apart: `--max-citations` is a choice this run
+made, an unusable id is a defect in the source.
+
 **The snapshot is found, then provisioned — `--snapshot` used to be required (0.5).** `_resolve_snapshot`
 runs the ladder `enrich()` uses: an explicit path is taken as given (the inject-only escape hatch, and
 what an air-gapped run passes), else the cache locations, else the published snapshot is downloaded unless
@@ -1607,6 +1680,15 @@ against a fake `HfApi`. Coverage includes offline enrich → compile matching th
 making zero network calls, the V2 503 → V1 REST fallback, tenacity retrying a transient error, strict
 failure, one-to-many expansion, and the upload plan/token paths. Integration tests that need a real cache
 are `@integration` (skipped without `JUST_DNA_ENSEMBL_CACHE`).
+
+Two files carry an unusual shape on purpose. **`test_query_shapes.py`** guards the hash-join probe
+(0.5.2): its load-bearing assertion is on the query *plan*, so it needs no clock at all, and its one
+timing check runs the OR-chained shape and the joined shape in the same process against the same
+synthetic snapshot — a relative bound, because an absolute one just measures the runner. And
+**`test_locations.py`** runs every probe in a **subprocess** with a controlled cwd and environment: the
+bug it pins is the *first* resolve in a process, and `load_env` mutates `os.environ` for the rest of the
+session, so an in-process test would neither reproduce the defect nor stay isolated from the rest of the
+suite. It also demonstrates the old arrangement failing rather than asserting that it used to.
 
 The **gnomAD** tests are driven by **real recorded payloads** committed under `assets/`
 (`gnomad_v4.1_variant_payload.json`, `gnomad_gene_constraint_payload.json`,

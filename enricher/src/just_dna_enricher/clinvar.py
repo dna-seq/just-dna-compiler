@@ -24,7 +24,7 @@ from pathlib import Path
 import duckdb
 
 from just_dna_enricher.locations import CITATIONS_DIRNAME
-from just_dna_enricher.resolver import _lookup_rsid_candidates
+from just_dna_enricher.resolver import _lookup_rsid_candidates, probe_table
 
 logger = logging.getLogger(__name__)
 
@@ -96,19 +96,21 @@ def lookup_clin_sig(
     con = _connect(reference)
     try:
         wanted = list(dict.fromkeys(alleles))
-        conds = " OR ".join("(chrom = ? AND start = ? AND ref = ? AND alt = ?)" for _ in wanted)
-        params: list[object] = []
-        for chrom, start, ref, alt in wanted:
-            params.extend([chrom, start, ref, alt])
+        probe_table(
+            con,
+            "_wanted_alleles",
+            [("chrom", "VARCHAR"), ("start", "BIGINT"), ("ref", "VARCHAR"), ("alt", "VARCHAR")],
+            wanted,
+        )
         rows = con.execute(
-            f"""
-            SELECT chrom, start, ref, alt, clin_sig, clin_sig_raw, review_status, review_stars,
-                   condition, variation_id
-            FROM clinvar
-            WHERE {conds}
-            ORDER BY chrom, start, ref, alt, review_stars DESC, variation_id
-            """,
-            params,
+            """
+            SELECT c.chrom, c.start, c.ref, c.alt, c.clin_sig, c.clin_sig_raw, c.review_status,
+                   c.review_stars, c.condition, c.variation_id
+            FROM clinvar c
+            JOIN _wanted_alleles w
+              ON c.chrom = w.chrom AND c.start = w.start AND c.ref = w.ref AND c.alt = w.alt
+            ORDER BY c.chrom, c.start, c.ref, c.alt, c.review_stars DESC, c.variation_id
+            """
         ).fetchall()
     finally:
         con.close()
@@ -183,9 +185,10 @@ def select_by_gene(
         return []
     con = _connect(reference)
     try:
-        conditions = ["gene = ?" for _ in wanted]
+        # `gene IN (…)` rather than `gene = ? OR …`: DuckDB hashes the first and evaluates the second
+        # against every row (4,793 genes: 1.02 s against 15.22 s). Same rows, same order.
         params: list[object] = list(wanted)
-        clause = f"({' OR '.join(conditions)})"
+        clause = f"gene IN ({', '.join('?' for _ in wanted)})"
         if clin_sig:
             clause += f" AND clin_sig IN ({', '.join('?' for _ in clin_sig)})"
             params.extend(sorted(clin_sig))

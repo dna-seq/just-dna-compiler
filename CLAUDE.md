@@ -108,7 +108,10 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 0b82494** — **read the docs, not the plan**, since probing overturned several of its assumptions
 (listed in the CHANGELOG entry). Recover it from git history if you ever need the original.
 
-- **`variant_key` is the VRS allele id for a resolved substitution (0.5).**
+- **`variant_key` is the rsid FIRST, and the VRS allele id only for a coordinate-authored substitution
+  (0.5) — read the precedence, not this headline.** An earlier wording led with the VRS half and a
+  consumer read it as the rule, then filed "`variant_key` = rsid" as 0.4-era drift on four modules where
+  it is exactly right.
   `derive_variant_key(rsid, chrom, start, ref, alts=None)` returns, in order: the **rsid**; else the
   **`ga4gh:VA.…`** id when the row is a single-base substitution with a coordinate; else
   `chrom:start:ref:alts` (alts sorted/normalized) or bare `chrom:start:ref`. Indels, MNVs,
@@ -643,10 +646,65 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   errors located on them are discarded. (2) The natural key runs *through* the stub, so it cannot
   decide sameness; `match_on` (the identity columns) does, which is what makes a re-draft after the
   human fills the genotype report `already_present` instead of appending the stub a second time.
+- **A placeholder protects a DECISION; where the contig leaves none, filling it is not pre-empting
+  anything (S6, 0.5.2).** `draft_gene_panel` stubs `genotype` because zygosity follows from the
+  inheritance mode and the source does not state it — true on a diploid contig, vacuous on MT (haploid)
+  and chrY outside PAR1/PAR2 (hemizygous), where exactly one genotype is expressible.
+  `sole_expressible_genotype` writes the ALT there and keeps the stub everywhere else; Y is decided
+  **per locus** through three-valued `vrs.in_pseudoautosomal_region`, with `True` *and* `None` keeping
+  the placeholder. Three points. **Row counts do not change** — the provider always wrote one row per
+  record; the doubling a consumer saw was their own placeholder-expansion step, which now has nothing to
+  expand. **The notice is aggregated and names the reading** (homoplasmic/hemizygous; a heteroplasmic
+  level is `heteroplasmy.csv`), because at panel scale it is hundreds of loci and the *reading* is what
+  the author must know. And **the chrY half of the report did not reproduce** — a real SRY row warns
+  through the compiler exactly as MT does — so nothing in the ploidy check moved; check a claim about a
+  guard before adjusting the guard.
 - **A drafting provider fills identity WHOLE or not at all.** rsID, else the complete
   `chrom`/`start`/`ref`/`alts` — never a subset. A lone `alts` on a position-only row makes
   `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref`, so a partial
   coordinate silently changes *which variant the row is*.
+- **A batch lookup must HASH its probe, and the cost is in the BINDING, not the join (0.5.2).** DuckDB
+  cannot fold a disjunction of equality *conjunctions* into a hash probe, so
+  `WHERE (chrom=? AND start=? AND ref=? AND alt=?) OR …` is evaluated against every row: cost grows
+  with `alleles × rows` and a 297-gene panel ran two hours at 12% CPU looking like a deadlock. Fixed by
+  `resolver.probe_table` (temp table + join) — 88 s → 0.21 s on 5,000 alleles against the real 4.4M-row
+  snapshot. Four things not to redo. **A single-column list is already fine as `IN (…)`** (it is pushed
+  into the parquet reader; `x = ? OR x = ? OR …` is not, so `select_by_gene` was 20.9 s → 6.6 s) —
+  `_lookup_positions_by_rsid` and `citations_for` were always correct and must be left alone. **The
+  probe rows are rendered as escaped SQL literals on purpose**: measured, same query and data, literals
+  0.21 s / composite-key `IN (?, …)` 1.04 s / parameterized `UNNEST(?::VARCHAR[])` 3.51 s /
+  `executemany` 8.6 s, so parameterizing it back gives up most of the win. **Benchmark on a spread
+  sample** — a `LIMIT 5000` sample is clustered on one contig where row-group statistics prune the
+  OR-chain, and the first measurement therefore read ~1×. **Guard the plan, not the clock**:
+  `test_query_shapes.py` asserts `EXPLAIN` contains a hash join, and separately times both shapes in
+  one process so a slow runner moves both numbers together.
+- **A check that cannot fail must not report a zero — `clinical.tautology_reason` (0.5.2).** A panel
+  drafted by `draft_gene_panel` copied its `clin_sig` out of the snapshot the cross-check reads, so the
+  comparison is a value against itself: 0 conflicts, necessarily, at 90% of the resolve time. The zero
+  is the defect, not the cost — it looks like evidence. The skip keys on an **established** match
+  between the module's `panel:` pin and the snapshot's `release.json`, and every unknown (no `panel:`,
+  another source, an unstated pin, an unreadable release) leaves the check running. The reason lands on
+  `EnrichmentResult.clin_sig_not_checked` because an empty conflict list otherwise means both "compared
+  everything" and "never compared". Generalize it: **when a check's inputs can share a source, ask
+  whether a pass is structurally guaranteed before reporting one.**
+- **`_cache_dir` loads the `.env` itself, and that one ordering fixed three reports (0.5.2).**
+  `_resolve_parquet_cache` calls `load_env()` inside itself, but each `resolve_*_reference` passed
+  `default_*_cache_dir()` as an *argument* — evaluated first — so with the base set only in `.env` the
+  **first** resolve in a process returned `None` and every later one was correct. That asymmetry is the
+  whole explanation for `cache pull` writing where `cache status` does not look, `draft-panel --offline`
+  refusing a present snapshot, and a test module whose first skip-guard silently skipped. The durable
+  rule: **a default computed as an argument is computed before the callee's setup runs** — if the callee
+  loads configuration, the default belongs inside it.
+- **The 0.3 axes are a materialized PASSTHROUGH; the derivation is read-time and Python-only.** The
+  compiler copies `direction`/`stat_significance`/`clin_sig` into `weights.parquet` verbatim and never
+  fills a blank from `state` — `derive.direction_from_state` invents a direction from the weight sign
+  for `state='significant'`, which is sound as a consumer's fallback and a fabricated fact in a
+  published table. So every `state`-only module (all four curated Generation-I ports) ships an empty
+  `direction`, correctly. **Do not "finish" it at compile**: it asserts what no curator wrote, and it
+  rewrites every artifact's bytes, which is major-only since 0.5.0 published. The live gap is that a
+  parquet-side consumer cannot reach `effective_direction`/`upgraded()` at all, and COMPILER.md's
+  coverage row ticks both tiers and reads *complete*; filed for 0.5.2 as docs (ROADMAP 0.6 idea-book,
+  CONSUMER_SUGGESTIONS S5).
 - **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
   CSV, materialize the derived value into parquet as a `@property`, and let it fall away on reverse
   because it is not a model field. `FrequencyRow.allele_frequency` (AC/AN) and

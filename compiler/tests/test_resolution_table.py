@@ -275,3 +275,41 @@ def test_strict_and_best_effort_flags_via_table(tmp_path: Path) -> None:
     assert ok.success, ok.errors
     assert ok.manifest.compilation.resolution_mode == "strict"
     assert ok.manifest.compilation.fully_resolved is True
+
+
+# ── the flag names Ensembl but switches off the injected table too ────────────────────────────
+
+
+def test_switching_resolution_off_with_a_table_present_says_so(tmp_path: Path) -> None:
+    """A silent success is the worst shape a mistake can take, and this one produced whole modules
+    whose every weight row had no coordinate.
+
+    The failure is demonstrated rather than asserted about: the compile still succeeds (nothing about
+    the flag's behaviour changed), and the rows really do come out unresolved — which is exactly why
+    the run has to say what it just did.
+    """
+    variants = "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n"
+    resolution = (
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
+        "rs1801133,rs1801133,1,11856377,G,A,GRCh38,0,manual,resolved,\n"
+    )
+    spec = _spec(tmp_path / "off", variants, resolution)
+    result = compile_module(spec, tmp_path / "out-off", resolve_with_ensembl=False)
+
+    assert result.success
+    weights = pl.read_parquet(tmp_path / "out-off" / "weights.parquet")
+    assert weights["chrom"].to_list() == [None], "the table really was ignored"
+    assert [w for w in result.warnings if "master switch" in w], result.warnings
+
+    # With the flag left alone the same spec resolves, and the warning has nothing to say.
+    on = compile_module(_spec(tmp_path / "on", variants, resolution), tmp_path / "out-on")
+    assert pl.read_parquet(tmp_path / "out-on" / "weights.parquet")["chrom"].to_list() == ["1"]
+    assert not [w for w in on.warnings if "master switch" in w]
+
+
+def test_no_table_no_lecture(tmp_path: Path) -> None:
+    """The flag is legitimate on a module with nothing to inject — most of the test suite uses it."""
+    spec = _spec(tmp_path / "bare", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n")
+    result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+    assert result.success
+    assert not [w for w in result.warnings if "master switch" in w]

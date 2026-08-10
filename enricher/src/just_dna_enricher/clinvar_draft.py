@@ -42,6 +42,8 @@ from pathlib import Path
 
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows, append_rows
 from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
+from pydantic import ValidationError
 
 from just_dna_enricher.clinvar import citations_for, select_by_gene
 from just_dna_enricher.download import ensure_clinvar_snapshot
@@ -139,6 +141,42 @@ def _identity_cells(record: dict, *, force_coordinate: bool = False) -> dict | N
 _MATCH_ON: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
 
 
+def sole_expressible_genotype(record: dict) -> str | None:
+    """The one genotype a caller can emit at this locus, or `None` where zygosity is a real decision.
+
+    **The placeholder exists to protect a judgement, and on a non-diploid contig there is none to
+    protect** (S6). Carrying a pathogenic allele is a carrier state or an affected one depending on
+    the condition's inheritance mode, which ClinVar does not state — that is why `genotype` is stubbed
+    at all. But the mitochondrial genome is haploid and chrY outside the pseudoautosomal regions is
+    hemizygous: exactly one genotype is expressible per allele there, so the decision the stub is
+    holding open does not exist, and every consumer of `draft_gene_panel` was left to rediscover
+    independently that its natural "write both zygosities" fill is wrong for those rows. One did, at
+    264 mitochondrial loci in a genome-wide panel and 260 in a cardiac one, each asserting a second
+    copy that is not there.
+
+    Y is decided **per locus**, three-valued, through the same predicate the compiler's ploidy check
+    uses: PAR1 and PAR2 recombine with X and are diploid in every karyotype, and `XG` and `SPRY3`
+    straddle a boundary, so a gene- or contig-wide verdict is wrong for half of either. `True`
+    (diploid) and `None` (no PAR table for this build) both keep the placeholder — an undecided
+    question is not an answer, and the author still has one to make.
+
+    The allele written is the **ALT**: a variant row is an annotation about carrying the finding, and
+    on a haploid contig carrying it is spelled with one allele. The heteroplasmy axis is a different
+    question with its own table kind, which is why the aggregated notice at the draft's end says so
+    rather than leaving the reading implicit.
+    """
+    chrom = normalize_chrom(str(record.get("chrom") or ""))
+    alt = (record.get("alt") or "").strip()
+    start = record.get("start")
+    if not alt or "," in alt or chrom not in ("MT", "Y"):
+        return None
+    if chrom == "Y" and (
+        start is None or in_pseudoautosomal_region("Y", int(start)) is not False
+    ):
+        return None
+    return alt
+
+
 def _signature(cells: dict) -> tuple[str, ...]:
     """The `_MATCH_ON` signature of a row, spelled exactly as `append_partial_rows` spells it."""
     return tuple(str(cells.get(column) or "").strip() for column in _MATCH_ON)
@@ -200,11 +238,25 @@ def _genotype_worklist(records: Sequence[dict]) -> list[str]:
     list covered rows the model had refused and rows already in the file — a "3 row(s) carry a
     placeholder" header followed by twenty-seven lines. A worklist naming work that does not exist is
     worse than no worklist.
+
+    **A pair is the wrong instruction on a contig that cannot host one.** Where the ploidy is
+    undecidable rather than diploid — chrY on a build with no pseudoautosomal table — the author still
+    has the decision, but "an allele pair from {A, G}" tells them to make it wrongly if the locus turns
+    out to be hemizygous. Those rows say what is actually open. (A locus where only one genotype is
+    expressible does not reach here at all: `sole_expressible_genotype` wrote it.)
     """
     lines: list[str] = []
     for record in records:
         ref, alt = (record.get("ref") or "").strip(), (record.get("alt") or "").strip()
         if not (ref and alt):
+            continue
+        chrom = normalize_chrom(str(record.get("chrom") or ""))
+        if chrom == "Y":
+            lines.append(
+                f"  genotype for {_label(record)}: ClinVar publishes {ref}>{alt} — chrY, so a single "
+                f"allele ('{alt}') outside the pseudoautosomal regions and a pair inside them; this "
+                f"build has no PAR table, so which one is yours to establish"
+            )
             continue
         alleles = ", ".join(sorted({ref, alt}))
         lines.append(
@@ -235,6 +287,11 @@ def _row_cells(record: dict, *, force_coordinate: bool = False) -> dict | None:
             f"{f' — {condition}' if condition else ''}"
         ),
     }
+    # The one cell this provider *can* decide where the contig leaves no zygosity open. See
+    # `sole_expressible_genotype`: it returns None wherever a human still has a call to make.
+    genotype = sole_expressible_genotype(record)
+    if genotype is not None:
+        cells["genotype"] = genotype
     state = _STATE_BY_CLIN_SIG.get(clin_sig or "")
     if state is not None:
         cells["state"] = state
@@ -257,16 +314,26 @@ def _study_rows(
     links: dict[str, list[str]],
     limit: int,
     coordinate_only: set[str],
-) -> tuple[list[StudyRow], int]:
+) -> tuple[list[StudyRow], int, int]:
     """ClinVar's own literature links → `studies.csv` rows, deduplicated per (variant, pmid).
 
     These are **real** rows, not partial ones: `StudyRow` needs a PMID and an identifier, and ClinVar
     supplies both. That is the difference from `variants.csv`, where the missing piece — zygosity —
     is a judgement rather than a datum.
+
+    **A citation the model refuses is skipped and counted, never raised.** ClinVar files a few
+    hundred ids under `PubMed` that are not PMIDs (nine digits, where PubMed is at eight), so
+    `StudyRow` rightly refuses them — and one such record in one gene used to abort a 297-gene panel
+    with an unhandled `ValidationError`, which is the drafting equivalent of a whole run lost to a
+    single bad row. The builder now drops them at the snapshot boundary, but every snapshot already
+    published carries them, so the drafter must survive one too. Returns the counts so the caller can
+    report both reasons apart: a citation over the `--max-citations` cap is a choice, an unusable one
+    is a defect in the source.
     """
     rows: list[StudyRow] = []
     seen: set[tuple] = set()
     dropped = 0
+    unusable = 0
     for record in records:
         pmids = links.get(str(record.get("variation_id") or ""), [])
         if not pmids:
@@ -291,9 +358,12 @@ def _study_rows(
             if key in seen:
                 continue
             seen.add(key)
-            rows.append(StudyRow(rsid=rsid, pmid=pmid, **coordinate))
+            try:
+                rows.append(StudyRow(rsid=rsid, pmid=pmid, **coordinate))
+            except ValidationError:
+                unusable += 1
         dropped += max(0, len(pmids) - limit)
-    return rows, dropped
+    return rows, dropped, unusable
 
 
 def _resolve_snapshot(
@@ -388,12 +458,17 @@ def draft_gene_panel(
             unkeyable += 1
             continue
         # `state` is required and has no honest value for an undecided clinical call, so it is stubbed
-        # for the same reason `genotype` is: the source did not say, and only a human can. See
+        # for the same reason `genotype` usually is: the source did not say, and only a human can. See
         # `_STATE_BY_CLIN_SIG` — `VALID_STATES` offers no "uncertain" member, and every candidate
         # asserts something ClinVar declined to (`neutral` says benign, `risk` says a direction).
         # Skipping the row instead would throw away the conclusion, phenotype, clin_sig and citations
         # already assembled for it.
-        stubbed = ("genotype",) if "state" in cells else ("genotype", "state")
+        #
+        # Derived from the cells rather than listed: `_row_cells` decides what it can state, and a
+        # column it filled is not a column to stub. A row on a haploid contig therefore arrives
+        # complete (`stubbed=()`), which `PartialRow` handles as the degenerate case — it validates
+        # every cell and matches on the same identity columns.
+        stubbed = tuple(column for column in ("genotype", "state") if column not in cells)
         signature = _signature(cells)
         record_by_signature[signature] = record
         if "state" not in cells:
@@ -434,7 +509,7 @@ def draft_gene_panel(
             "(a published snapshot now carries the table, so re-provisioning an empty cache also gets it)."
         )
     else:
-        studies, dropped = _study_rows(records, links, max_citations, ambiguous)
+        studies, dropped, unusable = _study_rows(records, links, max_citations, ambiguous)
         if studies:
             reports.append(
                 append_rows(spec_dir, "studies.csv", studies, group_by=("rsid",), dry_run=dry_run)
@@ -443,16 +518,42 @@ def draft_gene_panel(
             warnings.append(
                 f"{dropped} further ClinVar citation(s) not drafted (--max-citations {max_citations})."
             )
+        # Kept apart from the cap above: one is a choice this run made, the other is ClinVar filing a
+        # non-PMID under PubMed. Reporting them together would read as "you asked for fewer".
+        if unusable:
+            warnings.append(
+                f"{unusable} ClinVar citation(s) skipped: the id ClinVar filed under PubMed is not a "
+                f"PMID (nine digits, where PubMed is at eight). Rebuilding the snapshot with a current "
+                f"`clinvar citations` drops them at the source."
+            )
     warnings.extend(_refusal_summary(report.invalid))
     if report.added:
         added_records = [
             record_by_signature[o.key] for o in report.added if o.key in record_by_signature
         ]
-        warnings.append(
-            f"{len(report.added)} row(s) carry an unreplaced genotype placeholder and will not "
-            f"compile until you decide the zygosity each finding is about."
-        )
-        warnings.extend(_genotype_worklist(added_records))
+        # Split by whether the row still needs a human. A row on a haploid contig was written whole,
+        # so counting it among the placeholders would name work that does not exist — the same defect
+        # `_genotype_worklist` was already fixed for once.
+        stubbed_records = [r for r in added_records if sole_expressible_genotype(r) is None]
+        written_records = [r for r in added_records if sole_expressible_genotype(r) is not None]
+        if stubbed_records:
+            warnings.append(
+                f"{len(stubbed_records)} row(s) carry an unreplaced genotype placeholder and will not "
+                f"compile until you decide the zygosity each finding is about."
+            )
+            warnings.extend(_genotype_worklist(stubbed_records))
+        # One line, not one per row: at panel scale this is hundreds of loci, and what the author has
+        # to know is the *reading* the provider committed to, which is identical for all of them.
+        if written_records:
+            contigs = ", ".join(
+                sorted({normalize_chrom(str(r.get("chrom") or "")) for r in written_records})
+            )
+            warnings.append(
+                f"{len(written_records)} row(s) on non-diploid contigs ({contigs}) were written with "
+                f"a single-allele genotype: exactly one is expressible there, so no zygosity decision "
+                f"was pre-empted. They read as homoplasmic/hemizygous — a heteroplasmic level is a "
+                f"different question and belongs in heteroplasmy.csv."
+            )
     # One line per clinical CALL, not per row: which call carries no direction is the thing the author
     # needs to know, and the answer is identical for every row carrying it. Only rows that were actually
     # added are counted — a row already in the file is the author's, stub or not.
