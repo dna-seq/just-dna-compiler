@@ -377,8 +377,9 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   - **No `ensure_pharmvar_snapshot`, no `pharmvar publish`, ever.** Its bulk data comes under a key its
     terms §2 make personal and non-transferable, and `redistribution=True` describes the CC BY-SA grant
     over the *content*, not a clause about the *account* — an unestablished permission is not a
-    permission. Also still don't add a `SourceRow` column for research-use-only: a new column on an
-    existing parquet is 1.0, and it belongs to RM27's design round.
+    permission. Also still don't add a `SourceRow` column for research-use-only — not because of the
+    version (an optional column is minor-legal since the 2026-08-11 amendment) but because it belongs to
+    RM27's design round: a *distribution* right is not a *use*, and the axis has to be designed once.
   - **The builders store values verbatim and map at READ time.** `cpic_build` writes CPIC's own prose
     (`"No function"`, `"Strong"`) and the snapshot client calls the same `map_function_status` /
     `map_classification` the live client does — so a mapping fix reaches an already-built snapshot, and
@@ -557,15 +558,28 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   because a star name is gene-scoped. This was RM34. When counting what a filter dropped, count over the
   rows the filter actually judged: tallying the copy-number rows it deliberately passes through read
   "567 of 16836" for a six-allele set.
-- **The digest asymmetry decided what was urgent before 0.5 shipped, and now it decides what is
-  LEGAL. 0.5.0 published on 2026-08-07 — the window is closed.** `integrity.file_entries` **skips
-  missing files**, so a **new optional table** never moves the digest of a module that does not carry it
-  (additive any time, still true), while a **new column on an existing parquet** moves every compiled
-  module's digest — which was free while 0.5 was unpublished and is **major-only now**. That is why the
-  pre-cut batch was columns while the heavy items (`predictions.csv`, `gene_validity.csv` — RM23/RM24)
-  are tables and lost nothing by waiting. Before proposing a column on an existing parquet, check
-  [ROADMAP § 0.6](docs/ROADMAP.md#06--what-the-closed-window-permits): the answer is now "1.0", and the
-  question to ask instead is whether it wants to be its own table.
+- **A new OPTIONAL column is minor-legal, and the "digest window" that said otherwise rested on a
+  premise that expired in 0.4.1.** The charter now states the rule (P3/P4): a new optional column or
+  table is additive; **removal, promotion to required, and retyping** are the major-only moves,
+  because those are what break a reader or invalidate published data. Two mechanics behind it, both
+  measured rather than argued:
+  - **An unset optional column is omitted from `content_signature`** (`model_dump(exclude_none=True)`)
+    and the per-input hashes cover authored bytes nothing rewrote — so adding one leaves the **authored**
+    identity byte-identical. Only a *recompile's* `artifact.digest` moves, and P4 already scoped that to
+    a fixed `compiler_version`. Verified on `pgx_slco1b1_simvastatin`: `content_signature`
+    `8173dab7…` unchanged, inputs unchanged, `artifact.digest` `3375adef…` → `cd687baf…`, and
+    `compile → reverse → compile` still a fixed point.
+  - **`integrity.file_entries` skips missing files**, so a new optional *table* does not even move the
+    digest of a module that does not carry it. Still true, and now the weaker of the two facts rather
+    than the whole argument.
+
+  **The history, since the charter no longer carries it.** `artifact.digest` (2026-07-06) was the only
+  identity when the Constitution was written (2026-07-08), so it carried both jobs — *which bytes are
+  these* and *which content is this* — and "a column change is major-only" followed honestly. 0.4.1
+  (2026-07-23) split the second job into `content_signature`; the clause was never revisited, and every
+  "that column is a 1.0 item" deferral in the living docs descended from it. Amended 2026-08-11. What
+  this does **not** license: a required column, a retype, a removal, or filling values into an existing
+  column (that one is `reverse`'s problem — see RM43).
 - **Adding an authored column is exactly three touch points, and the third is the one that gets
   missed.** The pydantic model; the compile-side row dict + polars schema in `compiler.py`; and the
   **reverse-side `fieldnames` list + `_scalar_cell` mapping**. A column missing from the reverse list
@@ -670,7 +684,9 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   **materializing the coordinate moves `content_signature`, not only `artifact.digest`**, because
   `reverse_module` rebuilds the CSV from the parquet and a filled cell returns as *authored*. That is
   what `VariantRow.authored_ident` exists to prevent and no 0.4-family model has one, so the
-  prerequisite is a new stamped column per positional table — major-only. Three related traps:
+  prerequisite is a new stamped column per positional table — **0.6 work since the 2026-08-11 charter
+  amendment, not 1.0**; what is major-only is the *filling*, if it ever re-emits as authored. Three
+  related traps:
   `PharmVariantRow` has **no `alts`**; `variant_key` is a **property** on these models so it is in no
   parquet (a consumer cannot even join them to `weights.parquet` on it); and `fully_resolved` is
   `all(...)` over `VariantRow`, hence **vacuously `True`** for a table-only module — the manifest's own
@@ -716,8 +732,9 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   fills a blank from `state` — `derive.direction_from_state` invents a direction from the weight sign
   for `state='significant'`, which is sound as a consumer's fallback and a fabricated fact in a
   published table. So every `state`-only module (all four curated Generation-I ports) ships an empty
-  `direction`, correctly. **Do not "finish" it at compile**: it asserts what no curator wrote, and it
-  rewrites every artifact's bytes, which is major-only since 0.5.0 published. The live gap is that a
+  `direction`, correctly. **Do not "finish" it at compile**: it asserts what no curator wrote — that is
+  the whole objection, and it does not depend on the digest (filling *values* into an existing column is
+  not the additive case the charter permits). The live gap is that a
   parquet-side consumer cannot reach `effective_direction`/`upgraded()` at all, and COMPILER.md's
   coverage row ticks both tiers and reads *complete*; filed for 0.5.2 as docs (ROADMAP 0.6 idea-book,
   CONSUMER_SUGGESTIONS S5).
@@ -1018,10 +1035,11 @@ cycle* in `USE_CASES.md`.
   diagnosis (`vocab.RESERVED_NAME_REASONS` via `reject_reserved`); everything else gets the generic
   message. (This is why `caller`/`caller_version` were dropped — consumer-side measurement provenance
   with no module-side meaning — while `reference_db`, a join-target-DB hint, was kept.)
-- **Additive within a major** (Principles 3/8): new columns are optional; a required field is never
-  demoted; anything that changes `artifact.digest` bytes (parquet column set/types) is major-only —
-  *except* while a version is still unpublished, where the digest is not yet frozen. **No such exception
-  is open today**: 0.5.0 published on 2026-08-07, so the rule applies unqualified.
+- **Additive within a major** (Principles 3/8): a new column is **optional and minor-legal**, and a
+  required field is never demoted. What waits for the major bump is **removing** a column, **promoting**
+  one to required, or **retyping** one. A recompile's `artifact.digest` moving is not by itself a
+  reason to defer — the authored identity (`content_signature`, per-input hashes) does not move, and
+  P4 scopes byte-reproducibility to a fixed `compiler_version`.
 - **Round-trip must stay lossless and idempotent** (Principle 7) — prove it with tests, don't assume.
 - **CPIC recommendations are keyed by (gene phenotype, drug, POPULATION) — and the populations
   disagree.** Clopidogrel has three (`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI`); the same Poor

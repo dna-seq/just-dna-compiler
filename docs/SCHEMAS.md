@@ -337,11 +337,13 @@ because every consumer that reads the column has to agree on it and a second imp
 
 Why this was legal now rather than at 1.0: `variant_key` is **derived and frozen, never authored**
 (`_COMPILER_MANAGED_FIELDS`), so changing its derivation touches no authored schema, no DSL, and no human
-author — the human-authorability gate is untouched. It is major-only for exactly one reason: the column
-lives in `weights.parquet`, hence in `artifact.digest`. That gate is **publication**, not the version
-number — and when this shipped, 0.4 was the published line and 0.5.0 had never been cut. So it rode the
-same one-time pre-publication re-baseline the alt-carrying key already rode, and no published artifact
-moved. That window closed when 0.5.0 published on 2026-08-07; a further identity change is a 1.0 item.
+author — the human-authorability gate is untouched. What makes it major-class is not the digest but the
+**re-keying**: the same authored row acquires a different `variant_key`, so anything that stored the old
+one no longer joins. When this shipped, 0.4 was the published line and 0.5.0 had never been cut, so it
+rode the same one-time pre-publication re-baseline the alt-carrying key already rode and no published
+artifact moved. **A further identity change is a 1.0 item**, and that holds independently of the 2026-08-11
+amendment — an additive optional column is minor-legal now, but changing what an existing key *means*
+never was.
 
 > **A VA does not encode `ref`.** VRS addresses the place and the alt; the reference base is *determined*
 > by the accession plus the interval (`sequence[start:end]` has exactly one answer), so storing it would

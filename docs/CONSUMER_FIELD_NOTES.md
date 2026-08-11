@@ -9,8 +9,9 @@ same way [`REFERENCE_EXAMPLES.md`](REFERENCE_EXAMPLES.md) is: illustrative draft
 the maintainers to accept, reshape, or reject. It was written **after** reading
 [`CONSTITUTION.md`](CONSTITUTION.md); every proposal below is framed to stay inside its invariants
 (declarative-not-code, additive-within-a-major, orthogonal axes, the reserved namespace, the
-vocabulary idiom). Where a proposal would touch `artifact.digest` bytes, it is flagged as
-major-only, per Principle 3/4.
+vocabulary idiom). Where a proposal would **remove** a column, **promote** one to required, **retype**
+one, or change what an identity key means, it is flagged as major-only, per Principle 3/4; a new
+optional column or table is additive and lands in a minor.
 
 > ---
 > ### ↳ maintainer annotations — pre-0.4 vitrification (round 1)

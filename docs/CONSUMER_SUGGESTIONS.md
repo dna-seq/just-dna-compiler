@@ -108,8 +108,9 @@ of them, so all four are patch material inside the closed 0.5 digest window rath
 
 **Status — S3, S4 and S6 shipped in `just-dna-enricher` + `just-dna-compiler` 0.5.2 (2026-08-10)**,
 with the five freeform items filed alongside them and the documentation half of S5. S5's open
-question — whether an artifact should carry the derived 0.3 axes at all — is parked as 1.0 work in
-[ROADMAP.md](ROADMAP.md), since filling the column moves every compiled module's bytes. Digest
+question — whether an artifact should carry the derived 0.3 axes at all — is parked in
+[ROADMAP.md](ROADMAP.md) as a design question: what bars it is that filling a blank asserts what no
+curator wrote, not the bytes. Digest
 neutrality was **verified, not assumed**: all eleven reference examples recompile byte-identical
 against `HEAD`. [CHANGELOG.md](CHANGELOG.md) records what each became, including the chrY half of S6,
 which was checked against a real `SRY` row and did not reproduce. The notes below are left as
@@ -440,8 +441,10 @@ it in.
 ## S9 — the 0.4 table families are materialized verbatim, so `resolution.csv` never reaches them
 
 **Status — option 2 shipped in 0.5.3 (2026-08-11); option 1 is filed as
-[RM43](ROADMAP.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more)
-and is 1.0 with a prerequisite, not a 1.0 for the reason given below.** Reproduced on this tree's own
+[RM43](ROADMAP.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more),
+and it is not 1.0 for the reason given below — nor 1.0 at all any more.** Its prerequisite is a stamped
+identity column, which the 2026-08-11 charter amendment makes **0.6** work: a new optional column is
+additive and minor-legal, and only removal, promotion to required or retyping waits for a major. Reproduced on this tree's own
 `reference_examples/pgx_slco1b1_simvastatin/`, so the note needed no extra evidence. Three things the
 investigation added: option 1 does not merely move `artifact.digest`, it **breaks Principle 7** —
 materializing the coordinate and running compile → reverse → compile moves `content_signature`, because
@@ -531,3 +534,91 @@ No preference beyond S9's. Filed from the authoring surface rather than the anno
 we have no VCF-join stake in the outcome; our interest is only that a module author gets told, since
 today the spec that produces this looks entirely healthy: `validate --strict` passes, the compile is
 green, and the artifact verifies.
+
+# Field notes from just-module-creator — the literature tier, 2026-08-11
+
+Found while building literature *discovery* on the app surface (search is ours, not yours — these
+three are defects in the verification tier you own, not requests for features we should be writing
+ourselves).
+
+## S10 — `enrich_literature` introduces a source whose terms nothing can record, and the terms are per-article anyway
+
+**What happens.** `enrich_literature` writes `source="pubmed"` into every `literature.csv` row.
+`_source_checks` builds `used_sources` from the `source` column of every fact table. `TERMS_BY_SOURCE`
+has no `pubmed`. So every literature-enriched module warns:
+
+> `sources.csv has no row for 1 source(s) the module's fact tables cite: ['pubmed'] — their terms are unrecorded.`
+
+It is a warning, never an error, so it ships unnoticed — and the source it names was introduced by the
+enricher itself, not by anything the author did. `VALID_SOURCE_LAYERS` already reserves `literature`,
+so the row has somewhere to go.
+
+**Why we are not just asking for a `PUBMED_TERMS` constant.** That would be wrong, and this is the
+part we think is worth your time: **a literature source's terms are per-article, not per-source.**
+PubMed's *metadata* is a US-government work; the *article* belongs to its publisher, and Europe PMC's
+OA subset spans CC-BY, CC-BY-NC and bronze. A single `pubmed` row in `TERMS_BY_SOURCE` would be
+right for a module that only cites PMIDs and **wrong** for any module carrying a `provenance_quote`
+lifted from a CC-BY-NC article — because that quote is publisher text sitting in the module's own
+annotation layer, where `taints_commercial_use` actually bites.
+
+So the question is about `SourceRow` granularity, not a missing entry. Two shapes we can see, no
+preference between them:
+
+1. A `pubmed` row at `layer="literature"` covering the *metadata* only, plus a documented rule that
+   quoting an article requires a second row at `layer="annotation"` carrying that article's licence.
+   Cheap; puts the burden on the author but at least makes the obligation nameable.
+2. Per-article terms keyed off `literature.csv` — the OA licence is already retrievable (Europe PMC
+   returns `isOpenAccess`, and Unpaywall returns the licence id per DOI), so the pass that writes
+   `literature.csv` is holding the fact at the moment it would need it.
+
+We are not writing a terms table on our side. `licensing.py` says the enricher is the only tier
+permitted to hold a source convention, and we agree — a terms table in a consumer is exactly the
+un-injected reference 0.5 removed. We report the gap to the author and leave `sources.csv` alone.
+
+## S11 — `provenance_quote` and `provenance_regex` are redundancy-bearing and the map does not say so
+
+`hints.REDUNDANCY_BEARING` lists eleven columns with the check each one feeds. It omits
+`provenance_quote` and `provenance_regex`, yet `enrich_literature._study_quote_found` compares both
+against the Europe PMC fulltext to produce `quotes_found`. By the map's own definition — "a check
+compares the authored value against a source" — they qualify.
+
+**They also want a different refusal token from the rest, which is why this is not a one-line
+addition.** For `doi` or `clin_sig` the rule is "do not fill this from the source that checks it".
+For a provenance quote the author is *supposed* to have read the source — that is the entire point of
+the column. What must not happen is a **machine** reading it: a passage extracted from a fulltext a
+tool just fetched asserts a curator reading that never occurred. That is a false claim of provenance,
+not merely a vacuous check, and it is a sharper failure than any other entry on the list.
+
+Consequence worth stating in the docs either way, because it is true today and nothing says it: once
+a fulltext has been retrieved programmatically, `quotes_found` on that row is no longer independent
+evidence. It degrades to a citation-pairing check — still useful, since it catches a quote written
+against the wrong PMID, but no longer evidence that the claim is in the paper.
+
+Our tools refuse to extract passages at all and say why. We would rather that refusal be yours, since
+`REDUNDANCY_BEARING` is what every consumer reads to find out which cells are theirs to author.
+
+## S12 — `lookup_citation` cannot detect a fabricated PMID, because `CitationHint` carries no title
+
+`CitationHint` carries `pmid_exists`, `doi`, `registry_doi`, `pmcid`, `open_access`,
+`abstract_available`. It carries no **title**, journal or year.
+
+PMIDs are densely allocated across roughly 1–40,000,000, so a recalled or hallucinated 8-digit number
+is almost always a real record — for a different paper. `lookup_citation` answers `pmid_exists=true`
+and the caller has learned nothing about whether the citation is the right one. Fabrication is a
+failure of *identity*, and the only field that could catch it is absent.
+
+This matters because the surrounding docs treat existence as the guard. Our own skill said "never
+invent a PMID — verify each one with `lookup_citation` before writing it", which we have now had to
+correct: it is a rule our surface could not enforce.
+
+`esummary` already returns `title`, `fulljournalname`, `pubdate` and `sortfirstauthor` in the payload
+`_check_pmid` parses — `literature._identifiers(record)` reads that same record for the DOI and PMCID
+and drops the rest. So this looks like surfacing fields you already have, not a new request.
+
+Suggestion: add `title` (and ideally journal + year) to `CitationHint` and to `hint citation --json`,
+so "does this PMID exist" can become "does this PMID name the paper you meant". If there is a reason
+to keep the hint minimal, a `--verbose` flag would do — the important part is that the answer be
+reachable at all, since today no upstream surface returns it.
+
+We are solving our own half by searching (a search result carries a title, so the PMID never has to
+be recalled). That does not help anyone using `hint citation` or the enricher directly.

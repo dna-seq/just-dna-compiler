@@ -27,28 +27,33 @@ S3–S6 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) — the quadratic 
 gene panel finishing, a `clin_sig` cross-check that no longer reports a structurally guaranteed zero, a
 drafted genotype on the contigs where only one is expressible, and the `.env`-ordering bug behind three
 separate "the cache is right there" reports (see [CHANGELOG.md](CHANGELOG.md)). **0.5.3** answers S9 the
-same way: it does not widen resolution to the 0.4 families (that is RM43, and it is 1.0 with a
-prerequisite) but makes the scope legible — per positional table, how many rows a VCF cannot join and
+same way: it does not widen resolution to the 0.4 families (that is RM43, whose prerequisite column
+is 0.6 work since the charter amendment) but makes the scope legible — per positional table, how many rows a VCF cannot join and
 how many of those `resolution.csv` could place — and adds `heteroplasmy.csv` to the enricher's subject
 list so that family can be resolved at all. The three packages version independently, so
 the network tier took a patch while `just-dna-format` stayed at 0.5.0; RM41 is the one item that also
 touches the compiler, which is why that package moved too. None of it touches a parquet, a model or a
-manifest field — which is what made a patch legal inside the closed digest window, and why none of it is
-in the 0.6 table below. **That table is *format/compiler schema* work, sorted by digest legality**, and
-enricher-only work sits outside it entirely; do not read "additive work is 0.6" as covering the network
-tier.
+manifest field, which is why none of it is in the 0.6 table below. **That table is *format/compiler
+schema* work**, and enricher-only work sits outside it entirely; do not read "additive work is 0.6" as
+covering the network tier.
 
-**The unpublished window is CLOSED, and that is now the rule rather than a caveat.** While 0.5.0 was
-unpublished anything digest-moving was free; it is not any more, and the asymmetry
-`integrity.file_entries` creates is what a minor has to route around:
+**The "digest window" is retired — the charter was amended on 2026-08-11 and the sort below follows the
+amended rule.** What gates a change is what it does to a *reader*, not to a recompile's bytes:
 
-- **A new optional *table* is still additive at any time.** `file_entries` skips missing files, so a
-  module that does not carry the new parquet keeps its digest byte for byte. This is the shape 0.6 has
-  to use.
-- **A new *column* on an existing parquet is now major-only.** It moves the digest of every module
-  already compiled against 0.5.0, which is no longer a hypothetical set.
+- **A new optional column is additive and lands in a minor.** An unset optional column is omitted from
+  `content_signature` and the per-input hashes cover authored bytes nothing rewrote, so the **authored**
+  identity does not move; only a recompile's `artifact.digest` does, and Principle 4 already scopes that
+  to a fixed `compiler_version`. Measured, not assumed — see CLAUDE.md for the numbers.
+- **A new optional *table* is additive too, and more cheaply**: `file_entries` skips missing files, so a
+  module that does not carry the new parquet keeps even its `artifact.digest` byte for byte.
+- **Major-only is removal, promotion to required, and retyping** — the moves that break an existing
+  reader or invalidate published data.
 
-Spent in the window while it was open, recorded so it is not re-litigated: the VRS identity switch
+The practical effect is that several items below were deferred on a rule that no longer holds, and have
+been re-sorted on their *own* merits instead; where an item stays deferred, the reason is now stated and
+is never "it moves the digest".
+
+Spent while the pre-publication window was open, recorded so it is not re-litigated: the VRS identity switch
 (RM19) and the cofactor columns (RM29) — the two that actually needed it — plus
 `ResolutionRow.authority` (provenance, so no signature moved), the continuous-bin semantics
 (`mt_heteroplasmy` re-authored), indel reconciliation (`shox_par1` gained a resolved coordinate), and
@@ -69,12 +74,11 @@ comparing before and after, not assumed. The one addition is a new example
 Each entry below is `## RMn — name`, a metadata line (**severity**, **status**, **owner**, **motivating
 case**), then the detail. Severity is *how much it costs to do*, not how urgent.
 
-# 0.6 — what the closed window permits
+# 0.6 — what a minor permits
 
-Sorting the active list by the rule above is a vindication of how 0.5 was cut rather than a new
-constraint on 0.6. **The pre-cut batch was columns precisely because columns needed the window**, and
-everything deferred past it was deferred on design or corpus questions, not on digest cost — so almost
-nothing left here wanted the window in the first place:
+Sorted by the amended rule: what a change does to a **reader**, not to a recompile's bytes. Nothing
+here is gated on the digest any more, so every ❌ or ⚠ below carries a reason of its own — a design
+question, a corpus question, or a genuine break:
 
 | Item | Shape | Minor-legal now? |
 |---|---|---|
@@ -86,21 +90,23 @@ nothing left here wanted the window in the first place:
 | **RM5** symbolic / structural alleles | *widens* a grammar | ✅ — P3 bars tightening, not widening |
 | **RM27** redistribution gate | a gate over a column that already ships | ✅ — reads `sources.csv`, writes no parquet |
 | **RM4** gene-panel materialization | compiler behaviour, opt-in per spec | ✅ — row-set expansion pinned on `compiler_version`; only a module that *declares* a panel gains rows |
-| **RM10** inheritance expectation | **undecided** | ⚠ — decide the placement first |
-| **RM15** multi-build identity | coordinates + identity across every table | ❌ — 1.0 |
+| **RM10** inheritance expectation | a column, its own table, or yaml metadata | ✅ — all three placements are minor-legal now; pick on orthogonality (P5), not on cost |
+| **RM43** resolve the 0.4 families | a stamped-identity column per positional table, then the join | ✅ — the column is additive; what is left is the design round, not a version gate |
+| **RM15** multi-build identity | changes the *semantics* of `variant_key` and of every coordinate | ❌ — 1.0, and not for digest reasons: re-keying published identity is the identity-change class |
 | ~~**RM38** gated-source cache~~ | enricher-only: new builders + cache resolvers, no parquet touched | ✅ **shipped in `just-dna-enricher` 0.5.1** — never a 0.6 item; kept here so the *reason* an enricher change bypasses this table stays visible |
 
 Two consequences worth stating outright:
 
-- **RM10 now has a gate it did not have.** It was "on demand only" and deliberately shapeless, so nobody
-  had to say where it lands. That is now the expensive half of the decision: on an existing table it is a
-  **column**, hence a major; as its own optional table, or as `module_spec.yaml` metadata that reaches
-  the manifest and no parquet, it stays a minor. Settle the placement before anyone writes it.
-- **The 1.0 pile is closed rather than merely queued.** `weights.parquet`'s `end` and the dead
-  `likely_pathogenic`/`likely_benign` pair were each re-examined *inside* the window and deliberately
-  left (see the tracker below). That was the last cheap moment for both, and passing was right in both
-  cases — `end` still lacks the coordinate convention it needs, and wiring the dead pair would have
-  spent the one free digest move on redundancy. They are 1.0 items now in fact, not just in status.
+- **RM10's gate dissolved.** It was parked partly because "where it lands" decided whether it was a
+  minor or a major. Every placement — a column on an existing table, its own optional table, or
+  `module_spec.yaml` metadata reaching only the manifest — is minor-legal under the amended rule, so the
+  placement is now a pure design question: which one keeps the axes orthogonal (P5). Decide it on merit.
+- **The 1.0 pile split when the rule changed**, and the two items that used to sit together show why.
+  `weights.parquet`'s `end` is an *additive optional column*, so it is 0.6 work now, gated on the one
+  thing that was always its real blocker: the coordinate convention a second coordinate needs
+  (interbase-half-open vs inclusive), which RM15 must settle. **Removing** the dead
+  `likely_pathogenic`/`likely_benign` pair stays major, because removal is exactly what the amended
+  rule reserves for a major. Same tracker, opposite answers, and the reason is now legible.
 
 # Active items
 
@@ -141,16 +147,16 @@ release** · **Owner** format (schema) · **Motivating case** trio / multi-sampl
 An optional trio / de-novo / Mendelian-consistency assertion carried *as data* (the panel says
 what it expects; a consumer checks it). Only if a real module needs it.
 
-**Where it lands is no longer a detail.** With 0.5.0 published, a **column** on an existing table moves
-every compiled module's digest and is a 1.0 item; the same assertion as **its own optional table**, or as
-`module_spec.yaml` metadata that reaches `manifest.json` and no parquet, stays a minor. Settle that before
-writing any of it — the item was parked while shapeless, and the shape is now the expensive half.
+**Where it lands is a design question, not a version gate.** A column on an existing table, its own
+optional table, and `module_spec.yaml` metadata reaching only `manifest.json` are all minor-legal, so
+choose on orthogonality (P5) and on what a consumer would have to join, never on cost. Settle it before
+writing any of it — the item was parked while shapeless, and it is still shapeless.
 
 ## RM15 — Build-agnostic identity & multi-build support (other-builds-support)
 
 **Severity** large · **Status** deferred to **1.0** — the build-naming half shipped as RM19, and the
-remaining half moves coordinates and identity across every table, which the closed digest window makes
-major-only · **Owner** format (schema + compiler) · **Motivating case** GRCh37 / T2T modules;
+remaining half changes the *semantics* of `variant_key` and of every coordinate, which is the
+identity-change class a major exists for (not a digest question) · **Owner** format (schema + compiler) · **Motivating case** GRCh37 / T2T modules;
 cross-build annotatability
 
 Today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is
@@ -336,8 +342,8 @@ the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "sh
 
 ## RM43 — Resolution reaches the SNP core only, so a 0.4-led module is rsid-joinable and nothing more
 
-**Severity** high (the prerequisites, not the join) · **Status** open — **1.0**, and it has a hard
-prerequisite · **Owner** format (schema) + compiler · **Motivating case** an rsid-authored ClinPGx
+**Severity** high (the prerequisites, not the join) · **Status** open — **0.6**, gated on a design
+round rather than on a version · **Owner** format (schema) + compiler · **Motivating case** an rsid-authored ClinPGx
 module: 1,482 rows, 147 variants, every coordinate null (S9 in
 [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md))
 
@@ -357,7 +363,9 @@ the coordinate and running `compile → reverse → compile` moves **`content_si
 a filled coordinate returns as an *authored* one. That is exactly what `VariantRow.authored_ident` exists
 to prevent, and no 0.4-family model has an equivalent. So the prerequisite is a stamped
 "which identity columns did the author supply" column per positional table — a **new column on an
-existing parquet**, hence major-only, which is what puts the whole item at 1.0 rather than 0.6.
+existing parquet** — which is **0.6 work** since the 2026-08-11 charter amendment, so the prerequisite
+is a design round rather than a major bump. What stays major-only is nothing here: the item is gated on
+doing the stamped-identity design first, not on a version.
 
 Three more constraints found with it, each of which shapes the design rather than merely costing:
 
@@ -427,9 +435,9 @@ candidates as they surface.
 
 **Additivity has two axes.** A new version may expand the **column-set** (new optional columns) *and*
 the **row-set** (one authored row compiling to several — e.g. a one-to-many rsid → one row per locus).
-The two are no longer equally cheap: with 0.5.0 published, a new column on an existing parquet moves
-every compiled module's digest and is **major-only**, so the column-set axis now lands here rather than
-in a minor. Row-set expansion changes identity
+Both are minor-legal: a new **optional** column leaves the authored identity untouched (it is omitted
+from `content_signature`) and moves only a recompile's `artifact.digest`, which P4 already scopes to a
+fixed `compiler_version`. Row-set expansion changes identity
 *cardinality* but is **not** a schema break: it is resolver behavior pinned on the `compiler_version`
 axis (P4 already pins the digest to the resolved reference), so the GRCh38 expansion ships now. Only
 the *build-aware* generalization (which/how-many loci per build, cross-build annotatability) is RM15.
@@ -471,10 +479,11 @@ numeric companion in 0.x if needed; retype/remove the string at 1.0 (breaking).
 
 ### `weights.parquet` `end` column
 
-**Severity** low · **Status** queued for 1.0
+**Severity** low · **Status** split by the charter amendment — **wiring it is 0.6; removing it is 1.0**
 
-Always set equal to `start` — no source column feeds it. **Disposition:** Remove outright at 1.0
-(artifact-digest change, major-only) or wire it to a real end coordinate. **Re-examined in 0.5 and
+Always set equal to `start` — no source column feeds it. **Disposition:** wire it to a real end
+coordinate (an additive change to an existing optional column, so a minor) or remove it outright at 1.0
+(removal is what the amended rule reserves for a major). **Re-examined in 0.5 and
 deliberately left here** rather than wired inside the window: wiring a second coordinate buys an
 off-by-one unless the first one's convention is unambiguous, and half of that was still open — every
 tier *stored* Ensembl's 1-based position while `VariantRow.start`'s own description said "0-based",
@@ -494,7 +503,8 @@ Always `False`; no CSV column feeds them — dead output. **Disposition:** Remov
 the `clin_sig` tier. **Re-examined in 0.5: removal is the answer, and wiring was rejected.**
 `clin_sig` is itself materialized into `weights.parquet` and `derive.pathogenic_from_clin_sig`
 already maps `likely_pathogenic → True`, so a wired column would tell a consumer nothing it cannot
-already read — it would spend the window's one free digest move on redundancy.
+already read. That argument is unchanged by the charter amendment — wiring is cheap now and still
+pointless — while the **removal** stays major, which is the half the amendment does speak to.
 
 ### `VariantRow.weight` vs `effect_size`
 
@@ -843,9 +853,9 @@ coord-keyed rows as position-only). A strict failure is the nudge toward the dri
   each tick belongs to, and § Upgrade derivation says outright that `weights.parquet` carries the
   **authored** `direction` only, that an empty one on a legacy module is correct, and that a
   parquet-side consumer applies `derive.direction_from_state(state, weight)` itself. What is not
-  settled is whether the artifact should ever carry the derived axes at all. It cannot be a patch
-  either way: filling the column moves every compiled module's parquet bytes, and the digest window
-  closed when 0.5.0 published. The candidate repairs and why each is wrong today —
+  settled is whether the artifact should ever carry the derived axes at all — a design question, not a
+  version one: what bars it is that filling a blank asserts what no curator wrote. The candidate repairs
+  and why each is wrong today —
   *populate at compile* asserts an axis no curator wrote (`state='significant'` has no direction, so
   one gets invented from the weight sign), *trim `state` to a derived mirror on load* is `upgraded()`,
   which belongs to the publisher's `needs_upgrade` flow rather than to the compiler, and `state` stays

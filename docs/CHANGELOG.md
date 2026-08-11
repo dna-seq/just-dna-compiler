@@ -14,9 +14,11 @@ batch inside an unpublished release is not a version.
 **0.5.0 is published** — tagged `v0.5.0` and released to PyPI on 2026-08-07 (`just-dna-format`,
 `just-dna-compiler`, and `just-dna-enricher`, the last being that package's first release). Everything
 below dated 2026-08-07 or earlier is in it. The next heading is therefore a real new number: additive
-work is **0.6.0**, and anything that moves a compiled module's `artifact.digest` — a new column on an
-existing parquet, a requiredness or identity change — is **1.0**, because the digest window that made
-those free closed with this release. See [ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits).
+work — including a **new optional column or table** — is **0.6.0**, while **removing** a column,
+**promoting** one to required, **retyping** one, or changing what an identity key *means* is **1.0**.
+That is Principle 3 as amended on 2026-08-11; the earlier "anything that moves `artifact.digest` is
+1.0" rested on a premise that expired when `content_signature` took over content identity in 0.4.1.
+See [ROADMAP § 0.6](ROADMAP.md#06--what-a-minor-permits).
 
 **That rule is about the schema surface, and the three packages version independently — so
 `just-dna-enricher` can take a patch.** "Additive work is 0.6.0" sorts changes by what they do to a
@@ -46,7 +48,8 @@ finding worth keeping. Materializing the coordinate into the parquet and running
 compile moves `content_signature` (`sha256:8173dab7…` → `sha256:fb91ffa2…`), because `reverse_module`
 rebuilds the CSV from the parquet and a filled coordinate comes back as an *authored* one. That is
 exactly what `VariantRow.authored_ident` exists to prevent, and no 0.4-family model has an equivalent;
-adding one is a new column on an existing parquet, hence major-only. Filed as **RM43** with the two
+adding one is a new column on an existing parquet — 0.6 work under the amended Principle 3, so the
+prerequisite is a design round rather than a major bump. Filed as **RM43** with the two
 smaller constraints found alongside — `PharmVariantRow` has no `alts` column at all, and `variant_key`
 is a *property* on these models, so it is materialized in no PGx parquet and a consumer cannot join
 them to `weights.parquet` on it either.
@@ -373,7 +376,7 @@ RM24, RM25, RM16 and RM28 are all new tables, RM5 widens a grammar, RM27 is a ga
 already ships, and RM4 is compiler behaviour. Only two items move: **RM15** (multi-build identity) is now
 a 1.0 item rather than a minor, and **RM10** acquires a gate it never had — as a column on an existing
 table it is a major, as its own table or manifest metadata it stays a minor, and that placement is now
-the expensive half of the decision. The new table is in [ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits).
+the expensive half of the decision. The new table is in [ROADMAP § 0.6](ROADMAP.md#06--what-a-minor-permits).
 
 **CI was red from the commit that added it, and not for any reason in the code.** All three jobs — ruff
 and both pytest legs — failed inside *Set up job*, before a single test ran: `astral-sh/setup-uv@v9`

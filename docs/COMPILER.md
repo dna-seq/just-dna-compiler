@@ -424,7 +424,8 @@ report that surfaced this (S9):
 - **`resolution_signature` / `resolution_sources` stay unset** for a module whose only subjects are
   table rows, so its injected `resolution.csv` leaves no trace in the manifest. Stamping them is
   blocked on reverse: `reverse_module` rebuilds `resolution.csv` from `weights.parquet` alone, so a
-  table-only module reverses to a spec without one and the fixed point would break. Tracked in RM43.
+  table-only module reverses to a spec without one and the fixed point would break. Tracked in RM43,
+  whose prerequisite stamped-identity column is 0.6 work under the amended Principle 3.
 
 What the compiler *does* do is **say so**. Every positional 0.4 table — `heteroplasmy.csv`,
 `haplotypes.csv`, `pharm_variants.csv`, derived from the models rather than listed — is checked for
@@ -770,9 +771,8 @@ exactly this (it imports nothing from `spec`, so the marketplace `revalidate` fl
 that way) — or go through `VariantRow.effective_direction`, which returns the authored value when
 there is one and the derivation when there is not.
 
-Whether an artifact should ever carry the derived axes is open, and it is a 1.0 question rather than a
-patch: filling the column moves every compiled module's parquet bytes, and the digest window closed
-when 0.5.0 published (2026-08-07).
+Whether an artifact should ever carry the derived axes is open, and it is a design question rather than
+a patch: the objection is that filling a blank asserts what no curator wrote, not that the bytes move.
 
 ## Intentionally unimplemented — and why
 
@@ -804,10 +804,10 @@ when 0.5.0 published (2026-08-07).
 
 - **`weights.parquet`/`studies.parquet` carry the 0.3 columns + a `phased` bit**, so a re-compile under
   this compiler changes `artifact.digest` for every module; reproducibility is pinned by
-  `compiler_version`, and published versions keep their digest until re-published. (Digest moves were
-  free to absorb while a release was still unpublished; **0.5.0 is published**, so anything that moves a
-  compiled module's digest is now a 1.0 item — see
-  [ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits).)
+  `compiler_version`, and published versions keep their digest until re-published. A moving digest is
+  therefore not itself a version gate: a **new optional column or table** is additive and minor-legal,
+  while removal, promotion to required, retyping, or changing what an identity key means is major-only
+  — see [ROADMAP § 0.6](ROADMAP.md#06--what-a-minor-permits).
 - **Round-trip is lossless and idempotent** (P7): `reverse_module` → recompile preserves every column
   including phase, and the same spec compiles twice to the same digest. In 0.5 the round-trip is
   additionally **offline** — reverse emits `resolution.csv`, so recompile needs no reference and no

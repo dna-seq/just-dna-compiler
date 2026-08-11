@@ -73,23 +73,22 @@ recomputed by every consumer, and a recomputation is a place to drift.*
 
 ## ⏳ Deferred — additive, lands in a minor (0.6+)
 
-*Two of these no longer qualify unconditionally. With 0.5.0 published the digest window is closed, so a
-new **column** on an existing parquet is major-only while a new optional **table** stays additive —
-which makes **RM15** a 1.0 item and **RM10** conditional on where it lands. The full sort is
-[ROADMAP § 0.6](ROADMAP.md#06--what-the-closed-window-permits); the rest of this list is unaffected,
-because everything else here is a table, a grammar widening, or compiler behaviour.*
+*Sorted by the 2026-08-11 charter amendment: a new **optional** column or table is additive and
+minor-legal, while **removal, promotion to required and retyping** are what a major is for. **RM15**
+stays 1.0 on its own merits — it changes the semantics of `variant_key` and of every coordinate — and
+**RM10**'s placement gate dissolved. The full sort is [ROADMAP § 0.6](ROADMAP.md#06--what-a-minor-permits).*
 
 - **[RM4](ROADMAP.md#rm4--native-clinvar-gene-panel-materialization)** — native ClinVar gene-panel materialization at compile time. The injectable-reference half is unblocked; compile-time materialization is what stays parked. · *also in* USE_CASES, ENRICHER, CHANGELOG, PROPOSAL_0_5
 - **[RM5](ROADMAP.md#rm5--symbolic--structural-alleles)** — symbolic / structural alleles (`<DEL>`, 5-HTTLPR, ClinPGx `del`/`ins`, CPIC's `x≥3`). · *also in* CLAUDE.md, USE_CASES, SCHEMAS, ENRICHER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5
-- **[RM10](ROADMAP.md#rm10--declarative-inheritance-expectation-field)** — declarative inheritance-expectation field (trio / de-novo). *On demand only*, and now **⚠ conditional**: a column on an existing table is 1.0, its own table or manifest metadata is a minor. · *also in* USE_CASES, PROPOSAL_0_5
-- **[RM15](ROADMAP.md#rm15--build-agnostic-identity--multi-build-support-other-builds-support)** — build-agnostic identity & multi-build support (refget tables beyond GRCh38). **Now a 1.0 item, not a minor** — it changes coordinates and identity across every table, and the digest window closed with 0.5.0. Paired with the `end`-column item in the major bucket: both need the coordinate convention *for a second coordinate* settled (interbase-half-open vs inclusive). The authored-`start` half closed in 0.5 — it is 1-based VCF POS and now says so. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG, PROPOSAL_0_5
+- **[RM10](ROADMAP.md#rm10--declarative-inheritance-expectation-field)** — declarative inheritance-expectation field (trio / de-novo). *On demand only*; the placement question is now design-only (column, own table or yaml metadata are all minor-legal — pick on orthogonality). · *also in* USE_CASES, PROPOSAL_0_5
+- **[RM15](ROADMAP.md#rm15--build-agnostic-identity--multi-build-support-other-builds-support)** — build-agnostic identity & multi-build support (refget tables beyond GRCh38). **A 1.0 item** — it changes the *semantics* of `variant_key` and of every coordinate, which is the identity-change class a major exists for. Paired with the `end`-column item in the major bucket: both need the coordinate convention *for a second coordinate* settled (interbase-half-open vs inclusive). The authored-`start` half closed in 0.5 — it is 1-based VCF POS and now says so. · *also in* USE_CASES, SCHEMAS, COMPILER, CHANGELOG, PROPOSAL_0_5
 - **[RM16](ROADMAP.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)** — authored PRS weights: a scoring file, not a `pgs.csv` manifest. · *also in* SCHEMAS, PROPOSAL_0_5
 - **[RM23](ROADMAP.md#rm23--computational-predictor-scores-as-a-table)** — computational predictor scores as a table (`predictions.csv`), long-form. Deferred on grain + acquisition, not on code. · *also in* CLAUDE.md, CHANGELOG
 - **[RM24](ROADMAP.md#rm24--genedisease-validity-as-a-table)** — gene–disease validity as a table (`gene_validity.csv`): ClinGen, GenCC, HPO from one shape. · *also in* CLAUDE.md
 - **[RM25](ROADMAP.md#rm25--clinvar-assertion-tier-as-artifact-data)** — ClinVar assertion tier persisted as artifact data. Not the same as escalating the check's severity.
 - **[RM27](ROADMAP.md#rm27--a-redistribution-compile-gate)** — a redistribution compile gate. A distribution right is not a *use*, so `declared_use` is the wrong axis; needs the third axis designed first. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
 - **[RM28](ROADMAP.md#rm28--meta-conclusions-and-injected-cofactors)** — meta-conclusions + injected cofactors. **Parked and now smaller**: RM29 moved two of three cofactor classes into columns, and the cis/trans motivation closed as a compiler check. What survives is cross-*subject* pairing, economy, and open-world negation. · *also in* COMPILER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5 § G3
-- **[RM43](ROADMAP.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more)** ⚠ **1.0, not a minor** — resolution reaches `variants.csv` only, so an rsid-authored PGx module ships every coordinate null and joins to no VCF. The naive repair (fill from `resolution.csv`) **breaks P7**: reverse re-emits a filled coordinate as authored and `content_signature` moves, so it needs an `authored_ident` equivalent per positional table — a new column, hence major. 0.5.3 made the gap legible instead. · *also in* CLAUDE.md, COMPILER, ENRICHER, CONSUMER_SUGGESTIONS § S9, CHANGELOG
+- **[RM43](ROADMAP.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more)** resolution reaches `variants.csv` only, so an rsid-authored PGx module ships every coordinate null and joins to no VCF. The naive repair (fill from `resolution.csv`) **breaks P7**: reverse re-emits a filled coordinate as authored and `content_signature` moves, so it needs an `authored_ident` equivalent per positional table — an optional column, hence **0.6** since the charter amendment. 0.5.3 made the gap legible instead. · *also in* CLAUDE.md, COMPILER, ENRICHER, CONSUMER_SUGGESTIONS § S9, CHANGELOG
 
 ## — Not format scope
 

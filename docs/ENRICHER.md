@@ -1199,7 +1199,7 @@ Two things the flat "non-commercial" summary does *not* say, both of which matte
   not intended for direct diagnostic use or medical decision-making*, and its API key is **personal and
   non-transferable** under its terms §2. `commercial_use=False` is the nearest a column gets; the rest
   stays prose in `notice`, on purpose rather than by omission — a fourth licensing axis means a new
-  `SourceRow` column, and a new column on an existing parquet moves every compiled module's digest, so it
+  `SourceRow` column, and that is a design round rather than a drive-by addition, so it
   is a **1.0** change and not a minor one. The restriction is therefore recorded and legible; it is not
   machine-enforced, and nobody should file the column as cheap.
 
