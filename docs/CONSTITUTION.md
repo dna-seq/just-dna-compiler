@@ -25,8 +25,9 @@ purpose.
   (`enricher → compiler → format`) so its deps never enter the compile path. Consumers pick the tier
   they need and pull nothing heavier. The bright line is the *heavyweight* deps in Non-goals below
   (Dagster / LLM SDKs / HuggingFace), which the **format and compiler tiers** may never pull.
-- Make **integrity the identity.** A version is defined by its content digest, byte-reproducible by
-  anyone who holds the inputs.
+- Make **integrity the identity.** A version is identified by its artifact digest and its authored
+  content by `content_signature`, both reproducible by anyone holding the inputs and the pinned
+  compiler version.
 
 ## Non-goals
 
@@ -79,15 +80,21 @@ purpose.
    superseded is kept as a **working derived alias**. **Breaking changes land only at a major bump.**
    The default retirement is two-step — *deprecate at the major* (still readable, emits a deprecation
    event), *remove at the next major*. Purely-internal dead weight may be removed outright at a major.
-   Anything that changes `artifact.digest` bytes (parquet column set or types) is inherently
-   major-only, because the digest is a version's immutable identity. The concrete list of items
-   queued for the next major is maintained separately, as living material.
+   A new **optional** column, or a new optional table, is additive and lands in a minor: the authored
+   identity — `content_signature` and the per-input hashes — is unchanged, and only a recompile's
+   `artifact.digest` moves. **Removing** a column, **promoting** one to required, or **retyping** one
+   is major-only: each breaks an existing reader or invalidates published data. The concrete list of
+   items queued for the next major is maintained separately, as living material.
 
 4. **Integrity and immutability.** All hashes are SHA-256, lowercase hex, prefixed `sha256:`.
-   `artifact.digest` (a Merkle root over the artifact files) is the version's content identity. A
-   published version's bytes are **never mutated**; withdrawal is a *yank* (drop from listings, keep
-   fetchable), not an edit. Parquet is not byte-deterministic across polars/arrow versions, so
-   reproducibility is pinned via `compiler_version` and the resolved reference.
+   Identity has two halves and they answer different questions. `artifact.digest` (a Merkle root over
+   the artifact files) is the version's **byte** identity — these bytes, from this compiler.
+   `content_signature`, over the authored rows and independent of both the reference that resolved
+   them and the module's name/display metadata, is its **content** identity — this data, however and
+   wherever it was compiled. A published version's bytes are **never mutated**; withdrawal is a *yank*
+   (drop from listings, keep fetchable), not an edit. Parquet is not byte-deterministic across
+   polars/arrow versions, so reproducibility is pinned via `compiler_version` and the resolved
+   reference.
 
 5. **Orthogonal axes, no overloaded fields.** Each concept gets its own column or table; a field must
    not pile up independent axes. (The legacy `state` field — conflating statistical significance,
