@@ -1,10 +1,12 @@
 # Consumer suggestions
 
-Field notes from consumers adopting the libraries. Two sources so far, in sections by adoption:
+Field notes from consumers adopting the libraries, in sections by adoption:
 
 - **[just-dna-registry](#s1--module-extraforbid-rejects-registry-owned-identity-keys-the-whole-pre-04-corpus-carries)** (S1–S2) — the catalog server, on 0.4.
-- **[just-dna-lite](#field-notes-from-just-dna-lite--the-05-enricher-at-panel-scale)** (S3–S6) — the app, on the 0.5 enricher at panel scale.
+- **[just-dna-lite](#field-notes-from-just-dna-lite--the-05-enricher-at-panel-scale)** (S3–S6, S9) — the app, on the 0.5 enricher at panel scale.
 - **[just-dna-registry](#field-notes-from-the-registry--adopting-052)** (S7–S8) — the catalog server again, on 0.5.2: a digest that moves without content (S7), and a manifest that cannot say a check ran (S8).
+- **[just-module-creator](#field-notes-from-just-module-creator--the-literature-tier-2026-08-11)** (S10–S12) — the authoring surface, on the literature tier.
+- **[just-dna-registry](#field-notes-from-the-registry--adopting-053)** (S13) — the catalog server on 0.5.3: `fully_resolved` is scoped to `variants.csv` but reads as a module-level verdict, and the workaround is a string match on a warning.
 
 ---
 
@@ -622,3 +624,83 @@ reachable at all, since today no upstream surface returns it.
 
 We are solving our own half by searching (a search result carries a title, so the PMID never has to
 be recalled). That does not help anyone using `hint citation` or the enricher directly.
+
+---
+
+# Field notes from the registry — adopting 0.5.3
+
+*Written 2026-08-11, wiring the positional-joinability warning into the catalog's trust facet.*
+
+---
+
+## S13 — `fully_resolved` is scoped to `variants.csv` but reads as a verdict about the module, and the only durable record of the difference is a warning string
+
+**Status — confirmed from this side and filed as
+[RM44](ROADMAP.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one),
+targeted at 0.6; suggestion (1) is the accepted shape.** Reproduced end to end: the phrase
+`have no chrom+start` reaches `manifest.compilation.warnings` in `manifest.json` verbatim for both
+modules named below and is absent for a module whose core resolves, so the marker match is sound and
+`trusted: true` really was being granted on an empty quantifier. Two things done immediately, without
+waiting for the field: the fragment is now `compiler.UNJOINABLE_PHRASE` rather than an inline literal,
+and a test pins it in both places it must hold — emitted verbatim, and present in
+`manifest.compilation.warnings` — so a reword breaks this build rather than your catalog. **The rest of
+that sentence is still free to improve**; that fragment is not, until RM44 gives you a field to read
+instead. And the ask not to make `fully_resolved` tri-state is accepted and recorded in the item.
+
+**Not a new fact — a new consequence.** S9 already records that `manifest.fully_resolved` is vacuously
+`true` for a table-only module, "against the trust rule its own field comment states", and RM43 tracks
+it. This is the report from the far end of that: it reached production, and the workaround we had to
+ship is worse than the bug.
+
+**What happened.** The registry projects a `trusted` facet per version, on the rule the field comments
+document: `resolution_mode == "strict" or fully_resolved`. `fully_resolved` is `all()` over
+`variants.csv`, so for a module without one it is `all()` over an empty list. The disjunction was
+therefore granting trust on an empty quantifier, and the catalog served — under a badge that means
+"fully baked" — modules that join to no VCF and annotate nothing. On your own reference examples:
+
+| module | shape | what the catalog said |
+|---|---|---|
+| `pgx_slco1b1_simvastatin` | 9 of 9 `pharm_variants.csv` rows, no `chrom`/`start` | `trusted: true` |
+| `cyp2c19_star_alleles` | 106 of 106 `haplotypes.csv` rows, a `start` and **no `chrom` column at all** | `trusted: true` |
+
+Fixed in registry 0.11.3, including a migration — the manifests were always correct and immutable, so
+only our *reading* of them was wrong, but the stored projection had to be repaired in place.
+
+**The part worth your attention is the fix, not the bug.** There is no structured field that says a
+table joins to nothing, so the only record that survives into the catalog is the 0.5.3 warning's
+*prose*. Our trust facet now contains, in shipped code:
+
+```python
+UNJOINABLE_MARKER = "have no chrom+start"   # db/facets.py
+```
+
+matched as a substring against `manifest.compilation.warnings`, because at reindex time the manifest
+is all we have — the spec directory is long gone. **A reword of that sentence silently re-grants trust
+to modules that join to nothing.** We have pinned it with a test that compiles a real spec through the
+real compiler, so it breaks our build rather than our catalog, and the miss direction is "cannot say"
+rather than "trusted". It is still a string match deciding a trust badge, and we would rather not be
+the reason that sentence can never be improved.
+
+**Suggestion.** Cheaper than S8's `checks_run`/`checks_skipped` (which subsumes it), and cheapest
+first:
+
+1. **One additive integer on `Compilation`: how many rows resolution was actually applied to.**
+   Something like `resolution_subjects: int = 0`. Then `fully_resolved=True` alongside
+   `resolution_subjects=0` is *self-evidently* vacuous to any consumer, with no prose anywhere and no
+   new vocabulary — it is the same "keep the parts, compute the convenience" pattern as
+   `vrs_alleles`/`vrs_alleles_identified`, whose comment already makes exactly this argument ("Both `0`
+   means no resolution table was present, i.e. nothing was attempted, which is not the same as nothing
+   achieved"). That reasoning was applied to VRS coverage and not to the flag beside it.
+2. **S8's structured check record**, which answers this and the `clin_sig` case together.
+3. **Document the scope**, if neither is wanted: one line on `fully_resolved` saying it quantifies over
+   `variants.csv` only and is not a module-level verdict. That at least means the next consumer reads
+   it correctly the first time instead of after a migration.
+
+**What we are explicitly *not* asking for.** Do not make `fully_resolved` tri-state or `None`-able. It
+is typed `bool` and consumers branch on it directly; changing that is a breaking read for everyone to
+fix a case an additive sibling field describes better. The flag is not wrong — it answers its question
+correctly. It just cannot say which question it answered.
+
+Worth noting this got cheaper while we were writing it: the 2026-08-11 charter amendment makes a new
+optional column minor-legal, and a manifest field was never in `artifact.digest` to begin with, so (1)
+is additive, digest-neutral and needs no major.

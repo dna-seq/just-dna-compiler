@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 from just_dna_compiler.compiler import (
     _POSITIONAL_TABLE_KINDS,
+    UNJOINABLE_PHRASE,
     _table_row_key,
     compile_module,
     validate_spec,
@@ -150,3 +151,24 @@ def test_the_finding_never_escalates_under_strict(spec: Path, tmp_path: Path) ->
     result = compile_module(spec, tmp_path / spec.name, strict=True)
     assert result.success, result.errors
     assert [w for w in result.warnings if "joins by rsID only" in w]
+
+
+def test_the_unjoinable_phrase_survives_into_the_manifest(tmp_path: Path) -> None:
+    """The sentence is a contract: a catalog substring-matches it to decide a trust badge (S13).
+
+    Reindexing happens from a *published manifest*, where the spec directory is long gone, so the
+    warning text is the only surviving record that a table joins to nothing — and `fully_resolved` is
+    vacuously true for exactly these modules, so the badge would otherwise be granted. Pinned in both
+    places it has to hold: the phrase is emitted verbatim, and it reaches
+    `manifest.compilation.warnings` rather than only the caller's return value.
+    """
+    result = compile_module(_PGX, tmp_path / "out")
+    assert result.success
+    assert any(UNJOINABLE_PHRASE in w for w in result.warnings)
+    assert any(UNJOINABLE_PHRASE in w for w in result.manifest.compilation.warnings)
+
+    # …and it stays out of a module whose rows carry their coordinates, or the badge would be denied
+    # to modules that deserve it.
+    placed = _pharm_spec(tmp_path / "placed", coordinates=True, resolution=True)
+    placed_result = compile_module(placed, tmp_path / "out-placed")
+    assert not [w for w in placed_result.manifest.compilation.warnings if UNJOINABLE_PHRASE in w]

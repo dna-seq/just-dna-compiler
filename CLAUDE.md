@@ -677,6 +677,19 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `chrom`/`start`/`ref`/`alts` — never a subset. A lone `alts` on a position-only row makes
   `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref`, so a partial
   coordinate silently changes *which variant the row is*.
+- **A warning's TEXT became an API, because the manifest carries prose and no field (RM44).**
+  `compile_module` copies its warnings into `manifest.compilation.warnings` → `manifest.json`, and a
+  catalog reindexing from a published manifest has nothing else: `fully_resolved` is `all()` over
+  `variants.csv`, so it is **vacuously `true`** for a table-only module and the documented trust rule
+  (`resolution_mode == "strict" or fully_resolved`) grants a badge to a module that annotates nothing.
+  A consumer shipped that, then repaired it by substring-matching `"have no chrom+start"`.
+  `compiler.UNJOINABLE_PHRASE` names the fragment and a test pins it in **both** places it must hold —
+  emitted verbatim, and present in `manifest.compilation.warnings` — so a reword breaks our build
+  instead of their catalog. Two durable points: **anything a consumer can only learn from a warning
+  string is an unversioned interface**, so give it a structured field (RM44's `resolution_subjects` is
+  one integer) rather than asking everyone downstream to parse; and when a flag quantifies over a
+  subset, **publish the denominator** — `vrs_alleles`/`vrs_alleles_identified` already argue exactly
+  this one line above it in the same model, and nobody applied it to the flag.
 - **Resolution reaches the SNP core ONLY, and the naive repair breaks P7 (RM43, surfaced in 0.5.3).**
   `_build_table` is `model_dump()` → parquet, so a `pharm_variants.csv`/`haplotypes.csv`/
   `heteroplasmy.csv` row keeps the coordinates its author typed — none, for an rsid-authored module —

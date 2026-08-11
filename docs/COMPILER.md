@@ -427,6 +427,16 @@ report that surfaced this (S9):
   table-only module reverses to a spec without one and the fixed point would break. Tracked in RM43,
   whose prerequisite stamped-identity column is 0.6 work under the amended Principle 3.
 
+**The warning's wording is a contract, because the manifest carries it and nothing else.**
+`compile_module` copies its warnings into `manifest.compilation.warnings`, which ships inside
+`manifest.json`, and a catalog reindexing from a published manifest has no spec directory left to
+re-derive anything from — so for a table-only module the *sentence* is the only surviving record that
+its rows join to nothing, `fully_resolved` being vacuously `true`. A downstream registry substring-
+matches `"have no chrom+start"` to decide a trust badge; `compiler.UNJOINABLE_PHRASE` names that
+fragment and a test pins it, so a reword breaks this build rather than a catalog. Improve the rest of
+the sentence freely; move that fragment deliberately, and only after RM44 gives a consumer a
+structured field to read instead.
+
 What the compiler *does* do is **say so**. Every positional 0.4 table — `heteroplasmy.csv`,
 `haplotypes.csv`, `pharm_variants.csv`, derived from the models rather than listed — is checked for
 rows with no `chrom`+`start`, and the finding is one aggregated line per table carrying two counts:

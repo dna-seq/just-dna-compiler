@@ -753,6 +753,20 @@ _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 )
 
 
+#: **A downstream trust badge substring-matches this phrase, so it is a contract, not prose (S13).**
+#: `compile_module` copies its warnings into `manifest.compilation.warnings`, which ships inside
+#: `manifest.json` — and a catalog reindexing from a published manifest has no spec directory left to
+#: re-derive anything from, so the *sentence* is the only surviving record that a table joins to
+#: nothing. `just-dna-registry` 0.11.3 pins `UNJOINABLE_MARKER = "have no chrom+start"` in its facet
+#: builder against exactly this, after the vacuous `fully_resolved` granted trust to modules that
+#: annotate nothing. Rewording the phrase silently re-grants that trust.
+#:
+#: So it is named here rather than inlined: the rest of the sentence is free to improve, this fragment
+#: is not, and a change to it is a deliberate act with a consumer to tell. The real repair is a
+#: structured field a consumer can read instead of prose — RM44 — after which this can move again.
+UNJOINABLE_PHRASE = "have no chrom+start"
+
+
 def _table_row_key(row: Any, genome_build: str) -> str | None:
     """The `variant_key` a 0.4-family row resolves under, exactly as the enricher derives it.
 
@@ -828,7 +842,7 @@ def _check_positional_joinability(
             else ""
         )
         warnings.append(
-            f"{csv_name}: {len(unplaced)} of {len(rows)} row(s) have no chrom+start, so this table "
+            f"{csv_name}: {len(unplaced)} of {len(rows)} row(s) {UNJOINABLE_PHRASE}, so this table "
             f"joins by rsID only — a VCF whose ID column is empty matches none of them. {detail}."
             f"{partial_note}"
         )

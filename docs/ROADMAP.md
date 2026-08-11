@@ -92,6 +92,7 @@ question, a corpus question, or a genuine break:
 | **RM4** gene-panel materialization | compiler behaviour, opt-in per spec | ✅ — row-set expansion pinned on `compiler_version`; only a module that *declares* a panel gains rows |
 | **RM10** inheritance expectation | a column, its own table, or yaml metadata | ✅ — all three placements are minor-legal now; pick on orthogonality (P5), not on cost |
 | **RM43** resolve the 0.4 families | a stamped-identity column per positional table, then the join | ✅ — the column is additive; what is left is the design round, not a version gate |
+| **RM44** `resolution_subjects` count | one additive integer on `Compilation` | ✅ — a manifest field, never in `artifact.digest`; retires a prose-matching workaround |
 | **RM15** multi-build identity | changes the *semantics* of `variant_key` and of every coordinate | ❌ — 1.0, and not for digest reasons: re-keying published identity is the identity-change class |
 | ~~**RM38** gated-source cache~~ | enricher-only: new builders + cache resolvers, no parquet touched | ✅ **shipped in `just-dna-enricher` 0.5.1** — never a 0.6 item; kept here so the *reason* an enricher change bypasses this table stays visible |
 
@@ -384,6 +385,50 @@ Three more constraints found with it, each of which shapes the design rather tha
   `weights.parquet` alone, so a table-only module reverses to a spec without one and the round-trip
   fixed point breaks. This half is the same shape as the registry's S8 (a manifest that cannot say a
   check ran) and should be decided with it.
+
+## RM44 — `fully_resolved` answers a question nobody asked it, and prose is the only record of the real one
+
+**Severity** low (one additive field) · **Status** open — **0.6** · **Owner** format (manifest) +
+compiler · **Motivating case** a catalog served `trusted: true` for modules that annotate nothing
+(S13 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md))
+
+`manifest.compilation.fully_resolved` is `all(...)` over `variants.csv`, so on a module without one it
+is `all()` over an empty list — **vacuously `true`**. The field is not wrong; it answers its question
+correctly. It simply cannot say *which* question it answered, and the trust rule its own field comment
+documents (`resolution_mode == "strict" or fully_resolved`) reads it as a module-level verdict. A
+consumer followed that comment and shipped it: `just-dna-registry` granted its `trusted` badge to
+`pgx_slco1b1_simvastatin` and `cyp2c19_star_alleles`, both of which join to no VCF, and needed a
+migration to repair the stored projection.
+
+**The workaround is the finding.** There is no structured field saying a table joins to nothing, so the
+only record surviving into a catalog is the 0.5.3 warning's *prose* — `compile_module` copies its
+warnings into `manifest.compilation.warnings`, and a reindex has no spec directory left to re-derive
+from. The registry pins `UNJOINABLE_MARKER = "have no chrom+start"` and substring-matches it to decide a
+badge. Confirmed from this side: the phrase reaches `manifest.json` verbatim for both modules and is
+absent for a module whose core resolves. That sentence is now load-bearing, which is a bad place for a
+sentence to be; `compiler.UNJOINABLE_PHRASE` names it and a test pins it, so a reword breaks this build
+rather than their catalog, but that is a splint, not a fix.
+
+**The fix is one additive integer on `Compilation`** — `resolution_subjects`, the count of rows
+resolution was actually applied to, i.e. the denominator `fully_resolved` quantifies over. Then
+`fully_resolved=true` beside `resolution_subjects=0` is self-evidently vacuous with no prose anywhere
+and no new vocabulary. This is the same "keep the parts, compute the convenience" pattern as
+`vrs_alleles`/`vrs_alleles_identified`, whose comment already argues it in as many words — *"Both `0`
+means no resolution table was present, i.e. nothing was attempted, which is not the same as nothing
+achieved"* — and the argument was simply never applied to the flag sitting beside it. Additive, and a
+manifest field was never inside `artifact.digest`.
+
+**Two things not to do.** Do not make `fully_resolved` tri-state or `None`-able: it is typed `bool`,
+consumers branch on it directly, and that is a breaking read for everyone to fix a case an additive
+sibling describes better — the reporter asked explicitly for this not to happen. And do not treat the
+counter as a substitute for **RM43**: it makes the vacuity visible, it does not make the tables
+joinable.
+
+**Open design question, worth settling with S8 rather than alone:** one counter or two. The denominator
+of `fully_resolved` (variants in scope) is the cheap, self-evident half. A second count — table rows
+that cannot be joined — is what the prose actually carries today, and it overlaps the structured
+`checks_run`/`checks_skipped` record S8 asks for. Deciding them together avoids shipping two shapes for
+one question (P5).
 
 # Not format scope
 
