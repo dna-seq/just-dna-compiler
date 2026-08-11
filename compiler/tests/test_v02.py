@@ -48,6 +48,13 @@ rs1801133,[PMID: 12345],EUR,0.01,assoc,GWAS
 rs7412,67890,EUR,0.001,assoc,meta-analysis
 """
 
+# A derived-fact sidecar: machine-produced, fact-hashed, byte-hashed into `manifest.derived` (S26).
+# The two studies rows cite 12345/67890, so this is the citation check for one of them.
+_LITERATURE = """\
+pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at
+12345,10.1000/demo,PMC12345,true,true,0,,pubmed,resolved,2026-08-01T20:55:37Z
+"""
+
 _PROVENANCE = {
     "generator": "agent-x",
     "model": "claude",
@@ -236,6 +243,73 @@ def test_unsupported_logo_extension_rejected(tmp_path: Path) -> None:
     result = compile_module(spec, tmp_path / "o", resolve_with_ensembl=False, logo_file=gif)
     assert not result.success
     assert any("logo must be one of" in e for e in result.errors)
+
+
+def test_derived_sidecars_are_attested_without_becoming_content(tmp_path: Path) -> None:
+    """`manifest.derived` byte-hashes the sidecar CSVs so they can be served (S26).
+
+    They were reachable by nobody: `_INPUT_FILES` excludes them on purpose (they are fact-hashed, not
+    byte-hashed) and only their *parquets* are in `_OUTPUT_FILES`, so a registry serving only what the
+    manifest attests could not hand back the table that produced a parquet. The two hashes answer
+    different questions and this test pins both: the byte hash appears, and neither identity moves."""
+    spec = _write_spec(tmp_path / "s")
+    bare = _compile(spec, tmp_path / "o1")
+    assert bare.derived == []  # nothing fabricated when no sidecar exists
+
+    (spec / "literature.csv").write_text(_LITERATURE, encoding="utf-8")
+    with_sidecar = _compile(spec, tmp_path / "o2")
+
+    names = {e.name for e in with_sidecar.derived}
+    assert names == {"literature.csv"}
+    entry = with_sidecar.derived[0]
+    assert entry.sha256 == sha256_file(spec / "literature.csv")
+
+    # Attested, but not content: the sidecar's own parquet is in the artifact and its CSV is not.
+    assert "literature.parquet" in {f.name for f in with_sidecar.artifact.files}
+    assert "literature.csv" not in {f.name for f in with_sidecar.artifact.files}
+    assert "literature.csv" not in {f.name for f in with_sidecar.inputs}
+    # The authored data did not change, so the authored identity must not have.
+    assert with_sidecar.content_signature == bare.content_signature
+
+
+def test_the_byte_hash_never_displaces_the_fact_hash(tmp_path: Path) -> None:
+    """The trap this field creates, pinned: a rewrite that preserves the FACTS moves the byte hash.
+
+    That is why `derived[]` is excluded from `_INPUT_FILES` and why its docstring says the byte hash is
+    transport only. A consumer reading it as identity would call a legitimate re-emission tampering —
+    the exact failure the fact signatures exist to prevent, so the two must be observably independent."""
+    spec = _write_spec(tmp_path / "s")
+    (spec / "literature.csv").write_text(_LITERATURE, encoding="utf-8")
+    first = _compile(spec, tmp_path / "o1")
+
+    # Same facts, different bytes: a trailing blank line and a reordered column would both do it.
+    (spec / "literature.csv").write_text(_LITERATURE + "\n", encoding="utf-8")
+    second = _compile(spec, tmp_path / "o2")
+
+    assert second.derived[0].sha256 != first.derived[0].sha256, "byte hash should track bytes"
+    assert second.literature.signature == first.literature.signature, "facts are unchanged"
+    assert second.content_signature == first.content_signature
+
+
+def test_verify_catches_a_tampered_sidecar_but_tolerates_an_absent_one(tmp_path: Path) -> None:
+    """Sidecars live beside the spec, so a consumer holding only the artifact has none — skip, not fail.
+
+    Mirrors `logs`, and deliberately not `inputs`, which *raises* on a missing file. That asymmetry is
+    the reporter's own requirement ("an absent one must not invalidate a module") and it is what makes
+    the check usable against a module dir that was never meant to carry them."""
+    spec = _write_spec(tmp_path / "s")
+    (spec / "literature.csv").write_text(_LITERATURE, encoding="utf-8")
+    out = tmp_path / "o"
+    m = _compile(spec, out)
+
+    # The artifact dir carries no sidecar at all: every entry is skipped, nothing fails.
+    verify_manifest(out, m, check_derived=True)
+
+    # Beside the spec, where they really live, a substitution is caught.
+    (out / "literature.csv").write_text(_LITERATURE.replace("12345", "99999"), encoding="utf-8")
+    with pytest.raises(IntegrityError, match="derived sidecar hash mismatch"):
+        verify_manifest(out, m, check_derived=True)
+    verify_manifest(out, m)  # off by default
 
 
 def test_verify_manifest_checks_optional_files(tmp_path: Path) -> None:

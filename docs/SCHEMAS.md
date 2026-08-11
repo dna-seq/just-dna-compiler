@@ -640,8 +640,8 @@ consumer it is for.
   base64 in `manifest.signature`. `verify_manifest(public_key=...)` enforces a pinned key.
 - **`verify_manifest(...)`** — the verify-then-install path (SPEC §5): re-hash `artifact.files[]`,
   recompute `artifact_digest`, check trust (`compiled_by == "marketplace-server"`), optionally re-hash
-  `inputs`/`logs`/`provenance`/`logo`/`readme`, and verify the signature. It does **not** re-check
-  `content_signature`/`resolution_signature` (sibling identities, out of the digest).
+  `inputs`/`logs`/`provenance`/`logo`/`readme`/`derived`, and verify the signature. It does **not**
+  re-check `content_signature`/`resolution_signature` (sibling identities, out of the digest).
 - **`identity.py`** — `NAME_PATTERN` `^[a-z][a-z0-9_]*$`, `NAMESPACE_PATTERN` `^[a-z0-9]+(-[a-z0-9]+)*$`,
   the ordered `Version` dataclass, `canonical_id(namespace, name, version)` → `namespace/name@version`,
   and the legacy `vN → N.0.0` coercion.
@@ -651,8 +651,8 @@ consumer it is for.
 `manifest.py` holds the `manifest.json` contract. `ModuleManifest` is the root: `manifest_version` /
 `schema_version` (both `"1.0"`), `identity`, `display`, `genome_build`, curator/method/license/owner,
 `authors` + `authorship` (`Contribution`: `who`/`role`/`kind`), timestamps, `stats`, `compilation`,
-`inputs`, `content_signature?`, `artifact`, `logs`, `provenance?`, `panel?`, `logo?`, `readme?`,
-`signature?`, and
+`inputs`, `content_signature?`, `artifact`, `logs`, `derived`, `provenance?`, `panel?`, `logo?`,
+`readme?`, `signature?`, and
 one block per derived-fact sidecar the module carries — `frequency?`, `gene_metrics?`, `literature?`,
 `sources?`. Each carries `signature` / `sources` / `row_count` plus whatever its own table makes
 answerable: `datasets` on the two that have releases to name (gnomAD ships numbered ones; PubMed and
@@ -669,6 +669,21 @@ so a consumer can read how completely the identity scheme names this module's al
 inferring it from the absence of warnings. "Complete" is `identified == alleles`, derived rather than
 stored twice. Together `resolution_mode == "strict" or fully_resolved` tells a catalog a trustworthy
 module from a best-effort half-baked one.
+
+**`derived` is a BYTE hash of the sidecar CSVs, and it is not their identity.** The derived-fact
+tables — `resolution.csv` plus `frequencies`/`gene_metrics`/`literature`/`sources` — are deliberately
+excluded from `inputs[]`, because they are multi-producer (the enricher, a human override and
+`reverse_module` all legitimately emit different bytes for the same content) and are therefore hashed by
+**facts**: `compilation.resolution_signature` and each sidecar block's own `signature`. That left them
+attested by no *byte* hash at all, so a registry serving only what the manifest attests could not hand
+back the table that produced a parquet, and a consumer could not diff the two (S26). `derived[]` fills
+that gap and nothing more. It is out of `artifact.digest` and `content_signature`, so re-running
+enrichment against a fresher gnomAD mints no new content identity; entries are hashed **where the files
+live, beside the spec**, and not copied into the module dir, since each is its own parquet's content in
+another encoding. An absent entry is skipped by `verify_manifest(check_derived=True)` rather than
+failing — `logs`' rule, not `inputs`' — because a consumer holding only the artifact has none of them.
+**Two hashes over one file answering two questions: read the fact hash for identity and this one for
+transport, never the reverse**, or a legitimate re-emission looks like tampering.
 
 **`logo?` and `readme?` are the two *shipped assets*, and both are outside both identities.** Each is
 a hashed `FileEntry` naming a file the compiler copies into the module dir from beside the spec —

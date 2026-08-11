@@ -8,9 +8,9 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S26
+## The next item is S27
 
-**Claim ids from here, never from what this file shows.** S1–S25 are all answered and live in the
+**Claim ids from here, never from what this file shows.** S1–S26 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
 the next report is a second S1. The number is computed rather than remembered:
 
@@ -23,16 +23,16 @@ a recycled id would collide with it.
 
 ## Nothing open
 
-S1–S25 are all answered, as of 2026-08-12 — see
+S1–S26 are all answered, as of 2026-08-12 — see
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md), whose contents list is the one-line
-summary of every one. Six spawned roadmap items that are **still open** — **RM43**, **RM44**, **RM45**,
-**RM46**, **RM47**, **RM48** — and [RM_TOC.md](RM_TOC.md) is the index for that half: *answered* means a consumer has a
+summary of every one. Seven spawned roadmap items that are **still open** — **RM43**, **RM44**, **RM45**,
+**RM46**, **RM47**, **RM48**, **RM49** — and [RM_TOC.md](RM_TOC.md) is the index for that half: *answered* means a consumer has a
 reply, never that the work is finished.
 
-**S25 is answered but not yet installable**, which is a state this file had not carried before: its
-fix is a new optional manifest field, so it is legal only in a **minor**, and the tree still reads
-0.5.4 because cutting a release is the maintainer's call. A reply that says "shipped in the tree"
-means the code and tests are in `main`, never that a consumer can `pip install` it — check
+**S25 and S26 are answered but not yet installable**, which is a state this file had not carried
+before: each fix is a new optional manifest field, so it is legal only in a **minor**, and the tree
+still reads 0.5.4 because cutting a release is the maintainer's call. A reply that says "shipped in the
+tree" means the code and tests are in `main`, never that a consumer can `pip install` it — check
 [CHANGELOG.md](CHANGELOG.md) for whether the version it names has actually been cut.
 
 ## Adding one

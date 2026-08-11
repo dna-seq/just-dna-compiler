@@ -300,8 +300,10 @@ tolerance above.
 9. **Collect** logs / `provenance.json` / logo / readme (a malformed one fails the compile, not
    raises). The readme is discovered from `manifest.README_CANDIDATES` and hashed into
    `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
-10. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, and the
-    `frequency` / `gene_metrics` / `literature` blocks) and write `manifest.json`.
+10. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, the
+    `frequency` / `gene_metrics` / `literature` blocks, and `derived[]` — byte hashes of the sidecar
+    CSVs *where they live beside the spec*, transport-only and never their identity) and write
+    `manifest.json`.
 
 ### The VRS verify pass (0.5)
 
@@ -706,7 +708,7 @@ The three hashes and how they compose into `(content_signature, resolution_signa
 | `compile <spec> <out>` | `compiler.compile_module` | `--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`, and the **deprecated** `--ensembl-cache` (routes to the enricher; removed at 1.0). Prints `digest`, `content_signature`, `resolution_mode`/`fully_resolved`/`resolution_signature` |
 | `signature <spec>` | `compiler.content_signature` | no compile, no reference |
 | `reverse <parquet_dir> <out>` | `compiler.reverse_module` | `--resolution/--no-resolution` (default on) + display overrides |
-| `verify <module_dir>` | **`format.integrity.verify_manifest`** | `--public-key`, `--check-inputs/-logs/-provenance/-logo` |
+| `verify <module_dir>` | **`format.integrity.verify_manifest`** | `--public-key`, `--check-inputs/-logs/-provenance/-logo/-readme/-derived` |
 | `keygen` | **`format.signing.generate_private_key_pem`** + `public_key_b64_from_pem` | `--out` (refuses to overwrite) |
 | `sign <module_dir>` | **`format.signing.sign_digest`** | `--private-key` |
 | `reference` | **`format.reference.authoring_reference`** / `json_schemas` | `--summary`, `--schemas` |

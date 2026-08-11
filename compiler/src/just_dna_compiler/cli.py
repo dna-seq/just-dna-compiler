@@ -209,6 +209,11 @@ def verify(
     check_readme: bool = typer.Option(
         False, "--check-readme", help="Also hash the readme, if declared."
     ),
+    check_derived: bool = typer.Option(
+        False,
+        "--check-derived",
+        help="Also hash any declared derived-fact sidecar CSVs present on disk.",
+    ),
 ) -> None:
     """Verify a compiled module against its manifest (SPEC §5 verify-then-install). Exit 1 on failure.
 
@@ -229,6 +234,7 @@ def verify(
             check_provenance=check_provenance,
             check_logo=check_logo,
             check_readme=check_readme,
+            check_derived=check_derived,
             public_key=public_key,
         )
     except IntegrityError as exc:

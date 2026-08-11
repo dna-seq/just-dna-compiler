@@ -658,6 +658,22 @@ class ModuleManifest(BaseModel):
             "full cross-version provenance is the union of every version's logs."
         ),
     )
+    derived: list[FileEntry] = Field(
+        default_factory=list,
+        description=(
+            "Optional byte hashes of the derived-fact sidecar CSVs beside the spec — "
+            "`resolution.csv` plus the 0.5 fact tables (`frequencies`/`gene_metrics`/`literature`/"
+            "`sources`). Kept OUT of `artifact.digest` and `content_signature`: these are evidence "
+            "*about* a compile, not the authored data identity is built from, so re-running "
+            "enrichment against a fresher source must not mint a new content identity. Absent "
+            "entries do NOT invalidate a module. This is a BYTE hash for transport only — the "
+            "authoritative identity of these tables stays the FACT hash "
+            "(`compilation.resolution_signature`, and each sidecar block's own `signature`), which "
+            "is what makes a human override and an enricher rewrite of the same content compare "
+            "equal. Two hashes over one file, answering two questions; do not read this one as an "
+            "identity."
+        ),
+    )
     provenance: Provenance | None = Field(
         default=None,
         description=(

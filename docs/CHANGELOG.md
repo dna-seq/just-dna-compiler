@@ -34,6 +34,41 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-12 (later) — 0.6.0: `manifest.derived`, so the enricher's own tables can be served
+
+**S26, reported by `just-dna-registry`.** A publisher asked which files in a spec directory are theirs.
+The derived-fact CSVs — `resolution.csv` plus `frequencies`/`gene_metrics`/`literature`/`sources` — were
+attested by no byte hash anywhere: `_INPUT_FILES` excludes them on purpose (they are **fact**-hashed,
+because the enricher, a human override and `reverse_module` all legitimately emit different bytes for
+the same content) and only their *parquets* are in `_OUTPUT_FILES`. Every route a registry serves files
+through is defined over what the manifest attests, so a consumer could not fetch the table that produced
+a parquet, or diff the two to see what the enricher actually decided.
+
+`derived: list[FileEntry]` mirrors `logs` semantically — optional, absent-is-not-a-failure, out of
+`artifact.digest` and `content_signature` — and `inputs` in locality: hashed **where the files live,
+beside the spec**, not copied into the module dir, because each is its own parquet's content in another
+encoding and a panel's frequency table should not ship twice. `_DERIVED_FILES` is derived from
+`_FACT_TABLES` rather than hand-listed, for the reason `SOURCES_FIELDNAMES` once lost a column.
+`verify_manifest(check_derived=True)` and `verify --check-derived` re-hash what is present.
+
+**The trap this field creates is pinned by a test.** There are now two hashes over one file answering
+different questions, and reading the byte hash as identity would call a legitimate re-emission
+tampering — the exact failure the fact signatures exist to prevent. A test rewrites a sidecar so the
+facts are unchanged and the bytes are not, and asserts the byte hash moves while the fact signature and
+`content_signature` do not. Verified against the previous commit on four reference examples: all three
+signatures byte-identical, with `grch37_build` correctly getting an empty list rather than a fabricated
+one.
+
+**The second half is filed, not built — [RM49](ROADMAP.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses).**
+The reporter also asked that a `derived/` subdirectory be *tolerated* on input, so a downloaded module
+recompiles where it sits. It is not the one-line fallback it looks like: `spec_dir / "resolution.csv"` is
+resolved in eight places across two packages, and tolerating the layout on input without deciding the
+*write* side breaks on first use — running `enrich` on a split module writes to the root, so the module
+carries both copies, reached by following the documented workflow rather than by misuse. Two copies of a
+fact-hashed, human-overridable table are two legitimate claims, so the collision cannot be resolved by
+newest-wins or by merging without discarding a curator's override. Three candidate repairs are refused
+in the item with reasons, one of which would re-open the hole S16 closed.
+
 ## 2026-08-12 — 0.6.0: `manifest.readme`, so a module's prose can travel with it
 
 **The first change in this line whose legal release is a *minor*, and the version is therefore not

@@ -286,6 +286,7 @@ def verify_manifest(
     check_provenance: bool = False,
     check_logo: bool = False,
     check_readme: bool = False,
+    check_derived: bool = False,
     public_key: str | None = None,
 ) -> None:
     """
@@ -303,6 +304,11 @@ def verify_manifest(
          matches its declared hash; an absent provenance file is skipped (it is optional).
       6b. Optionally (`check_logo`) the `logo`, if declared and present on disk, matches its declared
          hash; an absent logo is skipped (it is optional and out of `artifact.digest`).
+      5b. Optionally (`check_derived`) every `derived[]` sidecar CSV *present* on disk matches its
+         declared byte hash; an absent one is skipped, exactly as for logs — these live beside the
+         spec rather than in the module dir, so a consumer who fetched only the artifact has none of
+         them, which is not a failure. This checks *bytes in transit*; it is not the tables' identity
+         (that is the fact signatures, which survive a rewrite this check would flag).
       6c. Optionally (`check_readme`) the `readme`, on the same terms as the logo. This is the check
          that makes a served readme verifiable: a registry serving a file whose hash nothing records
          is serving something nobody can check, which is why the field exists rather than the bytes
@@ -363,6 +369,18 @@ def verify_manifest(
             if actual != entry.sha256:
                 raise IntegrityError(
                     f"log hash mismatch for {entry.name}: "
+                    f"declared {entry.sha256}, computed {actual}"
+                )
+
+    if check_derived:
+        for entry in manifest.derived:
+            path = module_dir / entry.name
+            if not path.is_file():
+                continue  # sidecars live beside the spec — an absent one is not a failure
+            actual = sha256_file(path)
+            if actual != entry.sha256:
+                raise IntegrityError(
+                    f"derived sidecar hash mismatch for {entry.name}: "
                     f"declared {entry.sha256}, computed {actual}"
                 )
 

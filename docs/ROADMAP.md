@@ -651,6 +651,63 @@ byte-for-byte the fusing S20 fixed in this same resolution path on the same day.
 returns three states, and the provenance goes in `resolution.csv`'s `source` column rather than being
 lost into an ordinary authored coordinate.
 
+## RM49 — a spec directory is flat, so a legible `derived/` layout is one the compiler refuses
+
+**Severity** low-medium (a presentation gap with a working workaround; the reporter's own layout is
+transport-only because of it) · **Status** open — **0.6**, gated on deciding the *write* side · **Owner**
+compiler (path resolution) + enricher (where it writes) + format (any shared constant) ·
+**Motivating case** a registry giving publishers a readable spec tree, then finding a downloaded module
+does not recompile where it sits (S26 in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**The ask is narrow and reasonable.** Nothing in a spec listing says which files a human wrote and which
+`just-dna-enricher` produced — `module_spec.yaml`/`variants.csv`/`studies.csv` against `resolution.csv`
+and the four fact tables, with `sources.csv` genuinely both. A `derived/` subdirectory says it at a
+glance. The compiler resolves authored and derived tables at the spec root **and only there**, so that
+tree is one `compile` refuses; the reporter flattens on upload and re-splits on download, which works and
+means the layout can never be more than presentation. They ask for a *tolerated* input location, not a
+required one. The byte-attestation half of S26 shipped in 0.6.0 (`manifest.derived`); this is the half
+that did not.
+
+**Why it is not the one-line change it looks like.** `spec_dir / "resolution.csv"` is resolved in **eight
+places across two packages** — `validate_spec`, `compile_module`'s resolution and fact-table loops, and
+four enricher passes (`enrich`, `frequencies`, `identifiers`, the CLI's inspect path) — so a fallback
+added in the compiler alone gives a module that compiles from `derived/` and silently re-enriches to the
+root. That is the `locations` failure mode exactly: four parties must agree on a layout, and every
+disagreement there so far has been silent.
+
+**The decisive argument, and the reason this is a design round rather than a fix.** Tolerating the layout
+on *input* without deciding the *write* side is incoherent, and it breaks on first use: run `enrich` on a
+downloaded split module and the enricher writes `resolution.csv` to the root, so the module now carries
+both `derived/resolution.csv` and `resolution.csv` — the collision case, reached by following the
+documented workflow rather than by misuse. Any acceptable design answers where the enricher writes when
+a `derived/` already exists, and what happens when both copies are present and disagree. Note that a
+collision cannot be resolved by "newest wins" or by merging: these tables are fact-hashed and
+human-overridable, so two copies are two legitimate claims and picking one silently discards a curator's
+override.
+
+**Three candidate repairs, and why each is wrong:**
+
+- **Search any subdirectory** (what the registry does on upload). Wrong here: it makes the compiler walk
+  the tree, and both S16's unknown-file tolerance and `_check_misspelled_tables`' near-miss guard assume
+  one level — a typo'd `derived/varaints.csv` would be invisible to the check written precisely to catch
+  that, so the feature would re-open the hole a previous item closed. A single fixed directory name is
+  the only version that keeps the guard meaningful.
+- **Make `derived/` canonical** — `reverse_module` emits it, the enricher writes it. Wrong: P3 keeps the
+  flat spelling working as an alias regardless, so this buys two supported layouts instead of one and
+  makes `reverse` emit a tree older compilers in the same major cannot read. A layout migration is a
+  major-version move dressed as a convenience.
+- **Extend it to the authored tables too**, for symmetry. Wrong, and it is the tempting one: the authored
+  CSVs are what `content_signature` reads and what the human-authorable gate is about. Two legal
+  locations for `variants.csv` means a module can carry two, and the one the compiler ignores is invisible
+  — the silent-success shape this codebase treats as the worst kind of mistake. The asymmetry is the
+  point: only machine-written tables move, because only they have a machine that knows where to put them.
+
+**What a shipped version probably looks like**, recorded so the next pass does not re-derive it: one
+constant naming the directory, in the **format** tier so both consumers import rather than copy it (the
+`locations`/`README_CANDIDATES` precedent); a shared resolver that prefers the root and falls back to the
+subdirectory; an **error, not a warning**, when both exist, naming both paths; and the enricher writing
+beside whichever copy it read. No new CLI flag — the layout is discovered, not declared.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

@@ -43,6 +43,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S23** a hand-declared literature source warns as an orphan — shipped 0.5.4
 - **S24** nothing checks a variant is on its named gene's chromosome — shipped 0.5.4
 - **S25** the manifest attests a logo but not a readme — in tree, lands 0.6.0
+- **S26** the derived-fact CSVs are attested nowhere — in tree 0.6.0; layout RM49
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2041,3 +2042,107 @@ desirable, so whoever lands this field on your side will find the test that docu
 explicitly *candidate* findings — most from a preprint, one association not significant — and the
 README saying so is the single most important artefact for a reader deciding whether to install it.
 That is the thing that currently cannot travel with the module.
+
+# Field notes from just-dna-registry — a readable spec layout, 2026-08-12
+
+## S26 — the derived-fact CSVs are attested nowhere, so the enricher's own tables cannot travel with a module
+
+**Status — first half accepted and shipped in the tree (lands in 0.6.0); second half filed as
+[RM49](ROADMAP.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses).**
+Reproduced end to end: compiling `reference_examples/pathogenic_clinvar` leaves `resolution.csv` and
+`literature.csv` beside the spec with `literature.parquet` in the artifact and no byte hash for either
+CSV anywhere in the manifest. Your reading of why is exactly right, including that `_INPUT_FILES`
+excludes them deliberately.
+
+`derived: list[FileEntry]` is on `ModuleManifest`. It follows `logs` where you said it should —
+optional, absent-is-not-a-failure, out of `artifact.digest` and `content_signature` — and departs from
+it in one respect worth flagging: entries are hashed **where the files live, beside the spec**, and not
+copied into the module dir. Copying would ship each table twice, since a sidecar CSV and its parquet are
+the same content in two encodings, and a panel's `frequencies.csv` is not small. That makes `derived[]`
+`inputs[]`' sibling in locality and `logs`' in optionality, which is why
+`verify_manifest(check_derived=True)` *skips* a missing entry where `check_inputs` raises. Your
+`download(layout=...)` already stores spec files, so this should need nothing new on your side.
+
+**One thing to hold onto, because your test is the one that will catch it.** There are now two hashes
+over each of these files answering different questions, and the byte hash is the *weaker* one: a
+reverse→recompile cycle, or an enricher re-run against a fresher gnomAD, changes those bytes while the
+facts are identical. The fact hashes (`compilation.resolution_signature`, and each sidecar block's
+`signature`) remain the identity; `derived[]` is for transport and verification-in-flight only. Reading
+it as identity would make a legitimate re-emission look like tampering. A test pins the pair by
+rewriting a sidecar so the facts hold and the bytes move, asserting the byte hash changes and the fact
+signature does not — your `SIGNATURE_INPUTS`-disjointness test is the same instinct from the other side,
+and it is the right one.
+
+**The `derived/` layout is filed rather than built, and your own report contains the reason.** Because
+you flatten on upload, the two halves look equally mechanical from outside; from in here they are not.
+`spec_dir / "resolution.csv"` is resolved in eight places across two packages — `validate_spec`,
+`compile_module`'s resolution and fact loops, and four enricher passes — so a fallback in the compiler
+alone yields a module that compiles from `derived/` and silently re-enriches to the root. That is the
+decisive case: run `enrich` on a downloaded split module and it writes `resolution.csv` beside the spec,
+so the module now holds both copies, reached by following the documented workflow. Two copies of a
+fact-hashed, human-overridable table are two legitimate claims, so no newest-wins or merge rule can
+resolve it without discarding a curator's override. RM49 records the shape a fix probably takes (one
+constant in the format tier, prefer-root-then-fall-back, an error naming both paths on collision, the
+enricher writing beside whichever copy it read) and refuses three tempting repairs with reasons —
+notably "search any subdirectory", which would blind the mistyped-table-name guard S16 exists for.
+
+**What to do now.** Keep the transport-only layout; it is correct until RM49 lands, and nothing about it
+was wrong. Once 0.6.0 is cut, read `manifest.derived` for serving and verification and keep using the
+fact signatures for identity. As with S25, the version is **not** bumped in the tree — a new optional
+manifest field is minor under Principle 3 and cutting a release is the maintainer's call, so `0.6.0`
+names the release both halves of this will ship in rather than something installable today.
+<!-- triaged: 0.6.0 · sha cade5b4fbffa -->
+
+**Filed by:** `just-dna-registry` · **Found:** 2026-08-12, giving a spec directory a readable layout ·
+**Versions:** format 0.5.4 / compiler 0.5.4 / enricher 0.5.4
+
+**What we ran.** A publisher asked, reasonably, which files in a spec directory are theirs. A module
+compiled by our server holds `module_spec.yaml`, `variants.csv` and `studies.csv` that a human wrote,
+and `resolution.csv`, `frequencies.csv`, `gene_metrics.csv`, `literature.csv` and `sources.csv` that
+`just-dna-enricher` wrote — with `sources.csv` being genuinely both, the author's rows with the
+enricher's merged in. Nothing in the directory listing says which is which. We added a `derived/`
+subfolder convention for that (ours, transport-only: uploads are flattened before anything reads them,
+downloads are split after verification) and then tried to make the download half actually contain the
+derived tables. It cannot.
+
+**What happens.** `ModuleManifest` has fields for `logs`, `logo`, `provenance` and `inputs`, and every
+route we serve files through is defined over what the manifest attests, because serving a file with no
+recorded hash is serving something nobody can verify. The derived CSVs are in none of those:
+`_INPUT_FILES` deliberately excludes them (they are fact-hashed, not byte-hashed, which is right), and
+only their *parquets* are in `_OUTPUT_FILES`. So the CSVs are stored on our side, reachable by nobody.
+A consumer who wants to see **what the enricher actually decided** — which rsID resolved to which
+coordinate, which frequency came from where, which source line justified a row — has to take the
+parquet's word for it and cannot diff it against the table that produced it.
+
+**What we would ask for:** `derived: list[FileEntry]` on `ModuleManifest`, mirroring `logs` in every
+respect — optional, hashed, out of `artifact.digest` and out of `content_signature`. `logs` is the
+precedent rather than `inputs`: like a run log, these files are *evidence about* a compile rather than
+the authored data the identity is built from, and an absent one must not invalidate a module.
+
+**Arguments against our own option, since that is the useful part:**
+
+- **Put them in `inputs[]`.** Rejected, and it is the tempting wrong answer: `inputs[]` entries are
+  raw-byte hashes, and these tables are fact-hashed precisely because they are multi-producer — the
+  enricher, a human override and `reverse_module` all legitimately emit different bytes for the same
+  content. A byte hash there would make a reverse→recompile cycle look like tampering.
+- **Reuse `artifact.files[]`.** Rejected for the reason S25 rejected it for a readme: it enters
+  `artifact.digest`, so re-running enrichment against a fresher gnomAD would mint a new content
+  identity for unchanged authored data.
+- **Leave it to each registry.** This is what we shipped, and it is the same shape we were
+  uncomfortable with in S25: our storage holds a file the manifest does not know about, so a mirror,
+  an installer or a second registry gets nothing.
+
+**A second, smaller half, which is why our layout is transport-only.** The compiler discovers authored
+tables at the spec root and only there, so the legible tree we hand a human is a tree
+`just-dna-compiler compile` refuses — it has to be re-flattened first. We do that flattening on upload
+and it works, but it means the folder can never be more than a presentation. If a `derived/`
+subdirectory were honoured on input, a downloaded module would recompile where it sits. We are not
+asking for a required layout, only a tolerated one.
+
+**What we did meanwhile (registry 0.14.0).** `derived/` is accepted on upload from any subdirectory
+and flattened; `download(layout="split")` re-splits after `verify_manifest` has passed;
+`download(include_inputs=True)` was added because our own `/download` listed `artifact.files` only, so
+until now a downloaded module did not even contain the authored CSVs. A test asserts that
+`SIGNATURE_INPUTS` and the derived set are disjoint, so the convention cannot start moving content
+identities by accident. The `derived/` folder is created only when something lands in it, which today
+is nothing — that emptiness is this report.

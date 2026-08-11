@@ -222,6 +222,19 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
 # shipped like logs, kept OUT of `artifact.digest` (it is not in `_OUTPUT_FILES`).
 _PROVENANCE_FILE: str = "provenance.json"
 
+# The sidecar CSVs byte-hashed into `manifest.derived` (S26): `resolution.csv` plus every fact table.
+# **Derived from `_FACT_TABLES`, never hand-listed** — a hand-kept parallel list is how
+# `SOURCES_FIELDNAMES` lost a column, and this one would go stale the moment a fifth sidecar lands.
+#
+# Two properties that must hold together. They are hashed **where they are authored** (the spec dir)
+# and NOT copied into the module dir, like `_INPUT_FILES` and unlike logs/logo/readme: each is the
+# same content as its own parquet in another encoding, so shipping both would double a panel's
+# frequency table for nothing. And the byte hash is **transport only** — the identity of these tables
+# is the FACT hash beside it, which is the whole reason they are excluded from `_INPUT_FILES`; a
+# consumer that reads this one as identity will see a reverse→recompile cycle as tampering, which is
+# exactly the mistake the fact hashes exist to prevent.
+_DERIVED_FILES: tuple[str, ...] = ("resolution.csv", *(csv for csv, _, _ in _FACT_TABLES))
+
 
 # ── Generic model-driven materializer (RM1) ────────────────────────────────────────────────────
 # The 0.4 tables are flat (scalars + one list[str]), so one materializer driven by the model's
@@ -2920,6 +2933,10 @@ def _build_manifest(
         # Author-declared and registry-overridable, the same advisory pattern as module.version.
         license=config.license,
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),
+        # `file_entries` skips what is absent, so a module carrying no sidecars gets an empty list
+        # rather than a fabricated one — and a new optional sidecar cannot move an existing module's
+        # manifest by appearing here.
+        derived=file_entries(spec_dir, list(_DERIVED_FILES)),
         content_signature=content_sig,
         artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),
         logs=logs,
