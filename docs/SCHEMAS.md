@@ -42,7 +42,21 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 A module is a directory. `module_spec.yaml` carries identity/display/defaults; each data CSV is one
 concern, and a module includes **only** the CSVs it uses (RM2 — `variants.csv` is not mandatory). The
 SNP core is `variants.csv` + `studies.csv` (studies required *iff* variants present). Everything else
-is an optional table kind. `resolution.csv` is compiler *input*, produced by the enricher, not authored
+is an optional table kind.
+
+**Where grounding evidence goes, and where it currently cannot go (S19/RM47).** `studies.csv` is the
+one grounding mechanism, and it identifies its subject the way a variant is identified — by `rsid`, or
+by `chrom`(+`start`). So it grounds `variants.csv` row by row, and it grounds any table whose rows carry
+a variant identity: `pharm_variants.csv`, `haplotypes.csv`, and `heteroplasmy.csv` when its optional
+`rsid`/`chrom`/`start` columns are filled (`reference_examples/mt_heteroplasmy` is the worked case). It
+is **accepted in a module carrying no `variants.csv`** — it loads, validates and compiles to
+`studies.parquet` — so a binning or PGx module can cite its literature today. What it cannot yet do is
+name a *gene-keyed* row: a `repeat_alleles.csv` bin is keyed `(gene, repeat_unit)` and no study row can
+point at one, so a citation there grounds the module rather than the boundary. The compiler says so
+rather than staying silent — a binning table stating thresholds in a module with no study rows warns in
+both modes — and closing it properly is **RM47**. `sources.csv` does not substitute: it records a
+*dataset's* terms and attribution, which answers where a table came from, never why a bound is where it
+is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
 the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `sources.csv`, which are therefore absent from the table below.
@@ -461,6 +475,16 @@ three letters.
   provenance — which link happened to answer — and is excluded so a human-filled and a machine-filled
   table hash equal. Here the source *is* the subject: "ClinPGx, at the annotation layer, is CC BY-SA
   and forbids sale" is the fact. Drop it and the row loses its key.
+- **Exactly five row models carry a `source` column, and four of them are generated** (S17):
+  `ResolutionRow`, `FrequencyRow`, `GeneMetricsRow` and `LiteratureRow` — the enricher-produced
+  sidecars, where a pass records which link answered — plus `SourceRow` itself, where it is the subject
+  as above. **No hand-authored fact table has one**, by design: a curated annotation's provenance is the
+  module's, not a per-row link. The consequence is worth stating because it is structural rather than a
+  matter of care — the compiler's `used_sources` coverage check is built from those columns, so a source
+  an author read **by hand** is invisible to it no matter how carefully they work, and the remedy is to
+  add the `sources.csv` row directly. There is nothing to fill in the fact table, which is why writing
+  `source` onto one now fails with a message that says so (`vocab.MISPLACED_COLUMN_REASONS`) rather than
+  with the bare "extra inputs are not permitted" that sent a consumer to read the models.
 - **`share_alike` / `commercial_use` / `redistribution` are tri-state.** `None` means the terms could
   not be established, never "does not forbid". A source not shown to permit anything must not read as
   permissive, so `None` and `False` hash differently and are handled differently everywhere.
@@ -555,7 +579,7 @@ the other five are the one-per-injected-table family below.)
 
 | Hash (`integrity.py`) | Over | Order | Reference-dependent | Purpose |
 |---|---|---|---|---|
-| `artifact_digest(files)` | compiled parquet file set (Merkle root of `{name,sha256,size}`) | row order preserved in each file | yes (GRCh38 coords) | the version's immutable content identity |
+| `artifact_digest(files)` | compiled parquet file set (Merkle root of `{name,sha256,size}`) | row order preserved in each file | yes (GRCh38 coords) | the version's immutable **byte** identity — *these bytes, from this compiler* (P4). Not its content identity; that is the row below, and conflating the two is what sends a reader hunting a content change that did not happen |
 | `content_signature(tables, genome_build)` | raw authored rows, `model_dump(mode="json", exclude_none=True)`, plus `genome_build` when non-default | order-independent (sorted) | no (pre-resolution) | content-dedup key surviving recompile/metadata-strip. **Reference-independent, not build-independent** (RM36): identical rows on two assemblies are two different loci, so the declared build is content. Omitting the default keeps every GRCh38 module's signature unchanged. |
 | `resolution_signature(rows)` | resolution **facts** only (`RESOLUTION_FACT_FIELDS`) | order-independent | n/a | pins the resolved facts; producer-independent |
 | `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
@@ -572,6 +596,18 @@ an embargo lifted would no longer be reproducible from the module alone.
 
 Reproducibility identity is the triple **`(content_signature, resolution_signature, compiler_version)
 ⟹ artifact.digest`** — a holder of the two small CSVs reproduces the artifact byte-for-byte, offline.
+
+**A moved `artifact.digest` beside an unmoved `content_signature` is the intended reading of a
+provenance-only change, not a puzzle** (CONSUMER_SUGGESTIONS_HISTORY § S7, where a registry spent an
+afternoon looking for the content change that had not happened). `fetched_at` is the usual one: it is
+outside every fact set, so no signature sees it, but it is a column in `sources.parquet`, so the Merkle
+root over the shipped files does — correctly, because those bytes differ. **Key a dedup or
+find-by-hash surface on `content_signature`, and a "these exact bytes" claim on `artifact.digest`.**
+`just-dna-compiler signature <spec>` computes the former without compiling, which is also what makes it
+the usable change-signal in CI. Blanking a column before hashing would not be a tidier digest, it would
+be an unverifiable one — `verify_manifest` re-hashes each `artifact.files[]` entry straight from disk
+before recomputing the root, so a digest over anything but the bytes on disk cannot be checked by the
+consumer it is for.
 
 - **Signing (`signing.py` / `integrity.verify_signature`).** Ed25519 over the `artifact.digest` *string*.
   Private keys are PKCS#8 PEM (`generate_private_key_pem`, `sign_digest`); the public key travels as raw
@@ -632,6 +668,26 @@ module from a best-effort half-baked one.
   **`base.field_category`** — which lives here because the format tier is the only one both can import
   from. `required` stays beside it: it is insufficient on its own, not wrong, and removing a published
   key would break consumers.
+
+  **The three-way field-ownership boundary is machine-readable here, which is what `extra="forbid"`
+  made necessary** (CONSUMER_SUGGESTIONS § S2). A key is authored, compiler-stamped, or
+  registry-stamped, and each lands in a different place in the same payload: `models` lists **only**
+  the authored fields; a compiler-managed one is excluded from `models` and present in
+  `json_schemas()` (the honest complete materialized shape); and **`registry_stamped_keys`** names the
+  `module:` keys a publishing registry fills, mapped to why each is not authored
+  (`normalize.IDENTITY_AUTHORITY_KEYS` / `IDENTITY_AUTHORITY_REASONS`). `module.version` is
+  deliberately in the first group, not the third — it is a genuine advisory authored field, coerced to
+  SemVer (RM17) rather than stripped.
+
+  There is deliberately **no enumeration of "what 0.4 newly rejects"**, because the newly-rejected set
+  is the *complement* of a finite set rather than a finite set: pre-0.4 dropped every unknown key
+  silently, so "what moved from warn to reject" is every name a model does not declare. What is
+  enumerable is the other side — **every authored surface closes its namespace**: the `module_spec.yaml`
+  blocks (`ModuleSpecConfig` top level, `ModuleInfo`, `Defaults`, `GenePanelSpec` for `panel:`,
+  `Contribution` for an `authorship:` entry) and every row model, whether it inherits `extra="forbid"`
+  from `AuthoredModel` or sets it directly as the generated sidecars do (`ResolutionRow`, `SourceRow`,
+  `FrequencyRow`, `GeneMetricsRow`, `LiteratureRow`). The legal key list for each is what this payload
+  generates, so it cannot drift from the models the way a prose migration table would.
 - **`signing.generate_private_key_pem()` / `public_key_b64_from_pem()`** — key bootstrap, surfaced as
   `just-dna-compiler keygen`. Unencrypted PKCS#8, which is what `sign_digest` reads; this bootstraps a
   key rather than managing one.

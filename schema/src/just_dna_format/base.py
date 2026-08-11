@@ -43,6 +43,7 @@ from just_dna_format.vocab import (
     VALID_EVIDENCE_LEVELS,
     VALID_SIGNIFICANCE,
     check_vocab,
+    reject_misplaced,
     reject_reserved,
     reject_template_placeholders,
     validate_field_token,
@@ -303,6 +304,10 @@ class AuthoredModel(BaseModel):
         # instead of pydantic's type error. Placeholder first: a stub row is a half-written template,
         # which is more useful to say than "that column is also reserved".
         reject_template_placeholders(data, what=f"{cls.__name__} row")
+        # A column that is real on a *generated* table but not here is a plausible confusion rather
+        # than a typo, so it gets its own diagnosis too — keyed on this model's own fields, so a model
+        # that genuinely declares it is untouched (S17).
+        reject_misplaced(data, cls.model_fields, what=f"{cls.__name__} row")
         # A reserved name fails with a specific diagnosis; any other unknown/typo'd column falls
         # through to `extra="forbid"`'s generic message. See vocab.reject_reserved.
         return reject_reserved(data)

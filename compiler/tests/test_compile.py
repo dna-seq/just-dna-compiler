@@ -84,6 +84,49 @@ def test_ragged_row_with_surplus_cell_is_an_error(tmp_path: Path) -> None:
     ), result.errors
 
 
+def test_an_unknown_file_is_tolerated_and_changes_no_digest(spec_dir: Path, tmp_path: Path) -> None:
+    """Unknown files in a spec directory are ignored — a stated contract, not an accident (S16).
+
+    A module may carry its own README (every `reference_examples/` module does) or a publisher's
+    receipt, whose keys cannot go in `module_spec.yaml` because `extra="forbid"` rejects them. The
+    guarantee consumers need is that such a file is neither read nor hashed, so the digest is
+    computed here rather than asserted: same spec, plus two unknown files, same digest."""
+    before = compile_module(spec_dir, tmp_path / "before", resolve_with_ensembl=False)
+    assert before.success, before.errors
+
+    (spec_dir / "README.md").write_text("# notes\n", encoding="utf-8")
+    (spec_dir / "published.json").write_text('{"namespace": "acme"}\n', encoding="utf-8")
+    after = compile_module(spec_dir, tmp_path / "after", resolve_with_ensembl=False)
+
+    assert after.success, after.errors
+    assert after.manifest.artifact.digest == before.manifest.artifact.digest
+    assert {f.name for f in after.manifest.artifact.files} == {
+        f.name for f in before.manifest.artifact.files
+    }
+    assert validate_spec(spec_dir).valid
+    # Tolerated means silent: no finding names a file the compiler has no meaning for.
+    assert not [w for w in after.warnings if "README" in w or "published.json" in w]
+
+
+def test_a_mistyped_table_name_is_not_silently_ignored(spec_dir: Path) -> None:
+    """The one case where "ignored" is the wrong answer, found while probing S16.
+
+    A typo in a table filename drops every row in it and still compiles green. The check is a **near
+    miss** rather than "any unknown csv", because warning about every unrecognised file would undo the
+    tolerance the test above pins — so it must fire here and stay silent on an unrelated name."""
+    (spec_dir / "varaints.csv").write_text(
+        "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,typo\n", encoding="utf-8"
+    )
+    (spec_dir / "curation_notes.csv").write_text("note\nchecked by hand\n", encoding="utf-8")
+
+    result = validate_spec(spec_dir)
+    assert result.valid, "a near miss is a warning — the file may genuinely not be a table"
+    named = [w for w in result.warnings if "varaints.csv" in w]
+    assert len(named) == 1, result.warnings
+    assert "variants.csv" in named[0] and "silently ignored" in named[0]
+    assert not [w for w in result.warnings if "curation_notes.csv" in w], "no false positive"
+
+
 def test_compile_emits_parquets_and_manifest(spec_dir: Path, tmp_path: Path) -> None:
     out = tmp_path / "out"
     result = compile_module(spec_dir, out, resolve_with_ensembl=False)

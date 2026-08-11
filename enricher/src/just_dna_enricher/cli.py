@@ -1337,21 +1337,55 @@ def hint_citation_(
     pmid: str | None = typer.Option(None, "--pmid", help="PubMed id to check."),
     doi: str | None = typer.Option(None, "--doi", help="DOI to check (the one you authored)."),
     offline: bool = typer.Option(False, "--offline", help="Skip the check and say so."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
 ) -> None:
-    """Does this citation exist, and what is its other identifier?
+    """Does this citation exist, and **is it the paper you meant**?
 
     A paywall hides the fulltext, never the PubMed record, so existence is answerable for paywalled
     work; Crossref covers what PubMed does not index at all. Every answer is tri-state — `unknown`
     means the registry could not be asked, which is not the same as "no such paper".
+
+    **Existence is not identity.** PMIDs are densely allocated, so a recalled or invented number is
+    very likely to be a real record for a different article, and `pmid_exists` alone cannot catch a
+    fabricated citation. The title, journal, year and first author come back in the same response and
+    are printed for exactly that comparison (S12).
     """
     if pmid is None and doi is None:
         typer.secho("give --pmid or --doi", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     hint = lookup_citation(pmid=pmid, doi=doi, offline=offline)
+    if as_json:
+        typer.echo(json.dumps({
+            "pmid": hint.pmid,
+            "doi": hint.doi,
+            "pmid_exists": hint.pmid_exists,
+            "doi_exists": hint.doi_exists,
+            "registry_doi": hint.registry_doi,
+            "pmcid": hint.pmcid,
+            "open_access": hint.open_access,
+            "abstract_available": hint.abstract_available,
+            "title": hint.title,
+            "journal": hint.journal,
+            "year": hint.year,
+            "first_author": hint.first_author,
+            "advisory": as_report_rows(hint),
+            "findings": [f"{f.level}: {f.message}" for f in hint.findings],
+        }, indent=2, default=str))
+        return
     for label, value in (("pmid_exists", hint.pmid_exists), ("doi_exists", hint.doi_exists)):
         typer.echo(f"{label}\t{'unknown' if value is None else value}")
     if hint.pmcid:
         typer.echo(f"pmcid\t{hint.pmcid}")
+    # Printed unconditionally when known: the whole point is that a caller reading prose can compare
+    # what the record says against the paper they had in mind.
+    for label, value in (
+        ("title", hint.title),
+        ("journal", hint.journal),
+        ("year", hint.year),
+        ("first_author", hint.first_author),
+    ):
+        if value:
+            typer.echo(f"{label}\t{value}")
     _echo_hint(hint)
 
 

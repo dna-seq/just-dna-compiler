@@ -35,7 +35,7 @@ facts through the same report shape.
 import csv
 import io
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from just_dna_format.base import authored_field_names, field_vocabularies
@@ -57,8 +57,19 @@ REFUSAL_REASONS: frozenset[str] = frozenset(
         "identity_bearing",    # writing it would re-key the row (variant_key / authored_ident)
         "intent_bearing",      # only the author knows (effect_allele, which paper, which trait)
         "derived_not_stored",  # the compiler materializes it; storing it duplicates a fact
+        "attestation_bearing", # the cell asserts that a HUMAN read something (provenance_quote)
     }
 )
+
+#: The cells whose content is an attestation, so a machine filling one states something false rather
+#: than something unverifiable. A *fifth* reason rather than a reading of `redundancy_bearing`, because
+#: the two failures differ in kind and the difference is the whole point: filling `doi` from the
+#: registry that checks it makes a Class-2 comparison **vacuous**, and every other entry on that map is
+#: that shape. Filling `provenance_quote` from a fulltext a tool has just fetched is a **false claim of
+#: provenance** — the column's meaning is "a curator read this passage in this paper", and no lookup can
+#: make that true. Both cells are also redundancy-bearing (see `REDUNDANCY_BEARING`); this names the
+#: sharper reason a provider must refuse on.
+ATTESTATION_BEARING: frozenset[str] = frozenset({"provenance_quote", "provenance_regex"})
 
 #: Severity of a finding. Hints never fail a build — the checks that do already exist in the
 #: compiler and the enricher, each with the severity the charter assigns it.
@@ -79,6 +90,17 @@ REDUNDANCY_BEARING: dict[str, str] = {
     "evidence_level": "enricher.clinpgx (authored level vs the ClinPGx snapshot)",
     "p_value_num": "compiler p_value ↔ p_value_num agreement",
     "acmg_sf": "enricher.acmg.check_acmg_sf (authored flag vs the ACMG SF list)",
+    # Both compared against the Europe PMC fulltext by `enricher.literature._study_quote_found` to
+    # produce `LiteratureRow.quotes_found`, so they qualify under this map's own definition and were
+    # simply missing — the drift its docstring predicts. They additionally carry
+    # `attestation_bearing`, which is the reason a provider must refuse on: see ATTESTATION_BEARING.
+    # **A retrieved fulltext also degrades what `quotes_found` proves.** The check is only independent
+    # evidence while the author read the paper and the tool read it separately; once a machine has
+    # fetched the text, a hit demonstrates that the quote pairs with the PMID — worth having, since it
+    # still catches a quote filed against the wrong paper — but no longer that the claim is in the
+    # article, because nothing establishes a human ever looked.
+    "provenance_quote": "enricher.literature._study_quote_found (authored passage vs the fulltext)",
+    "provenance_regex": "enricher.literature._study_quote_found (authored pattern vs the fulltext)",
 }
 
 
@@ -102,12 +124,24 @@ class Alteration:
 
 @dataclass(frozen=True)
 class Finding:
-    """Something worth telling the author about a cell or a row. Never fails a build."""
+    """Something worth telling the author about a cell or a row. Never fails a build.
+
+    **Two coordinates, because the two audiences count differently** (S18). `row` is a 0-based index
+    into the *data* rows, which is what a caller indexing `csv_out` or a parsed list needs. `line` is
+    the 1-based line number **in the file, counting the header**, which is what the author's editor
+    shows and what `validate_spec`/`compile_module` already report (`line 2 [source]: …`). Neither was
+    stated, and the only way to learn which one `row` was, was to author a broken row and count — on a
+    short table an off-by-one still lands on a real row, so it misdirects instead of obviously breaking.
+
+    `line` is set by whatever builds the finding, since only that code knows whether the input carried
+    a header at all; `inspect_rows` fills it for every row-scoped finding. It stays `None` for a
+    table-scoped finding, exactly as `row` does."""
 
     row: int | None
     column: str | None
     level: str
     message: str
+    line: int | None = None
 
 
 @dataclass(frozen=True)
@@ -226,7 +260,7 @@ def inspect_rows(csv_name: str, csv_text: str) -> HintReport:
     """
     model = model_for(csv_name)
     fieldnames = authored_field_names(model)
-    rows, header = _parse(csv_text, fieldnames)
+    rows, header, header_lines, ragged = _parse(csv_text, fieldnames)
 
     report = HintReport(
         csv_name=csv_name,
@@ -236,6 +270,11 @@ def inspect_rows(csv_name: str, csv_text: str) -> HintReport:
         options=field_options(csv_name),
         requirements=authoring_requirements(csv_name),
     )
+
+    # Reported BEFORE the per-row validation whose message it explains: a shifted row's type error
+    # names the column to the right of the real mistake, so the author has to see the field count
+    # first or they go and "fix" a cell that was correct.
+    _report_ragged(ragged, len(header), report)
 
     emitted: list[dict[str, str]] = []
     parsed: list[BaseModel | None] = []
@@ -252,24 +291,75 @@ def inspect_rows(csv_name: str, csv_text: str) -> HintReport:
     _check_duplicate_keys(parsed, report)
     _check_bins(parsed, model, report)
 
+    # Every row-scoped finding gains its file line number in one place, rather than each producer
+    # remembering to pass it — the header offset is known here and nowhere else.
+    report.findings = [
+        f if f.row is None else replace(f, line=f.row + header_lines + 1) for f in report.findings
+    ]
     report.csv_out = [",".join(header)] + [_render_line(cells, header) for cells in emitted]
     return report
 
 
-def _parse(csv_text: str, fieldnames: list[str]) -> tuple[list[dict[str, str]], list[str]]:
-    """Split CSV text into rows, tolerating a missing header line."""
+def _report_ragged(ragged: list[tuple[int, int]], declared: int, report: HintReport) -> None:
+    """Say that a row's field count differs from the header's, and name the likely cause.
+
+    An **error** for a surplus field and a **warning** for a shortfall, which is the asymmetry of what
+    each does to the data: a surplus shifts every later column and *discards* the overflow, so the row
+    now says things the author did not write, while a shortfall only pads with empties — wrong, but
+    recoverable and often just a trailing comma. Both name both counts, because "8 where 7 were
+    declared" is the fact that makes the type error one column over make sense."""
+    for index, found in ragged:
+        surplus = found > declared
+        report.findings.append(
+            Finding(
+                index,
+                None,
+                "error" if surplus else "warning",
+                f"{found} field(s) where the header declares {declared}"
+                + (
+                    " — every column from the extra one onward is shifted and the overflow is dropped, "
+                    "so a type error may be reported against a cell you wrote correctly. The usual "
+                    "cause is an unquoted comma in a free-text column (conclusion, phenotype); quote "
+                    'the value ("a, b") or remove the comma.'
+                    if surplus
+                    else " — the missing cells are read as empty, which is indistinguishable from "
+                    "cells you meant to leave blank. Check for a dropped or trailing comma."
+                ),
+            )
+        )
+
+
+def _parse(csv_text: str, fieldnames: list[str]) -> tuple[list[dict[str, str]], list[str], int, list[tuple[int, int]]]:
+    """Split CSV text into rows, tolerating a missing header line.
+
+    Returns `(rows, header, header_lines, ragged)`. `header_lines` is 1 when a header was consumed and
+    0 otherwise, which is what turns a row index into a file line number. `ragged` is
+    `[(row_index, field_count)]` for every row whose field count differs from the header's — the
+    counts are collected here, where they are known, and turned into findings by `inspect_rows`.
+
+    **A ragged row used to be absorbed in silence, and the silence was the defect** (S18). The
+    comprehension below pads a short row with `""` — indistinguishable from cells the author left
+    empty — and for a long row it drops everything past `len(header)` while shifting each column from
+    the offending one onward. The usual cause is an unquoted comma in prose, so the shift lands in a
+    free-text column and the *type* error surfaces one column to the right, against a cell the author
+    wrote correctly. Padding and truncating are kept (a hint must still describe a broken file rather
+    than refuse it), but the mismatch is now reported."""
     lines = [line for line in csv_text.splitlines() if line.strip()]
     if not lines:
-        return [], fieldnames
+        return [], fieldnames, 0, []
     first = next(csv.reader([lines[0]]))
     has_header = set(first) <= set(fieldnames) and len(set(first)) == len(first)
     header = first if has_header else fieldnames
     body = lines[1:] if has_header else lines
+    split = [next(csv.reader([line])) for line in body]
     rows = [
         {name: (values[i] if i < len(values) else "") for i, name in enumerate(header)}
-        for values in (next(csv.reader([line])) for line in body)
+        for values in split
     ]
-    return rows, header
+    ragged = [
+        (index, len(values)) for index, values in enumerate(split) if len(values) != len(header)
+    ]
+    return rows, header, (1 if has_header else 0), ragged
 
 
 def _check_placeholders(index: int, cells: dict[str, str], report: HintReport) -> None:

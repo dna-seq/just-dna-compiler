@@ -13,6 +13,7 @@ The DSL/manifest schema comes from `just-dna-format`; this package is the transf
 """
 
 import csv
+import difflib
 import math
 import re
 import shutil
@@ -849,6 +850,80 @@ def _check_positional_joinability(
     return warnings
 
 
+#: The binning table kinds, derived from the models for the same reason `_POSITIONAL_TABLE_KINDS` is:
+#: a kind is a binning kind exactly when its model is a `MeasureBinRow`, and a hand-kept list of the
+#: four would silently lose the fifth.
+_BINNING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
+    (csv_name, model)
+    for csv_name, _parquet, model in _TABLE_KINDS
+    if isinstance(model, type) and issubclass(model, MeasureBinRow)
+)
+
+
+def _check_binning_grounding(
+    rows_by_csv: dict[str, list[Any]], studies: list[StudyRow]
+) -> list[str]:
+    """A binning table asserting thresholds with no evidence recorded anywhere in the module (S19).
+
+    **Grounding is enforced where it is most often automatic and silent where it is most
+    interpretive.** `studies.csv` is required iff `variants.csv` is present, and a `variants.csv` row
+    is frequently drafted from ClinVar with citations already attached. A bin *boundary* is the
+    opposite: where 36 rather than 35 CAG becomes "reduced penetrance" is a clinical judgement drawn
+    from a specific literature, it is exactly the number a reader would want to check, and until this
+    check the format asked for nothing and said nothing. `reference_examples/htt_repeat_expansion`
+    compiled green under `--strict` stating four thresholds with no citation anywhere, and its own
+    README says "a module making a novel claim should carry its evidence" — advice the schema had no
+    place to take.
+
+    **What it does not claim.** This reports an absence; it cannot report a *link*, because for three
+    of the four kinds there is nothing to link. `studies.csv` identifies its subject by rsid or by
+    `chrom`(+`start`), and an `activity_phenotype.csv` / `copynumbers.csv` / `repeat_alleles.csv` row
+    is keyed on `(gene, …)` — so a study row can be authored, and it grounds the module, but no rule
+    can tie it to a bound. Making that tie is a schema question with more than one defensible answer
+    (RM47), so what ships here is the visible decision the consumer asked for, not a half-chosen one.
+
+    **`heteroplasmy.csv` is the exception and gets the actionable message.** It has carried optional
+    `rsid`/`chrom`/`start`/`ref`/`alts` since 0.5.1, so a row naming its variant *can* be pointed at by
+    a study row on the same identity — which is exactly what `reference_examples/mt_heteroplasmy` does.
+    The distinction is derived from the model (`variant_key` is `None` only when the row names no
+    variant), never from the table name.
+
+    Fires only when the module records **no** study rows at all. Once an author has written a
+    `studies.csv`, saying more would be nagging about a link the format cannot yet express — and on a
+    module carrying `variants.csv` the missing table is already a hard error, so this never doubles it.
+    A warning in both modes: the remedy is an authored edit, but `strict` means *reproducible
+    artifact*, an unrelated axis (P5), and a module that cites nothing still reproduces exactly.
+    """
+    if studies:
+        return []
+    warnings: list[str] = []
+    for csv_name, model in _BINNING_TABLE_KINDS:
+        rows = [r for r in rows_by_csv.get(csv_name) or [] if not r.unresolved]
+        # `variant_key` is a property on `HeteroplasmyRow` alone, and it is `None` there when the row
+        # names only a gene — so this one test separates "could be grounded and is not" from "cannot
+        # be grounded at all" without naming a table.
+        ungrounded = [r for r in rows if getattr(r, "variant_key", None) is None]
+        if not ungrounded:
+            continue
+        if hasattr(model, "variant_key"):
+            remedy = (
+                "these rows name no variant (no rsid, no chrom+start), so nothing can point at them; "
+                "fill those columns and a studies.csv row on the same variant grounds each bin"
+            )
+        else:
+            key = ", ".join(f for f in model._KEY_FIELDS if f != "variant_key")
+            remedy = (
+                f"studies.csv identifies its subject by rsid or chrom+start, which a ({key}) row does "
+                f"not have, so no study row can name one of these bins — a studies.csv grounds the "
+                f"module as a whole, which is the most this format states today"
+            )
+        warnings.append(
+            f"{csv_name}: {len(ungrounded)} of {len(rows)} bin(s) state a threshold and the module "
+            f"records no grounding evidence at all (no studies.csv rows). {remedy}."
+        )
+    return warnings
+
+
 def _allowed_alleles(
     variant: VariantRow, resolution_table: dict[str, list[ResolutionRow]]
 ) -> tuple[set[str] | None, str]:
@@ -1613,6 +1688,48 @@ def _validate_table_kind(
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 
+# Every filename the spec directory has a meaning for. Derived from the table registries rather than
+# listed, so a new table kind cannot be missed here. Used only to recognise a *near miss* — a spec
+# directory may carry anything else it likes (see `_check_misspelled_tables`).
+_KNOWN_SPEC_FILES: frozenset[str] = frozenset(
+    {"module_spec.yaml", "variants.csv", "studies.csv", "resolution.csv", _PROVENANCE_FILE}
+    | set(_TABLE_KIND_CSVS)
+    | {csv for csv, _, _ in _FACT_TABLES}
+)
+
+
+def _check_misspelled_tables(spec_dir: Path) -> list[str]:
+    """Warn when an unknown `.csv` is one small edit from a table name the compiler knows.
+
+    **Unknown files are ignored on purpose and that is a contract** (S16): a module may carry its own
+    README, notes, or a publisher's receipt, none of which is in `artifact.files` and so none of which
+    moves the digest. The hazard is the narrow case where "ignored" is the wrong answer — a *mistyped
+    table name*. `varaints.csv` is silently not a table, so the author's rows are dropped and the
+    compile is green, which is the silent-success shape this codebase treats as the worst kind of
+    mistake. Probed on a real spec: three extra files, including that typo, produced no message and an
+    unchanged digest.
+
+    Deliberately keyed on **near miss** rather than on "unknown csv": warning about every unrecognised
+    file would fire on the legitimate sidecars the contract exists to permit, so the check has to be
+    high-precision or it undoes the tolerance. `difflib` at a 0.8 cutoff catches a transposition, a
+    doubled or dropped letter, and a singular/plural slip, and stays quiet on an unrelated name."""
+    if not spec_dir.is_dir():
+        return []
+    warnings: list[str] = []
+    for path in sorted(spec_dir.iterdir()):
+        if not path.is_file() or path.name in _KNOWN_SPEC_FILES or path.suffix != ".csv":
+            continue
+        close = difflib.get_close_matches(path.name, sorted(_KNOWN_SPEC_FILES), n=1, cutoff=0.8)
+        if close:
+            warnings.append(
+                f"{path.name} is not a table this compiler reads, and it is one small edit from "
+                f"{close[0]!r} — if that is a typo, every row in it is being silently ignored. "
+                f"Unknown files are otherwise tolerated (a README or a publisher's receipt is fine): "
+                f"nothing outside the known table set is read, hashed, or in artifact.digest."
+            )
+    return warnings
+
+
 def validate_spec(
     spec_dir: Path,
     authority_keys: Iterable[str] | None = None,
@@ -1646,6 +1763,8 @@ def validate_spec(
 
     if not spec_dir.is_dir():
         return ValidationResult(valid=False, errors=[f"Spec directory does not exist: {spec_dir}"])
+
+    all_warnings.extend(_check_misspelled_tables(spec_dir))
 
     config, yaml_errors, dropped_authority = _load_yaml(
         spec_dir / "module_spec.yaml", authority_keys
@@ -1797,7 +1916,13 @@ def validate_spec(
         )
 
     # Grounding (studies) is mandatory for *variant* annotations, so it is required iff variants.csv
-    # is present. The 0.4 tables carry their own evidence (e.g. evidence_level) and do not require it.
+    # is present. The 0.4 tables are exempt — but not, as this comment used to claim, because "they
+    # carry their own evidence (e.g. evidence_level)". Two of the nine do: `DiplotypeRow` and
+    # `PharmVariantRow`. `PgsRow` carries a catalog accession, which is a provenance and not a
+    # citation, and the four binning kinds plus `HaplotypeRow`/`AlleleFunctionRow` carry nothing of the
+    # sort. The real reason is that `StudyRow` can only name a variant, so for a gene-keyed table the
+    # requirement would be unsatisfiable rather than merely unmet — which is S19/RM47, and is why
+    # `_check_binning_grounding` below reports the absence instead of demanding the table.
     studies_path = spec_dir / "studies.csv"
     studies: list[StudyRow] = []
     if studies_path.exists():
@@ -1820,6 +1945,11 @@ def validate_spec(
         all_errors.append(
             "studies.csv is missing. Grounding evidence is mandatory; add study rows with PMIDs."
         )
+
+    # The other half of the same rule: a binning table states clinical thresholds and is exempt from
+    # the requirement above, so nothing used to report a module that grounds none of them. Pure
+    # computation over authored bytes with no `output_dir`, so it belongs to the pre-flight.
+    all_warnings.extend(_check_binning_grounding(loaded_kinds, studies))
 
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
@@ -2121,11 +2251,17 @@ def compile_module(
     # combination that cannot be intended says so. (Renaming it is a 1.0 conversation: the parameter
     # is part of a published signature.)
     if not resolve_with_ensembl and resolution_table:
+        # The unread row count is in the message because a warning that quantifies over a table should
+        # publish the size of what it skipped — the same reason `vrs_alleles` ships beside
+        # `vrs_alleles_identified`. Rows, not keys: a one-to-many rsid contributes several.
+        unread = sum(len(rows) for rows in resolution_table.values())
         all_warnings.append(
-            "--no-resolve (resolve_with_ensembl=False) switches off resolution entirely, including "
-            "the injected resolution.csv beside this spec — every variant will compile with no "
-            "chrom/start and match no VCF. The flag names Ensembl but is the master switch; drop it "
-            "to use the injected table (no reference and no network are involved either way)."
+            f"--no-resolve (resolve_with_ensembl=False) switches off resolution entirely, including "
+            f"the injected resolution.csv beside this spec ({unread} row(s), covering "
+            f"{len(resolution_table)} variant key(s)), which was not read — every variant will compile "
+            f"with no chrom/start and match no VCF. The flag names Ensembl but is the master switch; "
+            f"drop it to use the injected table. There is no flag for 'do not reach the network' "
+            f"because the compiler never does (CONSTITUTION P2) — omitting this one is that request."
         )
     if resolve_with_ensembl and variants:
         resolution_mode = "strict" if strict else "best_effort"
@@ -2295,6 +2431,9 @@ def compile_module(
     all_warnings.extend(
         w for w in _check_positional_joinability(kind_rows, resolution_table, config.genome_build)
         if w not in all_warnings
+    )
+    all_warnings.extend(
+        w for w in _check_binning_grounding(kind_rows, studies) if w not in all_warnings
     )
 
     # 0.5 derived-fact sidecars: materialize each present CSV, and cross-check it against what the

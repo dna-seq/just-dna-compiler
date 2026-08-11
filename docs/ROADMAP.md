@@ -428,7 +428,189 @@ joinable.
 of `fully_resolved` (variants in scope) is the cheap, self-evident half. A second count — table rows
 that cannot be joined — is what the prose actually carries today, and it overlaps the structured
 `checks_run`/`checks_skipped` record S8 asks for. Deciding them together avoids shipping two shapes for
-one question (P5).
+one question (P5). **Settled in [RM45](#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader): three separate things, three homes.**
+The denominator is this item's, and it is not blocked by RM45; the unjoinable-row count belongs with
+RM43's warning; neither is a member of a verification-checks map, because resolution is not a
+verification pass and folding a row count into "which checks ran" overloads that map's axis (P5).
+
+## RM45 — the manifest is rich about resolution and silent about verification, so `unchecked` and `clean` are one state to a downloader
+
+**Severity** medium (a per-version trust signal nobody can build, and no way to triage what was
+published unchecked) · **Status** open — **0.6** · **Owner** format (the manifest shape + vocabulary) +
+enricher (the only tier that holds the facts) + compiler (the stamp) · **Motivating case** a catalog
+that verifies a module's `clin_sig` on its own deployment has nowhere to record that it did (S8 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Confirmed structurally, which is the strongest form this claim can take.** `Compilation`'s twelve
+fields carry nothing about verification. `ResolutionRow`'s eighteen columns are all per-*row*
+(`status`, `rsid_status`, `rsid_current`). `EnrichmentResult` holds `clin_sig_not_checked`,
+`ref_mismatches`, `stale_rsids` and `vrs`, and dies when the run ends. So a module whose authored
+`clin_sig` was cross-checked against ClinVar and one where the check never ran ship **identical**
+manifests — not by oversight in some path, but because no field exists that could differ.
+
+**This is S4's own argument one level down.** 0.5.2 accepted that an empty `clin_sig_conflicts` meant
+both "compared everything, nothing disagreed" and "never compared", and fixed it — on
+`EnrichmentResult`. The layer that outlives the run inherited none of it, so the rule holds in process
+memory and nowhere else. The same applies to the reference-allele and rsID-currency passes.
+
+**Legality is not the obstacle, and it is cheaper than the usual case.** The manifest was never inside
+`artifact.digest`, and a new optional field is additive and minor-legal (P3, amended 2026-08-11) — so
+**0.6, not 1.0**. A manifest field that a *publishing authority* stamps rather than the compiler
+deriving is also already this schema's shape: `compiled_by`, `namespace`, `owner`, `published_at` and
+`canonical_id` are all that. And the reporter's field shape is right for our own stated reasons —
+counts rather than bools, and **two** fields rather than one map with a union-typed value, so "ran
+against 0 rows" and "did not run" can never occupy one slot. `vrs_alleles`/`vrs_alleles_identified` is
+the precedent; the ACMG pass's `checked: 0` is the other.
+
+**Four things the proposal leaves open, which is what makes this a design round and not a patch:**
+
+1. **The check name is a vocabulary, or this is RM44 again one level down.** A `dict[str, int]` keyed on
+   free strings lets the enricher write `clin_sig`, a registry write `clinsig`, and a consumer
+   substring-match the difference — an unversioned interface, the exact defect RM44 exists to remove.
+   The keys want `frozenset[str]` + a validator (P6), and because vocabulary members are permanent
+   within a major (P5) the set has to be audited once against the passes that would plausibly join it:
+   reference allele, rsID currency, ACMG SF, identifier/trait currency, quote-checking, dosage
+   sensitivity.
+2. **The skip *reason* must not be free prose either, for the same reason.** Backfill triage — the
+   reporter's own second use case — branches on *why* a pass did not run, so `dict[str, str]` of prose
+   relocates the substring matching rather than ending it. The reason wants a small closed vocabulary
+   (`tautological`, `no_reference`, `offline`, `not_applicable`) with the sentence *beside* it, not
+   instead of it: `clinical.tautology_reason` already writes a good sentence and it is worth keeping as
+   human detail rather than promoting to a machine key.
+3. **The seam has no channel, and that is the actual work.** `resolution.csv` is the enricher→compiler
+   contract and carries per-row facts only; "this pass did not run" is per-pass by nature and has no row
+   to attach to — the reporter identifies this precisely. Two routes, and choosing is the design. A new
+   sidecar the enricher writes and the compiler reads is consistent with every other injected table
+   (and would want its own fact-signature), and it gives the workspace a path it can test end to end.
+   An argument on `compile_module` is cheaper and is what the reporter proposes, but then the only
+   producer is the caller: the format would declare a field its own reference implementation never
+   fills, which is how `VALID_SOURCE_LAYERS` ended up with members no file carried.
+4. **The trust rule belongs in the schema's own docs, not in the reporter's caveat.** Their point that a
+   forged pass is *worse than silence* is right, and it already has a spelling here — `compiled_by`'s
+   description says "foreign values are untrusted". Whatever lands must say the same on each field and
+   in SCHEMAS.md, or the first consumer to read `checks_run` off an untrusted manifest believes it.
+
+**Recommended shape: option 2, a `Verification` block.** The reporter's own argument for it is the
+stronger one and it is the house pattern — `Frequency` earned a separate block because it has its own
+producer, its own release and its own fact-hash, and verification has all three. A `clin_sig` check is
+only as good as the snapshot it read, so the block wants that release id, and no existing block has a
+home for it; `locations.read_release` (0.5.2) is what makes "verified against ClinVar release X" a
+sentence this tier can complete at all. Absent on a module nothing verified, which reads correctly as
+*says nothing* rather than as a pass.
+
+**It does not subsume RM44.** S13 offered S8 as the superset and it is not one: `resolution_subjects` is
+the denominator of an existing flag about *resolution*, which is not a verification pass. Adopting that
+framing would park a one-line additive integer behind this whole round.
+
+## RM46 — a literature source's terms are per-article, so the enricher names a source it cannot record
+
+**Severity** low as a symptom (a warning on every literature-enriched module), medium as a hole (a
+module quoting a CC-BY-NC article has no way to say so) · **Status** open — **0.6** · **Owner**
+enricher (`licensing` + `literature`) · **Motivating case** every literature-enriched module warns
+about a source the enricher itself introduced (S10 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Reproduced by reading the three pieces.** `enrich_literature` writes `source="pubmed"` into every
+`literature.csv` row. `TERMS_BY_SOURCE` has seven members and no `pubmed`, and `record_source_terms`
+deliberately *skips* a name it has no terms for ("inventing a row for the rest would be worse than the
+compiler's honest warning"). `_source_checks`'s under-declaration branch then names `pubmed` on every
+such module. So the tier introduces a source and declines to record it, and the finding lands on the
+author. Worth stating precisely, because it bounds the severity: `SourceRow.source` is free text, so an
+author *can* hand-write the row and clear the warning. This is not an unclearable finding — it is the
+enricher asking the author to write down something only the enricher knows.
+
+**The reporter is right that a `PUBMED_TERMS` constant would be the wrong fix, and this is the part
+worth keeping.** A literature source's terms are **per-article, not per-source**: PubMed's *metadata* is
+one thing, the *article* belongs to its publisher, and Europe PMC's OA subset spans CC-BY, CC-BY-NC and
+bronze. One `pubmed` row would be right for a module that cites only PMIDs and **wrong** for one
+carrying a `provenance_quote` lifted from a CC-BY-NC article — and wrong in the dangerous direction,
+because that quote is publisher text sitting in the module's own **annotation** layer, which is exactly
+where `taints_commercial_use` bites. A row that reads "pubmed, fine" would make such a module look
+cleared when it is not, which is worse than today's warning.
+
+**Two other obvious repairs, both wrong.** *Stop writing `source="pubmed"`* — no: `source` is how a
+consumer knows which upstream answered, and the existing reasoning for preferring PubMed over Europe PMC
+(which "cannot originate a row", since it silently omits ids it does not know) is sound. *Have the
+compiler exempt enricher-introduced sources* — no: the compiler would need to hold a list of which
+sources a pass introduces, which is a **source convention**, forbidden it since 0.5 (P2) and the exact
+mistake RM33 removed. The fix belongs to the tier that both names the source and owns the terms table.
+
+**The shape that matches the facts is the reporter's option 2, and it is the bigger one.** Per-article
+terms, either as an additive licence column on `LiteratureRow` (minor-legal) or as `sources.csv` rows
+keyed by DOI, plus one decision that is not the enricher's to make alone: whether quoting a CC-BY-NC
+article taints the module for sale. That is the *use*-versus-*distribution* axis **RM27** already parks,
+so the two want settling together. The tier is closer than it looks: `is_open_access` is already
+tri-state on the row, and the pass holds the licence at the moment it would need to record it (Europe
+PMC returns `isOpenAccess`; Unpaywall returns a licence id per DOI).
+
+**Interim step, if 0.6 slips:** the reporter's option 1 (a `literature`-layer `pubmed` row for the
+*metadata*, plus a documented rule that quoting requires a second `annotation`-layer row for the
+article) is defensible — but only if the row's terms are stated as the metadata's and the quoting
+obligation is written where an author reads it. Shipped as a bare terms constant it silences the warning
+and buys the false clearance above, so it is not a one-liner.
+
+## RM47 — a bin boundary is the most interpretive claim in the format and the only one with nowhere to cite
+
+**Severity** medium (no module is unauthorable, but the claim a reader would most want to check is the
+one the schema asks nothing about) · **Status** open — **0.6**, gated on a design round rather than on a
+version · **Owner** format (schema) + compiler + enricher (the literature pass) · **Motivating case** an
+HTT CAG module whose thresholds had nowhere to record their source (S19 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Reproduced on this tree's own reference example.** `reference_examples/htt_repeat_expansion` compiles
+green under `--strict` stating four Huntington thresholds — 26/27, 35/36, 39/40 — with no citation
+anywhere in the module, and until 0.5.4 nothing said a word. Its README even says *"a module making a
+novel claim should carry its evidence"*, which is advice the schema gave the author no way to take.
+`StudyRow` identifies its subject by `rsid` **or** `chrom`(+`start`), and a `repeat_alleles.csv` row is
+keyed `(gene, repeat_unit)`, so no study row can name one; `MeasureBinRow` has no `pmid`, `doi` or
+`evidence_level`. The requirement is enforced exactly where citations usually arrive for free — a
+ClinVar-drafted `variants.csv` — and absent where a human made the judgement.
+
+**One correction to the report, and it narrows the item.** The same does *not* hold for
+`heteroplasmy.csv`: it has carried optional `rsid`/`chrom`/`start`/`ref`/`alts` since 0.5.1, so a study
+row on the same variant identity points at it exactly, and `reference_examples/mt_heteroplasmy` already
+does this. What is genuinely unpointable is the three gene-keyed kinds — `repeat_alleles.csv`,
+`copynumbers.csv`, `activity_phenotype.csv` — plus a heteroplasmy row that names only a gene. A second
+correction in the other direction: `studies.csv` is *not rejected* in a variants-free module. It loads,
+validates and materializes `studies.parquet` today, so an author can ground the module as a whole right
+now — the row simply has to claim a variant identity the bin does not have (a bare `chrom=4` for HTT),
+and nothing ties it to a bound.
+
+**Shipped in 0.5.4 (the reporter's option 2), and it is the interim, not the answer.**
+`compiler._check_binning_grounding` warns in both modes when a binning table states thresholds and the
+module records no study rows at all, with the message split on whether the rows *could* be pointed at:
+the heteroplasmy shape gets a remedy ("fill the identity columns"), the gene-keyed shape gets the honest
+statement that no study row can name one of these bins. That turns silence into a visible decision and
+changes no schema.
+
+**Four candidate repairs, and none is a one-liner — which is why this is filed rather than fixed.**
+
+- **`pmid`/`doi` on `MeasureBinRow`.** The smallest schema move (a new optional column on the base
+  reaches all four kinds, minor-legal under P3) and the only one that grounds a *boundary*, which is what
+  was actually asked for. It is also the largest **wiring** move: `literature.csv`, `_cross_check_literature`
+  and the enricher's literature pass all read `StudyRow.pmid` and nothing else, so a bin-row PMID would
+  be a citation no existence check, no bibliographic check (S12) and no quote check ever reaches —
+  grounding that *looks* verified and is not, which is worse than the honest gap. And it starts the
+  drift: `studies.csv` carries population, `p_value_num`, `effect_size` and `provenance_quote`, so the
+  first author wanting a quote begins growing `StudyRow`'s column set onto a binning table.
+- **A generic `subject_key` on `StudyRow`.** Rejected on the binning tables' own stated rule —
+  *multicolumn keying, never a packed tuple*. `HTT|CAG` is a second spelling of an identity the columns
+  already spell, it can drift from them with nothing to catch it, and P5 gets a field carrying two axes.
+- **Key columns on `StudyRow` plus a new `REQUIRED_ANY_OF` alternative.** Legal — the columns are
+  optional, and widening an any-of only makes previously-*invalid* rows valid, so no published module
+  breaks. But it grounds at table granularity, not at the boundary: a `(gene, repeat_unit)` study row
+  still does not say why 36. Making it say so means putting `measure_min`/`measure_max` on the study row,
+  i.e. restating the bin inside its own evidence. It also quietly changes a contract consumers read —
+  every `studies.parquet` row today carries an rsid or a chrom.
+- **A `bin_evidence.csv` join table.** Keeps one-CSV-one-concern and grounds per bound, but the join key
+  *is* the bounds, and they are floats: re-authoring `40` as `40.0`, or moving a threshold, silently
+  orphans its evidence with no rule able to notice. A join key that is also the data is the shape to
+  avoid.
+
+**So the decision to make is which granularity the format promises** — module, table, or boundary — and
+every honest repair costs either a duplicated column set or a duplicated key. Settle that first; the
+column follows in an afternoon. Whichever wins, the literature pass and `_cross_check_literature` have to
+learn about the new PMID site in the same release, or the format ships evidence it does not check.
 
 # Not format scope
 

@@ -16,6 +16,7 @@ from just_dna_format.binning import (
     RepeatAlleleRow,
     validate_bins,
 )
+from just_dna_format.frequency import FrequencyRow
 from just_dna_format.pgs import (
     VALID_RESEARCH_TIERS,
     VALID_TRAINING_ANCESTRY,
@@ -30,6 +31,7 @@ from just_dna_format.pgx import (
 )
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import (
+    MISPLACED_COLUMN_REASONS,
     RESERVED_NAME_REASONS,
     RESERVED_NAMES_0_4,
     VALID_EVIDENCE_LEVELS,
@@ -247,6 +249,36 @@ def test_arbitrary_or_typo_column_gets_generic_message_not_reserved(model, valid
         msg = _validation_message(model, **valid, **{bad: "v"})
         assert "Extra inputs are not permitted" in msg, (model.__name__, bad, msg)
         assert "reserved column name" not in msg, (model.__name__, bad, msg)
+
+
+@pytest.mark.parametrize("model, valid", _AUTHORED_MODELS)
+def test_a_column_real_on_a_generated_table_gets_its_own_diagnosis(model, valid) -> None:
+    """`source` is a plausible name, not a typo, and the generic message was a dead end (S17).
+
+    An author reaches for it *because* they have seen it on `resolution.csv`/`frequencies.csv` and
+    because the value joins to `sources.csv` — so the rejection has to say where provenance actually
+    goes. Distinct from the reserved diagnosis: `source` is not held against a future release, it is a
+    real column in the wrong place."""
+    for name in MISPLACED_COLUMN_REASONS:
+        msg = _validation_message(model, **valid, **{name: "v"})
+        assert "not authored on a" in msg, (model.__name__, name, msg)
+        assert MISPLACED_COLUMN_REASONS[name] in msg, (model.__name__, name, msg)
+        assert "reserved column name" not in msg, "a misplaced column is not a reserved one"
+        assert "sources.csv" in msg, "the message must name where the source does go"
+
+
+def test_a_model_that_declares_the_column_is_untouched() -> None:
+    """The guard keys on the model's own fields, so the four generated tables keep their column.
+
+    Derived from the models rather than listed: any authored model declaring a name in
+    `MISPLACED_COLUMN_REASONS` must accept it, or the diagnosis has broken the tables it describes."""
+    row = FrequencyRow(
+        variant_key="rs1", chrom="1", start=1, ref="A", population="afr",
+        allele_count=1, allele_number=2, source="gnomad", dataset="gnomad_v4.1",
+    )
+    assert row.source == "gnomad"
+    for name in MISPLACED_COLUMN_REASONS:
+        assert name in FrequencyRow.model_fields, name
 
 
 # ── adoption pass: 3 general axes on VariantRow ─────────────────────────────────────────────────

@@ -87,6 +87,40 @@ def strip_authority_keys(
     return clean, dropped
 
 
+def reject_authority_keys(data: object) -> object:
+    """A `mode="before"` guard for the authored `module:` block, layered on top of `extra="forbid"`.
+
+    Same shape and same reason as `vocab.reject_reserved`, on the other half of the namespace:
+    `extra="forbid"` already refuses `namespace:`/`owner:`/`canonical_id:`, but it refuses them with
+    the generic "extra inputs are not permitted", which is a dead end for the one author most likely
+    to hit it — someone carrying a pre-0.4 spec whose keys the *format's own docs* describe as
+    registry-filled. This guard runs first and names the key, why it is not authored
+    (`IDENTITY_AUTHORITY_REASONS`), and the two ways out.
+
+    **It diagnoses; it does not strip.** The inject-only rule (CONSTITUTION P2's spirit) is about
+    *applying* one consumer's identity convention inside the validator, which is why
+    `strip_authority_keys` is opt-in and the format still applies nothing by default. A message is not
+    an application: a block that reaches this guard is one no stripper was pointed at, and the whole
+    value of the constant is telling that caller the stripper exists. Validity is unchanged — the
+    block was invalid before this function and is invalid after it.
+
+    A typo'd or genuinely unknown key still falls through to `extra="forbid"`'s generic message, and
+    non-mapping input passes through untouched (pydantic handles it)."""
+    if isinstance(data, dict):
+        hits = sorted(k for k in data if k in IDENTITY_AUTHORITY_KEYS)
+        if hits:
+            reasons = "; ".join(f"{h!r} is {IDENTITY_AUTHORITY_REASONS[h]}" for h in hits)
+            raise ValueError(
+                f"registry-stamped identity key(s), not authored fields: {reasons}. Omit them from "
+                f"module_spec.yaml, or have the publishing consumer strip them before validation "
+                f"(just_dna_format.normalize.strip_authority_keys / IDENTITY_AUTHORITY_KEYS, "
+                f"threaded as validate_spec(..., authority_keys=...) or the compiler CLI's "
+                f"--strip-identity). Note `module.version` is NOT one of these: it is a genuine "
+                f"advisory authored field, coerced to SemVer."
+            )
+    return data
+
+
 def normalize_version(raw: str) -> str:
     """Coerce an informal version string to SemVer `MAJOR.MINOR.PATCH`.
 

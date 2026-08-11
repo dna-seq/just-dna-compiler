@@ -45,7 +45,12 @@ from just_dna_enricher.identifiers import (
     TraitStatus,
     check_rsids,
 )
-from just_dna_enricher.literature import CrossrefClient, EuropePmcClient, _identifiers
+from just_dna_enricher.literature import (
+    CrossrefClient,
+    EuropePmcClient,
+    _identifiers,
+    bibliographic,
+)
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 
@@ -125,7 +130,15 @@ class VariantHint:
 
 @dataclass
 class CitationHint:
-    """What is known about one citation. Every existence answer is tri-state."""
+    """What is known about one citation. Every existence answer is tri-state.
+
+    **Existence is not identity, which is why the bibliographic fields are here** (S12). PMIDs are
+    densely allocated, so a recalled or invented 8-digit number is very likely to be a real record —
+    for a different paper — and `pmid_exists=True` alone therefore cannot catch a fabricated citation.
+    Fabrication is a failure of *identity*, so the answer has to name the paper it found and let the
+    caller compare it against the one they meant. `title`/`journal`/`year`/`first_author` all arrive in
+    the same `esummary` response that answers existence, so this costs no extra request.
+    """
 
     pmid: str | None = None
     doi: str | None = None
@@ -135,6 +148,12 @@ class CitationHint:
     pmcid: str | None = None
     open_access: bool | None = None
     abstract_available: bool | None = None
+    # What the record says it is. `None` means the field was absent or the record was never fetched —
+    # never "untitled".
+    title: str | None = None
+    journal: str | None = None
+    year: str | None = None
+    first_author: str | None = None
     findings: list[Finding] = field(default_factory=list)
     alterations: list[Alteration] = field(default_factory=list)
 
@@ -496,6 +515,27 @@ def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:
     identifiers = _identifiers(record)
     hint.registry_doi = identifiers.get("doi")
     hint.pmcid = identifiers.get("pmcid")
+    # Which paper this actually is, from the response that just answered existence (S12). Reported as
+    # an `info` finding as well as on the fields, because the caller most likely to have recalled a
+    # PMID from memory is the one reading prose rather than JSON.
+    citation = bibliographic(record)
+    hint.title = citation["title"]
+    hint.journal = citation["journal"]
+    hint.year = citation["year"]
+    hint.first_author = citation["first_author"]
+    if hint.title:
+        named = ", ".join(
+            part for part in (hint.first_author, hint.journal, hint.year) if part
+        )
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "info",
+                f"PMID {pmid} names: {hint.title!r}" + (f" ({named})" if named else "")
+                + " — existence is not identity, so confirm this is the paper you meant.",
+            )
+        )
     _check_availability(hint, pmid, clients)
     if hint.registry_doi and not hint.doi:
         hint.alterations.append(

@@ -307,6 +307,38 @@ def test_switching_resolution_off_with_a_table_present_says_so(tmp_path: Path) -
     assert not [w for w in on.warnings if "master switch" in w]
 
 
+def test_the_unread_row_count_is_named(tmp_path: Path) -> None:
+    """A warning quantifying over a table publishes the size of what it skipped (S14).
+
+    Counted at runtime from the table the test wrote, never hardcoded — and **rows, not keys**, which
+    is the distinction a one-to-many rsid makes real: two loci under one `variant_key` are two unread
+    rows and one unread key, and a reader deciding whether the omission matters wants the first.
+    """
+    variants = "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\nrs429358,C/C,risk,c2\n"
+    rows = [
+        ("rs1801133", "rs1801133", "1", "11856377", "G", "A", "0"),
+        ("rs429358", "rs429358", "19", "44908684", "T", "C", "0"),
+        ("rs429358", "rs429358", "19", "44908685", "T", "C", "1"),  # same key, second locus
+    ]
+    resolution = (
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
+        + "".join(
+            f"{key},{rsid},{chrom},{start},{ref},{alts},GRCh38,{index},manual,resolved,\n"
+            for key, rsid, chrom, start, ref, alts, index in rows
+        )
+    )
+    spec = _spec(tmp_path / "counted", variants, resolution)
+    result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
+
+    assert result.success
+    found = [w for w in result.warnings if "master switch" in w]
+    assert len(found) == 1, result.warnings
+    keys = len({row[0] for row in rows})
+    assert f"{len(rows)} row(s)" in found[0], found[0]
+    assert f"{keys} variant key(s)" in found[0], found[0]
+    assert len(rows) != keys, "the fixture must distinguish rows from keys or it proves nothing"
+
+
 def test_no_table_no_lecture(tmp_path: Path) -> None:
     """The flag is legitimate on a module with nothing to inject — most of the test suite uses it."""
     spec = _spec(tmp_path / "bare", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n")

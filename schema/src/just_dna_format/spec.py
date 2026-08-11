@@ -34,7 +34,7 @@ from just_dna_format.derive import (
 )
 from just_dna_format.identity import validate_name
 from just_dna_format.manifest import SCHEMA_VERSION, Contribution, Display, GenePanelSpec
-from just_dna_format.normalize import normalize_version
+from just_dna_format.normalize import normalize_version, reject_authority_keys
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
@@ -119,6 +119,16 @@ class ModuleInfo(Display):
             "via just_dna_format.normalize.strip_authority_keys before validation."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _diagnose_authority_keys(cls, data: object) -> object:
+        """Name a registry-stamped identity key instead of letting `extra="forbid"` call it a stray.
+
+        Runs on the RAW block, before field coercion, so the diagnosis replaces pydantic's generic
+        message rather than arriving after it. Nothing is stripped — see
+        `normalize.reject_authority_keys`."""
+        return reject_authority_keys(data)
 
     @model_validator(mode="after")
     def _enforce_semver(self) -> "ModuleInfo":

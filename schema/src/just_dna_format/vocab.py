@@ -12,6 +12,7 @@ constrained vocabularies are `frozenset[str]` + a validator, never `Enum`/`Liter
 
 import math
 import re
+from collections.abc import Iterable
 
 # ── Orthogonal axis vocabularies (the 0.3 split out of the overloaded `state`) ──────────────────
 # Effect direction — the clean phenotypic scalar. Orthogonal to `clin_sig` and `stat_significance`.
@@ -395,6 +396,43 @@ def _placeholder_paths(data: object, *, prefix: str) -> list[str]:
     elif isinstance(data, str) and data.strip() == TEMPLATE_PLACEHOLDER:
         found.append(prefix or "<value>")
     return found
+
+
+#: Columns that are real *somewhere* in the authored DSL, and so are a plausible confusion rather than
+#: a typo, keyed to what to do instead. A name in here earns a specific diagnosis on a model that does
+#: not declare it, exactly as a reserved name does — `extra="forbid"`'s generic "extra inputs are not
+#: permitted" is a dead end for a column an author reached for *because* they had seen it elsewhere
+#: (S17: a plausible name, rejected, with the reason discoverable only by reading the models).
+#:
+#: Kept as prose rather than as a cross-model registry, deliberately: `base` cannot import `spec`/`pgx`
+#: to ask which models declare a name (the import cycle the vocabulary markers exist to avoid), and a
+#: hand-kept list of models would be the drift this module keeps removing. A per-name sentence about a
+#: stable table role does not go stale the way a column list does.
+MISPLACED_COLUMN_REASONS: dict[str, str] = {
+    "source": (
+        "is recorded on GENERATED tables only — resolution.csv, frequencies.csv, gene_metrics.csv and "
+        "literature.csv, where a pass names the link that answered. A hand-authored fact table has no "
+        "such column by design: a curated annotation's provenance is the module's, not a per-row link. "
+        "To declare a source you read by hand, add a ROW to sources.csv (whose own `source` column is "
+        "the subject of the row, and is what the licence gate and manifest.sources join on)"
+    ),
+}
+
+
+def reject_misplaced(data: object, declared: Iterable[str], what: str) -> object:
+    """A `mode="before"` guard naming a column that is real elsewhere in the DSL but not on this model.
+
+    Sits between `reject_reserved` (a name no model has, held against a future release) and
+    `extra="forbid"` (an unknown or misspelled name). `declared` is the model's own field names, so a
+    model that genuinely carries the column — `FrequencyRow.source` — is never touched, and the check
+    cannot drift out of step with the models the way a second name list would."""
+    if isinstance(data, dict):
+        fields = frozenset(declared)
+        hits = sorted(k for k in data if k in MISPLACED_COLUMN_REASONS and k not in fields)
+        if hits:
+            reasons = "; ".join(f"{h!r} {MISPLACED_COLUMN_REASONS[h]}" for h in hits)
+            raise ValueError(f"column(s) not authored on a {what}: {reasons}.")
+    return data
 
 
 def reject_reserved(data: object) -> object:

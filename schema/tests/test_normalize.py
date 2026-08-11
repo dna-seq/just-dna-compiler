@@ -24,6 +24,8 @@ from just_dna_format.normalize import (
 )
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
+from just_dna_format.spec import ModuleInfo
+from pydantic import ValidationError
 
 
 def test_identity_authority_set_excludes_version() -> None:
@@ -62,6 +64,77 @@ def test_strip_authority_keys_accepts_a_custom_injected_set() -> None:
     block = {"name": "m", "vendor": "x", "title": "M"}
     clean, dropped = strip_authority_keys(block, {"vendor"})
     assert clean == {"name": "m", "title": "M"} and dropped == ["vendor"]
+
+
+# ── reject_authority_keys: the diagnosis half of the same constant ──────────────────────────────
+
+
+def _module_block(**extra: object) -> dict[str, object]:
+    """A minimal-but-complete `module:` block, so a failure can only come from `extra`."""
+    return {
+        "name": "s1_probe",
+        "title": "Probe",
+        "description": "A probe module.",
+        "report_title": "Probe",
+    } | extra
+
+
+def test_module_block_is_valid_without_authority_keys() -> None:
+    # The guard must not fire on a clean block — otherwise every module fails.
+    assert ModuleInfo(**_module_block()).name == "s1_probe"
+
+
+@pytest.mark.parametrize("key", sorted(IDENTITY_AUTHORITY_KEYS))
+def test_each_authority_key_fails_with_its_own_reason(key: str) -> None:
+    """Every member of the set earns a diagnosis, and it is the reason the constant records.
+
+    Parametrized over the set itself rather than a hand-written list, so a key added to
+    `IDENTITY_AUTHORITY_KEYS` without a message is a failure here rather than a silent generic
+    rejection."""
+    with pytest.raises(ValidationError) as exc:
+        ModuleInfo(**_module_block(**{key: "acme"}))
+    message = str(exc.value)
+    assert "registry-stamped identity key(s)" in message
+    assert key in message
+    assert IDENTITY_AUTHORITY_REASONS[key] in message
+    # The way out is named, or the diagnosis is just a longer dead end.
+    assert "strip_authority_keys" in message and "--strip-identity" in message
+
+
+def test_authority_keys_are_reported_together_and_sorted() -> None:
+    with pytest.raises(ValidationError) as exc:
+        ModuleInfo(**_module_block(namespace="acme", owner="acme", canonical_id="acme/m@1.0.0"))
+    message = str(exc.value)
+    # One diagnosis naming all three, in sorted order — not three separate errors.
+    positions = [message.index(k) for k in ("canonical_id", "namespace", "owner")]
+    assert positions == sorted(positions)
+
+
+def test_an_unknown_key_still_gets_the_generic_message() -> None:
+    """The guard must stay narrow: a typo is not a registry key, and saying so would misdiagnose it."""
+    with pytest.raises(ValidationError) as exc:
+        ModuleInfo(**_module_block(nmespace="acme"))
+    message = str(exc.value)
+    assert "Extra inputs are not permitted" in message
+    assert "registry-stamped" not in message
+
+
+def test_version_is_accepted_not_diagnosed() -> None:
+    """RM17: `version` is an authored advisory field, and the whole pre-0.4 corpus carries it.
+
+    It is the one key S1 named that must NOT reach the guard — coerced, and the pre-coercion string
+    kept so a caller can report the rewrite."""
+    info = ModuleInfo(**_module_block(version="v2"))
+    assert info.version == "2.0.0"
+    assert info.version_coerced_from == "v2"
+
+
+def test_stripping_first_leaves_a_valid_block() -> None:
+    """The two halves compose: strip (opt-in) then validate, which is the consumer's real path."""
+    block = _module_block(namespace="acme", owner="acme", canonical_id="acme/m@1.0.0", version="v2")
+    clean, dropped = strip_authority_keys(block, IDENTITY_AUTHORITY_KEYS)
+    assert dropped == ["canonical_id", "namespace", "owner"]
+    assert ModuleInfo(**clean).version == "2.0.0"  # `version` survives the strip
 
 
 def test_normalize_version_coerces_informal_to_semver() -> None:

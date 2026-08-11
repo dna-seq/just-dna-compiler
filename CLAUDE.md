@@ -677,6 +677,71 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `chrom`/`start`/`ref`/`alts` — never a subset. A lone `alts` on a position-only row makes
   `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref`, so a partial
   coordinate silently changes *which variant the row is*.
+- **A generic rejection is a dead end where a specific one is a fix, and the reason lives beside the
+  constant (0.5.4).** `extra="forbid"` refuses every unknown column identically, so three different
+  mistakes read the same. There are now three guards layered on it, all the same shape — a
+  `mode="before"` validator that raises a *diagnosis* and changes no verdict: `vocab.reject_reserved` (a
+  name held against a future release), `normalize.reject_authority_keys` (`namespace`/`owner`/
+  `canonical_id`, registry-stamped — the reasons had existed since 0.4.1 with `authoring_reference()` as
+  their only reader), and `vocab.reject_misplaced` / `MISPLACED_COLUMN_REASONS` (`source`, which is real
+  on the four **generated** tables and on `sources.csv`, and nowhere else). Four rules. **Diagnosing is
+  not applying** — the inject-only rule bars the validator from *stripping* one consumer's convention, and
+  a message strips nothing, so `strip_authority_keys` stays opt-in. **Key on the model's own fields**, so
+  `FrequencyRow.source` cannot be broken by the message describing it. **A misplaced column is not a
+  reserved one**: reserved is for names no model has, and conflating them would bar a real column.
+  And **prose, not a cross-model registry** — `base` cannot import `spec`/`pgx` (the cycle the vocabulary
+  markers avoid) and a hand-kept model list is the drift being unwound; a sentence about a stable table
+  role does not rot the way a column list does.
+- **A ragged CSV row misdiagnoses the column *after* the mistake, and both coordinates were wrong
+  (S18, 0.5.4).** `hints.inspect_rows` padded a short row with `""` (indistinguishable from cells left
+  empty) and, for a long one, shifted every column from the offender onward and dropped the overflow — so
+  an unquoted comma in `conclusion` produced `Input should be a valid boolean` against `unresolved`, whose
+  authored value was `false`. The field-count mismatch is reported **before** the type error it explains,
+  error for a surplus (data is discarded, and `csv_out` carries the damage forward) and warning for a
+  shortfall (padding is recoverable). Padding and truncating stay: a hint describes a broken file rather
+  than refusing it. Separately, `Finding` now carries **`line`** — 1-based, header-inclusive, the
+  coordinate `validate`/`compile` print — beside `row`, a 0-based data-row index; **added, never
+  redefined**, because a consumer already compensating for the old meaning would then break silently. The
+  compiler's own loader had the ragged case right all along (`more values than header columns`, with a
+  line number), which is what made the hints surface the odd one out.
+- **A rate limiter the injection API tells callers to share must be safe to share (S15, 0.5.4).**
+  `PacingGate.wait()` read `last`, slept, then wrote it with no lock, so two threads could both find the
+  interval elapsed, both skip the sleep, and turn a published 3/s budget into 6/s — a budget someone else
+  enforces by blocking the operator's IP. What decides it is not thread-safety in the abstract but that
+  `LookupClients`' own docstring tells callers to hold and reuse a client, so a server threading its
+  blocking work arrives at a shared gate *by following our documentation*. The lock covers the
+  **bookkeeping, not the sleep**: each caller reserves the next slot and waits for it alone, so N callers
+  get N slots one interval apart and none blocks another. Holding a lock across the sleep would instead
+  give "one in-flight request per service", which is a **concurrency limit, not a pace** — a different
+  axis, and a semaphore's job (P5). Proven on a frozen clock: four threads at a barrier must come out
+  spaced by the interval, and the old code yields gaps of `[6.0, 0.0, 0.0]`.
+- **Existence is not identity — a lookup that answers "does this exist" must say *what* it found (S12,
+  0.5.4).** PMIDs are densely allocated, so a recalled or invented 8-digit number is usually a real record
+  for a different paper, and `pmid_exists=True` could never catch a fabricated citation; the surrounding
+  docs treated existence as the guard, and a consumer's skill had to retract a rule its surface could not
+  enforce. `CitationHint` carries `title`/`journal`/`year`/`first_author` from the same `esummary`
+  response, via public `literature.bibliographic()` (two tiers read it — the RM41 lesson), with `None` for
+  a field the record lacks and a `year` taken only from a leading four digits. No title column on
+  `LiteratureRow`: that table records what was *checked*, not bibliography. Generalize it: when a check
+  answers a yes/no about an identifier, ask whether "yes" could be true of the wrong thing.
+- **A quote is an ATTESTATION, which is a sharper refusal than a spent comparison (S11, 0.5.4).**
+  `provenance_quote`/`provenance_regex` were missing from `hints.REDUNDANCY_BEARING` although
+  `literature._study_quote_found` compares both against the fulltext — exactly the drift that map's
+  docstring predicts. Both are registered now, **plus** a fifth `REFUSAL_REASONS` member,
+  `attestation_bearing` (`hints.ATTESTATION_BEARING`): filling `doi` from the registry that checks it makes
+  a Class-2 comparison *vacuous*, while extracting a passage from a fulltext a tool just fetched states
+  something **false**. The registration is additive, not instead — a provider consulting either map must
+  reach a refusal. And the consequence, now in ENRICHER.md: once a machine has retrieved the text,
+  `quotes_found` shows the quote **pairs with the PMID**, not that a human read the paper.
+- **Unknown files in a spec directory are tolerated — and probing that contract found the case where
+  tolerance is wrong (S16, 0.5.4).** A module may carry a README (every reference example does), curation
+  notes, or a registry's `published.json` receipt, whose keys cannot go in `module_spec.yaml` because
+  `extra="forbid"` rightly rejects them; none is read, hashed, or in `artifact.files`, so none can move
+  `artifact.digest` (pinned by a digest comparison, not asserted). The exception is a **mistyped table
+  name**: `varaints.csv` silently is not a table, so every row in it is dropped from a green compile.
+  `_check_misspelled_tables` warns on an unknown `.csv` within one small edit of a known name, deriving
+  the name set from the table registries. Keyed on **near miss** rather than "any unknown csv" on purpose
+  — warning about every unrecognised file would undo the tolerance it sits beside.
 - **A warning's TEXT became an API, because the manifest carries prose and no field (RM44).**
   `compile_module` copies its warnings into `manifest.compilation.warnings` → `manifest.json`, and a
   catalog reindexing from a published manifest has nothing else: `fully_resolved` is `all()` over
@@ -961,8 +1026,21 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 Feature ideas move through **one loop**; the docs are its stages, and a design task should walk them
 in order rather than jumping to code:
 
-1. **Feedback** — a consumer's field report → [docs/CONSUMER_FIELD_NOTES.md](docs/CONSUMER_FIELD_NOTES.md),
-   [docs/CONSUMER_ROUND2_AND_0_5.md](docs/CONSUMER_ROUND2_AND_0_5.md)
+1. **Feedback** — a consumer's field report → [docs/CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md)
+   (the live one, `S1`…`Sn`), [docs/CONSUMER_FIELD_NOTES.md](docs/CONSUMER_FIELD_NOTES.md),
+   [docs/CONSUMER_ROUND2_AND_0_5.md](docs/CONSUMER_ROUND2_AND_0_5.md).
+   **Every `Sn` gets a `**Status —**` reply written back into the document, and the runbook for that is
+   [docs/CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md)** — read it before answering one. It
+   holds the four routes (fix / non-issue / doc fix / surface-only), the rule that **legality sizes the
+   release while severity only orders the queue**, and the ledger (`.claude/triage-state.sh`) that says
+   which items are unanswered. `.claude/watch-suggestions.sh` under `Monitor` is what notices a consumer
+   has written; if a notification says a section settled, that doc is the brief.
+   **CONSUMER_SUGGESTIONS.md is the OPEN inbox only** — an answered item moves to
+   [docs/CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md) (byte-for-byte, plus a row
+   in that file's index), the same split as ROADMAP/ROADMAP_HISTORY. So an empty live file means nothing
+   is owed, and **"no reply in the live file" never means "no work was done"**: S1 and S2 had both
+   shipped — one of them with a code comment naming the item — and were still sitting there unanswered.
+   Establish what shipped before designing anything.
 2. **Usage → blockers → solvability** — run each use case against the current bricks: *enabled*,
    *consumer-side* (the format owns nothing), or a *gap* closable additively? →
    [docs/USE_CASES.md](docs/USE_CASES.md)  ← **start a design task here**

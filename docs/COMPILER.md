@@ -194,6 +194,29 @@ The through-line: **what the compiler cannot validate, the format makes *legible
 produced a fact, from which release, under which policy, and hashes it so it cannot drift silently —
 then leaves the judgement to a consumer. That is the data-agnostic north star applied to trust.
 
+### One gap that is *not* inescapable — where a bin boundary came from (S19/RM47)
+
+Everything above is a limit of the tier. This one is a limit of the **schema**, and it is listed here so
+it is not mistaken for the other kind. `studies.csv` is required iff `variants.csv` is present, so
+grounding is enforced exactly where citations usually arrive already attached (a ClinVar-drafted
+`variants.csv`) and absent where a human made the judgement: `reference_examples/htt_repeat_expansion`
+compiles green under `--strict` asserting where Huntington disease becomes fully penetrant, with no
+citation anywhere. A `StudyRow` names a variant — `rsid`, or `chrom`(+`start`) — and a
+`repeat_alleles.csv` row is keyed `(gene, repeat_unit)`, so nothing can point at it.
+
+Two things bound it. `studies.csv` **is** accepted in a variants-free module, so an author can cite the
+literature today; the row just has to claim a variant identity the bin does not have, which grounds the
+module and not the bound. And `heteroplasmy.csv` is already fine — its optional `rsid`/`chrom`/`start`
+columns (0.5.1) give a row a variant identity a study row can name, which
+`reference_examples/mt_heteroplasmy` does.
+
+What the compiler does meanwhile is the standard move: make it legible.
+`_check_binning_grounding` warns in **both** modes when a binning table states thresholds and the module
+records no study rows at all, and the message splits on whether the rows *could* be pointed at — the
+heteroplasmy shape gets a remedy, the gene-keyed shape gets the honest statement that no study row can
+name one of these bins. Closing it in the schema is **RM47**, and it is a design round rather than a
+column: every candidate repair costs either a duplicated column set or a duplicated key.
+
 ### Hints are not a fourth validation class
 
 `hints.py` computes nothing the compiler does not already compute — it reuses `validate_bins`,
@@ -222,6 +245,17 @@ before/after diff trustworthy, and the mandatory `unresolved`/callability contra
 masquerading as a mismatch.
 
 ## The compile pipeline
+
+**A file the compiler has no meaning for is ignored, and that is a contract** (S16). A spec directory
+may carry a README (every `reference_examples/` module does), curation notes, or a publisher's receipt
+recording the identity a registry stamps — those keys cannot live in `module_spec.yaml`, where
+`extra="forbid"` rejects them precisely because the registry owns them. Such a file is not read, not
+hashed, and not in `artifact.files`, so it **cannot move `artifact.digest`**; pinned by a test that
+compiles the same spec with and without two unknown files and compares digests. The one exception is a
+**near miss**: an unknown `.csv` within one small edit of a table name (`varaints.csv`) warns, because
+"ignored" is the wrong answer for a typo — every row in that file is being silently dropped from a green
+compile. The check is edit-distance-keyed rather than "any unknown csv" on purpose, so it cannot undo the
+tolerance above.
 
 `compile_module` runs in this order:
 

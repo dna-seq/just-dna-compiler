@@ -34,6 +34,164 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-11 — 0.5.4: the consumer-suggestion backlog, answered — seven fixes, three roadmap items, and a diagnosis where there was a dead end
+
+The first full run of the triage loop ([CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md)) over the
+eleven unanswered entries in `CONSUMER_SUGGESTIONS.md`, plus `S18`, which a consumer filed while the pass
+was running. All eighteen now carry a reply and have moved to
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md), which indexes every one and where it
+landed. Touches `just-dna-format` (two guards), `just-dna-compiler` (two checks plus a coordinate on a
+report) and `just-dna-enricher` (a lock, and bibliography on a hint). No schema field, no parquet column,
+no manifest field, and no signature moves. **Verified rather than assumed**, since two of the fixes are
+in the format tier: all eleven reference examples were compiled under `HEAD` in a detached worktree and
+under this tree, and all three identities — `artifact.digest`, `content_signature`,
+`resolution_signature` — are identical for every one of them.
+
+**Two of the eleven were already fixed and had simply never been answered** (S1, S2), and a third's
+preferred fix had shipped in 0.5.2 from a different report (S14). That is the first lesson of running the
+loop: `new` in the ledger means *no reply in the document*, never *no work done* — so establish what
+shipped before designing anything. For S1 that turned an apparent feature request into one missing error
+message.
+
+**A misplaced or registry-owned column now says which it is, instead of "extra inputs are not
+permitted".** Two guards, both layered on `extra="forbid"` exactly as `vocab.reject_reserved` already
+was, and both keyed on the model's own fields so the tables they describe cannot be broken by the
+description:
+
+- **`normalize.reject_authority_keys`** on `ModuleInfo` (S1) — `namespace`/`owner`/`canonical_id` name
+  themselves, say they are registry-stamped, and point at `strip_authority_keys` / `--strip-identity`.
+  The per-key reasons had existed since 0.4.1 with `authoring_reference()` as their only reader, so an
+  author who never injected the set still hit the generic message. It diagnoses and strips nothing: the
+  inject-only rule is about *applying* one consumer's convention, and a message is not an application.
+- **`vocab.reject_misplaced` / `MISPLACED_COLUMN_REASONS`** (S17) — a `source` column on a hand-authored
+  fact table now explains that `source` is recorded on generated tables only and that a hand-read source
+  is declared as a **row in `sources.csv`**. `FrequencyRow` and the other three keep their column.
+  Deliberately not the reserved namespace: that set is for names no model has, and `source` is a real
+  column in the wrong place — a different failure deserving a different sentence.
+
+**`hints.inspect_rows` no longer mis-parses a ragged row in silence, and a finding names the line an
+editor shows** (S18, reported with an HTT CAG fixture that reproduced verbatim). An unquoted comma in
+`conclusion` shifted every later column, dropped the overflow, and produced `Input should be a valid
+boolean` against `unresolved` — a cell whose authored value was `false`. The field-count mismatch is now
+reported **before** the type error it explains (error for a surplus, which discards data; warning for a
+shortfall, which only pads), and `Finding` carries **`line`** — 1-based, header-inclusive, the coordinate
+`validate`/`compile` already print — beside `row`, which keeps its meaning and is now documented as a
+0-based data-row index. A rename rather than a redefinition, because a consumer already adding 1 would
+otherwise have started reporting line 4 for line 3 with no signal.
+
+**One `PacingGate` is safe to share across threads** (S15). `wait()` read `last`, slept, then wrote it
+with no lock, so two workers could both find the interval elapsed, both skip the sleep, and turn a
+published 3/s budget into 6/s. The reporter's argument is what decides it: `LookupClients`' own docstring
+tells callers to hold and reuse a client, so a server threading its blocking work arrives at a shared gate
+by following our documentation, and an unstated single-threaded-only contract is not one worth keeping.
+The lock covers the **bookkeeping, not the sleep** — each caller reserves the next slot and waits for it
+alone, so N callers get N slots one interval apart without blocking each other. Demonstrated rather than
+asserted: four threads at a barrier with a frozen clock must come out spaced by the interval, and the old
+implementation yields gaps of `[6.0, 0.0, 0.0]`.
+
+**Existence is not identity, so `lookup_citation` now says which paper it found** (S12). PMIDs are
+densely allocated, so a recalled 8-digit number is usually a real record for a different article, and
+`pmid_exists=True` could never catch a fabrication. `CitationHint` gains `title`/`journal`/`year`/
+`first_author` from the same `esummary` response that answers existence — `literature.bibliographic()`,
+public because two tiers read it — plus an `info` finding naming the paper, and **`hint citation --json`,
+which did not exist** (`hint variant` had it). No title column on `LiteratureRow`: that table records what
+was *checked*, not bibliography.
+
+**A quote is an attestation, and that is a sharper refusal than a spent comparison** (S11).
+`provenance_quote`/`provenance_regex` were missing from `hints.REDUNDANCY_BEARING` although
+`_study_quote_found` compares both against the Europe PMC fulltext — the drift that map's docstring
+predicts. Both registered, plus a fifth refusal reason, `attestation_bearing` (`hints.ATTESTATION_BEARING`):
+filling `doi` from the registry that checks it makes a comparison *vacuous*, while extracting a passage
+from a just-fetched fulltext states something **false**. ENRICHER.md now says the consequence nothing
+stated — once a machine has retrieved the text, `quotes_found` demonstrates that the quote pairs with the
+PMID, not that a human read the paper.
+
+**Two checks that close silent-success paths.** `--no-resolve` names the size of what it discarded (S14:
+`N row(s), covering K variant key(s)`) and says there is no flag for "do not reach the network" because
+the compiler never does — verified branch by branch, including the deprecated `ensembl_cache` path, which
+reads an injected local cache. And an unknown `.csv` within one small edit of a table name warns
+(`_check_misspelled_tables`): S16 asked whether unknown files are tolerated — they are, now stated in
+COMPILER.md and pinned by a digest comparison — and probing that found the one case where "ignored" is the
+wrong answer, since `varaints.csv` drops every row in it from a green compile. Keyed on **near miss**, not
+"any unknown csv", or it would undo the tolerance it sits beside.
+
+**Documentation, where the docs were the defect.** SCHEMAS.md's hash table called `artifact_digest` *"the
+version's immutable **content** identity"* — against Principle 4, which names it the *byte* identity — and
+that conflation is the likely proximate cause of S7, where a registry spent an afternoon hunting a content
+change that had not happened. Fixed, with the reading spelled out: a moved digest beside an unmoved
+`content_signature` is a provenance-only change, `find-by-hash` should key on the signature, and
+`just-dna-compiler signature` computes it without compiling. Also: the three-way field-ownership boundary
+(S2), which `authoring_reference()` has generated since 0.4.1 with no prose anywhere.
+
+**Filed rather than fixed, both 0.6.** [RM45](ROADMAP.md#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader)
+(S8) — the manifest records what resolution *achieved* and nothing about which verification passes *ran*,
+so a verified module and an unchecked one ship identical manifests. Additive and cheap, but a design round:
+free-string check names and free-prose skip reasons are both unversioned interfaces, the enricher→compiler
+seam has no per-*pass* channel, and the trust rule belongs on the fields. It does **not** subsume RM44,
+and saying so unblocks that one-line integer.
+[RM46](ROADMAP.md#rm46--a-literature-sources-terms-are-per-article-so-the-enricher-names-a-source-it-cannot-record)
+(S10) — `enrich_literature` writes `source="pubmed"` and no terms constant exists, so every
+literature-enriched module warns about a source the enricher introduced. A `PUBMED_TERMS` entry is the
+wrong fix for the reporter's own reason: a literature licence is **per-article**, so one row would clear a
+module carrying a CC-BY-NC quote, which is publisher text in the module's annotation layer.
+
+**Three non-issues, each of which cost real probing** — S7 (three compiles plus a merge probe to show a
+rebuild *cannot* move `fetched_at` unless the sidecar is deleted, since `merge_sources_csv` is
+`setdefault`), S1 and S2. A bare "works as intended" would have been worthless and, for S7, wrong about
+which fact mattered.
+
+**The loop's own machinery got two fixes from being run.** `triage-state.sh` scoped a reply to its first
+*paragraph*, so writing a multi-paragraph answer immediately reported the section `revised` — the same
+self-firing failure the marker exclusion exists to prevent, by another route; a reply now ends at its
+marker. And archiving is a tool (`.claude/triage-archive.sh`) rather than a careful copy-paste, because
+the property that matters — the prose moves byte-for-byte — is verifiable: every section's fingerprint is
+compared before and after and the write is refused if one changed.
+
+### S19, filed after the batch above was written — a binning table had nowhere to record its evidence
+
+The watcher picked it up the same day, and it lands in the same unpublished 0.5.4 cut rather than
+inventing a number for a batch. **Reproduced on this tree's own reference example**, which is what makes
+it worth the entry: `reference_examples/htt_repeat_expansion` compiles green under `--strict` asserting
+where Huntington disease becomes fully penetrant — 26/27, 35/36, 39/40 — with no citation anywhere, and
+its README even said *"a module making a novel claim should carry its evidence"*, which is advice the
+schema gave the author no way to take. Grounding is mandatory exactly where citations usually arrive
+already attached (a ClinVar-drafted `variants.csv` requires `studies.csv`) and absent where a human made
+the judgement, because `StudyRow` names a variant and a bin is keyed `(gene, repeat_unit)`.
+
+**Probing narrowed it in both directions, and both corrections matter.** `heteroplasmy.csv` is *not*
+affected as reported — it has carried optional `rsid`/`chrom`/`start`/`ref`/`alts` since 0.5.1, so a
+study row on the same identity points at it exactly, which `reference_examples/mt_heteroplasmy` already
+does. And `studies.csv` is **not rejected** in a variants-free module: it loads, validates and
+materializes `studies.parquet`, so an author can cite the literature today — the row simply has to claim
+a variant identity the bin does not have, which grounds the module and not the bound.
+
+**Shipped: the reporter's option 2, a warning, plus the documentation their option 1 asked for.**
+`compiler._check_binning_grounding` fires when a binning table states thresholds and the module records
+no study rows at all, in **both** modes (an uncited module still reproduces exactly, so `strict` is the
+wrong axis — P5), de-duplicated across `validate_spec` and `compile_module` the way the ploidy and
+joinability checks are. The message splits on whether the rows *could* be pointed at, and the split is
+derived from the model — `variant_key` is `None` only when a row names no variant — never from the table
+name: the heteroplasmy shape gets a remedy ("fill those columns"), the gene-keyed shape gets the honest
+statement that no study row can name one of these bins. The binning kind set is derived from
+`MeasureBinRow` for the same reason `_POSITIONAL_TABLE_KINDS` is derived from `chrom`/`start`.
+
+**One comment was load-bearing and false.** The exemption in `validate_spec` was justified as "the 0.4
+tables carry their own evidence (e.g. `evidence_level`)" — true of two of the nine kinds. `DiplotypeRow`
+and `PharmVariantRow` have it; `PgsRow` carries a catalog accession, which is a provenance and not a
+citation; the four binning kinds and `HaplotypeRow`/`AlleleFunctionRow` carry nothing of the sort. The
+real reason is that for a gene-keyed table the requirement would be *unsatisfiable* rather than merely
+unmet, which is a different thing and is now what the comment says.
+
+**Filed as [RM47](ROADMAP.md#rm47--a-bin-boundary-is-the-most-interpretive-claim-in-the-format-and-the-only-one-with-nowhere-to-cite) for 0.6**, with the four candidate repairs and why none is a one-liner — the
+short version is that each costs either a duplicated column set (`pmid` on `MeasureBinRow` drags
+`studies.csv`'s provenance columns along, and lands a PMID the literature pass does not read) or a
+duplicated key (`subject_key` is the packed tuple the binning tables explicitly reject; a
+`bin_evidence.csv` joins on floats that silently orphan when a bound is re-authored). Docs updated in
+`SCHEMAS.md` (where grounding goes and where it cannot), `COMPILER.md` (listed apart from the inescapable
+blind spots, because this one is a schema limit rather than a limit of the tier) and the HTT README,
+whose thresholds stay uncited on purpose so the example keeps showing the gap. Eight new tests; the suite
+is 1410 → 1418 and every reference example still compiles to the same three identities.
+
 ## 2026-08-11 — `just-dna-compiler` + `just-dna-enricher` 0.5.3: say what is positionally joinable
 
 S9 from `just-dna-lite`: the 0.4 table families are materialized verbatim, so an rsid-authored PGx

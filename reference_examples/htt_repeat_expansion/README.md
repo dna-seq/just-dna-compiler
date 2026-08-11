@@ -40,9 +40,18 @@ carrier as normal. A missing measurement selects the sentinel, never the referen
 `validate_bins()` rejects overlapping resolved bins as an error and warns on interior gaps; because
 `repeat_count` is an integer kind, adjacent bins (`27–35`, `36–39`) are treated as contiguous.
 
-**No `variants.csv`, so no `studies.csv`.** One CSV = one concern: a module carries only the table
-kinds it uses, and grounding evidence is mandatory only where variants are. The thresholds here are
-the established clinical ones; a module making a novel claim should carry its evidence.
+**No `variants.csv`, so no `studies.csv` — and this module is the reason that is a tracked gap.** One
+CSV = one concern, and grounding evidence is mandatory only where variants are, so these four
+thresholds compile green under `--strict` with no citation anywhere. That is the wrong way round: 26/27
+and 35/36 and 39/40 are clinical judgements drawn from a specific literature, and they are exactly the
+numbers a reader would want to check. Since 0.5.4 the compiler says so — a binning table stating
+thresholds in a module with no study rows warns in both modes.
+
+You *can* add a `studies.csv` here: it is accepted in a module carrying no `variants.csv`, and it
+silences the warning. What it cannot do is name one bound — a study row identifies its subject by rsid
+or `chrom`+`start`, and a `(gene, repeat_unit)` row has neither — so the citation grounds the module,
+not the 36. Closing that properly is **RM47**; the thresholds here are the established clinical ones and
+are left uncited deliberately, so this example keeps showing the gap.
 
 ## What it deliberately does not contain
 

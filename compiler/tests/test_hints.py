@@ -14,7 +14,9 @@ import pytest
 from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for, stub_template
 from just_dna_compiler.hints import (
     ALTERATION_KINDS,
+    ATTESTATION_BEARING,
     REDUNDANCY_BEARING,
+    REFUSAL_REASONS,
     describe_table,
     field_options,
     inspect_rows,
@@ -75,6 +77,105 @@ def test_redundancy_bearing_cells_are_never_filled() -> None:
     assert not [a for a in report.alterations if a.column in REDUNDANCY_BEARING and a.applied]
     explained = {f.column for f in report.findings if f.level == "info"}
     assert {"chrom", "start", "ref"} <= explained
+
+
+def test_every_check_that_reads_an_authored_cell_registers_it() -> None:
+    """A Class-2 check must appear in the map, and the enricher's fulltext comparison did not (S11).
+
+    Derived from the models rather than listed here: every column the map names must exist on some
+    authored model, and the two provenance columns must be present — they are compared against the
+    Europe PMC fulltext by `_study_quote_found`, which is the map's own definition of belonging."""
+    authored: set[str] = set()
+    for kind in DRAFTABLE:
+        authored |= set(authored_field_names(model_for(kind)))
+    unknown = sorted(c for c in REDUNDANCY_BEARING if c not in authored)
+    assert not unknown, f"the map names columns no authored model declares: {unknown}"
+    assert {"provenance_quote", "provenance_regex"} <= set(REDUNDANCY_BEARING)
+
+
+def test_an_attestation_cell_is_refused_for_the_sharper_reason() -> None:
+    """`attestation_bearing` is a fifth reason, not a synonym for the fourth.
+
+    Filling `doi` from the registry that checks it spends a comparison; filling `provenance_quote`
+    from a just-fetched fulltext asserts a curator reading that never happened. Both cells are also
+    redundancy-bearing, so the sharper token must not be *instead of* that registration — a provider
+    consulting only one map has to reach a refusal either way."""
+    assert "attestation_bearing" in REFUSAL_REASONS
+    assert set(REDUNDANCY_BEARING) >= ATTESTATION_BEARING
+    # And nothing fills them today: the hint pass leaves an authored quote exactly as written.
+    quoted = "pmid,trait,provenance_quote\n12345678,height,carriers showed a 2.1 cm increase\n"
+    report = inspect_rows("studies.csv", quoted)
+    assert not [a for a in report.alterations if a.column in ATTESTATION_BEARING and a.applied]
+    assert "carriers showed a 2.1 cm increase" in "\n".join(report.csv_out)
+
+
+_HTT_HEADER = "gene,repeat_unit,measure_kind,measure_min,measure_max,conclusion,unresolved"
+# The reported case: an unquoted comma inside `conclusion`, which is what free-text columns invite.
+_HTT_RAGGED = (
+    f"{_HTT_HEADER}\n"
+    "HTT,CAG,repeat_count,,26,Normal range with no expanded allele.,false\n"
+    "HTT,CAG,repeat_count,27,35,Intermediate allele, may expand on paternal transmission.,false\n"
+)
+
+
+def test_a_ragged_row_is_named_before_the_error_it_causes() -> None:
+    """The shift is reported, and reported first (S18).
+
+    The misdirection is demonstrated, not asserted about: the row really does end up with a type error
+    against `unresolved`, a column whose authored value (`false`) is a perfectly good boolean. So the
+    field-count finding has to exist *and* precede it, or the author goes and edits the cell they got
+    right. Counts are derived from the fixture, never hardcoded."""
+    declared = len(_HTT_HEADER.split(","))
+    actual = len(next(csv.reader(io.StringIO(_HTT_RAGGED.splitlines()[2]))))
+    assert actual == declared + 1, "the fixture must be ragged or it proves nothing"
+
+    report = inspect_rows("repeat_alleles.csv", _HTT_RAGGED)
+    row_scoped = [f for f in report.findings if f.row == 1]
+    assert row_scoped[0].column is None, "the field count must come before the cell error"
+    assert f"{actual} field(s) where the header declares {declared}" in row_scoped[0].message
+    assert row_scoped[0].level == "error"
+    assert "unquoted comma" in row_scoped[0].message
+    # and the misleading type error is still there, against a cell the author wrote correctly
+    assert [f.column for f in row_scoped if f.column] == ["unresolved"]
+
+
+def test_a_short_row_warns_rather_than_errors() -> None:
+    """Padding is recoverable and often a trailing comma; a surplus silently discards data."""
+    short = f"{_HTT_HEADER}\nHTT,CAG,repeat_count,,26,ok\n"
+    report = inspect_rows("repeat_alleles.csv", short)
+    counted = [f for f in report.findings if f.row == 0 and f.column is None]
+    assert [f.level for f in counted] == ["warning"]
+    assert "6 field(s) where the header declares 7" in counted[0].message
+
+
+def test_a_well_formed_table_is_never_told_about_field_counts() -> None:
+    """The guard must be silent on every shipped example, or it is noise."""
+    for kind in DRAFTABLE:
+        report = inspect_rows(kind, stub_template(kind))
+        noisy = [f for f in report.findings if "field(s) where the header declares" in f.message]
+        assert not noisy, f"{kind}: {noisy}"
+
+
+def test_a_finding_carries_both_the_row_index_and_the_file_line() -> None:
+    """Two coordinates, both stated (S18): `row` indexes data rows from 0, `line` is what an editor
+    shows — 1-based, header included, the same convention `validate`/`compile` print."""
+    report = inspect_rows("repeat_alleles.csv", _HTT_RAGGED)
+    located = [f for f in report.findings if f.row is not None]
+    assert located, "the fixture must produce a row-scoped finding"
+    for finding in located:
+        assert finding.line == finding.row + 2  # +1 for the header, +1 for 1-based counting
+    assert {f.line for f in located} == {3}, "the malformed row is line 3 of the file"
+    # A table-scoped finding has neither coordinate, rather than a misleading zero.
+    for finding in report.findings:
+        if finding.row is None:
+            assert finding.line is None
+
+
+def test_without_a_header_the_line_number_has_no_header_to_count() -> None:
+    """A caller pasting one row from a template has no header line, so line 1 is that row."""
+    report = inspect_rows("repeat_alleles.csv", "HTT,CAG,repeat_count,,26,ok,notabool\n")
+    located = [f for f in report.findings if f.row == 0]
+    assert located and all(f.line == 1 for f in located), [(f.row, f.line) for f in located]
 
 
 def test_an_out_of_vocabulary_value_is_reported_with_the_options() -> None:

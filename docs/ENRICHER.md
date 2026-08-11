@@ -133,6 +133,18 @@ egress surface is in one place. **Published** is what the service documents; **o
 the client actually waits; when the source publishes nothing, the gate is a courtesy, not a claim
 that the ceiling is known.
 
+**One `PacingGate` is safe to share across threads, and that is now a stated contract rather than an
+accident of who happened to call it** (S15). It matters because the injection API asks for sharing:
+`LookupClients` tells callers to hold a client and reuse it — a fresh one per question would discard
+exactly this state — so a server running blocking work through a thread pool ends up with several
+workers on one gate by following our own advice. Until 0.5.4 `wait()` read `last`, slept, then wrote it
+with no lock, so two workers could both find the interval elapsed, both skip the sleep, and turn a
+published 3/s budget into 6/s — a budget somebody else enforces by blocking the operator's IP. The lock
+covers the bookkeeping only: each caller reserves the next free slot and waits for it alone, so N
+callers get N slots spaced one interval apart and no worker is blocked by another's sleep.
+Single-threaded behaviour is unchanged, and `test_net.py` proves the spacing on a frozen clock without
+really sleeping.
+
 | Service | Used by | Published budget | Our pace / batching | Auth / identity |
 |---|---|---|---|---|
 | **gnomAD GraphQL** | `gnomad` (resolve, frequencies, live constraint) | **10 req / IP / 60 s** | `min_request_interval=6.0` (exactly that budget); GraphQL alias batches of **20** (25 worked live; 29 → HTTP 400) ≈ 200 variants/min | none |
@@ -970,6 +982,18 @@ only citations that carry an authored quote: one that asks no question was not s
 answer. (That distinction is not hypothetical — it was a real bug, found by running the pass against
 `reference_examples/pathogenic_clinvar/`, whose single citation is open access *and* quote-free, and
 which the first wording therefore described as unretrievable.)
+
+**A quote is an *attestation*, so no tool may write one — and retrieving the fulltext changes what the
+check proves.** `provenance_quote`/`provenance_regex` mean *a curator read this passage in this paper*,
+which is why both are registered in `hints.REDUNDANCY_BEARING` **and** in
+`hints.ATTESTATION_BEARING`: the second names the sharper refusal, because filling `doi` from the
+registry that checks it merely spends a comparison, while extracting a passage from a fulltext a tool has
+just fetched states something false. The consequence for the check itself is worth being blunt about:
+`quotes_found` is independent evidence only while the author and this pass read the article separately.
+Once a machine has retrieved the text, a hit shows the quote **pairs with the PMID** — still worth
+having, since it catches a passage filed against the wrong paper — but no longer that the claim is in the
+article, because nothing establishes a human ever looked. (Reported as S11; the map had simply never
+learned about the comparison this pass performs.)
 
 **Existence and retrievability are different questions, and only the second is affected by a paywall.**
 PubMed indexes paywalled work like any other, so `exists` is answered for it — PMID 12345678 is not in

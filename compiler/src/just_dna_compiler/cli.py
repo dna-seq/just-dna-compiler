@@ -532,7 +532,10 @@ def hint(
         )
     colours = {"error": typer.colors.RED, "warning": typer.colors.YELLOW, "info": typer.colors.BLUE}
     for finding in report.findings:
-        where = f"row {finding.row} " if finding.row is not None else ""
+        # `line` and not `row`: the author is looking at a file in an editor, and `validate`/`compile`
+        # already name a location as `line 2 [column]` (1-based, header included). Two error surfaces
+        # over one file used to use two conventions and state neither (S18).
+        where = f"line {finding.line} " if finding.line is not None else ""
         column = f"[{finding.column}] " if finding.column else ""
         typer.secho(f"  {finding.level}: {where}{column}{finding.message}", fg=colours[finding.level], err=True)
     typer.secho(str(report), fg=typer.colors.GREEN, err=True)

@@ -168,6 +168,54 @@ def test_a_known_pmid_offers_its_doi_but_never_applies_it() -> None:
     assert offered[0]["refusal"] == "redundancy_bearing"
 
 
+def test_a_real_pmid_for_the_wrong_paper_is_catchable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existence cannot detect fabrication; identity can (S12).
+
+    The failure is demonstrated rather than described: a caller who meant one paper and recalled a
+    PMID belonging to another gets `pmid_exists=True` from both, so the *only* thing that separates
+    them is what the record says it is — which is why the hint has to carry it. The payload uses the
+    real esummary field names (`fulljournalname`, `pubdate`, `sortfirstauthor`), since a parse against
+    invented keys would pass this test and fail against PubMed.
+    """
+    meant, recalled = "29165669", "29165670"
+    eutils = _FakeEutils({
+        meant: {
+            "uid": meant, "articleids": [],
+            "title": "MTHFR C677T and homocysteine in coronary disease.",
+            "fulljournalname": "The New England Journal of Medicine",
+            "pubdate": "2017 Nov 20", "sortfirstauthor": "Smith J",
+        },
+        recalled: {
+            "uid": recalled, "articleids": [],
+            "title": "Chloroplast biogenesis in Arabidopsis.",
+            "fulljournalname": "Plant Cell", "pubdate": "2003", "sortfirstauthor": "Okuda T",
+        },
+    })
+    clients = LookupClients(eutils=eutils, europepmc=_FakeEuropePmc())
+
+    both = [lookup_citation(pmid=p, clients=clients) for p in (meant, recalled)]
+    assert [h.pmid_exists for h in both] == [True, True], "existence cannot tell these apart"
+    assert both[0].title != both[1].title, "identity can"
+
+    hint = both[1]
+    assert hint.journal == "Plant Cell"
+    assert hint.year == "2003"                       # leading four digits of a free-form pubdate
+    assert hint.first_author == "Okuda T"
+    assert both[0].year == "2017"                    # '2017 Nov 20' -> '2017', nothing invented
+    named = [f for f in hint.findings if "existence is not identity" in f.message]
+    assert len(named) == 1 and named[0].level == "info"
+    assert "Chloroplast biogenesis" in named[0].message
+
+
+def test_metadata_absent_from_the_record_stays_none() -> None:
+    """`None` means PubMed did not say — never an empty string, and never an invented year."""
+    eutils = _FakeEutils({"1": {"uid": "1", "articleids": [], "title": "  ", "pubdate": "n.d."}})
+    hint = lookup_citation(pmid="1", clients=LookupClients(eutils=eutils, europepmc=_FakeEuropePmc()))
+    assert hint.pmid_exists is True
+    assert (hint.title, hint.journal, hint.year, hint.first_author) == (None, None, None, None)
+    assert not [f for f in hint.findings if "existence is not identity" in f.message]
+
+
 def test_a_pmid_pubmed_does_not_know_is_reported_false_not_none() -> None:
     """Existence was answered — negatively. Distinct from 'could not ask'."""
     eutils = _FakeEutils({"999999999": {"uid": "999999999", "error": NO_SUMMARY}})

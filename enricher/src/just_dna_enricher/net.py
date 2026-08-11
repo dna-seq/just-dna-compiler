@@ -14,9 +14,11 @@ Two of these look trivial and are not:
   `artifact.digest` (Principle 7).
 """
 
+import dataclasses
 import itertools
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
@@ -33,21 +35,39 @@ class PacingGate:
     The clock and the sleep are parameters rather than direct `time` calls so a test can prove the gate
     honours the interval *without* a suite that really sleeps six seconds per request. Monotonic by
     default, so a wall-clock adjustment mid-run cannot collapse the interval to zero.
-    """
+
+    **One gate is safe to share across threads, and it had to become so** (S15). `LookupClients`'
+    docstring tells callers to hold a client and reuse it — precisely because a fresh one per question
+    would discard this state — so a server running its blocking work through a thread pool shares one
+    gate by following our own advice. The unsynchronized version read `last`, slept, then wrote it, so
+    two threads could both find the interval elapsed, both skip the sleep, and turn a published 3/s
+    budget into 6/s. That budget is a courtesy someone else enforces by blocking the operator's IP, so
+    "single-threaded callers only" was not a contract worth keeping unstated *or* worth keeping.
+
+    **The lock covers the bookkeeping, not the sleep.** Each caller reserves the next free slot and then
+    waits for it alone, so N callers get N slots spaced `interval` apart rather than serializing behind
+    one lock held across a sleep — same guarantee, and no thread is blocked by another's wait. Behaviour
+    on a single thread is unchanged."""
 
     interval: float
     clock: Callable[[], float] = time.monotonic
     sleeper: Callable[[float], None] = time.sleep
     last: float | None = None
+    # Not part of the value: two gates with the same interval are the same gate, and a lock has no
+    # useful repr. `default_factory` so every instance gets its own.
+    _lock: threading.Lock = dataclasses.field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
 
     def wait(self) -> None:
-        now = self.clock()
-        if self.last is not None:
-            remaining = self.interval - (now - self.last)
-            if remaining > 0:
-                self.sleeper(remaining)
-                now = self.clock()
-        self.last = now
+        with self._lock:
+            now = self.clock()
+            # The slot this caller has claimed: now, or one full interval after the last claim.
+            slot = now if self.last is None else max(now, self.last + self.interval)
+            self.last = slot
+        remaining = slot - self.clock()
+        if remaining > 0:
+            self.sleeper(remaining)
 
 
 def batched[T](items: list[T], size: int) -> Iterator[list[T]]:

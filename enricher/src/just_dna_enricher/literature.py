@@ -639,6 +639,37 @@ def _identifiers(summary: dict) -> dict[str, str | None]:
     return out
 
 
+def bibliographic(summary: dict) -> dict[str, str | None]:
+    """Pull the fields that say *which paper this is* out of an esummary record.
+
+    Public, unlike `_identifiers`, because two tiers need it and the alternative is a consumer
+    re-implementing a parse of a payload we already hold — the RM41 lesson. `lookup.CitationHint`
+    reads it so "does this PMID exist" can become "does this PMID name the paper you meant":
+    existence alone cannot catch a fabricated citation, because PMIDs are densely allocated and an
+    invented number is usually a real record for a different article.
+
+    Every value is `None` when the field is absent rather than empty-string, so a caller can tell
+    "PubMed did not say" from "PubMed said nothing is there" — the house tri-state, applied to
+    metadata. `year` is the leading four digits of `pubdate` (which is free-form: `2017 Nov 20`,
+    `2017`, `2017 Nov-Dec`), and nothing is invented when it does not start with a year.
+    """
+    out: dict[str, str | None] = {"title": None, "journal": None, "year": None, "first_author": None}
+    for key, target in (
+        ("title", "title"),
+        ("fulljournalname", "journal"),
+        ("sortfirstauthor", "first_author"),
+    ):
+        value = summary.get(key)
+        if isinstance(value, str) and value.strip():
+            out[target] = value.strip()
+    pubdate = summary.get("pubdate")
+    if isinstance(pubdate, str):
+        leading = pubdate.strip()[:4]
+        if leading.isdigit():
+            out["year"] = leading
+    return out
+
+
 def _doi_conflicts(
     pmid: str, studies: list[StudyRow], registry_doi: str | None
 ) -> list[DoiConflict]:
