@@ -17,6 +17,7 @@ from typing import Optional
 from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_rows
 from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
+from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.manifest import GenePanelSpec
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
@@ -108,7 +109,8 @@ def _collect_subjects(
     The PGx tables key **without** `alts` (`PharmVariantRow.variant_key` is that property, and a
     `HaplotypeRow` key is derived the same way): a pharm annotation or a haplotype junction matches a
     variant at `chrom:start:ref` regardless of allele. Mixing that up would mint a VRS allele id for a
-    row that never named an allele.
+    row that never named an allele. `heteroplasmy.csv` is the exception and keys *with* `alts`,
+    because its own `variant_key` does — see the block below.
     """
     subjects: list[_Subject] = [_subject_of_variant(v, genome_build) for v in variants]
 
@@ -131,6 +133,35 @@ def _collect_subjects(
         subjects.extend(
             _Subject(derive_variant_key(r.rsid, r.chrom, r.start, r.ref),
                      r.rsid, r.chrom, r.start, r.ref, None, r.allele, "haplotypes.csv")
+            for r in rows
+        )
+
+    # `heteroplasmy.csv` is the third table that can ask, and it was left out of the 0.5 round for no
+    # reason anyone recorded: its coordinates are optional exactly like the PGx ones, so an
+    # rsid-authored heteroplasmy module resolved to nothing and the compiler's positional-joinability
+    # warning would have named a gap no tool could close.
+    #
+    # Two differences from the blocks above, both load-bearing. It **passes `alts`**, because
+    # `HeteroplasmyRow.variant_key` mints one the same way `VariantRow` does (verified equal for both
+    # the rsid and the coordinate shape), and a subject whose key carries an allele must carry the
+    # allele. That makes the key **build-dependent**, so the load takes `genome_build` — the RM36
+    # trap, and the reason the two blocks above rightly do not. Its `constraint` is `None`: a
+    # heteroplasmy row is a measurement band over a locus, not a claim about a genotype, so it
+    # constrains no locus out of a one-to-many expansion.
+    het_path = spec_dir / "heteroplasmy.csv"
+    if het_path.exists():
+        rows, errors, _ = load_csv_rows(
+            het_path, HeteroplasmyRow, "heteroplasmy.csv", genome_build=genome_build
+        )
+        if errors:
+            raise EnrichmentError(f"heteroplasmy.csv is invalid: {errors[0]}")
+        subjects.extend(
+            _Subject(
+                r.variant_key or derive_variant_key(
+                    r.rsid, r.chrom, r.start, r.ref, r.alts, build=genome_build
+                ),
+                r.rsid, r.chrom, r.start, r.ref, r.alts, None, "heteroplasmy.csv",
+            )
             for r in rows
         )
 

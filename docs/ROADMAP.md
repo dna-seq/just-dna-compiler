@@ -26,7 +26,11 @@ on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package.
 S3–S6 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) — the quadratic DuckDB probe that stopped a
 gene panel finishing, a `clin_sig` cross-check that no longer reports a structurally guaranteed zero, a
 drafted genotype on the contigs where only one is expressible, and the `.env`-ordering bug behind three
-separate "the cache is right there" reports (see [CHANGELOG.md](CHANGELOG.md)). The three packages version independently, so
+separate "the cache is right there" reports (see [CHANGELOG.md](CHANGELOG.md)). **0.5.3** answers S9 the
+same way: it does not widen resolution to the 0.4 families (that is RM43, and it is 1.0 with a
+prerequisite) but makes the scope legible — per positional table, how many rows a VCF cannot join and
+how many of those `resolution.csv` could place — and adds `heteroplasmy.csv` to the enricher's subject
+list so that family can be resolved at all. The three packages version independently, so
 the network tier took a patch while `just-dna-format` stayed at 0.5.0; RM41 is the one item that also
 touches the compiler, which is why that package moved too. None of it touches a parquet, a model or a
 manifest field — which is what made a patch legal inside the closed digest window, and why none of it is
@@ -329,6 +333,49 @@ an operator problem. RM29 removed two of the three cofactor classes into columns
 only ancestry stays genuinely injected. Still parked. It waits on a corpus to generalize from — roughly 70% built; nutrigenomics
 and supplements do not exist yet — because fixing a shape against four table kinds and then meeting
 the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
+
+## RM43 — Resolution reaches the SNP core only, so a 0.4-led module is rsid-joinable and nothing more
+
+**Severity** high (the prerequisites, not the join) · **Status** open — **1.0**, and it has a hard
+prerequisite · **Owner** format (schema) + compiler · **Motivating case** an rsid-authored ClinPGx
+module: 1,482 rows, 147 variants, every coordinate null (S9 in
+[CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md))
+
+`compile_module` resolves `variants.csv`; every other table goes through `_build_table`, which is
+`model_dump()` → parquet. So a module led by `pharm_variants.csv` or `haplotypes.csv` keeps exactly the
+coordinates its author typed, which for an rsid-authored one is none — and a VCF is joined by position,
+so the table annotates nothing, silently, as an empty result rather than an error. Reproduced on this
+tree's own `reference_examples/pgx_slco1b1_simvastatin/`: 9 rows, all null, while the `resolution.csv`
+beside the spec resolves the rsID perfectly well. **0.5.3 made it legible** — the compiler now reports,
+per positional table, how many rows cannot be joined and how many of those the injected table could
+place — but the fix itself is here.
+
+**The obvious repair is illegal as stated, and that is the part worth recording.** "Join `resolution.csv`
+on `variant_key` and fill the empty cells" moves more than the digest the reporter expected: materializing
+the coordinate and running `compile → reverse → compile` moves **`content_signature`**
+(`sha256:8173dab7…` → `sha256:fb91ffa2…`), because `reverse_module` rebuilds the CSV from the parquet and
+a filled coordinate returns as an *authored* one. That is exactly what `VariantRow.authored_ident` exists
+to prevent, and no 0.4-family model has an equivalent. So the prerequisite is a stamped
+"which identity columns did the author supply" column per positional table — a **new column on an
+existing parquet**, hence major-only, which is what puts the whole item at 1.0 rather than 0.6.
+
+Three more constraints found with it, each of which shapes the design rather than merely costing:
+
+- **`PharmVariantRow` has no `alts` column at all.** A filled row can carry `chrom`/`start`/`ref` and no
+  allele, so a positional join lands on the locus and allele matching still goes through `genotype`.
+  Adding `alts` is a second new column, and it would make the key allele-specific — which
+  `_collect_subjects` deliberately avoids ("a pharm annotation matches a variant at `chrom:start:ref`
+  regardless of allele").
+- **`variant_key` is a *property* on these models**, so it is materialized in no PGx parquet. A consumer
+  cannot join a PGx row to `weights.parquet` on it either — which is a second, smaller instance of the
+  same complaint and probably wants solving in the same round.
+- **The manifest cannot say any of this.** `fully_resolved` is `all(...)` over `VariantRow`, so it is
+  vacuously `true` for a table-only module — against the trust rule its own field comment states — and
+  `resolution_signature`/`resolution_sources` stay unset, so the injected table leaves no trace.
+  Stamping the signature is itself blocked: `reverse_module` rebuilds `resolution.csv` from
+  `weights.parquet` alone, so a table-only module reverses to a spec without one and the round-trip
+  fixed point breaks. This half is the same shape as the registry's S8 (a manifest that cannot say a
+  check ran) and should be decided with it.
 
 # Not format scope
 

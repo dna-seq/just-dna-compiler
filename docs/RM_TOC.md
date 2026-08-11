@@ -89,6 +89,7 @@ because everything else here is a table, a grammar widening, or compiler behavio
 - **[RM25](ROADMAP.md#rm25--clinvar-assertion-tier-as-artifact-data)** — ClinVar assertion tier persisted as artifact data. Not the same as escalating the check's severity.
 - **[RM27](ROADMAP.md#rm27--a-redistribution-compile-gate)** — a redistribution compile gate. A distribution right is not a *use*, so `declared_use` is the wrong axis; needs the third axis designed first. · *also in* CLAUDE.md, SCHEMAS, COMPILER, CHANGELOG
 - **[RM28](ROADMAP.md#rm28--meta-conclusions-and-injected-cofactors)** — meta-conclusions + injected cofactors. **Parked and now smaller**: RM29 moved two of three cofactor classes into columns, and the cis/trans motivation closed as a compiler check. What survives is cross-*subject* pairing, economy, and open-world negation. · *also in* COMPILER, REFERENCE_EXAMPLES, CHANGELOG, PROPOSAL_0_5 § G3
+- **[RM43](ROADMAP.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more)** ⚠ **1.0, not a minor** — resolution reaches `variants.csv` only, so an rsid-authored PGx module ships every coordinate null and joins to no VCF. The naive repair (fill from `resolution.csv`) **breaks P7**: reverse re-emits a filled coordinate as authored and `content_signature` moves, so it needs an `authored_ident` equivalent per positional table — a new column, hence major. 0.5.3 made the gap legible instead. · *also in* CLAUDE.md, COMPILER, ENRICHER, CONSUMER_SUGGESTIONS § S9, CHANGELOG
 
 ## — Not format scope
 

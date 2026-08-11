@@ -1,9 +1,10 @@
 # Consumer suggestions
 
-Field notes from consumers adopting the libraries. Two sources so far, each in its own section:
+Field notes from consumers adopting the libraries. Two sources so far, in sections by adoption:
 
 - **[just-dna-registry](#s1--module-extraforbid-rejects-registry-owned-identity-keys-the-whole-pre-04-corpus-carries)** (S1–S2) — the catalog server, on 0.4.
 - **[just-dna-lite](#field-notes-from-just-dna-lite--the-05-enricher-at-panel-scale)** (S3–S6) — the app, on the 0.5 enricher at panel scale.
+- **[just-dna-registry](#field-notes-from-the-registry--adopting-052)** (S7–S8) — the catalog server again, on 0.5.2: a digest that moves without content (S7), and a manifest that cannot say a check ran (S8).
 
 ---
 
@@ -288,3 +289,245 @@ visible tail entirely — which is how we first, wrongly, concluded Y was not co
 We fixed it consumer-side (`NON_DIPLOID_CONTIGS = {"MT", "Y"}`, one row instead of two, pinned by a
 test on an all-mitochondrial panel), so this is not a block — but it is a rake that every panel
 author steps on once, and (1) removes it for all of them.
+
+---
+
+# Field notes from the registry — adopting 0.5.2
+
+*Written 2026-08-11: S7 while re-deriving why three panel digests moved, S8 while wiring
+`clin_sig_not_checked` through the publish and dry-run paths.*
+
+---
+
+## S7 — `sources.csv` stamps `fetched_at` into the digest, so a rebuild is never reproducible
+
+*Written 2026-08-11, adopting 0.5.2 and re-deriving why three panel digests moved.*
+
+**The friction.** Rebuilding a module with **byte-identical inputs** produces a **different**
+`artifact.digest`. `SourceRow.fetched_at` is stamped when the row is written, `sources.csv` compiles
+to `sources.parquet`, and that parquet is one of the four `artifact.files` the digest is a Merkle root
+over. So the timestamp is inside the identity of the artifact.
+
+Isolated rather than inferred. On one spec, same machine, same snapshot:
+
+| action | digest |
+|---|---|
+| `compile` twice, spec untouched | **identical** |
+| change **only** `fetched_at` in `sources.csv`, recompile | **different** |
+
+That second row is the whole finding: no data changed, and the artifact is a different artifact.
+
+**How it surfaced, which is the part worth reading.** Three ClinVar panels came out with new digests
+after a rebuild. We assumed content had changed and went looking: ruled out resolution row *order*
+(proved digest-invariant — same row set, same digest), duplicate rows, authored row order
+(`select_by_gene`'s `ORDER BY` is unchanged), and finally the library itself — the same spec resolved
+under 0.5.1 and 0.5.2 gives **byte-identical** `resolution.csv`, so 0.5.2's rewritten lookups are
+faithful, exactly as the changelog claims. The one thing left was a timestamp. Cheap to find once
+suspected; expensive to suspect, because a digest change reads as a content change.
+
+**Why it matters beyond tidiness.** The registry ships `find-by-hash` for dedup and provenance, and
+this defeats it for any module rebuilt rather than recompiled: the same content, rebuilt, will never
+match. It also means "the digest moved" cannot be used as a change signal in CI.
+
+**Suggestion.** The tension is real — `fetched_at` is genuine provenance and worth recording. Options,
+cheapest first:
+
+1. **Keep it, exclude it from the hash.** `sources.parquet` stays in `artifact.files`; the digest is
+   computed over the table with `fetched_at` blanked, the way a build system excludes mtimes. The
+   value still ships and is still readable.
+2. **Move it out of the artifact** into the manifest's provenance block, beside `built_at` — where a
+   timestamp already lives without being load-bearing for identity.
+3. **Document it**, if neither is wanted: one line saying a rebuild necessarily mints a new digest,
+   so nobody else spends an afternoon looking for the content change that did not happen.
+
+Our workaround is to keep the previous `sources.csv` across a rebuild, which is exactly the kind of
+thing that stops being done the moment someone forgets.
+
+---
+
+## S8 — the manifest records what resolution *achieved* but not which checks *ran*, so `unchecked` and `clean` are indistinguishable to a downloader
+
+**The friction.** 0.5.2's S4 fix is the right one and we adopted it: `EnrichmentResult` now carries
+`clin_sig_not_checked`, so an empty `clin_sig_conflicts` no longer means both "compared everything,
+nothing disagreed" and "never compared". But the distinction **stops at the enricher's return value.**
+It reaches the publisher and then evaporates:
+
+| who | can tell verified from unchecked? |
+|---|---|
+| the enricher's caller, in-process | **yes** — `clin_sig_not_checked` |
+| the publisher, at publish time | yes, if the server says so (we now do) |
+| the compiler | **partly** — see below |
+| **the manifest** | **no — nothing is recorded** |
+| **anyone downloading the module, ever** | **no** |
+
+So the rule 0.5.2 established one layer up is unenforceable at the layer that outlives the run. A
+module whose authored `clin_sig` was cross-checked against ClinVar and a module where the check never
+ran ship **identical** manifests. Same for the reference-allele check and the rsID currency check.
+
+**The seam carries row facts but has no channel for pass status**, which is the precise shape of the
+gap. `resolution.csv` is the enricher→compiler contract, and it does carry per-row findings — a stale
+rsID lands on `rsid_status` / `rsid_current`, so that one *is* visible downstream. What it has no place
+for is a statement about a **pass**: whether the `clin_sig` check ran at all, whether the ref-allele
+check ran, or why one didn't. `clin_sig` conflicts are not in the table on any row (there is nowhere to
+put a comparison against an authored value), and "did not run" is per-pass by nature — it is exactly
+the thing that has no row to attach to. That asymmetry is why `rsid_status` exists and
+`clin_sig_not_checked` cannot follow the same route.
+
+**Why this is S4's own argument, one level down.** `Compilation` already draws exactly this
+distinction for resolution, and says so in a comment: `resolution_mode` is what was *requested*,
+`fully_resolved` is what was *achieved* ("policy vs outcome are orthogonal axes"), and both VRS counts
+at `0` means "nothing was attempted, which is not the same as nothing achieved". That is the same
+sentence as S4's. The verification passes are the one part of the network tier that inherited none of
+it — the manifest is rich about resolution and silent about verification.
+
+**Why it matters to us specifically.** The registry's whole value proposition is that a *trusted party*
+ran the gate: `compile_success` is meaningful only because `compiled_by == "marketplace-server"`. We
+can say "this server verified this module's `clin_sig` against ClinVar release X" at publish time, and
+then we have nowhere to put it. Concretely, three things we cannot build:
+
+- A **catalog badge** — "clin_sig verified" vs "not verified on this deployment" is exactly the kind of
+  quality signal the store surface exists for, and it is per-version and immutable, so the manifest is
+  where it belongs.
+- **Backfill triage.** Once an operator provisions a ClinVar snapshot, which already-published
+  versions were published *without* the check and are worth re-checking? Today: unknowable, so the
+  answer is all of them or none.
+- **Honest degradation.** A deployment with no snapshot publishes for months, and nothing in the
+  corpus records that a check was skipped rather than passed.
+
+Note we can already say it *ephemerally* and have just fixed our half of that (the reason now rides on
+the dry run as a token and on the publish path as prose; we also had a gap where a **successful**
+publish dropped the findings entirely, which was ours and is on our roadmap). Neither reaches a
+downloader, because both are response bodies.
+
+**Suggestion.** Additive, out-of-digest, and — the reason this is cheap — **it needs no compiler work
+at all.** The registry already post-stamps registry-owned manifest fields on publish (`namespace`,
+`owner`, `published_at`, `canonical_id`), and it is the party that holds both the `EnrichmentResult`
+and the manifest. So the ask is to *declare the shape* and let the caller that ran the checks fill it.
+Cheapest first:
+
+1. **Fields on `Compilation`, beside the resolution ones.** The pattern is already there in
+   `resolution_sources: list[str]`:
+
+   ```
+   checks_run:     dict[str, int]   # check name → rows it actually put the question to
+   checks_skipped: dict[str, str]   # check name → why it did not run, verbatim from that tier
+   ```
+
+   Absent on every existing manifest, which reads correctly as "this module says nothing", not as a
+   pass. Counts rather than a bool or a bare name list, on the ACMG pass's own precedent (`checked: 0`,
+   never zero mismatches): a check that ran against an empty list is neither a pass nor a skip, and a
+   bool — or membership in a `list[str]` — cannot say so. Two fields rather than one map with a union
+   value type, so "ran, 0 rows" and "did not run" can never collide in the same slot.
+
+2. **A `Verification` block**, if `Compilation` should not keep growing — `Frequency` got its own block
+   on the same reasoning (its own producer, its own release, its own fact-hash), and verification has
+   its own release too: a `clin_sig` check is only as good as the ClinVar snapshot it read, so the
+   block would want that release id, which is a fact none of the current blocks has a home for. 0.5.2
+   is what makes this newly answerable, incidentally — `locations.read_release` is the first reader of
+   the `release.json` every builder was already writing, so "verified against ClinVar release X" is a
+   sentence the tier can now actually complete.
+
+3. **Document the silence**, if neither is wanted: one line saying the manifest records no verification
+   state, so nobody builds a trust signal on the absence of a finding.
+
+**One caveat we would rather raise than have designed around us.** These fields are only worth
+anything when the party that stamped them is trusted — a foreign `checks_run: ["clin_sig"]` is *worse
+than silence*, because silence is honest and a forged pass is not. Whatever the shape, it should live
+under the same `compiled_by` trust rule as `compile_success`, and the docs should say plainly that an
+untrusted stamp is to be ignored rather than believed. We are content to be the only party that fills
+it in.
+
+## S9 — the 0.4 table families are materialized verbatim, so `resolution.csv` never reaches them
+
+**Status — option 2 shipped in 0.5.3 (2026-08-11); option 1 is filed as
+[RM43](ROADMAP.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more)
+and is 1.0 with a prerequisite, not a 1.0 for the reason given below.** Reproduced on this tree's own
+`reference_examples/pgx_slco1b1_simvastatin/`, so the note needed no extra evidence. Three things the
+investigation added: option 1 does not merely move `artifact.digest`, it **breaks Principle 7** —
+materializing the coordinate and running compile → reverse → compile moves `content_signature`, because
+reverse re-emits a filled coordinate as an authored one, which is what `VariantRow.authored_ident`
+exists to prevent and no 0.4-family model has; `manifest.fully_resolved` is vacuously `true` for a
+table-only module, against the trust rule its own field comment states; and `heteroplasmy.csv` was
+missing from the enricher's subject list entirely, so that family could not have been resolved even in
+principle (fixed in the same cut). What ships now is the warning, with the second count — how many of
+the unjoinable rows `resolution.csv` *could* place — because that is what separates "never enriched"
+from "the coordinates exist and this tier does not apply them here".
+
+Filed from just-dna-lite, 2026-08-11. Not a bug report — the behaviour is consistent and arguably
+correct — but a gap we had to work around in the consumer, and one every 0.4-led module will hit.
+
+`compile_module` applies resolution to the SNP core (`weights.parquet`). The `_TABLE_KINDS` loop
+takes a different path: `_load_csv_rows` → `_build_table` → `write_parquet`, with no resolution
+step. So a module led by one of those families keeps exactly the coordinates its author typed.
+
+For an rsid-authored module that means **none**. Our `pharmgkb` module compiles cleanly, validates,
+and publishes; `resolution.csv` resolves all 147 of its variants; and every one of the 1,482 rows in
+`pharm_variants.parquet` has `chrom`, `start` and `ref` null. Nothing warns, because nothing is
+wrong by the compiler's lights — the author did not supply coordinates and the compiler does not
+invent them.
+
+The consequence lands one layer out. A VCF is joined by position, and a table with no positions
+joins to nothing at all — silently, as an empty annotation rather than an error. We now detect the
+null-coordinate case at annotation time and fall back to an rsid + genotype join, which works but
+narrows the module to VCFs that carry rsIDs in `ID`. Many callers (DeepVariant among them) do not.
+
+Three ways this could close, in our order of preference:
+
+1. **Resolve the 0.4 families too**, the same way the SNP core is resolved: join `resolution.csv` on
+   `variant_key` and fill `chrom`/`start`/`ref`/`alts` where the author left them empty. This makes
+   a pharmacogenomics module positionally joinable and costs the author nothing. It moves
+   `artifact.digest` for every existing 0.4-led module, so it is a 1.0 item, not a 0.5.x one.
+2. **Warn at compile time** — "N rows in pharm_variants.parquet have no coordinate and
+   resolution.csv resolves them; they will not match a VCF by position". Cheap, non-breaking,
+   digest-neutral, and it would have saved us the investigation.
+3. **Say so in the docs**, if neither is wanted: one line stating that resolution applies to the SNP
+   core only, so a 0.4-led module is rsid-joinable and nothing more.
+
+Worth noting the asymmetry that made this surprising: the same authored spec produces resolved
+coordinates in `weights.parquet` and null ones in `pharm_variants.parquet`. Whichever way this goes,
+the two paths reading the same `resolution.csv` and disagreeing about it is the part that reads as
+accidental.
+
+### S9 corroboration — independently reproduced from just-module-creator, 2026-08-11
+
+Second consumer, different code path, same result. Recording it because the reproduction isolates
+the mechanism more sharply than the original report could, and because two unrelated consumers
+hitting this in one day is the argument for option 1 or 2 rather than option 3.
+
+Minimal case — one authored row, no SNP core at all:
+
+```
+spec/module_spec.yaml          # name: statin_demo, genome_build: GRCh38
+spec/pharm_variants.csv        # rsid,drug,conclusion,gene,genotype,phenotype_category
+                               # rs4149056,simvastatin,…,SLCO1B1,C/C,toxicity
+```
+
+`compile_module(..., resolve_with_ensembl=True, ensembl_cache=None, strict=False)` succeeds, writes
+`pharm_variants.parquet`, and the single row has `chrom` and `start` null. Expected so far — nothing
+was resolved.
+
+The isolating half is the second run. Adding a `resolution.csv` that covers the variant:
+
+```csv
+variant_key,rsid,chrom,start,ref,alts,genome_build,source,status
+rs4149056,rs4149056,12,21178615,T,C,GRCh38,authored,resolved
+```
+
+changes nothing in the parquet — `chrom` and `start` are still null — which rules out "no resolution
+table was available" and leaves only "this family does not consult it".
+
+**The detail we think is worth having.** That second compile *did* read the file, and said so: it
+emitted `VRS allele identity covers 0/1 allele(s) in resolution.csv (0%)` and recommended
+`just-dna-enricher vrs mint`. So a single run demonstrably loads `resolution.csv`, reports on its
+contents, and still does not apply it to the only table the module has — while emitting no warning
+about the coordinates it left empty. That is the asymmetry S9 calls "accidental", visible inside one
+invocation rather than across two modules.
+
+It also sharpens why option 2 (warn at compile time) is worth doing even if option 1 waits for 1.0:
+the run already holds both facts it would need to emit the warning — the resolved rows, and the
+null-coordinate rows — at the same moment.
+
+No preference beyond S9's. Filed from the authoring surface rather than the annotation surface, so
+we have no VCF-join stake in the outcome; our interest is only that a module author gets told, since
+today the spec that produces this looks entirely healthy: `validate --strict` passes, the compile is
+green, and the artifact verifies.

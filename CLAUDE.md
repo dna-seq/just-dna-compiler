@@ -663,6 +663,22 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `chrom`/`start`/`ref`/`alts` — never a subset. A lone `alts` on a position-only row makes
   `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref`, so a partial
   coordinate silently changes *which variant the row is*.
+- **Resolution reaches the SNP core ONLY, and the naive repair breaks P7 (RM43, surfaced in 0.5.3).**
+  `_build_table` is `model_dump()` → parquet, so a `pharm_variants.csv`/`haplotypes.csv`/
+  `heteroplasmy.csv` row keeps the coordinates its author typed — none, for an rsid-authored module —
+  and the table joins to no VCF. Before proposing "just join `resolution.csv` on `variant_key`":
+  **materializing the coordinate moves `content_signature`, not only `artifact.digest`**, because
+  `reverse_module` rebuilds the CSV from the parquet and a filled cell returns as *authored*. That is
+  what `VariantRow.authored_ident` exists to prevent and no 0.4-family model has one, so the
+  prerequisite is a new stamped column per positional table — major-only. Three related traps:
+  `PharmVariantRow` has **no `alts`**; `variant_key` is a **property** on these models so it is in no
+  parquet (a consumer cannot even join them to `weights.parquet` on it); and `fully_resolved` is
+  `all(...)` over `VariantRow`, hence **vacuously `True`** for a table-only module — the manifest's own
+  trust rule (`resolution_mode == "strict" or fully_resolved`) is unsafe there. What 0.5.3 shipped is
+  legibility: `_check_positional_joinability` reports, per table, how many rows cannot be joined and
+  how many of those `resolution.csv` **could** place — the second count is what separates "never
+  enriched" from "the answer exists and this tier does not apply it". Warning in both modes, because
+  rsid-only identity is legal by the models' own rule and the remedy is a compiler change.
 - **A batch lookup must HASH its probe, and the cost is in the BINDING, not the join (0.5.2).** DuckDB
   cannot fold a disjunction of equality *conjunctions* into a hash probe, so
   `WHERE (chrom=? AND start=? AND ref=? AND alt=?) OR …` is evaluated against every row: cost grows

@@ -286,6 +286,15 @@ HuggingFace when absent and `--offline` is not set.
 stale rows persist silently. Moving it aside and re-enriching is also the only way to ask whether an
 injected table still agrees with the sources.
 
+**`resolution.csv` covers every table that can name a locus, but the compiler applies it to
+`variants.csv` alone.** So `enrich` resolves your `pharm_variants.csv`, `haplotypes.csv` and
+`heteroplasmy.csv` rows and records the coordinates — and the compiled parquet for those tables still
+carries whatever *you* wrote, which for an rsid-authored table is nothing. The compile says so, per
+table, with a count. The consequence is worth deciding rather than discovering: a module whose only
+tables are those joins a VCF **by rsID**, and many callers leave the `ID` column empty. If you need it
+positionally joinable today, author `chrom`, `start` and `ref` on those rows yourself — whole, never a
+subset — using `hint variant` for the values.
+
 ## 5 — Cross-check what you asserted against what the sources say
 
 ```bash

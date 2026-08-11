@@ -273,6 +273,7 @@ eligible row to a `_Subject` and feeds it through the unchanged chain, caches, o
 | `variants.csv` | frozen `variant_key` (**with** `alts`) | `genotype` |
 | `pharm_variants.csv` | `variant_key` property (**without** `alts`) | `genotype` (optional — `None` keeps every locus) |
 | `haplotypes.csv` | derived the same way, without `alts` | the defining `allele` |
+| `heteroplasmy.csv` (0.5.3) | `variant_key` property, **with** `alts` — it mints one exactly as `VariantRow` does | none: a measurement band over a locus is not a claim about a genotype |
 
 A `HaplotypeRow` reuses the *same* membership predicate rather than a parallel one: its defining
 allele is the one-allele form of the question a genotype asks of two. Subjects are deduped by
@@ -280,6 +281,19 @@ allele is the one-allele form of the question a genotype asks of two. Subjects a
 is the only one carrying `alts`, a resolution fact, and letting a PGx row win would move an
 already-compiled module's `artifact.digest`. The PGx tables key **without** `alts` deliberately: a
 pharm annotation or haplotype junction matches a variant at `chrom:start:ref` regardless of allele.
+
+**`heteroplasmy.csv` joined the list in 0.5.3, and it is the one row here that is build-dependent.**
+Its coordinates are optional exactly as the PGx ones are, so an rsid-authored heteroplasmy module
+resolved to nothing at all — the same gap PGx had before 0.5, found from the other end when the
+compiler started reporting which tables a VCF cannot join (COMPILER.md § Scope). Because its
+`variant_key` carries `alts`, it can mint a `ga4gh:VA.…`, so that load **passes the module's
+`genome_build`** where the two PGx loads rightly do not — the RM36 trap, one call site further on.
+
+**What the enricher resolves is not what the compiler applies.** These subjects all land in
+`resolution.csv`, and the compiler applies that table to `variants.csv` only; a PGx or heteroplasmy
+table is materialized verbatim. So enriching a PGx module is still worth doing — the table records the
+coordinates, and a consumer can join them itself — but the parquet keeps the author's nulls until
+RM43.
 
 ### Multi-allelic snapshot rows
 

@@ -405,6 +405,43 @@ a row can change shape. Everything below follows from one rule:
 > started from — the same bytes, the same *authored* content, and the same resolved facts. Where it
 > cannot, `strict` refuses rather than emitting an artifact nobody can re-derive.
 
+### Scope: the SNP core, and everything that follows from that (0.5.3)
+
+**Resolution applies to `variants.csv` and to nothing else.** The 0.4 table families go through
+`_build_table`, which is `model_dump()` straight to parquet, so a `pharm_variants.csv` or
+`haplotypes.csv` row keeps exactly the coordinates its author typed — for an rsid-authored module,
+none. That is a deliberate boundary and it is not changing in 0.5.x, but three manifest fields are
+scoped to the SNP core in a way that reads as module-wide, and a consumer trusting them was the
+report that surfaced this (S9):
+
+- **`fully_resolved` is `all(...)` over `VariantRow`**, so it is **vacuously `true`** on a module with
+  no `variants.csv`. Its own field comment gives the trust rule *"a consumer trusts a module when
+  `resolution_mode == "strict" or fully_resolved`"* — which is **not sufficient** for a 0.4-family-led
+  module, where it can be `true` while every row lacks a coordinate.
+- **`resolution_mode` and the `--strict` unresolved gate are the same scope.** `strict` refuses on an
+  unresolved `VariantRow`; it says nothing about a table row, which is why such a module compiles
+  under `--strict` with no coordinates at all.
+- **`resolution_signature` / `resolution_sources` stay unset** for a module whose only subjects are
+  table rows, so its injected `resolution.csv` leaves no trace in the manifest. Stamping them is
+  blocked on reverse: `reverse_module` rebuilds `resolution.csv` from `weights.parquet` alone, so a
+  table-only module reverses to a spec without one and the fixed point would break. Tracked in RM43.
+
+What the compiler *does* do is **say so**. Every positional 0.4 table — `heteroplasmy.csv`,
+`haplotypes.csv`, `pharm_variants.csv`, derived from the models rather than listed — is checked for
+rows with no `chrom`+`start`, and the finding is one aggregated line per table carrying two counts:
+how many rows cannot be joined by position, and how many of those the injected `resolution.csv`
+**could** place. The second number is the actionable half — it separates "this module was never
+enriched" from "the coordinates exist and this tier does not apply them here". A half-coordinate
+(`start` with no `chrom`, the shape a CPIC-drafted `haplotypes.csv` carries) is counted apart, because
+it reads as a position and joins to nothing.
+
+It is a **warning in both modes and never a `strict` error**, for two independent reasons: rsid-only
+identity is legal by these models' own rule, so escalating would have the format tighten a field it
+deliberately left open; and the remedy is a compiler change (RM43), not an authored edit — the same
+class as VRS coverage and `not_covered`, where refusing makes a correct module uncompilable for
+something its author cannot fix. It runs in `validate` as well as `compile`, and is de-duplicated
+between them.
+
 ### `resolve_from_table` (`compiler/resolution.py`)
 
 Pure, and mirrors the DuckDB resolver's semantics from the injected table:

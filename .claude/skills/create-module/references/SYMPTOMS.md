@@ -331,6 +331,23 @@ Different sentence, different meaning: nothing was compared because there was no
 against. Provision a snapshot (`just-dna-enricher cache pull --only clinvar`) or pass
 `--clinvar-cache`. An unasked question is never a passed check.
 
+**`pharm_variants.csv: N of N row(s) have no chrom+start, so this table joins by rsID only`**
+Not a defect in your module, and nothing to fix by hand — but know what you are shipping. Resolution
+fills `variants.csv` and nothing else, so a PGx, haplotype or heteroplasmy table keeps exactly the
+coordinates you typed. A consumer joins a VCF by position, so a table with none of them matches only
+through the VCF's `ID` column, which many callers leave empty. The line tells you which situation you
+are in: *"resolution.csv can place N of them"* means the coordinates exist and this tier does not apply
+them to that table (nothing you can do today); *"no resolution.csv row places them"* means run
+`just-dna-enricher enrich` first. Writing the coordinates into the table by hand also works and is
+legal — identity is filled whole or not at all, so that means `chrom`, `start` **and** `ref`, not a
+subset. It never fails a compile, including `--strict`.
+
+**`… N carry one half of a coordinate (a start with no chrom, or the reverse)`**
+The more deceptive shape, and usually a drafted `haplotypes.csv`: CPIC publishes the position on one
+table and the chromosome on another, so an older draft carries `start` alone. It reads as a coordinate
+and joins to nothing. Re-draft the gene (`just-dna-enricher draft --gene …`) and the chromosome comes
+with it.
+
 **`N ClinVar citation(s) skipped: the id ClinVar filed under PubMed is not a PMID`**
 A defect in the source, not in your module, and nothing to fix by hand: a few hundred of ClinVar's
 citation ids are nine digits where a PMID is eight. They are counted rather than listed, and the

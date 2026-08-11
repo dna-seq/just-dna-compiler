@@ -554,3 +554,43 @@ def test_haplotype_allele_filters_a_one_to_many_rsid(tmp_path: Path) -> None:
     result = enrich(spec, offline=True, ensembl_cache=tmp_path / "hcache",
                     clinvar_cache=tmp_path / "no_clinvar")
     assert [(r.chrom, r.start) for r in result.rows] == [("5", 500)]
+
+
+def test_heteroplasmy_rows_resolve_like_the_other_tables(multiallelic_cache: Path, tmp_path: Path) -> None:
+    """The third table that can ask for a coordinate, and it was left out of the 0.5 round.
+
+    Its coordinates are optional exactly as the PGx ones are, so an rsid-authored heteroplasmy module
+    resolved to an empty table and the compiler's positional-joinability warning would have named a
+    gap no tool could close.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir(parents=True, exist_ok=True)
+    (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    (spec / "heteroplasmy.csv").write_text(
+        "rsid,gene,reference_sequence,measure_kind,measure_min,measure_max,conclusion\n"
+        "rs4244285,CYP2C19,NC_012920.1,allele_fraction,0.0,0.1,c\n",
+        encoding="utf-8",
+    )
+    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
+                    clinvar_cache=tmp_path / "no_clinvar")
+
+    assert result.unresolved == []
+    assert [(r.rsid, r.chrom, r.start) for r in result.rows] == [("rs4244285", "10", 94781859)]
+
+
+def test_a_heteroplasmy_row_keys_the_way_variants_csv_does(multiallelic_cache: Path, tmp_path: Path) -> None:
+    """`HeteroplasmyRow.variant_key` mints *with* `alts` (unlike the PGx models), so a row naming the
+    same locus as a `variants.csv` row must dedupe against it — and `variants.csv` must still win,
+    since it is the table carrying `alts`, a resolution fact that decides the compiled bytes."""
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs4244285,A/G,risk,c\n")
+    (spec / "heteroplasmy.csv").write_text(
+        "rsid,gene,reference_sequence,measure_kind,measure_min,measure_max,conclusion\n"
+        "rs4244285,CYP2C19,NC_012920.1,allele_fraction,0.0,0.1,c\n",
+        encoding="utf-8",
+    )
+    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
+                    clinvar_cache=tmp_path / "no_clinvar")
+
+    assert len([r for r in result.rows if r.rsid == "rs4244285"]) == 1
+    # the SNP row's `alts` survived, which is the thing dedup order exists to protect
+    assert result.rows[0].alts == "A,C,T"

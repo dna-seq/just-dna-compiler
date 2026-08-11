@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-compiler"
-version = "0.5.2"
+version = "0.5.3"
 description = "Reference compiler for just-dna annotation modules: spec directory → parquet artifact + manifest"
 readme = "README.md"
 requires-python = ">=3.13"

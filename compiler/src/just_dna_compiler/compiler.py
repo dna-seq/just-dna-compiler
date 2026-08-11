@@ -741,6 +741,100 @@ def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38
     return warnings
 
 
+#: The 0.4 table kinds that can name a locus, derived from the models rather than listed: a table is
+#: positional exactly when it declares both `chrom` and `start`. Today that is `heteroplasmy.csv`,
+#: `haplotypes.csv` and `pharm_variants.csv`; the rest are gene- or score-keyed and are not joinable by
+#: position at all, which is a property of what they describe rather than a gap. Hand-keeping this would
+#: be the `SOURCES_FIELDNAMES` mistake again — a list that silently loses a member.
+_POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
+    (csv_name, model)
+    for csv_name, _parquet, model in _TABLE_KINDS
+    if {"chrom", "start"} <= set(model.model_fields)
+)
+
+
+def _table_row_key(row: Any, genome_build: str) -> str | None:
+    """The `variant_key` a 0.4-family row resolves under, exactly as the enricher derives it.
+
+    `PharmVariantRow` and `HeteroplasmyRow` carry the property; `HaplotypeRow` has none, and
+    `enrich._collect_subjects` derives one with `derive_variant_key(rsid, chrom, start, ref)` — *without*
+    `alts`, because a haplotype's defining allele is not the row's identity. Calling the same function
+    here rather than inventing a second convention is the whole point: two spellings of one key would
+    make this check disagree with the table it is reading.
+    """
+    key = getattr(row, "variant_key", None)
+    if key:
+        return str(key)
+    return derive_variant_key(
+        getattr(row, "rsid", None), row.chrom, row.start, getattr(row, "ref", None),
+        build=genome_build,
+    )
+
+
+def _check_positional_joinability(
+    rows_by_csv: dict[str, list[Any]],
+    resolution_table: dict[str, list[ResolutionRow]],
+    genome_build: str = DEFAULT_GENOME_BUILD,
+) -> list[str]:
+    """Which 0.4-family rows a consumer cannot join to a VCF by position, and whether the answer exists.
+
+    **Resolution is SNP-core-scoped, and nothing said so.** `compile_module` resolves `variants.csv`
+    and materializes every other table verbatim (`_build_table` is `model_dump()` → parquet), so an
+    rsid-authored PGx module compiles clean, validates, publishes — and every row has a null
+    `chrom`/`start`. A VCF is joined by position, so such a table annotates *nothing*, silently, as an
+    empty result rather than an error. The consumer who reported this had a 1,482-row module in that
+    state and found it by reading parquet, because no tool said a word.
+
+    Reported as **counts per table, never a line per row**, and the second count is the interesting
+    one: how many of those rows the injected `resolution.csv` could place. That number is what
+    separates "this module was never enriched" from "the coordinates exist and this tier does not
+    apply them to this table" — a distinction the author cannot otherwise make, and the reason the
+    message names it. A **partial** coordinate is counted apart because it is the more deceptive shape:
+    `haplotypes.csv` drafted from CPIC carries a `start` with no `chrom` (CPIC publishes a position on
+    `sequence_location` and the chromosome on `gene`), which reads as a coordinate and joins to nothing.
+
+    **A warning in both modes, and deliberately never a `strict` error.** Two independent reasons.
+    Rsid-only identity is legal by these models' own rule (`rsid`, *or* `chrom`+`start`), so escalating
+    would make `--strict` mean "author coordinates into your PGx tables" — the format tightening a field
+    it deliberately left open. And the remedy is not an authored edit at all: it is a compiler change
+    (RM43), so this is the `not_covered` / VRS-coverage class of finding, where refusing would make a
+    correct module uncompilable for a reason its author cannot clear.
+    """
+    warnings: list[str] = []
+    for csv_name, _model in _POSITIONAL_TABLE_KINDS:
+        rows = rows_by_csv.get(csv_name) or []
+        unplaced = [row for row in rows if row.chrom is None or row.start is None]
+        if not unplaced:
+            continue
+        partial = [row for row in unplaced if row.chrom is not None or row.start is not None]
+        placeable = [
+            row
+            for row in unplaced
+            if any(
+                r.chrom is not None and r.start is not None
+                for r in resolution_table.get(_table_row_key(row, genome_build) or "", [])
+            )
+        ]
+        detail = (
+            f"resolution.csv can place {len(placeable)} of them, and the compiler applies that table "
+            f"to variants.csv only"
+            if placeable
+            else "no resolution.csv row places them — run `just-dna-enricher enrich` first"
+        )
+        partial_note = (
+            f" {len(partial)} carr{'ies' if len(partial) == 1 else 'y'} one half of a coordinate "
+            f"(a start with no chrom, or the reverse), which reads as a position and is not one."
+            if partial
+            else ""
+        )
+        warnings.append(
+            f"{csv_name}: {len(unplaced)} of {len(rows)} row(s) have no chrom+start, so this table "
+            f"joins by rsID only — a VCF whose ID column is empty matches none of them. {detail}."
+            f"{partial_note}"
+        )
+    return warnings
+
+
 def _allowed_alleles(
     variant: VariantRow, resolution_table: dict[str, list[ResolutionRow]]
 ) -> tuple[set[str] | None, str]:
@@ -1673,6 +1767,14 @@ def validate_spec(
             # entirely from a no-sale source compiles right up to the gate.
             all_errors.extend(_check_license_gate(injected_rows))
 
+    # Which 0.4-family rows a consumer could not join to a VCF by position, and whether the injected
+    # table already holds the answer. Pure computation over authored + injected bytes with no
+    # `output_dir`, so it belongs to the pre-flight by the standing rule — and it is worth the most
+    # here, where the remedy (enrich, or know what you are shipping) is still cheap.
+    all_warnings.extend(
+        _check_positional_joinability(loaded_kinds, membership_table, declared_build)
+    )
+
     # Composition: a module must carry at least one recognized table kind.
     if not has_variants and not kind_row_counts:
         all_errors.append(
@@ -2160,6 +2262,7 @@ def compile_module(
 
     # 0.4 table kinds (RM1): materialize each present CSV via the generic materializer.
     table_rows: dict[str, int] = {}
+    kind_rows: dict[str, list[Any]] = {}
     for csv_name, parquet_name, model in _TABLE_KINDS:
         kind_path = spec_dir / csv_name
         if not kind_path.exists():
@@ -2167,9 +2270,18 @@ def compile_module(
         rows, _, _ = _load_csv_rows(
             kind_path, model, csv_name, genome_build=config.genome_build
         )
+        kind_rows[csv_name] = rows
         table_df = _build_table(rows, model, module_name)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
+
+    # Re-run here so the finding reaches a caller who compiles without validating first, and
+    # de-duplicated on the message the way `_check_contig_ploidy` is: `compile_module` runs
+    # `validate_spec` itself, so a check living in both places otherwise prints its sentence twice.
+    all_warnings.extend(
+        w for w in _check_positional_joinability(kind_rows, resolution_table, config.genome_build)
+        if w not in all_warnings
+    )
 
     # 0.5 derived-fact sidecars: materialize each present CSV, and cross-check it against what the
     # module actually contains. A row describing something the module never mentions is a warning, not

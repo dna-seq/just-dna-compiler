@@ -32,6 +32,55 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-11 — `just-dna-compiler` + `just-dna-enricher` 0.5.3: say what is positionally joinable
+
+S9 from `just-dna-lite`: the 0.4 table families are materialized verbatim, so an rsid-authored PGx
+module compiles clean, validates, publishes — and every row has a null `chrom`/`start`, which joins to
+no VCF. Reproduced on this tree's own `reference_examples/pgx_slco1b1_simvastatin/` (9 rows, all three
+identity columns null, **zero warnings**) while the `resolution.csv` beside the spec resolves
+`rs4149056` to `12:21178615 T>A,C`. Digest-neutral, verified: all eleven reference examples recompile
+byte-identical against `HEAD`.
+
+**The reporter's preferred fix is not merely digest-moving — it breaks Principle 7**, which is the
+finding worth keeping. Materializing the coordinate into the parquet and running compile → reverse →
+compile moves `content_signature` (`sha256:8173dab7…` → `sha256:fb91ffa2…`), because `reverse_module`
+rebuilds the CSV from the parquet and a filled coordinate comes back as an *authored* one. That is
+exactly what `VariantRow.authored_ident` exists to prevent, and no 0.4-family model has an equivalent;
+adding one is a new column on an existing parquet, hence major-only. Filed as **RM43** with the two
+smaller constraints found alongside — `PharmVariantRow` has no `alts` column at all, and `variant_key`
+is a *property* on these models, so it is materialized in no PGx parquet and a consumer cannot join
+them to `weights.parquet` on it either.
+
+**What ships is legibility.** `_check_positional_joinability` reports, per positional table, how many
+rows have no `chrom`+`start` and **how many of those the injected `resolution.csv` could place**. The
+second count is the actionable half: it separates "this module was never enriched" from "the
+coordinates exist and this tier does not apply them here", which is a distinction the author cannot
+otherwise make. A **half** coordinate is counted apart — `haplotypes.csv` drafted from CPIC carries a
+`start` with no `chrom` (CPIC publishes the position on `sequence_location` and the chromosome on
+`gene`), and 106 of the 106 rows in `reference_examples/cyp2c19_star_alleles/` are that shape. The
+table set is derived from the models (`chrom` and `start` both declared), never hand-kept. One
+aggregated line per table, in `validate` as well as `compile`, de-duplicated between them.
+
+**A warning in both modes, deliberately never a `strict` error.** Rsid-only identity is legal by these
+models' own rule, so escalating would have the format tighten a field it left open; and the remedy is a
+compiler change, not an authored edit — the `not_covered` / VRS-coverage class, where refusing makes a
+correct module uncompilable for something its author cannot clear.
+
+**`heteroplasmy.csv` joins the enricher's subject list**, which is the other half of the same gap:
+`_collect_subjects` covered `variants.csv`, `pharm_variants.csv` and `haplotypes.csv`, so an
+rsid-authored heteroplasmy module resolved to nothing at all and the new warning would have named a gap
+no tool could close. It is the one subject here that is **build-dependent** — `HeteroplasmyRow.variant_key`
+mints *with* `alts`, exactly as `VariantRow` does (verified equal for both the rsid and the coordinate
+shape), so that load passes the module's `genome_build` where the two PGx loads rightly do not. Its
+allele constraint is `None`: a measurement band over a locus is not a claim about a genotype.
+
+**Also recorded, not fixed:** `manifest.compilation.fully_resolved` is `all(...)` over `VariantRow`, so
+it is **vacuously `true`** for a table-only module — against the trust rule its own field comment states
+(*"a consumer trusts a module when `resolution_mode == "strict" or fully_resolved`"*). And
+`resolution_signature`/`resolution_sources` stay unset for such a module, so its injected table leaves
+no trace in the manifest. Stamping the signature is blocked on reverse, which rebuilds `resolution.csv`
+from `weights.parquet` alone; both halves are in RM43, beside the registry's S8.
+
 ## 2026-08-10 — `just-dna-enricher` + `just-dna-compiler` 0.5.2: the quirks a panel-scale consumer hit
 
 Everything in this cut came from `just-dna-lite` rebuilding all ten `just-dna-seq` modules on the 0.5
