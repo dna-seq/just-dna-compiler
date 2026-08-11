@@ -77,11 +77,26 @@ class EnsemblResolver:
             self._client.close()
             self._client = None
 
-    def resolve_rsid(self, rsid: str) -> tuple[list[dict], str | None]:
-        """Return `([{chrom, start, ref, alts}, ...], source)` for a bare rsID, or `([], None)`.
+    def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]:
+        """Return `([{chrom, start, ref, alts}, ...], source)` for a bare rsID.
 
         Tries V2 GraphQL, then falls back to V1 REST on a 5xx (or when V2 yields nothing). `source` is
         `ensembl-graphql` or `ensembl-rest` — recorded per row so the manifest can report provenance.
+
+        **Three outcomes, because two of them used to be one (S20).** A non-empty list is an answer;
+        `[]` is *also* an answer — Ensembl was reached and has no GRCh38 locus for this rsID — and
+        **`None` means Ensembl could not be asked at all**, so its answer is unchecked rather than
+        empty. Fusing the last two into `([], None)` made a failed request read as a definite negative,
+        and `loci: []` plus "Ensembl has no locus" is exactly the fingerprint of a fabricated rsID: a
+        consumer checking which ids in a machine-written document were real put two published variants
+        in the fabricated pile on a flaky run. This is the tri-state rule the rest of the tree keeps —
+        an unreachable source reports unknown, never the negative.
+
+        A **4xx is an answer**, not a failure: Ensembl 400s on rsIDs it cannot resolve (`rs3216883`,
+        which dbSNP reports as merged), so only a 5xx, a transport error or a timeout — the cases where
+        nothing came back at all — return `None`. An empty answer now carries its source too, so a
+        caller can record *which* link said nothing; that omission was the only trace the old code
+        left, and it was a missing element in a set nobody diffs.
         """
         try:
             loci = self._graphql_rsid(rsid)
@@ -94,11 +109,16 @@ class EnsemblResolver:
             logger.warning("V2 GraphQL for %s errored (%s); trying REST", rsid, exc)
 
         try:
-            loci = self._rest_rsid(rsid)
-            return (loci, "ensembl-rest") if loci else ([], None)
+            return self._rest_rsid(rsid), "ensembl-rest"
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in _FALLBACK_STATUS:
+                logger.warning("V1 REST for %s failed: %s", rsid, exc)
+                return None, None
+            logger.info("V1 REST has no record for %s (%s)", rsid, exc)
+            return [], "ensembl-rest"
         except (httpx.HTTPError, EnsemblError) as exc:
-            logger.warning("V1 REST for %s failed: %s", rsid, exc)
-            return [], None
+            logger.warning("V1 REST for %s could not be reached: %s", rsid, exc)
+            return None, None
 
     # ── V2: beta GraphQL ──────────────────────────────────────────────────────────────────────
     @retry(

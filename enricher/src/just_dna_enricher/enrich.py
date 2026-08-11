@@ -332,6 +332,12 @@ class EnrichmentResult:
     #
     # `None` — never a coverage of zero — when the pass did not run (`mint_vrs=False`). The house rule.
     vrs: MintResult | None = None
+    # rsIDs the live Ensembl link could not be asked about — a failed request, never an empty answer
+    # (S20). Separate from `unresolved`, which says a key has no position and is silent about why: a
+    # row that failed to resolve because egress broke and one with genuinely no locus to find are the
+    # same entry there, and only one of them is worth re-running. Same reason `clin_sig_not_checked`
+    # exists beside an empty conflict list. Empty offline, since nothing was asked in the first place.
+    unreachable_rsids: list[str] = field(default_factory=list)
 
     @property
     def fully_resolved(self) -> bool:
@@ -445,6 +451,8 @@ def enrich(
 
     rsid_to_loci: dict[str, list[dict]] = {}
     source_of_rsid: dict[str, str] = {}
+    # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
+    unreachable_rsids: set[str] = set()
     # Reverse (position→rsid) back-fill is allele-aware and keeps ALL candidates per authored allele,
     # so we can take a deterministic pick and flag a genuine multi-rsid allele as ambiguous rather than
     # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
@@ -529,7 +537,12 @@ def enrich(
             try:
                 for rsid in missing:
                     loci, src = client.resolve_rsid(rsid)
-                    if loci:
+                    if loci is None:
+                        # Could not ask (S20). Distinct from an empty answer, and the distinction has
+                        # to survive to the row-writing loop below, which would otherwise record
+                        # `status="not_found", source="ensembl"` — a negative nobody established.
+                        unreachable_rsids.add(rsid)
+                    elif loci:
                         rsid_to_loci[rsid] = loci
                         source_of_rsid[rsid] = src or "ensembl"
             finally:
@@ -631,6 +644,14 @@ def enrich(
                         variant_key=key, rsid=v.rsid, genome_build=genome_build,
                         locus_index=i, source=src, status="resolved", **locus,
                     ))
+            elif genome_build == "GRCh38" and v.rsid in unreachable_rsids:
+                # The live link was asked and never answered (S20), so this row has the same shape as
+                # the non-GRCh38 case below and gets the same treatment: no row at all. Writing
+                # `not_found` here would state, in the artifact, that Ensembl was asked and does not
+                # have this rsID — the one reading the run cannot support, and the fingerprint of a
+                # fabricated identifier. The key stays `unresolved`, so `strict` still refuses and
+                # `best_effort` still warns; what changes is that neither claims a source said no.
+                unresolved.append(key)
             elif genome_build == "GRCh38":
                 out.append(ResolutionRow(variant_key=key, rsid=v.rsid, genome_build=genome_build,
                                          source="ensembl" if not offline else "cache", status="not_found"))
@@ -766,8 +787,19 @@ def enrich(
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
         clin_sig_not_checked=clin_sig_not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
-        vrs=mint_result,
+        vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
     )
+
+    if unreachable_rsids:
+        # Warned in BOTH modes, and not escalated by `strict`: nothing an author can edit clears a
+        # failed request, and `strict` means "reproducible artifact" (P5). What it does change is the
+        # reading of the run — an unresolved key here may well resolve on the next one.
+        logger.warning(
+            "%d rsID(s) could not be asked of live Ensembl (the request failed, so the answer is "
+            "unchecked rather than empty): %s. Re-run before treating these as rsIDs Ensembl does "
+            "not have.",
+            len(unreachable_rsids), ", ".join(sorted(unreachable_rsids)),
+        )
 
     if mode == "strict" and ref_mismatches:
         # Deliberately checked BEFORE the unresolved gate: a wrong `ref` is a worse diagnosis than a

@@ -84,14 +84,19 @@ def test_a_missing_snapshot_is_reported_not_raised(tmp_path: Path) -> None:
 class _FakeEnsembl:
     """An `EnsemblResolver` stand-in. `resolve_rsid` returns the same `(loci, source)` shape."""
 
-    def __init__(self, loci: list[dict], source: str = "ensembl-rest") -> None:
+    def __init__(
+        self, loci: list[dict], source: str = "ensembl-rest", *, unreachable: bool = False
+    ) -> None:
         self.loci = loci
         self.source = source
+        self.unreachable = unreachable
         self.asked: list[str] = []
 
-    def resolve_rsid(self, rsid: str) -> tuple[list[dict], str | None]:
+    def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]:
         self.asked.append(rsid)
-        return (list(self.loci), self.source) if self.loci else ([], None)
+        if self.unreachable:
+            return None, None          # could not ask — distinct from the empty answer below (S20)
+        return list(self.loci), self.source
 
     def close(self) -> None:  # pragma: no cover - nothing to release
         pass
@@ -149,6 +154,27 @@ def test_live_ensembl_not_knowing_it_either_is_said_plainly(tmp_path: Path) -> N
     assert any("live Ensembl has no GRCh38 locus" in f.message for f in hint.findings)
     # And the snapshot finding no longer claims to speak for Ensembl.
     assert not any("not found in Ensembl" in f.message for f in hint.findings)
+    # An answered-empty records which link answered — the missing element that used to be the only
+    # trace of a failure is now a present one stating the opposite (S20).
+    assert "ensembl-rest" in hint.checked
+
+
+def test_an_unreachable_ensembl_reports_unchecked_rather_than_absent(tmp_path: Path) -> None:
+    """S20. Same call, same rsID, only the transport differs — and the two runs must not produce
+    the same finding. `rs6567160` is a real MC4R BMI locus, so the old prose ("has no GRCh38 locus")
+    was a false negative about a published variant, at `info`, where nothing draws the eye."""
+    ensembl = _FakeEnsembl([], unreachable=True)
+    hint = lookup_variant(
+        rsid="rs6567160", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=ensembl, eutils=_FakeEutils({})),
+    )
+    assert ensembl.asked == ["rs6567160"] and hint.loci == []
+    unchecked = [f for f in hint.findings if "could not be reached" in f.message]
+    assert len(unchecked) == 1
+    assert unchecked[0].level == "warning"             # the caller has to decide whether to re-run
+    # The claim that inverted the judgment is gone, and so is the inference-from-absence.
+    assert not any("has no GRCh38 locus" in f.message for f in hint.findings)
+    assert "ensembl-rest" not in hint.checked
 
 
 def test_a_known_pmid_offers_its_doi_but_never_applies_it() -> None:

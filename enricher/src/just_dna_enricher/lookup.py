@@ -296,20 +296,35 @@ def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClient
     order matches `enrich()`'s. Reports the source it came from, because a locus from the network and
     a locus from a pinned snapshot are not equally reproducible and the author should know which they
     have. A failure is a finding, never an exception — nothing here is load-bearing enough to fail a
-    question, and `EnsemblResolver.resolve_rsid` already swallows its own transport errors into an
-    empty result.
+    question.
+
+    **An unreachable Ensembl is reported as unchecked, never as absent (S20).** `resolve_rsid` returns
+    `None` for "could not ask" against `[]` for "asked, nothing there", and the two get different
+    findings at different severities: `warning` for the failure, because the caller has to decide
+    whether to re-run, and `info` for the genuine absence, which is a finished answer. `checked` records
+    the source whenever Ensembl actually answered — including when it answered nothing — so the set says
+    what was consulted rather than leaving a caller to infer it from a missing element.
     """
     if not rsid or hint.loci:
         return
     if clients.ensembl is None:
         clients.ensembl = EnsemblResolver()
     loci, source = clients.ensembl.resolve_rsid(rsid)
+    if loci is None:
+        hint.findings.append(
+            Finding(
+                None, None, "warning",
+                f"{rsid}: live Ensembl could not be reached, so its answer is unchecked rather than "
+                f"empty — re-run before reading this as an rsID Ensembl does not have",
+            )
+        )
+        return
+    hint.checked.add(source or "ensembl-live")
     if not loci:
         hint.findings.append(
             Finding(None, None, "info", f"{rsid}: live Ensembl has no GRCh38 locus for it either")
         )
         return
-    hint.checked.add(source or "ensembl-live")
     hint.loci.extend(loci)
     hint.findings.append(
         Finding(

@@ -43,8 +43,18 @@ def dotenv_only_cache(tmp_path_factory) -> tuple[Path, Path]:
 
 
 def _run(script: str, cwd: Path) -> dict[str, str]:
-    """Run a probe with `$JUST_DNA_PIPELINES_CACHE_DIR` unset, so only the `.env` can supply it."""
+    """Run a probe with `$JUST_DNA_PIPELINES_CACHE_DIR` unset, so only the `.env` can supply it.
+
+    **`XDG_CACHE_HOME` is redirected at an empty directory**, which is what makes "nothing supplied a
+    base, so the resolve misses" a property of the arrangement rather than of the developer's laptop.
+    Without it the platformdirs fallback finds whatever real snapshot the machine happens to hold, so
+    `test_without_the_load_the_first_resolve_really_did_miss` passes on a clean checkout and fails for
+    anyone who has run `cache pull` — the documented workflow. Same trap as the `.env` credentials in
+    CLAUDE.md: green on CI, broken on the machine that actually uses the tool. (Linux/XDG; a macOS
+    runner would need the same redirection through its own cache variable.)
+    """
     env = {k: v for k, v in os.environ.items() if k != "JUST_DNA_PIPELINES_CACHE_DIR"}
+    env["XDG_CACHE_HOME"] = tempfile.mkdtemp(prefix="just-dna-empty-cache-")
     done = subprocess.run(
         [sys.executable, "-c", script], cwd=cwd, env=env, capture_output=True, text=True, check=True
     )

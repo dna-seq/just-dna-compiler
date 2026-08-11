@@ -342,7 +342,9 @@ act on them.
 in the message. Bump a version, tag it, and clean and build dists when a §4 threshold fires; bumping is
 inside the grant by implication, since a `0.5.4` tag cannot exist while `pyproject.toml` reads `0.5.3`.
 Bump and build **only the packages whose code moved** — a partial cut is normal here, and `schema` has
-sat at `0.5.0` across two compiler releases.
+sat at `0.5.0` across two compiler releases. When `schema` is next cut it takes the **aligned** number
+rather than the next one in its own sequence (decided 2026-08-11: one version across the workspace beats
+a dense per-package count, so a `0.5.4` compiler names a `0.5.4` schema).
 
 **`uv sync` and relock before tagging — the common gotcha, and it is silent.** `uv.lock` is tracked and
 records each workspace member's own version, so a bump that stops at `pyproject.toml` leaves the lock

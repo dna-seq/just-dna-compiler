@@ -277,6 +277,75 @@ def test_tenacity_retries_transient_then_succeeds() -> None:
     assert loci[0]["chrom"] == "1" and loci[0]["ref"] == "G"
 
 
+# ── S20: an unreachable Ensembl is unchecked, never absent ────────────────────────────────────
+
+
+def test_a_transport_failure_returns_none_where_an_empty_answer_returns_a_list() -> None:
+    """The whole of S20 in one assertion pair: the two states that used to be `([], None)`.
+
+    A published rsID on a run where egress breaks must not be reported with the same value as one
+    Ensembl genuinely has no locus for — that value is what made a real variant read as fabricated.
+    """
+    def dead(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("egress down", request=request)
+
+    unreachable = EnsemblResolver()
+    unreachable._client = httpx.Client(transport=httpx.MockTransport(dead))
+    loci, source = unreachable.resolve_rsid("rs6567160")
+
+    def empty(request: httpx.Request) -> httpx.Response:
+        if "graphql" in str(request.url):
+            return httpx.Response(200, json={"data": {"variant": None}})
+        return httpx.Response(200, json={"name": "rs2000000000", "mappings": []})
+
+    answered = EnsemblResolver()
+    answered._client = httpx.Client(transport=httpx.MockTransport(empty))
+    empty_loci, empty_source = answered.resolve_rsid("rs2000000000")
+
+    assert loci is None and source is None           # could not ask
+    assert empty_loci == [] and empty_source == "ensembl-rest"   # asked, nothing there
+    assert loci is not empty_loci                    # and they are no longer the same value
+
+
+def test_a_4xx_is_an_answer_and_a_5xx_is_a_failure() -> None:
+    """Ensembl 400s on rsIDs it cannot resolve (`rs3216883`, merged per dbSNP), so a 4xx is a
+    negative answer. Only the cases where nothing came back are unchecked."""
+    def status(code: int) -> EnsemblResolver:
+        resolver = EnsemblResolver()
+        resolver._client = httpx.Client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(code))
+        )
+        return resolver
+
+    assert status(400).resolve_rsid("rs3216883") == ([], "ensembl-rest")
+    assert status(404).resolve_rsid("rs2000000000") == ([], "ensembl-rest")
+    assert status(503).resolve_rsid("rs1801133") == (None, None)
+
+
+def test_an_unreachable_rsid_writes_no_not_found_row(cache: Path, tmp_path: Path) -> None:
+    """The artifact half. `not_found` says a source was asked and does not have this rsID; on a
+    failed request nobody established that, so the row is not written at all — the same treatment
+    the non-GRCh38 branch already gave the same shape of non-answer."""
+    def dead(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("egress down", request=request)
+
+    resolver = EnsemblResolver()
+    resolver._client = httpx.Client(transport=httpx.MockTransport(dead))
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs6567160,C/T,risk,c\n")
+    # `clinvar_cache` and `download=False` are load-bearing, not decoration: without them this call
+    # provisions the real 87 MB ClinVar snapshot into the developer's cache — which is `enrich()`
+    # working as designed, and is not what a resolver unit test is asking about.
+    result = enrich(
+        spec, ensembl_cache=cache, clinvar_cache=tmp_path, resolver=resolver,
+        use_gnomad=False, download=False,
+    )
+
+    assert result.unreachable_rsids == ["rs6567160"]      # named, not merely absent from a set
+    assert result.unresolved == ["rs6567160"]             # still unresolved: strict still refuses
+    assert [row for row in result.rows if row.status == "not_found"] == []
+    assert not result.fully_resolved
+
+
 # ── strict mode ───────────────────────────────────────────────────────────────────────────────
 
 

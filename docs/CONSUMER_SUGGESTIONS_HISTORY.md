@@ -37,6 +37,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S17** `source` exists only on generated rows — docs 0.5.4 + a diagnosis
 - **S18** `inspect_rows` mis-parses a ragged row — shipped 0.5.4
 - **S19** binning thresholds have nowhere to cite — warning 0.5.4, filed RM47
+- **S20** a failed Ensembl request reads as a definite absence — shipped 0.5.4
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -1480,3 +1481,135 @@ A note on what we did meanwhile: we left the thresholds ungrounded rather than c
 paper we had not confirmed states them. `literature_search` for the HTT thresholds
 returns cohort papers that *use* the categories and no standard that *defines* them, so
 citing any of them would have been a provenance claim we could not support.
+
+# Field notes from just-module-creator — the resolver's two empties, 2026-08-11
+
+Found while checking which of seven rsIDs in an LLM-written summary were real — a task where "Ensembl
+has no locus for it" is the fingerprint of a fabricated identifier, which is what made a fused failure
+mode expensive rather than merely untidy.
+
+## S20 — a failed Ensembl request and a genuine absence produce the identical finding, and it reads as a definite "no"
+
+**Status — accepted in full; shipped in enricher 0.5.4, in the shape you proposed.** Reproduced from
+the code rather than the symptom: `ensembl.py` returned `([], None)` on line 98 for "asked, nothing
+there" and the identical `[], None` on line 101 for "the request failed", so by the time
+`_lookup_live_loci` tested `if not loci:` the distinction was gone, exactly as you traced it.
+`resolve_rsid` now has three outcomes — loci, `[]` for an answered absence, `None` for could-not-ask —
+and `_lookup_live_loci` reports the last as a **warning** saying the answer is unchecked rather than
+empty. Your candidate is what shipped, including `warning` over `info`.
+
+Two things the probe added. **A 4xx is an answer, not a failure**: Ensembl 400s on rsIDs it cannot
+resolve (`rs3216883`, which dbSNP reports as merged), so only a 5xx, a transport error or a timeout
+return `None` — lumping every exception into "could not ask" would have turned a real negative into a
+permanent maybe. And **an empty answer now carries its source**, so `hint.checked` gains
+`ensembl-rest` when Ensembl was reached and said nothing: the signal you had to read as a *missing*
+element is now a present one stating the opposite, which is the half of your report we could fix
+without asking you to diff sets.
+
+**The artifact half was worse than the finding half, and you did not see it because `lookup_variant`
+does not write one.** `enrich()` recorded a failed request as `ResolutionRow(status="not_found",
+source="ensembl")` — a claim, in the injected table a module compiles from, that Ensembl was asked and
+does not have this rsID. That row is no longer written: the key stays `unresolved`, so `strict` still
+refuses and `best_effort` still warns, but nothing claims a source said no. The argument was already in
+the tree, four lines below, where the non-GRCh38 branch declines to write `not_found` for exactly this
+reason — *"a negative nobody established, about a question never put."* It was one branch away from
+the case that mattered. `EnrichmentResult.unreachable_rsids` names them, beside `unresolved`, for the
+same reason `clin_sig_not_checked` sits beside an empty conflict list.
+
+**Your rejected candidate was rejected here too, for your reason.** Retrying inside `resolve_rsid`
+narrows the window without closing it, and the caller still cannot tell the two empties apart when the
+retries run out — which is when it matters. Retry persistence is already the deployment's to set
+through `$JUST_DNA_HTTP_RETRY_ATTEMPTS` (RM42), and that is the right axis for it.
+
+Tests: the two states asserted as distinct values in one test, the 4xx/5xx split, and the `enrich()`
+row that is no longer written. `F17`'s advice can be retired — a bare `loci: []` now means what it
+says, and the unreachable case announces itself.
+<!-- triaged: 0.5.4 · sha 7c9537a53cee -->
+
+**Reported by:** just-module-creator (`lookup_variant` wraps `enricher.lookup`) · **Found:** 2026-08-11,
+checking seven rsIDs a user brought in from an LLM-written summary of a YouTube lecture.
+
+**What I ran.** Seven `lookup_variant` calls in one batch, each `VariantHint` via
+`enricher.lookup`, cache cold for all seven. Five resolved. Two came back with `loci == []` and this
+finding:
+
+```
+rs6567160: live Ensembl has no GRCh38 locus for it either
+rs13010010: live Ensembl has no GRCh38 locus for it either
+```
+
+**What I expected.** That message to mean what it says: Ensembl was asked and has no GRCh38 locus.
+
+**What happened.** Both are ordinary, well-attested SNPs. Re-running the *same call* minutes later,
+unchanged:
+
+| rsid | run 1 | run 2 |
+|---|---|---|
+| rs6567160 | `loci: []`, "live Ensembl has no GRCh38 locus for it either" | `chr18:60161902 T>C` |
+| rs13010010 | `loci: []`, "live Ensembl has no GRCh38 locus for it either" | `chr2:100236272 C>T` |
+
+So the transport failed and the failure was reported as a **negative answer**. `_lookup_live_loci` is
+explicit that this is by design:
+
+> A failure is a finding, never an exception … `EnsemblResolver.resolve_rsid` already swallows its own
+> transport errors into an empty result.
+
+Swallowing into an empty result is what fuses the two states. By the time `_lookup_live_loci` tests
+`if not loci:` there is nothing left to distinguish "Ensembl answered, no such locus" from "the request
+never completed", and the one finding it writes asserts the first.
+
+**The only trace is an absence.** `hint.checked.add(source)` runs on the success path only, so a failed
+run omits `ensembl-rest` from `checked` — the payloads differ:
+
+```
+run 1  checked: ["…/ensembl_variations"]                    # no ensembl-rest
+run 2  checked: ["…/ensembl_variations", "ensembl-rest"]     # present
+```
+
+That is the correct signal and it is unreadable in practice: it is a *missing* element in a set, while
+the finding beside it states a conclusion in prose. No caller diffs `checked` against the set of sources
+that were supposed to be consulted, and the finding is `info`, so nothing draws the eye.
+
+**Why this one is worth a fix rather than a note.** It inverts the judgment the surrounding workflow
+exists to support. My actual task was deciding which rsIDs in a machine-written document were real —
+four of the seven turned out to be fabricated, pairing a real dbSNP id with a gene on another
+chromosome. `loci: []` plus "Ensembl has no locus" is exactly the fingerprint of a fabricated id, so
+run 1 put two real, published variants (`rs6567160`, a long-standing MC4R BMI locus; `rs13010010`) in
+the fabricated pile. I only caught it because five-of-seven succeeding on one batch looked more like
+flaky egress than like a document that was 30% honest. An author with less reason to be suspicious
+drops two true rows and reports the source as more fabricated than it is — and the same shape silently
+weakens `enrich()`, where a cache-cold row that failed to resolve is indistinguishable from one with
+no locus to find.
+
+It also contradicts the tri-state rule the rest of this tree is careful about: an unreachable source
+reports `results=null`, never `0`, and the reason it must is exactly this. `_lookup_live_loci` is the
+one place where an unreachable source reports the negative instead.
+
+**Candidate fix.** Have `EnsemblResolver.resolve_rsid` distinguish its two empties — a third return
+value, or `None` for "could not ask" against `[]` for "asked, nothing there" — and branch:
+
+```python
+loci, source = clients.ensembl.resolve_rsid(rsid)          # loci: list | None
+if loci is None:
+    hint.findings.append(Finding(None, None, "warning",
+        f"{rsid}: live Ensembl could not be reached — its answer is UNCHECKED, not empty"))
+    return
+if not loci:
+    hint.findings.append(Finding(None, None, "info",
+        f"{rsid}: live Ensembl has no GRCh38 locus for it"))
+    return
+```
+
+`warning` rather than `info` because the caller has to decide whether to retry, and `info` is where
+this currently hides.
+
+**A candidate I think is wrong:** retrying inside `resolve_rsid` until it succeeds. It narrows the
+window without closing it, and it converts a fast wrong answer into a slow one — the caller still
+cannot tell the two empties apart when the retries are exhausted, which is precisely when the
+distinction matters most. Retry policy is also the consumer's to set; the fusing of the two states is
+not.
+
+**What I did meanwhile.** Nothing, deliberately. `lookup_variant` is a pass-through and mitigating this
+on our side would mean either re-implementing the resolver or retrying blind, and neither belongs in a
+wrapper. Tracked as `F17` in `just-module-creator`, where the advice for now is to distrust a bare
+`loci: []` whenever `checked` lacks `ensembl-rest` — which is only actionable because I now know to look.

@@ -34,6 +34,39 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-11 (later) — S20: an unreachable Ensembl is unchecked, never absent
+
+`just-dna-enricher` only, folded into the same 0.5.4 cut. `EnsemblResolver.resolve_rsid` returned
+`([], None)` both when Ensembl answered with no GRCh38 locus and when the request never completed, so a
+failed lookup was reported as a **definite negative**: `loci: []` plus "live Ensembl has no GRCh38 locus
+for it either", at `info`. A consumer checking which rsIDs in a machine-written document were real —
+where that pair is exactly the fingerprint of a fabricated identifier — put two published variants
+(`rs6567160`, a long-standing MC4R BMI locus, and `rs13010010`) in the fabricated pile, and caught it
+only because five-of-seven succeeding looked more like flaky egress than a 30%-honest document.
+
+Three outcomes now: loci, `[]` for an answered absence, `None` for could-not-ask. The unreachable case
+is a **warning** — the caller has to decide whether to re-run — and a **4xx stays an answer**, since
+Ensembl 400s on rsIDs it cannot resolve (`rs3216883`, merged per dbSNP); only a 5xx, a transport error
+or a timeout is unchecked. An answered-empty carries its source, so `hint.checked` records
+`ensembl-rest` when Ensembl was reached and said nothing — the report's own evidence was a *missing*
+element in that set, which is unreadable in practice.
+
+The artifact half was the worse one and no consumer could see it from `lookup_variant`: `enrich()`
+wrote `ResolutionRow(status="not_found", source="ensembl")` for a request that failed, stating in the
+injected table that Ensembl was asked and does not have the rsID. That row is no longer written — the
+key stays `unresolved`, so `strict` still refuses and `best_effort` still warns, but nothing claims a
+source said no, and `EnrichmentResult.unreachable_rsids` names them. The argument was already four
+lines below in the same function, where the non-GRCh38 branch declines to write `not_found` for
+precisely this reason; it was one branch away from the case that mattered. Generalize it: when a
+function has two ways of returning nothing, check whether any caller renders them as one sentence.
+
+Also here, found by the fix rather than reported:
+`test_without_the_load_the_first_resolve_really_did_miss` asserted a resolve returns `None`, which is
+only true on a machine with no ClinVar snapshot in the platform default — so it passed on a clean
+checkout and failed for anyone who had run `cache pull`, the documented workflow. The probe now
+redirects `XDG_CACHE_HOME` at an empty directory, making the miss a property of the arrangement rather
+than of the developer's laptop. Same trap as the `.env` credentials already documented in CLAUDE.md.
+
 ## 2026-08-11 — 0.5.4: the consumer-suggestion backlog, answered — seven fixes, three roadmap items, and a diagnosis where there was a dead end
 
 The first full run of the triage loop ([CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md)) over the
