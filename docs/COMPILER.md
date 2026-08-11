@@ -30,7 +30,8 @@ Import from `just_dna_compiler.compiler`.
   invalid. See [SCHEMAS.md § identity & integrity](SCHEMAS.md#identity--integrity).
 - **`compile_module(spec_dir, output_dir, compression="zstd", resolve_with_ensembl=True,
   ensembl_cache=None, compiled_by=None, ensembl_reference=None, log_files=None, provenance_file=None,
-  logo_file=None, authority_keys=None, strict=False, ba1_threshold=0.05) -> CompilationResult`** —
+  logo_file=None, readme_file=None, authority_keys=None, strict=False, ba1_threshold=0.05)
+  -> CompilationResult`** —
   compile to parquet + `manifest.json`. `ensembl_cache` is **deprecated (removed at 1.0)** — see the
   precedence block. `resolve_with_ensembl` is not deprecated and is misnamed: since 0.5 it is the
   master switch for consuming `resolution.csv` at all, so turning it off ignores an injected table
@@ -296,7 +297,9 @@ tolerance above.
    against what the module actually contains (a frequency coordinate no variant sits at, or a gene the
    module never mentions, is a **warning** — an over-broad sidecar is harmless, and failing the compile
    over it would punish the author for the enricher's generosity).
-9. **Collect** logs / `provenance.json` / logo (a malformed one fails the compile, not raises).
+9. **Collect** logs / `provenance.json` / logo / readme (a malformed one fails the compile, not
+   raises). The readme is discovered from `manifest.README_CANDIDATES` and hashed into
+   `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
 10. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, and the
     `frequency` / `gene_metrics` / `literature` blocks) and write `manifest.json`.
 
@@ -654,10 +657,13 @@ table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are p
   base the module never named. `_genome_build_from_artifact` reads it; `genome_build=` (CLI
   `--genome-build`) overrides; a bare parquet directory with no manifest falls back to `GRCh38`, the
   format's own default. See `reference_examples/grch37_build/`.
-- **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel`, `provenance`, `logo`. A
+- **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel`, `provenance`, `logo`,
+  `readme`. A
   consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). The test of
   whether something belongs on this list is whether losing it can change a parquet byte — which is why
-  `genome_build` moved off it.
+  `genome_build` moved off it. `readme` joins `logo` here for the same reason and with the same
+  consequence: `reverse` writes no readme into the re-emitted spec, so a recompile of a reversed module
+  attests none — the three signatures are still a fixed point, because prose was never in any of them.
 
 ## Output artifact & hashing
 

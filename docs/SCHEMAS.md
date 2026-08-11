@@ -640,7 +640,7 @@ consumer it is for.
   base64 in `manifest.signature`. `verify_manifest(public_key=...)` enforces a pinned key.
 - **`verify_manifest(...)`** — the verify-then-install path (SPEC §5): re-hash `artifact.files[]`,
   recompute `artifact_digest`, check trust (`compiled_by == "marketplace-server"`), optionally re-hash
-  `inputs`/`logs`/`provenance`/`logo`, and verify the signature. It does **not** re-check
+  `inputs`/`logs`/`provenance`/`logo`/`readme`, and verify the signature. It does **not** re-check
   `content_signature`/`resolution_signature` (sibling identities, out of the digest).
 - **`identity.py`** — `NAME_PATTERN` `^[a-z][a-z0-9_]*$`, `NAMESPACE_PATTERN` `^[a-z0-9]+(-[a-z0-9]+)*$`,
   the ordered `Version` dataclass, `canonical_id(namespace, name, version)` → `namespace/name@version`,
@@ -651,7 +651,8 @@ consumer it is for.
 `manifest.py` holds the `manifest.json` contract. `ModuleManifest` is the root: `manifest_version` /
 `schema_version` (both `"1.0"`), `identity`, `display`, `genome_build`, curator/method/license/owner,
 `authors` + `authorship` (`Contribution`: `who`/`role`/`kind`), timestamps, `stats`, `compilation`,
-`inputs`, `content_signature?`, `artifact`, `logs`, `provenance?`, `panel?`, `logo?`, `signature?`, and
+`inputs`, `content_signature?`, `artifact`, `logs`, `provenance?`, `panel?`, `logo?`, `readme?`,
+`signature?`, and
 one block per derived-fact sidecar the module carries — `frequency?`, `gene_metrics?`, `literature?`,
 `sources?`. Each carries `signature` / `sources` / `row_count` plus whatever its own table makes
 answerable: `datasets` on the two that have releases to name (gnomAD ships numbered ones; PubMed and
@@ -668,6 +669,25 @@ so a consumer can read how completely the identity scheme names this module's al
 inferring it from the absence of warnings. "Complete" is `identified == alleles`, derived rather than
 stored twice. Together `resolution_mode == "strict" or fully_resolved` tells a catalog a trustworthy
 module from a best-effort half-baked one.
+
+**`logo?` and `readme?` are the two *shipped assets*, and both are outside both identities.** Each is
+a hashed `FileEntry` naming a file the compiler copies into the module dir from beside the spec —
+`logo.{png,jpg,jpeg}`, and the first of `README_CANDIDATES` (`README.md`, then the other stems and
+`md`/`rst`/`txt` in a fixed order, so two readmes on disk cannot resolve by luck). Neither is in
+`artifact.files`, so neither moves `artifact.digest`; neither is authored data, so neither moves
+`content_signature`. That is what makes correcting a caveat a **patch** rather than a new version, and
+it is why the alternative of listing `README.md` in `artifact.files` was rejected: on an immutable
+registry a fixed typo would cost a version number and the corrected module would then collide with its
+own predecessor under a name-independent content-dedup check.
+
+The field exists because *attestation is what makes a file usable downstream* (S25). A registry that
+declines to serve files whose hash nothing records — the right policy — cannot serve a readme the
+manifest does not list, and neither can an installer, a mirror or a second registry; keeping the prose
+in one catalog's own database makes that catalog the source of truth for something no manifest
+consumer can reach. Inlining the text into `display` was rejected too: a readme is unbounded (a small
+module's can outweigh its data) while `display` is inlined into every card a catalog serves.
+`verify_manifest(check_readme=True)` re-hashes it, and `just-dna-compiler verify --check-readme` is
+the CLI surface.
 
 `Display` is the base of `spec.ModuleInfo`; `GenePanelSpec` and `Contribution` are authored via
 `ModuleSpecConfig`. Everything else in `manifest.py` is manifest-only, never authored into a CSV.

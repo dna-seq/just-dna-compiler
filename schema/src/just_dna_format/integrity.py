@@ -91,8 +91,16 @@ def artifact_digest(files: list[FileEntry]) -> str:
     """
     Merkle-style root over the file set (SPEC §5): build the JSON array
     `[{"name","sha256","size"}, ...]` sorted by name, serialized with sorted keys and no
-    whitespace, then hash. Verifying this one digest verifies the whole set, and it is the
-    version's immutable content identity — independent of the order files were listed in.
+    whitespace, then hash. Verifying this one digest verifies the whole set, independent of the order
+    the files were listed in.
+
+    This is the version's immutable **byte** identity — *these bytes, from this compiler* (Principle
+    4) — and **not** its content identity, which is `content_signature`. The distinction is the whole
+    reason there are two hashes: a recompile against a different reference moves the digest while the
+    authored content is untouched, so reading a moved digest as moved content sends a reader hunting a
+    change that did not happen. This docstring said "content identity" until 2026-08-12; the same
+    wording was corrected in the docs when a consumer made exactly that misreading (S7), and the code
+    copy outlived the fix.
     """
     listing = sorted(
         ({"name": f.name, "sha256": f.sha256, "size": f.size} for f in files),
@@ -277,6 +285,7 @@ def verify_manifest(
     check_logs: bool = False,
     check_provenance: bool = False,
     check_logo: bool = False,
+    check_readme: bool = False,
     public_key: str | None = None,
 ) -> None:
     """
@@ -294,6 +303,10 @@ def verify_manifest(
          matches its declared hash; an absent provenance file is skipped (it is optional).
       6b. Optionally (`check_logo`) the `logo`, if declared and present on disk, matches its declared
          hash; an absent logo is skipped (it is optional and out of `artifact.digest`).
+      6c. Optionally (`check_readme`) the `readme`, on the same terms as the logo. This is the check
+         that makes a served readme verifiable: a registry serving a file whose hash nothing records
+         is serving something nobody can check, which is why the field exists rather than the bytes
+         merely sitting on disk.
       7. Signature (SPEC §5): if `public_key` (base64 raw) is given, the manifest MUST carry a
          signature over `artifact.digest` made by that key. If a signature is present but no key is
          pinned, it is verified for self-consistency only.
@@ -373,6 +386,16 @@ def verify_manifest(
                 raise IntegrityError(
                     f"logo hash mismatch for {manifest.logo.name}: "
                     f"declared {manifest.logo.sha256}, computed {actual}"
+                )
+
+    if check_readme and manifest.readme is not None:
+        path = module_dir / manifest.readme.name
+        if path.is_file():  # readme is optional — an absent one is not a failure
+            actual = sha256_file(path)
+            if actual != manifest.readme.sha256:
+                raise IntegrityError(
+                    f"readme hash mismatch for {manifest.readme.name}: "
+                    f"declared {manifest.readme.sha256}, computed {actual}"
                 )
 
     if manifest.signature is not None:

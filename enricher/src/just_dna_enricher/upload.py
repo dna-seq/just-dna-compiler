@@ -3,8 +3,8 @@
 Two publish shapes share one create-or-update pathway (``ensure_repo``):
 
 * **module** — a compiled module's artifacts (weights/annotations/studies.parquet + manifest.json,
-  and a logo if present) to ``datasets/<repo>/data/<name>/``, matching the layout just-dna-lite's
-  discovery scans (``upload_module``).
+  and a logo and readme if present) to ``datasets/<repo>/data/<name>/``, matching the layout
+  just-dna-lite's discovery scans (``upload_module``).
 * **reference snapshot** — a built ClinVar (or Ensembl) parquet snapshot + ``release.json`` to the
   root of a dataset repo, matching the ``download.ensure_*_snapshot`` layout
   (``publish_reference_snapshot``).
@@ -20,6 +20,7 @@ Extracted from ``just_dna_pipelines.v1_port.publish`` (just-dna-lite); ``create_
 
 from pathlib import Path
 
+from just_dna_format.manifest import README_CANDIDATES
 from pydantic import BaseModel, Field
 
 from just_dna_enricher.locations import (
@@ -29,9 +30,22 @@ from just_dna_enricher.locations import (
     SNAPSHOT_SIDECAR_DIRNAMES,
 )
 
-# weights/annotations/studies are what discovery needs; manifest.json + logo are additive.
+# weights/annotations/studies are what discovery needs; manifest.json + logo + readme are additive.
 _REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
-_ALLOW_PATTERNS = [*_REQUIRED, "manifest.json", "logo.png", "logo.jpg"]
+# **A manifest field whose bytes nobody uploads is a field that does not travel** — the same gap as
+# ClinVar's `citations/` and the ClinPGx `LICENSE.txt` below, and the reason `manifest.readme` (S25) is
+# named here in the same commit that adds it. The candidate list is imported rather than spelled out:
+# the compiler discovers a readme from `README_CANDIDATES` and this publisher must accept exactly the
+# set the compiler can produce, or an author who wrote `README.rst` publishes a manifest attesting a
+# file the repo does not carry. `logo.jpeg` is a pre-existing instance of that same skew, left alone
+# here because widening it is not this item's decision.
+_ALLOW_PATTERNS = [
+    *_REQUIRED,
+    "manifest.json",
+    "logo.png",
+    "logo.jpg",
+    *README_CANDIDATES,
+]
 # A reference snapshot is `data/*.parquet` + its optional parquet sidecars + `release.json` — the
 # `ensure_*_snapshot` layout, defined once in `locations` so the publisher and the provisioner cannot
 # disagree about it. **The sidecars were the gap this closes:** ClinVar's `citations/` was built and

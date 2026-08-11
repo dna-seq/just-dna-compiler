@@ -87,10 +87,16 @@ def test_ragged_row_with_surplus_cell_is_an_error(tmp_path: Path) -> None:
 def test_an_unknown_file_is_tolerated_and_changes_no_digest(spec_dir: Path, tmp_path: Path) -> None:
     """Unknown files in a spec directory are ignored — a stated contract, not an accident (S16).
 
-    A module may carry its own README (every `reference_examples/` module does) or a publisher's
-    receipt, whose keys cannot go in `module_spec.yaml` because `extra="forbid"` rejects them. The
-    guarantee consumers need is that such a file is neither read nor hashed, so the digest is
-    computed here rather than asserted: same spec, plus two unknown files, same digest."""
+    A module may carry a publisher's receipt or curation notes, whose keys cannot go in
+    `module_spec.yaml` because `extra="forbid"` rejects them. The guarantee consumers need is that such
+    a file is neither read nor hashed, so the digest is computed here rather than asserted: same spec,
+    plus two unknown files, same digest.
+
+    **`README.md` is the one that moved out of this class** (S25). It is now discovered, copied and
+    hashed into `manifest.readme` so a registry can serve and verify it — but it is still outside
+    `artifact.files`, so the digest guarantee below covers it unchanged. Both claims are asserted here
+    together, because "hashed" and "moves the digest" were the same sentence until they stopped being
+    the same sentence."""
     before = compile_module(spec_dir, tmp_path / "before", resolve_with_ensembl=False)
     assert before.success, before.errors
 
@@ -100,9 +106,13 @@ def test_an_unknown_file_is_tolerated_and_changes_no_digest(spec_dir: Path, tmp_
 
     assert after.success, after.errors
     assert after.manifest.artifact.digest == before.manifest.artifact.digest
+    assert after.manifest.content_signature == before.manifest.content_signature
     assert {f.name for f in after.manifest.artifact.files} == {
         f.name for f in before.manifest.artifact.files
     }
+    # The readme is attested; the receipt is genuinely ignored — that is the line the contract draws.
+    assert after.manifest.readme is not None and after.manifest.readme.name == "README.md"
+    assert before.manifest.readme is None
     assert validate_spec(spec_dir).valid
     # Tolerated means silent: no finding names a file the compiler has no meaning for.
     assert not [w for w in after.warnings if "README" in w or "published.json" in w]

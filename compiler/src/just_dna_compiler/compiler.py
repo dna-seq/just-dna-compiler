@@ -72,6 +72,8 @@ from just_dna_format.integrity import (
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
+    README_CANDIDATES,
+    README_EXTENSIONS,
     Compilation,
     Display,
     FileEntry,
@@ -421,6 +423,43 @@ def _collect_logo(
     ext = src.suffix.lower().lstrip(".")
     if ext not in LOGO_EXTENSIONS:
         raise ValueError(f"logo must be one of {sorted(LOGO_EXTENSIONS)}, got: {src.name!r}")
+    dest = output_dir / src.name
+    if dest.resolve() != src.resolve():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dest)
+    return file_entry(output_dir, src.name)
+
+
+def _collect_readme(
+    spec_dir: Path, output_dir: Path, explicit: Path | None
+) -> FileEntry | None:
+    """Discover an optional module readme, ship it, and hash it — the `_collect_logo` shape exactly.
+
+    Uses an explicit path if given, else the first of `manifest.README_CANDIDATES` found beside the
+    spec (`README.md` first). The file is copied into the module dir and returned as a hashed
+    `FileEntry` kept OUT of `artifact.digest` *and* out of `content_signature`, so correcting a
+    sentence is a PATCH rather than a new identity. Absent readme → `None`. Raises `ValueError` on an
+    unsupported extension.
+
+    **The exclusion is the point, not an oversight.** A readme is prose about the module, and the
+    alternative of putting it in `artifact.files` was rejected by the consumer who asked for this
+    (S25): on an immutable registry a fixed typo in a caveat would then cost a version number, and the
+    corrected module would collide with its own predecessor under a content-dedup check. Nothing here
+    reads the markup — the extension travels in the name for whoever renders it."""
+    if explicit is not None:
+        src: Path | None = Path(explicit)
+    else:
+        src = next(
+            (spec_dir / name for name in README_CANDIDATES if (spec_dir / name).is_file()),
+            None,
+        )
+    if src is None or not src.is_file():
+        return None
+    ext = src.suffix.lower().lstrip(".")
+    if ext not in README_EXTENSIONS:
+        raise ValueError(
+            f"readme must be one of {sorted(README_EXTENSIONS)}, got: {src.name!r}"
+        )
     dest = output_dir / src.name
     if dest.resolve() != src.resolve():
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1701,13 +1740,19 @@ _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
 def _check_misspelled_tables(spec_dir: Path) -> list[str]:
     """Warn when an unknown `.csv` is one small edit from a table name the compiler knows.
 
-    **Unknown files are ignored on purpose and that is a contract** (S16): a module may carry its own
-    README, notes, or a publisher's receipt, none of which is in `artifact.files` and so none of which
+    **Unknown files are ignored on purpose and that is a contract** (S16): a module may carry curation
+    notes or a publisher's receipt, neither of which is in `artifact.files` and so neither of which
     moves the digest. The hazard is the narrow case where "ignored" is the wrong answer — a *mistyped
     table name*. `varaints.csv` is silently not a table, so the author's rows are dropped and the
     compile is green, which is the silent-success shape this codebase treats as the worst kind of
     mistake. Probed on a real spec: three extra files, including that typo, produced no message and an
     unchanged digest.
+
+    A `README.md` was the headline example of a tolerated file until S25 gave it a manifest field, and
+    it is now *collected* — copied into the module dir and hashed into `manifest.readme`. That changes
+    nothing here (the check reads only `.csv` names) but the two claims are no longer the same claim:
+    a readme is read and hashed, and still moves no digest, because `manifest.readme` sits outside
+    `artifact.files` exactly as `logo` does.
 
     Deliberately keyed on **near miss** rather than on "unknown csv": warning about every unrecognised
     file would fire on the legitimate sidecars the contract exists to permit, so the check has to be
@@ -1724,8 +1769,8 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
             warnings.append(
                 f"{path.name} is not a table this compiler reads, and it is one small edit from "
                 f"{close[0]!r} — if that is a typo, every row in it is being silently ignored. "
-                f"Unknown files are otherwise tolerated (a README or a publisher's receipt is fine): "
-                f"nothing outside the known table set is read, hashed, or in artifact.digest."
+                f"Unknown files are otherwise tolerated (curation notes or a publisher's receipt are "
+                f"fine): nothing outside the known table set reaches artifact.digest."
             )
     return warnings
 
@@ -2112,6 +2157,7 @@ def compile_module(
     log_files: list[Path] | None = None,
     provenance_file: Path | None = None,
     logo_file: Path | None = None,
+    readme_file: Path | None = None,
     authority_keys: Iterable[str] | None = None,
     strict: bool = False,
     ba1_threshold: float = BA1_ALLELE_FREQUENCY_THRESHOLD,
@@ -2141,6 +2187,10 @@ def compile_module(
             `spec_dir/provenance.json`. Optional; summarized into `manifest.provenance`.
         logo_file: Explicit module logo image. If None, auto-discovers `spec_dir/logo.{png,jpg,jpeg}`.
             Optional; hashed into `manifest.logo`, kept out of `artifact.digest`.
+        readme_file: Explicit module readme. If None, auto-discovers the first of
+            `manifest.README_CANDIDATES` (`README.md` first) beside the spec. Optional; hashed into
+            `manifest.readme`, kept out of `artifact.digest` and `content_signature` — prose about the
+            module is not part of its identity, so fixing a caveat is a patch (S25).
         authority_keys: Inject-only set of consumer/registry-owned identity keys to strip from the
             authored `module:` block before validation (e.g. `just_dna_format.normalize.
             IDENTITY_AUTHORITY_KEYS`). None strips nothing.
@@ -2526,6 +2576,10 @@ def compile_module(
         logo = _collect_logo(spec_dir, output_dir, logo_file)
     except ValueError as exc:
         return CompilationResult(success=False, errors=[str(exc)], warnings=all_warnings)
+    try:
+        readme = _collect_readme(spec_dir, output_dir, readme_file)
+    except ValueError as exc:
+        return CompilationResult(success=False, errors=[str(exc)], warnings=all_warnings)
     # Content identity over the RAW authored data (re-read from disk, so pre-resolution and
     # reference-independent — the in-scope `variants` here are already resolved). Out of
     # `artifact.digest`; lets a registry dedup across recompile/metadata-strip.
@@ -2541,6 +2595,7 @@ def compile_module(
         logs=logs,
         provenance=provenance,
         logo=logo,
+        readme=readme,
         content_sig=content_signature(spec_dir),
         resolution_mode=resolution_mode,
         fully_resolved=fully_resolved,
@@ -2798,6 +2853,7 @@ def _build_manifest(
     logs: list[FileEntry],
     provenance: Provenance | None,
     logo: FileEntry | None,
+    readme: FileEntry | None = None,
     content_sig: str | None = None,
     resolution_mode: str | None = None,
     fully_resolved: bool = False,
@@ -2871,6 +2927,7 @@ def _build_manifest(
         panel=config.panel,
         authorship=config.authorship,
         logo=logo,
+        readme=readme,
     )
 
 

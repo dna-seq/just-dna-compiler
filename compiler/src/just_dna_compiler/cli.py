@@ -206,6 +206,9 @@ def verify(
         False, "--check-provenance", help="Also hash the provenance document, if declared and present."
     ),
     check_logo: bool = typer.Option(False, "--check-logo", help="Also hash the logo, if declared."),
+    check_readme: bool = typer.Option(
+        False, "--check-readme", help="Also hash the readme, if declared."
+    ),
 ) -> None:
     """Verify a compiled module against its manifest (SPEC §5 verify-then-install). Exit 1 on failure.
 
@@ -225,6 +228,7 @@ def verify(
             check_logs=check_logs,
             check_provenance=check_provenance,
             check_logo=check_logo,
+            check_readme=check_readme,
             public_key=public_key,
         )
     except IntegrityError as exc:

@@ -43,6 +43,21 @@ VALID_ICON_SETS: frozenset[str] = frozenset({"fomantic", "awesome"})
 # Accepted raster logo extensions (lowercase, no dot).
 LOGO_EXTENSIONS: frozenset[str] = frozenset({"png", "jpg", "jpeg"})
 
+# Accepted readme extensions (lowercase, no dot). The markup is not parsed anywhere in this
+# workspace — the extension travels in `FileEntry.name` so a consumer *rendering* the prose can tell
+# markdown from plain text without sniffing the bytes.
+README_EXTENSIONS: frozenset[str] = frozenset({"md", "txt", "rst"})
+# Stems, in discovery precedence: the conventional uppercase spelling first.
+README_STEMS: tuple[str, ...] = ("README", "readme")
+# The full candidate set in discovery order, defined **once** because three parties must agree on it:
+# the compiler discovers a readme, the enricher's publisher decides whether to upload it, and a
+# registry decides what it may serve. A hand-kept second copy is the `locations` failure mode — every
+# disagreement there was silent (a sidecar built and never published), and this file is on the same
+# path. Stem is the outer loop, so `README.txt` beats `readme.md`; extensions sort `md` first.
+README_CANDIDATES: tuple[str, ...] = tuple(
+    f"{stem}.{ext}" for stem in README_STEMS for ext in sorted(README_EXTENSIONS)
+)
+
 # A curated authoring palette (RM9): recommended `Display.color`/`icon` values by semantic use, so an
 # authoring UI / LLM picks from one shared set instead of inventing its own (just-dna-agents' MCP
 # `list_colors`/`list_icons` are the drift this replaces). Recommendation only — NOT enforced: `color`
@@ -664,6 +679,19 @@ class ModuleManifest(BaseModel):
             "Optional module logo image (png/jpg/jpeg), hashed like `inputs`. Kept OUT of "
             "`artifact.digest` so a logo swap is a PATCH (metadata only), not a new content "
             "identity. Consumers fall back to `display.icon`/`icon_set` when absent."
+        ),
+    )
+    readme: FileEntry | None = Field(
+        default=None,
+        description=(
+            "Optional module readme (md/txt/rst), hashed like `logo` and kept OUT of both identity "
+            "halves — `artifact.digest` and `content_signature` — so correcting a caveat is a PATCH "
+            "and never mints a new content identity. Prose ABOUT the module, never part of its "
+            "content: the reason it is a `FileEntry` rather than text inlined into `display` is that "
+            "a readme is unbounded (a small module's readme can outweigh its data) while `display` "
+            "is inlined into every card and listing a catalog serves. Being listed and hashed here "
+            "is what lets a registry, an installer or a mirror serve and verify the file at all; "
+            "prose that only a catalog database knows is prose no manifest consumer can reach."
         ),
     )
     signature: Signature | None = Field(

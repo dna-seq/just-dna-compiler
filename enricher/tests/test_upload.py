@@ -14,6 +14,7 @@ from just_dna_enricher.upload import (
     publish_reference_snapshot,
     upload_module,
 )
+from just_dna_format.manifest import README_CANDIDATES
 
 _REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
 
@@ -50,6 +51,24 @@ def test_plan_upload_lists_present_artifacts(tmp_path: Path) -> None:
             "logo.png",
         ],
     )
+
+
+def test_plan_upload_carries_the_readme_the_compiler_attests(tmp_path: Path) -> None:
+    """A manifest field whose bytes nobody uploads is a field that does not travel (S25).
+
+    `manifest.readme` would otherwise attest a file this publisher leaves behind — the same silent gap
+    as ClinVar's unpublished `citations/` and ClinPGx's dropped `LICENSE.txt`. The allowlist is checked
+    against the compiler's own discovery set rather than a copy of it, so a stem or extension the
+    compiler can produce cannot fall out of what the publisher sends."""
+    module_dir = _compiled_module(tmp_path / "candidates")
+    (module_dir / "README.md").write_text("# candidate findings\n", encoding="utf-8")
+    assert "README.md" in plan_upload(module_dir, "candidates").files
+
+    # Every spelling the compiler will discover is a spelling the publisher accepts.
+    for name in README_CANDIDATES:
+        alt = _compiled_module(tmp_path / f"m-{name}")
+        (alt / name).write_text("prose\n", encoding="utf-8")
+        assert name in plan_upload(alt, "m").files, name
 
 
 def test_plan_upload_rejects_missing_required(tmp_path: Path) -> None:

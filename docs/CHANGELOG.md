@@ -34,6 +34,61 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-12 — 0.6.0: `manifest.readme`, so a module's prose can travel with it
+
+**The first change in this line whose legal release is a *minor*, and the version is therefore not
+bumped here** — all three packages still read 0.5.4 and cutting a release is the user's call. A new
+optional manifest field is additive under Principle 3 (the 2026-08-11 amendment): existing modules keep
+validating, `schema_version` is unchanged, and the field is out of `artifact.digest` entirely, so it is
+cheaper than a column. That makes it minor, not patch, purely because it is a new field rather than a
+better diagnosis on an existing path.
+
+**S25, reported by `just-dna-registry` relaying `just-module-creator`.** A publisher shipped a
+`README.md` beside `module_spec.yaml`; the registry stored the bytes and then could neither serve them
+nor tarball them, because both paths are defined over *what the manifest attests* and `ModuleManifest`
+had no field for a readme. `logo` was the precedent and the asymmetry was pure accident of history: a
+logo can be listed, hashed, fetched, verified and swapped; prose with all the same properties had none
+of the machinery. The motivating module is an 11-row set of explicitly *candidate* findings — most from
+a preprint, one association not significant — where the README saying so is the single most important
+artefact for anyone deciding whether to install it, and it was the one thing that could not travel.
+
+`readme: FileEntry | None` mirrors `logo` exactly: discovered from `manifest.README_CANDIDATES`
+(`README.md` first, then the other stem and `md`/`rst`/`txt` in a fixed order, so two readmes on disk
+cannot resolve by luck), copied into the module dir, hashed, and **outside both identity halves** —
+`artifact.files`, hence `artifact.digest`, and `content_signature`. `verify_manifest(check_readme=True)`
+and `just-dna-compiler verify --check-readme` re-hash it.
+
+**Both identities, not just the digest, because the reporter's own argument needs both.** They rejected
+putting `README.md` in `artifact.files` themselves: on an immutable registry a corrected typo in a
+caveat would then cost a version number, and the corrected module would collide with its own predecessor
+under a name-independent content-dedup check. That only holds if prose stays out of `content_signature`
+too, so the tests compute both and a dedicated case rewrites a readme and asserts only its own hash
+moves. Measured on six real reference examples against a baseline worktree: `artifact.digest`,
+`content_signature` and `resolution_signature` byte-identical, each now attesting its `README.md`.
+Inlining the text into `display` was rejected for the reporter's reason — a readme is unbounded (this
+one outweighs its module's data) while `display` is inlined into every card a catalog serves.
+
+**The publisher was the gap that would have made the field decorative.** `upload._ALLOW_PATTERNS` had
+`logo.png`/`logo.jpg` and no readme, so a manifest would have attested a file the HuggingFace repo did
+not carry — the same silent shape as ClinVar's unpublished `citations/` and ClinPGx's dropped
+`LICENSE.txt`. It now imports `README_CANDIDATES` rather than copying it, so a spelling the compiler can
+discover cannot fall out of what the publisher sends. (`logo.jpeg` is a pre-existing instance of that
+skew, left alone: widening it is not this item's decision.)
+
+Two adjacent corrections, both found by reading rather than reported:
+
+- **`integrity.artifact_digest`'s docstring still called the digest "the version's immutable *content*
+  identity"** — the exact wording S7 got corrected in SCHEMAS.md, against Principle 4, which makes the
+  digest the **byte** identity and `content_signature` the content one. The docs were fixed when a
+  consumer made that misreading; the code copy outlived the fix, next to the field whose whole design
+  turns on the distinction.
+- **`_check_misspelled_tables` advertised a README as the headline *tolerated* file** ("nothing outside
+  the known table set is read, hashed, or in artifact.digest"). A readme is now read and hashed and
+  still moves no digest, so the message names curation notes and a publisher's receipt instead, and the
+  claim narrows to the one that is still true. S16's test asserts both halves together now.
+
+Suite 1442 → 1448 (six new tests); every reference example still recompiles byte-identically.
+
 ## 2026-08-11 (later still) — S24: the gene a row names, against the chromosome its variant sits on
 
 `just-dna-enricher`. `variants.csv` carries a `gene` column and nothing compared it to anything.

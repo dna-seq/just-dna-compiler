@@ -10,6 +10,7 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module
 from just_dna_format.integrity import IntegrityError, sha256_file, verify_manifest
+from just_dna_format.manifest import README_CANDIDATES
 from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem, sign_digest
 
 _YAML = """\
@@ -59,7 +60,7 @@ _PROVENANCE = {
 
 
 def _write_spec(
-    d: Path, *, provenance: bool = True, logo: bool = True
+    d: Path, *, provenance: bool = True, logo: bool = True, readme: bool = True
 ) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     (d / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
@@ -69,6 +70,11 @@ def _write_spec(
         (d / "provenance.json").write_text(json.dumps(_PROVENANCE), encoding="utf-8")
     if logo:
         (d / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n fake-logo-bytes")
+    if readme:
+        (d / "README.md").write_text(
+            "# demo2\n\nCandidate findings only — one association is not significant.\n",
+            encoding="utf-8",
+        )
     return d
 
 
@@ -134,13 +140,92 @@ def test_logo_hashed_and_shipped(tmp_path: Path) -> None:
     assert "logo.png" not in {f.name for f in m.artifact.files}
 
 
-def test_optional_files_do_not_change_digest(tmp_path: Path) -> None:
+def test_readme_hashed_and_shipped(tmp_path: Path) -> None:
+    """`manifest.readme` mirrors `logo`: shipped beside the parquet, hashed, out of the digest (S25).
+
+    The field exists so prose can be *served and verified* by anything reading manifests — a registry,
+    an installer, a mirror. Before it, a publisher's README sat on disk attested by nothing, so a
+    registry that (rightly) refuses to serve files it cannot hash could not serve it at all."""
+    out = tmp_path / "o"
+    m = _compile(_write_spec(tmp_path / "s"), out)
+    assert m.readme is not None
+    assert m.readme.name == "README.md"
+    assert (out / "README.md").is_file()
+    assert m.readme.sha256 == sha256_file(out / "README.md")
+    assert m.readme.size == (out / "README.md").stat().st_size
+    # Prose is not content: out of artifact.files, so out of the digest.
+    assert "README.md" not in {f.name for f in m.artifact.files}
+    # And not an input either — `inputs[]` is the authored data, which a readme is not.
+    assert "README.md" not in {f.name for f in m.inputs}
+
+
+def test_readme_discovery_prefers_the_conventional_spelling(tmp_path: Path) -> None:
+    """Discovery order is fixed and stated, because two candidates on disk must not pick by luck.
+
+    `README_CANDIDATES` puts the uppercase stem first and sorts extensions (`md` before `rst`/`txt`),
+    so a directory carrying several readmes resolves the same way on every machine — the deterministic
+    -ordering rule the rest of this codebase applies to emitted rows applies to a discovered file too."""
+    spec = _write_spec(tmp_path / "s", readme=False)
+    (spec / "readme.md").write_text("lowercase\n", encoding="utf-8")
+    (spec / "README.txt").write_text("plain text\n", encoding="utf-8")
+    (spec / "README.md").write_text("the conventional one\n", encoding="utf-8")
+
+    m = _compile(spec, tmp_path / "o")
+    assert m.readme is not None
+    assert m.readme.name == "README.md"
+    assert README_CANDIDATES[0] == "README.md"
+    # A non-markdown readme is still legal — the extension travels for whoever renders it.
+    alt = _write_spec(tmp_path / "s2", readme=False)
+    (alt / "README.rst").write_text("Title\n=====\n", encoding="utf-8")
+    assert _compile(alt, tmp_path / "o2").readme.name == "README.rst"
+
+
+def test_unsupported_readme_extension_rejected(tmp_path: Path) -> None:
+    spec = _write_spec(tmp_path / "s", readme=False)
+    doc = spec / "README.docx"
+    doc.write_bytes(b"PK\x03\x04not-really-a-docx")
+    result = compile_module(
+        spec, tmp_path / "o", resolve_with_ensembl=False, readme_file=doc
+    )
+    assert not result.success
+    assert any("readme must be one of" in e for e in result.errors)
+
+
+def test_optional_files_do_not_change_either_identity(tmp_path: Path) -> None:
+    """Both halves of identity, not just the digest — the property S25's reporter reasoned from.
+
+    They rejected putting `README.md` in `artifact.files` themselves, because on an immutable registry
+    a corrected caveat would then cost a version number and the fixed module would collide with its
+    own predecessor under a content-dedup check. That argument only holds if the readme stays out of
+    `content_signature` too, so this computes both rather than asserting the digest alone."""
     full = _compile(_write_spec(tmp_path / "full"), tmp_path / "of")
     bare = _compile(
-        _write_spec(tmp_path / "bare", provenance=False, logo=False), tmp_path / "ob"
+        _write_spec(tmp_path / "bare", provenance=False, logo=False, readme=False),
+        tmp_path / "ob",
     )
-    # provenance.json + logo.png are out of artifact.digest → identical content identity.
+    # provenance.json + logo.png + README.md are out of artifact.digest → identical byte identity.
     assert full.artifact.digest == bare.artifact.digest
+    assert full.content_signature == bare.content_signature
+    assert full.readme is not None and bare.readme is None
+
+
+def test_editing_the_readme_moves_no_identity(tmp_path: Path) -> None:
+    """The motivating case: fixing a typo in a caveat must be a patch, not a new version.
+
+    Same authored data, a rewritten readme. Both identities must be byte-identical and only the
+    readme's own hash may move — otherwise a publisher correcting a sentence mints a module that
+    collides with its predecessor."""
+    spec = _write_spec(tmp_path / "s")
+    first = _compile(spec, tmp_path / "o1")
+    (spec / "README.md").write_text(
+        "# demo2\n\nCandidate findings only — one association is **not** significant.\n",
+        encoding="utf-8",
+    )
+    second = _compile(spec, tmp_path / "o2")
+
+    assert second.artifact.digest == first.artifact.digest
+    assert second.content_signature == first.content_signature
+    assert second.readme.sha256 != first.readme.sha256
 
 
 def test_unsupported_logo_extension_rejected(tmp_path: Path) -> None:
@@ -156,11 +241,31 @@ def test_unsupported_logo_extension_rejected(tmp_path: Path) -> None:
 def test_verify_manifest_checks_optional_files(tmp_path: Path) -> None:
     out = tmp_path / "o"
     m = _compile(_write_spec(tmp_path / "s"), out)
-    verify_manifest(out, m, check_logs=True, check_provenance=True, check_logo=True)
+    verify_manifest(
+        out, m, check_logs=True, check_provenance=True, check_logo=True, check_readme=True
+    )
 
     (out / "provenance.json").write_text("tampered", encoding="utf-8")
     with pytest.raises(IntegrityError, match="provenance hash mismatch"):
         verify_manifest(out, m, check_provenance=True)
+
+
+def test_verify_catches_a_tampered_readme(tmp_path: Path) -> None:
+    """A served readme must be *verifiable*, which is the whole reason it is a hashed `FileEntry`.
+
+    Also pins the tri-state the other optional assets use: an absent readme is skipped rather than
+    failed, since a consumer may legitimately not download one."""
+    out = tmp_path / "o"
+    m = _compile(_write_spec(tmp_path / "s"), out)
+
+    (out / "README.md").write_text("substituted prose\n", encoding="utf-8")
+    with pytest.raises(IntegrityError, match="readme hash mismatch"):
+        verify_manifest(out, m, check_readme=True)
+    # Off by default: the same tampered file passes when the caller did not ask.
+    verify_manifest(out, m)
+
+    (out / "README.md").unlink()
+    verify_manifest(out, m, check_readme=True)  # absent ≠ failed
 
 
 def test_signed_manifest_verifies_with_pinned_key(tmp_path: Path) -> None:

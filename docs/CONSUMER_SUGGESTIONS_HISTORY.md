@@ -42,6 +42,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S22** hg19 literature has no path into a GRCh38 module — filed RM48 (0.6)
 - **S23** a hand-declared literature source warns as an orphan — shipped 0.5.4
 - **S24** nothing checks a variant is on its named gene's chromosome — shipped 0.5.4
+- **S25** the manifest attests a logo but not a readme — in tree, lands 0.6.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -1955,3 +1956,88 @@ labelled as requiring a lookup outside the toolchain, and tracked it as `F23`. W
 gene-coordinate lookup on our side: it would be a second source of truth for something
 `identifiers.py` is already positioned to answer, and the value is in the comparison rather than in the
 lookup.
+
+# Field notes from just-dna-registry — publishing a module's prose, 2026-08-12
+
+## S25 — the manifest can carry a module's logo but not its prose, so a readme reaches no downstream reader
+
+**Status — accepted as asked, shipped in the tree; it lands in 0.6.0.** `readme: FileEntry | None` is
+on `ModuleManifest`, mirroring `logo` in every respect you named, including exclusion from
+`artifact.digest` *and* `content_signature`. Reproduced first: no field existed, and `README.md` was
+the headline example in the compiler's own "unknown files are tolerated" message, so the bytes really
+did stop at whatever the registry chose to keep.
+
+What ships: the compiler discovers a readme beside the spec, copies it into the module dir and hashes
+it (`manifest.README_CANDIDATES` — `README.md` first, then the lowercase stem and `md`/`rst`/`txt` in a
+fixed order, so a directory with two readmes cannot resolve by luck); `verify_manifest(check_readme=
+True)` and `just-dna-compiler verify --check-readme` re-hash it, which is what makes your `/files/{path}`
+guard satisfiable rather than something to weaken. **You were right to keep that guard** — the fix was
+the missing attestation, not the refusal to serve unhashed bytes.
+
+Your two rejections are both upheld, and one of them shaped the tests. Prose stays out of
+`artifact.files` for exactly the reason you gave, and since that argument only holds if it also stays
+out of `content_signature`, the tests compute **both** identities rather than the digest alone, plus a
+case that rewrites a readme and asserts only its own hash moves. Measured on six real reference
+examples against a baseline worktree: `artifact.digest`, `content_signature` and
+`resolution_signature` byte-identical, each now attesting its `README.md`. `display` stays uninlined
+for your reason too.
+
+One thing you could not have seen from outside: the enricher's HuggingFace publisher allowlisted
+`logo.png`/`logo.jpg` and no readme, so the field alone would have attested a file the repo did not
+carry — the same silent shape as a snapshot sidecar we once built and never published. It now imports
+the same candidate list the compiler discovers from.
+
+**What to do now.** Nothing on your side is wrong: keep the catalog projection and the amend route,
+and once 0.6.0 is cut, read `manifest.readme` as the source of truth and let the DB copy be a
+projection again. The version is **not** bumped in the tree — a new optional manifest field is minor
+under Principle 3, and cutting a release is the maintainer's call, so `0.6.0` names the release this
+will ship in rather than a state you can install today. Your test that pins the limitation should flip
+to asserting the field; it is the one that will tell you the moment it is real.
+<!-- triaged: 0.6.0 · sha ece792dfe14f -->
+
+**Filed by:** `just-dna-registry` (relaying a case from `just-module-creator`) · **Found:** 2026-08-12,
+implementing module readmes · **Versions:** format 0.5.0 / compiler 0.5.3
+
+**What we ran.** A publisher ships a `README.md` beside `module_spec.yaml`. The registry stores every
+non-parquet spec file under the version key, so the bytes are there on disk. We then tried to serve
+that file and to include it in the module tarball, and could do neither — both of those paths are
+defined over **what the manifest attests**, and `ModuleManifest` has no field for a readme.
+
+**Why this is a manifest question rather than a registry one.** `logo` is the exact precedent, and it
+is already yours: `logo: FileEntry | None`, out of `artifact.digest`, amendable without a version
+bump. Because that field exists, a logo can be listed, hashed, fetched, verified and swapped. A
+readme has all the same properties — prose *about* the module, not part of its content identity — and
+none of the same machinery, purely because there is no field. The asymmetry is not one any consumer
+can fix on its own: a registry can keep the text in its own database (we now do), but then the
+manifest has stopped being the source of truth for something a reader wants, and anyone consuming
+manifests directly — an installer, a mirror, a second registry — gets nothing at all.
+
+**What we would ask for:** `readme: FileEntry | None` on `ModuleManifest`, mirroring `logo` in every
+respect, including its exclusion from `artifact.digest` and from `content_signature`.
+
+**The arguments against our own option, since they are the useful part:**
+
+- **Inline the text in `display` instead.** Rejected: a readme is unbounded prose — the case that
+  motivated this is an 11-row module whose README is longer than its data — and `display` is inlined
+  into every card and listing we serve. A `FileEntry` keeps the manifest a manifest.
+- **Just put `README.md` in `artifact.files`.** Rejected, and this is the one that would actively
+  hurt: it would enter `artifact.digest`, so fixing a typo in a caveat would mint a new content
+  identity. On an immutable registry that means a corrected sentence costs a version number, and the
+  corrected module then collides with its own predecessor under the name-independent duplicate check.
+  Prose must stay out of the digest, which is exactly the property `logo` already has.
+- **Leave it to each registry.** This is what we shipped, and we are not comfortable with it: it makes
+  our catalog DB carry a fact no manifest records, which is the one shape our own guidelines say a
+  projection must never have.
+
+**What we did meanwhile (registry 0.14.0).** Publish reads `README.md` from the spec and projects it
+onto the module card; `POST .../versions/{v}/readme` amends it without a version bump. The bytes are
+stored, but our `/files/{path}` route and our tarball builder both refuse to serve what the manifest
+does not list, and we deliberately did **not** weaken that guard to paper over the missing field — a
+file we serve without a recorded hash is a file nobody can verify. So today the prose reaches a
+catalog card and stops there. A test in our suite pins that limitation rather than asserting it as
+desirable, so whoever lands this field on your side will find the test that documents it.
+
+**Naming the case, since we are relaying:** `just-module-creator` published an 11-row module of
+explicitly *candidate* findings — most from a preprint, one association not significant — and the
+README saying so is the single most important artefact for a reader deciding whether to install it.
+That is the thing that currently cannot travel with the module.
