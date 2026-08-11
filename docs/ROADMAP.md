@@ -612,6 +612,45 @@ every honest repair costs either a duplicated column set or a duplicated key. Se
 column follows in an afternoon. Whichever wins, the literature pass and `_cross_check_literature` have to
 learn about the new PMID site in the same release, or the format ships evidence it does not check.
 
+## RM48 — an hg19 coordinate has no supported path into a GRCh38 module, and liftover is the wrong primitive
+
+**Severity** low-medium (an authoring gap with a manual workaround, filed as a longshot by the
+reporter) · **Status** open — **0.6**, gated on choosing the primitive · **Owner** enricher (the
+recovery link + any provisioned asset) + format (`resolution.csv` provenance) · **Motivating case** an
+author curating from older literature with hg19 supplementary tables (S22 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Not RM15, and the distinction is the useful part.** RM15 is about supporting another build *as the
+module's build* — it changes `variant_key` semantics and every coordinate, which is why it is 1.0. What
+is missing here is one-way and authoring-time: the module stays GRCh38, only the author's input is
+hg19. It re-keys nothing, needs no GRCh37 refget table, and changes no published identity, so filing it
+under RM15 would park an additive tool behind a major-version blocker for no structural reason.
+
+**The reporter argues against their own request, and the argument holds.** Trace when liftover is
+actually reachable. If the paper gives an rsID, liftover is unnecessary and worse: authoring the rsID
+*produces* the independent second value `resolution._verify` cross-examines. So liftover is only
+reachable when there is no rsID and only an hg19 coordinate — and in exactly that case the lifted
+coordinate becomes the row's sole identity, with nothing independent to check it against. A liftover
+tool is therefore a generator of unverifiable-by-construction identities, which is the hazard class
+behind the 3,038-variant off-by-one this tree already paid for. What the author wants is **rsID
+recovery**: given an hg19 `chrom:start:ref:alt`, return the rsID or say there is none, so they author
+an identity normal resolution can verify. Same input; it converts an unverifiable coordinate into a
+verifiable one using machinery the enricher already has.
+
+**Why it is not simply "do rsID recovery, then".** The recovery lookup is against a *build the enricher
+does not otherwise touch* — every link is gated on GRCh38 — so it needs either an hg19-keyed dbSNP
+surface or a chain file, and a chain file is a provisioned, pinned asset with its own licence and
+release, i.e. the whole snapshot apparatus for one authoring convenience. That is the design round, and
+it is what the version gate is on. Liftover survives only as the fallback for a locus with no rsID at
+all, where it must announce itself rather than emit a coordinate that looks authored.
+
+**One requirement whichever primitive wins, and it is already a shipped lesson.** The outcomes are
+**mapped**, **unmapped** and **ambiguous** (a coordinate lifting to several targets), and they must not
+collapse — `pyliftover` returns an empty list both for unmapped and for a missing chain file, which is
+byte-for-byte the fusing S20 fixed in this same resolution path on the same day. Whatever lands here
+returns three states, and the provenance goes in `resolution.csv`'s `source` column rather than being
+lost into an ordinary authored coordinate.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

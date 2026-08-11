@@ -34,6 +34,50 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-11 (later still) — S21/S23: the authoring surface could not describe the one table it tells you to write
+
+Two fixes and one roadmap item, all from a consumer's test run over the authoring surface, all folded
+into 0.5.4. Both fixes are about `sources.csv`, which is the only fact sidecar a **human** writes — the
+other three are produced by an enricher pass — and the only table the compile licence gate reads.
+
+**`authoring_reference()` did not describe it at all (S21, format + compiler).** The root was one level
+below the report: `SourceRow.layer` and `.declared_use` run closed-vocabulary validators while carrying
+no `vocabulary=` marker, and the guard that exists for exactly that
+(`test_every_enforced_vocabulary_field_declares_its_options`, which discovers enforcement by behaviour
+rather than from a list) never saw them, because it iterates `_ALL_MODELS` and `SourceRow` was not in
+it. One omission hid the other. Both markers now sit on the fields, the model is in the registry, and
+the guard covers it — demonstrated by stripping the markers and watching it name both fields, not
+asserted. An author left to reconstruct this table from a filename has to guess that
+`share_alike`/`commercial_use`/`redistribution` are three orthogonal axes where `None` means unknown
+rather than false, which is not a guessable shape; the reporter got it right only by reading
+`SourceRow.model_fields`, i.e. reading our source to learn our schema.
+
+The same probe found the compiler half, which nobody had filed: `draft.blank_template("sources.csv")`
+answered *"is not an authored table of this format"*. False, and said by the surface an author reaches
+for instead of the source. It is now in `DRAFTABLE`, with `(source, layer)` — the key
+`licensing.merge_sources_csv` already merges on — as its natural key, so a draft and the enricher
+cannot disagree about whether a row is already recorded.
+
+**And the compiler warned about the row the schema instructs you to write (S23, compiler).**
+`_source_checks` decides "no table used it" by reading the `source` **columns** of the generated
+tables. `studies.csv` has none, by the same design that already exempts the annotation layer, so a
+hand-declared `pubmed`/`europepmc` row could never be corroborated and was reported as unused —
+while deleting it, and shipping with the literature provenance unrecorded, was silent. Compliance
+warned, omission quiet, and an author following the warning ends up deleting the exact row the licence
+gate exists to read. A `literature`-layer row is now uncorroborable rather than orphaned whenever the
+module carries `studies.csv` rows. Narrow by construction: `frequency` still warns, because
+`frequencies.csv` is machine-written *with* a `source` column, so a frequency declaration in a module
+with no frequencies really is stale. Both directions pinned.
+
+**Filed, not built: [RM48](ROADMAP.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive) (S22, 0.6).**
+An author curating from older literature has hg19 coordinates and the module must be GRCh38, and
+nothing here converts. Filed as **rsID recovery** rather than liftover, on the reporter's own argument
+against their request: with an rsID liftover is unnecessary and strictly worse (the rsID *produces* the
+independent second value `resolution._verify` cross-examines), so liftover is only reachable where the
+lifted coordinate becomes the row's sole identity with nothing to check it against — the hazard class
+behind the 3,038-variant off-by-one. Not RM15, which changes the module's own build and every identity;
+this is one-way and authoring-time, hence additive and 0.6 rather than 1.0.
+
 ## 2026-08-11 (later) — S20: an unreachable Ensembl is unchecked, never absent
 
 `just-dna-enricher` only, folded into the same 0.5.4 cut. `EnsemblResolver.resolve_rsid` returned

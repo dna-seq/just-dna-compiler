@@ -2477,7 +2477,9 @@ def compile_module(
             if model is SourceRow:
                 continue
             used |= {getattr(r, "source", None) for r in parsed if getattr(r, "source", None)}
-        warns = _source_checks(rows, {s for s in used if s})
+        # `studies` is the module's own literature evidence, and it has no `source` column to join —
+        # so a literature-layer declaration beside it is uncorroborable rather than stale (S23).
+        warns = _source_checks(rows, {s for s in used if s}, literature_evidenced=bool(studies))
         warns.extend(_check_declared_license_agrees(rows, config.license if config else None))
         return [], warns
 
@@ -2639,7 +2641,9 @@ def _check_license_gate(rows: list[SourceRow]) -> list[str]:
     ]
 
 
-def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
+def _source_checks(
+    rows: list[SourceRow], used_sources: set[str], *, literature_evidenced: bool = False
+) -> list[str]:
     """Warning-only coherence for `sources.csv`. Never escalates under `strict`.
 
     Two findings, both mirroring the existing orphan-sidecar precedent (don't punish the author for
@@ -2661,10 +2665,22 @@ def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
     never be corroborated and was reported as stale on **every** drafted module — `clinvar_draft` and
     `pgx_draft` both write exactly one such row, and it is the row that makes the licence gate work.
     Warning that the load-bearing row looks unused is the opposite of useful.
+
+    **`literature` joins that exemption whenever the module's literature evidence is `studies.csv`
+    (S23).** The same argument, reached by the same route: `studies.csv` is the hand-curated literature
+    table and carries no `source` column *by the design the annotation exemption cites*, so a module
+    citing a PMID through it can never corroborate the service the curator read the record through.
+    Only `literature.csv` — which the enricher writes, with a `source` column — can, and a module that
+    has none has nothing to join. The old behaviour inverted the incentive exactly where it matters
+    most: `vocab.MISPLACED_COLUMN_REASONS['source']` tells an author to declare a hand-read source by
+    adding a row to `sources.csv`, and doing so earned a warning that the row is unused, while deleting
+    it — and shipping with the provenance unrecorded — was silent. Compliance warned, omission quiet.
+    An over-declaration here is the cheap error; an author talked out of recording their terms is not.
     """
     warnings: list[str] = []
     declared = {r.source for r in rows}
-    corroborable = {r.source for r in rows if r.layer != "annotation"}
+    uncorroborable = {"annotation", "literature"} if literature_evidenced else {"annotation"}
+    corroborable = {r.source for r in rows if r.layer not in uncorroborable}
     orphans = sorted(corroborable - used_sources)
     if orphans:
         warnings.append(

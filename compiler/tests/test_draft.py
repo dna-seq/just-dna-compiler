@@ -29,7 +29,7 @@ from just_dna_compiler.draft import (
     required_fields,
     stub_template,
 )
-from just_dna_format.base import authored_field_names
+from just_dna_format.base import authored_field_names, field_vocabularies
 from just_dna_format.binning import RepeatAlleleRow
 from just_dna_format.pgx import AlleleFunctionRow, DiplotypeRow
 from just_dna_format.spec import StudyRow, VariantRow
@@ -338,6 +338,41 @@ def test_a_template_never_offers_a_compiler_managed_column() -> None:
     assert {"rsid", "genotype", "state", "conclusion"} <= set(header)
 
 
+def test_the_one_hand_authored_sidecar_has_a_template(tmp_path: Path) -> None:
+    """S21. `sources.csv` is the only fact table a human starts from scratch, and the only one the
+    compile licence gate reads — so `blank_template` answering "is not an authored table of this
+    format" sent an author to read `SourceRow.model_fields` instead. The other three sidecars stay
+    out: an enricher pass writes them, so there is nothing to start."""
+    from just_dna_format.sources import SourceRow
+
+    header = blank_template("sources.csv").strip().split(",")
+    assert header == authored_field_names(SourceRow)
+    assert {"share_alike", "commercial_use", "redistribution", "declared_use"} <= set(header)
+    assert required_fields("sources.csv") == ["source", "layer"]
+    for produced in ("frequencies.csv", "gene_metrics.csv", "literature.csv"):
+        with pytest.raises(DraftError):
+            blank_template(produced)
+
+
+def test_a_second_row_for_the_same_source_and_layer_is_not_appended(tmp_path: Path) -> None:
+    """Its natural key is `(source, layer)` — the key `licensing.merge_sources_csv` merges on, so the
+    two writers cannot disagree about whether a row is already recorded. One source at two layers is
+    two rows, which is why the layer is in the key."""
+    from just_dna_format.sources import SourceRow
+
+    cpic = SourceRow(source="cpic", layer="annotation", license="CC-BY-SA-4.0", commercial_use=False)
+    first = append_rows(tmp_path, "sources.csv", [cpic])
+    again = append_rows(tmp_path, "sources.csv", [cpic])
+    other_layer = append_rows(
+        tmp_path, "sources.csv", [SourceRow(source="cpic", layer="frequency")]
+    )
+
+    assert len(first.added) == 1 and len(again.added) == 0
+    assert len(again.already_present) == 1
+    assert len(other_layer.added) == 1        # same source, different layer — a genuinely new row
+    assert (tmp_path / "sources.csv").read_text().count("cpic") == 2
+
+
 def test_an_unknown_table_kind_is_refused(tmp_path: Path) -> None:
     with pytest.raises(DraftError) as exc:
         append_rows(tmp_path, "pasta_recipes.csv", [])
@@ -431,10 +466,21 @@ _FILL_BY_KIND = {
 
 
 def _fill(kind: str, text: str) -> str:
-    """Replace every placeholder in a stub template with a valid value, preserving row order."""
+    """Replace every placeholder in a stub template with a valid value, preserving row order.
+
+    A column bound to a closed vocabulary takes a **member of it, read off the field's own marker**,
+    rather than an entry in `_FILL`. The fallback is `"1"`, which is valid for a number and for a free
+    string and for nothing else, so `sources.csv` arriving in `DRAFTABLE` (S21) failed here with
+    `layer: '1'`. Deriving it means the next vocabulary column is covered without editing this file —
+    the same reason `authoring_reference` reads markers instead of a hand-kept dict."""
     rows = list(csv.DictReader(io.StringIO(text)))
     fieldnames = list(rows[0])
-    values = {**_FILL, **_FILL_BY_KIND.get(kind, {})}
+    from_vocabulary = {
+        column: marker["options"][0]
+        for column, marker in field_vocabularies(model_for(kind)).items()
+        if marker["closed"] and marker["options"]
+    }
+    values = {**from_vocabulary, **_FILL, **_FILL_BY_KIND.get(kind, {})}
     for row in rows:
         for column, cell in row.items():
             if cell == TEMPLATE_PLACEHOLDER:

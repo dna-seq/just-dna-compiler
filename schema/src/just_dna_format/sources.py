@@ -37,6 +37,7 @@ contract for the same reason.
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.base import vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_DECLARED_USE,
@@ -94,7 +95,8 @@ class SourceRow(BaseModel):
             "Which layer this source contributed to (VALID_SOURCE_LAYERS). Only 'annotation' — the "
             "module's own authored tables — carries a derivative-work obligation; the fact sidecars "
             "report facts, not expression."
-        )
+        ),
+        json_schema_extra=vocabulary("source_layer", VALID_SOURCE_LAYERS),
     )
 
     # ── the terms ──
@@ -166,6 +168,7 @@ class SourceRow(BaseModel):
             "The use declared when the data was fetched (VALID_DECLARED_USE). A claim about the "
             "user, not about the licence — which is why it is a separate axis from the three flags."
         ),
+        json_schema_extra=vocabulary("declared_use", VALID_DECLARED_USE),
     )
 
     # ── provenance ──

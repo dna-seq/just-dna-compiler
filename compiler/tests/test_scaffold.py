@@ -13,13 +13,14 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
-from just_dna_compiler.draft import DRAFTABLE, DraftError
+from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for
 from just_dna_compiler.scaffold import (
     COMPANION_KINDS,
     MODULE_SPEC,
     module_spec_template,
     scaffold_module,
 )
+from just_dna_format.base import field_vocabularies
 from just_dna_format.spec import ModuleSpecConfig
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
@@ -33,9 +34,17 @@ _FILL_BY_KIND = {"allele_function.csv": {"allele": "*4"}, "haplotypes.csv": {"al
 
 
 def _fill_csv(path: Path) -> None:
+    """A closed-vocabulary column takes a member read off the field's own marker; everything else
+    falls back to `"1"`, which is valid for a number or a free string and for nothing else. Derived
+    rather than listed, so a new vocabulary column needs no edit here (S21 arrived as `layer: '1'`)."""
     rows = list(csv.DictReader(io.StringIO(path.read_text())))
     fieldnames = list(rows[0])
-    values = {**_FILL, **_FILL_BY_KIND.get(path.name, {})}
+    from_vocabulary = {
+        column: marker["options"][0]
+        for column, marker in field_vocabularies(model_for(path.name)).items()
+        if marker["closed"] and marker["options"]
+    }
+    values = {**from_vocabulary, **_FILL, **_FILL_BY_KIND.get(path.name, {})}
     for row in rows:
         for column, cell in row.items():
             if cell == TEMPLATE_PLACEHOLDER:
@@ -132,7 +141,11 @@ def test_the_companion_rule_matches_the_compilers_own_requirement(tmp_path: Path
 @pytest.mark.parametrize("kind", sorted(DRAFTABLE))
 def test_every_kind_can_be_scaffolded_and_filled(kind: str, tmp_path: Path) -> None:
     spec_dir = tmp_path / "spec"
-    plan = scaffold_module(spec_dir, kinds=[kind], name="demo")
+    # `sources.csv` is a licence sidecar, not a table a module can consist of — "no recognized table"
+    # is the right refusal for a module that is only a sources file — so it is scaffolded beside the
+    # SNP core. Every other kind stands alone (S21).
+    kinds = ["variants.csv", kind] if kind == "sources.csv" else [kind]
+    plan = scaffold_module(spec_dir, kinds=kinds, name="demo")
     assert (spec_dir / kind) in plan.created
     _fill_module(spec_dir)
     assert validate_spec(spec_dir).valid, validate_spec(spec_dir).errors

@@ -42,6 +42,7 @@ from just_dna_format.pgx import (
     HaplotypeRow,
     PharmVariantRow,
 )
+from just_dna_format.sources import SourceRow
 from just_dna_format.spec import (
     Defaults,
     ModuleInfo,
@@ -80,6 +81,16 @@ _PGX_MODELS: dict[str, type[BaseModel]] = {
     "PharmVariantRow": PharmVariantRow,
 }
 _PGS_MODELS: dict[str, type[BaseModel]] = {"PgsRow": PgsRow}
+# `sources.csv` is the one fact sidecar a HUMAN writes, so it belongs on the authoring surface even
+# though its row model is not an `AuthoredModel` (S21). Every other sidecar is produced by an
+# enricher pass, where omission costs an author nothing; this one the schema explicitly tells them to
+# hand-write — `MISPLACED_COLUMN_REASONS['source']` ends "to declare a source you read by hand, add a
+# ROW to sources.csv" — and it is the only table the compile licence gate reads. Left out, an author
+# reconstructing it from a filename has to guess that `share_alike`/`commercial_use`/`redistribution`
+# are three orthogonal axes where `None` means unknown rather than false, which is not a guessable
+# shape. The consumer who reported it got there by reading `SourceRow.model_fields` — reading our
+# source to learn our schema, which is the thing this module exists to make unnecessary.
+_FACT_MODELS: dict[str, type[BaseModel]] = {"SourceRow": SourceRow}
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,
@@ -87,6 +98,7 @@ _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_BINNING_MODELS,
     **_PGX_MODELS,
     **_PGS_MODELS,
+    **_FACT_MODELS,
 }
 
 

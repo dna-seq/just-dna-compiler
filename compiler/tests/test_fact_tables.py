@@ -1016,6 +1016,41 @@ def test_a_coordinate_only_source_does_not_taint(tmp_path: Path) -> None:
     assert block.commercial_use is True   # a fact, not expression — the module stays sellable
 
 
+def test_a_hand_declared_literature_service_is_not_an_orphan(tmp_path: Path) -> None:
+    """S23. `studies.csv` carries the module's literature evidence and has no `source` column — by the
+    same design that exempts the annotation layer — so a literature-layer declaration beside it can
+    never be corroborated and must not be reported as unused.
+
+    The defect was the *incentive*, which this asserts in both directions: declaring the service (what
+    `MISPLACED_COLUMN_REASONS['source']` instructs) warned, while omitting it was silent, so an author
+    following the warning deleted their own provenance."""
+    csv_text = (
+        _SRC_HDR
+        + "europepmc,literature,,Europe PMC,,,unstated\n"
+        + "pubmed,literature,,NCBI PubMed,,,unstated\n"
+    )
+    declared = compile_module(
+        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert declared.success, declared.errors
+    assert not [w for w in declared.warnings if "no table in this module uses" in w]
+
+    # And the rows are still carried — exempt from the orphan check is not dropped from the artifact.
+    assert {"europepmc", "pubmed"} <= set(declared.manifest.sources.sources)
+
+
+def test_a_frequency_declaration_with_no_frequencies_is_still_an_orphan(tmp_path: Path) -> None:
+    """The exemption is not a general softening: a `frequency`-layer row is corroborable, because
+    `frequencies.csv` is machine-written and carries a `source` column. With no such table there is
+    genuinely nothing the declaration describes, which is what the warning is for."""
+    csv_text = _SRC_HDR + "gnomad,frequency,,gnomAD,,true,unstated\n"
+    result = compile_module(
+        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
+    )
+    assert result.success, result.errors
+    assert [w for w in result.warnings if "no table in this module uses" in w]
+
+
 def test_a_permissive_source_cannot_launder_a_restricted_one(tmp_path: Path) -> None:
     """Most-restrictive-wins, module-wide."""
     csv_text = (

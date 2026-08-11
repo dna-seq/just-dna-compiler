@@ -38,6 +38,9 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S18** `inspect_rows` mis-parses a ragged row — shipped 0.5.4
 - **S19** binning thresholds have nowhere to cite — warning 0.5.4, filed RM47
 - **S20** a failed Ensembl request reads as a definite absence — shipped 0.5.4
+- **S21** the reference omits `SourceRow`, the hand-written table — shipped 0.5.4
+- **S22** hg19 literature has no path into a GRCh38 module — filed RM48 (0.6)
+- **S23** a hand-declared literature source warns as an orphan — shipped 0.5.4
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -1613,3 +1616,251 @@ not.
 on our side would mean either re-implementing the resolver or retrying blind, and neither belongs in a
 wrapper. Tracked as `F17` in `just-module-creator`, where the advice for now is to distrust a bare
 `loci: []` whenever `checked` lacks `ensembl-rest` — which is only actionable because I now know to look.
+
+# Field notes from just-module-creator — a test run over the authoring surface, 2026-08-11
+
+Three filed in one sitting while writing a two-table, literature-grounded module: the generated
+reference could not describe the one table a human hand-writes, the compiler warned about the row that
+schema text instructs them to write, and an hg19 supplementary table had nowhere to go. The first and
+third are both about a surface an author reaches for *instead of* reading our source, which is the
+point of having one.
+
+## S21 — `authoring_reference()` omits `SourceRow`, the one table an author is told to write by hand
+
+**Status — accepted; shipped in format + compiler 0.5.4.** Reproduced exactly, and the root turned out
+to be one level below the report. `SourceRow.layer` and `.declared_use` run closed-vocabulary
+validators while carrying **no `vocabulary=` marker**, so no generated surface could see them — and the
+guard that exists for precisely this (`test_every_enforced_vocabulary_field_declares_its_options`,
+which discovers enforcement by *behaviour*, not by a list) never covered them, because it iterates
+`_ALL_MODELS` and the model was not in it. One omission hid the other. Both markers are now on the
+fields, `SourceRow` is in the registry, and the guard covers it automatically: with the markers
+stripped it reports `SourceRow.layer` and `SourceRow.declared_use`, which is checked rather than
+asserted.
+
+Your first option is what shipped, not the `hand_authored_sidecars` alternative. A separate key would
+only be seen by consumers who learn to look for it, whereas `models` is what every existing reader
+already iterates — so the drift-proof property you were relying on does the delivery. The three
+permissions are asserted as `bool | None` in the test, because tri-state-where-`None`-means-unknown is
+exactly the part nobody reconstructs from a filename.
+
+**The probe found the other half of your F20, and it was ours.** `draft.blank_template("sources.csv")`
+answered *"'sources.csv' is not an authored table of this format"* — a false claim from the surface an
+author reaches for instead of reading our source, which is what you ended up doing. `sources.csv` is now
+in `DRAFTABLE`, so `blank_template`, `required_fields` and `authoring_requirements` all serve it; its
+natural key is `(source, layer)`, borrowed from `licensing.merge_sources_csv` so a draft and the
+enricher cannot disagree about whether a row is already recorded. The other three sidecars stay out on
+purpose — a pass writes them, so there is nothing for an author to start.
+
+Two consequences worth knowing. A module consisting *only* of `sources.csv` still refuses with "no
+recognized table", which is right — it is a licence sidecar, not a table a module can be made of. And
+your `list_tables`/`describe_table` inconsistency should resolve on its own once you are on 0.5.4, since
+both now resolve through the same registry.
+<!-- triaged: 0.5.4 · sha 53623ac0e6d3 -->
+
+**Reported by:** just-module-creator (`authoring_reference` / `describe_table` wrap this) ·
+**Found:** 2026-08-11, writing a `sources.csv` for a two-row literature-grounded module.
+
+**What I ran.** I needed `sources.csv`'s columns. The generated reference is documented as "every model,
+column, vocabulary and one-of rule at once", so I asked it:
+
+```python
+>>> from just_dna_format import reference
+>>> blob = json.dumps(reference.authoring_reference())
+>>> [p in blob for p in ('SourceRow', 'declared_use', 'share_alike', 'layer')]
+[False, False, False, False]
+```
+
+**What I expected.** `SourceRow` among the models, since `sources.py:74` defines it and it is a table a
+human writes.
+
+**What happened.** It is absent, along with every column and both of its vocabularies
+(`VALID_SOURCE_LAYERS`, `VALID_DECLARED_USE`). Only the bare string `"sources"` appears, from an
+unrelated field description.
+
+**Why this one stings.** `sources.csv` is the *only* fact sidecar a human is expected to author, and
+this tree says so itself. `MISPLACED_COLUMN_REASONS['source']` in `vocab.py:411` ends:
+
+> To declare a source you read by hand, add a ROW to sources.csv (whose own `source` column is the
+> subject of the row, and is what the licence gate and manifest.sources join on)
+
+So the schema instructs the author to hand-write a row in a table the generated reference does not
+describe. Every other sidecar is produced by a pass, where omission costs nothing; this one is not.
+
+It also compounds: `sources.csv` is the only thing the compile licence gate reads, and the house rule
+is that unknown terms are undetermined rather than permitted. An author guessing at the columns is
+guessing at the shape of the licence declaration — and `share_alike` / `commercial_use` /
+`redistribution` being a **three-axis** design with `None`-means-unknown is exactly the sort of thing
+nobody reconstructs correctly from a filename. I only got it right by importing `SourceRow` and
+reading `model_fields`, which is reading your source to learn your schema — the thing the generated
+reference exists to make unnecessary.
+
+**Candidate fix.** Include `SourceRow` in `authoring_reference()`'s `models`, and its two vocabularies
+in `vocabularies`. If the concern is that the generated reference means *authorable annotation tables*
+specifically, then a separate `hand_authored_sidecars` key carrying just this one would say the true
+thing more clearly than silence does.
+
+**A candidate I think is wrong:** documenting the columns in prose in `sources.py`'s module docstring
+and leaving the reference alone. The docstring is already good and it did not help — a consumer reaches
+for the generated reference precisely because prose drifts, and a column list maintained in two places
+is the drift this module's own comment (`vocab.py:409`, "a hand-kept list of models would be the drift
+this module keeps removing") says it exists to remove.
+
+**What I did meanwhile.** Read `SourceRow.model_fields` directly and wrote the two rows by hand,
+leaving all three licence flags empty so they stay UNKNOWN rather than asserting permission. Tracked as
+`F20` in just-module-creator, where the surface has a related and separate defect of its own:
+`list_tables` advertises `sources.csv` as a sidecar while `describe_table` and `get_template` both
+reject the name outright.
+
+## S22 — literature reports hg19 and a module must be GRCh38; there is no supported path between them (longshot)
+
+**Status — accepted as a real gap and filed as [RM48](ROADMAP.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive) (0.6). No code in 0.5.4.**
+Your framing is adopted whole, including the part that argues against your own request — the item is
+filed as *rsID recovery*, with liftover as the announced fallback, for the reason you give: with an
+rsID liftover is unnecessary and strictly worse, so it is only reachable in the case where the lifted
+coordinate becomes the row's sole identity with nothing independent to check it against. That is the
+hazard class behind the 3,038-variant off-by-one, and a tool that manufactures it would look official
+while being less checkable than your manual conversion.
+
+**The RM15 distinction is right and is why this could be filed at all.** RM15 changes the module's own
+build and therefore every identity, which is what makes it 1.0; a one-way authoring-time conversion
+re-keys nothing and is additive, so it sizes as 0.6. Filing it under RM15 would have parked it behind a
+major-version blocker for no structural reason — that observation is the most useful thing in the
+report.
+
+**What the item is gated on**, so the wait is legible rather than silent: the recovery lookup is against
+a build no link here touches (every one is gated on GRCh38), so it needs either an hg19-keyed dbSNP
+surface or a chain file — and a chain file is a provisioned, pinned asset with its own licence and
+release, i.e. the entire snapshot apparatus for one authoring convenience. Choosing that surface is the
+design round.
+
+And yes: three outcomes, mapped/unmapped/ambiguous. You filed S20 the same day about `([], None)`
+fusing two of them in this very code path, so the requirement is written into the roadmap item rather
+than left to be rediscovered.
+<!-- triaged: 0.5.4 · sha 71f8c7faea86 -->
+
+**Reported by:** just-module-creator · **Found:** 2026-08-11 · **Priority: low — filed as a longshot,
+not a request.** Nothing is broken; this is a use case with no answer yet, and we would rather it sat in
+your backlog than in ours.
+
+**The situation.** An author curating from older literature has hg19/GRCh37 coordinates in front of
+them, often from a supplementary table, and the module has to be GRCh38. Nothing in the four packages
+converts between them — no liftover, no chain file, no `pyliftover`; `sequences.py:14` mentions
+liftover only as a *cause* of a bad authored `ref`. So the author converts by hand, off-tool, and the
+result lands in `variants.csv` as an ordinary authored coordinate with nothing recording where it came
+from.
+
+**This is not RM15, and we think that distinction is the useful part of this note.** RM15 is
+`❌ — 1.0` and is about *supporting another build as the module's build* — it changes `variant_key`
+semantics and every coordinate, the identity-change class. What is wanted here is a **one-way,
+authoring-time** conversion: the module stays GRCh38, only the author's input is hg19. It re-keys
+nothing, needs no GRCh37 refget table, and changes no published identity. Filing it under RM15 would
+park a small additive tool behind a 1.0 blocker for no structural reason.
+
+**We think liftover is the wrong primitive, and would rather argue that than ask for it.** Trace when
+it is actually needed:
+
+- If the paper gives an rsID, liftover is unnecessary — author the rsID and let resolution find
+  GRCh38. Strictly better, because it *produces* the independent second value
+  `compiler.resolution._verify` needs.
+- So liftover is only reachable when there is **no rsID and only an hg19 coordinate**. And in exactly
+  that case the lifted coordinate becomes the row's sole identity, with nothing independent to check it
+  against. The only remaining check is `sequences.verify_reference_alleles`, online, which sees roughly
+  three rows in four.
+
+That makes a liftover tool a generator of unverifiable-by-construction identities — the hazard class
+behind the 3,038-variant off-by-one. **What the author actually wants is rsID recovery**: given hg19
+`chrom:start:ref:alt`, return the rsID (or that there is none), so they author an rsID and normal
+resolution does the rest. Same input, and it converts an unverifiable coordinate into a verifiable
+identity using machinery the enricher already has. Liftover then survives only as the fallback for a
+locus with no rsID at all, where it should say so loudly rather than quietly.
+
+**One hard requirement whichever primitive wins.** The outcomes are **mapped**, **unmapped**, and
+**ambiguous** (a coordinate that lifts to several targets), and they must not collapse — `pyliftover`
+returns an empty list for unmapped *and* for a missing chain, which is the same fusing we filed as
+`S20` today, in this same resolution path. If this ever gets built, `S20`'s shape is the thing to not
+repeat.
+
+**Chain files are the other reason we think this is yours rather than ours.** A chain file is a
+provisioned, pinned data asset, and the enricher already owns snapshot provisioning from HuggingFace;
+we own none. And `resolution.csv`'s `source` column is where a recovered-or-lifted coordinate's
+provenance has to land, which is your schema.
+
+**What we do meanwhile.** Nothing, and we are not planning a tool of our own — an authoring-side
+liftover that no reference check can see would be worse than the manual conversion it replaces, because
+it would look official. Our skill tells authors to prefer the rsID, which sidesteps the whole problem
+for the majority of rows.
+
+## S23 — a `sources.csv` row for a literature source is structurally an orphan, and the schema tells you to write it
+
+**Status — accepted; shipped in compiler 0.5.4, your narrower candidate.** Reproduced, and your reading
+of the mechanism is exactly right: `used_sources` is gathered from the `source` **columns** of the
+generated tables, `studies.csv` has none by the design `MISPLACED_COLUMN_REASONS['source']` states, so
+`pubmed` could never enter that set and the branch followed mechanically. A `literature`-layer row is
+now uncorroborable — and therefore not an orphan — whenever the module carries `studies.csv` rows.
+
+**The reason this was worth fixing at once rather than filing is the incentive, which you identified
+and which the table in your report measures.** Declaring the service warned; deleting it was silent. So
+the author who *reads* the warning ends up shipping with their literature provenance unrecorded, and
+nothing anywhere says so — the compiler talking an author out of the exact row the licence gate exists
+to read. An over-declaration is the cheap error here; that is not.
+
+This is the same exemption the annotation layer already had, reached by the same argument, which is
+what makes it narrow rather than a softening: `frequency` stays corroborable, because `frequencies.csv`
+is machine-written *with* a `source` column, so a frequency declaration in a module with no frequencies
+really is stale and still warns. Both directions are pinned by tests.
+
+Your rejected candidate is rejected here too, for your reason — a `source` column on `studies.csv`
+would contradict the design note directly, and a curated annotation's provenance is the module's rather
+than a per-row link. Nothing to do on your side beyond retiring `F21`'s note; your two rows were true
+and the warning was the thing that was wrong.
+<!-- triaged: 0.5.4 · sha 4630136804e6 -->
+
+**Reported by:** just-module-creator · **Found:** 2026-08-11, compiling a two-table module that cites
+one PMID. **Priority: low-to-medium** — no wrong data, but the warning steers an author toward deleting
+provenance.
+
+**What I ran.** A module with `variants.csv` (3 rows, one rsID), `studies.csv` (1 row, PMID 26287746),
+`resolution.csv`, and a `sources.csv` I hand-wrote covering the two literature services I read the
+record through. Compile, strict:
+
+```
+warnings: ["sources.csv declares 2 source(s) no table in this module uses: ['europepmc', 'pubmed']"]
+```
+
+**What I expected.** No warning. `MISPLACED_COLUMN_REASONS['source']` in `vocab.py:411` says, of a
+hand-authored fact table:
+
+> A hand-authored fact table has no such column by design … **To declare a source you read by hand, add
+> a ROW to sources.csv**
+
+I added exactly that row, and got told it is unused.
+
+**What happens, and why both directions are wrong.** `_orphan_sources` (`compiler.py:2671`) and the
+undeclared check (`compiler.py:2673`) both compare `declared` against `used_sources`, and
+`used_sources` is gathered from the `source` **columns** of the generated tables. `studies.csv` has no
+`source` column — by the design the quote above states — so `pubmed` can never enter `used_sources`.
+Both branches then follow mechanically:
+
+| `sources.csv` | compile says |
+|---|---|
+| carries a `pubmed` row (what `vocab.py` instructs) | **warning:** declares a source no table uses |
+| carries no `pubmed` row | **silence** — verified by deleting the file and recompiling: `warnings: []` |
+
+So compliance is warned and omission is silent. The direction of the incentive is the problem: an
+author who reads the warning deletes the row, and the module then ships with its literature provenance
+unrecorded and *nothing* to say so. That is the opposite of what the licence gate exists for, and it is
+reached by following the warning rather than by ignoring it.
+
+**Candidate fix.** Treat a `layer='literature'` row as used when `studies.csv` is non-empty — the
+module demonstrably consulted *some* literature service, and which one is not joinable precisely
+because a curated annotation's provenance is the module's rather than per-row. More generally: exempt
+layers whose tables carry no `source` column from the orphan check, since for those the join can only
+ever return nothing.
+
+**A candidate I think is wrong:** adding a `source` column to `studies.csv` so the join works. That
+contradicts `MISPLACED_COLUMN_REASONS['source']` directly, and its reasoning is right — a per-row link
+on a curated table is not what the provenance means.
+
+**What I did meanwhile.** Kept the two rows and left the warning standing, because the rows are true and
+the warning is not. Tracked as `F21` in just-module-creator, whose skill additionally asserts the
+*opposite* of the observed behaviour and is our own bug to fix.

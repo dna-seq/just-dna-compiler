@@ -211,6 +211,38 @@ def test_actionability_is_reported_closed_because_it_is_enforced() -> None:
     assert "actionability_seed" not in ref["open_recommended"]
 
 
+def test_the_one_hand_authored_sidecar_is_described() -> None:
+    """S21. `sources.csv` is the only fact sidecar a human writes — the schema's own
+    `MISPLACED_COLUMN_REASONS['source']` tells them to — and it is the only table the compile licence
+    gate reads, so an author left to guess its columns is guessing at a licence declaration.
+
+    The three permissions are asserted as **tri-state**, because that is the part nobody reconstructs
+    from a filename: `None` is UNKNOWN, never false, so a source whose terms could not be established
+    has not been shown to permit anything."""
+    from just_dna_format.sources import SourceRow
+
+    ref = authoring_reference()
+    described = {field["name"]: field for field in ref["models"]["SourceRow"]}
+
+    assert described.keys() == set(SourceRow.model_fields)   # no column left to guess at
+    assert [described[axis]["type"] for axis in ("share_alike", "commercial_use", "redistribution")] \
+        == ["bool | None"] * 3
+    assert described["layer"]["closed"] is True              # and the gate's own column is pickable
+    assert described["source"]["category"] == "required"
+
+
+def test_the_sidecars_vocabularies_ride_on_its_fields() -> None:
+    """The root of S21 was one level below the report: both fields ran a closed-vocabulary validator
+    while carrying no marker, so no generated surface could see them. They were invisible to
+    `test_every_enforced_vocabulary_field_declares_its_options` only because the model itself sat
+    outside `_ALL_MODELS`; that guard covers them now, by behaviour, without naming them."""
+    from just_dna_format.vocab import VALID_DECLARED_USE, VALID_SOURCE_LAYERS
+
+    ref = authoring_reference()
+    assert ref["vocabularies"]["source_layer"] == sorted(VALID_SOURCE_LAYERS)
+    assert ref["vocabularies"]["declared_use"] == sorted(VALID_DECLARED_USE)
+
+
 def test_required_any_of_agrees_with_each_models_own_validator() -> None:
     """The declaration is proven against the validator it mirrors, not trusted.
 

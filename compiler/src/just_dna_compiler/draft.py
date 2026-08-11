@@ -46,6 +46,7 @@ from typing import Any
 from just_dna_format.base import authored_field_names
 from just_dna_format.base import field_category as base_field_category
 from just_dna_format.binning import MeasureBinRow
+from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
@@ -59,11 +60,20 @@ from just_dna_compiler.compiler import (
     _scalar_cell,
 )
 
-#: Every authored CSV a draft can target: the SNP core plus the optional table kinds.
+#: Every authored CSV a draft can target: the SNP core, the optional table kinds, and the one fact
+#: sidecar a human writes.
+#:
+#: `sources.csv` is the exception among the fact tables and it earns the exception (S21): the other
+#: three are produced by an enricher pass, so an author never starts one by hand, while this one the
+#: schema explicitly tells them to hand-write and the compile licence gate reads it and nothing else.
+#: Excluding it meant `blank_template("sources.csv")` answered *"is not an authored table of this
+#: format"* — a false claim, and the surface that says it is the one an author reaches for instead of
+#: reading our source. Which is what the consumer who reported it ended up doing.
 DRAFTABLE: dict[str, type[BaseModel]] = {
     "variants.csv": VariantRow,
     "studies.csv": StudyRow,
     **{csv_name: model for csv_name, _, model in _TABLE_KINDS},
+    "sources.csv": SourceRow,
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks
@@ -72,6 +82,10 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
 _CORE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
     VariantRow: lambda r: (r.variant_key, r.genotype),
     StudyRow: lambda r: (r.variant_key, r.pmid),
+    # `sources.csv`'s key is `(source, layer)` — the same one `licensing.merge_sources_csv` merges on,
+    # borrowed for the same reason the two above are: a draft must not append a row the other writer
+    # would treat as already present. One source legitimately appears at two layers.
+    SourceRow: lambda r: (r.source, r.layer),
 }
 
 
