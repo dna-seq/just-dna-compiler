@@ -36,7 +36,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from just_dna_compiler.compiler import load_spec_variants
+from just_dna_compiler.compiler import load_csv_rows, load_spec_variants
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import MULTI_SEP
 from tenacity import (
@@ -168,6 +169,25 @@ class GeneStatus:
     state: str                       # approved | retired | unknown
     current: str | None = None
     hgnc_id: str | None = None
+    #: HGNC's cytogenetic band, e.g. `16q12.2`, `Xp22.33`, `mitochondria`. Kept verbatim; the
+    #: chromosome is derived from it rather than stored, so there is one place the parse can be wrong.
+    location: str | None = None
+
+    @property
+    def chromosome(self) -> str | None:
+        """The contig the band names, or `None` when HGNC gave none or it cannot be read.
+
+        Band syntax is `<chrom><arm><band>`, so the contig is everything before the first `p`/`q` —
+        except `mitochondria`, which HGNC spells out and this codebase calls `MT`. Alternate-reference
+        loci (`19q13.42 alternate reference locus`) keep their leading band, so the split still works.
+        `None` for anything unparsed, because a guess here becomes a false accusation about a row."""
+        if not self.location:
+            return None
+        raw = self.location.strip()
+        if raw.lower().startswith("mitochondri"):
+            return "MT"
+        head = re.split(r"[pq]", raw, maxsplit=1)[0].strip()
+        return head if re.fullmatch(r"(?:[1-9]|1[0-9]|2[0-2]|X|Y)", head) else None
 
     def __str__(self) -> str:
         if self.state == "retired":
@@ -185,10 +205,42 @@ class GeneStatus:
 
 
 @dataclass
+class GeneLocusConflict:
+    """An authored `gene` whose HGNC chromosome is not the chromosome the row's variant sits on.
+
+    The relationship is false while both halves are individually true — the rsID resolves, the symbol
+    is approved — which is why nothing caught it before (S24). It is the signature of a generated
+    citation: a real gene name beside an invented rs number, which resolves anyway because dbSNP is
+    dense enough that almost any seven-digit number hits something. Four of one reporter's seven rows
+    were this, each pairing a real symbol with a variant on another chromosome.
+    """
+
+    gene: str
+    gene_chrom: str
+    variant_key: str
+    variant_chrom: str
+
+    def __str__(self) -> str:
+        return (
+            f"{self.variant_key} is on chromosome {self.variant_chrom}, but HGNC puts {self.gene} on "
+            f"chromosome {self.gene_chrom} — the row pairs a gene with a variant that is not in it. "
+            f"Check the identifier against the source you took it from; a real symbol beside an "
+            f"invented rsID is what a machine-written summary produces."
+        )
+
+
+@dataclass
 class IdentifierReport:
     rsids: list[RsidStatus] = field(default_factory=list)
     traits: list[TraitStatus] = field(default_factory=list)
     genes: list[GeneStatus] = field(default_factory=list)
+    #: Rows whose `gene` and resolved chromosome disagree. Reported, never repaired — which of the two
+    #: is wrong is not something this tier can know.
+    gene_loci: list[GeneLocusConflict] = field(default_factory=list)
+    #: Why the comparison above did not run, or `None` when it did. An empty conflict list otherwise
+    #: says two opposite things — "compared everything, nothing disagreed" and "never compared" — the
+    #: same reason `EnrichmentResult.clin_sig_not_checked` exists.
+    gene_loci_not_checked: str | None = None
 
     @property
     def stale_rsids(self) -> list[RsidStatus]:
@@ -204,7 +256,7 @@ class IdentifierReport:
 
     @property
     def clean(self) -> bool:
-        return not (self.stale_rsids or self.stale_traits or self.stale_genes)
+        return not (self.stale_rsids or self.stale_traits or self.stale_genes or self.gene_loci)
 
 
 # ── dbSNP ───────────────────────────────────────────────────────────────────────────────────────
@@ -346,13 +398,13 @@ class OntologyClient:
         if approved:
             return GeneStatus(
                 symbol=symbol, state="approved", current=approved[0].get("symbol"),
-                hgnc_id=approved[0].get("hgnc_id"),
+                hgnc_id=approved[0].get("hgnc_id"), location=approved[0].get("location"),
             )
         previous = self._hgnc(f"prev_symbol/{symbol}")
         if previous:
             return GeneStatus(
                 symbol=symbol, state="retired", current=previous[0].get("symbol"),
-                hgnc_id=previous[0].get("hgnc_id"),
+                hgnc_id=previous[0].get("hgnc_id"), location=previous[0].get("location"),
             )
         return GeneStatus(symbol=symbol, state="unknown")
 
@@ -428,4 +480,75 @@ def check_identifiers(
     finally:
         if owned:
             ontology.close()
+    if check_genes:
+        report.gene_loci, report.gene_loci_not_checked = _gene_locus_conflicts(
+            variants, report.genes, Path(spec_dir) if spec_dir else None
+        )
     return report
+
+
+def _variant_chromosomes(
+    variants: list[VariantRow], spec_dir: Path | None
+) -> tuple[dict[str, str], str | None]:
+    """`{variant_key: chrom}` for every row whose chromosome is known, and why it may be empty.
+
+    An authored `chrom` is used directly; for an rsID-only row the chromosome exists only after
+    resolution, so an injected `resolution.csv` beside the spec is read — the same table the compiler
+    consumes and `enrich()` treats as authoritative. Nothing is fetched here: this pass already spends
+    its network budget on HGNC, and reaching for Ensembl would make a *currency* check depend on a
+    resolver.
+    """
+    known = {v.variant_key: v.chrom for v in variants if v.chrom}
+    if spec_dir is None:
+        return known, None if known else "no coordinates authored and no spec directory to look beside"
+    table = spec_dir / "resolution.csv"
+    if not table.exists():
+        return known, None if known else "no coordinates authored and no resolution.csv beside the spec"
+    rows, errors, _ = load_csv_rows(table, ResolutionRow, "resolution.csv")
+    if errors:
+        return known, f"resolution.csv could not be read ({errors[0]})"
+    for row in rows:
+        if row.chrom and row.variant_key not in known:
+            known[row.variant_key] = row.chrom
+    return known, None
+
+
+def _gene_locus_conflicts(
+    variants: list[VariantRow], genes: list[GeneStatus], spec_dir: Path | None
+) -> tuple[list[GeneLocusConflict], str | None]:
+    """Compare each row's `gene` against the chromosome its variant resolves to (S24).
+
+    **Chromosome granularity only, deliberately, and the stronger version is wrong.** A row may
+    legitimately name a nearest or implicated gene for a variant outside the gene body, and the
+    mechanism can be genuinely distal — `rs1421085` sits in an FTO intron and acts on *IRX3*/*IRX5*
+    megabases away, so a row could reasonably name any of the three. An interval check would fire on
+    correct rows and be switched off within a week. Chromosome disagreement has almost no legitimate
+    cause, costs one comparison, and catches the whole fabrication class.
+
+    Three-valued as everywhere else: a symbol HGNC does not carry, a band that will not parse, and a
+    row with no known chromosome all **withhold** rather than accuse. The one deliberate exemption is a
+    pseudoautosomal locus, which is one place on two contigs — `XG` and `SPRY3` straddle a PAR boundary,
+    so an X-vs-Y disagreement there is a spelling, not a contradiction.
+    """
+    chrom_of_gene = {g.symbol: g.chromosome for g in genes if g.chromosome}
+    if not chrom_of_gene:
+        return [], "HGNC returned no usable chromosome for any authored gene"
+    chrom_of_variant, reason = _variant_chromosomes(variants, spec_dir)
+    if not chrom_of_variant:
+        return [], reason or "no row has a known chromosome"
+
+    conflicts: list[GeneLocusConflict] = []
+    for row in variants:
+        gene_chrom = chrom_of_gene.get(row.gene or "")
+        row_chrom = chrom_of_variant.get(row.variant_key)
+        if not gene_chrom or not row_chrom or gene_chrom == row_chrom:
+            continue
+        if {gene_chrom, row_chrom} == {"X", "Y"}:
+            continue        # a PAR locus is one place on two contigs — see `vrs.par_partner`
+        conflicts.append(
+            GeneLocusConflict(
+                gene=row.gene, gene_chrom=gene_chrom,
+                variant_key=row.variant_key, variant_chrom=row_chrom,
+            )
+        )
+    return conflicts, None

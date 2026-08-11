@@ -34,6 +34,30 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-11 (later still) — S24: the gene a row names, against the chromosome its variant sits on
+
+`just-dna-enricher`. `variants.csv` carries a `gene` column and nothing compared it to anything.
+`identifiers.py` asked HGNC whether a symbol was *approved*, which is a different question — `FTO` is
+approved whatever variant sits beside it — so a row pairing a real gene with a variant on another
+chromosome passed every check, because both halves were individually true and only the relationship was
+false. Four of a reporter's seven rows were exactly that: real symbols beside invented rs numbers,
+which resolve anyway because dbSNP is dense enough that almost any seven-digit number hits something.
+Machine-written sources are now a real authoring input, and this is the shape they fail in.
+
+`check_identifiers` reports `GeneLocusConflict` per row and repairs nothing. **Chromosome granularity
+only, and the stronger version is refused in the code with the reporter's own argument**: `rs1421085`
+sits in an FTO intron and acts on *IRX3*/*IRX5* megabases away, so a row may legitimately name any of
+the three, and an interval check would fire on correct rows until someone switched it off. A test pins
+that the FTO row stays silent with the variant nowhere near the gene body.
+
+Three details. The join is against HGNC's **cytoband** (`16q12.2` → `16`, `mitochondria` → `MT`), and
+anything unparsed yields `None` rather than a guess, since a guess becomes a false accusation about a
+row. For an rsID-only row the chromosome comes from an injected `resolution.csv` beside the spec — the
+table the compiler already consumes — and nothing is fetched, because a currency check should not
+depend on a resolver. A **pseudoautosomal** gene is exempt: `XG` straddles the PAR1 boundary, so X/Y
+there is a spelling, not a contradiction (RM32). `gene_loci_not_checked` carries the reason when the
+comparison could not run, for the reason `clin_sig_not_checked` exists, and the CLI prints it.
+
 ## 2026-08-11 (later still) — S21/S23: the authoring surface could not describe the one table it tells you to write
 
 Two fixes and one roadmap item, all from a consumer's test run over the authoring surface, all folded

@@ -578,8 +578,15 @@ def check_identifiers_(
         typer.secho(f"{exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"traits checked: {len(report.traits)}  genes checked: {len(report.genes)}")
-    for finding in [*report.stale_traits, *report.stale_genes]:
+    for finding in [*report.stale_traits, *report.stale_genes, *report.gene_loci]:
         typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
+    if report.gene_loci_not_checked:
+        # Never silently: an empty conflict list means "nothing disagreed" and "never compared", and
+        # a reader who cannot tell them apart is being told a check passed that was never put (S24).
+        typer.secho(
+            f"  gene/chromosome agreement not checked: {report.gene_loci_not_checked}",
+            fg=typer.colors.YELLOW,
+        )
     if report.clean:
         typer.secho("all identifiers current", fg=typer.colors.GREEN)
     elif strict:

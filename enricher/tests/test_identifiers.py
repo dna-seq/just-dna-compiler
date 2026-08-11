@@ -436,3 +436,116 @@ def test_live_registries_still_behave_as_recorded() -> None:
         assert client.trait("EFO_0004340").state == "current"
         assert client.gene("MLL").current == "KMT2A"
         assert client.gene("BRCA1").state == "approved"
+
+
+# ── S24: the gene named and the chromosome resolved ─────────────────────────────────────────────
+#
+# Four of one reporter's seven rows paired a real gene symbol with an rsID on another chromosome —
+# the signature of a machine-written summary, where real names are quoted beside invented rs numbers
+# that resolve anyway because dbSNP is dense. Every existing check passes on each half alone.
+_GENE_BANDS = {
+    "CADM2": "3p12.1", "NEGR1": "1p31.1", "EXOC3L2": "19q13.32",
+    "FOXO3": "6q21", "FTO": "16q12.2", "XG": "Xp22.33",
+}
+
+
+def _hgnc_with_locations() -> OntologyClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        symbol = str(request.url).rsplit("/", 1)[-1]
+        band = _GENE_BANDS.get(symbol)
+        if band is None or "prev_symbol" in str(request.url):
+            return httpx.Response(200, json={"response": {"numFound": 0, "docs": []}})
+        return httpx.Response(200, json={"response": {"numFound": 1, "docs": [
+            {"symbol": symbol, "status": "Approved", "hgnc_id": f"HGNC:{len(symbol)}",
+             "location": band}
+        ]}})
+
+    client = OntologyClient()
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+    return client
+
+
+def _row(rsid: str, gene: str, chrom: str | None = None, start: int | None = None) -> VariantRow:
+    return VariantRow(
+        rsid=rsid, gene=gene, chrom=chrom, start=start,
+        ref="C" if chrom else None, alts="T" if chrom else None,
+        genotype="C/T", state="risk", conclusion="c",
+    )
+
+
+def test_a_gene_on_another_chromosome_than_its_variant_is_reported() -> None:
+    """The four real pairings from the report, each individually valid and jointly false."""
+    variants = [
+        _row("rs13010010", "CADM2", "2", 100),    # CADM2 is on 3
+        _row("rs2252481", "NEGR1", "6", 100),     # NEGR1 is on 1
+        _row("rs10180596", "EXOC3L2", "2", 100),  # EXOC3L2 is on 19
+        _row("rs36071874", "FOXO3", "1", 100),    # FOXO3 is on 6
+        _row("rs1421085", "FTO", "16", 53767042),  # the true pairing, and it must stay silent
+    ]
+    report = check_identifiers(variants=variants, check_traits=False, client=_hgnc_with_locations())
+
+    assert {c.gene for c in report.gene_loci} == {"CADM2", "NEGR1", "EXOC3L2", "FOXO3"}
+    assert report.gene_loci_not_checked is None
+    assert not report.clean
+    assert "is not in it" in str(report.gene_loci[0])
+
+
+def test_the_check_is_chromosome_level_and_not_an_interval() -> None:
+    """`rs1421085` sits in an FTO intron and acts on IRX3/IRX5 megabases away, so a row may name any
+    of the three. An interval check would fire on correct rows; this one must not."""
+    report = check_identifiers(
+        variants=[_row("rs1421085", "FTO", "16", 1)],   # nowhere near the gene body, same contig
+        check_traits=False, client=_hgnc_with_locations(),
+    )
+    assert report.gene_loci == [] and report.clean
+
+
+def test_an_unknown_symbol_or_missing_chromosome_withholds_rather_than_accuses() -> None:
+    """Three-valued: no HGNC record, and no known chromosome for the row, both withhold — and say so,
+    because an empty conflict list otherwise means both 'compared' and 'never compared'."""
+    unknown = check_identifiers(
+        variants=[_row("rs1", "NOTAGENE", "1", 100)],
+        check_traits=False, client=_hgnc_with_locations(),
+    )
+    assert unknown.gene_loci == []
+    assert unknown.gene_loci_not_checked == "HGNC returned no usable chromosome for any authored gene"
+
+    unresolved = check_identifiers(
+        variants=[_row("rs13010010", "CADM2")],     # rsID only: no chromosome anywhere yet
+        check_traits=False, client=_hgnc_with_locations(),
+    )
+    assert unresolved.gene_loci == []
+    assert unresolved.gene_loci_not_checked is not None
+
+
+def test_the_resolved_chromosome_is_read_from_an_injected_resolution_table(tmp_path: Path) -> None:
+    """The reporter's actual shape — an rsID-only row, where the chromosome exists only after
+    resolution. `resolution.csv` beside the spec is the same table the compiler consumes."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(
+        "schema_version: '1.0'\nmodule:\n  name: d\n  title: D\n  description: d\n  report_title: D\n"
+    )
+    (spec / "variants.csv").write_text(
+        "rsid,gene,genotype,state,conclusion\nrs2252481,NEGR1,C/T,risk,c\n"
+    )
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,"
+        "rsid_alternates,rsid_current,rsid_status,fetched_at\n"
+        "rs2252481,rs2252481,6,100,C,T,GRCh38,0,manual,resolved,,,,\n"
+    )
+    report = check_identifiers(spec_dir=spec, check_traits=False, client=_hgnc_with_locations())
+
+    assert [c.gene for c in report.gene_loci] == ["NEGR1"]
+    assert report.gene_loci[0].variant_chrom == "6" and report.gene_loci[0].gene_chrom == "1"
+
+
+def test_a_pseudoautosomal_gene_is_not_a_conflict() -> None:
+    """One place on two contigs: XG straddles the PAR1 boundary, so an X/Y disagreement there is a
+    spelling rather than a contradiction (RM32)."""
+    report = check_identifiers(
+        variants=[_row("rs311103", "XG", "Y", 2691222)],
+        check_traits=False, client=_hgnc_with_locations(),
+    )
+    assert report.gene_loci == []

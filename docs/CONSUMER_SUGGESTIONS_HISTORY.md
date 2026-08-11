@@ -41,6 +41,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S21** the reference omits `SourceRow`, the hand-written table — shipped 0.5.4
 - **S22** hg19 literature has no path into a GRCh38 module — filed RM48 (0.6)
 - **S23** a hand-declared literature source warns as an orphan — shipped 0.5.4
+- **S24** nothing checks a variant is on its named gene's chromosome — shipped 0.5.4
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -1864,3 +1865,93 @@ on a curated table is not what the provenance means.
 **What I did meanwhile.** Kept the two rows and left the warning standing, because the rows are true and
 the warning is not. Tracked as `F21` in just-module-creator, whose skill additionally asserts the
 *opposite* of the observed behaviour and is our own bug to fix.
+
+# Field notes from just-module-creator — triaging a machine-written source, 2026-08-11
+
+The same session that produced S20, from the other end: having established that two of seven rsIDs were
+real after all, the question became which of the *pairings* were. Four were not, and no check in the
+tree could see it, because both halves of each row were individually true.
+
+## S24 — nothing checks that a variant sits in the gene its row names, and that is the check that catches a fabricated pairing
+
+**Status — accepted; shipped in enricher 0.5.4, at the granularity you argued for.**
+`check_identifiers` now compares each row's `gene` against the chromosome its variant resolves to, and
+reports `GeneLocusConflict` — never repairs, since which half is wrong is not something this tier can
+know. Your four pairings are the test: CADM2/`rs13010010`, NEGR1/`rs2252481`, EXOC3L2/`rs10180596`,
+FOXO3/`rs36071874`, with `rs1421085`+FTO in the same run as the true pairing that must stay silent.
+
+**Chromosome granularity, and your argument against the stronger version is quoted in the code**, so
+the next person to propose an interval check meets it: `rs1421085` sits in an FTO intron and acts on
+*IRX3*/*IRX5* megabases away, so a row may reasonably name any of the three, and a check that fires on
+correct rows gets switched off. There is a test pinning that the FTO row stays silent even with the
+variant nowhere near the gene body.
+
+Three things the build added to your sketch. The join is against HGNC's **cytoband**, not a coordinate
+— `16q12.2` → `16`, `mitochondria` → `MT`, and anything unparsed yields `None` rather than a guess,
+because a guess here becomes a false accusation. The chromosome for an **rsID-only row** — your actual
+repro shape — comes from an injected `resolution.csv` beside the spec, the same table the compiler
+consumes; nothing is fetched, since making a currency check depend on a resolver is the wrong coupling.
+And a **pseudoautosomal** gene is exempt: `XG` straddles the PAR1 boundary, so an X/Y disagreement
+there is a spelling rather than a contradiction (RM32).
+
+`gene_loci_not_checked` carries the reason when the comparison could not run — an unparseable band, no
+HGNC record, no known chromosome — because an empty conflict list otherwise means both "compared
+everything" and "never compared", which is the S20 shape again and the reason `clin_sig_not_checked`
+exists. The CLI prints it rather than staying quiet.
+
+You are right not to build a gene-coordinate lookup on your side. `F23` can become a call to this.
+<!-- triaged: 0.5.4 · sha cafc38eb0bde -->
+
+**Reported by:** just-module-creator · **Found:** 2026-08-11, triaging seven rsIDs from an LLM-written
+summary of a YouTube lecture. **Priority: medium, and rising** — machine-written sources are now a real
+authoring input.
+
+**What I ran.** `variants.csv` carries a `gene` column. I authored a deliberately wrong pairing —
+`rs2252481` is on chromosome 6, `NEGR1` is on chromosome 1 — and linted it:
+
+```
+lint_rows("variants.csv", "rsid,gene,genotype,state,conclusion\nrs2252481,NEGR1,C/C,risk,…")
+→ errors: 0, warnings: 0
+```
+
+**What I expected.** Something, at some level. `gene` is not in the `redundancy_bearing` map, so I went
+looking for the check elsewhere and there is none: `identifiers.py` resolves the symbol against HGNC and
+reports whether it is *approved / retired / unknown*, which is a different question. On a real module of
+mine `check_identifiers` returned `{"identifier": "FTO", "state": "approved"}` — true, and it says
+nothing about whether `rs1421085` is in FTO.
+
+**Why this particular gap costs the most right now.** Comparing the resolved chromosome against the
+named gene's chromosome is what broke my source open. Four of its seven rsIDs paired a **real** gene
+name with an rsID on a different chromosome:
+
+| row said | gene is on | rsID is on |
+|---|---|---|
+| CADM2 `rs13010010` | 3 | 2 |
+| NEGR1 `rs2252481` | 1 | 6 |
+| EXOC3L2 `rs10180596` | 19 | 2 |
+| FOXO3 `rs36071874` | 6 | 1 |
+
+That is the signature of a generated citation: real gene names with invented rs numbers, which resolve
+to real positions only because dbSNP is dense enough that almost any 7-digit number hits something. Both
+halves of each row pass every existing check individually — the rsID resolves, the symbol is approved —
+and only the *relationship* is false. To catch it I had to leave the toolchain entirely and read gene
+coordinates from an unrelated service, which is the one move a consumer should not have to make to
+answer a question the schema poses.
+
+**Candidate fix: compare at chromosome granularity only.** `identifiers.py` already resolves the symbol
+against HGNC and `resolution.csv` already has the chromosome, so the join exists — report a finding when
+they disagree, never repair.
+
+**And the reason the obvious stronger version is wrong:** do **not** check that the variant falls inside
+the gene body. GWAS rows legitimately name a nearest or implicated gene for a variant outside it, and
+the mechanism can be genuinely distal — the best-attested variant in my own module, `rs1421085`, sits in
+an FTO intron and acts on *IRX3*/*IRX5* megabases away, so a row could reasonably name any of the three.
+An interval check would fire constantly on correct rows and get switched off. Chromosome-level
+disagreement has almost no legitimate cause, costs one comparison, and catches the entire fabrication
+class. Cheap and boring is the right shape here.
+
+**What I did meanwhile.** Documented the check as a manual step in our triage procedure, honestly
+labelled as requiring a lookup outside the toolchain, and tracked it as `F23`. We are not building a
+gene-coordinate lookup on our side: it would be a second source of truth for something
+`identifiers.py` is already positioned to answer, and the value is in the comparison rather than in the
+lookup.
