@@ -27,6 +27,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` |
+| **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` |
 | **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` |
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
@@ -104,7 +105,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
 | `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
-| `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, citation existence. **Writes nothing** | every client above, compiler `hints` |
+| `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
 | `pgx` | pass 5: cross-check star-allele tables, write `sources.csv` | the three above |
@@ -262,7 +263,9 @@ coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resoluti
    is a complementary reference (4.4M clinically-curated records, 1.54M with no rsid) that makes an
    offline clinical enrich possible without provisioning the 14 GB dbSNP cache.
 5. **Live Ensembl** — for rsIDs every cache missed, `ensembl.EnsemblResolver.resolve_rsid`
-   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`.
+   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`. It has **three**
+   outcomes, not two: loci, an answered `[]`, or `None` for could-not-ask — see *Live Ensembl* below,
+   and note that an unreachable rsID leaves **no `resolution.csv` row at all**.
 6. **Live gnomAD** (`use_gnomad`) — the last link, for whatever nothing else could resolve.
    `gnomad.GnomadClient.resolve_rsids` batches the leftovers. Source `gnomad`. It goes last for exactly
    the reason ClinVar goes after the Ensembl cache: gnomAD reports only the alleles **observed in
@@ -334,6 +337,18 @@ the reference sequence. The reference check is raised *first*, deliberately: a r
 genome is a worse diagnosis than a row the chain could not find, so it should be the error the author
 sees. `EnrichmentResult` carries `rows`,
 `unresolved` (variant_keys with no position), `sources`, `mode`, and a `fully_resolved` property.
+
+**A `not_found` row is written only where a source actually answered (S20, 0.5.4).** `enrich()` used to
+write `ResolutionRow(status="not_found", source="ensembl")` for a request that *failed*, stating in the
+injected table that Ensembl was asked and does not have the rsID. It now writes nothing for that key —
+the key stays `unresolved`, so `strict` still refuses and `best_effort` still warns, but nothing claims
+a source said no — and **`EnrichmentResult.unreachable_rsids`** names them. That list is deliberately
+separate from `unresolved`, which says a key has no position and is silent about why: a key that failed
+because egress broke and one with genuinely no locus to find are the same entry there, and only one of
+them is worth re-running. Empty under `--offline`, since nothing was asked. It warns in **both** modes
+and `strict` does not escalate it — no authored edit clears a failed request (P5), and the `not_covered`
+and VRS-coverage findings are the same class. The argument was already four lines below in the same
+function, where the non-GRCh38 branch declines to write `not_found` for precisely this reason.
 
 **`EnrichmentResult.vrs` is the `MintResult` this call computed (RM40, 0.5.1).** It carries exactly the
 two counters `compile_module` later stamps into `manifest.compilation.vrs_alleles` /
@@ -415,7 +430,7 @@ fixpoint** (`artifact.digest`, `content_signature`, and the provisional `resolut
 
 ## Live Ensembl — V2 GraphQL + V1 REST fallback (`ensembl.py`)
 
-`EnsemblResolver.resolve_rsid(rsid) -> (list[locus], source)` tries two backends in order:
+`EnsemblResolver.resolve_rsid(rsid) -> (list[locus] | None, source | None)` tries two backends in order:
 
 - **V2 — beta GraphQL** (`_graphql_rsid`, `DEFAULT_GRAPHQL_ENDPOINT`): the endpoint + variant-query shape
   leeched from ensembl-mcp, `eliot.start_action` swapped for stdlib `logging`.
@@ -426,6 +441,23 @@ fixpoint** (`artifact.digest`, `content_signature`, and the provisional `resolut
 GraphQL/transport error, or an empty V2 result). **`tenacity`** (`@retry`, exponential jitter, 3 attempts,
 on `httpx.TransportError`/timeout) wraps *each* backend independently, so an endpoint is retried before
 the fallback triggers.
+
+**Three outcomes, because two of them used to be one (S20, 0.5.4).** A non-empty list is an answer; `[]`
+is *also* an answer — Ensembl was reached and has no GRCh38 locus for this rsID — and **`None` means
+Ensembl could not be asked at all**, so its answer is unchecked rather than empty. Fusing the last two
+into `([], None)` made a failed request read as a definite negative, and `loci: []` beside *"live
+Ensembl has no GRCh38 locus for it either"* is exactly the fingerprint of a fabricated identifier: a
+consumer checking which rsIDs in a machine-written document were real put two published variants
+(`rs6567160`, a long-standing MC4R BMI locus, and `rs13010010`) in the fabricated pile, and caught it
+only because five-of-seven succeeding looked more like flaky egress than a 30%-honest document. This is
+the tri-state rule the rest of the tree keeps — an unreachable source reports unknown, never the
+negative.
+
+Two boundaries. **A 4xx is an answer**, not a failure: Ensembl 400s on rsIDs it cannot resolve
+(`rs3216883`, which dbSNP reports as merged), so only a 5xx, a transport error or a timeout returns
+`None`. And an **answered-empty carries its source**, so `hint.checked` records `ensembl-rest` when
+Ensembl was reached and said nothing — the old code's only trace of that case was a *missing* element in
+a set, which is unreadable in practice.
 
 > **Honest caveat (bare rsID).** The beta variation GraphQL wants a composite `region:pos:rsid` id, so a
 > *bare* rsID typically won't resolve through V2 and **falls through to V1 REST, which does the real
@@ -1036,6 +1068,21 @@ threads cannot be killed, and the interpreter joins pool threads at exit, so a r
 schedule and then hangs the process on the way out. A timeout is recorded as **not checked**, never as
 not-found.
 
+**Existence is not identity, so a citation lookup says *which* paper it found (S12, 0.5.4).** PMIDs are
+densely allocated, so a recalled or invented eight-digit number is usually a real record for a
+*different* article — which means `pmid_exists=True` could never catch a fabricated citation, and the
+surrounding docs had been treating existence as the guard until a consumer's authoring skill had to
+retract a rule this surface could not enforce. `literature.bibliographic(summary)` pulls
+`title`/`journal`/`first_author`/`year` out of the **same `esummary` response** that answers existence —
+no extra request — and `lookup.CitationHint` carries them, with an `info` finding naming the paper and
+`hint citation --json` (which `hint variant` had and this did not). It is public rather than private
+`_identifiers`-style for the RM41 reason: two tiers read it, and the alternative is a consumer
+re-parsing a payload we already hold. Every value is `None` when the field is absent rather than an
+empty string, and `year` is taken only from a leading four digits of the free-form `pubdate`
+(`2017 Nov-Dec`), so nothing is invented. **No `title` column on `LiteratureRow`**: that table records
+what was *checked*, not bibliography. Generalize it — when a check answers yes/no about an identifier,
+ask whether "yes" could be true of the wrong thing.
+
 ## Identifier currency (`identifiers.py`, online)
 
 The generalization of COMPILER.md's *"is the source stale?"* blind spot from datasets to identifiers.
@@ -1050,6 +1097,8 @@ out of date.
   command, `just-dna-enricher check-identifiers`. HGNC uses the **exact** `fetch/symbol` and
   `fetch/prev_symbol` endpoints, never `search/` — `search/BRCA1` is fuzzy and returns 19 hits including
   `ABRAXAS1`.
+- **Gene ↔ locus agreement** (0.5.4) rides on the same command and is the first check here about a
+  *relationship* between two identifiers rather than the currency of one. See below.
 
 **NCBI is the oracle, not Ensembl.** Ensembl REST resolves *some* merges (`rs77121243` → `rs334`) and
 returns HTTP 400 on others (`rs3216883`, which dbSNP reports as merged into `rs3051860`), so Ensembl
@@ -1076,6 +1125,41 @@ an *identity migration performed by a network lookup* — reverse would emit the
 compile would key on it, and `variant_key` would change with no authored edit anywhere. Severity is the
 usual ladder (warn / fail in `strict`), and `strict` failing is the nudge toward the drift-proof key:
 author the coordinate, and the VRS allele id cannot drift at all.
+
+### Two true halves, one false row — gene ↔ locus (S24, 0.5.4)
+
+`variants.csv` carries a `gene` column and nothing compared it to anything. The gene check above asks
+HGNC whether a symbol is *approved*, which is a different question — `FTO` is approved whatever variant
+sits beside it — so a row pairing a real gene with a variant on another chromosome passed everything,
+because both halves were individually true and only the relationship was false. Four of one reporter's
+seven rows were exactly that: real symbols beside invented rs numbers, which resolve anyway because
+dbSNP is dense enough that almost any seven-digit number hits something. **Machine-written sources are a
+real authoring input now, and this is the shape they fail in** — which is also why it belongs beside the
+currency checks rather than among them: staleness is the world moving, and this is a claim that was
+never true.
+
+`check_identifiers` reports `GeneLocusConflict` per row and repairs nothing — which of the two halves is
+wrong is not something this tier can know. Four design points:
+
+- **Chromosome granularity only, and the stronger version is refused in the code using the reporter's
+  own argument.** `rs1421085` sits in an FTO intron and acts on *IRX3*/*IRX5* megabases away, so a row
+  may legitimately name any of the three; an interval check would fire on correct rows until someone
+  switched it off. A test pins that the FTO row stays silent with the variant nowhere near the gene body.
+  Chromosome disagreement has almost no legitimate cause, costs one comparison, and catches the whole
+  fabrication class.
+- **The join is against HGNC's cytoband** (`16q12.2` → `16`, `mitochondria` → `MT`), and anything
+  unparsed yields `None` rather than a guess — a guess here becomes a false accusation about a row.
+  Three-valued as everywhere else: an unknown symbol, an unparsed band and a row with no known
+  chromosome all withhold.
+- **Nothing is fetched for the coordinate.** For an rsID-only row the chromosome comes from an injected
+  `resolution.csv` beside the spec — the table the compiler already consumes — because a currency check
+  should not depend on a resolver.
+- **A pseudoautosomal gene is exempt.** `XG` straddles the PAR1 boundary, so X/Y there is a spelling,
+  not a contradiction (RM32).
+
+`IdentifierReport.gene_loci_not_checked` carries the reason when the comparison could not run, for the
+reason `EnrichmentResult.clin_sig_not_checked` exists — an empty conflict list otherwise says both
+"compared everything, nothing disagreed" and "never compared". The CLI prints it.
 
 ## ACMG secondary findings (`acmg.py` + `acmg_build.py`) — `just-dna-enricher check-acmg`
 
@@ -1579,7 +1663,7 @@ just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdr
 just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseudoautosomal locus
 just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
-just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC)
+just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC) + gene/chromosome agreement
 just-dna-enricher dosage spec/ --offline           # no-op with a warning (ClinGen has no snapshot)
 
 # Caches — provision once, then every gated pass runs with zero egress. See "The caches".
@@ -1614,7 +1698,7 @@ just-dna-enricher hint variant --rsid rs1801133              # validity, loci, r
 just-dna-enricher hint variant --rsid rs334 --ambiguity      # warn when the answer is not unique
 just-dna-enricher hint variant --rsid rs1801133 --frequencies  # + gnomAD populations (paced ~6s)
 just-dna-enricher hint variant --rsid rs1801133 --offline --json
-just-dna-enricher hint citation --pmid 9545397               # existence + the DOI/PMC id it carries
+just-dna-enricher hint citation --pmid 9545397               # which paper it is + the DOI/PMC id it carries (--json)
 just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent
 just-dna-enricher hint gene MTHFR                            # approved | retired | unknown
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
@@ -1682,6 +1766,12 @@ and **`genome_build` is told to each row**, so a loader that omits it mints GRCh
 GRCh37 module. `compiler.load_spec_variants(spec_dir)` does the load, the injection and the
 `_restamp_for_build` in one call, and both checks accept `spec_dir=` alongside the existing `variants=`.
 Exactly one, never both — two answers in mind, and silently preferring one is a guess.
+
+Since 0.5.4 the two forms are no longer equivalent for `check_identifiers`, and the report says which
+you got: the gene ↔ locus comparison needs a chromosome per row, and an rsID-only row has one only
+after resolution, so `spec_dir=` lets it read the injected `resolution.csv` beside the spec while
+`variants=` alone limits it to authored coordinates. Where that leaves nothing to compare,
+`gene_loci_not_checked` names the reason rather than reporting a clean zero.
 
 **`template` is the one command that duplicates the compiler's**, and the other four offline authoring
 commands (`stub`, `requirements`, `describe`, `hint`, `scaffold`) are deliberately *not* mirrored. The

@@ -110,10 +110,11 @@ detectable without any reference. This is where most real authoring bugs are cau
 | `p_value` string ↔ the mantissa/exponent pair | two encodings of one number | warning / error in `strict` |
 | MT/Y two-allele genotype | ploidy contradicts the contig | warning |
 | study / frequency / gene-metrics / literature orphans | the sidecar describes something the module lacks | warning |
+| `sources.csv` orphans / undeclared sources | every source a fact table cites has terms recorded, and vice versa | warning |
 | star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it | warning |
 | **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs whose unphased genotype is identical while their conclusions differ | warning |
 
-Three of these deserve their reasoning rather than just their row.
+Four of these deserve their reasoning rather than just their row.
 
 **The phase-ambiguity check is RM28's cis/trans motivation, closed by computation rather than by a
 grammar.** Compound heterozygosity is the case that most justified a predicate language, and
@@ -156,6 +157,23 @@ default 5%). The right cutoff is disease-specific — sickle-cell's `rs334` sits
 legitimately sits above it. Failing a compile over that would be the format arbitrating a clinical
 judgement.
 
+**The `sources.csv` orphan half exempts the layers with no `source` column to join, and there are two
+of them.** "No table used it" is decided by reading the *generated* fact tables' `source` columns
+(`resolution.csv` contributes its `authority`, not its link — RM33). The `annotation` layer **is**
+`variants.csv`/`diplotypes.csv`/…, which carry none by design, so an annotation-layer row can never be
+corroborated and used to be reported as stale on every drafted module — the exact row the licence gate
+keys on. **`literature` joined that exemption in 0.5.4 (S23)** whenever the module carries `studies.csv`
+rows, by the identical argument: `studies.csv` is the hand-curated literature table and has no `source`
+column either, so a module citing a PMID through it can only be corroborated by the enricher-written
+`literature.csv`, and a module with none has nothing to join. The old behaviour inverted the incentive
+where it matters most — `vocab.MISPLACED_COLUMN_REASONS['source']` tells an author to declare a
+hand-read source by adding a row here, doing so earned a warning that the row was unused, and deleting
+it (shipping with the provenance unrecorded) was silent. Compliance warned, omission quiet. It stays
+narrow: `frequency` still warns, because `frequencies.csv` *is* machine-written with a `source` column,
+so a frequency declaration in a module carrying no frequencies really is stale. The undeclared half —
+a source a fact table cites with no row — is unaffected and warns in every case, and neither half ever
+escalates: over-declaring terms is the cheap error, and an author talked out of recording theirs is not.
+
 **3. Content-addressed self-verification** — the strongest class, because the stored value is a *pure
 function of other stored values*, so a disagreement is provable corruption rather than a difference of
 opinion. `artifact.digest`, `content_signature`, the three fact-signatures, the Ed25519 signature —
@@ -184,7 +202,7 @@ covers what.
 | **Is the coordinate the variant the author meant?** A perfectly valid VA for the wrong locus is indistinguishable from the right one. | Requires knowing intent. | `provenance.json`, `authorship`, and the studies table make the claim auditable by a human. |
 | **Is the annotation medically correct?** Whether `A/T at HBB → sickle-cell carrier` is *true*. | Out of scope by charter — the format supplies annotation tables and never a gene–disease inference. | `authorship.kind` lets a consumer route scrutiny (AI vs human-certified); `curator`/`method` record who decided. |
 | **Does the cited study support the row?** `pmid` is grammar-checked; nobody reads the paper. | Requires the literature. | **Partly closed by the enricher (0.5).** Its literature pass confirms the PMID resolves, cross-fills the DOI/PMCID, and matches `provenance_quote`/`provenance_regex` against fulltext — for the **open-access subset only**, with coverage reported as a fraction so an unread paper is never mistaken for a failed quote. The compiler still reads nothing; it surfaces the recorded verdict from `literature.csv`. |
-| **Is the source stale?** A v2.1.1 constraint number is well-formed and current-looking. | The compiler cannot see the world move. | `dataset` names the release; the gene-metrics pass labels its two routes differently and warns on the older one. Generalized to **identifiers** in 0.5: the enricher checks rsIDs against dbSNP (live/merged/absent), trait CURIEs against OLS4 (obsolete + replacement) and gene symbols against HGNC (approved/retired). All report; none rewrite. |
+| **Is the source stale?** A v2.1.1 constraint number is well-formed and current-looking. | The compiler cannot see the world move. | `dataset` names the release; the gene-metrics pass labels its two routes differently and warns on the older one. Generalized to **identifiers** in 0.5: the enricher checks rsIDs against dbSNP (live/merged/absent), trait CURIEs against OLS4 (obsolete + replacement) and gene symbols against HGNC (approved/retired). All report; none rewrite. Extended in 0.5.4 to the **relationship** between two identifiers (S24) — a row's `gene` against the chromosome its variant sits on — because both halves can be individually valid while the pairing is fabricated. |
 | **Is `acmg_sf` right?** A gene-list-membership flag the compiler holds no list for. | Same shape as `clin_sig`: the list is not in the module and cannot be, since a gene list inside the compiler is an un-injected reference (RM21). | **Closed by the enricher (0.5).** `acmg.check_acmg_sf` compares the flag against ACMG SF v3.2 as NCBI publishes it. Warns in `best_effort`, refuses in `strict` — list membership is a published fact, not a clinical judgement, so unlike `clin_sig` it *does* escalate. A blank cell is a note, never a defect. |
 | **Is the annotation medically correct?** — the clinical half. Whether the module's `clin_sig` is the right call. | Out of scope by charter (below), and ClinVar is not truth either. | **Surfaced, never adjudicated (0.5).** The enricher compares each authored `clin_sig` against the ClinVar snapshot's, allele-exactly, and reports opposed calls with ClinVar's review-star count. It is the one check whose severity does **not** escalate in `strict`: failing there would make the format decide a clinical dispute. |
 | **Did the author declare every source they copied from?** A copied annotation with no `sources.csv` row is indistinguishable from an original one. | Provenance of a text is not a property of the text. | The **enricher** writes the row when it fetches (it is the only tier that knows); `sources.csv` + `manifest.sources` make the declaration legible and hashed. The compiler warns on a source a fact table cites with no row, but cannot see what was copied by hand. |
@@ -686,12 +704,22 @@ The three hashes and how they compose into `(content_signature, resolution_signa
 | `keygen` | **`format.signing.generate_private_key_pem`** + `public_key_b64_from_pem` | `--out` (refuses to overwrite) |
 | `sign <module_dir>` | **`format.signing.sign_digest`** | `--private-key` |
 | `reference` | **`format.reference.authoring_reference`** / `json_schemas` | `--summary`, `--schemas` |
-| `template <kind>` | `draft.blank_template` + `authoring_requirements` | |
+| `template <kind>` | `draft.blank_template` + `authoring_requirements` | the SNP core, every optional table kind, **and `sources.csv`** |
 | `stub <kind>` | `draft.stub_template` | `--rows` |
 | `requirements <kind>` | `draft.authoring_requirements` | `--json` |
 | `scaffold <spec>` | `scaffold.scaffold_module` | `--kind`, `--rows`, `--dry-run` |
 | `describe <kind>` | `hints.describe_table` | one table's columns + pick-lists |
 | `hint <kind>` | `hints.inspect_rows` | `--rows-file`/`--row`, `--json` |
+
+**`--no-resolve` is the master switch, not an Ensembl switch** (S14). With an injected `resolution.csv`
+beside the spec it used to compile *successfully* with `chrom=None` on every weight row — a silent
+success, the worst shape a mistake takes. It now warns and **names the size of what it discarded**
+(`N row(s), covering K variant key(s)` — rows, not keys, since a one-to-many rsid contributes several),
+for the same reason `vrs_alleles` ships beside `vrs_alleles_identified`: a warning that quantifies over
+a table should publish the denominator. The message also states that there is **no flag for "do not
+reach the network"**, because the compiler never does (Principle 2, verified branch by branch including
+the deprecated `ensembl_cache` path, which reads an injected local cache) — omitting this flag *is* that
+request. Renaming the parameter is a 1.0 conversation; it is part of a published signature.
 
 **Four rows are bold because they belong to `just-dna-format`, which ships no CLI of its own** —
 Typer would breach its pydantic-plus-cryptography dependency floor (Goal 2). So anything the schema
@@ -709,6 +737,17 @@ tier owns that a *user* needs has to surface here, and three of the four did not
   an MCP surface offering an author the valid values had to import `just_dna_format.reference` and
   write Python. `describe` answers that for **one** table; `reference` answers it for all of them
   plus the vocabularies, the open-vs-closed flag, `REQUIRED_ANY_OF` and the palette.
+
+**`template sources.csv` used to deny the table existed (S21, 0.5.4).** `DRAFTABLE` held the SNP core
+and the optional table kinds, so `blank_template("sources.csv")` answered *"is not an authored table of
+this format"* — false, and said by the surface an author reaches for **instead of** reading the models,
+which is what the consumer who reported it then had to do. The other three fact sidecars stay out
+because an enricher pass writes them and nobody starts one by hand; this one the schema instructs a
+human to write (a source read by hand leaves no `source` cell for the coverage check to find) and the
+compile licence gate reads it and nothing else. Its natural key is `(source, layer)` — the same one
+`licensing.merge_sources_csv` merges on, borrowed for the reason every `_CORE_DUPE_KEYS` entry is
+borrowed: a draft must not append a row the other writer treats as already present, and one source
+legitimately appears at two layers.
 
 **A drift the audit found in the same place.** `authoring_reference()` reported requiredness with
 pydantic's two-way `is_required()`, while `just_dna_compiler.draft` had already been fixed to the
@@ -756,7 +795,7 @@ would break scripts for no gain.
 | **`recommendation_strength` (0.5)** | ✅ closed CPIC vocabulary, distinct axis from `evidence_level` | ✅ `diplotypes.parquet` | — | complete |
 | **dosage sensitivity (0.5)** | ✅ `haploinsufficiency`/`triplosensitivity` against `VALID_DOSAGE_SENSITIVITY` | ✅ `gene_metrics.parquet` (in digest, fact-hashed) | — | complete (ClinGen route in the enricher) |
 | **`redistribution` (0.5)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete (recorded, **not** gated — RM27) |
-| **drafting (0.5)** | ✅ appended rows are validated rows; keys reuse `_TABLE_DUPE_KEYS` | — (writes authored CSVs, not parquet) | ✅ append / already-present / differs report | complete (`draft.append_rows`, `blank_template`) |
+| **drafting (0.5)** | ✅ appended rows are validated rows; keys reuse `_TABLE_DUPE_KEYS` | — (writes authored CSVs, not parquet) | ✅ append / already-present / differs report | complete (`draft.append_rows`, `blank_template`); `DRAFTABLE` covers the SNP core, the table kinds and `sources.csv` (0.5.4) |
 | **templating (0.5)** | ✅ a stub carries `TEMPLATE_PLACEHOLDER`, which no mode compiles | — (writes authored CSVs, not parquet) | ✅ created / kept-untouched plan | complete (`draft.stub_template`, `scaffold.scaffold_module`) |
 | **hints (0.5)** | ✅ per-cell validation, bin coverage, duplicate keys — all offline | — (writes nothing at all) | ✅ alterations + findings + options | complete (`hints.inspect_rows`, `hints.describe_table`) |
 | **delegated insertion (0.5)** | ✅ placed rows are validated rows; shifted rows keep their cells | — (writes authored CSVs, not parquet) | ✅ `DraftReport.shifted` names every moved row | complete (`draft.place_rows`, `append_rows(group_by=…)`) |

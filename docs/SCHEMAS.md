@@ -61,6 +61,16 @@ annotation (see [§ resolution table](#the-resolution-table-05-provisional)) —
 the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `sources.csv`, which are therefore absent from the table below.
 
+**`sources.csv` is the one of those four a human is expected to write, and 0.5.4 stopped pretending
+otherwise (S21).** The other three are produced by an enricher pass, so an author never starts one by
+hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
+anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
+(`vocab.MISPLACED_COLUMN_REASONS['source']` says exactly that), and the compile licence gate reads this
+file and nothing else. It is therefore in `just_dna_compiler.draft.DRAFTABLE` with `(source, layer)` as
+its key, and its two vocabulary fields carry their markers so `authoring_reference()` describes it. It
+stays out of the table below because its rows are *facts about a dataset*, not annotation — the same
+reason its `source` column is inside its fact set while everywhere else `source` is provenance.
+
 | File | Model (module) | Role |
 |---|---|---|
 | `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` / `authorship` |
@@ -127,13 +137,25 @@ the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literat
   because the vocabularies live in the leaves that own them (`vocab`, `spec`, `binning`, `pgx`,
   `pgs`, `manifest`) and a central registry would either need `vocab` to import `pgx` — the cycle
   `base`'s dependency note exists to avoid — or be a second hand-kept list, which is the thing being
-  fixed. `authoring_reference()["vocabularies"]` is generated from these markers, so a vocabulary
-  cannot be added and forgotten; it grew from 13 hand-listed entries to 22 the moment it was.
+  fixed. `authoring_reference()["vocabularies"]` is generated from these markers — 21 entries today,
+  against the hand-kept dict it replaced, which had already drifted twice.
   `closed=False` marks a *recommended* set, and that flag is load-bearing: `actionability` was
   published as an open seed while `VariantRow` rejected non-members, so a tool offering a novel value
   got a rejection it had been told to expect. Keyed by **vocabulary name**, not field name, which is
   what keeps `PgsRow.training_ancestry` (1000G superpopulations) from merging with gnomAD's
   population list — two ancestry vocabularies `vocab.py` explicitly forbids folding together.
+
+  **The guard that keeps this honest discovers enforcement by behaviour, and it was still defeated by a
+  hand-kept list (S21, 0.5.4).** `test_every_enforced_vocabulary_field_declares_its_options` feeds each
+  field an invented value and requires a marker wherever the model refuses one — no list of which fields
+  are constrained. But it iterates `reference._ALL_MODELS`, and `SourceRow` was not in it, so
+  `SourceRow.layer` and `.declared_use` ran closed validators with no marker and `authoring_reference()`
+  described `sources.csv` not at all. One omission hid the other, and the cost landed on the one fact
+  sidecar a human writes: an author reconstructing that table from its filename has to guess that
+  `share_alike`/`commercial_use`/`redistribution` are three orthogonal tri-states, which is not a
+  guessable shape. Both markers are on the fields now and the model is in the registry — demonstrated by
+  stripping the markers and watching the guard name both fields, not asserted. **Add a new model to
+  `_ALL_MODELS` in the same commit that declares it.**
 - **`REQUIRED_ANY_OF` (`AuthoredModel`, 0.5).** Alternative identity groups, any one of which
   satisfies the row: `VariantRow` is `({rsid}, {chrom, start})`. Pydantic's `is_required()` is
   field-local and cannot say this — the rule is a `model_validator` — so a tool listing required
@@ -378,9 +400,13 @@ Position-level **matching** helpers (studies, the reverse pos→rsid lookup, hap
 Four siblings of `resolution.csv` at four different grains — `frequency.FrequencyRow` →
 `frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**,
 `literature.LiteratureRow` → `literature.csv` per **citation**, and `sources.SourceRow` →
-`sources.csv` per **(data source, layer)**. All are machine-produced reference facts:
-injected, human-overridable, hashed by facts, and compiled into their own optional parquets. All are
+`sources.csv` per **(data source, layer)**. All are reference facts rather than annotation:
+injected, hashed by facts, and compiled into their own optional parquets. All are
 standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow` is.
+
+Three of the four are machine-produced and human-*overridable*; `sources.csv` is machine-produced and
+human-**authored**, because a source a curator read by hand has no pass to write its row (see above).
+That is why it is the only one of the four with a `draft`/`template` route and a natural key.
 
 **`FrequencyRow` — one row per (allele, ancestry group).** Facts: `variant_key` (coordinate-derived, so
 it lines up with post-expansion weights rows), `rsid?`, `chrom?`/`start?`/`ref?`, `alt?` (**one** alt, not

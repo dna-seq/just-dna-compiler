@@ -295,10 +295,17 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   both modes, deliberately, because failing would make the format arbitrate a clinical dispute. The
   reason is documented at the call site; don't "fix" the inconsistency.
 - **`absent` for an rsID means typo *or* withdrawn, and the API cannot separate them.** `rs11273140`
-  (withdrawn) and `rs2000000000` (never assigned) return byte-identical responses. `VALID_RSID_STATUS`
-  is `{live, merged, absent}` — there is no `withdrawn` member because nothing could ever produce it,
-  and the message names both readings. A test asserts the equality on the *recordings* so a future dbSNP
-  release that separates them fails loudly.
+  (withdrawn) and `rs2000000000` (never assigned) return byte-identical responses, so
+  `identifiers.classify_rsid` answers `absent` and the message names **both** readings rather than
+  guessing — a typo is fixed, a retraction may leave the annotation describing nothing. A test asserts
+  the equality on the *recordings* so a future dbSNP release that separates them fails loudly.
+  **`VALID_RSID_STATUS` is `{live, merged, absent, withdrawn}`** — four members. This bullet used to say
+  three, on the reasoning that nothing could ever produce the fourth, and that is the confusion to avoid:
+  "nothing emits it today" is a fact about the live API, while the member exists for the two cases the
+  API is not the authority on — a curator who has *established* a retraction records it by hand, and a
+  future source that can tell the two apart starts emitting it without a vocabulary change P3 would
+  otherwise make a one-way door. Its severity is not `absent`'s either: see the `withdrawn` bullet under
+  Resolution, which is fatal in **both** modes.
 - **Existence vs retrievability for citations.** A paywall hides the *fulltext*, never the PubMed
   record — `exists` is answered for paywalled work. The real gaps, both now covered: citations PubMed
   does not index at all (preprints/books/datasets → **Crossref**, checking the *authored* DOI, since
@@ -314,13 +321,54 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   (`rs77121243` → `rs334`) and returns **HTTP 400 on others** (`rs3216883`, which dbSNP correctly
   reports as merged into `rs3051860`), so Ensembl alone would misclassify a merged rsID as
   unresolvable. `esummary db=snp` is batched and authoritative: `snp_id` != requested + `merged_sort=1`
-  means merged, an `error: "cannot get document summary"` record means absent. **There is no distinct
-  "withdrawn" state**: an rsID retracted for mapping/clustering errors (`rs11273140`) is byte-identical
+  means merged, an `error: "cannot get document summary"` record means absent. **No live endpoint
+  reports a distinct "withdrawn" state** (the *vocabulary* has one — see the `absent` bullet above): an
+  rsID retracted for mapping/clustering errors (`rs11273140`) is byte-identical
   to one never assigned (`rs2000000000`) across esummary, esearch and Ensembl, so a message about an
   absent rsID must name *both* readings — typo vs withdrawn-and-the-annotation-may-be-worthless — and
   assert neither. (`misc/rs_unsupported_b157.txt` looks like a withdrawn registry and is not; it is a
   one-off build-157 ClinVar-parsing incident list.) And when picking a negative-test rsID, check it:
   `rs999999999` looks synthetic but is a real variant at chr6:58247859.
+- **An UNREACHABLE source is unchecked, never absent — and the artifact must not say otherwise (S20,
+  0.5.4).** `EnsemblResolver.resolve_rsid` returned `([], None)` both when Ensembl answered with no
+  GRCh38 locus and when the request never completed, so a failed lookup rendered as a definite negative:
+  `loci: []` plus "live Ensembl has no GRCh38 locus for it either". That pair is exactly the fingerprint
+  of a **fabricated** rsID, and a consumer auditing a machine-written document put two published
+  variants (`rs6567160`, a long-standing MC4R BMI locus, and `rs13010010`) in the fabricated pile on a
+  flaky run. Three outcomes now: loci, `[]` for an answered absence (carrying its source, so
+  `hint.checked` records *which* link said nothing), `None` for could-not-ask. Three things to keep
+  straight. **A 4xx is an answer** — Ensembl 400s on rsIDs it cannot resolve — so only a 5xx, a
+  transport error or a timeout is unchecked. The **artifact half was worse and invisible from
+  `lookup_variant`**: `enrich()` wrote `ResolutionRow(status="not_found", source="ensembl")` for a
+  request that *failed*, stating in the injected table that Ensembl was asked and said no. No row is
+  written now — the key stays `unresolved`, so `strict` still refuses and `best_effort` still warns, but
+  nothing claims a source answered — and `EnrichmentResult.unreachable_rsids` names them, distinct from
+  `unresolved`, which is silent about why and so cannot tell a re-runnable failure from a real absence.
+  It **warns in both modes**: no authored edit clears a failed request (P5, the `not_covered` class).
+  And the argument was already four lines below in the same function, where the non-GRCh38 branch
+  declines to write `not_found` for precisely this reason. Generalize it: **when a function has two ways
+  of returning nothing, check whether any caller renders them as one sentence.**
+- **Two true halves can make a false row — check the RELATIONSHIP, not the members (S24, 0.5.4).**
+  `variants.csv` carries a `gene` column and nothing compared it to anything: `identifiers` asked HGNC
+  whether a symbol was *approved*, which is a different question (`FTO` is approved whatever variant
+  sits beside it), so a row pairing a real gene with a variant on another chromosome passed every check.
+  Four of a reporter's seven rows were exactly that — real symbols beside invented rs numbers, which
+  resolve anyway because dbSNP is dense enough that almost any seven-digit number hits something.
+  **Machine-written sources are a real authoring input now, and this is the shape they fail in.**
+  `check_identifiers` reports `GeneLocusConflict` per row and repairs nothing (which of the two halves
+  is wrong is not knowable here). Four design points, none of which should be "improved":
+  **chromosome granularity only** — the stronger interval version is refused in the code using the
+  reporter's own argument, since `rs1421085` sits in an FTO intron and acts on *IRX3*/*IRX5* megabases
+  away, so a row may legitimately name any of the three and an interval check would fire on correct rows
+  until someone switched it off (a test pins that the FTO row stays silent). The join is against HGNC's
+  **cytoband** (`16q12.2` → `16`, `mitochondria` → `MT`) and anything unparsed yields `None` rather than
+  a guess, because a guess here becomes a false accusation about a row. For an rsID-only row the
+  chromosome comes from an **injected `resolution.csv`** beside the spec and nothing is fetched — a
+  currency check must not depend on a resolver. And a **pseudoautosomal** gene is exempt: `XG` straddles
+  the PAR1 boundary, so X/Y there is a spelling, not a contradiction (RM32).
+  `gene_loci_not_checked` carries the reason when the comparison could not run — same rule as
+  `clin_sig_not_checked`, because an empty conflict list otherwise says both "compared everything" and
+  "never compared".
 - **Network tests are opt-in:** `JUST_DNA_NETWORK_TESTS=1` runs the live gnomAD query, the seqrepo
   refget re-derivation, and indel-normalization round-trips. They pass; they just aren't run by default.
 - **PharmGKB is now ClinPGx, and every PGx upstream is research-only.** `api.pharmgkb.org` was
@@ -473,10 +521,20 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   overloading (`gnomad-constraint`/`gnomad-api` are routes, not sources) and was fixed the other way —
   it records `gnomad`, and the route stays in `dataset`, which is inside the fact set where `source` is
   not. This was RM33.
-- **An `annotation`-layer source is exempt from the orphan check, structurally.** "No table used it" is
-  decided by reading fact tables' `source` columns, and the annotation layer *is*
-  `variants.csv`/`diplotypes.csv`, which carry none — so the check reported the one row the licence gate
-  keys on as probably stale, on every drafted module. Don't "restore" it.
+- **A layer with no `source` column to join is exempt from the orphan check, structurally — and that is
+  now TWO layers, not one (S23, 0.5.4).** "No table used it" is decided by reading fact tables' `source`
+  columns, and `annotation` *is* `variants.csv`/`diplotypes.csv`, which carry none — so the check
+  reported the one row the licence gate keys on as probably stale, on every drafted module. `literature`
+  joins the exemption by the identical argument whenever the module carries `studies.csv` rows
+  (`_source_checks(..., literature_evidenced=…)`, `uncorroborable = {"annotation", "literature"}`):
+  `studies.csv` is the hand-curated literature table and has no `source` column *by the same design*, so
+  a `pubmed`/`europepmc` row can only be corroborated by the enricher-written `literature.csv`, and a
+  module with none has nothing to join. Note which way the old behaviour pushed an author:
+  `MISPLACED_COLUMN_REASONS['source']` tells them to declare a hand-read source as a `sources.csv` row,
+  and doing so earned a warning that the row was unused, while **deleting** it — shipping with the
+  provenance unrecorded — was silent. Compliance warned, omission quiet. Narrow by construction:
+  `frequency` still warns, because `frequencies.csv` *is* machine-written with a `source` column, so a
+  frequency declaration in a module with no frequencies really is stale. Don't "restore" either half.
 - **The compile gate is data-driven; a `--non-commercial` CLI flag would be charter-illegal.** It
   refuses when an annotation-layer source forbids sale and the module records no declaration, reading
   only injected `sources.csv`. A *flag* cannot be recorded in the artifact — `reverse_module` rebuilds
@@ -610,6 +668,28 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `base.SHARED_VOCABULARIES`; model-specific validator → that model's `Field(...)`. Never mark a
   field nothing enforces: `StudyRow.chrom` and the PGx `chrom`s run no chrom validator, so they carry
   no marker, and the guard test catches it in both directions.
+- **A guard that iterates a model registry is only as complete as the registry — and one omission hid
+  another (S21, 0.5.4).** `SourceRow.layer` and `.declared_use` ran closed-vocabulary validators while
+  carrying no `vocabulary=` marker, so `authoring_reference()` did not describe `sources.csv` at all —
+  and the guard that exists for exactly that
+  (`test_every_enforced_vocabulary_field_declares_its_options`, which discovers enforcement by
+  *behaviour* rather than from a list) never saw it, because it iterates `reference._ALL_MODELS` and
+  `SourceRow` was not in it. The behaviour-discovering half was the good design and it was defeated by
+  the one hand-kept thing left beside it. **When adding a model, add it to `_ALL_MODELS`**, and when
+  reviewing a guard, ask what it enumerates before trusting what it proves. The cost was concrete:
+  `sources.csv` is the **only fact sidecar a human writes** and the only table the compile licence gate
+  reads, and an author reconstructing it from a filename has to guess that
+  `share_alike`/`commercial_use`/`redistribution` are three orthogonal axes where `None` means unknown
+  rather than false — not a guessable shape. The reporter got it right only by reading
+  `SourceRow.model_fields`, i.e. reading our source to learn our schema.
+- **`sources.csv` is draftable, and the exception is the rule's own point (S21, 0.5.4).**
+  `draft.blank_template("sources.csv")` used to answer *"is not an authored table of this format"* — a
+  false claim, made by the surface an author reaches for *instead of* reading the models. It is in
+  `DRAFTABLE` now with `(source, layer)` as its natural key, borrowed from
+  `licensing.merge_sources_csv` for the same reason `_CORE_DUPE_KEYS`' other entries are borrowed: a
+  draft must not append a row the other writer would treat as already present, and one source
+  legitimately appears at two layers. The other three fact sidecars stay out — they are produced by an
+  enricher pass, so an author never starts one by hand.
 - **Requiredness has THREE shapes, and the middle one is invisible to pydantic.** `is_required()` is
   false for `MeasureBinRow.measure_kind` and `unresolved` — they have defaults — but they are not
   `Optional`, and `load_csv_rows` turns an empty cell into `None` **and keeps the key**, so the model
@@ -1009,6 +1089,27 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   bounds + overlap-is-an-error + any-hole-is-a-warning cannot all hold on a continuous measure, so
   every `allele_fraction` table warned forever (RM35, now fixed). Integer kinds tile cleanly, which is
   why nobody noticed.
+- **A bin boundary is the most interpretive claim the format carries and it has nowhere to cite —
+  a SCHEMA limit, not a tier limit (S19/RM47, 0.5.4).** `studies.csv` names a variant (`rsid`, or
+  `chrom`+`start`) and a `repeat_alleles.csv` row is keyed `(gene, repeat_unit)`, so nothing can point at
+  it: `reference_examples/htt_repeat_expansion` compiles green under `--strict` asserting where
+  Huntington disease becomes fully penetrant — 26/27, 35/36, 39/40 — with no citation anywhere, and its
+  README said *"a module making a novel claim should carry its evidence"*, advice the schema gave the
+  author no way to take. Probing narrowed it in **both** directions and both corrections matter:
+  `heteroplasmy.csv` is *not* affected (its optional `rsid`/`chrom`/`start` columns, 0.5.1, give a row
+  an identity a study row names exactly — `reference_examples/mt_heteroplasmy` does it), and
+  `studies.csv` is **not rejected** in a variants-free module (it loads, validates and materializes
+  `studies.parquet`), so a binning or PGx module can cite its literature today; the row simply grounds
+  the *module* rather than the bound. What ships is `_check_binning_grounding`: warns in **both** modes
+  when a binning table states thresholds and the module records no study rows, message split on whether
+  the rows *could* be pointed at — derived from the model (`variant_key is None`), never from the table
+  name. One comment was load-bearing and false — `validate_spec`'s exemption was justified as "the 0.4
+  tables carry their own evidence (e.g. `evidence_level`)", true of two of the nine kinds; the real
+  reason is that for a gene-keyed table the requirement would be **unsatisfiable** rather than merely
+  unmet. Closing it is **RM47** (0.6), a design round: every candidate repair costs either a duplicated
+  column set (`pmid` on `MeasureBinRow` drags `studies.csv`'s provenance columns along) or a duplicated
+  key (`bin_evidence.csv` joins on floats that orphan silently when a bound is re-authored). Don't
+  file it again, and keep the HTT thresholds uncited — the example exists to show the gap.
 - **A shared bin endpoint is a BOUNDARY on a dense measure, and the higher bin owns it** — the lookup
   rule is *the row with the greatest `measure_min ≤ x`* (`binning._DENSE_KINDS`: `allele_fraction`,
   `prs_percentile`). So the overlap test is `lo < prev_hi` there and stays `lo <= prev_hi` on
