@@ -416,11 +416,25 @@ Each of these was a bug in the loop, not a hypothetical:
   of "this file is the inbox, so an empty one means nothing is owed" into the *history* file, twice,
   before anyone read the result. **The verification could not see it**: fingerprints cover the
   consumer's prose alone, so the move reported "every fingerprint intact" while the file grew duplicate
-  front matter — and the *preceding* section's fingerprint shifted, because its span now ended at the
-  injected heading, which is how S24 came to read `revised` with byte-identical prose. Fixed by taking
-  the first `# ` in a document as its title and a group as any later one; a section with no group now
-  prints a notice telling you to add one, rather than the tool inventing a name, on the same reasoning
-  that keeps the index row hand-written. Reproduced both ways in a sandbox before and after.
+  front matter. Fixed by taking the first `# ` in a document as its title and a group as any later one;
+  a section with no group now prints a notice telling you to add one, rather than the tool inventing a
+  name, on the same reasoning that keeps the index row hand-written. Reproduced both ways in a sandbox
+  before and after.
+
+  **It does *not* disturb the preceding section, and the first repair of this claimed it did.** The
+  injected heading is separated by one blank line, and `fingerprint()` ends in `.strip()`, so the
+  section above keeps its hash. Worth stating because the tempting story — "archiving S25 shifted S24" —
+  was written into this file and one commit message before being checked, and it explains a symptom that
+  has a different cause (below). The lesson is the loop's own: establish it, then write it.
+- **A marker can be stamped with a sha that never matched its section, and the ledger can only report
+  it, not explain it.** S24 read `revised` with prose that git shows byte-identical since the pass that
+  archived it — verified by running the ledger against `CONSUMER_SUGGESTIONS_HISTORY.md` at that very
+  commit, where it already disagreed. So the marker was written wrong *in its own pass*, most likely by
+  stamping before a last edit to the consumer's text, and no later operation is implicated. Restamped
+  to the computed value on 2026-08-12 after establishing that much. `--backfill` deliberately will not
+  do this — it only touches `unmarked-reply`, because silently restamping a `revised` section is exactly
+  how a genuine re-triage signal would be erased — so it is a hand edit, and it needs the prose-unchanged
+  check first. If you cannot show the prose is unchanged, the verdict is honest and you re-triage.
 
 ---
 

@@ -1902,7 +1902,7 @@ everything" and "never compared", which is the S20 shape again and the reason `c
 exists. The CLI prints it rather than staying quiet.
 
 You are right not to build a gene-coordinate lookup on your side. `F23` can become a call to this.
-<!-- triaged: 0.5.4 · sha cafc38eb0bde -->
+<!-- triaged: 0.5.4 · sha 54c33d5f75b7 -->
 
 **Reported by:** just-module-creator · **Found:** 2026-08-11, triaging seven rsIDs from an LLM-written
 summary of a YouTube lecture. **Priority: medium, and rising** — machine-written sources are now a real
