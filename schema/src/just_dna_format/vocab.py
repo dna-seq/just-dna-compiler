@@ -441,8 +441,11 @@ def reject_reserved(data: object) -> object:
     `extra="forbid"` already rejects any unknown column, but treats a reserved name and a random/typo'd
     one identically (the generic "extra inputs are not permitted"). This guard runs first and, when the
     raw input carries a reserved-namespace column (`RESERVED_NAMES_0_4`), raises a *specific* error
-    stating what the name is reserved for and that a future release may claim it — so `caller` fails
-    differently from `xyzzy`. That is the reserved list's build-time (author/compile-time) value:
+    stating what the name is reserved for and that a future release may claim it — so `reference_db`
+    fails differently from `xyzzy`. (It said `caller` until 2026-08-12, which had stopped being true:
+    `caller` was *dropped* from the reserved set rather than built, so it takes the generic message like
+    any other stray column, and the example claimed a diagnosis the code no longer produces.) That is
+    the reserved list's build-time (author/compile-time) value:
     reserved ≠ arbitrary at the point of failure, not merely in a published dictionary. A misspelled or
     genuinely-unknown column still falls through to `extra="forbid"`'s generic message (a hint to check
     the field list). Non-mapping input passes through untouched (pydantic handles it)."""
