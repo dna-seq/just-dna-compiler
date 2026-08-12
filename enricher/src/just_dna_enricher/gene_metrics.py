@@ -281,7 +281,7 @@ def enrich_gene_metrics(
         record_source_terms(
             {row.source for row in out if row.source},
             "gene_metrics",
-            spec_dir / "sources.csv",
+            spec_dir,
             error=GeneMetricsEnrichmentError,
         )
     return result

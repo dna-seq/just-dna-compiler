@@ -851,7 +851,7 @@ def enrich(
         record_source_terms(
             {row.authority for row in out if row.authority},
             "resolution",
-            spec_dir / "sources.csv",
+            spec_dir,
             error=EnrichmentError,
         )
     return result

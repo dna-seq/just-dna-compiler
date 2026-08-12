@@ -19,6 +19,12 @@ from just_dna_enricher.clinpgx_draft import (
     draft_pharm_variants,
 )
 from just_dna_format.pgx import PharmVariantRow
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+
+#: The licence sidecar's current filename, derived rather than named: it gained a second
+#: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test
+#: to whichever spelling happened to be current when it was written.
+_LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 _SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "interim" / "clinpgx"
 _needs_snapshot = pytest.mark.skipif(
@@ -106,7 +112,7 @@ def test_drafting_the_real_snapshot_is_re_runnable_and_reloads(tmp_path: Path) -
     assert {r.drug for r in rows} == {"simvastatin"}
     assert len({natural_key(r) for r in rows}) == len(rows)
     # a source consulted must be accounted for
-    assert (tmp_path / "sources.csv").is_file()
+    assert (tmp_path / _LICENCE_CSV).is_file()
 
     before = path.read_bytes()
     again = draft_pharm_variants(

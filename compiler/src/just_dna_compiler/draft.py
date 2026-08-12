@@ -46,6 +46,7 @@ from typing import Any
 from just_dna_format.base import authored_field_names
 from just_dna_format.base import field_category as base_field_category
 from just_dna_format.binning import MeasureBinRow
+from just_dna_format.layout import SOURCES_CSV, sidecar_spellings
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -69,11 +70,14 @@ from just_dna_compiler.compiler import (
 #: Excluding it meant `blank_template("sources.csv")` answered *"is not an authored table of this
 #: format"* — a false claim, and the surface that says it is the one an author reaches for instead of
 #: reading our source. Which is what the consumer who reported it ended up doing.
+#: Both spellings of the licence table are keys (RM51). The map is keyed on the *filename* a caller
+#: names, so leaving the new one out would make `blank_template("licensing.csv")` deny that a table the
+#: compiler reads is a table of this format — the same false claim excluding `sources.csv` used to make.
 DRAFTABLE: dict[str, type[BaseModel]] = {
     "variants.csv": VariantRow,
     "studies.csv": StudyRow,
     **{csv_name: model for csv_name, _, model in _TABLE_KINDS},
-    "sources.csv": SourceRow,
+    **{name: SourceRow for name in sidecar_spellings(SOURCES_CSV)},
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks

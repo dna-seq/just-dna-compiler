@@ -300,7 +300,7 @@ def enrich_frequencies(
         record_source_terms(
             {row.source for row in out if row.source},
             "frequency",
-            spec_dir / "sources.csv",
+            spec_dir,
             error=FrequencyEnrichmentError,
         )
     return result

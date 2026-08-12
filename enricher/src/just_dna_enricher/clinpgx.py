@@ -285,5 +285,5 @@ def enrich_clinpgx(
     result.rows = [row]
 
     if write:
-        merge_sources_file(result.rows, spec_dir / "sources.csv", error=ClinPgxEnrichmentError)
+        merge_sources_file(result.rows, spec_dir, error=ClinPgxEnrichmentError)
     return result

@@ -22,6 +22,12 @@ from just_dna_enricher.net import PacingGate
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use
 from just_dna_format.vrs import derive_vrs_allele_id
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+
+#: The licence sidecar's current filename, derived rather than named: it gained a second
+#: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test
+#: to whichever spelling happened to be current when it was written.
+_LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 _YAML = (
     "schema_version: '1.0'\n"
@@ -96,7 +102,7 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
     # has a different content identity, because `sources.parquet` is an artifact file. Copying it is
     # what isolates the claim instead of quietly weakening it to a weights-only comparison.
     spec2 = _spec(tmp_path / "spec2", variants)
-    shutil.copy(spec1 / "sources.csv", spec2 / "sources.csv")
+    shutil.copy(spec1 / _LICENCE_CSV, spec2 / _LICENCE_CSV)
     d2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache).manifest.artifact.digest
     r1 = compile_module(spec1, tmp_path / "o1", ensembl_cache=None)
     assert r1.success, r1.errors
@@ -125,7 +131,7 @@ def test_each_link_records_the_authority_it_speaks_for(cache: Path, tmp_path: Pa
 
     # The pass that consulted a source records its terms — at the `resolution` layer, the member of
     # VALID_SOURCE_LAYERS that nothing used to write.
-    rows, errors, _ = _load_csv_rows(spec / "sources.csv", SourceRow, "sources.csv")
+    rows, errors, _ = _load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
     assert not errors
     recorded = {(r.source, r.layer) for r in rows}
     assert ("ensembl", "resolution") in recorded

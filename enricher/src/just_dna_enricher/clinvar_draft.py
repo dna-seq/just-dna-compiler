@@ -576,7 +576,7 @@ def draft_gene_panel(
         # gate and `manifest.sources` read sources.csv and nothing else.
         merge_sources_file(
             [CLINVAR_TERMS.row("annotation", declared_use=declared_use)],
-            spec_dir / "sources.csv",
+            spec_dir,
             error=ClinVarDraftError,
         )
     return ClinVarDraftResult(reports=reports, warnings=warnings)

@@ -58,6 +58,7 @@ from just_dna_enricher.licensing import (
     PHARMVAR_TERMS,
     LicenseRefusal,
     check_declared_use,
+    sources_path,
 )
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
 from just_dna_enricher.locations import (
@@ -363,7 +364,10 @@ def pgx_(
         typer.secho(f"PGX FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     if result.rows:
-        typer.secho(f"sources: {spec_dir / 'sources.csv'}", fg=typer.colors.GREEN)
+        # The file the pass actually wrote, not a guessed name — the module may carry either spelling.
+        typer.secho(
+            f"sources: {sources_path(spec_dir, error=PgxEnrichmentError)}", fg=typer.colors.GREEN
+        )
     typer.echo(f"sources recorded: {len(result.rows)}  declared use: {result.declared_use}")
     if result.routes:
         typer.echo("  routes: " + ", ".join(f"{s}={r}" for s, r in sorted(result.routes.items())))

@@ -235,7 +235,7 @@ def enrich_dosage_sensitivity(
         # no difference to whether it is recorded: the compile gate reads `sources.csv` and nothing
         # else, so an unrecorded source is one the module cannot account for — and CC0 asks for
         # attribution, which is a thing this table exists to carry.
-        merge_sources_file([source_row], spec_dir / "sources.csv", error=ClinGenError)
+        merge_sources_file([source_row], spec_dir, error=ClinGenError)
     return ClinGenResult(
         rows=out,
         covered=sorted(set(covered)),

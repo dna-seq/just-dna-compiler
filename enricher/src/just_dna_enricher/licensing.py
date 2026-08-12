@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_format.layout import SOURCES_CSV, SidecarCollision, sidecar_write_path
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE
@@ -270,7 +271,7 @@ def resolution_authority(link: str | None) -> str | None:
 def record_source_terms(
     source_names: Iterable[str],
     layer: str,
-    path: Path,
+    spec_dir: Path,
     *,
     error: type[Exception],
     declared_use: str = "unstated",
@@ -299,7 +300,7 @@ def record_source_terms(
     if not terms:
         return []
     return merge_sources_file(
-        [t.row(layer, declared_use=declared_use) for t in terms], path, error=error
+        [t.row(layer, declared_use=declared_use) for t in terms], spec_dir, error=error
     )
 
 
@@ -391,21 +392,42 @@ def merge_sources_csv(rows: list[SourceRow], path: Path, existing: list[SourceRo
     return out
 
 
+def sources_path(spec_dir: Path, *, error: type[Exception]) -> Path:
+    """Where this module's licence table lives — the file it already has, else the current spelling.
+
+    The single place any enricher pass turns a spec directory into that path (RM51). Nine passes wrote
+    `spec_dir / "sources.csv"` by hand; one of them keeping its own literal would re-create the retired
+    spelling beside the alias, which is the both-present collision produced by following the documented
+    workflow rather than by misusing it.
+
+    `SidecarCollision` is re-raised as the caller's own error, so a pass still fails as itself rather
+    than as a schema-tier `ValueError` nobody up the stack is catching.
+    """
+    try:
+        return sidecar_write_path(spec_dir, SOURCES_CSV)
+    except SidecarCollision as exc:
+        raise error(str(exc)) from exc
+
+
 def merge_sources_file(
-    rows: list[SourceRow], path: Path, *, error: type[Exception]
+    rows: list[SourceRow], spec_dir: Path, *, error: type[Exception]
 ) -> list[SourceRow]:
-    """Read `sources.csv` if it is there, merge `rows` in without clobbering, and write it back.
+    """Read the module's licence table if it is there, merge `rows` in, and write it back.
 
     The read-merge-write every terms-emitting pass performs, in one place: a pass that consulted a
     source has to record it, and each of them was otherwise growing its own copy of these nine lines.
     An unparseable existing file raises rather than being overwritten — merging into a table that did
     not load would silently drop the rows already recorded. `error` is the caller's own exception
     type, so a failure still surfaces as that pass's error rather than as a licensing one.
+
+    Takes the **spec directory**, not a path: resolving the filename here is what stops a caller
+    naming a spelling the module does not use.
     """
+    path = sources_path(spec_dir, error=error)
     existing: list[SourceRow] = []
     if path.exists():
-        parsed, errors, _ = load_csv_rows(path, SourceRow, "sources.csv")
+        parsed, errors, _ = load_csv_rows(path, SourceRow, path.name)
         if errors:
-            raise error(f"existing sources.csv is invalid: {errors[0]}")
+            raise error(f"existing {path.name} is invalid: {errors[0]}")
         existing = parsed
     return merge_sources_csv(rows, path, existing)

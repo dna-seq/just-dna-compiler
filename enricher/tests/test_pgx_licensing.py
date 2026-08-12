@@ -34,6 +34,12 @@ from just_dna_enricher.pharmvar import (
     parse_allele,
 )
 from just_dna_format.sources import SourceRow
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+
+#: The licence sidecar's current filename, derived rather than named: it gained a second
+#: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test
+#: to whichever spelling happened to be current when it was written.
+_LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 
 @pytest.fixture(autouse=True)
@@ -189,9 +195,9 @@ def test_every_declared_column_survives_a_write_read_cycle(tmp_path: Path) -> No
         PHARMVAR_TERMS.row("annotation", declared_use="non_commercial", license_text="terms v1"),
         ENSEMBL_TERMS.row("resolution", declared_use="unstated"),
     ]
-    path = tmp_path / "sources.csv"
+    path = tmp_path / _LICENCE_CSV
     write_sources_csv(rows, path)
-    reloaded, errors, _ = _load_csv_rows(path, SourceRow, "sources.csv")
+    reloaded, errors, _ = _load_csv_rows(path, SourceRow, _LICENCE_CSV)
     assert not errors
     assert [r.model_dump() for r in reloaded] == [r.model_dump() for r in rows]
     # …and the axis RM27 is designed to read is a real value, not the absence of one.
@@ -205,7 +211,7 @@ def test_every_declared_column_survives_a_write_read_cycle(tmp_path: Path) -> No
         for row in rows:
             dumped = row.model_dump()
             writer.writerow({name: _cell(dumped.get(name)) for name in stale})
-    dropped, _, _ = _load_csv_rows(path, SourceRow, "sources.csv")
+    dropped, _, _ = _load_csv_rows(path, SourceRow, _LICENCE_CSV)
     assert [r.redistribution for r in dropped] == [None, None]
 
 
@@ -306,7 +312,7 @@ def test_pass_refuses_a_commercial_declaration_and_fetches_nothing(tmp_path: Pat
             pharmvar_client=_pharmvar_client(recorder), cpic_client=_cpic_client(),
         )
     assert recorder == []          # refused at acquisition — nothing was taken
-    assert not (tmp_path / "spec" / "sources.csv").exists()
+    assert not (tmp_path / "spec" / _LICENCE_CSV).exists()
 
 
 def test_pass_skips_when_nothing_is_declared(tmp_path: Path) -> None:
@@ -339,7 +345,7 @@ def test_pass_cross_checks_and_records_terms(tmp_path: Path) -> None:
     assert {r.source for r in result.rows} == {"pharmvar", "cpic"}
     assert all(r.layer == "annotation" for r in result.rows)
     assert all(r.declared_use == "non_commercial" for r in result.rows)
-    assert (spec / "sources.csv").is_file()
+    assert (spec / _LICENCE_CSV).is_file()
 
 
 def test_offline_with_no_snapshot_makes_zero_requests_and_says_why(tmp_path: Path) -> None:
@@ -363,7 +369,7 @@ def test_offline_with_no_snapshot_makes_zero_requests_and_says_why(tmp_path: Pat
 
 def test_existing_sources_rows_are_never_clobbered(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
-    (spec / "sources.csv").write_text(
+    (spec / _LICENCE_CSV).write_text(
         "source,layer,license,commercial_use,declared_use\n"
         "pharmvar,annotation,HAND-EDITED,false,non_commercial\n"
     )

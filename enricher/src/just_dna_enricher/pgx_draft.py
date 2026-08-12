@@ -430,7 +430,7 @@ def draft_gene(
         # exact `clingen.py` bug, and it was sitting in the newest provider.
         merge_sources_file(
             [CPIC_TERMS.row("annotation", declared_use=declared_use)],
-            spec_dir / "sources.csv",
+            spec_dir,
             error=CpicError,
         )
     return PgxDraftResult(reports=reports, warnings=warnings)

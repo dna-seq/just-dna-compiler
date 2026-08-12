@@ -19,6 +19,12 @@ from just_dna_enricher.clingen import (
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE, VALID_DOSAGE_SENSITIVITY
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+
+#: The licence sidecar's current filename, derived rather than named: it gained a second
+#: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test
+#: to whichever spelling happened to be current when it was written.
+_LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 # Columns and values transcribed from ClinGen_gene_curation_list_GRCh38.tsv (2026-08-01 release).
 _CURATION_TSV = "#ClinGen Gene Curation Results\n#01 Aug,2026\n#Genomic Locations are reported on GRCh38 (hg38): GCF_000001405.36\n#Gene Symbol\tGene ID\tHaploinsufficiency Score\tHaploinsufficiency Description\tTriplosensitivity Score\tTriplosensitivity Description\nBRCA1\t672\t3\tSufficient evidence for dosage pathogenicity\t0\tNo evidence available\nA4GALT\t53947\t30\tGene associated with autosomal recessive phenotype\t0\tNo evidence available\nHBB\t3043\t40\tDosage sensitivity unlikely\tNot yet evaluated\t\nMTHFR\t4524\t0\tNo evidence available\tNot yet evaluated\t"
@@ -154,7 +160,7 @@ def test_the_source_row_reaches_sources_csv(tmp_path: Path) -> None:
     spec = _spec(tmp_path, ["BRCA1"])
     enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV, declared_use="commercial")
 
-    written, errors, _ = _load_csv_rows(spec / "sources.csv", SourceRow, "sources.csv")
+    written, errors, _ = _load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
     assert not errors
     recorded = {(r.source, r.layer): r for r in written}
     assert ("clingen", "annotation") in recorded
@@ -169,13 +175,13 @@ def test_recording_clingen_does_not_clobber_another_sources_row(tmp_path: Path) 
     # A PGx pass may have written its own terms first. Merging must add beside them — losing a
     # restrictive row would silently make a module look sellable.
     spec = _spec(tmp_path, ["BRCA1"])
-    (spec / "sources.csv").write_text(
+    (spec / _LICENCE_CSV).write_text(
         "source,layer,license,commercial_use\ncpic,annotation,CC-BY-SA-4.0,false\n",
         encoding="utf-8",
     )
     enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV)
 
-    written, errors, _ = _load_csv_rows(spec / "sources.csv", SourceRow, "sources.csv")
+    written, errors, _ = _load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
     assert not errors
     assert {(r.source, r.layer) for r in written} == {
         ("cpic", "annotation"),

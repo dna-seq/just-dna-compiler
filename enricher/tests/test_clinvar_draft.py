@@ -25,6 +25,12 @@ from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from just_dna_format.vrs import in_pseudoautosomal_region
 from pydantic import ValidationError
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+
+#: The licence sidecar's current filename, derived rather than named: it gained a second
+#: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test
+#: to whichever spelling happened to be current when it was written.
+_LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 _SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "interim" / "clinvar"
 _needs_snapshot = pytest.mark.skipif(
@@ -85,7 +91,7 @@ def test_a_real_panel_drafts_stubs_in_gene_blocks(tmp_path: Path) -> None:
     assert all(r["rsid"] or (r["chrom"] and r["start"] and r["ref"]) for r in rows)
     assert {r["clin_sig"] for r in rows} <= DEFAULT_CLIN_SIG
     # a source rows were copied out of must be accounted for
-    assert (tmp_path / "sources.csv").is_file()
+    assert (tmp_path / _LICENCE_CSV).is_file()
 
 
 @_needs_snapshot
@@ -135,7 +141,7 @@ def test_an_unstated_use_is_fine_because_clinvar_is_public_domain(tmp_path: Path
     still recorded, because attribution is asked for even when permission is not."""
     result = draft_gene_panel(tmp_path, ["MTHFR"], snapshot=_SNAPSHOT, declared_use="commercial")
     assert not result.skipped and result.added_for("variants.csv") > 0
-    sources = _rows(tmp_path / "sources.csv")
+    sources = _rows(tmp_path / _LICENCE_CSV)
     assert any(s["source"] == "clinvar" for s in sources)
 
 
@@ -145,7 +151,7 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert result.added_for("variants.csv") > 0
     assert not (tmp_path / "variants.csv").exists()
     assert not (tmp_path / "studies.csv").exists()
-    assert not (tmp_path / "sources.csv").exists()
+    assert not (tmp_path / _LICENCE_CSV).exists()
 
 
 # ── finding the snapshot (0.5) ───────────────────────────────────────────────────────────────────

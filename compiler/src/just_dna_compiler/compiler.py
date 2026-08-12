@@ -45,6 +45,13 @@ from just_dna_format.binning import (
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.identity import is_valid_version
+from just_dna_format.layout import (
+    SOURCES_CSV,
+    SidecarCollision,
+    deprecation_notice,
+    resolve_sidecar,
+    sidecar_spellings,
+)
 from just_dna_format.integrity import (
     build_artifact,
     file_entries,
@@ -234,6 +241,27 @@ _PROVENANCE_FILE: str = "provenance.json"
 # consumer that reads this one as identity will see a reverse→recompile cycle as tampering, which is
 # exactly the mistake the fact hashes exist to prevent.
 _DERIVED_FILES: tuple[str, ...] = ("resolution.csv", *(csv for csv, _, _ in _FACT_TABLES))
+
+
+def _locate_sidecar(spec_dir: Path, csv_name: str) -> tuple[Path | None, list[str], list[str]]:
+    """Find a machine-written sidecar under any spelling it may legally carry (RM51).
+
+    Returns `(path_or_None, warnings, errors)` and never raises, because every caller is inside a
+    function that answers with a `CompilationResult`/`ValidationResult` and an escaping exception
+    there is a traceback where a diagnosis belongs.
+
+    Sits **above** `_FACT_TABLES` on purpose: `_DERIVED_FILES`, `_KNOWN_SPEC_FILES` and both load loops
+    are all derived from that tuple, so a spelling that only some of them knew about would be read by
+    the compiler and reported as a stray file by the near-miss guard in the same run.
+    """
+    try:
+        path = resolve_sidecar(spec_dir, csv_name)
+    except SidecarCollision as exc:
+        return None, [], [str(exc)]
+    if path is None:
+        return None, [], []
+    notice = deprecation_notice(path, csv_name)
+    return path, ([notice] if notice else []), []
 
 
 # ── Generic model-driven materializer (RM1) ────────────────────────────────────────────────────
@@ -1744,9 +1772,12 @@ def _validate_table_kind(
 # listed, so a new table kind cannot be missed here. Used only to recognise a *near miss* — a spec
 # directory may carry anything else it likes (see `_check_misspelled_tables`).
 _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
-    {"module_spec.yaml", "variants.csv", "studies.csv", "resolution.csv", _PROVENANCE_FILE}
+    {"module_spec.yaml", "variants.csv", "studies.csv", _PROVENANCE_FILE}
     | set(_TABLE_KIND_CSVS)
-    | {csv for csv, _, _ in _FACT_TABLES}
+    # Every accepted spelling, not just the one the registries name — a sidecar the compiler happily
+    # reads under an alias must not also be reported as a near-miss stray file in the same run (RM51).
+    | {name for csv, _, _ in _FACT_TABLES for name in sidecar_spellings(csv)}
+    | set(sidecar_spellings("resolution.csv"))
 )
 
 
@@ -1926,11 +1957,13 @@ def validate_spec(
         ("resolution.csv", ResolutionRow),
         *((name, model) for name, _parquet, model in _FACT_TABLES),
     ):
-        injected_path = spec_dir / csv_name
-        if not injected_path.exists():
+        injected_path, spelling_warnings, spelling_errors = _locate_sidecar(spec_dir, csv_name)
+        all_warnings.extend(spelling_warnings)
+        all_errors.extend(spelling_errors)
+        if injected_path is None:
             continue
         injected_rows, injected_errors, injected_warnings = _load_csv_rows(
-            injected_path, model, csv_name
+            injected_path, model, injected_path.name
         )
         all_errors.extend(injected_errors)
         all_warnings.extend(injected_warnings)
@@ -2257,10 +2290,15 @@ def compile_module(
     # 0/0 for a module with no resolution table: no allele identities were attempted, which is a
     # different statement from "none were achieved" and is what the manifest should carry.
     vrs_alleles = vrs_identified = 0
-    resolution_path = spec_dir / "resolution.csv"
-    if resolution_path.exists():
+    resolution_path, res_spelling_warnings, res_spelling_errors = _locate_sidecar(
+        spec_dir, "resolution.csv"
+    )
+    if res_spelling_errors:
+        return CompilationResult(success=False, errors=res_spelling_errors, warnings=all_warnings)
+    all_warnings.extend(w for w in res_spelling_warnings if w not in all_warnings)
+    if resolution_path is not None:
         resolution_rows, res_errors, _ = _load_csv_rows(
-            resolution_path, ResolutionRow, "resolution.csv"
+            resolution_path, ResolutionRow, resolution_path.name
         )
         if res_errors:
             return CompilationResult(success=False, errors=res_errors, warnings=all_warnings)
@@ -2452,9 +2490,14 @@ def compile_module(
     # at which that is still true. Purely computation over injected data: the compiler holds no
     # source→licence map (Principle 2 — it owns no source convention) and only reads what the
     # enricher recorded.
-    sources_path = spec_dir / "sources.csv"
-    if sources_path.exists():
-        gate_rows, gate_load_errors, _ = _load_csv_rows(sources_path, SourceRow, "sources.csv")
+    sources_path, gate_spelling_warnings, gate_spelling_errors = _locate_sidecar(
+        spec_dir, SOURCES_CSV
+    )
+    if gate_spelling_errors:
+        return CompilationResult(success=False, errors=gate_spelling_errors, warnings=all_warnings)
+    all_warnings.extend(w for w in gate_spelling_warnings if w not in all_warnings)
+    if sources_path is not None:
+        gate_rows, gate_load_errors, _ = _load_csv_rows(sources_path, SourceRow, sources_path.name)
         if gate_load_errors:
             return CompilationResult(
                 success=False, errors=gate_load_errors, warnings=all_warnings
@@ -2558,10 +2601,18 @@ def compile_module(
 
     fact_rows: dict[type, list] = {}
     for csv_name, parquet_name, model in _FACT_TABLES:
-        fact_path = spec_dir / csv_name
-        if not fact_path.exists():
+        # Spelling collisions and the deprecation notice were both already surfaced by the licence
+        # gate above (for `sources.csv`) or are surfaced here for the first time; either way the
+        # notices de-duplicate, the way ploidy's and the VRS pass's already do.
+        fact_path, fact_spelling_warnings, fact_spelling_errors = _locate_sidecar(spec_dir, csv_name)
+        if fact_spelling_errors:
+            return CompilationResult(
+                success=False, errors=fact_spelling_errors, warnings=all_warnings
+            )
+        all_warnings.extend(w for w in fact_spelling_warnings if w not in all_warnings)
+        if fact_path is None:
             continue
-        rows, fact_errors, _ = _load_csv_rows(fact_path, model, csv_name)
+        rows, fact_errors, _ = _load_csv_rows(fact_path, model, fact_path.name)
         if fact_errors:
             return CompilationResult(success=False, errors=fact_errors, warnings=all_warnings)
         fact_rows[model] = rows
@@ -2942,7 +2993,12 @@ def _build_manifest(
         # `file_entries` skips what is absent, so a module carrying no sidecars gets an empty list
         # rather than a fabricated one — and a new optional sidecar cannot move an existing module's
         # manifest by appearing here.
-        derived=file_entries(spec_dir, list(_DERIVED_FILES)),
+        # Every accepted spelling is offered; `file_entries` skips the ones that are not there, so the
+        # block records whichever name the module actually carries (RM51). A module cannot carry two —
+        # `_locate_sidecar` refused before anything was written.
+        derived=file_entries(
+            spec_dir, [name for csv in _DERIVED_FILES for name in sidecar_spellings(csv)]
+        ),
         content_signature=content_sig,
         artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),
         logs=logs,

@@ -21,6 +21,7 @@ from just_dna_compiler.scaffold import (
     scaffold_module,
 )
 from just_dna_format.base import field_vocabularies
+from just_dna_format.layout import SOURCES_CSV, sidecar_spellings
 from just_dna_format.spec import ModuleSpecConfig
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
@@ -141,10 +142,12 @@ def test_the_companion_rule_matches_the_compilers_own_requirement(tmp_path: Path
 @pytest.mark.parametrize("kind", sorted(DRAFTABLE))
 def test_every_kind_can_be_scaffolded_and_filled(kind: str, tmp_path: Path) -> None:
     spec_dir = tmp_path / "spec"
-    # `sources.csv` is a licence sidecar, not a table a module can consist of — "no recognized table"
-    # is the right refusal for a module that is only a sources file — so it is scaffolded beside the
-    # SNP core. Every other kind stands alone (S21).
-    kinds = ["variants.csv", kind] if kind == "sources.csv" else [kind]
+    # The licence sidecar is not a table a module can consist of — "no recognized table" is the right
+    # refusal for a module that is only a licence file — so it is scaffolded beside the SNP core. Every
+    # other kind stands alone (S21). Derived from the spellings rather than naming one, because it has
+    # two of them since 0.6 (RM51) and a hand-kept name here would have covered only the older one.
+    licence_sidecar = kind in sidecar_spellings(SOURCES_CSV)
+    kinds = ["variants.csv", kind] if licence_sidecar else [kind]
     plan = scaffold_module(spec_dir, kinds=kinds, name="demo")
     assert (spec_dir / kind) in plan.created
     _fill_module(spec_dir)

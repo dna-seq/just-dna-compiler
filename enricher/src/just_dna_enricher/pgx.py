@@ -53,6 +53,7 @@ from just_dna_enricher.licensing import (
     PHARMVAR_TERMS,
     SourceTerms,
     check_declared_use,
+    sources_path,
     write_sources_csv,
 )
 from just_dna_enricher.locations import resolve_cpic_reference, resolve_pharmvar_reference
@@ -195,13 +196,15 @@ def enrich_pgx(
         return result
     authored = _authored_functions(spec_dir)
 
-    # Existing rows are authoritative and are never clobbered, matching `enrich()`.
-    existing_path = spec_dir / "sources.csv"
+    # Existing rows are authoritative and are never clobbered, matching `enrich()`. The path comes from
+    # the shared resolver like every other pass's (RM51): this is the one whose *primary* output is
+    # this table, so a private literal here would re-create the retired spelling beside the alias.
+    existing_path = sources_path(spec_dir, error=PgxEnrichmentError)
     existing: dict[tuple[str, str], SourceRow] = {}
     if existing_path.exists():
-        rows, errors, _ = load_csv_rows(existing_path, SourceRow, "sources.csv")
+        rows, errors, _ = load_csv_rows(existing_path, SourceRow, existing_path.name)
         if errors:
-            raise PgxEnrichmentError(f"existing sources.csv is invalid: {errors[0]}")
+            raise PgxEnrichmentError(f"existing {existing_path.name} is invalid: {errors[0]}")
         existing = {(r.source, r.layer): r for r in rows}
 
     emitted: list[SourceRow] = []
@@ -337,5 +340,5 @@ def enrich_pgx(
     result.rows = [merged[key] for key in sorted(merged)]
 
     if write and result.rows:
-        write_sources_csv(result.rows, spec_dir / "sources.csv")
+        write_sources_csv(result.rows, existing_path)
     return result

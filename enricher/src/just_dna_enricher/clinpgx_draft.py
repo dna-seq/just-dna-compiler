@@ -211,7 +211,7 @@ def draft_pharm_variants(
                     dataset=release.get("dataset"),
                 )
             ],
-            spec_dir / "sources.csv",
+            spec_dir,
             error=ClinPgxEnrichmentError,
         )
     return ClinPgxDraftResult(reports=reports, warnings=warnings)
