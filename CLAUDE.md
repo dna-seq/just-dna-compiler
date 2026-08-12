@@ -1128,8 +1128,12 @@ Feature ideas move through **one loop**; the docs are its stages, and a design t
 in order rather than jumping to code:
 
 1. **Feedback** — a consumer's field report → [docs/CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md)
-   (the live one, `S1`…`Sn`), [docs/CONSUMER_FIELD_NOTES.md](docs/CONSUMER_FIELD_NOTES.md),
-   [docs/CONSUMER_ROUND2_AND_0_5.md](docs/CONSUMER_ROUND2_AND_0_5.md).
+   (the live one, `S1`…`Sn`), [docs/CONSUMER_ROUND2_AND_0_5.md](docs/CONSUMER_ROUND2_AND_0_5.md).
+   **The round-1 thread `docs/CONSUMER_FIELD_NOTES.md` was removed on 2026-08-12** — a second inbox with
+   its own reply idiom that the ledger could not read, which is how two accepted doc deliverables (now
+   S27/S28) sat undelivered across three releases while the live file said nothing was owed. Its two live
+   asks were refiled with their prose verbatim; recover the thread from git history (`53f9260`) for the
+   wording. Do not start a third feedback file: an inbox the ledger cannot see is a backlog nobody sees.
    **Every `Sn` gets a `**Status —**` reply written back into the document, and the runbook for that is
    [docs/CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md)** — read it before answering one. It
    holds the four routes (fix / non-issue / doc fix / surface-only), the rule that **legality sizes the

@@ -154,7 +154,7 @@ line under **RM52**, which is release-blocking for 1.0.
 ## Where an item comes from
 
 An `RMn` is stage 5 of the design cycle, not its start: a field report
-([CONSUMER_FIELD_NOTES](CONSUMER_FIELD_NOTES.md)) → run it against the bricks
+([CONSUMER_SUGGESTIONS](CONSUMER_SUGGESTIONS.md)) → run it against the bricks
 ([USE_CASES](USE_CASES.md)) → shape it ([PROPOSAL_0_5](PROPOSAL_0_5.md)) → then either **shipped**
 (recorded in [COMPILER.md](COMPILER.md)'s coverage table) or **parked as an `RMn`**. An item with no
 trail through those was usually found by dogfooding — RM31–RM35 all were.

@@ -34,6 +34,49 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-12 (latest) — docs: the round-1 field notes are retired, and two accepted asks finally land
+
+**S27 + S28, refiled from `docs/CONSUMER_FIELD_NOTES.md`, which is removed in this pass.** That file was
+the pre-0.4 round-1 thread: a consumer's report with the maintainer's answers written inline as
+`↳ maintainer reply` blockquotes. It was a **second inbox**, with its own reply idiom, that
+`.claude/triage-state.sh` cannot read — so while the live inbox correctly said nothing was owed, ten
+accepted asks sat in a file no ledger covered. Establishing what shipped found eight delivered (several
+over-delivered: `reference_sequence`, `requires_callable`, `acmg_sf` and `actionability` were promised as
+*reserved names* and were **built as columns**; `repeat_alleles`/`heteroplasmy`/`pgs` froze in 0.4) and
+**two never written at all**, both accepted at the time as "trivial, docs only":
+
+- **S27** — the `effect_allele` liftover ref-flip caveat. What shipped instead is stronger than the
+  requested caveat: 0.5 checks `effect_allele ∈ {ref} ∪ alts`, non-reconciliation is a named permanent
+  blind spot in COMPILER.md, and a flipped reference base is caught by `verify_reference_alleles`. What
+  was owed was the pointer from the **schema tier**, since a verify-only consumer never opens the
+  compiler's docs. Now a paragraph beside `VariantRow`'s field list in SCHEMAS.md, naming RM48 for the
+  hg19 authoring path.
+- **S28** — the normative **consumer join contract**. The rule "absent from a variant-only callset ≠
+  hom-reference" existed only inside `requires_callable`'s field *description*, which
+  `describe`/`requirements`/`reference` print to an **author** — while the obligation binds the
+  **consumer**. Documented in the wrong place for the party it binds, for three releases. SCHEMAS.md
+  gains *The consumer join contract — three states, and the one that gets collapsed*: the MUST/MUST NOT
+  as the reporter wrote them, the four columns that express it (`requires_callable`, `callable_from`,
+  `quality_from`+`min_quality`, `MeasureBinRow.unresolved`), the "present but matching no bin" third
+  state kept distinct from `unresolved`, and Kleene combination. No schema change — the reporter's own
+  framing (a consumer concern, not a module field) still decides it.
+
+**Also fixed, found while probing S28: a docstring claiming a diagnosis the code no longer produces.**
+`vocab.reject_reserved`'s docstring illustrated itself with "`caller` fails differently from `xyzzy`",
+but `caller`/`caller_version` were *dropped* from `RESERVED_NAMES_0_4` rather than built, so `caller`
+takes the generic `extra="forbid"` message like any other stray column. The example now uses
+`reference_db`, the set's only member, and records what it used to say. Same class as round 1's own
+single code finding (A2, a stale comment contradicting shipped behaviour), which is a fair note on which
+to close the thread.
+
+**The durable lesson, and the reason the file is gone rather than annotated.** A feedback document with
+its own reply convention is invisible to the loop that exists to notice unanswered work, and "nothing in
+the live inbox" then means nothing at all. Do not start a third one. The two live asks were refiled with
+the reporter's prose extracted byte-for-byte and verified with `diff` before the file was deleted; the
+whole thread is recoverable from git history at `53f9260`. One archived section's consumer preamble links
+to the removed file and that link is deliberately left dangling — editing evidence to tidy a reference is
+the one thing the history file does not do.
+
 ## 2026-08-12 (later) — 0.6.0: `manifest.derived`, so the enricher's own tables can be served
 
 **S26, reported by `just-dna-registry`.** A publisher asked which files in a spec directory are theirs.

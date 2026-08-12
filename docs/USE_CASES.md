@@ -15,7 +15,9 @@ items to migrate into [`ROADMAP.md`](ROADMAP.md).
 
 The design docs are stages of **one loop**; an idea moves left-to-right as it matures:
 
-1. **Feedback** — a consumer's field report. → [`CONSUMER_FIELD_NOTES.md`](CONSUMER_FIELD_NOTES.md),
+1. **Feedback** — a consumer's field report. → [`CONSUMER_SUGGESTIONS.md`](CONSUMER_SUGGESTIONS.md)
+   (open) / [`CONSUMER_SUGGESTIONS_HISTORY.md`](CONSUMER_SUGGESTIONS_HISTORY.md) (answered), the runbook
+   in [`CONSUMER_TRIAGE_LOOP.md`](CONSUMER_TRIAGE_LOOP.md), and the round-2 thread
    [`CONSUMER_ROUND2_AND_0_5.md`](CONSUMER_ROUND2_AND_0_5.md)
 2. **Usage → blockers → solvability** — run each use case against the current bricks: is it *enabled*,
    *consumer-side*, or a *gap*; and is the gap closable **additively**? → **this doc**
