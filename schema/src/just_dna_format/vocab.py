@@ -481,14 +481,44 @@ def validate_field_token(value: str | None, field_name: str) -> str | None:
     return value
 
 
+def match_vocab(value: str, vocab: frozenset[str]) -> str | None:
+    """The vocabulary member `value` names, treating `-` and `_` as the same separator.
+
+    **A hyphen where an underscore goes is the most common slip in a hand-written cell**, and this
+    format's whole premise is that the DSL is authorable by a human. `--use non-commercial` was
+    already accepted by the enricher CLI, which normalized the separator on its way in, while the
+    identical string in a `licensing.csv` cell was refused — so the surface an author learns the
+    vocabulary from taught a spelling the file rejected.
+
+    Both directions are tried rather than one, and the exact value first: no vocabulary in this
+    schema carries a hyphenated member today, but trying the value as written before swapping means a
+    future one cannot be broken by this function. A swap can never be ambiguous either — it would take
+    two members differing *only* in their separators, which would be two spellings of one thing.
+
+    Returns the canonical member (so the stored cell is always the declared spelling), or `None` when
+    the value names nothing. Widening what a field accepts, never narrowing: every value that
+    validated before still validates, which is what keeps this Principle 3-legal.
+    """
+    if value in vocab:
+        return value
+    for candidate in (value.replace("-", "_"), value.replace("_", "-")):
+        if candidate in vocab:
+            return candidate
+    return None
+
+
 def check_vocab(value: str | None, vocab: frozenset[str], field_name: str) -> str | None:
     """Validate an optional categorical against a closed `frozenset` vocabulary (Principle 6).
 
-    Passes `None` through (absent = unknown). The message format matches the pre-refactor
-    per-field validators exactly (`<field> must be one of [...], got: <value>`)."""
-    if value is not None and value not in vocab:
+    Passes `None` through (absent = unknown), and canonicalizes a `-`/`_` separator slip to the
+    declared member (see `match_vocab`). The message format matches the pre-refactor per-field
+    validators exactly (`<field> must be one of [...], got: <value>`)."""
+    if value is None:
+        return None
+    matched = match_vocab(value, vocab)
+    if matched is None:
         raise ValueError(f"{field_name} must be one of {sorted(vocab)}, got: {value!r}")
-    return value
+    return matched
 
 
 def validate_trait_ids(value: str | None, field_name: str = "trait_efo_id") -> str | None:

@@ -34,7 +34,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.layout import SOURCES_CSV, SidecarCollision, sidecar_write_path
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
-from just_dna_format.vocab import VALID_DECLARED_USE
+from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
 
 logger = logging.getLogger(__name__)
 
@@ -317,10 +317,10 @@ def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:
       Mirrors `--offline` making a pass a no-op with a warning rather than a failure.
     * **None** — proceed.
     """
-    if declared_use not in VALID_DECLARED_USE:
-        raise ValueError(
-            f"declared_use must be one of {sorted(VALID_DECLARED_USE)}, got: {declared_use!r}"
-        )
+    # Through the shared checker, so a `-`/`_` slip is canonicalized here exactly as it is in the cell
+    # this gate later reads: a caller passing `non-commercial` must not get a different verdict from
+    # the same string written into the file.
+    declared_use = check_vocab(declared_use, VALID_DECLARED_USE, "declared_use") or declared_use
     if terms.commercial_use is None:
         return (
             f"{terms.source}: terms could not be established, so the data is not used. Unknown is "

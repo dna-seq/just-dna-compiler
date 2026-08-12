@@ -106,7 +106,12 @@ def test_a_recorded_declaration_passes_both(tmp_path: Path) -> None:
         ),
         (
             "sources.csv",
-            _SOURCES.format(declared_use="non-commercial"),  # the hyphen is wrong; it is `non_commercial`
+            # This case used to be spelled `non-commercial`, on the reasoning that the hyphen is wrong
+            # where the member is `non_commercial`. It no longer is: a `-`/`_` slip in a hand-written
+            # cell is now canonicalized to the declared member, which is the whole point — the fact
+            # that a test author reached for the hyphen as the obvious *plausible* mistake is the
+            # evidence that it was worth absorbing. What is left here is a value that names nothing.
+            _SOURCES.format(declared_use="commerical"),
             "declared_use",
         ),
         (

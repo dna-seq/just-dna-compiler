@@ -15,7 +15,7 @@ from pathlib import Path
 import typer
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
-from just_dna_format.vocab import VALID_DECLARED_USE
+from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
 from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
 from just_dna_enricher.clingen import (
@@ -102,13 +102,19 @@ def _use(value: str) -> str:
     A three-state string rather than a `--commercial/--non-commercial` bool pair: a bool cannot
     express the default, and defaulting either way would have the tool assert a purpose on the
     user's behalf. `unstated` is the honest default.
+
+    The separator normalization moved onto `vocab.match_vocab`, which every closed vocabulary now
+    shares. This private copy was the whole reason `--use non-commercial` worked while the identical
+    string in an authored cell was refused: the flag taught a spelling the file rejected. What stays
+    here is the case-folding and the `--use`-specific message — the flag is the CLI's, the vocabulary
+    is the schema's.
     """
-    normalized = value.strip().replace("-", "_").lower()
-    if normalized not in VALID_DECLARED_USE:
+    matched = match_vocab(value.strip().lower(), VALID_DECLARED_USE)
+    if matched is None:
         raise typer.BadParameter(
             f"--use must be one of {sorted(VALID_DECLARED_USE)}, got: {value!r}"
         )
-    return normalized
+    return matched
 
 
 @app.command("enrich")
