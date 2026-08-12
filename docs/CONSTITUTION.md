@@ -78,8 +78,24 @@ purpose.
 3. **Backward-compatible within a major version.** Inside an `N.x` line every change is additive and
    non-breaking: `schema_version` is unchanged, existing modules keep validating, and anything
    superseded is kept as a **working derived alias**. **Breaking changes land only at a major bump.**
-   The default retirement is two-step — *deprecate at the major* (still readable, emits a deprecation
-   event), *remove at the next major*. Purely-internal dead weight may be removed outright at a major.
+
+   The default retirement is two-step, and the two steps sit on **different axes**: *deprecate in a
+   minor* — warn-only, the thing still reads and behaves exactly as before, so nothing breaks and no
+   major is needed to say "stop using this" — then *remove at the next major bump*. A thing deprecated
+   at 0.6 is gone at 1.0; one deprecated at 1.2 is gone at 2.0. Deprecating **at** the major instead
+   would spend a whole extra major line on the step that breaks nothing. A deprecation belongs in a
+   minor only where its audience can **act** on it — the replacement exists, and the deprecated thing
+   is not still mandatory — because a warning nobody can clear is noise rather than notice; where the
+   blocker is Principle 8 (a required field only a major may demote), the deprecation waits for that
+   major and removal falls to the one after. Purely-internal dead weight may be removed outright at a
+   major.
+
+   **A major ships its upgrade procedure.** Breakage is permitted at a major; *unmitigated* breakage is
+   not. A major release carries, with it, the documented route from the previous line to this one — what
+   changed, and for each item either the mechanical migration (a command, a `reverse`-and-recompile
+   cycle, a rename) or an explicit statement that no action is needed. A removal whose upgrade path is
+   left to the reader to work out is not ready to ship, however long it was deprecated first.
+
    A new **optional** column, or a new optional table, is additive and lands in a minor: the authored
    identity — `content_signature` and the per-input hashes — is unchanged, and only a recompile's
    `artifact.digest` moves. **Removing** a column, **promoting** one to required, or **retyping** one
@@ -156,7 +172,20 @@ source convention and never fetch), and HuggingFace/httpx/tenacity are confined 
 reaching the dependency-light tiers a verify-only or compile-only client installs. This completes the
 `just-dna-datasets`/"cache authority leaves the compiler" decoupling recorded in the 0.4.1 plan.
 
-The same amendment **removed `duckdb` from the compiler tier**, which is why Goal 2 now names
+**0.6 amendment — the retirement cadence, and mitigation at a major.** Principle 3's two-step
+retirement read *deprecate at the major, remove at the next*, which put every superseded name through
+two full major lines and made the cheap half of the process wait on the expensive one. Deprecation
+removes nothing and breaks no reader — it is warn-only — so it needs no major to authorize it. The
+cadence is now **deprecate in a minor, remove at the next major** (0.6 → 1.0, 1.2 → 2.0), scoped by the
+requirement that the warning be **actionable**: a deprecation an author cannot comply with is a finding
+no edit can clear, which this project treats as a defect wherever else it appears. This ratifies
+existing practice rather than inventing one — `just-dna-compiler`'s `ensembl_cache` parameter has
+emitted a `DeprecationWarning` since 0.5 while continuing to work, with removal queued for 1.0, which
+is precisely the shape the old wording forbade. The same amendment adds the obligation that a major
+carry its **upgrade procedure**: the charter has always permitted breakage at a major, and now requires
+it to arrive mitigated.
+
+The same 0.5 amendment **removed `duckdb` from the compiler tier**, which is why Goal 2 now names
 polars/pyyaml/typer alone. Resolution moved from an in-compiler DuckDB query over an injected reference
 to the injected `resolution.csv` table, so the whole SQL/cache-location half went to the enricher and
 the compiler became pure-Python. This is a *tightening* of Goal 2's dependency-light commitment, not a
