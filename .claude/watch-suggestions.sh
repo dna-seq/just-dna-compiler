@@ -16,20 +16,48 @@
 # the middle of such a run. 150s clears the pauses that show up in practice; raise it if
 # a consumer's runs are slower, since the only cost of waiting is latency.
 #
-#   FILE=<path> COOLDOWN=<seconds> POLL=<seconds> .claude/watch-suggestions.sh
+# It only watches while the tree is on `main`. The loop commits as it goes (§5 of the
+# runbook), and a branch — or a detached HEAD — is the user's own work, so triaging into
+# it is the one thing the permit does not cover. Off main the watcher idles at
+# BRANCH_PAUSE instead of POLL, says so once, and says so again when it resumes; it does
+# not touch `last`, so an edit made during the pause is still detected on the way back.
+#
+#   FILE=<path> COOLDOWN=<seconds> POLL=<seconds> BRANCH_PAUSE=<seconds> \
+#     .claude/watch-suggestions.sh
 set -uo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 FILE=${FILE:-$REPO/docs/CONSUMER_SUGGESTIONS.md}
 COOLDOWN=${COOLDOWN:-150}
 POLL=${POLL:-10}
+BRANCH_PAUSE=${BRANCH_PAUSE:-900}
+BRANCH=${BRANCH:-main}
 
 mtime() { stat -c %Y "$FILE" 2>/dev/null || echo 0; }
+# A detached HEAD has no symbolic ref, and is no more a place to commit than a branch is.
+current_branch() { git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached HEAD)"; }
 
 last=$(mtime)
 dirty=0
+paused=""
 
 while true; do
+    on=$(current_branch)
+    if [ "$on" != "$BRANCH" ]; then
+        # Announce the transition once. A pause nobody can see reads as a dead watcher,
+        # and repeating it every quarter hour would be the noise the filter exists to avoid.
+        if [ "$paused" != "$on" ]; then
+            paused=$on
+            echo "${FILE##*/} watch paused: tree is on $on, not $BRANCH — the loop commits, so a branch is yours"
+        fi
+        sleep "$BRANCH_PAUSE"
+        continue
+    fi
+    if [ -n "$paused" ]; then
+        paused=""
+        echo "${FILE##*/} watch resumed: back on $BRANCH"
+    fi
+
     sleep "$POLL"
     now=$(mtime)
 

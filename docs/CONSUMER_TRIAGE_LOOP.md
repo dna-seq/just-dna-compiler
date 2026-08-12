@@ -46,8 +46,18 @@ Monitor({
 })
 ```
 
+**It watches only while the tree is on `main`.** The loop commits as it goes (§5), and a branch — or a
+detached HEAD — is the user's own work, which is the one thing that permit does not cover: triaging into
+it would put unattended commits on top of whatever they are mid-way through. Off `main` the watcher idles
+at `BRANCH_PAUSE` (900s) instead of `POLL`, emits one line saying which branch it is on, and stays quiet
+until the branch changes back, when it emits one more. It does not touch its `last` mtime while paused,
+so a consumer's edit written during the pause is still picked up on the way back rather than lost —
+verified across a `main → branch → main` switch, with the edit made while paused arriving in the resume
+event. `BRANCH=<name>` overrides the branch it considers home.
+
 `persistent: true` keeps it alive for the session; `TaskStop` cancels it. It reacts only while the
-session is open and the REPL is idle. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and
+session is open and the REPL is idle. **Editing the script does not reach a running monitor** — bash
+reads a script incrementally — so `TaskStop` and re-arm after changing it. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and
 python `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.
 
 **Hooks cannot do this job.** Claude Code hooks fire on the agent's own lifecycle (`PreToolUse`,
@@ -301,23 +311,36 @@ rejected if one changed. Do this by hand only if the tool cannot (it prints what
 
 ---
 
-## 4. Thresholds — when to stop the loop and call the user
+## 4. Thresholds — when to call the user
 
 The loop's output is roadmap items and patch-level fixes, and it will produce both indefinitely without
 ever deciding to build or release anything. Triage answers a consumer; it does not schedule the work or
-cut the version. Those two are the user's call, so the loop has to **stop and ask** rather than keep
-accumulating. Both thresholds are counted off the tree, never remembered:
+cut the version. Those two are the user's call, so the loop has to **ask** rather than keep accumulating
+silently. Note which way each threshold points — two of them say *start something* and only the last
+says *stop*, so do not collapse them into one "the loop halts" rule. All are counted off the tree, never
+remembered:
 
 ```
 grep -c 'Status\*\* open — \*\*0\.6\*\*' docs/ROADMAP.md    # 0.6-targeted items
 grep -h '^version' */pyproject.toml                          # versus the top CHANGELOG heading
 ```
 
-**Ten or more sizeable open 0.6 items → triage the backlog, then block.** Re-read the set first: an item
-that duplicates another, or that never had a reproduced case under it, is not grounded and should be
-merged or demoted rather than counted. If they all survive that pass — each with a motivating case and a
-reproduction — the backlog is real, and a real backlog of that size is a release-planning decision.
-Block the loop with an `AskUserQuestion` (it shows red in herdr) rather than filing an eleventh.
+**Ten or more sizeable open 0.6 items → 0.6 development should START. This is the dev-start trigger, and
+it is *not* "0.6 scope is closing".** Read it the wrong way — as a scope freeze, a ceiling, a
+stop-filing rule — and it inverts: it would silence the loop exactly when the release it feeds is ready
+to begin. A minor keeps taking additive items right up until it is cut, so filing continues after the
+trigger fires; what changes is that enough grounded work has accumulated to be worth *building*, and
+scheduling a build is the user's call. Re-read the set before calling it: an item that duplicates
+another, or that never had a reproduced case under it, is not grounded and should be merged or demoted
+rather than counted. If they all survive that pass — each with a motivating case and a reproduction —
+raise it with an `AskUserQuestion` (it shows red in herdr): the question is *shall 0.6 development
+start*, never *shall we stop filing*. Ask once per pass, not once per item over the line.
+
+**Twenty sizeable open 0.6 items is the ceiling — there, stop filing and block.** A backlog that size
+means the dev-start trigger fired and went unanswered for long enough that the queue is no longer being
+managed by anyone, and a twenty-first item buys nothing: nobody reads that far, and an unread item is
+indistinguishable from an unfiled one. Say what you would have filed, in the reply to the consumer, and
+block rather than adding to a list that has stopped being a plan.
 
 **Around ten accumulated patch-level fixes → publish time, call the user.** The signal that they have
 accumulated is the CHANGELOG carrying a version the `pyproject.toml` files do not, which is exactly the
