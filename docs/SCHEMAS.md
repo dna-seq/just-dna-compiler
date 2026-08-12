@@ -228,6 +228,20 @@ module claiming that coordinate, a locus 228 bp away. `just_dna_compiler` now re
 (`_restamp_for_build`), falling back to the coordinate key and **warning that the key is
 build-relative**. A no-op on GRCh38.
 
+**`effect_allele` names which allele the effect is about, and nothing reconciles orientation.** `ref`
+and `alts` plus the sign of `weight` cannot recover it — that is why the column exists — so a row whose
+effect is not obvious from its genotype should carry it. Since 0.5 the compiler checks that the value is
+one of the alleles the locus actually has (membership in `{ref} ∪ alts`, error under `strict`), which
+catches a strand-flipped spelling; it does **not** complement an allele and rewrite it, and that blind
+spot is permanent by charter — see [COMPILER.md](COMPILER.md)'s *what the compiler cannot validate*.
+The sharper case is a coordinate an author carried across builds by hand: where the reference base
+itself differs between assemblies, an ALT-only representation silently mis-orients, and the module then
+says the wrong allele carries the effect with no error anywhere in this tier. Only a check holding the
+real sequence can see it — `sequences.verify_reference_alleles` in the enricher, or, when two rows
+share a key and disagree, the compiler's *inconsistent reference allele* error. So orient by an
+explicit anchor, never by position alone; [RM48](RM_TOC.md) tracks the missing authoring path for an
+hg19 coordinate, whose remedy is rsID recovery rather than a liftover.
+
 **Binning rows** (`binning.py`, all subclass `MeasureBinRow`). Shared: `measure_kind` (must match the
 row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` carries no bounds — the
 mandatory no-call sentinel), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
@@ -297,6 +311,42 @@ full duplicate key is `(variant_key, drug, genotype, phenotype_category, annotat
 `training_ancestry?` (list, `VALID_TRAINING_ANCESTRY`), `training_cohort`, `match_rate_floor?` ([0,1]),
 `research_tier?` (`VALID_RESEARCH_TIERS`). A manifest of Catalog IDs — not authored per-variant weights
 (that is roadmap RM16).
+
+## The consumer join contract — three states, and the one that gets collapsed
+
+A module supplies the annotation; the consumer supplies the measurement it is joined against. That
+split leaves one obligation on the consumer's side of the seam, and it is normative rather than
+advisory, because getting it wrong turns a correct annotation into a wrong report:
+
+**A conforming consumer MUST distinguish a covered reference call from a no-call before asserting any
+reference or absence interpretation, and MUST NOT read "absent from a variant-only callset" as
+hom-reference.** Absence from such a callset means *either* that the site was callable and matched the
+reference *or* that it was never callable at all. Collapsing the two fabricates a confident reference
+genotype the data does not support — and for a recessive carrier row, or for the reassurance that a
+pathogenic variant is absent, that fabrication runs in the dangerous direction: it is the difference
+between "screened negative" and "not screened".
+
+This is the tri-state rule the rest of the schema already obeys (`None` is never `False`), one level
+down and pointed at the consumer. Four columns exist so a module can say where it applies, and none
+of them measures anything:
+
+| Column | Says |
+|---|---|
+| `VariantRow.requires_callable` | the *absence* of this variant is the informative call, so a consumer without callability data withholds the conclusion rather than asserting the reference one |
+| `VariantRow.callable_from` | which VCF field(s) the proof of callability lives in (`DP`, `GQ`, `FT`, `DP\|GQ`) — a pointer, never an expression |
+| `VariantRow.quality_from` + `min_quality` | the floor below which what *was* seen is not good enough to act on. A consumer that cannot read the field **withholds** — an unevaluable floor is unknown, never satisfied |
+| `MeasureBinRow.unresolved` | the mandatory no-call sentinel on every binning table: a missing measurement selects it and **never** the lowest or reference bin |
+
+Two corollaries worth stating because each is a real collapse someone has shipped. A measurement that
+is *present but matches no bin* is a third thing again — "no matching bin", not `unresolved` — and the
+remedy is authoring the reference bin explicitly, since the compiler cannot detect a missing edge bin
+without a domain floor (see `binning.validate_bins`). And combining these states uses **Kleene**
+semantics, not withhold-on-any-unknown: `unknown AND false` really is `false`, so an ε4-gated
+conclusion is decidably false at ref/ref whatever the call quality was.
+
+The format carries no per-sample coverage and never will — the three-state call is derivable from
+standard VCF fields (`DP`/`GQ`/`FT`, or a gVCF reference block), which is why this is a contract on the
+consumer and a set of pointers in the module rather than a table.
 
 ## Allele identity — the VRS allele id (0.5)
 

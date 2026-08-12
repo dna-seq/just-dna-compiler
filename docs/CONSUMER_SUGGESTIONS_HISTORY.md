@@ -10,6 +10,12 @@ which is the problem [CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md) exists t
 resolution. A reply travels with the item it answers, and a group whose items split across the two
 files keeps its dateline in both.
 
+One consequence is visible below: the round-1 thread `CONSUMER_FIELD_NOTES.md` was **removed on
+2026-08-12** (a second inbox the ledger could not read — its two undelivered asks are S27/S28, and the
+thread itself is in git history at `53f9260`), and a reporter's own preamble links to it. That link is
+left dangling **on purpose**: rewriting it would edit evidence to tidy a reference, which is the one
+thing this file does not do.
+
 **"Answered" is not "finished".** Several of these spawned an `RMn` that is still open;
 [RM_TOC.md](RM_TOC.md) is the complete index for that half. Read this file for what a consumer
 reported and what we told them, and the roadmap for what is still owed.
@@ -44,6 +50,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S24** nothing checks a variant is on its named gene's chromosome — shipped 0.5.4
 - **S25** the manifest attests a logo but not a readme — in tree, lands 0.6.0
 - **S26** the derived-fact CSVs are attested nowhere — in tree 0.6.0; layout RM49
+- **S27** accepted `effect_allele` liftover caveat unwritten — docs 0.5.4
+- **S28** accepted consumer join contract unwritten — docs 0.5.4
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2146,3 +2154,98 @@ until now a downloaded module did not even contain the authored CSVs. A test ass
 `SIGNATURE_INPUTS` and the derived set are disjoint, so the convention cannot start moving content
 identities by accident. The `derived/` folder is created only when something lands in it, which today
 is nothing — that emptiness is this report.
+
+# Round-1 field notes (pre-0.4), refiled 2026-08-12
+
+*The round-1 thread lived in `docs/CONSUMER_FIELD_NOTES.md`, a second inbox with its own reply idiom
+(`↳ maintainer reply` blockquotes) that the ledger could not read. Every ask in it was accepted and all
+but two were delivered; those two are refiled here as S27 and S28, with the reporter's prose extracted
+verbatim, and the file is removed. The whole thread is recoverable from git history at `53f9260`.*
+
+## S27 — the accepted `effect_allele` liftover ref-flip caveat was never written
+
+**Status — documentation defect, fixed in this pass in [SCHEMAS.md](SCHEMAS.md).** Round 1 accepted
+this as "trivial, docs only" and then nothing was written: `effect_allele` appeared in SCHEMAS.md only
+as a name inside a field list, and its own field description is one line about what the column refers
+to. Establishing what shipped changed the shape of the answer, though, because both asks were answered
+by something stronger than the caveat. Ask (1) is why the column exists at all, and 0.5 added a check
+on top of it — `effect_allele` must be one of the alleles the locus actually has (membership in
+`{ref} ∪ alts`, an error under `strict`), which catches a strand-flipped spelling — while the deeper
+half, *reconciling* an orientation, is a permanent blind spot named in
+[COMPILER.md](COMPILER.md)'s *what the compiler cannot validate*. A lifted coordinate whose reference
+base flipped is caught by `sequences.verify_reference_alleles` (the enricher, since it needs the real
+sequence) or, when two rows share a key and disagree, by the compiler's *inconsistent reference allele*
+error. Ask (2) was over-delivered: `reference_sequence` is not reserved but **built**, as a real
+`HeteroplasmyRow` column that rejects the legacy `NC_001807` lineage outright (round-2 Q3). So what was
+genuinely owed was the pointer from the schema tier, which a verify-only consumer never leaves — that
+paragraph is now beside the `VariantRow` field list, and [RM48](RM_TOC.md) carries the hg19 authoring
+path the second bullet gestures at, where the answer is rsID recovery rather than a liftover. <!-- triaged: 0.5.4 · sha b5b6b90dbafb -->
+
+0.3 item 5 already adds `effect_allele` and names effect-allele/strand confusion "the #1 silent bug
+here." We can confirm that from production, and add a second, sharper instance the note should call
+out: **allele-orientation loss across a liftover.** When lifting an ALT-only representation from an
+older build to GRCh38, sites where the reference base itself flipped between builds are silently
+dropped or mis-oriented, and a downstream `weight`/`direction` then refers to the wrong allele with no
+error anywhere. Our mitigations, offered as documentation the `effect_allele` note could adopt:
+
+- **Always orient by an explicit anchor, never by position alone.** We re-derive orientation from an
+  all-sites/callable reference and, where ambiguous, by allele frequency — because `ref`/`alts` + a
+  `weight` sign is *not* enough to recover which allele the effect refers to.
+- **Pin the reference sequence, not just the build.** `genome_build=GRCh38` is necessary but not
+  sufficient for two locus classes: (a) **mtDNA**, where positions are meaningless without stating
+  rCRS/NC_012920 vs the legacy NC_001807 — a mismatch we have seen produce a *confidently wrong*
+  haplogroup (see §B3); and (b) indels near build-differing regions. We suggest the `effect_allele`
+  documentation explicitly recommend recording the reference-sequence accession for MT loci, and that
+  a future reserved `reference_sequence` note (analogous to `effect_allele` for strand) be added to
+  the reserved namespace. This is the MT analog of the strand caveat and costs nothing until used.
+
+## S28 — the accepted "consumer join contract" note was never written
+
+**Status — documentation defect, fixed in this pass: SCHEMAS.md gains *The consumer join contract*.**
+The schema half of this item was over-delivered and the doc half never landed, which is the pairing
+worth recording. `requires_callable` shipped as a typed optional `VariantRow` column rather than the
+flag you offered as the cheaper option, and 0.5 added `callable_from` (which VCF field the proof of
+callability lives in) and 0.5.1 added `quality_from`/`min_quality` for the orthogonal question of
+whether what was seen is good enough to act on. All four round-trip; the binning tables carry the
+mandatory `unresolved` sentinel for the same reason one level up. But the **normative note** was
+reproduced as absent: grepping the docs for it finds callability recorded in USE_CASES.md as
+consumer-side *scope* and discussed in PROPOSAL_0_5.md as *design*, and the actual rule — "no-call ≠
+hom-ref" — stated only inside `requires_callable`'s field description. That description is printed by
+`describe`/`requirements`/`reference`, so the one party who reliably reads it is the **author**, while
+the obligation belongs to the **consumer**: the most expensive lesson in the file was documented in the
+wrong place for the party it binds. It is now a normative section of its own, with MUST/MUST NOT as you
+wrote them, the four columns tabulated, the "measured but present and matching no bin" third state kept
+distinct from `unresolved`, and the Kleene rule for combining them. Nothing was added to the schema —
+your framing that this is a consumer concern and not a module field still decides it. <!-- triaged: 0.5.4 · sha d53d3ff47a0a -->
+
+This is the one piece of feedback we would most want the maintainers to internalize, because it is
+independent of module type and is *the* thing that turns a correct annotation into a wrong report.
+
+**A module says "at rs1801133, T/T means reduced enzyme activity." To act on that, a consumer must
+first answer a question the module cannot: is this sample confidently `T/T`, confidently hom-ref
+`C/C`, or simply not called here (no coverage)?** These are three different truths, and the failure
+mode is specific and common: a variant-only VCF has *no record* at a site, and a naive consumer reads
+"no record" as "hom-reference." That is wrong. "No record" means *either* hom-ref (the site was
+callable and matched the reference) *or* no-call (the site was never callable). Collapsing them
+fabricates a confident reference genotype the data does not support — and for a recessive carrier
+locus or a pathogenic-absence claim, that fabrication is exactly the dangerous direction.
+
+We resolved this in our pipeline with an **all-sites / callable "oracle"**: every position is one of
+`covered→hom-ref` (callable, matched reference) or `gap→NO_CALL` (never callable), and no annotation
+is asserted against a `NO_CALL` site. The three-state genotype (variant / callable-hom-ref /
+no-call) is load-bearing.
+
+**This is legitimately a consumer concern, not a module field — and we are not asking the format to
+carry per-sample coverage.** But two small, in-charter things would materially help every consumer:
+
+1. **A normative note in the spec docs** — a "consumer join contract" — stating that a conforming
+   consumer MUST distinguish covered-hom-ref from no-call before asserting a reference/absence
+   interpretation, and MUST NOT treat "absent from a variant-only callset" as hom-ref. This is
+   documentation, costs no schema, and encodes the single most expensive lesson we learned.
+2. **An optional reserved flag, `requires_callable`** (row-level, on the open `flags` list or as a
+   reserved boolean), marking rows where the *absence* of a variant is the informative call — i.e.
+   where a no-call must degrade to "unknown," never to the reference conclusion. Recessive carrier
+   screening and "pathogenic variant absent" reassurance are the motivating cases: there, silently
+   reading no-call as reference is the difference between "screened negative" and "not screened." A
+   module author flags such rows; a consumer that lacks callability data then knows to withhold the
+   reassuring conclusion rather than assert it. Purely additive, opt-in, and it names a real hazard.
