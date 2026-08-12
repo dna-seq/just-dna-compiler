@@ -93,6 +93,8 @@ question, a corpus question, or a genuine break:
 | **RM10** inheritance expectation | a column, its own table, or yaml metadata | ✅ — all three placements are minor-legal now; pick on orthogonality (P5), not on cost |
 | **RM43** resolve the 0.4 families | a stamped-identity column per positional table, then the join | ✅ — the column is additive; what is left is the design round, not a version gate |
 | **RM44** `resolution_subjects` count | one additive integer on `Compilation` | ✅ — a manifest field, never in `artifact.digest`; retires a prose-matching workaround |
+| **RM51** `licensing.csv` alias | a second accepted spelling of an input filename | ✅ — the fact sidecars are not in `_INPUT_FILES`, so the filename is in no identity; the parquet and manifest halves stay major |
+| **RM50** PMID↔PMCID | a diagnosis (no schema change) + one optional id column | ✅ for the guard, which is an enricher patch; ⚠ for the column — additive, but it wants deciding beside the 1.0 requiredness demotion |
 | **RM15** multi-build identity | changes the *semantics* of `variant_key` and of every coordinate | ❌ — 1.0, and not for digest reasons: re-keying published identity is the identity-change class |
 | ~~**RM38** gated-source cache~~ | enricher-only: new builders + cache resolvers, no parquet touched | ✅ **shipped in `just-dna-enricher` 0.5.1** — never a 0.6 item; kept here so the *reason* an enricher change bypasses this table stays visible |
 
@@ -708,6 +710,157 @@ constant naming the directory, in the **format** tier so both consumers import r
 subdirectory; an **error, not a warning**, when both exist, naming both paths; and the enricher writing
 beside whichever copy it read. No new CLI flag — the layout is discovered, not declared.
 
+## RM50 — PMID and PMCID are one id apart, and only one direction of the conversion exists
+
+**Severity** medium (the accepted-but-wrong case is a silently misattributed citation — the S12 class)
+· **Status** open — the **diagnosis half is an enricher patch and does not wait**; the schema half is
+**0.6**, gated on a design round and on the requiredness demotion already queued for 1.0 · **Owner**
+enricher (the guard, the reverse lookup) + format (`extract_pmids`' grammar and its message) ·
+**Motivating case** raised while reading SCHEMAS.md's own account of the three reference tables
+(2026-08-12)
+
+**Three distinct confusions live under one heading, and only the middle one is already tracked.**
+
+**1. A PMCID written where a PMID goes is sometimes accepted, as a different paper.** `StudyRow.pmid`
+is free-form and validated through `spec.extract_pmids`, which is `\b(\d{1,8})\b`. Probed:
+`PMC3110566` → `[]` and `pmcid: PMC3110566` → `[]` (no word boundary between `C` and a digit), but
+`PMC 3110566` → `['3110566']`. The outcome turns on a space. When it is accepted the extracted number
+is a **real PMID for an unrelated article** — PMIDs are densely allocated, which is precisely the S12
+finding that made `pmid_exists` useless as a fabrication guard and put `title`/`journal`/`year`/
+`first_author` on `CitationHint`. The rejected half is barely better: the message says "must contain at
+least one PubMed ID" and never says the word PMCID, so it is a generic refusal where a specific one is
+a fix — the same shape as `MISPLACED_COLUMN_REASONS` and `reject_reserved` one level down.
+
+**2. A citation with no PMID at all** is *already tracked* and is not re-filed here: [§ 1.0 cleanup —
+`StudyRow.pmid` required + PMID-shaped](#studyrowpmid-required--pmid-shaped) queues the requiredness
+demotion to "≥1 of `{doi, pmid}`", and a PMC-only record (books, NIH reports, some datasets) is largely
+covered by it, since such a record normally carries a DOI. What that entry does not say is what
+`LiteratureRow` — keyed on `pmid`, digits-only, **required** — is supposed to do with such a row. That
+is the piece which has to be decided in the same release, and it is the reason this item exists beside
+the tracker entry rather than inside it.
+
+**3. Only one direction of PMID↔PMCID is resolved, and the recorded reason only covers that
+direction.** `literature._identifiers` reads `doi` and `pmc` out of the esummary `articleids` block, so
+PMID → PMCID arrives free, and `literature.py`'s own docstring records that the **PMC ID converter is
+deliberately unused** because of it (and separately that the converter is no existence oracle — its
+"invalid article id" is about PMC *membership*). Both statements are true, and neither is about
+**PMCID → PMID**, which is the direction the converter actually exists for. So a curator holding a PMC
+id has no route through any of the three packages to the `pmid` every table keys on. Do not close this
+by quoting the docstring back at it; it answers the other question.
+
+**What can ship without the design round** — enricher plus `extract_pmids`, no schema change, no
+verdict changed for anything else: refuse a digit run whose immediate context spells `PMC` in any
+spacing, and **name the id that was seen** rather than the one that was missing. And where the record
+does resolve, the pass already holds the PMCID from the same esummary response, so comparing it against
+the authored digits catches the accepted-with-a-space case for free. Both are diagnosis, never repair —
+nothing rewrites an authored cell.
+
+**What needs the design round:** whether a PMCID is an *identity a citation may be authored under*, or
+only a cross-reference the enricher fills. Three candidates, with their costs:
+
+- **An optional `StudyRow.pmcid`.** Additive and minor-legal, and it closes the authoring half — but it
+  leaves `LiteratureRow`'s key unanswered for a row carrying no PMID, and it puts a second id column on
+  a table whose `pmid` is already free-form and may hold several.
+- **Resolve every PMCID to a PMID at enrich time and store only PMIDs.** Smallest surface, and it
+  silently drops the records that have none: two ways of returning nothing rendered as one sentence,
+  which is S20 exactly.
+- **Re-key `LiteratureRow` on a general citation id.** The honest shape, and it changes what an existing
+  key *means*, so it is 1.0 and not this.
+
+Whichever wins lands **with** the requiredness demotion, not before it — deciding the sidecar's key
+while `StudyRow.pmid` is still mandatory answers a question no module can currently ask. Related:
+RM47 makes the same observation from the other side, that a new PMID site obliges the literature pass
+to learn it in the same release.
+
+## RM51 — `licensing.csv`: land the better name in a minor so the major only has to remove
+
+**Severity** low (legibility; nothing is broken today) · **Status** open — **0.6**, and the design is
+settled apart from the collision rule · **Owner** compiler (one resolver above `_FACT_TABLES`) +
+enricher (five write sites) · **Motivating case** the maintainer, 2026-08-12, after SCHEMAS.md needed a
+three-row table to explain which of `studies`/`literature`/`sources` is which
+
+**The move.** Accept `licensing.csv` as a second spelling of `sources.csv` now: the enricher writes the
+new name, the compiler resolves the old name first and falls back to the new one, and nothing else
+changes. Every existing module keeps compiling, and by the time 1.0 arrives every module drafted under
+0.6+ already carries the new name — so the major has to **remove** a spelling rather than **add** one,
+which is the difference between a rename people notice and one they do not. The old spelling is
+**deprecated in the same 0.6 release** (warn-only, still fully read) and **removed at 1.0**, which is
+the cadence the 0.6 charter amendment settled — and this item is the case that prompted it. See
+[§ 1.0 cleanup — `sources.csv`](#sourcescsv--the-name-and-the-source-column-it-collides-with) for the
+name argument itself and for the half that cannot come along.
+
+**Why it is minor-legal, checked rather than assumed.** `sources.csv` is deliberately **not** in
+`_INPUT_FILES` (`compiler.py`) — the fact sidecars are excluded there because their identity is the
+fact hash, not the raw bytes — so the *filename* enters no identity at all: `content_signature` is over
+authored rows, `source_signature` over `SOURCE_FACT_FIELDS`, and `manifest.derived` (S26) records
+whichever name it found and is documented as transport-only, outside `artifact.digest`. A second
+accepted name is therefore additive in the plain P3 sense: existing modules keep validating and no
+published artifact moves.
+
+**What does *not* come along, and this is the cost to accept knowingly.** `sources.parquet` is in
+`_OUTPUT_FILES`, hence inside `artifact.digest`, and consumers read it by name; `manifest.sources` is a
+published key. Renaming either breaks a reader, so both are major-only. For the whole 0.x tail the
+module therefore reads `licensing.csv` → `sources.parquet` → `manifest.sources`. That is a real
+legibility regression against today's single consistent (bad) name, and it is the price of not paying
+for the rename twice.
+
+**The one open decision: both files present.** This is RM49's collision in another file, and it must
+not be hand-waved the same way. Two copies are two legitimate claims — the table is fact-hashed and
+**human-overridable**, so "newest wins" or a merge silently discards a curator's override. The rule to
+implement is RM49's: the enricher **writes to the file it read**, creates the new name only when
+neither exists, and both-present is an **error naming both paths**. Note `pgx.py` writes
+`spec_dir / "sources.csv"` directly while the other four sites go through `record_source_terms` — that
+one has to move onto the shared resolver, or it re-creates the retired name behind the alias's back.
+
+**Mechanics, so the next pass does not re-derive them.** The resolver sits **above** `_FACT_TABLES`,
+because `_DERIVED_FILES`, `_OUTPUT_FILES`, `_check_misspelled_tables`' name set and both load loops are
+all derived from that tuple and must see the alias uniformly (adding the name also, correctly, stops
+the near-miss guard flagging `licensing.csv`). `draft.DRAFTABLE` is keyed on the filename and gains the
+new key while keeping the old. And the S26 reporter's registry splits and flattens a spec directory
+against its own copy of the derived-file list, so it needs telling in the same release.
+
+## RM52 — 1.0 ships an upgrade procedure, or 1.0 does not ship
+
+**Severity** high — **release-blocking by charter**, not a nice-to-have · **Status** open — **1.0,
+mandatory**; the ledger accrues from now, one line per breaking item as it lands · **Owner** format +
+compiler + enricher (each writes its own items) · **Origin** the 0.6 charter amendment
+(CONSTITUTION § Amendments), which permits breakage at a major only when it arrives mitigated
+
+**The obligation.** A major carries the documented route from the previous line: per item, either the
+mechanical migration or an explicit *no action needed*. A removal whose upgrade path is left to the
+reader to work out is not ready to ship, however long it was deprecated first. This is now a principle,
+so 1.0 is blocked on it in the same way it is blocked on the round-trip tests.
+
+**It is not the CHANGELOG, and the difference is the audience.** The CHANGELOG answers *what changed*,
+newest first, for someone following the project. An upgrade procedure answers *what must I do*, for two
+audiences who break in different places and cannot use each other's instructions:
+
+- **A module author holding a 0.x spec.** What moved on the authored surface — the `sources.csv` →
+  `licensing.csv` rename (RM51), the `StudyRow.pmid` requiredness demotion, the `alt`/`ref` vocabulary
+  members dropped from the read set, whatever `state` and the `pathogenic`/`benign` booleans become.
+  Their remedy is an edit, a rename, or a tool run.
+- **A consumer holding a 0.x artifact.** A parquet filename, a manifest key, a `variant_key` semantics
+  change (RM15). No edit of theirs helps: they need to know what to re-read, what to re-key, and what
+  silently still works.
+
+**What "mechanical migration" can mean here, because the primitive already exists.** `reverse_module`
+rebuilds the authored spec from a compiled artifact, so for anything expressible in the DSL the upgrade
+is *reverse under the old compiler, recompile under the new one*, and the procedure's real job is to say
+**which items that covers and which it does not**. It does not cover an identity re-key: RM15 changes
+what `variant_key` means, and reverse faithfully reproduces the module while saying nothing about the
+joins a third party stored against the old keys. Naming that boundary is most of the value.
+
+**Three rules for how it gets written, all of which exist because the alternative has already failed
+here.** The upgrade line is written **when the item lands**, not when the release is assembled — the
+person removing the column knows the route and the person cutting the release six months later does
+not, which is the same argument that puts a reason beside every parked item rather than in a commit
+message. A **"no action needed" must be stated explicitly**, because silence is indistinguishable from
+an oversight — the same reason `clin_sig_not_checked` and `gene_loci_not_checked` exist. And the
+procedure's claims are **checkable, so check them**: "reverse and recompile" can be run across
+`reference_examples/` and asserted to reproduce, exactly as the round-trip tests already do; an unrun
+migration is prose, and prose that has never been executed is how a documented `start` convention
+shifted 3,038 variants.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -767,6 +920,19 @@ the *build-aware* generalization (which/how-many loci per build, cross-build ann
 The idea is to pile genuinely rule-tripping edge-cases (requiredness demotions, retypes, identity-key
 *semantics* changes) on the 1.0/RM15 piles instead of forcing them into a minor.
 
+**The cadence changed on 2026-08-12 and this tracker is read under the new one** (CONSTITUTION § 0.6
+amendment). Retirement is *deprecate in a minor, remove at the next major* — so an item whose
+replacement already exists gets its warn-only deprecation in a 0.x release and **disappears at 1.0**,
+rather than being deprecated at 1.0 and lingering to 2.0. The exception is written into the principle:
+a deprecation must be **actionable**, so anything Principle 8 still makes mandatory — `VariantRow.state`,
+the `pathogenic`/`benign` booleans — cannot be deprecated while an author has no way to stop setting it.
+Those keep the old shape (demoted and deprecated at 1.0, removed at 2.0) because P8 blocks them, not
+because the cadence does. Every entry below that says "deprecate at 1.0" should be re-read with that
+distinction in mind, and moved forward where nothing blocks it.
+
+Every item here also owes an **upgrade line** under RM52 — written when the item lands, not when the
+release is assembled.
+
 Version-axis note: `schema_version` is `"1.0"` while the packages are `0.x` (now `0.5.0`). At `1.0`,
 either align them or document explicitly that they track different things (wire format vs. package
 release).
@@ -776,7 +942,11 @@ release).
 **Severity** medium · **Status** queued for 1.0 — deprecate; remove at 2.0
 
 Overloaded legacy field; a derived alias of `direction` since 0.3. **Disposition:** Deprecate at
-1.0 (still read) → remove at 2.0, once consumers read `direction`/`stat_significance`.
+1.0 (still read) → remove at 2.0, once consumers read `direction`/`stat_significance`. **This keeps the
+pre-amendment shape for a reason, and is not stale:** the field is still *required*, so a deprecation
+warning in a 0.x minor would fire on every module in existence and name nothing the author is permitted
+to stop doing. P8 is the blocker, not the cadence — the demotion and the deprecation land together at
+1.0, and removal falls to 2.0.
 
 ### `state` values `alt` / `ref`
 
@@ -791,7 +961,8 @@ emitted since 0.3. **Disposition:** Drop from the accepted read-vocabulary at 1.
 
 Lossy (can't express `likely_*`/`uncertain`); derived aliases of `clin_sig` since 0.3 (now
 materialized tri-state). **Disposition:** Deprecate at 1.0 → remove at 2.0. (`clinvar` provenance
-boolean stays.)
+boolean stays.) Same P8 blocker as `state` above — required/authoritative today, so the deprecation
+cannot move into a minor however cheap warn-only is.
 
 ### `StudyRow.p_value: str`
 
@@ -836,6 +1007,44 @@ pointless — while the **removal** stays major, which is the half the amendment
 Potential confusion — module-local score vs published magnitude (both kept, documented).
 **Disposition:** Review at 1.0 whether `weight` stays or is subsumed by `effect_size`.
 
+### `sources.csv` — the name, and the `source` column it collides with
+
+**Severity** low (nothing is wrong; a reader has to be told three times) · **Status** queued for 1.0 —
+rename with the two-step, or decide explicitly to keep it
+
+The file is a **licensing and attribution ledger**: one row per `(source, layer)`, carrying the terms,
+the attribution text, `license_sha256`, and the three tri-state permission axes. It is the only file
+the compile licence gate reads. Nothing in the name says any of that, and it collides twice over —
+with the `source` *column*, which in `resolution.csv`/`frequencies.csv`/`gene_metrics.csv`/
+`literature.csv` means "which link answered" (the overload RM33 already had to split, adding
+`authority` so the compiler had something to join on), and with the ordinary English sense in which
+`studies.csv` and `literature.csv` are also "sources". SCHEMAS.md now carries a three-row table
+disambiguating them, which is the tell: a name needing a table is a name doing no work.
+
+**The input half does not wait for the major — that is RM51**, which lands `licensing.csv` as a second
+accepted spelling in 0.6. What stays here is the half that genuinely breaks a reader: `sources.parquet`
+is in `_OUTPUT_FILES` and therefore inside `artifact.digest`, and consumers read it by name;
+`manifest.sources` is a published key. Renaming either is a **removal**, so both are major-only. The old
+CSV spelling retires on the amended cadence (Principle 3, 0.6 amendment): **deprecated in the 0.6 minor
+that adds the alias, removed at 1.0** — deprecation is warn-only and needs no major, and an author
+carrying `sources.csv` can act on it the day they read the warning, which is the condition that makes a
+minor the right place for it.
+
+**Disposition:** at 1.0, rename `sources.parquet` → `licensing.parquet` and the `manifest.sources`
+block → `manifest.licensing`, and drop the `sources.csv` spelling deprecated in 0.6 — with the upgrade
+line RM52 makes mandatory, which here is a file rename and a recompile.
+**`licensing.csv` is the recommendation**: it names what the file is *for*
+and what the gate reads it for, and it cannot be confused with a `source` cell. `data_sources.csv` is
+the conservative alternative (a smaller change in meaning, but it keeps the collision with the column
+and only lengthens it). `provenance.csv` is out — it collides with `manifest.provenance`, which is a
+different thing — and `attribution.csv` is out because it undersells the half that refuses a compile.
+Renaming the *column* is a separate and larger question and is **not** proposed here: `SourceRow.source`
+is inside its own fact set, so it is the row's key, and every other table's `source` already means what
+RM33 settled it to mean.
+
+Note what this does **not** unblock: the file's shape is already right. A rename is legibility only,
+which is exactly why it waits for a major rather than justifying one.
+
 ### Deprecated flag/vocab aliases
 
 **Severity** low · **Status** queued for 1.0 — collapse to the canonical vocab
@@ -860,7 +1069,10 @@ Mandatory `pmid` (must parse to a real PubMed id) rejects DOI-only provenance �
 (bioRxiv/medRxiv), books, theses, datasets. Demoting a required field is P8-forbidden in-major, so
 adding optional `doi` (RM11) alone can't unblock it. **Disposition:** **doi-first at 1.0**: make
 `pmid` optional/legacy and require **≥1 of `{doi, pmid}`** (every citation has a stable id, not
-necessarily a PMID; the reverse holds). Requiredness change → major-only.
+necessarily a PMID; the reverse holds). Requiredness change → major-only. **Pairs with RM50**, which
+carries the PMCID axis and the `LiteratureRow` key question: this entry decides what a *study row* may
+be authored with, and says nothing about what the pmid-keyed sidecar does with a row that has no PMID.
+Settle both in one release.
 
 ### Compiler `ensembl_cache` deprecated shim
 

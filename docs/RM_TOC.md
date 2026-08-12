@@ -102,6 +102,12 @@ stays 1.0 on its own merits — it changes the semantics of `variant_key` and of
 
 - **[RM49](ROADMAP.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses)** — nothing in a spec listing says which files a human wrote and which the enricher produced, so a registry gave publishers a `derived/` tree and found it is one `compile` refuses; their layout stays transport-only (flatten on upload, re-split on download). The byte-attestation half of S26 shipped as `manifest.derived` in 0.6.0; this is the half that did not. Not the one-line fallback it looks like: `spec_dir / "resolution.csv"` is resolved in **eight places across two packages**, and tolerating the layout on *input* without deciding the *write* side breaks on first use — `enrich` on a downloaded split module writes to the root, producing the both-copies-present collision by following the documented workflow. Three candidate repairs named and refused: search any subdirectory (blinds `_check_misspelled_tables`, re-opening S16's hole), make `derived/` canonical (two supported layouts, and `reverse` emitting a tree older compilers in the same major cannot read), extend it to authored tables (two legal homes for `variants.csv`, so the ignored copy is invisible). · *also in* CONSUMER_SUGGESTIONS_HISTORY § S26
 
+- **[RM50](ROADMAP.md#rm50--pmid-and-pmcid-are-one-id-apart-and-only-one-direction-of-the-conversion-exists)** — `StudyRow.pmid` runs through `extract_pmids` (`\b(\d{1,8})\b`), so `PMC3110566` is refused while `PMC 3110566` is **accepted as PMID 3110566** — a real, unrelated article, since PMIDs are densely allocated (the S12 class), and the refusal never says the word PMCID. Separately, only PMID → PMCID is resolved: it arrives free in the esummary `articleids` block, which is why the PMC ID converter is deliberately unused — a reason that says nothing about **PMCID → PMID**, the direction the converter is for, leaving a curator holding a PMC id with no route. The guard is a diagnosis and an enricher patch; the schema half is a design round (optional `StudyRow.pmcid` vs resolve-and-drop vs re-keying `LiteratureRow`) that must land with the 1.0 `StudyRow.pmid` requiredness demotion, which decides the other half of the same question.
+
+- **[RM51](ROADMAP.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)** — accept `licensing.csv` as a second spelling of `sources.csv` in 0.6 (enricher writes it, compiler falls back to it), so the 1.0 rename only has to **remove** a spelling rather than add one. Minor-legal for a checked reason: the fact sidecars are **not** in `_INPUT_FILES`, so the filename enters no identity — `content_signature` is rows, `source_signature` is facts, `manifest.derived` is transport-only. What cannot come along is `sources.parquet` (inside `artifact.digest`, read by name) and the `manifest.sources` key — both removals, both major — so the 0.x tail reads `licensing.csv` → `sources.parquet` → `manifest.sources`, which is the cost. One open decision: both files present is RM49's collision (fact-hashed and human-overridable, so no merge and no newest-wins) — write to the file you read, error naming both.
+
+- **[RM52](ROADMAP.md#rm52--10-ships-an-upgrade-procedure-or-10-does-not-ship)** — **release-blocking for 1.0**, by charter: the 0.6 amendment permits breakage at a major only when it arrives mitigated, so the major carries a per-item route from the previous line — the mechanical migration, or an explicit *no action needed*. Not the CHANGELOG: two audiences break in different places (an author holding a 0.x **spec** needs edits and renames; a consumer holding a 0.x **artifact** needs to know what to re-read and re-key, and no edit of theirs helps). `reverse_module` is the primitive for anything expressible in the DSL — reverse under the old compiler, recompile under the new — and the procedure's real job is naming what that does **not** cover, i.e. an identity re-key (RM15). The line is written when the item lands, not when the release is cut, and it is executed against `reference_examples/` rather than asserted.
+
 ## — Not format scope
 
 - **[RM7](ROADMAP.md#rm7--evaluation-output--report-card-schema)** — evaluation / report-card schema. Per-sample results are a *measurement*, so this is a **consumer** contract (`just-dna-lite`). Listed only so it is not mistaken for format scope. · *also in* USE_CASES, COMPILER, PROPOSAL_0_5
@@ -113,6 +119,14 @@ Everything needing a **major** lives in one table in
 number**, which is why they are easy to lose. They are not deferred features — each breaks a rule
 Principle 3/8 protects, so a minor cannot carry it.
 
+**Read this list under the amended cadence** (CONSTITUTION § 0.6 amendment, 2026-08-12): *deprecate in a
+minor, remove at the next major*. An item whose replacement already exists takes its warn-only
+deprecation in a 0.x release and is **gone at 1.0**, not deprecated at 1.0 and lingering to 2.0 — the
+entries below still phrased the old way are stale, not decided. What genuinely keeps the old shape is
+whatever Principle 8 makes mandatory (`state`, the `pathogenic`/`benign` booleans), because an author
+cannot comply with a warning about a field they must still set. Every item here also owes an upgrade
+line under **RM52**, which is release-blocking for 1.0.
+
 - `VariantRow.state` — deprecate at 1.0, remove at 2.0; a derived alias of `direction` since 0.3
 - `state` values `alt` / `ref` — drop from the read-vocabulary; genotype-relative descriptors
 - `VariantRow.pathogenic` / `benign` — deprecate → remove; lossy aliases of `clin_sig`
@@ -122,7 +136,8 @@ Principle 3/8 protects, so a minor cannot carry it.
 - `VariantRow.weight` vs `effect_size` — review whether `weight` is subsumed
 - Deprecated flag / vocab aliases — collapse to the canonical vocab
 - `ModuleManifest.authors` + free-form `curator` — fold into RM14's structured record
-- `StudyRow.pmid` required — **doi-first**: require ≥1 of `{doi, pmid}`; a requiredness demotion
+- `StudyRow.pmid` required — **doi-first**: require ≥1 of `{doi, pmid}`; a requiredness demotion. Pairs with RM50, which carries the PMCID axis and the `LiteratureRow` key
+- `sources.csv` — **rename** (recommendation: `licensing.csv`). The *input* half is RM51 and lands in 0.6; what waits for the major is `sources.parquet` (inside `artifact.digest`) and the `manifest.sources` key — both removals. The old CSV spelling is deprecated in 0.6 beside the alias and **removed at 1.0**, on the amended cadence this item prompted. It is a licensing/attribution ledger whose name collides with the `source` *column* meaning "which link answered" (the overload RM33 had to split) and with the ordinary sense in which `studies.csv`/`literature.csv` are sources too
 - Compiler `ensembl_cache` shim — remove the deprecated parameter outright
 - ~~Coordinate-first identity~~ — **resolved in 0.5** by VRS; kept struck through for traceability
 

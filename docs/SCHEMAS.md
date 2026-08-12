@@ -408,6 +408,35 @@ Three of the four are machine-produced and human-*overridable*; `sources.csv` is
 human-**authored**, because a source a curator read by hand has no pass to write its row (see above).
 That is why it is the only one of the four with a `draft`/`template` route and a natural key.
 
+**Three tables sound like they are about the same thing, and they are three different levels.** The
+names do not separate them — `studies`, `literature`, `sources` all read as "references" — so read them
+by grain and by who writes them:
+
+| | grain | asks | written by |
+|---|---|---|---|
+| `studies.csv` | a variant + a claim | *why do I believe this row?* | the curator |
+| `literature.csv` | a `pmid` — an article | *does that citation check out?* | an enricher pass |
+| `sources.csv` | a `(source, layer)` — a dataset | *where did the bytes come from, on what terms?* | a pass **or** the curator |
+
+They stack rather than overlap, and the reason they cannot merge is that **a paper is not a data
+source**. `studies.csv` is authored annotation and feeds `content_signature`; `literature.csv` is a
+verification record *over* those citations, and its facts are hashed separately so an embargo lifting
+or a re-run cannot move the module's content identity; `sources.csv` is one level up again, describing
+the *datasets* consulted — including PubMed and Europe PMC, the ones that answered `literature.csv`'s
+questions, which belong here at the `literature` layer (what their terms are is [RM46](ROADMAP.md), since
+a literature source's terms are per-article). That containment is why the compiler exempts the
+`literature` layer from its stale-source check whenever the module carries `studies.csv` rows: a
+`pubmed` row is corroborated by `literature.csv` and by nothing else. They are also consumed by
+different things — the compile licence gate reads `sources.csv` and no other file — and each hashes its
+own fact set with its own exclusions, which one merged table could not do.
+
+The naming is the weakest part of this: `sources.csv` is a licensing and attribution ledger whose name
+collides with the `source` *column* that means "which link answered" in four other tables. The
+recommended name is `licensing.csv`, and the rename splits — the input filename gains it as a second
+accepted spelling in 0.6 ([RM51](ROADMAP.md)), while `sources.parquet` and the `manifest.sources` key
+wait for the major, since renaming either is a removal
+([ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker)).
+
 **`FrequencyRow` — one row per (allele, ancestry group).** Facts: `variant_key` (coordinate-derived, so
 it lines up with post-expansion weights rows), `rsid?`, `chrom?`/`start?`/`ref?`, `alt?` (**one** alt, not
 `resolution.csv`'s comma-joined `alts` — a frequency is per-allele), `population`, `allele_count` (AC),
