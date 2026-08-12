@@ -46,10 +46,12 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.layout import (
+    DERIVED_SUBDIR,
     SOURCES_CSV,
     SidecarCollision,
     deprecation_notice,
     resolve_sidecar,
+    sidecar_relative_names,
     sidecar_spellings,
 )
 from just_dna_format.integrity import (
@@ -260,7 +262,7 @@ def _locate_sidecar(spec_dir: Path, csv_name: str) -> tuple[Path | None, list[st
         return None, [], [str(exc)]
     if path is None:
         return None, [], []
-    notice = deprecation_notice(path, csv_name)
+    notice = deprecation_notice(path, csv_name, shown_as=str(path.relative_to(spec_dir)))
     return path, ([notice] if notice else []), []
 
 
@@ -1801,21 +1803,36 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
     Deliberately keyed on **near miss** rather than on "unknown csv": warning about every unrecognised
     file would fire on the legitimate sidecars the contract exists to permit, so the check has to be
     high-precision or it undoes the tolerance. `difflib` at a 0.8 cutoff catches a transposition, a
-    doubled or dropped letter, and a singular/plural slip, and stays quiet on an unrelated name."""
+    doubled or dropped letter, and a singular/plural slip, and stays quiet on an unrelated name.
+
+    **`derived/` is scanned too, and against its own smaller name set (RM49).** Tolerating a second
+    input location without teaching this check about it would put a typo'd `derived/varaints.csv`
+    exactly where the guard cannot see it — re-opening the hole S16 closed, as the price of a
+    convenience. That is also the argument against "search any subdirectory": one fixed name is the
+    only version where the guard can follow. The name set there is the *derived* files alone, because
+    an authored table has no business in that directory, so `derived/variants.csv` is itself the
+    near miss worth reporting rather than a file to accept."""
     if not spec_dir.is_dir():
         return []
+    derived_names = frozenset(
+        name for csv in _DERIVED_FILES for name in sidecar_spellings(csv)
+    )
     warnings: list[str] = []
-    for path in sorted(spec_dir.iterdir()):
-        if not path.is_file() or path.name in _KNOWN_SPEC_FILES or path.suffix != ".csv":
+    for directory, known in ((spec_dir, _KNOWN_SPEC_FILES), (spec_dir / DERIVED_SUBDIR, derived_names)):
+        if not directory.is_dir():
             continue
-        close = difflib.get_close_matches(path.name, sorted(_KNOWN_SPEC_FILES), n=1, cutoff=0.8)
-        if close:
-            warnings.append(
-                f"{path.name} is not a table this compiler reads, and it is one small edit from "
-                f"{close[0]!r} — if that is a typo, every row in it is being silently ignored. "
-                f"Unknown files are otherwise tolerated (curation notes or a publisher's receipt are "
-                f"fine): nothing outside the known table set reaches artifact.digest."
-            )
+        for path in sorted(directory.iterdir()):
+            if not path.is_file() or path.name in known or path.suffix != ".csv":
+                continue
+            close = difflib.get_close_matches(path.name, sorted(known), n=1, cutoff=0.8)
+            if close:
+                shown = path.relative_to(spec_dir)
+                warnings.append(
+                    f"{shown} is not a table this compiler reads, and it is one small edit from "
+                    f"{close[0]!r} — if that is a typo, every row in it is being silently ignored. "
+                    f"Unknown files are otherwise tolerated (curation notes or a publisher's receipt "
+                    f"are fine): nothing outside the known table set reaches artifact.digest."
+                )
     return warnings
 
 
@@ -2993,11 +3010,13 @@ def _build_manifest(
         # `file_entries` skips what is absent, so a module carrying no sidecars gets an empty list
         # rather than a fabricated one — and a new optional sidecar cannot move an existing module's
         # manifest by appearing here.
-        # Every accepted spelling is offered; `file_entries` skips the ones that are not there, so the
-        # block records whichever name the module actually carries (RM51). A module cannot carry two —
-        # `_locate_sidecar` refused before anything was written.
+        # Every accepted spelling *and* location is offered; `file_entries` skips the ones that are
+        # not there, so the block records whichever the module actually carries (RM51/RM49) — and
+        # `FileEntry.name` then carries `derived/…` for a split tree, which is what a registry
+        # re-splitting a download needs. A module cannot carry two: `_locate_sidecar` refused before
+        # anything was written.
         derived=file_entries(
-            spec_dir, [name for csv in _DERIVED_FILES for name in sidecar_spellings(csv)]
+            spec_dir, [name for csv in _DERIVED_FILES for name in sidecar_relative_names(csv)]
         ),
         content_signature=content_sig,
         artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),

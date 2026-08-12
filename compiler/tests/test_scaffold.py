@@ -21,7 +21,7 @@ from just_dna_compiler.scaffold import (
     scaffold_module,
 )
 from just_dna_format.base import field_vocabularies
-from just_dna_format.layout import SOURCES_CSV, sidecar_spellings
+from just_dna_format.layout import SOURCES_CSV, resolve_sidecar, sidecar_spellings
 from just_dna_format.spec import ModuleSpecConfig
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
@@ -263,10 +263,21 @@ def test_every_star_allele_it_uses_is_one_it_defines() -> None:
     assert not [w for w in validate_spec(_CYP2C19).warnings if "not defined in haplotypes.csv" in w]
 
 
+def _licence_table(spec_dir: Path) -> Path:
+    """The module's licence table under whatever spelling and location it keeps it (RM51/RM49).
+
+    Resolved rather than named: these fixtures are real reference examples, and the corpus carries
+    both spellings on purpose so neither path goes unexercised.
+    """
+    found = resolve_sidecar(spec_dir, SOURCES_CSV)
+    assert found is not None, f"{spec_dir.name} must carry a licence table"
+    return found
+
+
 def test_the_cpic_source_is_recorded_so_the_licence_gate_can_see_it() -> None:
     """CPIC is CC BY-SA with a no-sale clause. A module built from it that records no source leaves
     the compile gate nothing to key on — which is what the provider used to produce."""
-    sources = list(csv.DictReader(io.StringIO((_CYP2C19 / "sources.csv").read_text())))
+    sources = list(csv.DictReader(io.StringIO(_licence_table(_CYP2C19).read_text())))
     cpic = [s for s in sources if s["source"] == "cpic"]
     assert cpic, "the module is entirely CPIC-derived and must say so"
     assert cpic[0]["layer"] == "annotation"
@@ -280,14 +291,14 @@ def test_stripping_the_declaration_makes_the_compile_refuse(tmp_path: Path) -> N
 
     spec = tmp_path / "spec"
     shutil.copytree(_CYP2C19, spec)
-    rows = list(csv.DictReader(io.StringIO((spec / "sources.csv").read_text())))
+    rows = list(csv.DictReader(io.StringIO(_licence_table(spec).read_text())))
     for row in rows:
         row["declared_use"] = ""
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=list(rows[0]))
     writer.writeheader()
     writer.writerows(rows)
-    (spec / "sources.csv").write_text(buf.getvalue())
+    _licence_table(spec).write_text(buf.getvalue())
 
     result = compile_module(spec, tmp_path / "out")
     assert not result.success

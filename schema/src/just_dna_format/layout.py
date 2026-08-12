@@ -50,6 +50,26 @@ SIDECAR_SPELLINGS: dict[str, tuple[str, ...]] = {
 DEPRECATED_SPELLINGS: frozenset[str] = frozenset({SOURCES_CSV})
 
 
+#: A subdirectory a spec may put its machine-written sidecars in (RM49).
+#:
+#: Nothing in a flat listing says which files a human wrote and which `just-dna-enricher` produced —
+#: `module_spec.yaml`/`variants.csv`/`studies.csv` against `resolution.csv` and the fact tables, with
+#: the licence table genuinely both. A registry gave its publishers this tree, then found a downloaded
+#: module does not recompile where it sits, so their layout stays transport-only: flatten on upload,
+#: re-split on download.
+#:
+#: **Tolerated, never required, and never canonical.** `reverse_module` keeps emitting a flat tree and
+#: the enricher keeps creating one — making this the canonical layout would buy two supported layouts
+#: instead of one and have `reverse` emit a tree that older compilers in the same major cannot read,
+#: which is a layout migration dressed as a convenience.
+#:
+#: **One fixed name, not "search any subdirectory".** Walking the tree would blind the near-miss guard
+#: that catches a mistyped table name: a typo'd `derived/varaints.csv` would be invisible to the check
+#: written precisely to catch that, so the feature would re-open a hole a previous item closed. One
+#: name keeps the guard able to look in exactly one more place.
+DERIVED_SUBDIR: str = "derived"
+
+
 class SidecarCollision(ValueError):
     """Two files claim to be the same sidecar, and neither may be silently preferred.
 
@@ -76,13 +96,19 @@ def is_deprecated_spelling(filename: str) -> bool:
 
 
 def sidecar_candidates(spec_dir: Path, name: str) -> list[Path]:
-    """Every place `name` may legally be, in preference order.
+    """Every place `name` may legally be — each spelling, at the root and under `derived/`.
 
     Order is the tie-break nothing else can supply, so it is fixed rather than incidental: a caller
     that wants "the one that exists" gets a deterministic answer, and a caller that wants "where do I
-    create it" reads the same list from the other end.
+    create it" reads the same list from the front. The root comes first because it is the layout every
+    existing module and every `reverse_module` output uses.
     """
-    return [Path(spec_dir) / spelling for spelling in sidecar_spellings(name)]
+    root = Path(spec_dir)
+    return [
+        root / directory / spelling
+        for directory in ("", DERIVED_SUBDIR)
+        for spelling in sidecar_spellings(name)
+    ]
 
 
 def resolve_sidecar(spec_dir: Path, name: str) -> Path | None:
@@ -97,35 +123,54 @@ def resolve_sidecar(spec_dir: Path, name: str) -> Path | None:
     if len(present) > 1:
         listed = " and ".join(str(path) for path in present)
         raise SidecarCollision(
-            f"{listed} are two spellings of the same table, and both are present. These tables are "
+            f"{listed} are the same table in two places, and both are present. These tables are "
             f"fact-hashed and may be edited by hand, so two copies are two claims and neither can be "
             f"preferred without discarding the other — keep one and delete the other. "
-            f"{preferred_spelling(name)!r} is the spelling to keep."
+            f"{preferred_spelling(name)!r} is the spelling to keep; either the spec root or "
+            f"{DERIVED_SUBDIR}/ is a fine place for it."
         )
     return present[0]
+
+
+def sidecar_relative_names(name: str) -> list[str]:
+    """Every legal spelling-and-location of `name`, as paths relative to the spec directory.
+
+    For hashing rather than reading: `integrity.file_entries` skips the names that are not there, so
+    handing it this list records whichever one the module actually carries — and `FileEntry.name` then
+    carries the relative path, which is what a registry re-splitting a downloaded tree needs.
+    """
+    return [str(path) for path in sidecar_candidates(Path(), name)]
 
 
 def sidecar_write_path(spec_dir: Path, name: str) -> Path:
     """Where a pass should write a sidecar: the copy that exists, else the preferred spelling.
 
-    **Write to the file you read.** A pass that always created the preferred spelling would, on a
-    module carrying the deprecated one, leave two copies behind — the collision above, produced by
-    following the documented workflow rather than by misusing it.
+    **Write to the file you read.** A pass that always created the preferred spelling at the root
+    would, on a module carrying the deprecated one or a `derived/` tree, leave two copies behind — the
+    collision above, produced by following the documented workflow rather than by misusing it. Running
+    `enrich` on a downloaded split module is exactly that path.
+
+    With nothing to follow it creates the flat layout, because `derived/` is *tolerated* rather than
+    canonical: a module only ends up split because somebody chose to split it.
     """
     found = resolve_sidecar(spec_dir, name)
     return found if found is not None else Path(spec_dir) / preferred_spelling(name)
 
 
-def deprecation_notice(path: Path, name: str) -> str | None:
+def deprecation_notice(path: Path, name: str, *, shown_as: str | None = None) -> str | None:
     """The warning for reading a deprecated spelling, or `None` when the name is current.
 
     Actionable by construction, which is what the 0.6 amendment requires of a deprecation in a minor:
     the replacement exists, the old name is not mandatory, and the migration is `git mv`.
+
+    `shown_as` is what the message calls the file — a caller that knows the spec directory passes the
+    path relative to it, so on a split tree the notice says *which* copy rather than a bare filename
+    that could be either.
     """
     if not is_deprecated_spelling(path.name):
         return None
     return (
-        f"{path.name} is the deprecated spelling of this table and will be removed at 1.0 — rename it "
-        f"to {preferred_spelling(name)!r}. It is read exactly as before until then; the compiled "
-        f"parquet and the manifest key keep their current names, which only a major may change."
+        f"{shown_as or path.name} is the deprecated spelling of this table and will be removed at 1.0 "
+        f"— rename it to {preferred_spelling(name)!r}. It is read exactly as before until then; the "
+        f"compiled parquet and the manifest key keep their current names, which only a major may change."
     )

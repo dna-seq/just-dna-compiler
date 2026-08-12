@@ -90,3 +90,11 @@ reported, because a silent cap reads as "this is everything".
 | `studies.csv` | `draft-panel`, from ClinVar's citation links |
 | `sources.csv` | `draft-panel` (ClinVar is public domain; recorded because attribution is asked for) |
 | `resolution.csv` | `just-dna-enricher enrich --offline` |
+
+**This module deliberately keeps the deprecated `sources.csv` spelling.** 0.6 accepts `licensing.csv`
+as a second name for it and the other examples were renamed; this one was held back so the deprecation
+path stays exercised on a real module rather than only in a fixture — the compile prints a rename
+notice and reads the file exactly as before. Renaming it changes nothing that is hashed: all eleven
+examples kept their exact `artifact.digest`, `content_signature`, `resolution_signature` and
+`source_signature` across the four that moved, which is the measurement behind the claim that the
+filename enters no identity.

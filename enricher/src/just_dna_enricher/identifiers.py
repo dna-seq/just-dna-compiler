@@ -37,6 +37,7 @@ from typing import Any
 
 import httpx
 from just_dna_compiler.compiler import load_csv_rows, load_spec_variants
+from just_dna_format.layout import SidecarCollision, resolve_sidecar
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import MULTI_SEP
@@ -501,10 +502,16 @@ def _variant_chromosomes(
     known = {v.variant_key: v.chrom for v in variants if v.chrom}
     if spec_dir is None:
         return known, None if known else "no coordinates authored and no spec directory to look beside"
-    table = spec_dir / "resolution.csv"
+    # Read-only, so a collision here is a reason the comparison could not run rather than a failure —
+    # same shape as every other `gene_loci_not_checked` reason, and it must stay a reason: this check
+    # reports on the module's rows, and dying on its layout would say nothing about them.
+    try:
+        table = resolve_sidecar(spec_dir, "resolution.csv") or spec_dir / "resolution.csv"
+    except SidecarCollision as exc:
+        return known, str(exc)
     if not table.exists():
         return known, None if known else "no coordinates authored and no resolution.csv beside the spec"
-    rows, errors, _ = load_csv_rows(table, ResolutionRow, "resolution.csv")
+    rows, errors, _ = load_csv_rows(table, ResolutionRow, table.name)
     if errors:
         return known, f"resolution.csv could not be read ({errors[0]})"
     for row in rows:

@@ -30,7 +30,7 @@ from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.identifiers import RsidStatus, check_rsids
-from just_dna_enricher.licensing import record_source_terms, resolution_authority
+from just_dna_enricher.licensing import record_source_terms, resolution_authority, sidecar_path
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 from just_dna_enricher.sequences import (
@@ -419,11 +419,14 @@ def enrich(
 
     # Existing/human rows are authoritative — merge, never clobber.
     existing: dict[str, list[ResolutionRow]] = {}
-    resolution_path = spec_dir / "resolution.csv"
+    # Through the shared resolver, so the pass writes back to wherever the module keeps this table —
+    # root or `derived/`, whatever it is called. Reading one copy and writing another would leave the
+    # module carrying two, which is the collision (RM49/RM51).
+    resolution_path = sidecar_path(spec_dir, "resolution.csv", error=EnrichmentError)
     if resolution_path.exists():
-        rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, "resolution.csv")
+        rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
         if errors:
-            raise EnrichmentError(f"existing resolution.csv is invalid: {errors[0]}")
+            raise EnrichmentError(f"existing {resolution_path.name} is invalid: {errors[0]}")
         for row in rows:
             existing.setdefault(row.variant_key, []).append(row)
 

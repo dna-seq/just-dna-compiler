@@ -21,7 +21,7 @@ from just_dna_enricher.licensing import (
     record_source_terms,
     sources_path,
 )
-from just_dna_format.layout import LICENSING_CSV, SOURCES_CSV
+from just_dna_format.layout import DERIVED_SUBDIR, LICENSING_CSV, SOURCES_CSV
 from just_dna_format.sources import SourceRow
 
 
@@ -107,3 +107,37 @@ def test_both_spellings_present_fails_as_the_pass_own_error(tmp_path: Path) -> N
 
     with pytest.raises(_PassError):
         record_source_terms(["ensembl"], "resolution", tmp_path, error=_PassError)
+
+
+# ── the `derived/` layout (RM49) ───────────────────────────────────────────────────────────────
+
+
+def test_a_pass_writes_into_the_subdirectory_the_module_uses(tmp_path: Path) -> None:
+    """The motivating workflow: download a split module, re-enrich, and it must stay split.
+
+    Writing to the root here would leave the module carrying `licensing.csv` *and*
+    `derived/licensing.csv` — the collision, reached by following the documented workflow rather than
+    by misusing it. That is the argument that kept RM49 a design round: tolerating a location on input
+    without deciding the write side breaks on first use.
+    """
+    derived = tmp_path / DERIVED_SUBDIR
+    derived.mkdir()
+    (derived / LICENSING_CSV).write_text(",".join(SourceRow.model_fields) + "\n")
+
+    record_source_terms(["ensembl"], "resolution", tmp_path, error=_PassError)
+
+    assert not (tmp_path / LICENSING_CSV).exists()
+    assert not (tmp_path / SOURCES_CSV).exists()
+    assert _rows(derived / LICENSING_CSV)
+
+
+def test_the_same_table_at_both_levels_fails_as_the_pass_own_error(tmp_path: Path) -> None:
+    """Two places is the same refusal as two spellings, for the same reason and in the same words."""
+    (tmp_path / LICENSING_CSV).write_text(",".join(SourceRow.model_fields) + "\n")
+    derived = tmp_path / DERIVED_SUBDIR
+    derived.mkdir()
+    (derived / LICENSING_CSV).write_text(",".join(SourceRow.model_fields) + "\n")
+
+    with pytest.raises(_PassError) as caught:
+        record_source_terms(["ensembl"], "resolution", tmp_path, error=_PassError)
+    assert DERIVED_SUBDIR in str(caught.value)

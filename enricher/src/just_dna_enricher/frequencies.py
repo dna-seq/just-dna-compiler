@@ -34,7 +34,7 @@ from just_dna_enricher.gnomad import (
     GnomadClient,
     covers_locus,
 )
-from just_dna_enricher.licensing import record_source_terms
+from just_dna_enricher.licensing import record_source_terms, sidecar_path
 
 logger = logging.getLogger(__name__)
 
@@ -151,15 +151,17 @@ def enrich_frequencies(
     consequence, too: to regenerate after a machinery change you must delete the file first.
     """
     spec_dir = Path(spec_dir)
-    resolution_path = spec_dir / "resolution.csv"
-    frequencies_path = spec_dir / "frequencies.csv"
+    # Both through the shared resolver: the module may keep either table under `derived/` (RM49), and
+    # a pass that read one layout and wrote the other would leave two copies behind.
+    resolution_path = sidecar_path(spec_dir, "resolution.csv", error=FrequencyEnrichmentError)
+    frequencies_path = sidecar_path(spec_dir, "frequencies.csv", error=FrequencyEnrichmentError)
 
     if not resolution_path.exists():
         raise FrequencyEnrichmentError(
             f"no resolution.csv in {spec_dir} — the frequency pass reads resolved coordinates, so run "
             f"`just-dna-enricher enrich` first."
         )
-    resolution_rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, "resolution.csv")
+    resolution_rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
     if errors:
         raise FrequencyEnrichmentError(f"resolution.csv is invalid: {errors[0]}")
 

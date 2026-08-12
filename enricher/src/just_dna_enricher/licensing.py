@@ -392,21 +392,30 @@ def merge_sources_csv(rows: list[SourceRow], path: Path, existing: list[SourceRo
     return out
 
 
-def sources_path(spec_dir: Path, *, error: type[Exception]) -> Path:
-    """Where this module's licence table lives — the file it already has, else the current spelling.
+def sidecar_path(spec_dir: Path, name: str, *, error: type[Exception]) -> Path:
+    """Where a machine-written sidecar lives for this module — the copy it has, else a fresh one.
 
-    The single place any enricher pass turns a spec directory into that path (RM51). Nine passes wrote
-    `spec_dir / "sources.csv"` by hand; one of them keeping its own literal would re-create the retired
-    spelling beside the alias, which is the both-present collision produced by following the documented
-    workflow rather than by misusing it.
+    The enricher's single entry point into `just_dna_format.layout`, so a pass never joins a filename
+    onto a spec directory itself. That matters twice over: the licence table has two accepted
+    spellings (RM51), and any of them may sit under `derived/` (RM49). A pass keeping its own literal
+    would read the split copy and write the flat one, leaving the module with two — which is the
+    collision, arrived at by following the documented workflow rather than by misuse.
 
     `SidecarCollision` is re-raised as the caller's own error, so a pass still fails as itself rather
     than as a schema-tier `ValueError` nobody up the stack is catching.
     """
     try:
-        return sidecar_write_path(spec_dir, SOURCES_CSV)
+        return sidecar_write_path(spec_dir, name)
     except SidecarCollision as exc:
         raise error(str(exc)) from exc
+
+
+def sources_path(spec_dir: Path, *, error: type[Exception]) -> Path:
+    """Where this module's licence table lives — the file it already has, else the current spelling.
+
+    Nine passes used to write `spec_dir / "sources.csv"` by hand; they all come through here now.
+    """
+    return sidecar_path(spec_dir, SOURCES_CSV, error=error)
 
 
 def merge_sources_file(

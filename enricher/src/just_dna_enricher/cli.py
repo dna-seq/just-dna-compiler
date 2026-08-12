@@ -58,6 +58,7 @@ from just_dna_enricher.licensing import (
     PHARMVAR_TERMS,
     LicenseRefusal,
     check_declared_use,
+    sidecar_path,
     sources_path,
 )
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
@@ -1254,13 +1255,13 @@ def vrs_mint_(
     from just_dna_enricher.enrich import _write_resolution_csv
     from just_dna_enricher.vrs import mint_resolution_rows
 
-    path = spec_dir / "resolution.csv"
+    path = sidecar_path(spec_dir, "resolution.csv", error=EnrichmentError)
     if not path.exists():
         typer.secho(f"no resolution.csv in {spec_dir} — run `enrich` first.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    rows, errors, _ = load_csv_rows(path, ResolutionRow, "resolution.csv")
+    rows, errors, _ = load_csv_rows(path, ResolutionRow, path.name)
     if errors:
-        typer.secho(f"resolution.csv is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
+        typer.secho(f"{path.name} is invalid: {errors[0]}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     result = mint_resolution_rows(rows, offline=offline)
     _write_resolution_csv(rows, path)
