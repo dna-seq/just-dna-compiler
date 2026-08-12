@@ -145,7 +145,13 @@ def compile(  # noqa: A001 — the verb is the command name; shadowing builtins.
         typer.echo(f"content_signature: {manifest.content_signature if manifest else '?'}")
         if manifest is not None:
             comp = manifest.compilation
-            typer.echo(f"resolution_mode: {comp.resolution_mode}  fully_resolved: {comp.fully_resolved}")
+            # The count travels with the flag here for the same reason it does in the manifest (RM44):
+            # `fully_resolved: True` over 0 subjects is vacuous, and printing the flag alone is how a
+            # reader learns the wrong thing from a true statement.
+            typer.echo(
+                f"resolution_mode: {comp.resolution_mode}  fully_resolved: {comp.fully_resolved} "
+                f"(over {comp.resolution_subjects} variant row(s))"
+            )
             if comp.resolution_signature is not None:
                 typer.echo(f"resolution_signature: {comp.resolution_signature}")
     else:

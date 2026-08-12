@@ -195,6 +195,34 @@ class Compilation(BaseModel):
     fully_resolved: bool = Field(
         default=False, description="Every in-scope VariantRow resolved to a genomic position (chrom+start)"
     )
+    # The denominator `fully_resolved` quantifies over (RM44). That flag is `all(...)` over the module's
+    # `VariantRow`s, so on a module carrying no `variants.csv` it is `all()` over an empty list —
+    # **vacuously true**, and the trust rule three lines up then reads as a verdict about a module that
+    # resolves nothing. It is not wrong; it simply cannot say which question it answered. Recording the
+    # count beside it makes `fully_resolved=true, resolution_subjects=0` self-evidently vacuous, with no
+    # new vocabulary and nothing for a consumer to parse out of prose.
+    #
+    # Same shape as `vrs_alleles`/`vrs_alleles_identified` below, whose comment already argues it: keep
+    # the parts, compute the convenience. `0` means nothing was attempted, which is not the same as
+    # nothing achieved — and the two are what a `bool` alone cannot separate.
+    #
+    # Deliberately additive rather than making `fully_resolved` tri-state: it is typed `bool`, consumers
+    # branch on it directly, and a `None` would be a breaking read for every one of them.
+    #
+    # **It restates a number `Stats.weights_rows` also carries today, on purpose.** Measured across the
+    # eleven reference examples, the two are equal everywhere, because the materializer emits exactly
+    # one weights row per in-scope variant row. That equality is a property of the current transform,
+    # not a contract — and `Stats` is documented as *card/detail stats*, i.e. display facets, so a
+    # consumer deciding trust would be keying it on a coincidence in a block that does not promise one.
+    # A denominator belongs beside the flag it qualifies. `compiler/tests/test_resolution_subjects.py`
+    # pins the two together, so if they ever diverge that is a decision someone makes, not a drift.
+    #
+    # Counted **after** the one-to-many rsID expansion, because that is what `fully_resolved` iterates:
+    # `pathogenic_clinvar` authors 328 rows and resolution applies to 337 loci.
+    resolution_subjects: int = Field(
+        default=0,
+        description="Variant rows fully_resolved was evaluated over, after rsID expansion (0 = nothing attempted)",
+    )
     resolution_signature: str | None = Field(
         default=None,
         description="Fact-hash of resolution.csv (integrity.resolution_signature); out of artifact.digest",

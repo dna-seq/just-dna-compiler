@@ -2419,8 +2419,11 @@ def compile_module(
     )
 
     # Outcome axis (orthogonal to the requested `resolution_mode` policy, Principle 5): did every
-    # in-scope variant resolve to a genomic position? Vacuously true for a table-kind-only module.
+    # in-scope variant resolve to a genomic position? Vacuously true for a table-kind-only module —
+    # which is why the denominator travels beside it into the manifest (RM44). Both come from the same
+    # list, so the flag can never be published without the count that says what it quantified over.
     fully_resolved = all(v.chrom is not None and v.start is not None for v in variants)
+    resolution_subjects = len(variants)
 
     # Strict (all-or-nothing): refuse to write a partial artifact. A variant still missing its
     # genomic position after resolution means the injected reference was incomplete or absent, so the
@@ -2612,6 +2615,7 @@ def compile_module(
         content_sig=content_signature(spec_dir),
         resolution_mode=resolution_mode,
         fully_resolved=fully_resolved,
+        resolution_subjects=resolution_subjects,
         vrs_alleles=vrs_alleles,
         vrs_alleles_identified=vrs_identified,
         resolution_sig=resolution_sig,
@@ -2870,6 +2874,7 @@ def _build_manifest(
     content_sig: str | None = None,
     resolution_mode: str | None = None,
     fully_resolved: bool = False,
+    resolution_subjects: int = 0,
     resolution_sig: str | None = None,
     resolution_sources: list[str] | None = None,
     vrs_alleles: int = 0,
@@ -2921,6 +2926,7 @@ def _build_manifest(
             warnings=warnings,
             resolution_mode=resolution_mode,
             fully_resolved=fully_resolved,
+            resolution_subjects=resolution_subjects,
             resolution_signature=resolution_sig,
             resolution_sources=resolution_sources or [],
             vrs_alleles=vrs_alleles,
