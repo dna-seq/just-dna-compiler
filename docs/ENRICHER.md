@@ -108,7 +108,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
-| `pgx` | pass 5: cross-check star-allele tables, write `sources.csv` | the three above |
+| `pgx` | pass 5: cross-check star-allele tables, write the licence table | the three above |
 | `clinpgx_build` | `[dev]`: `clinicalAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt` | `polars`, `httpx` |
 | `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
 | `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
@@ -1270,8 +1270,17 @@ against would make the check vacuous.
 ## Pharmacogenomics and data-source licensing (`pgx.py`, `licensing.py`, `pharmvar.py`, `cpic.py`)
 
 Pass 5 cross-checks a module's star-allele tables against the nomenclature authorities and records
-**what was consulted and on what terms** into `sources.csv`. It is the first pass whose primary output
-is provenance rather than facts.
+**what was consulted and on what terms** into the module's licence table. It is the first pass whose
+primary output is provenance rather than facts.
+
+**That file is `licensing.csv` since 0.6, and `sources.csv` is the deprecated spelling** (RM51,
+removed at 1.0). No pass names either by hand: `licensing.sources_path` — and `sidecar_path` for the
+other machine-written tables — resolves it through `just_dna_format.layout`, which also accepts a
+`derived/` subdirectory (RM49). Two rules every pass inherits from that, and both matter:
+**write to the file you read** (writing the current spelling onto a module carrying the older one, or
+the root onto a module that is split, leaves two copies), and **two copies is a refusal naming both
+paths**, raised as the calling pass's own error. Never a merge and never newest-wins — these tables
+are hand-overridable, so two copies are two claims.
 
 ### The bottom line first: a PGx module is non-commercial only
 
@@ -1283,12 +1292,12 @@ selling the data, which `licensing.{CLINPGX,CPIC,PHARMVAR}_TERMS` each record as
 authored annotation, so their `SourceRow` sits at the `annotation` layer, and that is the one layer
 `sources.taints_commercial_use` treats as tainting. The verdict is **most-restrictive-wins, module-wide**:
 mixing in a permissive source cannot launder a restricted one, and the compile refuses in **both** modes
-unless `sources.csv` records `declared_use=non_commercial` for every tainting source. `unstated` is not a
+unless the licence table records `declared_use=non_commercial` for every tainting source. `unstated` is not a
 loophole — it is the absence of a declaration, which is exactly what the gate is looking for.
 
-`reference_examples/cyp2c19_star_alleles/sources.csv` is the shape: one CPIC row,
+`reference_examples/cyp2c19_star_alleles/licensing.csv` is the shape: one CPIC row,
 `commercial_use=false`, `declared_use=non_commercial`.
-`reference_examples/pgx_slco1b1_simvastatin/sources.csv` is the same with a licence hash pinned from the
+`reference_examples/pgx_slco1b1_simvastatin/licensing.csv` is the same with a licence hash pinned from the
 bytes it was read out of (`license_sha256`, `dataset=clinpgx_2025-07-05`).
 
 And **declaring is asserting, not proving** — the gate's own closing sentence says so. Recording

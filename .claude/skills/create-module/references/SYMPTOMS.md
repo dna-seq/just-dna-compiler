@@ -158,8 +158,18 @@ fails `--strict`.
 **`sources.csv has no row for … ['gnomad']`**
 A real finding: a source contributed facts and the module records no terms for it. Fixed by
 **re-running the pass that consulted it** — `enrich`, `frequencies` and `gene-metrics` each write their
-own `sources.csv` row, and merging never clobbers a row you wrote by hand. A `resolution.csv` written
-before the `authority` column existed simply says nothing here; re-enrich to fill it.
+own row into the licence table, and merging never clobbers a row you wrote by hand. A `resolution.csv`
+written before the `authority` column existed simply says nothing here; re-enrich to fill it.
+
+**`sources.csv is the deprecated spelling of this table and will be removed at 1.0`**
+Not a defect: the file is read exactly as before. Rename it to `licensing.csv` to clear the notice.
+Rename, do not copy — a module carrying both is refused, and so is the same table both beside
+`module_spec.yaml` and in `derived/`. The message names both paths when that happens.
+
+**`… are the same table in two places, and both are present`**
+Two spellings of one file, or the same file at the spec root and in `derived/`. Nothing picks a winner
+for you: the file may be hand-edited, so choosing one would silently discard your edits. Keep the copy
+you want and delete the other.
 
 ## Validation and compile
 
@@ -169,7 +179,7 @@ before the `authority` column existed simply says nothing here; re-enrich to fil
 by `compile --strict` is a pre-flight for the *other* compile, so pass the same flag to both:
 `validate spec/ --strict`.
 With the modes matched it should not happen, and if it does, that is a bug worth reporting upstream
-rather than working around. `validate` covers `resolution.csv`, the four fact sidecars (`sources.csv`,
+rather than working around. `validate` covers `resolution.csv`, the four fact sidecars (`licensing.csv`,
 `literature.csv`, `frequencies.csv`, `gene_metrics.csv`), the licence gate, the stored `vrs_id`, the
 p-value pair, and whether every genotype and `effect_allele` names an allele its locus actually has.
 What still only appears at compile is anything computed from *resolved* rows — the expansion and hosting
@@ -291,7 +301,7 @@ several names. Distinct from the next entry.
 Same unphased genotype, different conclusions, but the haplotype definitions *do* differ — so phase
 resolves it. Correct and expected for a cis/trans pair; a consumer with unphased calls must withhold.
 
-**`sources.csv declares N source(s) no table in this module uses`**
+**`sources.csv declares N source(s) no table in this module uses`**  *(same for `licensing.csv`)*
 Over-declaration; usually a stale row after you removed a table. Harmless.
 
 **The compile refuses over licensing**

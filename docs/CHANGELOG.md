@@ -34,7 +34,126 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-12 (latest) — docs: the round-1 field notes are retired, and two accepted asks finally land
+## 2026-08-12 (latest) — 0.6.0: the version bump, and the first three items of the line
+
+**All three packages move to 0.6.0 together** (`schema`/`compiler`/`enricher`), and the
+inter-package floors move with them. The two entries below dated 2026-08-12 — `manifest.readme` and
+`manifest.derived` — were already labelled 0.6.0 while every `pyproject.toml` still read 0.5.4; the
+bump makes the number real, and everything from here lands under it. Cutting a release from the
+branch is still the user's call.
+
+### RM44 — publish the denominator, so a vacuous `fully_resolved` reads as one
+
+`manifest.compilation.fully_resolved` is `all(...)` over the module's variant rows, so on a module
+carrying no `variants.csv` it is `all()` over an empty list — **vacuously true**. The field is not
+wrong; it cannot say *which* question it answered, and the trust rule its own comment documents
+(`resolution_mode == "strict" or fully_resolved`) reads it as a module-level verdict. A consumer
+followed that comment and badged two modules that join to no VCF, then repaired it by
+substring-matching the 0.5.3 warning's prose — a bad place for a sentence to be.
+
+`Compilation.resolution_subjects` is the count the flag quantifies over, taken **after** the
+one-to-many rsID expansion because that is the list `fully_resolved` iterates (`pathogenic_clinvar`:
+328 authored rows, 337 subjects). `fully_resolved=true` beside `resolution_subjects=0` is then
+self-evidently vacuous, with no new vocabulary and nothing to parse out of a warning. Five of the
+eleven reference examples are in that state today.
+
+**It restates a number `Stats.weights_rows` also carries, and the code says so.** Measured, the two
+are equal on every example, because the materializer emits one weights row per in-scope variant row.
+That is a property of the current transform rather than a contract, and `Stats` is documented as
+card/detail *display* facets — a consumer keying trust on it would be keying on a coincidence in a
+block that promises none. A denominator belongs beside the flag it qualifies; a test pins the two
+together so a divergence becomes a decision instead of a drift.
+
+Not done, deliberately: `fully_resolved` stays `bool` (consumers branch on it directly, so a `None`
+is a breaking read for all of them — the reporter asked for this explicitly), `UNJOINABLE_PHRASE`
+and its pinning test stay (this makes the vacuity visible, it does not make the tables joinable —
+that is RM43), and there is no second counter, per RM45's settlement of three things into three homes.
+
+### RM51 — `licensing.csv`, so the major only has to remove a spelling
+
+`sources.csv` records licence *terms*, and its name collides with the `source` **column** that means
+"which link answered" in four other tables — which is why SCHEMAS.md needed a three-row table to
+explain which of `studies`/`literature`/`sources` is which. A rename landing only at 1.0 would have
+to **add** a spelling at the major and remove one at the next. Landing the alias in a minor inverts
+that: every module drafted from here carries the new name, so 1.0 removes rather than adds. The old
+spelling is **deprecated here** — warn-only, read exactly as before — and goes at 1.0, which is the
+cadence the 0.6 charter amendment settled, and this is the case that prompted it.
+
+Minor-legal for a checked reason: the fact sidecars are deliberately outside `_INPUT_FILES` (their
+identity is the fact hash, not the raw bytes), so the filename enters no identity at all. Proven by
+compiling one module under both names and comparing — same `artifact.digest`, `content_signature`,
+`manifest.sources` and `resolution_signature`.
+
+**What does not come along, taken knowingly**: `sources.parquet` is inside `artifact.digest` and read
+by name, and `manifest.sources` is a published key. Both renames break a reader, so the whole 0.x
+tail reads `licensing.csv` → `sources.parquet` → `manifest.sources`. That is a real legibility
+regression against today's single consistent (bad) name, and it is the price of not paying for the
+rename twice. A test pins it, so a well-meaning follow-up cannot "finish" the rename into a
+published key.
+
+The item estimated **five** enricher write sites; there are **nine**. `record_source_terms` and
+`merge_sources_file` now take the spec directory rather than a path, so none of them can name a
+spelling by hand. The ninth was `pgx.py` — the one pass whose *primary* output is this table and the
+only one calling `write_sources_csv` directly, so its literal would have re-created the retired name
+behind the alias's back.
+
+### RM49 — `derived/` tolerated on input, so a legible spec tree recompiles where it sits
+
+Nothing in a flat spec listing says which files a human wrote and which the enricher produced. A
+registry gave its publishers a `derived/` tree and found a downloaded module does not recompile where
+it lands, so their layout stayed transport-only (flatten on upload, re-split on download). This makes
+the layout a *tolerated* input location — never required, never canonical: `reverse_module` still
+emits a flat tree, and making `derived/` canonical would buy two supported layouts and have `reverse`
+emit a tree older compilers in the same major cannot read.
+
+**The write side had to be decided in the same change**, which is what kept this a design round.
+Tolerating the location on input alone breaks on first use: `enrich` on a downloaded split module
+writes to the root, leaving both copies — the collision, reached by following the documented workflow.
+So the rule is RM51's, shared: **write to the file you read**, and **both present is an error naming
+both paths**. Never a merge, never newest-wins — these tables are fact-hashed *and* hand-editable, so
+two copies are two claims and preferring one discards a curator's override.
+
+Scope is the machine-written sidecars only. An authored table does **not** get a second home, and the
+asymmetry is the point: two legal places for `variants.csv` means a module can carry two with the
+ignored copy invisible. `_check_misspelled_tables` follows into the subdirectory against the derived
+names alone — without that, tolerating a location would put a typo'd `derived/varaints.csv` exactly
+where the guard cannot see it, buying a convenience by re-opening the hole S16 closed. That is also
+the argument against "search any subdirectory": one fixed name is the only version the guard can
+follow. `manifest.derived` records the relative path, so `FileEntry.name` carries `derived/…` for a
+split tree — legal there because that block is documented transport-only.
+
+**The shared piece is `just_dna_format.layout`** — the names, the subdirectory constant, and one
+resolver, in the schema tier because four parties must agree on this layout (compiler reads, enricher
+writes, publisher uploads, registry re-splits) and every disagreement in `locations` so far has been
+silent. Pure `pathlib`, so the dependency-light tier is untouched.
+
+### A `-` where a `_` goes is now accepted in every closed vocabulary
+
+Not an `RMn` — a usability defect found while writing the above. The enricher CLI already normalized
+`--use non-commercial` on its way in, while `SourceRow` refused the identical string in a cell: the
+surface an author learns the vocabulary from taught a spelling the file rejected. This DSL exists for
+the human — if the project only wanted machine precision it would ship parquet and no CSVs — so a
+separator slip in a categorical is an authoring cost the schema should absorb.
+
+`vocab.match_vocab` is the one definition and `check_vocab` runs it, so every closed vocabulary gets
+it and the CLI's private copy is gone. The value as written is tried first and both swap directions
+after, so a future hyphenated member cannot be broken by this; the match **canonicalizes**, so what
+is stored, fact-hashed and compared is always the declared spelling. Widening, never narrowing (P3):
+everything that validated before still validates, and a value that names nothing still fails with the
+full list. The evidence it was worth doing is in the diff —
+`test_validate_agrees_with_compile` had used `non-commercial` as its example of an *invalid* value.
+
+### Corpus and verification
+
+Four reference examples move to `licensing.csv`; `hfe_hemochromatosis` deliberately keeps the old
+spelling so the deprecation path stays exercised on a real module, with its README saying why.
+
+All eleven reference examples keep their exact `artifact.digest`, `content_signature`,
+`resolution_signature` and `source_signature` across the whole batch — compared through the CLI
+against a pre-branch baseline, including under the split layout and the renamed file. The manifest
+was never inside the digest; the filename and the location are not either.
+
+## 2026-08-12 — docs: the round-1 field notes are retired, and two accepted asks finally land
 
 **S27 + S28, refiled from `docs/CONSUMER_FIELD_NOTES.md`, which is removed in this pass.** That file was
 the pre-0.4 round-1 thread: a consumer's report with the maintainer's answers written inline as

@@ -11,7 +11,7 @@ when you want the authored shape that actually passes the compiler rather than a
 sections below stay as the *shape* argument. Each README names **what building it broke**, which is the
 point of having them: the module is the regression test and the README is the evidence. Highlights:
 `pathogenic_clinvar/` (the SNP core from a real ClinVar snapshot), `pgx_slco1b1_simvastatin/` (the PGx
-path — no `variants.csv`, and a `sources.csv` recording that the module is not sellable),
+path — no `variants.csv`, and a `licensing.csv` recording that the module is not sellable),
 `htt_repeat_expansion/` (the binning path, §7), `mt_heteroplasmy/` (§4 — two variants in one gene, two
 tissues, and the key that had to widen for it), `shox_par1/` + `par_boundary/` (pseudoautosomal
 selection, RM32) and `grch37_build/` (§11 — the non-GRCh38 case). Do not maintain a count here; the

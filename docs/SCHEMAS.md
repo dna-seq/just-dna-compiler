@@ -466,7 +466,7 @@ by grain and by who writes them:
 |---|---|---|---|
 | `studies.csv` | a variant + a claim | *why do I believe this row?* | the curator |
 | `literature.csv` | a `pmid` — an article | *does that citation check out?* | an enricher pass |
-| `sources.csv` | a `(source, layer)` — a dataset | *where did the bytes come from, on what terms?* | a pass **or** the curator |
+| `sources.csv` / `licensing.csv` | a `(source, layer)` — a dataset | *where did the bytes come from, on what terms?* | a pass **or** the curator |
 
 They stack rather than overlap, and the reason they cannot merge is that **a paper is not a data
 source**. `studies.csv` is authored annotation and feeds `content_signature`; `literature.csv` is a
@@ -481,11 +481,21 @@ different things — the compile licence gate reads `sources.csv` and no other f
 own fact set with its own exclusions, which one merged table could not do.
 
 The naming is the weakest part of this: `sources.csv` is a licensing and attribution ledger whose name
-collides with the `source` *column* that means "which link answered" in four other tables. The
-recommended name is `licensing.csv`, and the rename splits — the input filename gains it as a second
-accepted spelling in 0.6 ([RM51](ROADMAP.md)), while `sources.parquet` and the `manifest.sources` key
-wait for the major, since renaming either is a removal
-([ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker)).
+collides with the `source` *column* that means "which link answered" in four other tables. The better
+name is `licensing.csv`, and the rename splits.
+
+**The input half landed in 0.6** (RM51): `licensing.csv` is a second accepted spelling, `sources.csv`
+is deprecated (warn-only, read exactly as before) and is removed at 1.0 — the cadence the 0.6 charter
+amendment settled, and this is the case that prompted it. Write either; the compiler reads whichever
+the module carries and refuses if it carries both. Since 0.6 the file may also sit under a `derived/`
+subdirectory (RM49); see [COMPILER.md](COMPILER.md) for the layout rules.
+
+**The output half waits for the major.** `sources.parquet` is inside `artifact.digest` and consumers
+read it by name, and `manifest.sources` is a published key, so renaming either is a *removal*
+([ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker)). For the whole 0.x tail a
+module therefore reads `licensing.csv` → `sources.parquet` → `manifest.sources`. That is a real
+legibility regression against today's single consistent (bad) name, and it is the price of not paying
+for the rename twice.
 
 **`FrequencyRow` — one row per (allele, ancestry group).** Facts: `variant_key` (coordinate-derived, so
 it lines up with post-expansion weights rows), `rsid?`, `chrom?`/`start?`/`ref?`, `alt?` (**one** alt, not
@@ -742,12 +752,22 @@ the quote and open-access counters on `literature`, and the licence roll-up on `
 
 The 0.5 additions on **`Compilation`** are two groups, and they answer different questions.
 Resolution *policy and outcome*: `resolution_mode?` (`strict`/`best_effort`), `fully_resolved`
-(outcome — orthogonal axis, P5), `resolution_signature?`, `resolution_sources`. Allele-identity
-*coverage*: `vrs_alleles` and `vrs_alleles_identified`, the counts `_vrs_coverage_warnings` reports,
-so a consumer can read how completely the identity scheme names this module's alleles instead of
-inferring it from the absence of warnings. "Complete" is `identified == alleles`, derived rather than
-stored twice. Together `resolution_mode == "strict" or fully_resolved` tells a catalog a trustworthy
-module from a best-effort half-baked one.
+(outcome — orthogonal axis, P5), `resolution_subjects` (0.6), `resolution_signature?`,
+`resolution_sources`. Allele-identity *coverage*: `vrs_alleles` and `vrs_alleles_identified`, the
+counts `_vrs_coverage_warnings` reports, so a consumer can read how completely the identity scheme
+names this module's alleles instead of inferring it from the absence of warnings. "Complete" is
+`identified == alleles`, derived rather than stored twice.
+
+**Read `fully_resolved` with `resolution_subjects` or you will trust the wrong modules (RM44, 0.6).**
+The flag is `all(...)` over the module's variant rows, so on a module with no `variants.csv` it is
+`all()` over an empty list — **vacuously `true`**, and the rule
+`resolution_mode == "strict" or fully_resolved` then grants a verdict to a module that resolves
+nothing. A registry followed exactly that rule and had to migrate a stored projection. The safe rule
+is **`resolution_subjects > 0 and (resolution_mode == "strict" or fully_resolved)`**; a `0` there
+means nothing was attempted, which is not the same as nothing achieved. The count is taken after the
+one-to-many rsID expansion, because that is the list the flag iterates. `Stats.weights_rows` happens
+to equal it today — do not key on that: `Stats` is card/detail display facets and promises no such
+relationship.
 
 **`derived` is a BYTE hash of the sidecar CSVs, and it is not their identity.** The derived-fact
 tables — `resolution.csv` plus `frequencies`/`gene_metrics`/`literature`/`sources` — are deliberately

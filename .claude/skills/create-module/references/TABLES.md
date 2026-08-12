@@ -23,9 +23,15 @@ Run `just-dna-compiler describe <kind>` for the columns and vocabularies; this f
 | a published polygenic score | `pgs.csv` | `pgs.PgsRow` | `(pgs_id, trait)` |
 
 Enricher-produced sidecars you never hand-author: `resolution.csv`, `frequencies.csv`,
-`gene_metrics.csv`, `literature.csv`, `sources.csv`. The one exception is `sources.csv` when you copied
-rows out of a source by hand — no pass ran, so no pass will write the row, and the compile gate reads
-that file and nothing else.
+`gene_metrics.csv`, `literature.csv`, `licensing.csv`. The one exception is `licensing.csv` when you
+copied rows out of a source by hand — no pass ran, so no pass will write the row, and the compile gate
+reads that file and nothing else. (`sources.csv` is the older name for it; still read, and the compile
+tells you to rename it. Never keep both — a module carrying two copies is refused.)
+
+Any of those five may sit either beside `module_spec.yaml` or in a `derived/` subdirectory, which is
+a way to show at a glance which files a tool produced. Pick one and stay there: a pass writes back to
+wherever it found the file, and the same table in both places is refused. Your hand-authored tables
+above stay beside `module_spec.yaml` — they have one legal place.
 
 ## The four decisions people get wrong
 

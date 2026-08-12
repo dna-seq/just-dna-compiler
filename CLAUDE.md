@@ -487,7 +487,30 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   tightest — and below a client's own default it is a no-op, since nothing wants *less* persistence),
   and **leave a composed policy alone** (`stop_after_attempt(3) | stop_after_delay(60)` means both, and
   raising one term changes something whose author meant the conjunction).
-- **Licensing lives as DATA in `sources.csv`, never as a table in the compiler.** A source→licence map
+- **A machine-written sidecar has two legal names and two legal places — never join one onto a spec
+  directory by hand (RM51 + RM49, 0.6).** `just_dna_format.layout` is the single resolver, in the schema
+  tier because *four* parties must agree: compiler reads, enricher writes, publisher uploads, registry
+  re-splits. The licence table is `licensing.csv` (the old `sources.csv` is deprecated, warn-only,
+  removed at 1.0), and any of the five sidecars may sit under `derived/`. Four things to keep straight:
+  - **Write to the file you read** (`layout.sidecar_write_path`, `licensing.sidecar_path`). Writing the
+    current spelling onto a module carrying the old one — or the root onto a split module — leaves two
+    copies, which is the refusal below, arrived at by following the documented workflow rather than by
+    misuse. This is the load-bearing half; tolerating a location on *input* alone breaks on first use.
+  - **Both present is an ERROR naming both paths.** No merge, no newest-wins: these tables are
+    fact-hashed *and* human-overridable, so two copies are two legitimate claims and preferring one
+    discards a curator's override.
+  - **Only the machine-written tables move.** `variants.csv` and the table kinds have one name in one
+    place; two legal homes for an authored table means a module can carry two with the ignored copy
+    invisible. And **`_check_misspelled_tables` had to learn `derived/`** — tolerating a location
+    without extending the guard puts a typo'd `derived/varaints.csv` exactly where the check written to
+    catch it cannot see. That is also why "search any subdirectory" was refused.
+  - **The outputs did not move**: still `sources.parquet`, still `manifest.sources`, both major-only
+    renames. The 0.x tail reads `licensing.csv` → `sources.parquet` → `manifest.sources`, knowingly.
+    Neither the name nor the location enters any identity — measured on all eleven reference examples.
+  RM51 estimated five enricher write sites; there were **nine**, which is why `record_source_terms` and
+  `merge_sources_file` take the **spec directory** now. A count of call sites is exactly the thing that
+  goes stale; routing them through one function is the durable form.
+- **Licensing lives as DATA in the licence table, never as a table in the compiler.** A source→licence map
   in `just_dna_compiler` would give it a source convention (Principle 2, tightened in 0.5) and an
   un-injected reference — and it goes stale (both halves of one did inside 0.5). The enricher reads the
   terms from the bytes it downloaded and pins them with `license_sha256`. Three rules the tests pin,
@@ -657,6 +680,18 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   reload as a `list[str]`). The bug survived a green suite because every drafting test used a PGx or
   binning table, and no model but `VariantRow` has a stamped field. **When adding a drafting provider
   or any new model-driven generator, test it against `variants.csv` specifically.**
+- **A closed vocabulary accepts `-` where `_` goes, and canonicalizes — `vocab.match_vocab` (0.6).**
+  The enricher CLI normalized `--use non-commercial` on its way in while `SourceRow` refused the
+  identical string in a cell, so the surface an author learns the vocabulary from taught a spelling the
+  file rejected. A separator slip is *the* slip a hand-written CSV makes, and the human-authorable gate
+  says the schema absorbs that cost rather than charging it. `check_vocab` runs the matcher, so every
+  vocabulary gets it and nothing keeps a private copy — the CLI's `_use` delegates now. Three
+  properties to preserve: the value **as written is tried first** and both swap directions after (a
+  future hyphenated member cannot be broken by this); the match **returns the declared member**, so
+  what is stored, fact-hashed and compared is never two spellings; and it **widens only** (P3), so a
+  value that names nothing still fails with the full list. How sure we are it was worth doing:
+  `test_validate_agrees_with_compile` had been using `non-commercial` as its example of an *invalid*
+  value.
 - **A vocabulary binding lives on the FIELD, and it carries the members — `base.vocabulary`.** The
   authoring reference's vocabulary block used to be a hand-kept dict and drifted twice: it never
   learned about `recommendation_strength`/`phenotype_category` (0.5), and it filed `actionability`
@@ -831,10 +866,22 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `compiler.UNJOINABLE_PHRASE` names the fragment and a test pins it in **both** places it must hold —
   emitted verbatim, and present in `manifest.compilation.warnings` — so a reword breaks our build
   instead of their catalog. Two durable points: **anything a consumer can only learn from a warning
-  string is an unversioned interface**, so give it a structured field (RM44's `resolution_subjects` is
-  one integer) rather than asking everyone downstream to parse; and when a flag quantifies over a
-  subset, **publish the denominator** — `vrs_alleles`/`vrs_alleles_identified` already argue exactly
-  this one line above it in the same model, and nobody applied it to the flag.
+  string is an unversioned interface**, so give it a structured field rather than asking everyone
+  downstream to parse; and when a flag quantifies over a subset, **publish the denominator** —
+  `vrs_alleles`/`vrs_alleles_identified` already argue exactly this one line above it in the same
+  model, and nobody applied it to the flag.
+  **`resolution_subjects` shipped in 0.6.0** — one additive integer, counted *after* the rsID expansion
+  because that is the list the flag iterates, so the safe trust rule is
+  `resolution_subjects > 0 and (resolution_mode == "strict" or fully_resolved)`. Three things it did
+  **not** do, all deliberate: `fully_resolved` stays `bool` (consumers branch on it, so a `None` is a
+  breaking read for all of them), `UNJOINABLE_PHRASE` and its test **stay** (the *unjoinable-row* count
+  is a different question, still prose-only until RM43), and there is no second counter (RM45 settled
+  three things into three homes). And one thing the item missed, worth generalizing: **the number was
+  already available as `Stats.weights_rows`** — equal on every reference example, because the
+  materializer emits one weights row per in-scope variant row. Publishing it beside the flag is still
+  right (that equality is a property of the transform, not a contract, and `Stats` is documented as
+  *display* facets), but **before adding a computed field, check whether another block already carries
+  the number, and if it does, say in the code why the new home is the right one.**
 - **Resolution reaches the SNP core ONLY, and the naive repair breaks P7 (RM43, surfaced in 0.5.3).**
   `_build_table` is `model_dump()` → parquet, so a `pharm_variants.csv`/`haplotypes.csv`/
   `heteroplasmy.csv` row keeps the coordinates its author typed — none, for an rsid-authored module —

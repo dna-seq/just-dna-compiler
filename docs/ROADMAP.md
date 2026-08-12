@@ -19,6 +19,16 @@ to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package. `schema_version` stays
 `"1.0"`.
 
+**0.6.0 is open on the `0.6` branch, unreleased.** All three packages read `0.6.0`. Landed so far:
+`manifest.readme` (S25), `manifest.derived` (S26), then
+[RM44](ROADMAP_HISTORY.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one),
+[RM51](ROADMAP_HISTORY.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
+and [RM49](ROADMAP_HISTORY.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses)
+— the last two shipped together, because "the same table in two possible places" is one problem whether
+the two places differ by name or by directory, and it wants one resolver and one collision rule. Every
+reference example kept all four of its signatures across the batch. `schema_version` is still `"1.0"`
+and cutting the release is the user's call.
+
 **Shipped since: `just-dna-enricher` + `just-dna-compiler` 0.5.1 and 0.5.2** — 0.5.1 was
 [RM38](ROADMAP_HISTORY.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher)
 (a cache for every licence-gated source, so a hosted enricher never reaches one live per request) plus
@@ -92,8 +102,8 @@ question, a corpus question, or a genuine break:
 | **RM4** gene-panel materialization | compiler behaviour, opt-in per spec | ✅ — row-set expansion pinned on `compiler_version`; only a module that *declares* a panel gains rows |
 | **RM10** inheritance expectation | a column, its own table, or yaml metadata | ✅ — all three placements are minor-legal now; pick on orthogonality (P5), not on cost |
 | **RM43** resolve the 0.4 families | a stamped-identity column per positional table, then the join | ✅ — the column is additive; what is left is the design round, not a version gate |
-| **RM44** `resolution_subjects` count | one additive integer on `Compilation` | ✅ — a manifest field, never in `artifact.digest`; retires a prose-matching workaround |
-| **RM51** `licensing.csv` alias | a second accepted spelling of an input filename | ✅ — the fact sidecars are not in `_INPUT_FILES`, so the filename is in no identity; the parquet and manifest halves stay major |
+| ~~**RM44** `resolution_subjects` count~~ | one additive integer on `Compilation` | ✅ **shipped in 0.6.0** — see [ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one) |
+| ~~**RM51** `licensing.csv` alias~~ | a second accepted spelling of an input filename | ✅ **shipped in 0.6.0**, old spelling deprecated, removal queued for 1.0 |
 | **RM50** PMID↔PMCID | a diagnosis (no schema change) + one optional id column | ✅ for the guard, which is an enricher patch; ⚠ for the column — additive, but it wants deciding beside the 1.0 requiredness demotion |
 | **RM15** multi-build identity | changes the *semantics* of `variant_key` and of every coordinate | ❌ — 1.0, and not for digest reasons: re-keying published identity is the identity-change class |
 | ~~**RM38** gated-source cache~~ | enricher-only: new builders + cache resolvers, no parquet touched | ✅ **shipped in `just-dna-enricher` 0.5.1** — never a 0.6 item; kept here so the *reason* an enricher change bypasses this table stays visible |
@@ -388,53 +398,6 @@ Three more constraints found with it, each of which shapes the design rather tha
   fixed point breaks. This half is the same shape as the registry's S8 (a manifest that cannot say a
   check ran) and should be decided with it.
 
-## RM44 — `fully_resolved` answers a question nobody asked it, and prose is the only record of the real one
-
-**Severity** low (one additive field) · **Status** open — **0.6** · **Owner** format (manifest) +
-compiler · **Motivating case** a catalog served `trusted: true` for modules that annotate nothing
-(S13 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md))
-
-`manifest.compilation.fully_resolved` is `all(...)` over `variants.csv`, so on a module without one it
-is `all()` over an empty list — **vacuously `true`**. The field is not wrong; it answers its question
-correctly. It simply cannot say *which* question it answered, and the trust rule its own field comment
-documents (`resolution_mode == "strict" or fully_resolved`) reads it as a module-level verdict. A
-consumer followed that comment and shipped it: `just-dna-registry` granted its `trusted` badge to
-`pgx_slco1b1_simvastatin` and `cyp2c19_star_alleles`, both of which join to no VCF, and needed a
-migration to repair the stored projection.
-
-**The workaround is the finding.** There is no structured field saying a table joins to nothing, so the
-only record surviving into a catalog is the 0.5.3 warning's *prose* — `compile_module` copies its
-warnings into `manifest.compilation.warnings`, and a reindex has no spec directory left to re-derive
-from. The registry pins `UNJOINABLE_MARKER = "have no chrom+start"` and substring-matches it to decide a
-badge. Confirmed from this side: the phrase reaches `manifest.json` verbatim for both modules and is
-absent for a module whose core resolves. That sentence is now load-bearing, which is a bad place for a
-sentence to be; `compiler.UNJOINABLE_PHRASE` names it and a test pins it, so a reword breaks this build
-rather than their catalog, but that is a splint, not a fix.
-
-**The fix is one additive integer on `Compilation`** — `resolution_subjects`, the count of rows
-resolution was actually applied to, i.e. the denominator `fully_resolved` quantifies over. Then
-`fully_resolved=true` beside `resolution_subjects=0` is self-evidently vacuous with no prose anywhere
-and no new vocabulary. This is the same "keep the parts, compute the convenience" pattern as
-`vrs_alleles`/`vrs_alleles_identified`, whose comment already argues it in as many words — *"Both `0`
-means no resolution table was present, i.e. nothing was attempted, which is not the same as nothing
-achieved"* — and the argument was simply never applied to the flag sitting beside it. Additive, and a
-manifest field was never inside `artifact.digest`.
-
-**Two things not to do.** Do not make `fully_resolved` tri-state or `None`-able: it is typed `bool`,
-consumers branch on it directly, and that is a breaking read for everyone to fix a case an additive
-sibling describes better — the reporter asked explicitly for this not to happen. And do not treat the
-counter as a substitute for **RM43**: it makes the vacuity visible, it does not make the tables
-joinable.
-
-**Open design question, worth settling with S8 rather than alone:** one counter or two. The denominator
-of `fully_resolved` (variants in scope) is the cheap, self-evident half. A second count — table rows
-that cannot be joined — is what the prose actually carries today, and it overlaps the structured
-`checks_run`/`checks_skipped` record S8 asks for. Deciding them together avoids shipping two shapes for
-one question (P5). **Settled in [RM45](#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader): three separate things, three homes.**
-The denominator is this item's, and it is not blocked by RM45; the unjoinable-row count belongs with
-RM43's warning; neither is a member of a verification-checks map, because resolution is not a
-verification pass and folding a row count into "which checks ran" overloads that map's axis (P5).
-
 ## RM45 — the manifest is rich about resolution and silent about verification, so `unchecked` and `clean` are one state to a downloader
 
 **Severity** medium (a per-version trust signal nobody can build, and no way to triage what was
@@ -653,63 +616,6 @@ byte-for-byte the fusing S20 fixed in this same resolution path on the same day.
 returns three states, and the provenance goes in `resolution.csv`'s `source` column rather than being
 lost into an ordinary authored coordinate.
 
-## RM49 — a spec directory is flat, so a legible `derived/` layout is one the compiler refuses
-
-**Severity** low-medium (a presentation gap with a working workaround; the reporter's own layout is
-transport-only because of it) · **Status** open — **0.6**, gated on deciding the *write* side · **Owner**
-compiler (path resolution) + enricher (where it writes) + format (any shared constant) ·
-**Motivating case** a registry giving publishers a readable spec tree, then finding a downloaded module
-does not recompile where it sits (S26 in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
-
-**The ask is narrow and reasonable.** Nothing in a spec listing says which files a human wrote and which
-`just-dna-enricher` produced — `module_spec.yaml`/`variants.csv`/`studies.csv` against `resolution.csv`
-and the four fact tables, with `sources.csv` genuinely both. A `derived/` subdirectory says it at a
-glance. The compiler resolves authored and derived tables at the spec root **and only there**, so that
-tree is one `compile` refuses; the reporter flattens on upload and re-splits on download, which works and
-means the layout can never be more than presentation. They ask for a *tolerated* input location, not a
-required one. The byte-attestation half of S26 shipped in 0.6.0 (`manifest.derived`); this is the half
-that did not.
-
-**Why it is not the one-line change it looks like.** `spec_dir / "resolution.csv"` is resolved in **eight
-places across two packages** — `validate_spec`, `compile_module`'s resolution and fact-table loops, and
-four enricher passes (`enrich`, `frequencies`, `identifiers`, the CLI's inspect path) — so a fallback
-added in the compiler alone gives a module that compiles from `derived/` and silently re-enriches to the
-root. That is the `locations` failure mode exactly: four parties must agree on a layout, and every
-disagreement there so far has been silent.
-
-**The decisive argument, and the reason this is a design round rather than a fix.** Tolerating the layout
-on *input* without deciding the *write* side is incoherent, and it breaks on first use: run `enrich` on a
-downloaded split module and the enricher writes `resolution.csv` to the root, so the module now carries
-both `derived/resolution.csv` and `resolution.csv` — the collision case, reached by following the
-documented workflow rather than by misuse. Any acceptable design answers where the enricher writes when
-a `derived/` already exists, and what happens when both copies are present and disagree. Note that a
-collision cannot be resolved by "newest wins" or by merging: these tables are fact-hashed and
-human-overridable, so two copies are two legitimate claims and picking one silently discards a curator's
-override.
-
-**Three candidate repairs, and why each is wrong:**
-
-- **Search any subdirectory** (what the registry does on upload). Wrong here: it makes the compiler walk
-  the tree, and both S16's unknown-file tolerance and `_check_misspelled_tables`' near-miss guard assume
-  one level — a typo'd `derived/varaints.csv` would be invisible to the check written precisely to catch
-  that, so the feature would re-open the hole a previous item closed. A single fixed directory name is
-  the only version that keeps the guard meaningful.
-- **Make `derived/` canonical** — `reverse_module` emits it, the enricher writes it. Wrong: P3 keeps the
-  flat spelling working as an alias regardless, so this buys two supported layouts instead of one and
-  makes `reverse` emit a tree older compilers in the same major cannot read. A layout migration is a
-  major-version move dressed as a convenience.
-- **Extend it to the authored tables too**, for symmetry. Wrong, and it is the tempting one: the authored
-  CSVs are what `content_signature` reads and what the human-authorable gate is about. Two legal
-  locations for `variants.csv` means a module can carry two, and the one the compiler ignores is invisible
-  — the silent-success shape this codebase treats as the worst kind of mistake. The asymmetry is the
-  point: only machine-written tables move, because only they have a machine that knows where to put them.
-
-**What a shipped version probably looks like**, recorded so the next pass does not re-derive it: one
-constant naming the directory, in the **format** tier so both consumers import rather than copy it (the
-`locations`/`README_CANDIDATES` precedent); a shared resolver that prefers the root and falls back to the
-subdirectory; an **error, not a warning**, when both exist, naming both paths; and the enricher writing
-beside whichever copy it read. No new CLI flag — the layout is discovered, not declared.
-
 ## RM50 — PMID and PMCID are one id apart, and only one direction of the conversion exists
 
 **Severity** medium (the accepted-but-wrong case is a silently misattributed citation — the S12 class)
@@ -772,53 +678,6 @@ while `StudyRow.pmid` is still mandatory answers a question no module can curren
 RM47 makes the same observation from the other side, that a new PMID site obliges the literature pass
 to learn it in the same release.
 
-## RM51 — `licensing.csv`: land the better name in a minor so the major only has to remove
-
-**Severity** low (legibility; nothing is broken today) · **Status** open — **0.6**, and the design is
-settled apart from the collision rule · **Owner** compiler (one resolver above `_FACT_TABLES`) +
-enricher (five write sites) · **Motivating case** the maintainer, 2026-08-12, after SCHEMAS.md needed a
-three-row table to explain which of `studies`/`literature`/`sources` is which
-
-**The move.** Accept `licensing.csv` as a second spelling of `sources.csv` now: the enricher writes the
-new name, the compiler resolves the old name first and falls back to the new one, and nothing else
-changes. Every existing module keeps compiling, and by the time 1.0 arrives every module drafted under
-0.6+ already carries the new name — so the major has to **remove** a spelling rather than **add** one,
-which is the difference between a rename people notice and one they do not. The old spelling is
-**deprecated in the same 0.6 release** (warn-only, still fully read) and **removed at 1.0**, which is
-the cadence the 0.6 charter amendment settled — and this item is the case that prompted it. See
-[§ 1.0 cleanup — `sources.csv`](#sourcescsv--the-name-and-the-source-column-it-collides-with) for the
-name argument itself and for the half that cannot come along.
-
-**Why it is minor-legal, checked rather than assumed.** `sources.csv` is deliberately **not** in
-`_INPUT_FILES` (`compiler.py`) — the fact sidecars are excluded there because their identity is the
-fact hash, not the raw bytes — so the *filename* enters no identity at all: `content_signature` is over
-authored rows, `source_signature` over `SOURCE_FACT_FIELDS`, and `manifest.derived` (S26) records
-whichever name it found and is documented as transport-only, outside `artifact.digest`. A second
-accepted name is therefore additive in the plain P3 sense: existing modules keep validating and no
-published artifact moves.
-
-**What does *not* come along, and this is the cost to accept knowingly.** `sources.parquet` is in
-`_OUTPUT_FILES`, hence inside `artifact.digest`, and consumers read it by name; `manifest.sources` is a
-published key. Renaming either breaks a reader, so both are major-only. For the whole 0.x tail the
-module therefore reads `licensing.csv` → `sources.parquet` → `manifest.sources`. That is a real
-legibility regression against today's single consistent (bad) name, and it is the price of not paying
-for the rename twice.
-
-**The one open decision: both files present.** This is RM49's collision in another file, and it must
-not be hand-waved the same way. Two copies are two legitimate claims — the table is fact-hashed and
-**human-overridable**, so "newest wins" or a merge silently discards a curator's override. The rule to
-implement is RM49's: the enricher **writes to the file it read**, creates the new name only when
-neither exists, and both-present is an **error naming both paths**. Note `pgx.py` writes
-`spec_dir / "sources.csv"` directly while the other four sites go through `record_source_terms` — that
-one has to move onto the shared resolver, or it re-creates the retired name behind the alias's back.
-
-**Mechanics, so the next pass does not re-derive them.** The resolver sits **above** `_FACT_TABLES`,
-because `_DERIVED_FILES`, `_OUTPUT_FILES`, `_check_misspelled_tables`' name set and both load loops are
-all derived from that tuple and must see the alias uniformly (adding the name also, correctly, stops
-the near-miss guard flagging `licensing.csv`). `draft.DRAFTABLE` is keyed on the filename and gains the
-new key while keeping the old. And the S26 reporter's registry splits and flattens a spec directory
-against its own copy of the derived-file list, so it needs telling in the same release.
-
 ## RM52 — 1.0 ships an upgrade procedure, or 1.0 does not ship
 
 **Severity** high — **release-blocking by charter**, not a nice-to-have · **Status** open — **1.0,
@@ -860,6 +719,20 @@ procedure's claims are **checkable, so check them**: "reverse and recompile" can
 `reference_examples/` and asserted to reproduce, exactly as the round-trip tests already do; an unrun
 migration is prose, and prose that has never been executed is how a documented `start` convention
 shifted 3,038 variants.
+
+### The ledger
+
+One line per breaking item, written **when the item lands**. Deprecations count: the removal is the
+breaking half, and the line is owed by whoever created the obligation.
+
+| landed | item | what breaks at 1.0 | upgrade route |
+|---|---|---|---|
+| 0.6.0 | **RM51** — `sources.csv` deprecated in favour of `licensing.csv` | the old input filename stops being read | **Author:** `git mv sources.csv licensing.csv`. No content change, and no signature moves — verified across all eleven reference examples when four of them were renamed. **Consumer: no action needed** — `sources.parquet` and `manifest.sources` keep their names through the whole 0.x line and are untouched by this item. |
+
+Nothing else in 0.6.0 so far is breaking: `resolution_subjects` (RM44) is additive, `derived/` (RM49)
+is a *tolerated* extra location that removes none, and the vocabulary separator change widens what is
+accepted rather than narrowing it. Each of those is explicitly a **no action needed** row when the
+procedure is written.
 
 # Not format scope
 
@@ -1021,8 +894,11 @@ with the `source` *column*, which in `resolution.csv`/`frequencies.csv`/`gene_me
 `studies.csv` and `literature.csv` are also "sources". SCHEMAS.md now carries a three-row table
 disambiguating them, which is the tell: a name needing a table is a name doing no work.
 
-**The input half does not wait for the major — that is RM51**, which lands `licensing.csv` as a second
-accepted spelling in 0.6. What stays here is the half that genuinely breaks a reader: `sources.parquet`
+**The input half is done — [RM51](ROADMAP_HISTORY.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
+shipped in 0.6.0**: `licensing.csv` is an accepted spelling, `sources.csv` is deprecated (warn-only,
+read exactly as before), and four reference examples already carry the new name. Its ledger line is in
+[RM52](#rm52--10-ships-an-upgrade-procedure-or-10-does-not-ship). What stays here is the half that
+genuinely breaks a reader: `sources.parquet`
 is in `_OUTPUT_FILES` and therefore inside `artifact.digest`, and consumers read it by name;
 `manifest.sources` is a published key. Renaming either is a **removal**, so both are major-only. The old
 CSV spelling retires on the amended cadence (Principle 3, 0.6 amendment): **deprecated in the 0.6 minor

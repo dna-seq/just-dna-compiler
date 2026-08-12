@@ -276,6 +276,33 @@ compiles the same spec with and without two unknown files and compares digests. 
 compile. The check is edit-distance-keyed rather than "any unknown csv" on purpose, so it cannot undo the
 tolerance above.
 
+**Where the machine-written sidecars may live, and what they may be called (RM49/RM51, 0.6).**
+`resolution.csv` and the four fact tables are resolved through `just_dna_format.layout`, which accepts
+each of them at the spec root **or** under a `derived/` subdirectory, and accepts the licence table
+under either `sources.csv` (deprecated, warn-only, removed at 1.0) or `licensing.csv`. Four rules:
+
+- **Only the machine-written tables move.** `module_spec.yaml`, `variants.csv`, `studies.csv` and the
+  table kinds have exactly one legal name in exactly one legal place. Two legal homes for an authored
+  table means a module can carry two copies with the ignored one invisible.
+- **`derived/` is tolerated, never canonical.** `reverse_module` emits a flat tree and the enricher
+  creates one; a module is split only because somebody split it.
+- **Two copies of one table is an error naming both paths** — never a merge, never newest-wins. These
+  tables are fact-hashed *and* human-overridable, so two copies are two legitimate claims and
+  preferring one silently discards a curator's override. The enricher's rule is the other half:
+  **write to the file you read**.
+- **The near-miss guard follows into `derived/`**, against the derived names alone. Tolerating a second
+  location without extending the guard would put a typo'd `derived/varaints.csv` exactly where the
+  check written to catch it cannot see — which is also why "search any subdirectory" was refused: one
+  fixed name is the only version the guard can follow.
+
+Neither the name nor the location enters any identity: the fact sidecars are outside `_INPUT_FILES`
+(see the file sets below), so `artifact.digest`, `content_signature`, `resolution_signature` and
+`source_signature` are unchanged by either. `manifest.derived` records the relative path it found, so
+a `derived/…` entry tells a registry how the tree was laid out.
+
+The compiled outputs are untouched: a module reading `licensing.csv` still writes `sources.parquet`
+and still publishes `manifest.sources`. Both of those are renames only a major may make.
+
 `compile_module` runs in this order:
 
 1. **Validate** (`validate_spec`); fail early if invalid.
@@ -287,7 +314,8 @@ tolerance above.
    (fill a coord, expand a one-to-many rsid), so a post-resolution duplicate/inconsistency fails the
    compile (`"post-resolution: …"`).
 6. **Compute `fully_resolved`** = every variant has `chrom`+`start` (vacuously true for a variant-less
-   module).
+   module), and `resolution_subjects` = how many rows that quantified over, from the same list, so the
+   flag cannot be published without its denominator (RM44).
 7. **Strict gate** — if `strict` and any variant still lacks `(chrom, start)`, fail **before any parquet
    is written** (refuse a non-reproducible partial artifact).
 8. **Write parquets** — SNP core (`weights`/`annotations`/`studies.parquet`, only when the relevant rows
@@ -474,7 +502,11 @@ report that surfaced this (S9):
 - **`fully_resolved` is `all(...)` over `VariantRow`**, so it is **vacuously `true`** on a module with
   no `variants.csv`. Its own field comment gives the trust rule *"a consumer trusts a module when
   `resolution_mode == "strict" or fully_resolved`"* — which is **not sufficient** for a 0.4-family-led
-  module, where it can be `true` while every row lacks a coordinate.
+  module, where it can be `true` while every row lacks a coordinate. **Since 0.6 the denominator is
+  published beside it** (`resolution_subjects`, RM44), so the sufficient rule is
+  `resolution_subjects > 0 and (resolution_mode == "strict" or fully_resolved)` and the vacuous case
+  is legible from the manifest alone. The counter makes the vacuity visible; it does not make the
+  tables joinable, which is still RM43.
 - **`resolution_mode` and the `--strict` unresolved gate are the same scope.** `strict` refuses on an
   unresolved `VariantRow`; it says nothing about a table row, which is why such a module compiles
   under `--strict` with no coordinates at all.
@@ -491,8 +523,12 @@ re-derive anything from — so for a table-only module the *sentence* is the onl
 its rows join to nothing, `fully_resolved` being vacuously `true`. A downstream registry substring-
 matches `"have no chrom+start"` to decide a trust badge; `compiler.UNJOINABLE_PHRASE` names that
 fragment and a test pins it, so a reword breaks this build rather than a catalog. Improve the rest of
-the sentence freely; move that fragment deliberately, and only after RM44 gives a consumer a
-structured field to read instead.
+the sentence freely; move that fragment deliberately.
+
+**RM44 shipped in 0.6 and it retires only half of this.** `resolution_subjects` gives a consumer a
+structured field for *"was the flag about anything"*, so the vacuity no longer needs the prose — but
+the *unjoinable-row count* is a different question and still has only the sentence. The fragment and
+its test therefore stay until RM43 supplies that count.
 
 What the compiler *does* do is **say so**. Every positional 0.4 table — `heteroplasmy.csv`,
 `haplotypes.csv`, `pharm_variants.csv`, derived from the models rather than listed — is checked for
@@ -675,7 +711,8 @@ table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are p
   the digest because a module carrying frequency data genuinely *is* different content — but adding one
   leaves the SNP core's bytes untouched (an explicit test).
 - **`_INPUT_FILES`** (feed `manifest.inputs`, raw-bytes hashed): `module_spec.yaml` + `variants.csv` +
-  `studies.csv` + the 9 table-kind CSVs. **`resolution.csv` is deliberately NOT here** (nor in
+  `studies.csv` + the 9 table-kind CSVs — the authored surface, and the reason only the *other* files
+  gained a second legal name and location in 0.6. **`resolution.csv` is deliberately NOT here** (nor in
   `_OUTPUT_FILES`) — it is a multi-producer artifact hashed only by the normalized `resolution_signature`
   (a raw-bytes hash would be unstable across enricher/human/reverse producers). `frequencies.csv` and
   `gene_metrics.csv` and `literature.csv` are out for exactly the same reason, hashed by `frequency_signature` /
@@ -686,9 +723,11 @@ table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are p
   human-overridable — and folding it in would blur the line the 0.5 rework drew.
 - **Manifest `Compilation` fields the compiler populates:** `compile_success`, `compiled_by`,
   `compiler_version`, `ensembl_reference`, `compiled_at`, `warnings`, and the 0.5 resolution provenance —
-  `resolution_mode` (policy), `fully_resolved` (outcome — orthogonal axis, P5), `resolution_signature`,
-  `resolution_sources`. All out of `artifact.digest`. Together `resolution_mode == "strict" or
-  fully_resolved` tells a catalog a trustworthy module from a best-effort half-baked one.
+  `resolution_mode` (policy), `fully_resolved` (outcome — orthogonal axis, P5), `resolution_subjects`
+  (0.6 — the denominator that flag covers), `resolution_signature`, `resolution_sources`. All out of
+  `artifact.digest`. The trust rule is `resolution_subjects > 0 and (resolution_mode == "strict" or
+  fully_resolved)`; without the first clause it is vacuously satisfied by a module that resolves
+  nothing.
 - **Manifest `frequency` / `gene_metrics` blocks (0.5):** `signature`, `sources`, `datasets`,
   `row_count`, plus `populations`/`variant_count` on the former and `genes` on the latter. Separate
   blocks rather than extra fields on `Compilation`/`Resolution`, which are about rsID↔coordinate

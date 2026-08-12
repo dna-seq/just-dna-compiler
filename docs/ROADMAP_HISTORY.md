@@ -993,3 +993,209 @@ things from one constant is the definition of a knob.
 What this replaces on the consumer side is a walk over the package reassigning `policy.stop` — which
 worked, and was pinned by a test, and was still a consumer reaching into another package's decorator
 state to change behaviour its author had not exposed. That is what an RM is for.
+
+## RM44 — `fully_resolved` answers a question nobody asked it, and prose is the only record of the real one
+
+**Severity** low (one additive field) · **Status** ✅ shipped in 0.6.0 · **Owner** format (manifest) +
+compiler · **Motivating case** a catalog served `trusted: true` for modules that annotate nothing
+(S13 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md))
+
+`manifest.compilation.fully_resolved` is `all(...)` over `variants.csv`, so on a module without one it
+is `all()` over an empty list — **vacuously `true`**. The field is not wrong; it answers its question
+correctly. It simply cannot say *which* question it answered, and the trust rule its own field comment
+documents (`resolution_mode == "strict" or fully_resolved`) reads it as a module-level verdict. A
+consumer followed that comment and shipped it: `just-dna-registry` granted its `trusted` badge to
+`pgx_slco1b1_simvastatin` and `cyp2c19_star_alleles`, both of which join to no VCF, and needed a
+migration to repair the stored projection.
+
+**The workaround is the finding.** There is no structured field saying a table joins to nothing, so the
+only record surviving into a catalog is the 0.5.3 warning's *prose* — `compile_module` copies its
+warnings into `manifest.compilation.warnings`, and a reindex has no spec directory left to re-derive
+from. The registry pins `UNJOINABLE_MARKER = "have no chrom+start"` and substring-matches it to decide a
+badge. Confirmed from this side: the phrase reaches `manifest.json` verbatim for both modules and is
+absent for a module whose core resolves. That sentence is now load-bearing, which is a bad place for a
+sentence to be; `compiler.UNJOINABLE_PHRASE` names it and a test pins it, so a reword breaks this build
+rather than their catalog, but that is a splint, not a fix.
+
+**The fix is one additive integer on `Compilation`** — `resolution_subjects`, the count of rows
+resolution was actually applied to, i.e. the denominator `fully_resolved` quantifies over. Then
+`fully_resolved=true` beside `resolution_subjects=0` is self-evidently vacuous with no prose anywhere
+and no new vocabulary. This is the same "keep the parts, compute the convenience" pattern as
+`vrs_alleles`/`vrs_alleles_identified`, whose comment already argues it in as many words — *"Both `0`
+means no resolution table was present, i.e. nothing was attempted, which is not the same as nothing
+achieved"* — and the argument was simply never applied to the flag sitting beside it. Additive, and a
+manifest field was never inside `artifact.digest`.
+
+**Two things not to do.** Do not make `fully_resolved` tri-state or `None`-able: it is typed `bool`,
+consumers branch on it directly, and that is a breaking read for everyone to fix a case an additive
+sibling describes better — the reporter asked explicitly for this not to happen. And do not treat the
+counter as a substitute for **RM43**: it makes the vacuity visible, it does not make the tables
+joinable.
+
+**Open design question, worth settling with S8 rather than alone:** one counter or two. The denominator
+of `fully_resolved` (variants in scope) is the cheap, self-evident half. A second count — table rows
+that cannot be joined — is what the prose actually carries today, and it overlaps the structured
+`checks_run`/`checks_skipped` record S8 asks for. Deciding them together avoids shipping two shapes for
+one question (P5). **Settled in [RM45](#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader): three separate things, three homes.**
+The denominator is this item's, and it is not blocked by RM45; the unjoinable-row count belongs with
+RM43's warning; neither is a member of a verification-checks map, because resolution is not a
+verification pass and folding a row count into "which checks ran" overloads that map's axis (P5).
+
+**Shipped as `Compilation.resolution_subjects` (0.6.0).** Counted **after** the one-to-many rsID
+expansion, because that is the list `fully_resolved` iterates — `pathogenic_clinvar` authors 328 rows
+and resolution applies to 337 loci. Five of the eleven reference examples report
+`fully_resolved=true, resolution_subjects=0`, which is the vacuity, now legible without prose.
+
+**One thing the item did not anticipate, recorded so nobody re-derives it: the number was already
+present as `Stats.weights_rows`.** Measured, the two are equal on every reference example, because
+the materializer emits one weights row per in-scope variant row. It was still right to publish the
+counter — that equality is a property of the current transform rather than a contract, and `Stats` is
+documented as *card/detail display facets*, so a consumer keying trust on it would be keying on a
+coincidence in a block that promises none. A denominator belongs beside the flag it qualifies. A test
+pins the two together, so a divergence is a decision rather than a drift. The general lesson is the
+narrower one: **before adding a computed field, check whether some other block already carries the
+number, and if it does, say why the new home is the right one.**
+
+The two "do not"s held: `fully_resolved` is still `bool`, and `UNJOINABLE_PHRASE` and its pinning
+test both stay — this makes the vacuity visible, it does not make the tables joinable (RM43).
+
+
+## RM49 — a spec directory is flat, so a legible `derived/` layout is one the compiler refuses
+
+**Severity** low-medium (a presentation gap with a working workaround; the reporter's own layout is
+transport-only because of it) · **Status** ✅ shipped in 0.6.0 · **Owner**
+compiler (path resolution) + enricher (where it writes) + format (any shared constant) ·
+**Motivating case** a registry giving publishers a readable spec tree, then finding a downloaded module
+does not recompile where it sits (S26 in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**The ask is narrow and reasonable.** Nothing in a spec listing says which files a human wrote and which
+`just-dna-enricher` produced — `module_spec.yaml`/`variants.csv`/`studies.csv` against `resolution.csv`
+and the four fact tables, with `sources.csv` genuinely both. A `derived/` subdirectory says it at a
+glance. The compiler resolves authored and derived tables at the spec root **and only there**, so that
+tree is one `compile` refuses; the reporter flattens on upload and re-splits on download, which works and
+means the layout can never be more than presentation. They ask for a *tolerated* input location, not a
+required one. The byte-attestation half of S26 shipped in 0.6.0 (`manifest.derived`); this is the half
+that did not.
+
+**Why it is not the one-line change it looks like.** `spec_dir / "resolution.csv"` is resolved in **eight
+places across two packages** — `validate_spec`, `compile_module`'s resolution and fact-table loops, and
+four enricher passes (`enrich`, `frequencies`, `identifiers`, the CLI's inspect path) — so a fallback
+added in the compiler alone gives a module that compiles from `derived/` and silently re-enriches to the
+root. That is the `locations` failure mode exactly: four parties must agree on a layout, and every
+disagreement there so far has been silent.
+
+**The decisive argument, and the reason this is a design round rather than a fix.** Tolerating the layout
+on *input* without deciding the *write* side is incoherent, and it breaks on first use: run `enrich` on a
+downloaded split module and the enricher writes `resolution.csv` to the root, so the module now carries
+both `derived/resolution.csv` and `resolution.csv` — the collision case, reached by following the
+documented workflow rather than by misuse. Any acceptable design answers where the enricher writes when
+a `derived/` already exists, and what happens when both copies are present and disagree. Note that a
+collision cannot be resolved by "newest wins" or by merging: these tables are fact-hashed and
+human-overridable, so two copies are two legitimate claims and picking one silently discards a curator's
+override.
+
+**Three candidate repairs, and why each is wrong:**
+
+- **Search any subdirectory** (what the registry does on upload). Wrong here: it makes the compiler walk
+  the tree, and both S16's unknown-file tolerance and `_check_misspelled_tables`' near-miss guard assume
+  one level — a typo'd `derived/varaints.csv` would be invisible to the check written precisely to catch
+  that, so the feature would re-open the hole a previous item closed. A single fixed directory name is
+  the only version that keeps the guard meaningful.
+- **Make `derived/` canonical** — `reverse_module` emits it, the enricher writes it. Wrong: P3 keeps the
+  flat spelling working as an alias regardless, so this buys two supported layouts instead of one and
+  makes `reverse` emit a tree older compilers in the same major cannot read. A layout migration is a
+  major-version move dressed as a convenience.
+- **Extend it to the authored tables too**, for symmetry. Wrong, and it is the tempting one: the authored
+  CSVs are what `content_signature` reads and what the human-authorable gate is about. Two legal
+  locations for `variants.csv` means a module can carry two, and the one the compiler ignores is invisible
+  — the silent-success shape this codebase treats as the worst kind of mistake. The asymmetry is the
+  point: only machine-written tables move, because only they have a machine that knows where to put them.
+
+**What a shipped version probably looks like**, recorded so the next pass does not re-derive it: one
+constant naming the directory, in the **format** tier so both consumers import rather than copy it (the
+`locations`/`README_CANDIDATES` precedent); a shared resolver that prefers the root and falls back to the
+subdirectory; an **error, not a warning**, when both exist, naming both paths; and the enricher writing
+beside whichever copy it read. No new CLI flag — the layout is discovered, not declared.
+
+**Shipped in 0.6.0, in the shape the item predicted**, and it shared its whole mechanism with RM51 —
+which is the reusable part: *"the same table in two possible places"* is one problem whether the two
+places differ by name or by directory, and it wants one resolver, one collision rule, one write rule.
+Doing them apart would have written that resolver twice.
+
+`just_dna_format.layout` holds `DERIVED_SUBDIR`, the resolver, and the write-path rule. Two additions
+to what the item recorded:
+
+- **`_check_misspelled_tables` had to learn the subdirectory**, against the *derived* name set alone.
+  The item argued that "search any subdirectory" is wrong because it blinds that guard; the same
+  argument applies to a single fixed name if the guard is not extended to it, which the first draft
+  of the change missed. An authored table name inside `derived/` is itself the near miss worth
+  reporting rather than a file to accept.
+- **`manifest.derived` records the relative path**, so `FileEntry.name` carries `derived/…`. That
+  needed no change to `integrity.file_entries`, which already joins the name onto the directory — and
+  it is legal only because that block is documented transport-only and outside `artifact.digest`.
+
+Verified through the CLI rather than in-process: a real module in the split layout compiles to the
+same `artifact.digest`, `content_signature` and `resolution_signature` as flat.
+
+
+## RM51 — `licensing.csv`: land the better name in a minor so the major only has to remove
+
+**Severity** low (legibility; nothing is broken today) · **Status** ✅ shipped in 0.6.0 · **Owner** compiler (one resolver above `_FACT_TABLES`) +
+enricher (five write sites) · **Motivating case** the maintainer, 2026-08-12, after SCHEMAS.md needed a
+three-row table to explain which of `studies`/`literature`/`sources` is which
+
+**The move.** Accept `licensing.csv` as a second spelling of `sources.csv` now: the enricher writes the
+new name, the compiler resolves the old name first and falls back to the new one, and nothing else
+changes. Every existing module keeps compiling, and by the time 1.0 arrives every module drafted under
+0.6+ already carries the new name — so the major has to **remove** a spelling rather than **add** one,
+which is the difference between a rename people notice and one they do not. The old spelling is
+**deprecated in the same 0.6 release** (warn-only, still fully read) and **removed at 1.0**, which is
+the cadence the 0.6 charter amendment settled — and this item is the case that prompted it. See
+[§ 1.0 cleanup — `sources.csv`](#sourcescsv--the-name-and-the-source-column-it-collides-with) for the
+name argument itself and for the half that cannot come along.
+
+**Why it is minor-legal, checked rather than assumed.** `sources.csv` is deliberately **not** in
+`_INPUT_FILES` (`compiler.py`) — the fact sidecars are excluded there because their identity is the
+fact hash, not the raw bytes — so the *filename* enters no identity at all: `content_signature` is over
+authored rows, `source_signature` over `SOURCE_FACT_FIELDS`, and `manifest.derived` (S26) records
+whichever name it found and is documented as transport-only, outside `artifact.digest`. A second
+accepted name is therefore additive in the plain P3 sense: existing modules keep validating and no
+published artifact moves.
+
+**What does *not* come along, and this is the cost to accept knowingly.** `sources.parquet` is in
+`_OUTPUT_FILES`, hence inside `artifact.digest`, and consumers read it by name; `manifest.sources` is a
+published key. Renaming either breaks a reader, so both are major-only. For the whole 0.x tail the
+module therefore reads `licensing.csv` → `sources.parquet` → `manifest.sources`. That is a real
+legibility regression against today's single consistent (bad) name, and it is the price of not paying
+for the rename twice.
+
+**The one open decision: both files present.** This is RM49's collision in another file, and it must
+not be hand-waved the same way. Two copies are two legitimate claims — the table is fact-hashed and
+**human-overridable**, so "newest wins" or a merge silently discards a curator's override. The rule to
+implement is RM49's: the enricher **writes to the file it read**, creates the new name only when
+neither exists, and both-present is an **error naming both paths**. Note `pgx.py` writes
+`spec_dir / "sources.csv"` directly while the other four sites go through `record_source_terms` — that
+one has to move onto the shared resolver, or it re-creates the retired name behind the alias's back.
+
+**Mechanics, so the next pass does not re-derive them.** The resolver sits **above** `_FACT_TABLES`,
+because `_DERIVED_FILES`, `_OUTPUT_FILES`, `_check_misspelled_tables`' name set and both load loops are
+all derived from that tuple and must see the alias uniformly (adding the name also, correctly, stops
+the near-miss guard flagging `licensing.csv`). `draft.DRAFTABLE` is keyed on the filename and gains the
+new key while keeping the old. And the S26 reporter's registry splits and flattens a spec directory
+against its own copy of the derived-file list, so it needs telling in the same release.
+
+**Shipped in 0.6.0.** The design was settled apart from the collision rule, and the collision rule
+turned out to be RM49's, shared verbatim — both items are "the same table in two possible places".
+
+**The one estimate that was wrong: five enricher write sites, actually nine.** `record_source_terms`
+and `merge_sources_file` now take the **spec directory** rather than a path, so no pass can name a
+spelling by hand — which is the durable form of the fix, since a count is exactly the thing that goes
+stale. The item was right about which one was awkward: `pgx.py`, the only pass whose primary output
+is this table and the only one calling `write_sources_csv` directly.
+
+Four reference examples moved to the new name; `hfe_hemochromatosis` deliberately keeps the old one
+so the deprecation path stays exercised on a real module rather than only in a fixture. All eleven
+kept their exact `artifact.digest`, `content_signature`, `resolution_signature` and `source_signature`
+across the rename — which is the measurement behind "the filename enters no identity", made rather
+than argued.
+

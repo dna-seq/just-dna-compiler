@@ -72,8 +72,8 @@ A `.env` found by walking up from the working directory is loaded automatically.
    CC BY-SA **plus a no-sale clause**, so none is sellable — do not read a bare "CC BY-SA" as
    permission. Pass `--use unstated | non-commercial | commercial` to every command that copies rows
    out of a source; a forbidding source is *skipped* on `unstated` and *refused* on `commercial`, at
-   acquisition. The terms land in `sources.csv`, which is the only thing the compile gate reads — so a
-   source you copied from by hand is invisible to it, and you must add the row yourself.
+   acquisition. The terms land in `licensing.csv`, which is the only thing the compile gate reads — so
+   a source you copied from by hand is invisible to it, and you must add the row yourself.
 
 ## The order, and the one place deviating from it deadlocks
 
@@ -475,13 +475,16 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
 - **Pass `--use unstated | non-commercial | commercial`** to anything that copies rows out of a source
   (`draft`, `draft-panel`, `draft-clinpgx`, `dosage`, `pgx`, `clinpgx build/check`). A forbidding source
   is *skipped* on `unstated` and *refused* on `commercial`, at acquisition — nothing is even fetched.
-- **`sources.csv` is the only thing the compile gate reads.** A source you copied from by hand is
+- **`licensing.csv` is the only thing the compile gate reads.** A source you copied from by hand is
   invisible to it — write the row yourself, or the restriction simply vanishes from the module. Only
   the *annotation* layer taints; a coordinate is a fact, so a fact-layer row carries attribution rather
   than a prohibition. Most-restrictive-wins, module-wide.
-- **The CLI spelling and the column value differ.** `--use` accepts `non-commercial`, but the
-  `declared_use` *column* takes the vocabulary member `non_commercial` (underscore). The flag
-  normalizes; a cell you type by hand does not.
+- **`sources.csv` is the older name for that file and still works.** It is read exactly as before and
+  the compile prints a rename notice; rename it to `licensing.csv` when convenient. Do not keep both —
+  a module carrying two copies is refused, because the file is hand-editable and neither copy can be
+  preferred without discarding your edits.
+- **Either spelling of a vocabulary value is accepted.** `non-commercial` and `non_commercial` both
+  reach the same member, in the `--use` flag and in a cell you type by hand.
 - **There is no `--non-commercial` compile flag, by design.** A flag cannot survive `reverse`, so a
   third compile would refuse. The declaration has to be data.
 
