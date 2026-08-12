@@ -49,10 +49,25 @@ def section_span(lines: list[str], ident: str) -> tuple[int, int]:
 
 
 def group_span(lines: list[str], before: int) -> tuple[int, int] | None:
-    """(start, end) of the `# ` group heading and dateline preceding index `before`."""
+    """(start, end) of the `# ` group heading and dateline preceding index `before`.
+
+    **A document's own title is not a group heading**, and conflating the two was a real bug that hit
+    twice before anyone noticed. A section filed under no group — which is the normal shape when a
+    consumer appends one item to an empty inbox — took the live file's `# <title>` *and its whole
+    preamble* (the "this file is the inbox" blurb) into the history file as that item's heading. The
+    fingerprint check could not catch it: fingerprints cover the consumer's prose alone, so the move
+    verified clean while the history file grew a duplicate of the inbox's front matter and the
+    preceding section's own fingerprint shifted underneath it.
+
+    The first `# ` heading in a document is its title by convention and both of these files have one,
+    so a group heading is any *later* `# `. A section with none returns None, and the caller says so
+    out loud rather than inventing one — naming a group (who reported it, when) is editorial, the same
+    reason the index row is not generated either.
+    """
+    headings = [i for i, line in enumerate(lines) if GROUP_RE.match(line)]
     start = None
-    for i in range(before):
-        if GROUP_RE.match(lines[i]):
+    for i in headings[1:]:  # [0] is the document title
+        if i < before:
             start = i
     if start is None:
         return None
@@ -108,6 +123,7 @@ def main() -> int:
         start, end = section_span(live, ident)
         del live[start:end]
 
+    ungrouped: list[str] = []
     for ident, body, heading in moved:
         if heading and current_group(history) != heading[0]:
             if history and history[-1].strip():
@@ -117,6 +133,8 @@ def main() -> int:
             history.append("")
         history += body
         print(f"{ident}: moved ({len(body)} lines)")
+        if heading is None:
+            ungrouped.append(ident)
 
     def render(lines: list[str]) -> str:
         return "\n".join(lines).rstrip("\n") + "\n"
@@ -136,6 +154,11 @@ def main() -> int:
         raise SystemExit(f"\nFINGERPRINT CHANGED for {', '.join(broken)} — the prose was not moved verbatim")
     print(f"\n{len(idents)} section(s) archived, every fingerprint intact."
           f"\nNow add each one's row to {HISTORY.name}'s index table.")
+    if ungrouped:
+        print(f"\nNo group heading travelled with {', '.join(ungrouped)} — the section sat under the "
+              f"live file's title, which is not a group. Add a `# ` heading above it in "
+              f"{HISTORY.name} (who reported it, and when) so it does not read as part of the "
+              f"group above.")
     return 0
 
 

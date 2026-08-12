@@ -274,6 +274,10 @@ rejected if one changed. Do this by hand only if the tool cannot (it prints what
   mechanical (move the later sections under the first heading) but avoidable. Check `grep -n '^# '` on
   the history file when you are done, and give a section its own heading if it was appended under one it
   does not belong to — S18 arrived after S17 and would otherwise read as a "documentation gap".
+  **An item filed under no group heading needs one written by hand**, and the tool now says so instead
+  of guessing: it prints `No group heading travelled with Sn` and you add a `# ` line naming who
+  reported it and when. That notice exists because the silent version of this went wrong twice — see the
+  title-is-not-a-group gotcha in §6.
 
 ### Step 5 — hygiene
 
@@ -404,6 +408,19 @@ Each of these was a bug in the loop, not a hypothetical:
   top-level section.
 - **The event line needs a cap.** With a 17-item backlog the notification listed every one; it now shows
   eight and `+N more`.
+- **A document's own title is not a group heading, and `triage-archive.sh` thought it was.** It took the
+  *last* `# ` heading before a section as that section's group; for an item filed under no group — the
+  normal shape once the split made the inbox empty, since a consumer appending one report writes no
+  group heading — the last `# ` before it is the live file's own `# Consumer suggestions`, whose span
+  runs to the next `##` and therefore swallows the whole inbox preamble. So archiving appended a copy
+  of "this file is the inbox, so an empty one means nothing is owed" into the *history* file, twice,
+  before anyone read the result. **The verification could not see it**: fingerprints cover the
+  consumer's prose alone, so the move reported "every fingerprint intact" while the file grew duplicate
+  front matter — and the *preceding* section's fingerprint shifted, because its span now ended at the
+  injected heading, which is how S24 came to read `revised` with byte-identical prose. Fixed by taking
+  the first `# ` in a document as its title and a group as any later one; a section with no group now
+  prints a notice telling you to add one, rather than the tool inventing a name, on the same reasoning
+  that keeps the index row hand-written. Reproduced both ways in a sandbox before and after.
 
 ---
 
