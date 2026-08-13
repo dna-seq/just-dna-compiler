@@ -23,9 +23,11 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from just_dna_compiler.compiler import _spelling_clauses as _compiler_clauses
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
-from just_dna_compiler.resolution import hosting_verdict
-from just_dna_format.alleles import UNOBSERVABLE_ALLELE
+from just_dna_compiler.resolution import _spelling_clauses as _resolution_clauses
+from just_dna_compiler.resolution import hosting_verdict, undecided_reason
+from just_dna_format.alleles import UNOBSERVABLE_ALLELE, non_nucleotide_reason
 
 _SPEC_YAML = (
     "schema_version: '1.0'\n"
@@ -171,19 +173,30 @@ def test_a_starred_module_validates_and_compiles_in_both_modes(tmp_path: Path, s
     assert starred["genotype"].to_list() == [f"{UNOBSERVABLE_ALLELE}/T".split("/")]
 
 
-def test_the_round_trip_is_a_fixed_point(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "call",
+    [
+        f"{UNOBSERVABLE_ALLELE}/T",   # unphased, and therefore sorted
+        f"T|{UNOBSERVABLE_ALLELE}",   # phased: order is significant and deliberately NOT sorted
+    ],
+)
+def test_the_round_trip_is_a_fixed_point(tmp_path: Path, call: str) -> None:
     """P7 over a `*`-carrying genotype: compile → reverse → compile preserves every identity field.
 
     The genotype is read back off the *rebuilt* CSV as well as off the parquet, because the reverse
     writer is the touch point a new spelling is most likely to be lost at.
+
+    The phased case is here because phase is the one arm where order carries meaning, so a rejoin that
+    sorted or normalized on the way out would be invisible in the unphased case and lossy in this one —
+    `T|*` must come back `T|*`, not `*|T`.
     """
-    spec = _spec(tmp_path / "spec", _OVERLAPPED + _DELETION)
+    spec = _spec(tmp_path / "spec", _OVERLAPPED.replace(f"{UNOBSERVABLE_ALLELE}/T", call) + _DELETION)
     first = compile_module(spec, tmp_path / "out", strict=True)
     assert first.success, first.errors
 
     rebuilt = tmp_path / "rebuilt"
     reverse_module(tmp_path / "out", rebuilt)
-    assert f"{UNOBSERVABLE_ALLELE}/T" in (rebuilt / "variants.csv").read_text()
+    assert call in (rebuilt / "variants.csv").read_text()
 
     second = compile_module(rebuilt, tmp_path / "out2", strict=True)
     assert second.success, second.errors
@@ -239,6 +252,72 @@ def test_no_symbolic_allele_finding_claims_the_star(tmp_path: Path) -> None:
     assert result.success, result.errors
     noise = [w for w in result.warnings if "symbolic" in w.lower() or "<DEL" in w]
     assert noise == []
+
+
+def test_a_star_in_the_alt_list_does_not_break_indel_reconciliation() -> None:
+    """`*` must be ignored on the **locus** side too, and leaving it in was a confident wrong answer.
+
+    `parsimony_reduce` strips the flank a collection shares, and `*` has none — so a `*` sitting in the
+    ALT list stops the whole set reducing, RM31's two spellings of one deletion stop matching, and the
+    verdict comes back `False` rather than `True`. That is a correctly transcribed indel refused under
+    `--strict`, with a message advising the author to "replace it with the alleles the locus actually
+    has". `ALT=AG,*` is ordinary joint-caller output, so this is the common case, not a corner.
+    """
+    # RM31's SHOX deletion: ClinVar's `C/CAG` against Ensembl's `AGAG>AG` spelling of one 2 bp event.
+    assert hosting_verdict("C/CAG", "AGAG", "AG") is True
+    assert hosting_verdict("C/CAG", "AGAG", f"AG,{UNOBSERVABLE_ALLELE}") is True
+
+    # And a locus with nothing observable left decides nothing, rather than contradicting everything.
+    assert hosting_verdict("A/T", UNOBSERVABLE_ALLELE, UNOBSERVABLE_ALLELE) is None
+
+
+def test_every_undecided_cause_gets_its_own_reason() -> None:
+    """`None` has four causes; the warning used to assert one of them for all four.
+
+    Each case below really returns `None` from the predicate — asserted, so the table cannot drift into
+    describing shapes that are actually decided — and each must draw its own explanation. The all-`*`
+    row is the one that made this worth fixing: the old sentence told the reader to check the pair
+    against a reference sequence, and no reference can say what a call did not observe.
+    """
+    cases = {
+        ("*/*", "A", "T"): "observed no allele",                    # RM59
+        ("<DEL:1500>/A", "A", "AT"): "deliberately unspelled",      # RM5
+        ("C/C", "AGAG", "AG"): "carries no flank",                  # homozygous, no frame
+        # A 2 bp insertion of `CT` against the locus's 2 bp `AG` deletion: same event size, different
+        # bases, which is the one case only a reference sequence can settle — the original cause.
+        ("C/CCT", "AGAG", "AG"): "same size but different content",
+    }
+    for args, expected in cases.items():
+        assert hosting_verdict(*args) is None, args
+        assert expected in undecided_reason(*args), (args, undecided_reason(*args))
+
+    # The four are genuinely distinct sentences, not one sentence with four spellings.
+    assert len({undecided_reason(*args) for args in cases}) == len(cases)
+
+
+def test_both_spelling_builders_have_an_arm_for_every_reason() -> None:
+    """There are **two** clause builders, and a missing arm in either is silent rather than loud.
+
+    `compiler._spelling_clauses` and `resolution._spelling_clauses` are deliberately separate code
+    reading differently around their own call sites, sharing only the classification. Neither raises on
+    an unknown reason — it filters by reason, so the allele is simply dropped from the explanation, and
+    a locus whose only odd allele is unclassified produces a sentence with nothing in it. RM59 added
+    the fourth reason; this is what stops a fifth from reaching one builder and not the other.
+
+    Discovered by *behaviour* — every reason `non_nucleotide_reason` actually returns for a real value —
+    rather than from a hand-kept list, which is the half of such a guard that rots.
+    """
+    probes = ["R", "<DEL:1500>", UNOBSERVABLE_ALLELE, "DELTCT", "AAAGGGGCG(2)", "<FOO>"]
+    reasons = {r for r in (non_nucleotide_reason(a) for a in probes) if r is not None}
+    assert len(reasons) >= 4, reasons
+
+    for builder in (_compiler_clauses, _resolution_clauses):
+        for allele, reason in ((a, non_nucleotide_reason(a)) for a in probes):
+            if reason is None:
+                continue
+            rendered = builder({allele: reason})
+            assert rendered, f"{builder.__module__}: no clause for reason {reason!r} ({allele!r})"
+            assert repr(allele) in rendered
 
 
 def test_a_star_in_the_alt_list_is_not_reported_as_a_grammar_gap(tmp_path: Path) -> None:

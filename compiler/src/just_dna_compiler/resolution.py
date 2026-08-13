@@ -113,14 +113,13 @@ def resolve_from_table(
                     # Kept, and said out loud. This tier cannot re-anchor an indel (that needs the
                     # reference sequence, which P2 keeps out of the compiler), so the row is carried and
                     # the reader is told the comparison did not reach a verdict — never that the locus is
-                    # a different variant, which is what the old message asserted.
+                    # a different variant, which is what the old message asserted. `undecided_reason`
+                    # supplies *which* of the four ways it withheld, rather than naming one of them for
+                    # all four.
                     warnings.append(
                         f"{v.rsid}: whether {locus.chrom}:{locus.start} {locus.ref}>{locus.alts} can "
-                        f"host the authored genotype {v.genotype} could not be decided here — the two "
-                        f"spellings describe events of the same size but different content, which is "
-                        f"either one indel re-anchored inside a repeat or two different variants, and "
-                        f"telling those apart needs the reference sequence (run the enricher). The locus "
-                        f"is kept."
+                        f"host the authored genotype {v.genotype} could not be decided here — "
+                        f"{undecided_reason(v.genotype, locus.ref, locus.alts)}. The locus is kept."
                     )
                 for locus in rejected:
                     # Dropping a locus makes the emitted table smaller than the injected one, so the
@@ -288,26 +287,29 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
 
     1. **No `ref`/`alts` recorded → `True`.** Nothing is known about the locus's alleles and rejecting
        for lack of evidence is worse than accepting. Unchanged.
-    2. **A `*` in the *genotype* abstains, and the rest of the call is still judged (RM59).** `*` says
-       *this sample's allele could not be observed here*; it names no allele, so a locus cannot fail to
-       offer it and cannot contradict it. Without this the widening that made `*/G` authorable would be
-       self-defeating: Ensembl never spells `*` in an ALT list, so an rsid-authored `*/G` resolved
-       against a `G>A` locus fell through to step 6 and came back a confident **`False`** — the locus
-       dropped from the expansion, the row unresolved, and `strict` refusing over a finding no authored
-       edit could clear. Dropping the member rather than the whole verdict is what keeps the
-       *observable* half sharp: `*/T` at a `G>A` locus is still `False`, because the `T` really is a
-       contradiction. A call naming nothing observable (`*/*`) is `None` — nothing was seen, so nothing
-       is decidable.
+    2. **`*` abstains — on both sides — and the rest is still judged (RM59).** `*` says *this sample's
+       allele could not be observed here*; it names no allele, so a locus cannot fail to offer it and
+       cannot contradict it, and it belongs in the allele algebra on neither side. Without this the
+       widening that made `*/G` authorable would be self-defeating: no source spells `*` in an ALT list,
+       so an rsid-authored `*/G` resolved against a `G>A` locus fell through to step 6 and came back a
+       confident **`False`** — the locus dropped from the expansion, the row unresolved, and `strict`
+       refusing over a finding no authored edit could clear. Dropping the member rather than the whole
+       verdict is what keeps the *observable* half sharp: `*/T` at a `G>A` locus is still `False`,
+       because the `T` really is a contradiction. Nothing observable on either side is `None`.
 
-       Only the **called** side abstains. A `*` in `ref`/`alts` is reachable today (those columns have
-       no grammar) and is a record of what the caller emitted, so excluding it there would change a
-       verdict some existing module may already depend on — this arm is a widening precisely because
-       nothing could put a `*` into a genotype before RM59.
+       **The locus side is not optional, and the first cut got this wrong** on the reasoning that a `*`
+       in `ref`/`alts` is reachable today, so excluding it might move an existing verdict. It does move
+       one, and the one it moves is false: `parsimony_reduce` cannot strip a shared flank past a member
+       that has none, so a `*` left in the locus stops the set reducing and collapses RM31 —
+       `hosting_verdict('C/CAG', 'AGAG', 'AG')` is `True` while `…('C/CAG', 'AGAG', 'AG,*')` was
+       `False`, refusing a correctly transcribed indel under `--strict` and telling the author to
+       "replace it with the alleles the locus actually has". `ALT=AG,*` is ordinary joint-caller output.
     3. **The raw strings match → `True`.** Checked *before* any normalization so this function can only
        ever gain acceptances: whatever passed before still passes, byte for byte, which is what keeps the
        expansion (and every module's digest) stable except where a genuine reconciliation happens. (Step
-       2 sits above it and costs it nothing — removing a member only ever makes this test succeed more
-       often, and nothing reachable before RM59 carried one.)
+       2 sits above it and costs it nothing, *provably* rather than nearly: the called side is stripped
+       first, so `*` is never on the left of the subset test, and dropping it from the right therefore
+       cannot change the answer.)
     4. **Either side names a symbolic allele → `None`.** A `<DEL:1500>` has no sequence, so it has no
        flank for `parsimony_reduce` and nothing to compare character by character — and a symbolic
        allele exists *because* the exact sequence is not known, so even two stated lengths that differ
@@ -344,20 +346,29 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
     # one drops a *member* that makes no claim, that one withholds the whole *verdict* because a claim
     # cannot be compared. `*` is not an allele — it reports that the sample's allele could not be
     # observed here — so it is neither offered by a locus nor contradicted by one, and every step from
-    # here on is a comparison of characters it has none of. Removing it leaves the observable half of
-    # the call to be judged normally; removing it and finding nothing left means nothing was seen.
+    # here on is a comparison of characters it has none of. Removing it leaves the observable half to be
+    # judged normally; removing it and finding nothing left means nothing was seen at all.
+    #
+    # **Both sides, and the locus side is not optional.** A `*` in `alts` is what a joint-called VCF
+    # writes, and left in the locus set it silently defeats `parsimony_reduce`: the shared flank cannot
+    # be stripped past a member that has none, so `parsimony_reduce({'AGAG','AG','*'})` returns the set
+    # unreduced and RM31's reconciliation collapses — `hosting_verdict('C/CAG', 'AGAG', 'AG')` is `True`
+    # while `hosting_verdict('C/CAG', 'AGAG', 'AG,*')` was a confident `False`, refusing a correctly
+    # transcribed indel under `--strict` and advising the author to "replace it with the alleles the
+    # locus actually has". One rule on both sides is also the only consistent reading: an allele the
+    # algebra must ignore cannot be one the algebra ignores in one direction.
     #
     # **Above the raw comparison, not below it**, which is the opposite of where the RM5 guard sits and
     # is forced rather than chosen: the whole point is that the *rest* of the call must still be matched
     # against the locus, and `*/G` at a `G>A` locus is exactly the case — `{'*','G'}` is not a subset,
     # so below the comparison it fell through to the substitution arm and came back a confident `False`.
-    # It costs the stability property nothing: dropping a member can only ever make the subset test
-    # succeed more often, and no genotype reachable before RM59 could carry one, so every existing
-    # module compares byte for byte the way it did.
-    observable = {a for a in called if not is_unobservable_allele(a)}
-    if not observable:
+    # It costs the raw comparison nothing, and provably rather than nearly: `called` is stripped first,
+    # so `*` is not on the left of the subset test, and dropping it from the right therefore cannot
+    # change the answer. Nothing reachable before RM59 could put one in a genotype at all.
+    called = {a for a in called if not is_unobservable_allele(a)}
+    locus = {a for a in locus if not is_unobservable_allele(a)}
+    if not called or not locus:
         return None
-    called = observable
 
     if called <= locus:
         return True
@@ -385,6 +396,53 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
     if any(len(event) not in lengths for event in called_events - locus_events):
         return False
     return None
+
+
+def undecided_reason(genotype: str, ref: str | None, alts: str | None) -> str:
+    """Why `hosting_verdict` withheld — the clause a caller appends when the answer was `None`.
+
+    **`None` has four causes and the message asserted one of them.** Both reporting sites — this
+    module's expansion warning and the enricher's twin — said *"the two spellings describe events of
+    the same size but different content, either one indel re-anchored inside a repeat or two different
+    variants"*, which is step 9's cause and false for the other three: a symbolic allele was never
+    compared at all (RM5), an all-`*` call observed nothing (RM59), and a homozygous call carries no
+    frame. Stating a cause the tier did not establish is the same defect as the `([], None)` collapse
+    S20 was filed for — two ways of returning nothing rendered as one sentence — and here it sends the
+    reader to check a reference sequence for a row where no reference could help.
+
+    Mirrors `hosting_verdict`'s withholding branches **in its order**, so the two answer the same
+    question the same way; a test walks every `None`-producing shape and asserts the pairing, which is
+    what keeps a fifth branch from quietly inheriting a fourth's explanation.
+    """
+    locus = {(ref or "").strip().upper()} | {
+        a.strip().upper() for a in (alts or "").split(",") if a.strip()
+    }
+    called = {a.upper() for a in _GENOTYPE_SEP.split(genotype) if a}
+    observable_called = {a for a in called if not is_unobservable_allele(a)}
+    observable_locus = {a for a in locus if not is_unobservable_allele(a)}
+
+    if not observable_called:
+        return (
+            "the call observed no allele at this position at all — every member is VCF's `*`, so "
+            "there is nothing to match against the locus and nothing a reference could settle"
+        )
+    if not observable_locus:
+        return "the locus records no allele that is not VCF's `*`, so it offers nothing to match"
+    if any(is_symbolic_allele(a) for a in observable_locus | observable_called):
+        return (
+            "a symbolic/structural allele names a variant whose sequence is deliberately unspelled, "
+            "so the two were never compared character by character — undecided, not a mismatch"
+        )
+    if len(observable_called) < 2:
+        return (
+            "the genotype names one distinct allele, so it carries no flank to be relative to and "
+            "the spelling cannot be reconciled against an indel locus"
+        )
+    return (
+        "the two spellings describe events of the same size but different content, which is either "
+        "one indel re-anchored inside a repeat or two different variants, and telling those apart "
+        "needs the reference sequence (run the enricher)"
+    )
 
 
 def _indel_shaped(events: frozenset[str]) -> bool:
@@ -508,11 +566,12 @@ def spelling_caveat(ref: str | None, alts: str | None) -> str:
     nucleotide alphabet, not between the genotype and the variant. Reporting the generic message there
     sends the author to re-examine a genotype that was correct all along.
 
-    Three reasons, kept apart, because what the author does next differs: an ambiguity code is an
+    Four reasons, kept apart, because what the author does next differs: an ambiguity code is an
     uncertainty that can never be expanded into definite alleles (expanding `N` to `A,C,G,T` asserts four
     alleles nobody stated), a well-formed symbolic allele is *held* by the grammar since RM5 and so is
-    never a spelling defect at all, and everything else non-nucleotide is a grammar gap. None is
-    repaired here — this tier reports.
+    never a spelling defect at all, a `*` is a statement about the sample's coverage rather than about
+    the locus (RM59), and everything else non-nucleotide is a grammar gap. None is repaired here — this
+    tier reports.
     """
     offenders = non_nucleotide_alleles(ref, alts)
     if not offenders:
@@ -530,9 +589,17 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     Shared with `compiler._spelling_because` in spirit and deliberately not in code: the two sit in
     different call sites of the same finding and read differently around it. What must not diverge is
     the *classification*, and that is `alleles.non_nucleotide_reason`, imported by both.
+
+    **Every reason the classifier can return needs an arm here, and the failure is silent.** The
+    offenders are already non-empty when the caller builds its sentence, so a reason with no clause
+    does not raise — it drops the allele from the explanation, and a locus whose *only* odd allele is
+    unclassified yields "the locus records ." with nothing between. RM59 added the fourth reason and
+    this is the second of the two builders; the first was updated in the same change, and the reason
+    the pair is not one function is style at the call site, never the classification.
     """
     ambiguity = sorted(a for a, reason in offenders.items() if reason == "ambiguity")
     symbolic = sorted(a for a, reason in offenders.items() if reason == "symbolic")
+    unobservable = sorted(a for a, reason in offenders.items() if reason == "unobservable")
     notation = sorted(a for a, reason in offenders.items() if reason == "notation")
     parts: list[str] = []
     if ambiguity:
@@ -546,6 +613,13 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
             f"{', '.join(repr(a) for a in symbolic)} is a symbolic/structural allele, which the "
             f"grammar holds (RM5) — it names a variant whose sequence is deliberately unspelled, so "
             f"comparing it against a spelled allele is undecided rather than a mismatch"
+        )
+    if unobservable:
+        parts.append(
+            f"{', '.join(repr(a) for a in unobservable)} is VCF's allele-missing-due-to-overlapping-"
+            f"deletion marker (RM59) — it records what a call could not observe, so it names no allele "
+            f"for a genotype to match, and it is a fact about a sample rather than a grammar gap a "
+            f"release could close"
         )
     if notation:
         parts.append(

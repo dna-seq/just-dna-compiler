@@ -32,6 +32,7 @@ from just_dna_format.alleles import (
     RECOMMENDED_SYMBOLIC_SUBTYPES,
     SYMBOLIC_ALLELE_TYPES,
     is_symbolic_allele,
+    is_unobservable_allele,
     non_nucleotide_reason,
     symbolic_allele_defect,
 )
@@ -1218,8 +1219,17 @@ def _check_allele_membership(
                 "alleles, while Ensembl carries every allele dbSNP knows) — check which before editing"
             )
         findings: list[str] = []
+        # The message must name exactly what `_allele_verdict` judged, and that predicate abstains on
+        # a `*` (RM59): it records what the call could not observe, so it is never one of the alleles
+        # "missing" from a locus. Listing it anyway pointed the author at a correct transcription — a
+        # false accusation in the one sentence that is supposed to say which cell is wrong.
         missing = sorted(
-            {a.upper() for a in _split_genotype(variant.genotype)} - allowed
+            {
+                a.upper()
+                for a in _split_genotype(variant.genotype)
+                if not is_unobservable_allele(a)
+            }
+            - allowed
         )
         if _allele_verdict(variant.genotype, variant, resolution_table) is False:
             findings.append(

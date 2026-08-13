@@ -621,7 +621,7 @@ publishes the same event as `X:634690 AGAG>AG`.
 | Situation | Verdict | What the compile does |
 |---|---|---|
 | No `ref`/`alts` recorded | `True` | keeps the locus (lack of evidence never rejects) |
-| A `*` among the **genotype's** alleles (RM59, 0.6) | — | the member is dropped and the rest of the call is judged normally; all-`*` is `None` |
+| A `*` among the alleles, on **either** side (RM59, 0.6) | — | the member is dropped and the rest is judged normally; nothing observable left is `None` |
 | The raw allele strings match | `True` | keeps it — checked **first**, so normalization can only ever *add* acceptances |
 | Either side names a symbolic allele (RM5, 0.6) | `None` | keeps it, reports that it did not decide — no sequence, so no flank and nothing to compare |
 | The reduced allele sets match (`alleles.parsimony_reduce` strips the shared flank) | `True` | keeps it; this is what reconciles the two spellings |
@@ -640,8 +640,22 @@ which would have made a `*` authorable and uncompilable in the same release, ref
 for a reason no authored edit could clear. No source spells `*` in an ALT list, so this is the ordinary
 path rather than a corner. `*/T` at an `A>T` locus is `True`; `*/G` there is still `False`, because the
 `G` is a real contradiction and abstention drops a member, never a verdict; `*/*` is `None`. It costs
-the stability property nothing — dropping a member only ever makes the subset test succeed more often,
-and nothing could put a `*` into a genotype before RM59, so every compiled module compares as it did.
+the stability property nothing — the called side is stripped first, so `*` is never on the left of the
+subset test and dropping it from the right cannot change that answer.
+
+**Both sides, and the locus side is the half that is easy to miss.** `parsimony_reduce` strips the
+flank a collection *shares*, and `*` has none, so a `*` left in the locus stops the whole set reducing
+and RM31's reconciliation collapses: `hosting_verdict('C/CAG', 'AGAG', 'AG')` is `True` while the same
+call against `alts="AG,*"` came back a confident `False` — a correctly transcribed indel refused under
+`--strict`, advised to "replace it with the alleles the locus actually has". `ALT=AG,*` is exactly what
+a joint caller emits at an overlapped indel, so this is common data, and an allele the algebra must
+ignore cannot be one it ignores in only one direction.
+
+Because `None` now has four causes rather than one, `resolution.undecided_reason` supplies the clause
+both reporting sites append (this tier's expansion warning and the enricher's twin). They used to
+assert step 9's cause — *"the same size but different content … needs the reference sequence"* — for
+every withheld verdict, which for an all-`*` call sends the reader to check a reference against a
+position nothing observed.
 
 The symbolic row sits above the reductions on purpose. Below the raw comparison every remaining step is
 arithmetic over characters, and a `<DEL:1500>` has none to offer — `parsimony_reduce` would read it as a

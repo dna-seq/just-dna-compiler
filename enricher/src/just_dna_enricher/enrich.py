@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_rows
-from just_dna_compiler.resolution import hosting_verdict
+from just_dna_compiler.resolution import hosting_verdict, undecided_reason
 from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.manifest import GenePanelSpec
@@ -617,13 +617,17 @@ def enrich(
                     # cannot do is re-anchor inside a repeat, so a same-size different-content pair is
                     # reported as undecided rather than as a contradiction. This tier *can* settle it —
                     # `vrs.py` has seqrepo — and doing that automatically is the remaining half of RM31.
+                    #
+                    # The *reason* comes from the shared `undecided_reason` rather than being spelled
+                    # here, because `None` has four causes and this sentence used to assert one of them
+                    # for all four — including for a call that observed nothing, which no reference can
+                    # settle, while the closing advice said to check one.
                     logger.warning(
                         "%s: whether %s:%s %s>%s can host the authored %s %s could not be decided from "
-                        "the allele strings — the two spellings describe events of the same size but "
-                        "different content, so it is either one indel re-anchored inside a repeat or two "
-                        "different variants. The locus is KEPT; check it against the reference.",
+                        "the allele strings — %s. The locus is KEPT.",
                         v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
                         subject, v.constraint,
+                        undecided_reason(v.constraint, lo.get("ref"), lo.get("alts")),
                     )
                 elif verdict is False:
                     logger.warning(
