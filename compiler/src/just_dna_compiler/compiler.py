@@ -32,6 +32,7 @@ from just_dna_format.alleles import (
     RECOMMENDED_SYMBOLIC_SUBTYPES,
     SYMBOLIC_ALLELE_TYPES,
     is_symbolic_allele,
+    is_unobservable_allele,
     non_nucleotide_reason,
     symbolic_allele_defect,
 )
@@ -1769,9 +1770,20 @@ def _spelling_because(allowed: set[str]) -> str | None:
     Takes the allele *set* rather than a `ref`/`alts` pair because `_allowed_alleles` has already
     unioned across every locus the key resolves to, and the finding is stated against that union — a
     caveat derived from anything narrower could name an allele the message does not.
+
+    **`*` is excluded, and this caveat is the one place that is unconditional (RM59).** The sentence
+    exists to say *the genotype is not the problem, the locus is spelled oddly* — and since
+    `hosting_verdict` now strips `*` from both sides before comparing, a `*` can no longer contribute to
+    the `False` this explains. Leaving it in produced the exact inversion the caveat exists to prevent:
+    `genotype=C/G` at `ref=A alts="T,*"` is a real genotype error, and the module was told the genotype
+    was not the problem and to "replace it with the alleles the locus actually has".
     """
     offenders = {a: non_nucleotide_reason(a) for a in sorted(allowed)}
-    offenders = {a: reason for a, reason in offenders.items() if reason is not None}
+    offenders = {
+        a: reason
+        for a, reason in offenders.items()
+        if reason is not None and not is_unobservable_allele(a)
+    }
     if not offenders:
         return None
     return (
@@ -1787,9 +1799,15 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     The consequence sentence belongs *inside* the branch it is true of. The first cut appended "an
     ambiguity code is an uncertainty and is never expanded…" to every finding, so a `<DEL>` locus was
     told about ambiguity codes — the identical conflation `cpic.unusable_allele_reason` was repaired to
-    stop making, reintroduced in the message that repair paid for. Three reasons, three consequences:
-    an uncertainty is permanent, a symbolic allele is held by the grammar and simply not comparable
-    here, and a grammar gap is what is left.
+    stop making, reintroduced in the message that repair paid for. Four reasons, four consequences: an
+    uncertainty is permanent, a symbolic allele is held by the grammar and simply not comparable here,
+    a `*` is a fact about the sample's *coverage* and not about the variant at all, and a grammar gap is
+    what is left.
+
+    The fourth arm arrived with RM59 for the same reason the third did: `*` used to answer `"notation"`,
+    so a locus whose ALT list carries one — which is what a joint-called VCF writes, and `alts` has no
+    grammar to stop it — was told it had hit a gap a future release may widen. Nothing can widen to hold
+    `*`, because there is no sequence there to hold.
 
     The `"notation"` clause used to say a `<DEL>` is "a grammar gap (RM5) … a future release may widen
     to hold it". RM5 shipped in 0.6, so that reading became false for the five structural types, and
@@ -1798,6 +1816,7 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     """
     ambiguity = [a for a, reason in offenders.items() if reason == "ambiguity"]
     symbolic = [a for a, reason in offenders.items() if reason == "symbolic"]
+    unobservable = [a for a, reason in offenders.items() if reason == "unobservable"]
     notation = [a for a, reason in offenders.items() if reason == "notation"]
     missing = [a for a, reason in offenders.items() if reason == "missing"]
     parts: list[str] = []
@@ -1812,6 +1831,13 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
             f"{', '.join(repr(a) for a in symbolic)} is a symbolic/structural allele, which the grammar "
             f"holds (RM5) — it names a variant whose sequence is deliberately unspelled, so comparing it "
             f"against a spelled allele is undecided rather than a mismatch"
+        )
+    if unobservable:
+        parts.append(
+            f"{', '.join(repr(a) for a in unobservable)} is VCF's allele-missing-due-to-overlapping-"
+            f"deletion marker (RM59) — it records that a call could not observe this position, so it "
+            f"names no allele for anything to match, and it is a fact about a sample rather than a "
+            f"grammar gap a release could close"
         )
     if notation:
         parts.append(
@@ -1896,8 +1922,17 @@ def _check_allele_membership(
                 "alleles, while Ensembl carries every allele dbSNP knows) — check which before editing"
             )
         findings: list[str] = []
+        # The message must name exactly what `_allele_verdict` judged, and that predicate abstains on
+        # a `*` (RM59): it records what the call could not observe, so it is never one of the alleles
+        # "missing" from a locus. Listing it anyway pointed the author at a correct transcription — a
+        # false accusation in the one sentence that is supposed to say which cell is wrong.
         missing = sorted(
-            {a.upper() for a in _split_genotype(variant.genotype)} - allowed
+            {
+                a.upper()
+                for a in _split_genotype(variant.genotype)
+                if not is_unobservable_allele(a)
+            }
+            - allowed
         )
         if _allele_verdict(variant.genotype, variant, resolution_table) is False:
             findings.append(

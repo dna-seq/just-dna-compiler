@@ -1190,6 +1190,23 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   resolution fills. It made the non-diploid guardrail invisible to every rsID-authored row, i.e. to
   everything a drafting provider emits. `_check_contig_ploidy` now runs where `chrom` is final and
   keeps a pass inside `validate_spec` (which has no resolution step), de-duplicated on the message.
+- **The converse of that bullet, and the one it was read as denying: a check whose input resolution does
+  NOT fill must run on ONE side, and de-duplicating on the message cannot save it (0.6).** The rule that
+  covers both is **re-run a check after resolution exactly when resolution changes its input, and never
+  when the message embeds a count.** By the second pass `variants` is `outcome.variants` — the
+  post-expansion list, one row per resolved locus — so a one-to-many rsID becomes N rows carrying one
+  authored genotype, and the *same* finding is reported with a different count and different example
+  keys. Message-dedup keys on the sentence, so two sentences differing only in their number never
+  collapse and **both** reach `manifest.compilation.warnings`, which RM44 established is a surface
+  consumers parse. That is a published field contradicting itself. Three separate 0.6 lanes shipped it
+  independently and each was caught by its own code review, which is what makes it a pattern rather than
+  a slip: measured at *"1 row(s)"* beside *"2 row(s)"* on an expanded rsID, and at **328 beside 337** on
+  `pathogenic_clinvar`. Nothing is lost by staying in front of resolution when the check is warning-only
+  in both modes — there is no severity for a re-run to recover, which is the whole reason the *mode
+  ladder* checks re-run at all. The bullet above is not a counterexample: `_check_contig_ploidy` had to
+  **move** behind resolution because resolution fills `chrom`, which is the same rule reaching the
+  opposite answer from a different input. Ask what fills the input before choosing a side, and if the
+  message carries a count, that alone settles it.
 - **`chrom=Y` is NOT "never diploid" — PAR1 and PAR2 are diploid in every karyotype.**
   `vrs.in_pseudoautosomal_region` is three-valued and `vrs.PAR_GRCh38` holds the intervals; they are
   assembly constants of the same class as `REFGET_GRCh38`, not an un-injected reference.
