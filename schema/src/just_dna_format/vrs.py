@@ -96,6 +96,92 @@ REFGET_GRCh38_LENGTHS: dict[str, int] = {
 
 _BASES: frozenset[str] = frozenset("ACGT")
 
+# ── Contig geometry per build: what a coordinate could possibly mean (RM48) ────────────────────
+# Assembly constants of the same class as `REFGET_GRCh38` and `PAR_GRCh38` above — fixed properties
+# of a named build, not curated data that goes stale — and here for the same reason: the *compiler*
+# needs them offline, and a wrong-build coordinate is decidable with no sequence, no network and no
+# provisioned asset.
+#
+# **These mint nothing.** There is deliberately no `REFGET_GRCh37` beside them: an accession is what
+# a content-addressed identity is a function of, and a second build's identity is RM15's design
+# round, not this one's. A length and a name answer "could this coordinate exist?", which is a
+# question about a claim rather than a name for a variant, so `refget_accession` keeps raising for
+# GRCh37 exactly as before.
+#
+# Numbers and names taken from Ensembl's `/info/assembly/homo_sapiens` on both the current and the
+# permanent GRCh37 service (probed 2026-08-13, GRCh38.p14 / GRCh37.p13). A network-gated test
+# re-derives all four tables from those services, so a wrong number cannot silently ship.
+PRIMARY_CONTIG_LENGTHS: dict[str, dict[str, int]] = {
+    "GRCh38": REFGET_GRCh38_LENGTHS,
+    "GRCh37": {
+        "1": 249250621, "2": 243199373, "3": 198022430, "4": 191154276, "5": 180915260,
+        "6": 171115067, "7": 159138663, "8": 146364022, "9": 141213431, "10": 135534747,
+        "11": 135006516, "12": 133851895, "13": 115169878, "14": 107349540, "15": 102531392,
+        "16": 90354753, "17": 81195210, "18": 78077248, "19": 59128983, "20": 63025520,
+        "21": 48129895, "22": 51304566, "X": 155270560, "Y": 59373566, "MT": 16569,
+    },
+}
+
+# Top-level contigs a build has and no other build in this table does — the *difference*, which is
+# exactly the predicate "this name exists only in the other build" and nothing wider. The full
+# per-build name sets were the other candidate and are worse here: they would invite the claim "this
+# contig is not in the declared build", which is false for a patch scaffold or an alt locus (neither
+# appears in a top-level listing), and a guess of that kind becomes a false accusation about a row.
+#
+# The **primary 25 names are identical across both builds**, so the lengths above cannot decide a
+# name question and these scaffolds are the whole of it: without them the wrong-build-contig-name
+# hypothesis has no instantiation at all. Note that a version suffix is load-bearing —
+# `GL000205.1` is GRCh37's and `GL000205.2` is GRCh38's — so a bare `GL000205` is in neither set and
+# is deliberately left undecided.
+CONTIGS_ONLY_IN: dict[str, frozenset[str]] = {
+    "GRCh38": frozenset({
+        "GL000008.2", "GL000009.2", "GL000205.2", "GL000216.2", "KI270302.1", "KI270303.1",
+        "KI270304.1", "KI270305.1", "KI270310.1", "KI270311.1", "KI270312.1", "KI270315.1",
+        "KI270316.1", "KI270317.1", "KI270320.1", "KI270322.1", "KI270329.1", "KI270330.1",
+        "KI270333.1", "KI270334.1", "KI270335.1", "KI270336.1", "KI270337.1", "KI270338.1",
+        "KI270340.1", "KI270362.1", "KI270363.1", "KI270364.1", "KI270366.1", "KI270371.1",
+        "KI270372.1", "KI270373.1", "KI270374.1", "KI270375.1", "KI270376.1", "KI270378.1",
+        "KI270379.1", "KI270381.1", "KI270382.1", "KI270383.1", "KI270384.1", "KI270385.1",
+        "KI270386.1", "KI270387.1", "KI270388.1", "KI270389.1", "KI270390.1", "KI270391.1",
+        "KI270392.1", "KI270393.1", "KI270394.1", "KI270395.1", "KI270396.1", "KI270411.1",
+        "KI270412.1", "KI270414.1", "KI270417.1", "KI270418.1", "KI270419.1", "KI270420.1",
+        "KI270422.1", "KI270423.1", "KI270424.1", "KI270425.1", "KI270429.1", "KI270435.1",
+        "KI270438.1", "KI270442.1", "KI270448.1", "KI270465.1", "KI270466.1", "KI270467.1",
+        "KI270468.1", "KI270507.1", "KI270508.1", "KI270509.1", "KI270510.1", "KI270511.1",
+        "KI270512.1", "KI270515.1", "KI270516.1", "KI270517.1", "KI270518.1", "KI270519.1",
+        "KI270521.1", "KI270522.1", "KI270528.1", "KI270529.1", "KI270530.1", "KI270538.1",
+        "KI270539.1", "KI270544.1", "KI270548.1", "KI270579.1", "KI270580.1", "KI270581.1",
+        "KI270582.1", "KI270583.1", "KI270584.1", "KI270587.1", "KI270588.1", "KI270589.1",
+        "KI270590.1", "KI270591.1", "KI270593.1", "KI270706.1", "KI270707.1", "KI270708.1",
+        "KI270709.1", "KI270710.1", "KI270711.1", "KI270712.1", "KI270713.1", "KI270714.1",
+        "KI270715.1", "KI270716.1", "KI270717.1", "KI270718.1", "KI270719.1", "KI270720.1",
+        "KI270721.1", "KI270722.1", "KI270723.1", "KI270724.1", "KI270725.1", "KI270726.1",
+        "KI270727.1", "KI270728.1", "KI270729.1", "KI270730.1", "KI270731.1", "KI270732.1",
+        "KI270733.1", "KI270734.1", "KI270735.1", "KI270736.1", "KI270737.1", "KI270738.1",
+        "KI270739.1", "KI270740.1", "KI270741.1", "KI270742.1", "KI270743.1", "KI270744.1",
+        "KI270745.1", "KI270746.1", "KI270747.1", "KI270748.1", "KI270749.1", "KI270750.1",
+        "KI270751.1", "KI270752.1", "KI270753.1", "KI270754.1", "KI270755.1", "KI270756.1",
+        "KI270757.1",
+    }),
+    "GRCh37": frozenset({
+        "GL000191.1", "GL000192.1", "GL000193.1", "GL000196.1", "GL000197.1", "GL000198.1",
+        "GL000199.1", "GL000200.1", "GL000201.1", "GL000202.1", "GL000203.1", "GL000204.1",
+        "GL000205.1", "GL000206.1", "GL000207.1", "GL000209.1", "GL000210.1", "GL000211.1",
+        "GL000212.1", "GL000215.1", "GL000216.1", "GL000217.1", "GL000222.1", "GL000223.1",
+        "GL000227.1", "GL000228.1", "GL000229.1", "GL000230.1", "GL000231.1", "GL000232.1",
+        "GL000233.1", "GL000234.1", "GL000235.1", "GL000236.1", "GL000237.1", "GL000238.1",
+        "GL000239.1", "GL000240.1", "GL000241.1", "GL000242.1", "GL000243.1", "GL000244.1",
+        "GL000245.1", "GL000246.1", "GL000247.1", "GL000248.1", "GL000249.1",
+    }),
+}
+
+#: Case-folded name → the one build that names it. Built once, because an author who types
+#: `gl000209.1` has made a spelling slip and not a build mistake, and a case-sensitive miss here
+#: would silently withhold the diagnosis they need.
+_BUILD_BY_EXCLUSIVE_CONTIG: dict[str, str] = {
+    name.casefold(): build for build, names in CONTIGS_ONLY_IN.items() for name in names
+}
+
 
 class UnsupportedBuildError(ValueError):
     """Raised when a caller asks for a build this module has no refget table for (RM15)."""
@@ -206,6 +292,60 @@ def par_partner(
         if low <= start <= high:
             return other, start - low + other_low
     return None
+
+
+def contig_length(chrom: str | None, build: str = "GRCh38") -> int | None:
+    """How long this contig is on `build`, or `None` for a question this table cannot answer.
+
+    `None` covers three quite different unknowns and deliberately reads as one: no contig given, a
+    build with no table, and a name that is not a *primary* contig of that build (a scaffold, a patch,
+    an alt locus). All three mean the same thing to a caller — nothing may be concluded about a
+    position on it — and the three-valued rule says withhold rather than guess a bound.
+
+    Unlike `refget_accession` this does **not** raise for an untabled build, for the same reason
+    `in_pseudoautosomal_region` does not: that function answers a question whose wrong answer would
+    corrupt an identity, while this one feeds a *diagnosis*, where the honest degradation is silence.
+    """
+    lengths = PRIMARY_CONTIG_LENGTHS.get(build)
+    if lengths is None:
+        return None
+    return lengths.get(normalize_chrom(chrom) or "")
+
+
+def builds_containing_position(chrom: str | None, start: int | None) -> tuple[str, ...]:
+    """Every tabled build whose `chrom` reaches `start`, in sorted order.
+
+    The wrong-build half of the diagnosis: a position past the end of GRCh38's chromosome 1 that is
+    comfortably inside GRCh37's is not merely impossible, it is *impossible in a way that names its
+    cause*. Empty means no tabled build has a contig of that name long enough — which is a different
+    finding, and a caller must render the two separately.
+
+    Only the **upper** bound is consulted. VCF's telomere convention writes POS 0 for a variant before
+    the first base of a contig, so a low position is not evidence of anything and this function says
+    nothing about one.
+    """
+    if start is None:
+        return ()
+    return tuple(
+        build
+        for build in sorted(PRIMARY_CONTIG_LENGTHS)
+        if (length := contig_length(chrom, build)) is not None and start <= length
+    )
+
+
+def sole_build_naming_contig(chrom: str | None) -> str | None:
+    """The build that alone names this contig, or `None` when that cannot be established.
+
+    `None` is the answer for every name the tables do not settle: the 25 primary contigs (identical
+    across both builds), a scaffold both builds carry (`GL000194.1`), a patch or alt locus (in no
+    top-level listing at all), and an unversioned accession (`GL000205` — the suffix is what
+    separates GRCh37's `.1` from GRCh38's `.2`). Withholding on all of those is the point: a name this
+    table cannot place is not evidence of a wrong build, and treating it as such would put a false
+    accusation on a correct row.
+    """
+    if chrom is None:
+        return None
+    return _BUILD_BY_EXCLUSIVE_CONTIG.get((normalize_chrom(chrom) or "").casefold())
 
 
 def refget_accession(chrom: str | None, build: str = "GRCh38") -> str | None:

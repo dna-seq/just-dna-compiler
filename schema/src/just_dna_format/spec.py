@@ -47,7 +47,7 @@ from just_dna_format.vocab import (
     validate_finite,
 )
 from just_dna_format.vocab import MULTI_SEP as _MULTI_SEP
-from just_dna_format.vrs import normalize_chrom
+from just_dna_format.vrs import normalize_chrom, sole_build_naming_contig
 
 # The orthogonal-axis vocabularies and identifier grammars now live in `vocab` (shared across the
 # authored models). `VALID_DIRECTIONS`/`VALID_SIGNIFICANCE`/`VALID_CLIN_SIG` (and `ALLELE_PATTERN`)
@@ -592,7 +592,7 @@ class VariantRow(AuthoredModel):
     @field_validator("chrom")
     @classmethod
     def _validate_chrom(cls, v: str | None) -> str | None:
-        """Fold the author's spelling to this format's member, or refuse (RM60).
+        """Fold the author's spelling to this format's member, or refuse and say why (RM60 + RM48).
 
         **The gate and the normalizer disagreed, and the stricter one was the gate.** This did
         `removeprefix("chr")` and then required membership, while `vrs.normalize_chrom` — in the same
@@ -608,15 +608,38 @@ class VariantRow(AuthoredModel):
         charter — `REFGET_GRCh38` is primary assembly only. Same class as the 0.6 `-`-for-`_` vocabulary
         tolerance: what is stored is always the declared member, never the author's spelling, so nothing
         downstream ever sees two spellings of one contig.
+
+        **And when the rejected name is another build's, say which (RM48).** The verdict does not
+        change — an unplaced scaffold is out of this vocabulary either way — but whether the author
+        learns *why* does, because `GL000209.1` and `KI270728.1` do not arrive by typo. They arrive by
+        pasting rows out of a VCF built on the other assembly, which means the module's *other* rows
+        are probably on it too. Told only "chrom must be one of 1-22, X, Y, MT", an author deletes the
+        scaffold row and ships the rest; told which build names it, they check the build. Same
+        generic-rejection-is-a-dead-end rule as `reject_reserved` and `reject_misplaced`: diagnose,
+        decide nothing new. `sole_build_naming_contig` withholds on every name its tables cannot
+        settle, so a contig both builds carry adds no clause rather than a guess.
+
+        The two halves compose in one direction only, and it is worth saying which: the widening
+        decides what is *accepted*, the diagnosis only enriches what is *refused*. Neither can turn a
+        rejection into an acceptance or the reverse.
         """
         if v is None:
             return v
         normalized = normalize_chrom(v)
         if normalized is None or normalized not in VALID_CHROMOSOMES:
+            elsewhere = sole_build_naming_contig(v)
+            because = (
+                f" — that is a top-level sequence of {elsewhere} and of no other build this schema "
+                f"knows, so these rows are most likely on {elsewhere} rather than on the build the "
+                f"module declares"
+                if elsewhere
+                else ""
+            )
             raise ValueError(
                 f"chrom must be one of 1-22, X, Y, MT, got: {v!r}. A 'chr'/'CHR' prefix is accepted "
                 f"and stripped, and 'M'/'chrM' is accepted as a spelling of MT; an alt contig, "
-                f"scaffold, patch or decoy is not — this format keys on the primary assembly only"
+                f"scaffold, patch or decoy is not — this format keys on the primary assembly "
+                f"only{because}"
             )
         return normalized
 

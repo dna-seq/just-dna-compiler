@@ -175,6 +175,37 @@ so a frequency declaration in a module carrying no frequencies really is stale. 
 a source a fact table cites with no row — is unaffected and warns in every case, and neither half ever
 escalates: over-declaring terms is the cheap error, and an author talked out of recording theirs is not.
 
+**A coordinate that cannot exist is refused in both modes (RM48, 0.6).** `_check_build_coordinates`
+asks one arithmetic question of every row carrying a `chrom` and a `start` — could this position exist
+on this contig in the build it is recorded under? — and two shapes answer *no* provably, with no
+sequence, no network and no provisioned asset:
+
+- **a position past the end of its contig.** GRCh38's chromosome 1 ends at 248,956,422 and GRCh37's
+  runs 294 kb further, so an un-lifted hg19 coordinate in that tail names a base that does not exist.
+  When the position *is* inside another build's contig of the same name, the message says which, and
+  points at `just-dna-enricher hint recover` — that is the whole diagnosis, and it costs a dict lookup.
+- **a contig only one build names.** The 25 primary contigs are spelled identically in both builds, so
+  this is entirely about unplaced scaffolds: `GL000209.1` is GRCh37's and `KI270728.1` is GRCh38's.
+  `variants.csv` refuses either at the model (its `chrom` vocabulary is 1-22/X/Y/MT and always was —
+  what 0.6 added there is that the *rejection* names the build); this reaches `studies.csv`, the PGx
+  tables, `heteroplasmy.csv` and the injected `resolution.csv`, none of which validate the contig.
+
+It is an **error in both modes** — the inconsistent-reference-allele class, not a mode ladder. `strict`
+means *reproducible artifact*, and these rows are not unreproducible, they are false. Nothing
+downstream catches them either: a VRS id minted at an impossible position is a correct digest of the
+wrong input, which is how a 3,038-row off-by-one once passed every gate including `--strict`.
+
+Three things it deliberately does not do. It says nothing about a **low** position — VCF writes POS 0
+for a telomeric variant, so only the upper bound is consulted. It **withholds** on every contig the
+tables do not settle: a shared scaffold (`GL000194.1`), an unversioned accession (`GL000205`, where the
+suffix is what separates the builds), a patch or an alt locus. And it judges each `resolution.csv` row
+against that row's **own** `genome_build` column rather than the module's, because that column exists to
+say which frame the numbers are in. Findings are grouped by reason — a whole panel authored on hg19 is
+one line, not one line per variant. The tables live in `just_dna_format.vrs`
+(`PRIMARY_CONTIG_LENGTHS`, `CONTIGS_ONLY_IN`) beside `PAR_GRCh38`, for the same reason: assembly
+constants the compiler needs offline. They carry **no refget accessions** — a second build's *identity*
+is RM15, and `refget_accession` still raises for GRCh37.
+
 **3. Content-addressed self-verification** — the strongest class, because the stored value is a *pure
 function of other stored values*, so a disagreement is provable corruption rather than a difference of
 opinion. `artifact.digest`, `content_signature`, the three fact-signatures, the Ed25519 signature —
@@ -200,7 +231,7 @@ covers what.
 | **Is a single-sourced number right?** An AC/AN, a pLI, a `clin_sig` — one source, no redundancy to exploit. A transcription error is indistinguishable from a correct value. | Nothing to check it against without fetching (Principle 2). | Records `dataset` (which release) and `source` (which link) so the number is *attributable*, and fact-hashes it so it cannot change unnoticed. |
 | **Is the reference base right?** A wrong single-base `ref` mints the *correct* VA, so the artifact is self-consistent and wrong. | The compiler holds no sequence. | The **enricher** checks it (`sequences.verify_reference_alleles`); the compiler catches only two rows *contradicting each other*. |
 | **Is an indel's `vrs_id` right?** Cannot be recomputed without justification against the sequence. | Same. | Reported as *unverifiable* (never as verified), and carried with that said out loud — a warning in **both** modes, since no authored edit could clear it. |
-| **Is the coordinate the variant the author meant?** A perfectly valid VA for the wrong locus is indistinguishable from the right one. | Requires knowing intent. | `provenance.json`, `authorship`, and the studies table make the claim auditable by a human. |
+| **Is the coordinate the variant the author meant?** A perfectly valid VA for the wrong locus is indistinguishable from the right one. | Requires knowing intent. | `provenance.json`, `authorship`, and the studies table make the claim auditable by a human. **Narrowed in 0.6 (RM48):** a coordinate that could not exist in the declared build is now refused offline, and one that *reads* as the old assembly is diagnosed by the enricher against the live GRCh37 service. Neither reaches intent — a well-formed GRCh38 coordinate for the wrong GRCh38 locus is still invisible here. |
 | **Is the annotation medically correct?** Whether `A/T at HBB → sickle-cell carrier` is *true*. | Out of scope by charter — the format supplies annotation tables and never a gene–disease inference. | `authorship.kind` lets a consumer route scrutiny (AI vs human-certified); `curator`/`method` record who decided. |
 | **Does the cited study support the row?** `pmid` is grammar-checked; nobody reads the paper. | Requires the literature. | **Partly closed by the enricher (0.5).** Its literature pass confirms the PMID resolves, cross-fills the DOI/PMCID, and matches `provenance_quote`/`provenance_regex` against fulltext — for the **open-access subset only**, with coverage reported as a fraction so an unread paper is never mistaken for a failed quote. The compiler still reads nothing; it surfaces the recorded verdict from `literature.csv`. |
 | **Is the source stale?** A v2.1.1 constraint number is well-formed and current-looking. | The compiler cannot see the world move. | `dataset` names the release; the gene-metrics pass labels its two routes differently and warns on the older one. Generalized to **identifiers** in 0.5: the enricher checks rsIDs against dbSNP (live/merged/absent), trait CURIEs against OLS4 (obsolete + replacement) and gene symbols against HGNC (approved/retired). All report; none rewrite. Extended in 0.5.4 to the **relationship** between two identifiers (S24) — a row's `gene` against the chromosome its variant sits on — because both halves can be individually valid while the pairing is fabricated. |

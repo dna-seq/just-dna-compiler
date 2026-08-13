@@ -51,6 +51,7 @@ from just_dna_enricher.download import (
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
+from just_dna_enricher.grch37 import GRCH37_BUILD, summarize_build_diagnoses
 from just_dna_enricher.identifiers import check_identifiers
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
@@ -76,6 +77,7 @@ from just_dna_enricher.lookup import (
     as_report_rows,
     lookup_citation,
     lookup_gene,
+    lookup_old_assembly,
     lookup_trait,
     lookup_variant,
 )
@@ -178,6 +180,21 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # contradicting the genome, a different and worse thing than a variant the chain could not find.
     for line in summarize_ref_mismatches(result.ref_mismatches):
         typer.secho(f"  ref mismatch: {line}", fg=typer.colors.RED, err=True)
+    # Why the ref disagrees, when GRCh37 explains it (RM48). Printed right under the mismatch it
+    # diagnoses, because a wrong build is a different remedy from a wrong cell: one row is edited, a
+    # whole module is re-authored from rs-numbers.
+    for line in summarize_build_diagnoses(result.build_diagnoses):
+        typer.secho(f"  old-assembly coordinate: {line}", fg=typer.colors.RED, err=True)
+    # Unconditional on `ref_mismatches`, because gating it on them made it unreachable: offline
+    # skips the reference check too, so the list is always empty in exactly the runs this notice is
+    # about. Which is the point worth saying — an offline run checked neither, and silence here would
+    # read as "checked, all clear" (S4).
+    if result.build_not_diagnosed == "skipped_offline":
+        typer.secho(
+            "  reference-allele check and wrong-build diagnosis not run: --offline (both need a "
+            "live sequence service, and neither has a local equivalent)",
+            fg=typer.colors.CYAN,
+        )
     for stale in result.stale_rsids:
         typer.secho(f"  stale rsid: {stale}", fg=typer.colors.YELLOW, err=True)
     for conflict in result.clin_sig_conflicts:
@@ -1350,6 +1367,45 @@ def hint_variant_(
         typer.echo(
             f"population\t{population.get('population')}\tAC={population.get('allele_count')}"
             f"\tAN={population.get('allele_number')}\tAF={'' if af is None else f'{af:.6g}'}"
+        )
+    _echo_hint(hint)
+
+
+@hint_app.command("recover")
+def hint_recover_(
+    chrom: str = typer.Option(..., "--chrom", help="Chromosome of the old coordinate."),
+    start: int = typer.Option(..., "--start", help=f"1-based {GRCH37_BUILD} position."),
+    ref: str | None = typer.Option(None, "--ref", help="Reference allele, to narrow the answer."),
+    alts: str | None = typer.Option(None, "--alts", help="Alt allele(s), comma-separated."),
+    offline: bool = typer.Option(False, "--offline", help="Skip the lookup and say so."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
+) -> None:
+    """Which rs-number GRCh37 dbSNP records at an hg19/GRCh37 coordinate.
+
+    For a paper that predates GRCh38. Author the **rs-number**, not a converted position: an
+    rs-number resolves into a coordinate the compiler can cross-examine, where a lifted-over position
+    becomes the row's only witness to itself. Nothing is written — the rs-number is the row's
+    identity, and a machine filling one migrates `variant_key` with no authored edit anywhere.
+    """
+    hint = lookup_old_assembly(
+        chrom=chrom, start=start, ref=ref, alts=alts, offline=offline
+    )
+    if as_json:
+        typer.echo(json.dumps({
+            "chrom": hint.recovery.chrom,
+            "start": hint.recovery.start,
+            "genome_build": GRCH37_BUILD,
+            "outcome": hint.recovery.outcome,
+            "rsids": hint.recovery.rsids,
+            "candidates": hint.recovery.candidates,
+            "advisory": as_report_rows(hint),
+            "findings": [f"{f.level}: {f.message}" for f in hint.findings],
+        }, indent=2, default=str))
+        return
+    for candidate in hint.recovery.candidates:
+        typer.echo(
+            f"candidate\t{candidate['rsid']}\t{GRCH37_BUILD} {hint.recovery.chrom}:"
+            f"{candidate['start']}-{candidate['end']}\t{'/'.join(candidate['alleles'])}"
         )
     _echo_hint(hint)
 
