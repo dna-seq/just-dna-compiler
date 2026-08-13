@@ -651,6 +651,16 @@ call against `alts="AG,*"` came back a confident `False` — a correctly transcr
 a joint caller emits at an overlapped indel, so this is common data, and an allele the algebra must
 ignore cannot be one it ignores in only one direction.
 
+**What that costs, measured rather than asserted.** Swept over every pre-RM59-reachable
+`(genotype, ref, alts)` triple built from a spread of substitution, MNV, insertion and deletion
+alleles: for a locus spelled in nucleotides — every reference example, and every module in practice,
+since a `*` could not be written in a genotype before RM59 — **no verdict changes at all**. For a locus
+that does spell `*`, some do, and they are corrections in both directions: `*` was blocking
+`parsimony_reduce`'s flank strip *and* lending its own single character to `_indel_shaped`'s length
+set, so `AG>AT` (really `G>T`) read as indel-shaped and withheld on calls that were decidable all
+along. The verdicts that newly refuse are ones the tier should always have refused; a module relying on
+one had a genotype that did not fit its locus, and the `*` was suppressing the finding.
+
 Because `None` now has four causes rather than one, `resolution.undecided_reason` supplies the clause
 both reporting sites append (this tier's expansion warning and the enricher's twin). They used to
 assert step 9's cause — *"the same size but different content … needs the reference sequence"* — for

@@ -271,6 +271,35 @@ def test_a_star_in_the_alt_list_does_not_break_indel_reconciliation() -> None:
     assert hosting_verdict("A/T", UNOBSERVABLE_ALLELE, UNOBSERVABLE_ALLELE) is None
 
 
+def test_a_star_in_the_alt_list_is_inert_for_every_nucleotide_call() -> None:
+    """The invariant behind the both-sides rule: adding `*` to a locus changes **no** verdict.
+
+    Swept rather than sampled, because the failure it guards is arithmetic and shows up only for
+    particular length combinations. The alleles below reach every arm of the ladder — substitution,
+    MNV, insertion, deletion, and the two spellings of one indel that RM31 reconciles.
+
+    This is the property, not "the answer is still `True`": `*` names nothing, so a locus that spells
+    one must behave exactly like the same locus without it, whatever that behaviour is. It fails on the
+    pre-fix code, where a `*` blocked `parsimony_reduce`'s shared-flank strip and also lent its own
+    single character to `_indel_shaped`'s length set — which flipped RM31's reconciled `True` to
+    `False`, and separately withheld on substitution loci that were decidable all along.
+    """
+    alleles = ["A", "T", "C", "G", "AG", "AT", "AGAG", "CAG", "CCT"]
+    calls = [f"{a}/{b}" for a in alleles for b in alleles]
+
+    compared = 0
+    for ref in alleles:
+        for alt in alleles:
+            if alt == ref:
+                continue  # no real record lists its own REF among the ALTs
+            for call in calls:
+                plain = hosting_verdict(call, ref, alt)
+                starred = hosting_verdict(call, ref, f"{alt},{UNOBSERVABLE_ALLELE}")
+                assert plain is starred, (call, ref, alt, plain, starred)
+                compared += 1
+    assert compared > 5000, compared
+
+
 def test_every_undecided_cause_gets_its_own_reason() -> None:
     """`None` has four causes; the warning used to assert one of them for all four.
 
