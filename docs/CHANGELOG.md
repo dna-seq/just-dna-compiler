@@ -979,7 +979,8 @@ repaired to stop making, reintroduced inside the message that repair paid for. T
 
 **Why the grammar was not tightened instead**, since that is the obvious move and it is wrong three
 ways: **no** `ref`/`alt`/`alts` column in the schema has a nucleotide grammar (eleven columns across six
-models; `vocab.validate_allele` has exactly one user, `HaplotypeRow.allele`), so adding one rejects
+models; `vocab.validate_allele` has two users, `HaplotypeRow.allele` and `VariantRow.effect_allele` —
+this entry said "exactly one" when written, corrected in 0.6), so adding one rejects
 `<DEL>` and `N` alongside a typo — tightening the field **RM5** exists to widen; a module with
 `alts="Y"` *compiles today* under `best_effort`, so refusing it stops an existing module validating
 (**Principle 3**); and the only non-ACGT allele that occurs in real variant records is `N`, which

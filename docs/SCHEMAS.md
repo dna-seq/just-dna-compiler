@@ -766,12 +766,21 @@ the module carries and refuses if it carries both. Since 0.6 the file may also s
 subdirectory (RM49); see [COMPILER.md](COMPILER.md) for the layout rules. `reverse_module` resolves
 the name through `layout` rather than joining one on: it regenerates a spec, so it emits the
 *preferred* spelling on a fresh tree, migrating a module off the old name across one round trip while
-moving none of its four identities. **`draft.append_rows` / `append_partial_rows` still join the name
-onto the spec directory**, so drafting a licence row onto a module carrying `licensing.csv` writes a
-second file at the root and the next compile refuses naming both. The repair is not a one-line
-substitution — `layout`'s resolver is name-agnostic, so applying it there would hand `variants.csv` a
-second home too, which is the asymmetry RM49 exists to protect. What it needs is a sidecar-name set
-`layout` owns and all four parties read.
+moving none of its four identities. **`draft.append_rows` / `append_partial_rows` resolve it too, since
+0.6** — through `draft._draft_path`, which is deliberately *narrower* than `layout.sidecar_write_path`:
+it consults `SIDECAR_SPELLINGS` and every other table (`variants.csv`, `studies.csv`, each table kind)
+takes the fall-through unchanged. That is the point. `layout`'s general resolver is name-agnostic, so
+applying it wholesale there would hand `variants.csv` a second home and reintroduce the asymmetry RM49
+exists to protect; and where the caller *names* the file, an absent one is created under the name they
+asked for, because silently redirecting `draft sources.csv` elsewhere answers a different question than
+the one put. Only the collision is repaired.
+
+Two lanes reached this from opposite ends in the same release, which is worth recording because the
+disagreement was real and one side was wrong: one measured the collision (`append_rows(<module carrying
+sources.csv>, "licensing.csv", …)` writes a second file and the next compile refuses naming both) and
+declined to fix it, on the correct objection that the general resolver would over-reach; the other built
+exactly the narrow, spelling-set-gated form that objection implies. The gate on `SIDECAR_SPELLINGS`
+membership *is* the "sidecar-name set `layout` owns" the first lane asked for.
 
 **The output half waits for the major.** `sources.parquet` is inside `artifact.digest` and consumers
 read it by name, and `manifest.sources` is a published key, so renaming either is a *removal*

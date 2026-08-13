@@ -603,6 +603,28 @@ Version-axis note: `schema_version` is `"1.0"` while the packages are `0.x` (now
 either align them or document explicitly that they track different things (wire format vs. package
 release).
 
+### `VariantRow.variant_key` / `authored_ident` are inside `content_signature`; the 0.6 stamped fields are not
+
+**Severity** low · **Status** queued for 1.0 — align the two, one way or the other
+
+Surfaced by RM43 (0.6) rather than designed: the three positional models gained stamped, parquet-only
+`variant_key` and `authored_ident` columns, and they had to be declared `Field(exclude=True)`. Declaring
+them plainly **moves `content_signature` on all five positional-table modules**, because
+`integrity.content_signature` hashes `model_dump(exclude_none=True)` and a *stamped* field is never
+`None` — so it lands in the authored identity, which is exactly what the stamped-column mechanism exists
+to keep it out of. `_build_table` reads the values off the row instead, so the columns still reach
+parquet.
+
+`VariantRow`'s own two are **not** excluded and therefore *are* inside its `content_signature`,
+grandfathered: they predate the mechanism being generalized, and changing them now would move the
+authored identity of every SNP-core module ever published. So one model hashes its stamped fields and
+three do not, for no reason a reader could derive. **Disposition:** at 1.0, exclude `VariantRow`'s two as
+well (the honest shape — a compiler-stamped value is not authored content) and accept that every 0.x
+`content_signature` moves once, under the major's documented upgrade procedure. The alternative —
+un-excluding the three new ones — is strictly worse: it would put machine-filled coordinates into the
+authored identity and defeat RM43's whole reason for existing. Owes an RM52 upgrade line either way,
+since a moved `content_signature` breaks content-dedup across the boundary.
+
 ### `VariantRow.state`
 
 **Severity** medium · **Status** queued for 1.0 — deprecate; remove at 2.0
@@ -830,9 +852,16 @@ top**) live in full in [CONSUMER_ROUND2_AND_0_5.md](CONSUMER_ROUND2_AND_0_5.md) 
 the what-blocks lens in [USE_CASES.md](USE_CASES.md) §1. Standing dispositions:
 
 - **3a — module declares where its measurement lives in a VCF.** ✅ Taken early: `source_field` shipped
-  in 0.4 (an optional, `|`-alternatable **bare field-name token** on every binning table — a
-  *declarative pointer, not an expression*, inside Principle 1). An ExpansionHunter VCF (`INFO/RU` →
-  `repeat_unit`, `FORMAT/REPCN` → the measure) is consumable with zero glue.
+  in 0.4 (an optional, `|`-alternatable field-name token on every binning table — a *declarative
+  pointer, not an expression*, inside Principle 1), and **qualified with its namespace since 0.6**
+  (RM53). The "zero glue" claim as first written was **falsified by the schema it described, and the
+  prose knew something the data model did not**: it spells the pair `INFO/RU` and `FORMAT/REPCN` with
+  the namespaces attached, which is how a VCF user writes them and how the *reader* of this line
+  understood it — while the column accepted a bare token only, so `RU` and `REPCN` reached a consumer
+  with the half that disambiguates them stripped off. 0.6 accepts the qualified form, warns on a bare
+  key that INFO and FORMAT both define, and adds `source_element` for the second half the claim also
+  assumed away: `REPCN` carries **both** repeat alleles, and the clinical rule for a dominant expansion
+  is *the larger*, which no pointer could previously say.
 - **3b — modules as a deterministic verification harness** (run a panel against N VCFs, emit a
   byte-diffable report-card). **The strongest idea, and it needs *nothing* from the format:** a panel
   is already a module, `source_field` names the field to read, `artifact.digest` makes the before/after
@@ -1035,7 +1064,8 @@ coord-keyed rows as position-only). A strict failure is the nudge toward the dri
     correctly.
   * *"Have the compiler reject the code by name."* Far larger than it sounds, and pointed the wrong way.
     **No nucleotide grammar exists on any of the eleven `ref`/`alt`/`alts` columns across six models** —
-    `vocab.validate_allele` has exactly one user, `HaplotypeRow.allele`. Introducing one would reject
+    `vocab.validate_allele` has **two** users, `HaplotypeRow.allele` and `VariantRow.effect_allele`
+    (this said "exactly one" until 0.6; the count was wrong, the argument is not). Introducing one would reject
     `<DEL>` and `N` alongside `Y`, i.e. tighten the very field **RM5** exists to widen. It is also
     **Principle 3-illegal on the published line**: a module with `alts="Y"` *compiles today* under
     `best_effort` (the locus is dropped with a warning), so a grammar would stop an existing module
