@@ -920,7 +920,7 @@ def _check_build_coordinates(tables: Iterable[_CoordinateTable]) -> list[str]:
                 f"{elsewhere} coordinate under a {build} heading. Recover the rs-numbers with "
                 f"`just-dna-enricher hint recover --chrom {chrom} --start …` and author those "
                 f"instead — an rs-number resolves into a coordinate the compiler can cross-examine, "
-                f"where a converted position is its own only witness. "
+                f"where a converted position is its own only witness. Or "
                 + _build_remedy(authored, elsewhere)
             )
         else:
