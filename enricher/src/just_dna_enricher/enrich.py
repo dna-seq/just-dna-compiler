@@ -18,19 +18,28 @@ from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_
 from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
-from just_dna_format.manifest import GenePanelSpec
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
-from just_dna_enricher.clinical import ClinSigConflict, tautology_reason, verify_clin_sig
+from just_dna_enricher.clinical import (
+    ClinSigAudit,
+    ClinSigConflict,
+    audit_clin_sig,
+    tautology_reason,
+)
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.identifiers import RsidStatus, check_rsids
-from just_dna_enricher.licensing import record_source_terms, resolution_authority, sidecar_path
+from just_dna_enricher.licensing import (
+    read_sources_file,
+    record_source_terms,
+    resolution_authority,
+    sidecar_path,
+)
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 from just_dna_enricher.sequences import (
@@ -283,20 +292,6 @@ def spec_genome_build(spec_dir: Path) -> str:
     return config.genome_build
 
 
-def spec_panel(spec_dir: Path) -> GenePanelSpec | None:
-    """The module's `panel:` declaration, or `None` when it has none (or no readable yaml).
-
-    Deliberately gentler than `spec_genome_build`, which raises on an unreadable spec: a build is
-    something enrichment *must* know before it writes anything, while a panel declaration only ever
-    lets a check be skipped. An unreadable spec therefore means "no declaration", so the checks all
-    run — the conservative direction.
-    """
-    if not (spec_dir / "module_spec.yaml").exists():
-        return None
-    config, _errors, _ = _load_yaml(spec_dir / "module_spec.yaml")
-    return config.panel if config is not None else None
-
-
 @dataclass
 class EnrichmentResult:
     rows: list[ResolutionRow]
@@ -313,8 +308,16 @@ class EnrichmentResult:
     # two opposite things on its own — "compared everything, nothing disagreed" and "never compared" —
     # and a consumer reading the first when the second happened is being told a check passed that was
     # never put. So the skip carries its reason (S4): `not_requested`, `no_snapshot`, or the
-    # drafted-from-this-release tautology, which is the one that used to report a confident zero.
+    # drafted-from-this-release tautology, which is the one that used to report a confident zero, and
+    # `unusable_snapshot` for a reference that is present but not queryable.
     clin_sig_not_checked: str | None = None
+    # The per-row split behind that tautology, and **only** there: `strict` over a module whose licence
+    # row says it was drafted from this very snapshot looks every value up and reports how many are
+    # still copies, how many a human wrote, and how many conflict (RM4). `None` — never an audit of
+    # zeros — on every other run: `best_effort` deliberately does not pay for it (the reason is in
+    # `clin_sig_not_checked`), and for a module that never claimed a draft the copied/authored split
+    # would assert a provenance nobody established.
+    clin_sig_audit: ClinSigAudit | None = None
     # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
     # columns and reported; never substituted — see `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = field(default_factory=list)
@@ -745,18 +748,40 @@ def enrich(
     # snapshot would be compared against its own source, and reporting "0 conflicts" for a structurally
     # guaranteed result looks like evidence without being any (S4). The skip states its reason rather
     # than quietly returning the same empty list a real pass returns.
+    # The skip is a MODE LADDER since RM4, because the module-level skip has a hole in it: a cell
+    # edited by hand after the draft is no longer a copy of anything, and no module-level fact can see
+    # that. `best_effort` keeps the cheap skip and names the hole; `strict` pays the look-up and
+    # reports the split — copied / authored by hand / conflicting — which is what "never a meaningless
+    # zero" costs. Deciding per row in both modes was the obvious repair and it re-spends the whole
+    # 90% saving, since deciding whether a value is still a copy *is* the look-up.
     clin_sig_conflicts: list[ClinSigConflict] = []
     clin_sig_not_checked: str | None = None
+    clin_sig_audit: ClinSigAudit | None = None
     if not verify_clinsig:
         clin_sig_not_checked = "not_requested"
     elif clinvar_ref is None:
         clin_sig_not_checked = "no_snapshot"
     else:
-        clin_sig_not_checked = tautology_reason(spec_panel(spec_dir), clinvar_ref)
-        if clin_sig_not_checked is None:
-            clin_sig_conflicts = verify_clin_sig(variants, out, reference=clinvar_ref)
+        drafted_from_it = tautology_reason(read_sources_file(spec_dir), clinvar_ref)
+        if drafted_from_it is not None and mode != "strict":
+            clin_sig_not_checked = drafted_from_it
+            logger.info("ClinVar clin_sig cross-check not run: %s.", drafted_from_it)
         else:
-            logger.info("ClinVar clin_sig cross-check not run: %s.", clin_sig_not_checked)
+            audit = audit_clin_sig(variants, out, reference=clinvar_ref)
+            if audit is None:
+                clin_sig_not_checked = "unusable_snapshot"
+            else:
+                clin_sig_conflicts = audit.conflicts
+                if drafted_from_it is not None:
+                    # Kept only where drafting was *established*. The copied/authored split is a
+                    # provenance reading, and for a module that never claimed a draft a value equal to
+                    # ClinVar's is merely consistent with it — calling that "copied" would assert a
+                    # provenance nobody established.
+                    clin_sig_audit = audit
+                    logger.warning(
+                        "ClinVar clin_sig audit (strict, drafted module) — %s. %s", audit,
+                        "The copies could not have failed this check; the rest could.",
+                    )
     for conflict in clin_sig_conflicts:
         logger.warning("ClinVar clin_sig %s — %s",
                        "conflict" if conflict.opposed else "difference", conflict)
@@ -793,7 +818,7 @@ def enrich(
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
-        clin_sig_not_checked=clin_sig_not_checked,
+        clin_sig_not_checked=clin_sig_not_checked, clin_sig_audit=clin_sig_audit,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
     )

@@ -212,9 +212,12 @@ class ModuleSpecConfig(BaseModel):
     panel: GenePanelSpec | None = Field(
         default=None,
         description=(
-            "Optional gene-panel declaration (ROADMAP item 7). Descriptive provenance for modules "
-            "derived from a gene set + significance predicate; the compiler records it verbatim "
-            "but does not materialize variants from it in this version."
+            "DEPRECATED in 0.6, removed at 1.0 (RM4) — delete it. Descriptive provenance for modules "
+            "derived from a gene set + significance predicate; the compiler records it verbatim and "
+            "never materialized variants from it. Its one machine reader, the enricher's ClinVar "
+            "clin_sig cross-check, now reads the drafted-from release out of the licence row's "
+            "`dataset` column, which the drafting pass writes itself. A module carrying the block "
+            "still compiles, with a deprecation warning."
         ),
     )
     authorship: list[Contribution] = Field(

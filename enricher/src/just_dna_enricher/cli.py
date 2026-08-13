@@ -189,12 +189,16 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # thing it must never mean (S4). `not_requested` is the author's own `--no-verify-clinsig` and
     # needs no echo back.
     if result.clin_sig_not_checked and result.clin_sig_not_checked != "not_requested":
-        reason = (
-            "no ClinVar snapshot this run"
-            if result.clin_sig_not_checked == "no_snapshot"
-            else result.clin_sig_not_checked
-        )
+        reason = {
+            "no_snapshot": "no ClinVar snapshot this run",
+            "unusable_snapshot": "the ClinVar snapshot is present but not queryable",
+        }.get(result.clin_sig_not_checked, result.clin_sig_not_checked)
         typer.secho(f"  clin_sig cross-check not run: {reason}", fg=typer.colors.CYAN)
+    # One aggregated line, never one per row: on a drafted panel this is thousands of comparisons and
+    # what the author has to know is the split. The conflicts themselves printed above, individually,
+    # because those are the rows that need answering.
+    if result.clin_sig_audit is not None:
+        typer.secho(f"  clin_sig audit: {result.clin_sig_audit}", fg=typer.colors.CYAN)
 
 
 @app.command("frequencies")
@@ -1479,6 +1483,12 @@ def draft_panel_(
     offline: bool = typer.Option(
         False, "--offline", help="Use a local snapshot only: never download one.",
     ),
+    download: bool = typer.Option(
+        True, "--download/--no-download",
+        help="Provision the published snapshot when no local one is found. Fetching it is this "
+             "command's only network use, so --no-download coincides with --offline today; it is a "
+             "separate switch because it says 'do not go and get one', not 'make no request'.",
+    ),
     clin_sig: str | None = typer.Option(
         None, "--clin-sig",
         help="Comma-separated calls to include. Default: pathogenic,likely_pathogenic.",
@@ -1507,7 +1517,7 @@ def draft_panel_(
     )
     try:
         result = draft_gene_panel(
-            spec_dir, gene, snapshot=snapshot, offline=offline,
+            spec_dir, gene, snapshot=snapshot, offline=offline, download=download,
             **({"clin_sig": calls} if calls else {}),
             min_review_stars=min_review_stars, max_citations=max_citations,
             declared_use=_use(use), dry_run=dry_run,

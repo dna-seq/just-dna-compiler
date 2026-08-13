@@ -948,12 +948,51 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 - **A check that cannot fail must not report a zero — `clinical.tautology_reason` (0.5.2).** A panel
   drafted by `draft_gene_panel` copied its `clin_sig` out of the snapshot the cross-check reads, so the
   comparison is a value against itself: 0 conflicts, necessarily, at 90% of the resolve time. The zero
-  is the defect, not the cost — it looks like evidence. The skip keys on an **established** match
-  between the module's `panel:` pin and the snapshot's `release.json`, and every unknown (no `panel:`,
-  another source, an unstated pin, an unreadable release) leaves the check running. The reason lands on
-  `EnrichmentResult.clin_sig_not_checked` because an empty conflict list otherwise means both "compared
-  everything" and "never compared". Generalize it: **when a check's inputs can share a source, ask
-  whether a pass is structurally guaranteed before reporting one.**
+  is the defect, not the cost — it looks like evidence. The skip keys on an **established** match, and
+  every unknown (nothing recorded, another source, an unreadable release) leaves the check running. The
+  reason lands on `EnrichmentResult.clin_sig_not_checked` because an empty conflict list otherwise means
+  both "compared everything" and "never compared". Generalize it: **when a check's inputs can share a
+  source, ask whether a pass is structurally guaranteed before reporting one.**
+- **The marker for that skip is MACHINE-written, and `panel:` is deprecated with it (RM4, 0.6).** The
+  skip used to key on the author's `panel:` pin. The claim being established is *provenance* — these
+  rows came from this snapshot — and the tool that copied them is the authority on it, so
+  `clinvar_draft` stamps the release into the `dataset` column of the `clinvar`/**`annotation`** licence
+  row it already had to write, and `tautology_reason` recomputes the same label from the snapshot in
+  hand. **One function computes it for both sides** (`clinvar.clinvar_dataset_label`) because that drift
+  would be silent: a writer and a reader disagreeing about the label do not fail, they just never match.
+  Five things to keep straight:
+  - **Compile-time gene-panel materialization is dead, not deferred.** The compiler must not create rows
+    no curator wrote (the `direction`-from-`state` objection, independent of the digest), and expansion
+    at compile leaves `reverse` choosing between the declaration and the rows — neither a fixed point.
+    Drafting already serves the want, and **the author's no-op over the drafted subset is still an
+    authorial act**.
+  - **`panel:` stays until 1.0 with a compiler warning, and auto-removing it on reverse is refused** —
+    reverse writes `module_spec.yaml`, so dropping the block moves that file's bytes and breaks the
+    round-trip fixed point. Deleting it by hand moves nothing (measured on `apoe_epsilon`: same
+    `artifact.digest`, same `content_signature` with and without).
+  - **The `annotation` layer, not the source alone.** `enrich()` writes a second `clinvar` row at the
+    `resolution` layer for the coordinates it looked up; keying on the source would silence the check on
+    every ClinVar-resolved module.
+  - **The hole is a mode ladder, because closing it per row costs the whole 90% saving.** A cell edited
+    after the draft is no longer a copy and no module-level fact can see it. `best_effort` keeps the
+    cheap skip **and names the hole**; `strict` runs `audit_clin_sig` and reports copied / authored /
+    conflicting / no_record. Deciding per row in both modes *is* the look-up, which is what the skip
+    exists to avoid.
+  - **The audit is kept only where drafting was established, and "copied" is allele-exact.** For a
+    module that never claimed a draft, a value equal to ClinVar's is merely *consistent* with it;
+    calling it "copied" asserts a provenance nobody established (the false-accusation rule that keeps
+    the gene/locus check coarse). Same reason nothing is counted copied in the **locus-wide fallback**,
+    where the candidates span every ALT and a match may be a sibling allele's call — such a row lands in
+    `authored`, which understates rather than misattributing.
+  - **A never-clobber merge turns a machine-stamped provenance cell into a stale claim, so it is
+    WITHDRAWN.** `merge_sources_csv` keeps an existing row so a curator's hand-written *terms* survive a
+    re-run, and `dataset` inherited that the moment RM4 made it load-bearing: widening a panel from a
+    newer snapshot left the row naming the older release, in the column `manifest.sources` publishes.
+    `licensing.withdraw_stale_dataset` blanks it — **never re-labels**, because a module carrying two
+    releases has no single release to name, so the answer is unknown and unknown is withheld — and only
+    when rows were actually added, since a re-draft that added none changed no provenance. Generalize
+    it: when you make an existing column load-bearing, re-ask whether the rule that writes it was
+    designed for the new job.
 - **`_cache_dir` loads the `.env` itself, and that one ordering fixed three reports (0.5.2).**
   `_resolve_parquet_cache` calls `load_env()` inside itself, but each `resolve_*_reference` passed
   `default_*_cache_dir()` as an *argument* — evaluated first — so with the base set only in `.env` the

@@ -690,8 +690,8 @@ from a failure.
   one DuckDB relation and every query would die on `Referenced column "clin_sig" not found`. A foreign
   file *already* in a local cache is reported, never deleted, and the message names it and the fix.
   `release.json` comes down with the data, so a provisioned snapshot can state its own release — it is
-  what `GenePanelSpec.reference_sha256` pins against (RM4), and a cache that cannot state its
-  `source_sha256` is only a cache. A repo without one still provisions; absence is not an error.
+  what a drafted module's recorded `dataset` is derived from (RM4), and a cache that cannot state its
+  release is one a drafted module cannot name. A repo without one still provisions; absence is not an error.
   **`LICENSE.txt` rides along on the same rule, and it did not until 0.5.1.** `upload`'s allow-patterns
   were `data/*.parquet`, `citations/*.parquet` and `release.json`, so publishing a share-alike snapshot
   silently dropped the one file the pinned-licence design exists for — `clinpgx_build` extracts ClinPGx's
@@ -948,8 +948,9 @@ The resolver link reads only `chrom/start/ref/alt`; the rest is annotation the p
 by an explicit **severity order** (a multi-valued `CLNSIG` picks the most severe, splitting on `|`/`/`/`,`
 so `Pathogenic,_low_penetrance` is recognised) while `clin_sig_raw` keeps the verbatim `CLNSIG`
 (lossless, auditable). A `release.json` records provenance (`clinvar_file_date` from the VCF `##fileDate`,
-`source_url`, `source_sha256`, `record_count`, `built_at`, `builder_version`) — the values that feed
-`GenePanelSpec.reference`/`reference_sha256` when RM4 lands.
+`source_url`, `source_sha256`, `record_count`, `built_at`, `builder_version`) — the values
+`clinvar.clinvar_dataset_label` turns into the `dataset` a drafted module's licence row records (RM4),
+which is what the clinical cross-check reads back to know it would be comparing a value against itself.
 
 **Coordinate convention — no shift.** `start` is the **1-based VCF POS**, passed through unchanged; the
 Ensembl snapshot uses the same convention, so a variant resolved by either reference lands on the same
@@ -988,18 +989,67 @@ are flagged as such.
 `clin_sig` came out of `draft_gene_panel`, the comparison is a value against itself: a consumer
 measured 27.1 s with the check on and 2.6 s with it off on a 7,818-row panel, byte-identical output,
 and 0 conflicts either way — necessarily 0. That zero is the problem rather than the cost: it looks
-like evidence and is none. `clinical.tautology_reason` compares the module's `panel:` declaration
-(`GenePanelSpec.reference` / `reference_sha256`, RM4) against the snapshot's own `release.json`
-(`clinvar_file_date` / `source_sha256`), and only an **established match** skips the pass. No `panel:`
-block, a panel over another source, an unstated pin, a different release, or a `release.json` that
-cannot be read all leave the check running — an unknown is never a permission to skip.
+like evidence and is none.
+
+**The marker is machine-written, not authored (RM4, 0.6).** `clinvar_draft` stamps the release it
+copied the rows out of into the `dataset` column of the `clinvar`/`annotation` row it already had to
+write in the licence table — `clinvar_2026-06-27`, from `clinvar.clinvar_dataset_label`, which prefers
+`release.json`'s `clinvar_file_date` and falls back to its `source_sha256`. `clinical.tautology_reason`
+recomputes that same label from the snapshot in hand and compares. **Both sides call the one function**,
+so the writer and the reader cannot drift apart — and this drift would be silent, since a disagreement
+about the label does not fail, it just never matches.
+
+**Widening a panel from a newer snapshot withdraws the label rather than re-writing it.**
+`merge_sources_csv` is never-clobber so a curator's hand-written terms survive a re-run, and `dataset`
+inherited that protection the moment RM4 made it load-bearing — leaving the row naming the older
+release while half the rows came from a newer one, in the column `manifest.sources` publishes.
+`licensing.withdraw_stale_dataset` blanks it instead, and only when rows were actually added: a module
+carrying two releases has no single release to name, so the honest value is unknown, and an empty
+`dataset` skips nothing. The terms on the row are untouched. Re-labelling to the newer release was the
+other candidate and it is the same false claim pointing the other way.
+
+It keys on `dataset` rather than on the module's `panel:` block because the claim is *provenance* —
+these rows came from this snapshot — and the tool that copied them is the authority on it. Asking an
+author to maintain a declaration whose only reader is one skip is bureaucracy the enricher exists to
+remove. **`panel:` is deprecated in 0.6 and reads nothing here any more**; a 0.5 module whose pin
+matches gets the check *run*, which is the safe direction. Only an **established match** skips: no
+licence table, a ClinVar row with no `dataset`, a different release, or a `release.json` that cannot be
+read all leave the check running. The row must be at the **`annotation`** layer — `enrich()` writes a
+second `clinvar` row at the `resolution` layer for the coordinates it looked up, and a coordinate is
+not a copied clinical call.
+
+**The skip has a hole, and it closes on a mode ladder (RM4).** A cell edited by hand after the draft is
+no longer a copy of anything, and no module-level fact can see that.
+
+| mode | what happens |
+|---|---|
+| `best_effort` | the cheap module-level skip, **plus a notice naming the hole** — a hand-edited cell, and rows added from another release, are what it cannot see |
+| `strict` | no skip: every value is looked up and the split reported on `EnrichmentResult.clin_sig_audit` — **copied** (still ClinVar's own word), **authored** (a human wrote or edited it, and it does not oppose), **conflicts**, and **no_record** for a comparison the snapshot could not answer |
+
+Deciding *per row* in both modes was the obvious repair and it re-spends the whole 90% saving, because
+deciding whether a value is still a copy **is** the look-up. Hence the ladder. `strict` still does not
+escalate a conflict into a failure — that is this check's standing exception and it is unchanged.
+
+The audit is kept **only where drafting was established**: for a module that never claimed a draft, a
+value equal to ClinVar's is merely *consistent* with it, and calling that "copied" would assert a
+provenance nobody established. Counts are per comparison — one per resolved locus a variant has —
+and variants with no resolved locus are `EnrichmentResult.unresolved`, not recounted here.
+
+**"Copied" is allele-exact, and in the locus-wide fallback nothing is counted as copied at all.** Where
+the ALT the annotation is about could not be pinned down, the candidates span every ALT at the locus, so
+an exact string match may be a *sibling* allele's call — and `rs334`'s locus, with a pathogenic `T>A`
+beside a likely-benign `T>G`, is exactly where that happens. Such a row falls through to the camp logic
+and lands in **authored**, which understates rather than misattributing: saying "copied" would tell a
+reader no human wrote a cell a human may well have written, on the one question this audit exists to
+answer.
 
 The skip carries its reason on `EnrichmentResult.clin_sig_not_checked`, because an empty
 `clin_sig_conflicts` says two opposite things on its own ("compared everything, nothing disagreed" and
 "never compared"), and a consumer reading the first when the second happened has been told a check
 passed that was never put. Its values are `not_requested` (the author's own `--no-verify-clinsig`),
-`no_snapshot`, the tautology sentence, or `None` when the check really ran. Where a **human** typed the
-`clin_sig`, nothing changes — that is the case this check exists for.
+`no_snapshot`, `unusable_snapshot` (present but not queryable — `audit_clin_sig` returns `None` rather
+than an audit of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
+typed the `clin_sig`, nothing changes — that is the case this check exists for.
 
 ## The literature pack (`literature.py`, online only)
 
@@ -1711,6 +1761,7 @@ just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --population NVI
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
 just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1   # ClinVar gene panel (snapshot auto)
 just-dna-enricher draft-panel spec/ --gene MTHFR --snapshot cv/ --offline   # a snapshot you built
+just-dna-enricher draft-panel spec/ --gene MTHFR --no-download   # use a cached snapshot; fetch none
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
 

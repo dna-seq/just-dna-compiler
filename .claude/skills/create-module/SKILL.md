@@ -114,12 +114,8 @@ defaults:                     # optional; folded into every row before hashing
   curator: ai-module-creator
   method: literature-review
 genome_build: GRCh38
-# panel:                      # optional provenance for a module derived from a gene panel
-#   source: clinvar
-#   reference: '2026-06-27'
-#   reference_sha256: 'sha256:…'
-#   genes: [HFE]
-#   significance: [pathogenic, likely_pathogenic]
+# panel:                      # DEPRECATED in 0.6, removed at 1.0 — do not write one. Nothing reads
+#                             # it; drafting records the release it copied rows from by itself.
 # authorship: [...]           # optional per-version contributor entries (who/role)
 # license: CC-BY-SA-4.0       # advisory declaration for the module as a whole
 ```
@@ -183,12 +179,17 @@ different question and belongs in `heteroplasmy.csv`), and *"N ClinVar citation(
 ClinVar filed under PubMed is not a PMID"* is a defect in the source, not in your module — a few hundred
 of ClinVar's citation ids are nine digits where a PMID is eight. Both are counted rather than listed.
 
-**Pin the release you drafted from.** If you write a `panel:` block naming the source and the snapshot
-(`reference`, `reference_sha256` — the snapshot's `release.json` carries `clinvar_file_date` and
-`source_sha256`), `enrich` recognises that its ClinVar cross-check would be comparing your `clin_sig`
-against the file it came out of, skips it, and says so instead of reporting a zero it could not have
-avoided. Leave the block out and the check runs as usual, which is what you want the moment a human has
-touched those calls.
+**The release you drafted from is recorded for you.** `draft-panel` writes it into the `dataset` column
+of the ClinVar row in your licence table (`licensing.csv`), so `enrich` can tell that its ClinVar
+cross-check would be comparing your `clin_sig` values against the file they came out of. It skips the
+check and says so, instead of reporting a zero it could not have avoided. You write nothing for this,
+and you should not: it is a statement about where the bytes came from, and the tool that copied them is
+the one that knows.
+
+The skip is module-wide, so it cannot see a call **you** changed afterwards. That is why `enrich
+--strict` does not skip: it looks every value up and reports how many are still copies of ClinVar's,
+how many you wrote or edited, and how many conflict. Run it once you have curated, and the message on
+the plain run tells you the same thing.
 
 ## 3 — Curate what only a human can decide
 
@@ -555,7 +556,7 @@ workaround.
 | `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |
 | `literature <dir>` | → `literature.csv`. `--fulltext/--no-fulltext`, `--doi/--no-doi` |
 | `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--dry-run` |
-| `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--snapshot`, `--offline`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--use`, `--dry-run` |
+| `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--snapshot`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--use`, `--dry-run` |
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC). `--no-traits`, `--no-genes` |
 | `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |

@@ -73,7 +73,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 
 | File | Model (module) | Role |
 |---|---|---|
-| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` / `authorship` |
+| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` (deprecated, RM4) / `authorship` |
 | `variants.csv` | `spec.VariantRow` | SNP-core annotations (the weights table) |
 | `studies.csv` | `spec.StudyRow` | grounding evidence (PMID/DOI + provenance) |
 | `resolution.csv` | `resolution.ResolutionRow` | injected rsid↔coord facts (0.5; enricher-produced) |
@@ -909,6 +909,15 @@ the CLI surface.
 
 `Display` is the base of `spec.ModuleInfo`; `GenePanelSpec` and `Contribution` are authored via
 `ModuleSpecConfig`. Everything else in `manifest.py` is manifest-only, never authored into a CSV.
+
+**`GenePanelSpec` is deprecated in 0.6 and removed at 1.0 (RM4).** The compile-time materialization it
+was the interface for is dropped rather than deferred — the compiler must not create rows no curator
+wrote — and drafting (`just-dna-enricher draft-panel`) writes those rows as authored bytes instead. Its
+last machine reader was the enricher's ClinVar `clin_sig` cross-check, which now reads the drafted-from
+release out of the `dataset` column of the module's licence row, written by the drafting pass itself: a
+provenance claim belongs with the tool that copied the data, not in a block an author has to keep in
+step by hand. A module carrying `panel:` still validates and still compiles, with a deprecation warning,
+and deleting the block moves neither `artifact.digest` nor `content_signature`.
 
 ## Generated authoring reference & aggregation
 
