@@ -38,6 +38,47 @@ the same thing on every kind and the top bin stays closed.
 exactly under inclusive bounds — HTT `[6,35]`, `[36,39]`, `[40,∞)` is genuinely gapless because the
 domain is integral — so for them a shared endpoint remains a real **overlap** and stays an error.
 
+**…except that the domain is not integral, and the spec says so (RM55, 0.6 warns and does nothing
+else).** VCF 4.4 §7.2 *"Redefined INFO and FORMAT CN to support non-integer copy numbers"* and its worked
+examples are fractional throughout (`CN=3,0.9666`, `CN=1.25`); §5.6 leaves the granularity of a copy
+number deliberately undefined and allows a segment mean *"at a highly granular megabase level of
+resolution"*. §3 types `RUC`, the repeat count VCF 4.4 standardises, as a **Float**. So the premise the
+paragraph above rests on was withdrawn for **both** integer kinds, and the consequence is worse than the
+`allele_fraction` case RM35 fixed: an integer tiling `[0,0] [1,1] [2,2] [3,∞)` is accepted with no
+warning at all, a measured `2.4` matches no bin, and the module compiles green under `--strict`. A hole
+of exactly one is invisible to the gap check by construction.
+
+The honest description is that the implementation landed prematurely and is wrong, not that a feature is
+missing — but the correction is a **retype** (`CopyNumberRow.modifier_cn: int` → float) plus a change to
+what already-published bin tilings *mean*, and retyping is reserved for a major. So 0.6 makes the defect
+**loud** (`measurement_shape_warnings` below), 0.7 adds the usable, additive half — a parallel float
+column beside the integer one, integer deprecated — and 1.0 removes it. Two repairs were considered and
+refused here: moving the kinds into `_DENSE_KINDS` is one line and silently retypes every existing table
+(`[2,2]` beside `[3,3]` is a legal integer tiling today, and both the shared-endpoint rule and the gap
+warning change meaning under dense semantics), and it answers the wrong question anyway, since the two
+kind-sets separately decide *"can a hole be arbitrarily small?"* and *"can two bins touch?"*; and a
+per-table quantised declaration or a sixth measure kind both *add around* an implementation that is
+simply incorrect.
+
+**A measurement can also span several bins, and there is no state for that (RM56).** `RUC` travels with
+`CIRUC` and `CN` with `CICN`, and the spec is explicit that the upper bound may be missing and then means
+unbounded (§3: *"a reasonable limit of total length of the repeat could not be determined"*). §5.7's
+canonical CAG form is `RUS=CAG;RUC=65;CIRUC=-15,.`, and says why: *"Many of these techniques result in
+imprecise variant calls."* Imprecision is the normal case. The consumer contract below has exactly three
+states — a bin matched, no bin matched, or the measurement absent — and none of them is *the measurement
+spans bins*. `reference_examples/htt_repeat_expansion` has thresholds at 26/27, 35/36 and 39/40, so a
+real `RUC=38, CIRUC=-5,5` spans `[33,43]` and crosses all three: benign, uncertain **and** fully
+penetrant, with no honest answer among them.
+
+The policy vocabulary that settles it — withhold / take the worst bin / take the point estimate — lands
+with the rest of the repeat work, when a real caller VCF is in hand, and its grain (per table or per row)
+is deliberately undecided. Until then the stated placeholder behaviour is the house default: **a
+consumer that reads an interval spanning two or more bins withholds.** It does not pick among them, and
+it does not fall back to the `unresolved` sentinel either — that row means *no measurement was
+available*, and here one was. Note what is **not** on the table: widening the measurement itself into an
+interval puts a measurement in the module, which the data-agnostic north star forbids outright. What
+belongs here is the *rule* for an interval that spans bins, which is annotation.
+
 **`unresolved` (T1) is mandatory.** A table can state the outcome for *measurement absent / not
 callable*, and the consumer contract is that a missing measurement selects the `unresolved` row,
 **never the lowest/reference bin** (no activity score ⇒ not "Normal Metabolizer"; no CN ⇒ not "2
@@ -46,12 +87,41 @@ A measurement that is *present but matches no bin* is a distinct third state ("n
 `unresolved`); `validate_bins` below rejects overlaps and flags coverage gaps so a table stays
 coherent (consumer round-2 C1).
 
+**`pmid` grounds the BOUNDARY, and the line is: the bin row cites, the citation table describes**
+(RM47, 0.6). A threshold is the most interpretive claim this format carries — where 36 rather than 35
+CAG becomes "reduced penetrance" is a clinical judgement drawn from a specific paper — and until 0.6
+nothing could point at one: `studies.csv` identifies its subject by rsid or `chrom`, while a
+`repeat_alleles.csv` row is keyed `(gene, repeat_unit)`. One optional column on this base reaches all
+four kinds and answers the question actually asked, which is *why 36* rather than *why this table*.
+It carries a **pointer only**. Everything about the paper — population, `p_value_num`, `effect_size`,
+`provenance_quote` — stays in `studies.csv`, whose subject requirement was relaxed in the same release
+so a citation row may exist without naming a variant. Copying that column set here one column at a
+time would restate the bin inside its own evidence, which is exactly what killed the alternative
+designs (a `bin_evidence.csv` join table keys on the thresholds, and they are floats).
+
 **`source_field` (round-2 3a) is a declarative *pointer*, not code.** It optionally names the VCF
-`FORMAT`/`INFO` field the consumer extracts the measure from (`REPCN`, `AF`, `CN|DS`) — pure
-indirection/addressing, deliberately constrained to a bare field-name token (optionally `|`-alternated)
-so it can never become an expression. That keeps it inside Principle 1 (declarative, non-Turing): a
-name that says *where the measurement lives*, never a transform that computes one. The module still
-holds no measurement.
+field the consumer extracts the measure from (`FORMAT/REPCN`, `FORMAT/AF`, `INFO/CN|FORMAT/DS`) —
+pure indirection/addressing, deliberately constrained to a field-name key (optionally namespace-
+qualified, optionally `|`-alternated) so it can never become an expression. That keeps it inside
+Principle 1 (declarative, non-Turing): a name that says *where the measurement lives*, never a
+transform that computes one. The module still holds no measurement.
+
+**A VCF field is identified by namespace and described by cardinality, and `source_field` used to
+carry neither** (RM53/RM54, 0.6). INFO and FORMAT are two reserved-key tables that collide on `DP`,
+`AD`, `ADF`, `ADR`, `MQ`, `AF` and — since 4.4 — `CN`, so `AF` alone names the cohort frequency of an
+ALT *or* this sample's fraction of it, and both are floats in `[0, 1]` that bin without complaint.
+`Number` then decides how many values come back: a pointer at a `Number=R` field returns one value
+per allele, reference first, of which none is the answer. So the namespace goes in the pointer
+(`FORMAT/AF`, bare still legal and still meaning unqualified) and the element goes in `source_element`
+— a closed set of **named rules** rather than an index, because `AD[1]` is the first line of an
+expression grammar and Principle 1 refuses it.
+
+"Element" is one of the values the field carries for a record, which is wider than a `Number` slot on
+purpose: ExpansionHunter reports both repeat alleles in a single `REPCN` cell as `17/42`, and a rule
+that only spoke about `Number` would have nothing to say about the case it was built for
+(`reference_examples/htt_repeat_expansion`, where the clinical rule is *the larger of the two*). How a
+caller encodes multiplicity is the caller's business and this tier holds no opinion on it (Principle
+2); which value the annotation means is the module's, and that is all this column states.
 """
 
 import math
@@ -62,6 +132,7 @@ from typing import ClassVar
 from pydantic import Field, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
+from just_dna_format.spec import validate_pmid_cell
 from just_dna_format.vocab import check_vocab, validate_finite
 
 # Open, additive vocabulary of measured quantities (the `frozenset[str]` idiom, Principle 6). New
@@ -84,6 +155,35 @@ _CONTINUOUS_GAP_KINDS: frozenset[str] = frozenset({"allele_fraction", "prs_perce
 # differently (a quantized-but-fine measure). `activity_score` is in neither: it is consumer-summed onto
 # a coarse grid, so bins do not touch and interior holes are not meaningful.
 _DENSE_KINDS: frozenset[str] = _CONTINUOUS_GAP_KINDS
+
+#: For each kind this schema tiles as integral, the VCF 4.4 field a consumer reads the measurement from,
+#: the field carrying its confidence interval, and the clause of the spec that contradicts the integer
+#: treatment. Both entries are wrong in the same two ways (RM55 fractional, RM56 interval), which is why
+#: they are one table rather than two lists: they were put in `_INTEGER_KINDS` on one premise and the
+#: spec withdrew it for both, and fixing one while leaving the other would leave the next reader to
+#: rediscover why they differ. Spec-derived and fixed, so it is not the source convention P2 forbids.
+_VCF_MEASURE_FIELDS: dict[str, tuple[str, str, str]] = {
+    "copy_number": (
+        "CN",
+        "CICN",
+        "VCF 4.4 §7.2 redefined INFO/FORMAT CN to support non-integer copy numbers, and §5.6 leaves "
+        "the granularity of the interval a copy number is defined over deliberately undefined",
+    ),
+    "repeat_count": (
+        "RUC",
+        "CIRUC",
+        "VCF 4.4 §3 types RUC — the repeat unit count it standardises — as a Float",
+    ),
+}
+
+#: **The two fragments below are the only surviving record of these findings for a consumer reading a
+#: published `manifest.json`**, since `compile_module` copies its warnings there and a catalog
+#: reindexing from a manifest has no spec directory left. They are named rather than inlined so that
+#: rewording them is a deliberate act with an audience, the way `compiler.UNJOINABLE_PHRASE` is —
+#: with one honest difference: that phrase is pinned by a shipped consumer today, and these are not.
+#: The rest of each sentence is free to improve.
+FRACTIONAL_MEASURE_PHRASE = "is not a whole number in VCF 4.4"
+SPANNING_MEASUREMENT_PHRASE = "one measurement can span several bins"
 
 
 class MeasureBinRow(AuthoredModel):
@@ -136,14 +236,47 @@ class MeasureBinRow(AuthoredModel):
     source_field: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field the consumer extracts this measure from (e.g. REPCN, "
-            "AF, CN|DS). A declarative pointer (bare field-name token, optionally |-alternated), "
-            "never an expression — an extraction hint; the measurement still comes from the consumer."
+            "Optional VCF field the consumer extracts this measure from, best written with its "
+            "namespace (e.g. FORMAT/REPCN, FORMAT/AF, INFO/CN|FORMAT/DS). A declarative pointer "
+            "(field-name key, optionally qualified INFO/ or FORMAT/, optionally |-alternated), never "
+            "an expression — an extraction hint; the measurement still comes from the consumer. A "
+            "bare key means unqualified, and INFO and FORMAT define different fields under DP, AD, "
+            "ADF, ADR, MQ, AF and CN."
+        ),
+    )
+    source_element: str | None = Field(
+        default=None,
+        description=(
+            "Which of `source_field`'s values this bin is measured against, when the field carries "
+            "more than one for a record: largest|largest_alt|smallest|smallest_alt|sum|sum_alt|"
+            "annotated_alt|reference. A named rule, never an index. 'More than one' covers both the "
+            "spec's multi-valued cardinalities (VCF Number=A/R/G/P/.) and a caller that packs several "
+            "into one cell — ExpansionHunter's REPCN reports both repeat alleles as 17/42 — since "
+            "the encoding is the caller's business and which value the annotation means is the "
+            "module's. On a Number=R field the reference is element zero, which is why each ranging "
+            "rule comes in a pair: the bare name counts it, the _alt name does not. Leave empty when "
+            "the field carries a single value."
         ),
     )
 
-    # `source_field`'s pointer grammar is validated on `AuthoredModel` — it is shared with
-    # `VariantRow.callable_from`, and a validator used by two models lives on the base.
+    pmid: str | None = Field(
+        default=None,
+        description=(
+            "Optional PubMed id grounding THIS boundary — the literature the threshold is drawn "
+            "from. Free-form like `StudyRow.pmid` (`9545397`, `[PMID: 9545397]`, a `;`-joined list). "
+            "The bin row cites; studies.csv describes."
+        ),
+    )
+
+    # `source_field`'s pointer grammar and `source_element`'s vocabulary are both validated on
+    # `AuthoredModel` — they are shared with `VariantRow.callable_from`/`callable_element` and
+    # `quality_from`/`quality_element`, and a validator used by more than one model lives on the base.
+
+    @field_validator("pmid")
+    @classmethod
+    def _validate_pmid(cls, v: str | None) -> str | None:
+        # Shared with `StudyRow.pmid` (see `spec.validate_pmid_cell`); optional here, required there.
+        return validate_pmid_cell(v, "pmid", required=False)
 
     @field_validator("measure_min", "measure_max")
     @classmethod
@@ -383,6 +516,86 @@ class HeteroplasmyRow(MeasureBinRow):
         return self
 
 
+def _bin_groups(rows: Sequence[MeasureBinRow]) -> dict[tuple, list[MeasureBinRow]]:
+    """Resolved rows grouped the way a consumer's lookup groups them: explicit key columns + trait.
+
+    One definition, two callers (`validate_bins` and `measurement_shape_warnings`), for the reason a
+    second copy always earns: the second check is *about* how many bins a measurement could land in, and
+    it would be answering that question against a different partition than the one the overlap rule
+    enforces. `unresolved` sentinels carry no range and are not bins.
+    """
+    groups: dict[tuple, list[MeasureBinRow]] = defaultdict(list)
+    for r in rows:
+        if r.unresolved:
+            continue
+        group_key = tuple(getattr(r, f, None) for f in r._KEY_FIELDS) + (r.trait_efo_id,)
+        groups[group_key].append(r)
+    return groups
+
+
+def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
+    """What a table of integer-tiled bins cannot express about its own source measurement (RM55/RM56).
+
+    Both findings are stated against the *kind*, once per table, never per row or per group: the defect
+    is in the schema, so a per-row line would be the same sentence repeated as many times as the author
+    wrote bins. See the module docstring for the spec quotations and the three-release route.
+
+    * **RM55** — `copy_number` and `repeat_count` sit in `_INTEGER_KINDS`, and VCF 4.4 makes both `CN`
+      and `RUC` non-integral. A fractional measurement *between two adjacent bins* therefore matches
+      neither, and the coverage-gap check cannot see the hole because on an integer kind it only
+      reports one wider than a whole number. Note the exposure is at the boundaries and on a sharp
+      tiling, not everywhere: a fraction inside a wide range bin is answered fine, which is why this is
+      stated against the kind rather than derived per bound. Fires on any table of these kinds.
+    * **RM56** — the same two fields travel with a confidence interval whose upper bound may be
+      unbounded, so a measurement is an interval and can cross a threshold. Fires only where there is a
+      threshold to cross: two or more resolved bins in one group. With a single bin there is nothing to
+      span, and saying so anyway would be a finding about a table that does not have the problem. The
+      count is of **bins**, and the message says only that — an earlier draft called them *adjacent*,
+      which is a property this function never computes and which `[0,0]` beside `[50,60]` falsifies.
+      Adjacency is also not what matters here: an interval crosses two bins whether or not there is a
+      hole between them, and where there is one the hole is `validate_bins`' finding, not this one.
+
+    **Warnings in both modes, and deliberately never a `strict` error** — the `not_covered` /
+    VRS-coverage class. No authored edit clears either: RM55 needs a schema column that does not exist
+    yet and RM56 needs a policy vocabulary that has not been designed, so refusing would make a correct
+    module uncompilable for a reason its author cannot act on, and `strict` means *reproducible
+    artifact*, an unrelated axis (P5). Both reproduce exactly.
+    """
+    warnings: list[str] = []
+    groups = _bin_groups(rows)
+    kinds = {r.measure_kind for grp in groups.values() for r in grp} & set(_VCF_MEASURE_FIELDS)
+    for kind in sorted(kinds):
+        value_field, ci_field, spec_note = _VCF_MEASURE_FIELDS[kind]
+        of_kind = {
+            key: grp for key, grp in groups.items() if any(r.measure_kind == kind for r in grp)
+        }
+        warnings.append(
+            f"{kind} bins are tiled as whole numbers, but the field a consumer reads the measurement "
+            f"from ({value_field}) {FRACTIONAL_MEASURE_PHRASE}: {spec_note}. A fractional measurement "
+            f"falling between two adjacent bins matches neither — `[0,0] [1,1] [2,2] [3,∞)` is a legal "
+            f"tiling here and answers nothing at all for a 2.4 — and the coverage-gap check cannot "
+            f"report the hole, because on an integer kind it only flags one wider than a whole number. "
+            f"So the table is green and silently unanswerable at every one of its own boundaries. No "
+            f"authored edit fixes it: the schema is wrong here, a parallel float column is queued for "
+            f"0.7 and the integer column goes at 1.0 (RM55). Until then, expect an answer only from a "
+            f"caller that rounds, and none from a segment mean."
+        )
+        widest = max(len(grp) for grp in of_kind.values())
+        if widest >= 2:
+            warnings.append(
+                f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what to "
+                f"do with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
+                f"bound means *unbounded*, so the measurement is an interval — and the widest group "
+                f"here states {widest} bins for it to cross. The consumer contract has three "
+                f"states (a bin matched, no bin matched, the measurement absent) and none of them is "
+                f"this one. Not implemented, and stated rather than left silent: until the policy "
+                f"vocabulary lands, a conforming consumer **withholds** — it does not pick among the "
+                f"bins the interval touches, and it does not fall back to the `unresolved` row, which "
+                f"means no measurement was available and is a different claim."
+            )
+    return warnings
+
+
 def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
     """Table-level coherence check for a set of binning rows of one kind (consumer round-2 C1).
 
@@ -408,12 +621,7 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
     without a known domain floor. Callers decide what to do with the warnings (log, fail, ignore).
     """
     warnings: list[str] = []
-    groups: dict[tuple, list[MeasureBinRow]] = defaultdict(list)
-    for r in rows:
-        if r.unresolved:
-            continue
-        group_key = tuple(getattr(r, f, None) for f in r._KEY_FIELDS) + (r.trait_efo_id,)
-        groups[group_key].append(r)
+    groups = _bin_groups(rows)
 
     for group_key, grp in groups.items():
         spans = sorted(

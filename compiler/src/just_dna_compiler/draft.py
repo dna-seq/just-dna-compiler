@@ -46,7 +46,13 @@ from typing import Any
 from just_dna_format.base import authored_field_names
 from just_dna_format.base import field_category as base_field_category
 from just_dna_format.binning import MeasureBinRow
-from just_dna_format.layout import SOURCES_CSV, sidecar_spellings
+from just_dna_format.layout import (
+    SIDECAR_SPELLINGS,
+    SOURCES_CSV,
+    SidecarCollision,
+    resolve_sidecar,
+    sidecar_spellings,
+)
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -158,6 +164,41 @@ def model_for(csv_name: str) -> type[BaseModel]:
             f"{csv_name!r} is not an authored table of this format. Known: {sorted(DRAFTABLE)}"
         )
     return model
+
+
+def _draft_path(spec_dir: Path, csv_name: str) -> Path:
+    """Where a draft should be written: the copy the module already carries, else the name asked for.
+
+    **Write to the file you read.** Drafting needed this rule the moment a table gained a second
+    accepted spelling (RM51): `DRAFTABLE` takes both names as keys, so a caller may legitimately ask
+    for `licensing.csv` on a module carrying `sources.csv`, and the literal `spec_dir / csv_name` join
+    then left **two** copies behind — the collision `compile_module` refuses, arrived at by following
+    the documented surface rather than by misusing it. A `derived/` copy is found for the same reason
+    (RM49), so a split module gets its draft appended where the compiler will read it.
+
+    **Deliberately narrower than `layout.sidecar_write_path`.** That one creates the *preferred*
+    spelling when a module carries nothing, which is right for an enricher pass writing a machine
+    table under a fixed name. Here the name is the caller's own argument, so an absent file is created
+    under the name they asked for: silently redirecting `draft sources.csv` to another filename would
+    answer a different question than the one put. Only the collision is repaired.
+
+    Tables with one spelling — every table kind, `variants.csv`, `studies.csv` — take the fall-through
+    and behave exactly as before.
+    """
+    spec_dir = Path(spec_dir)
+    for canonical, spellings in SIDECAR_SPELLINGS.items():
+        if csv_name not in spellings:
+            continue
+        try:
+            existing = resolve_sidecar(spec_dir, canonical)
+        except SidecarCollision as exc:
+            # Appending to a module that already carries two copies would make a third claim about
+            # the same table. Refuse as this surface's own error, the way every reader refuses.
+            raise DraftError(str(exc)) from exc
+        if existing is not None:
+            return existing
+        break
+    return spec_dir / csv_name
 
 
 def natural_key(row: BaseModel) -> tuple | None:
@@ -337,7 +378,7 @@ def append_rows(
     rewritten — only their line number can move, and `DraftReport.shifted` names every row it did.
     """
     spec_dir = Path(spec_dir)
-    path = spec_dir / csv_name
+    path = _draft_path(spec_dir, csv_name)
     model = model_for(csv_name)
 
     existing_rows: list[BaseModel] = []
@@ -511,7 +552,7 @@ def append_partial_rows(
     `PartialRow.match_on` — because a row whose key column is a placeholder has no usable key yet.
     """
     spec_dir = Path(spec_dir)
-    path = spec_dir / csv_name
+    path = _draft_path(spec_dir, csv_name)
     model = model_for(csv_name)
     fieldnames = authored_field_names(model)
     list_fields = _list_fields(model)

@@ -24,9 +24,12 @@ All three are pinned below, and all three are **reported, never repaired**.
 
 from pathlib import Path
 
+import httpx
 import polars as pl
 import pytest
 from just_dna_enricher.enrich import EnrichmentError, enrich
+from just_dna_enricher.grch37 import Grch37Client
+from just_dna_enricher.net import PacingGate
 from just_dna_enricher.sequences import (
     RefMismatch,
     SequenceProxy,
@@ -254,6 +257,30 @@ def cache(tmp_path: Path) -> Path:
     return tmp_path / "cache"
 
 
+def _grch37_with_nothing_to_say(calls: list[str] | None = None) -> Grch37Client:
+    """A GRCh37 client on a recorded transport: reachable, and with no record at this locus.
+
+    `enrich()` asks the live GRCh37 service why a ref mismatched (RM48), and these tests *produce* a
+    mismatch on purpose — so without an injected client they would egress from the unit suite, which
+    is opt-in-only here (`JUST_DNA_NETWORK_TESTS=1`). That is what `enrich(grch37_client=…)` is for,
+    in the same shape as `resolver=`/`gnomad_client=`.
+
+    It answers rather than refusing, because "GRCh37 does not explain this row either" is the real
+    answer for chr11:5227002 — the sickle locus is at the same coordinate on both builds, so these
+    fixtures are a wrong `ref`, not a wrong build, and the diagnosis must stay silent about them.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        if calls is not None:
+            calls.append(str(request.url))
+        if "/sequence/region/" in request.url.path:
+            return httpx.Response(200, text=_TRUE_REF)
+        return httpx.Response(200, json=[])
+
+    client = Grch37Client(gate=PacingGate(interval=0.0, sleeper=lambda _s: None))
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return client
+
+
 def _patched(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route the enrichment's sequence reads at the fake proxy (no network in the unit suite)."""
     monkeypatch.setattr(
@@ -267,7 +294,8 @@ def test_best_effort_reports_the_mismatch_and_still_writes(
     _patched(monkeypatch)
     spec = _spec(tmp_path)
     result = enrich(spec, offline=False, download=False, use_gnomad=False,
-                    ensembl_cache=cache, clinvar_cache=tmp_path / "none")
+                    ensembl_cache=cache, clinvar_cache=tmp_path / "none",
+                    grch37_client=_grch37_with_nothing_to_say())
     assert len(result.ref_mismatches) == 1
     assert isinstance(result.ref_mismatches[0], RefMismatch)
     assert (spec / "resolution.csv").exists()   # best_effort still produces a table
@@ -280,7 +308,44 @@ def test_strict_refuses_a_module_that_contradicts_the_genome(
     spec = _spec(tmp_path)
     with pytest.raises(EnrichmentError, match="disagree with the GRCh38 reference"):
         enrich(spec, mode="strict", download=False, use_gnomad=False,
-               ensembl_cache=cache, clinvar_cache=tmp_path / "none")
+               ensembl_cache=cache, clinvar_cache=tmp_path / "none",
+               grch37_client=_grch37_with_nothing_to_say())
+
+
+def test_the_wrong_build_diagnosis_uses_the_injected_client_and_clears_this_module(
+    tmp_path: Path, cache: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The RM48 pass runs over the mismatch, asks GRCh37, and reports nothing — correctly.
+
+    chr11:5227002 is the sickle locus at the same coordinate on both builds, so these fixtures are a
+    wrong `ref` and not a wrong build. Two things are pinned: the injected client really is the one
+    consulted (so a unit run cannot egress), and a GRCh37 answer that does not match the authored ref
+    yields **no** hypothesis rather than a weak one.
+    """
+    _patched(monkeypatch)
+    calls: list[str] = []
+    spec = _spec(tmp_path)
+    result = enrich(spec, download=False, use_gnomad=False, ensembl_cache=cache,
+                    clinvar_cache=tmp_path / "none",
+                    grch37_client=_grch37_with_nothing_to_say(calls))
+    assert len(result.ref_mismatches) == 1
+    assert [c for c in calls if "/sequence/region/" in c], "the injected client must be consulted"
+    assert result.build_diagnoses == []
+    assert result.build_not_diagnosed is None, "the pass ran; its answer was simply negative"
+
+
+def test_an_offline_run_diagnoses_nothing_and_says_why(
+    tmp_path: Path, cache: Path
+) -> None:
+    """Offline skips the reference check, so there is nothing to diagnose — and it says so.
+
+    An empty diagnosis list otherwise means both "asked, nothing points elsewhere" and "never asked".
+    """
+    spec = _spec(tmp_path)
+    result = enrich(spec, offline=True, download=False, use_gnomad=False,
+                    ensembl_cache=cache, clinvar_cache=tmp_path / "none")
+    assert result.ref_mismatches == []
+    assert result.build_not_diagnosed == "skipped_offline"
 
 
 def test_verify_ref_can_be_turned_off(

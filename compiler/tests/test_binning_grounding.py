@@ -19,7 +19,7 @@ from just_dna_compiler.compiler import (
     compile_module,
     validate_spec,
 )
-from just_dna_format.binning import HeteroplasmyRow, MeasureBinRow
+from just_dna_format.binning import HeteroplasmyRow, MeasureBinRow, RepeatAlleleRow
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _HTT = _EXAMPLES / "htt_repeat_expansion"
@@ -62,10 +62,11 @@ def test_the_reported_case_the_htt_thresholds_are_ungrounded_and_nothing_said_so
     finding = _finding(validate_spec(_HTT, strict=True).warnings, "repeat_alleles.csv")
     assert finding is not None
     assert f"{len(resolved)} of {len(resolved)} bin(s)" in finding
-    # The honest half: for a `(gene, repeat_unit)` row there is nothing to point at it with, so the
-    # message must not tell the author to write a link the format cannot express.
-    assert "(gene, repeat_unit)" in finding
-    assert "no study row can name one of these bins" in finding
+    # The remedy became sayable in 0.6 (RM47): a `(gene, repeat_unit)` row can now cite the boundary
+    # itself through `MeasureBinRow.pmid`, so the message names one route for every kind. What it must
+    # NOT do any more is repeat the old claim that nothing can point at these bins.
+    assert "put the PubMed id on the bin row (`pmid`)" in finding
+    assert "no study row can name one of these bins" not in finding
 
 
 def test_the_unresolved_sentinel_is_not_a_threshold() -> None:
@@ -121,9 +122,12 @@ def test_a_heteroplasmy_row_naming_its_variant_is_grounded_and_stays_silent() ->
     assert _finding(validate_spec(_MT, strict=True).warnings, "heteroplasmy.csv") is None
 
 
-def test_the_same_heteroplasmy_rows_stripped_of_their_identity_get_the_actionable_message() -> None:
+def test_the_same_heteroplasmy_rows_stripped_of_their_identity_get_the_extra_route() -> None:
     """The distinction is derived from the *row*, never from the table name: a heteroplasmy row that
-    names no variant cannot be pointed at either — but unlike a repeat bin, it could be."""
+    names no variant carries a second remedy a repeat bin does not, because it *could* name one.
+
+    Since RM47 that is an **additional** route rather than the only actionable one — both kinds are
+    first told to cite the boundary itself."""
     authored = [
         HeteroplasmyRow(
             gene=r["gene"], reference_sequence=r["reference_sequence"], tissue=r["tissue"],
@@ -137,8 +141,57 @@ def test_the_same_heteroplasmy_rows_stripped_of_their_identity_get_the_actionabl
 
     finding = _finding(_check_binning_grounding({"heteroplasmy.csv": authored}, []), "heteroplasmy.csv")
     assert finding is not None
-    assert "fill those columns" in finding, "this shape has a remedy the repeat table does not"
-    assert "no study row can name" not in finding
+    assert "put the PubMed id on the bin row (`pmid`)" in finding
+    assert "alternatively fill this kind's rsid/chrom+start" in finding
+    # The repeat table, whose rows could never name a variant, gets the first half and not the second.
+    repeat_finding = _finding(
+        _check_binning_grounding(
+            {"repeat_alleles.csv": _repeat_rows(pmid=None)}, []
+        ),
+        "repeat_alleles.csv",
+    )
+    assert repeat_finding is not None
+    assert "alternatively fill this kind's rsid/chrom+start" not in repeat_finding
+
+
+def _repeat_rows(*, pmid: str | None) -> list[RepeatAlleleRow]:
+    """The HTT bins as model rows, optionally carrying the RM47 boundary citation."""
+    return [
+        RepeatAlleleRow(
+            gene=r["gene"], repeat_unit=r["repeat_unit"], measure_kind=r["measure_kind"],
+            measure_min=float(r["measure_min"]) if r["measure_min"] else None,
+            measure_max=float(r["measure_max"]) if r["measure_max"] else None,
+            conclusion=r["conclusion"], pmid=pmid,
+        )
+        for r in _rows(_HTT / "repeat_alleles.csv")
+        if r["unresolved"] != "true"
+    ]
+
+
+def test_a_bin_that_cites_its_boundary_is_grounded_and_stays_silent() -> None:
+    """RM47's whole point: the pointer sits on the row that states the threshold.
+
+    Demonstrated on the *old* behaviour too — the identical rows without the column still warn — so
+    this proves the column clears it rather than merely asserting that it does."""
+    assert _finding(
+        _check_binning_grounding({"repeat_alleles.csv": _repeat_rows(pmid=None)}, []),
+        "repeat_alleles.csv",
+    ) is not None
+    assert _finding(
+        _check_binning_grounding({"repeat_alleles.csv": _repeat_rows(pmid="8458085")}, []),
+        "repeat_alleles.csv",
+    ) is None
+
+
+def test_grounding_is_counted_per_row_not_per_table() -> None:
+    """One cited bin among uncited ones narrows the numerator; it does not silence the table."""
+    rows = _repeat_rows(pmid=None)
+    rows[0].pmid = "8458085"
+    finding = _finding(
+        _check_binning_grounding({"repeat_alleles.csv": rows}, []), "repeat_alleles.csv"
+    )
+    assert finding is not None
+    assert f"{len(rows) - 1} of {len(rows)} bin(s)" in finding
 
 
 def test_a_module_that_carries_variants_is_not_told_twice(tmp_path: Path) -> None:

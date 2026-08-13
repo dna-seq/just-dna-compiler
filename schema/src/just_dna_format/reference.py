@@ -16,6 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import authored_field_names, field_category, field_vocabularies
 from just_dna_format.binning import (
     ActivityPhenotypeRow,
@@ -24,6 +25,7 @@ from just_dna_format.binning import (
     MeasureBinRow,
     RepeatAlleleRow,
 )
+from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.manifest import (
     RECOMMENDED_COLORS,
     RECOMMENDED_ICONS,
@@ -51,7 +53,9 @@ from just_dna_format.spec import (
     VariantRow,
 )
 from just_dna_format.vocab import (
+    ELEMENT_RULE_MEANINGS,
     RESERVED_NAMES_0_4,
+    VCF_POINTER_COMPANIONS,
 )
 
 # The authored surface, grouped by role. Order is the reading order for an author/agent.
@@ -90,7 +94,21 @@ _PGS_MODELS: dict[str, type[BaseModel]] = {"PgsRow": PgsRow}
 # are three orthogonal axes where `None` means unknown rather than false, which is not a guessable
 # shape. The consumer who reported it got there by reading `SourceRow.model_fields` — reading our
 # source to learn our schema, which is the thing this module exists to make unnecessary.
-_FACT_MODELS: dict[str, type[BaseModel]] = {"SourceRow": SourceRow}
+#
+# `GeneValidityRow`/`ClinicalAssertionRow` join it in 0.6 for a **different** reason, and the two
+# reasons should not be conflated. Nobody hand-writes either — they stay out of `draft.DRAFTABLE`
+# with the other machine-written sidecars — but each introduces a *new closed vocabulary*
+# (`gene_validity`, `inheritance_mode`), and the only guard that discovers an undeclared one does so
+# by behaviour while iterating this registry. A vocabulary the guard cannot see is precisely the S21
+# hole, so a model carrying a new one belongs here whoever writes its rows. `FrequencyRow`,
+# `GeneMetricsRow` and `LiteratureRow` are still outside and still carry enforced vocabularies of
+# their own — a real gap, and a wider change than this one, since adding them alters what every
+# existing consumer of `authoring_reference()` renders.
+_FACT_MODELS: dict[str, type[BaseModel]] = {
+    "SourceRow": SourceRow,
+    "GeneValidityRow": GeneValidityRow,
+    "ClinicalAssertionRow": ClinicalAssertionRow,
+}
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,
@@ -189,6 +207,15 @@ def authoring_reference() -> dict[str, Any]:
         # which is why the marker carries that flag and why `actionability` now appears below.
         "vocabularies": _collect_vocabularies(closed=True),
         "open_recommended": _collect_vocabularies(closed=False),
+        # Per-member prose, for the vocabularies where the member *name* cannot carry the whole rule.
+        # The element rules (RM54) are the case that forced it: on a `Number=R` VCF field the
+        # reference is element zero, so "the larger of the two" has two answers, and a vocabulary that
+        # is silent about which one it means repeats the defect it was added to fix one level down.
+        # Keyed by the same names as `vocabularies` above, so a consumer that found a member there
+        # can look up what it means without a second lookup table of its own.
+        "vocabulary_notes": {
+            name: dict(ELEMENT_RULE_MEANINGS) for name in sorted(VCF_POINTER_COMPANIONS)
+        },
         # Alternative identity-column sets, any ONE of which satisfies a row's requirement. Field-level
         # `required` cannot express "rsid OR chrom+start" — that rule is a model validator — so a tool
         # listing required columns told an author a `variants.csv` row needed no identifier at all.

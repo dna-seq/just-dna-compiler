@@ -19,6 +19,7 @@ from just_dna_compiler.cli import app
 from just_dna_format.base import field_category
 from just_dna_format.manifest import read_manifest
 from just_dna_format.reference import _ALL_MODELS, authoring_reference
+from just_dna_format.vocab import RESERVED_NAMES_0_4
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -133,7 +134,10 @@ def test_the_summary_names_every_model_and_the_vocabularies() -> None:
     assert result.exit_code == 0
     for model in authoring_reference()["models"]:
         assert model in result.output
-    assert "reserved names: reference_db" in result.output
+    # Derived from the live set rather than pinned to one name: `RESERVED_NAMES_0_4` gained two
+    # members in 0.6 (the element-rule companions RM54 held back), and a literal here would fail for
+    # a reason that has nothing to do with what this test is about — that the summary prints them.
+    assert f"reserved names: {', '.join(sorted(RESERVED_NAMES_0_4))}" in result.output
 
 
 # ── the requiredness drift the reference used to carry ─────────────────────────────────────────

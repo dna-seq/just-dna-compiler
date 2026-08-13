@@ -27,7 +27,11 @@ from just_dna_compiler.compiler import _spelling_clauses as _compiler_clauses
 from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_compiler.resolution import _spelling_clauses as _resolution_clauses
 from just_dna_compiler.resolution import hosting_verdict, undecided_reason
-from just_dna_format.alleles import UNOBSERVABLE_ALLELE, non_nucleotide_reason
+from just_dna_format.alleles import (
+    MISSING_ALLELE,
+    UNOBSERVABLE_ALLELE,
+    non_nucleotide_reason,
+)
 
 _SPEC_YAML = (
     "schema_version: '1.0'\n"
@@ -341,9 +345,13 @@ def test_both_spelling_builders_have_an_arm_for_every_reason() -> None:
     Discovered by *behaviour* — every reason `non_nucleotide_reason` actually returns for a real value —
     rather than from a hand-kept list, which is the half of such a guard that rots.
     """
-    probes = ["R", "<DEL:1500>", UNOBSERVABLE_ALLELE, "DELTCT", "AAAGGGGCG(2)", "<FOO>"]
+    # `MISSING_ALLELE` is in the list because lane I's `.` answer landed beside this one, and the guard
+    # is only worth anything if it covers every reason the classifier can actually produce.
+    probes = [
+        "R", "<DEL:1500>", UNOBSERVABLE_ALLELE, MISSING_ALLELE, "DELTCT", "AAAGGGGCG(2)", "<FOO>",
+    ]
     reasons = {r for r in (non_nucleotide_reason(a) for a in probes) if r is not None}
-    assert len(reasons) >= 4, reasons
+    assert reasons == {"ambiguity", "symbolic", "unobservable", "missing", "notation"}, reasons
 
     for builder in (_compiler_clauses, _resolution_clauses):
         for allele, reason in ((a, non_nucleotide_reason(a)) for a in probes):

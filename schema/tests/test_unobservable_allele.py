@@ -22,6 +22,7 @@ observe the other allele.
 
 import pytest
 from just_dna_format.alleles import (
+    MISSING_ALLELE,
     SYMBOLIC_ALLELE_TYPES,
     UNOBSERVABLE_ALLELE,
     is_symbolic_allele,
@@ -124,15 +125,44 @@ def test_is_unobservable_allele_claims_only_the_one_token() -> None:
     assert claimed == {UNOBSERVABLE_ALLELE, f" {UNOBSERVABLE_ALLELE} "}
 
 
-def test_non_nucleotide_reason_separates_all_four_kinds() -> None:
-    """Four reasons with four different consequences, and `*` used to be filed under the wrong one.
+def test_the_missing_marker_and_the_unobservable_marker_stay_distinct() -> None:
+    """`.` and `*` are the two answers that name no allele, and neither may absorb the other.
+
+    They landed one lane apart (RM58 and RM59) and merging them is the obvious tidy-up, because both are
+    punctuation standing where a sequence goes and neither will ever become spellable. The claims are
+    opposite: `.` says **no alternate allele exists** — about the variant — and `*` says an allele
+    **could not be observed** — about the sample's call. So the consequences differ in kind, which is
+    what this pins:
+
+    * `.` is an identity defect with a clean authored repair, and `derive_variant_key` really does fold
+      it in, so the two spellings of one monomorphic site key differently.
+    * `*` is not a defect at all. The cell is correct and nothing needs editing.
+
+    Merging them would either accuse a correct `*` row or silence a real `.` collision.
+    """
+    assert non_nucleotide_reason(MISSING_ALLELE) == "missing"
+    assert non_nucleotide_reason(UNOBSERVABLE_ALLELE) == "unobservable"
+    assert MISSING_ALLELE != UNOBSERVABLE_ALLELE
+
+    # Only `*` is admitted to a genotype: `.` names no allele for a call to carry.
+    assert genotype_allele_ok(UNOBSERVABLE_ALLELE)
+    assert not genotype_allele_ok(MISSING_ALLELE)
+
+    # And the identity consequence is `.`'s alone — RM58's, and still live.
+    dotted = derive_variant_key(None, _CHROM, _START, _REF, MISSING_ALLELE)
+    empty = derive_variant_key(None, _CHROM, _START, _REF, None)
+    assert dotted != empty
+
+
+def test_non_nucleotide_reason_separates_all_five_kinds() -> None:
+    """Five reasons with five different consequences, and `*` used to be filed under the wrong one.
 
     Before RM59 it answered `"notation"`, whose documented reading is *a grammar gap a future release
     may widen* — permanently false here, because there is no sequence for any grammar to hold. Asserted
     as one mapping so a future arm cannot quietly absorb a neighbour.
     """
-    probes = {UNOBSERVABLE_ALLELE: "unobservable", "<DEL:1500>": "symbolic",
-              "DELTCT": "notation", "R": "ambiguity", _REF: None}
+    probes = {UNOBSERVABLE_ALLELE: "unobservable", MISSING_ALLELE: "missing",
+              "<DEL:1500>": "symbolic", "DELTCT": "notation", "R": "ambiguity", _REF: None}
     assert {a: non_nucleotide_reason(a) for a in probes} == probes
 
 

@@ -202,6 +202,12 @@ def symbolic_allele_defect(value: str | None) -> str | None:
         return "no_length"
     return None
 
+#: VCF's MISSING marker (§1.6.1.5). In an ALT column it does not name an allele at all — it states that
+#: *there are no alternate alleles*, which is a monomorphic reference record, and §1.1's own worked
+#: example carries one. It is spelled out here because the difference between "an allele we cannot hold"
+#: and "no allele was asserted" is the whole of `non_nucleotide_reason`'s `"missing"` answer (RM58).
+MISSING_ALLELE: str = "."
+
 
 # ── The allele that could not be observed (0.6, RM59) ──────────────────────────────────────────
 #
@@ -246,8 +252,8 @@ def is_unobservable_allele(value: str | None) -> bool:
 def non_nucleotide_reason(allele: str | None) -> str | None:
     """Why `allele` is not a nucleotide string, or `None` when it is one.
 
-    Four answers, never one, and conflating them is a mistake this codebase has already made once and
-    repaired (`cpic.unusable_allele_reason`, which now delegates here): calling a deletion notation an
+    Five answers, never fewer, and conflating any two is a mistake this codebase has already made twice
+    and repaired (`cpic.unusable_allele_reason`, which now delegates here): calling a deletion notation an
     "ambiguity code" is a false claim about the data and points an author at the wrong thing.
 
     * `"ambiguity"` — every character is a base or an IUPAC degenerate code. The value states an
@@ -261,9 +267,28 @@ def non_nucleotide_reason(allele: str | None) -> str | None:
       that *this sample's allele could not be observed here*, so it names no sequence to compare and
       never will. Kept apart from `"notation"` because the two carry opposite consequences — a grammar
       gap is a release away, and this one is permanent by construction.
-    * `"notation"` — not a nucleotide string, not a symbolic allele and not `*` either: a repeat
-      notation (`AAAGGGGCG(2)`), a deletion spelling like `DELTCT`, a typo, or an angle-bracketed name
-      outside the closed five (`<FOO>`). A **grammar gap** rather than an uncertainty.
+    * `"missing"` — the bare `.`, VCF's MISSING marker. **Not an allele of any kind** (RM58), so it is
+      neither an uncertainty nor a grammar gap: there is nothing for a future release to widen to hold,
+      because the record is asserting that no alternate allele exists. Its consequence is different
+      again and is about *identity*: `derive_variant_key` folds the cell in as though it were an allele,
+      so a row writing `alts=.` and a row leaving the cell empty describe one site under two keys
+      (`1:1:A:.` and `1:1:A`) with different `content_signature`s and no dedup between them. The repair
+      is to leave the cell empty, and it is the only one of the five where an authored edit is both
+      available and unambiguous.
+    * `"notation"` — none of the above: a repeat notation (`AAAGGGGCG(2)`), a deletion spelling like
+      `DELTCT`, a typo, or an angle-bracketed name outside the closed five (`<FOO>`). A **grammar gap**
+      rather than an uncertainty.
+
+    **`.` and `*` are the two answers that name no allele at all, and neither may absorb the other.**
+    They arrived one lane apart and the temptation to merge them is real, because both are punctuation
+    standing where a sequence goes and neither will ever become spellable. The claims are opposite:
+    `.` asserts that **no alternate allele exists** — a monomorphic record, a statement about the
+    *variant* — while `*` asserts that an allele **could not be observed** — a statement about the
+    *sample's call*, which is the callability axis. So their consequences differ in kind. `.` is an
+    identity defect with a clean authored repair (leave the cell empty). `*` is not a defect at all:
+    the cell is correct, nothing needs editing, and what follows is that a consumer must withhold
+    rather than read the call as reference. Merging them would either accuse a correct `*` row or
+    silence a real `.` collision.
 
     This used to answer `"notation"` for `<DEL>` too, and that stopped being true when RM5 shipped:
     the reading it carried — *a grammar gap a future release may widen* — is now false for the five
@@ -272,7 +297,15 @@ def non_nucleotide_reason(allele: str | None) -> str | None:
     which told an author of a perfectly ordinary joint-called site to wait for a grammar that can never
     arrive, because there is no sequence for a grammar to hold.
 
-    Note the third real shape this deliberately files under `"ambiguity"` rather than inventing a name
+    Three of these answers were split out of `"notation"` in the same release, from different
+    directions, and the set is worth keeping in view: `"symbolic"` left because RM5 gave the five
+    structural types a home, so *a grammar gap a future release may widen* became false for them;
+    `"missing"` left because `.` was never a gap at all; `"unobservable"` left because `*` is a fact
+    about a sample rather than about the variant. All three were the same
+    two-reasons-under-one-message conflation the first bullets exist to keep apart — found three times,
+    in one release, in one function.
+
+    Note the further real shape this deliberately files under `"ambiguity"` rather than inventing a name
     for: `N` *inside* a longer allele (633 ClinVar records spell a known-length insertion whose interior
     is unknown, `TTTGG` + `NNNNNNNNNN` + `AAAA`). It is not a degenerate base standing alone, but it is
     the same statement — part of this sequence is unknown — and the consequence is identical: nothing may
@@ -281,12 +314,16 @@ def non_nucleotide_reason(allele: str | None) -> str | None:
     if allele is None:
         return None
     value = allele.strip().upper()
+    # The two markers that name no allele at all, tested together and answered apart — see the docstring:
+    # `.` says no alternate allele exists, `*` says one could not be observed.
+    if value == MISSING_ALLELE:
+        return "missing"
+    if is_unobservable_allele(value):
+        return "unobservable"
     if not value or set(value) <= NUCLEOTIDES:
         return None
     if parse_symbolic_allele(value) is not None:
         return "symbolic"
-    if is_unobservable_allele(value):
-        return "unobservable"
     return "ambiguity" if set(value) <= (NUCLEOTIDES | IUPAC_AMBIGUITY_CODES) else "notation"
 
 

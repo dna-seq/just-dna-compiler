@@ -122,9 +122,16 @@ class TestStudyRow:
         row = StudyRow(chrom="10", start=94781859, ref="G", pmid="12345", conclusion="Test")
         assert row.variant_key == "10:94781859:G"
 
-    def test_study_no_id_rejected(self) -> None:
-        with pytest.raises(Exception, match="At least one identifier"):
-            StudyRow(pmid="12345", conclusion="Test")
+    def test_study_naming_no_variant_is_accepted_and_has_no_key(self) -> None:
+        """RM47 relaxed this: a citation row may ground the module or a bin boundary.
+
+        It used to raise "At least one identifier". The rule was unsatisfiable for exactly the
+        modules that most needed a citation — a `repeat_alleles.csv` row is keyed `(gene,
+        repeat_unit)` — so authors were pushed into writing a bare `chrom` the paper is not about.
+        `variant_key` answers `None` rather than the string `"None:None:None"`."""
+        row = StudyRow(pmid="8458085", conclusion="CAG threshold definition")
+        assert row.variant_key is None
+        assert StudyRow.REQUIRED_ANY_OF == ()
 
     def test_empty_pmid_rejected(self) -> None:
         with pytest.raises(Exception, match="pmid"):
