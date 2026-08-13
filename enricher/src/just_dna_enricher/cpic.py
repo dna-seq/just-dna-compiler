@@ -111,6 +111,13 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
         "with one (`<DEL:1500>`); without it the rule cannot be sized or matched, and the compiler "
         "refuses such a row on haplotypes.csv in both modes"
     ),
+    "unobservable": (
+        "VCF's `*`, the allele-missing-due-to-overlapping-deletion marker — a statement about what a "
+        "sample's call could observe, not about which variant defines a haplotype. RM59 made it "
+        "authorable in a `genotype`, where an observation is what the column records; a defining "
+        "allele is a rule, and a rule about an allele nobody saw states nothing. Dead against the "
+        "live source (CPIC publishes no `*`), and kept because the classifier is shared"
+    ),
     "notation": (
         "a deletion/insertion or repeat notation rather than a nucleotide string — a grammar gap "
         "rather than an ambiguity. RM5 widened the grammar to hold VCF's five *symbolic* structural "

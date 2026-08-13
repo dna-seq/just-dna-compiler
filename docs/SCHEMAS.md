@@ -263,6 +263,26 @@ have to resolve. CPIC's IUPAC codes (`R`) and its `DELTCT`/`AAAGGGGCG(2)` notati
 they are not VCF symbolic alleles. And `<*>` is **not** one of the five — it makes an *observability*
 claim rather than naming a variant, which is a different axis.
 
+**That different axis is `*`, and it is a `genotype` member since 0.6 (RM59).** VCF's *"allele missing
+due to overlapping deletion"* is not a symbolic allele and shares none of the machinery above: it has
+no first-level type, no length, and `is_symbolic_allele('*')` is `False`, so RM5's checks say nothing
+about it — correctly, because there is no variant there to be unspelled. It is the one member of the
+genotype grammar that describes the *sample's call* rather than the variant, which is why it is
+admitted in `genotype` alone: `vocab.validate_allele` still refuses it for `HaplotypeRow.allele` and
+`VariantRow.effect_allele`, since those name the allele a **rule** is about and a rule about an allele
+nobody observed states nothing. `alleles.non_nucleotide_reason` reports it as `"unobservable"`, kept
+apart from `"notation"` on purpose — a grammar gap is a release away, and this one is permanent. What
+a consumer must do with it is in *The consumer join contract* below.
+
+**`*` and `.` are the two markers that name no allele, and they must not be conflated** — the pair
+landed one item apart in 0.6 and reads like one thing. `.` (RM58, `"missing"`) asserts that **no
+alternate allele exists**, a claim about the *variant*, and it is an identity defect: `derive_variant_key`
+folds the cell in, so `alts=.` and an empty cell describe one monomorphic site under two keys. `*`
+(RM59, `"unobservable"`) asserts that an allele **could not be observed**, a claim about the *sample's
+call*, and it is not a defect at all — the cell is right and nothing wants editing. So only `*` is a
+legal `genotype` member, only `.` has an authored repair, and merging the two would either accuse a
+correct row or silence a real collision.
+
 **Two consequences that follow rather than being chosen.** A symbolic allele mints no
 content-addressed identity — a VRS allele id is a digest of a sequence, and there is none — so it
 falls through to the coordinate key exactly as an indel does. And comparing it against a spelled
@@ -455,6 +475,44 @@ of them measures anything:
 | `VariantRow.callable_from` | which VCF field(s) the proof of callability lives in (`FORMAT/DP`, `FORMAT/GQ`, `FORMAT/FT`, `FORMAT/DP\|FORMAT/GQ`) — a pointer, never an expression |
 | `VariantRow.quality_from` + `min_quality` | the floor below which what *was* seen is not good enough to act on. A consumer that cannot read the field **withholds** — an unevaluable floor is unknown, never satisfied |
 | `MeasureBinRow.unresolved` | the mandatory no-call sentinel on every binning table: a missing measurement selects it and **never** the lowest or reference bin |
+
+### `*` in a call — the same rule arriving as a spelling (0.6, RM59)
+
+The obligation above is usually met by reading `DP`/`GQ`/`FT`. There is one case where the callset
+states it outright, in the genotype itself, and it is easy to drop: VCF's `*` — *"allele missing due
+to overlapping deletion"* (§1.6.1.5). It is what any joint-called VCF writes at a site some deletion
+called elsewhere overlaps, so `ALT=A,*` with `GT=0/2` is ordinary data rather than an edge case.
+
+Since 0.6 a `genotype` may name it, so a module can carry a row about such a call
+(`base.genotype_allele_ok`; `alleles.UNOBSERVABLE_ALLELE`). The unphased pair is written sorted like
+every other, and `*` sorts first — `*/A`, not `A/*`.
+
+**A conforming consumer MUST NOT drop a `*` from a call and read what remains as the whole genotype.**
+Dropping it turns `*/A` into a single observed `A`, which reads as reference-like at a heterozygous
+site and takes the reference conclusion — the same "not screened" reported as "screened negative" that
+the paragraph above forbids, arriving through a spelling instead of through a missing record. And
+because it is a spelling, `requires_callable` does not catch it: the row *is* present, so nothing looks
+absent.
+
+**The rule is the house algebra applied at the join.** A `*` member is **unknown**, never reference and
+never a mismatch:
+
+- Matching a module's `genotype` against a call carrying `*`, the `*` member matches **nothing** and
+  contradicts **nothing** — it withholds. The observable members are still matched normally, so
+  `*/A` against a row about `A/A` is *unknown*, and against a row about `C/C` it is decidably **false**
+  (Kleene: `unknown AND false` is `false` — the observed `A` already settles it).
+- A call whose members are **all** `*` observed nothing at that position; treat it exactly as a no-call.
+- A module that says nothing about `*` — which is nearly all of them, since it describes a *sample* and
+  a module carries none — leaves a `*`-bearing call **unresolved for that row**. Withhold the
+  conclusion; do not fall through to the reference one.
+
+The compiler applies the same reading internally, which is where the rule is enforceable rather than
+merely stated: `resolution.hosting_verdict` drops a `*` member before comparing a genotype to a locus —
+on **both** sides, so a `*` in the record's own ALT list is ignored the same way — and the *rest* of the
+call is still judged, so `*` never reads as a contradiction and never masks one (see
+[COMPILER.md](COMPILER.md)). `*` is deliberately **not** a symbolic allele — those name a variant whose
+sequence is unspelled, and `*` names no variant at all — so none of RM5's machinery touches it, it
+carries no length, and it mints no VRS allele id.
 
 Two corollaries worth stating because each is a real collapse someone has shipped. A measurement that
 is *present but matches no bin* is a third thing again — "no matching bin", not `unresolved` — and the
