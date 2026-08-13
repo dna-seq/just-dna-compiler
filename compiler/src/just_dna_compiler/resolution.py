@@ -232,6 +232,126 @@ def resolve_from_table(
     )
 
 
+@dataclass
+class PositionalFill:
+    """What the positional fill did, per table. Counts, never a line per row.
+
+    `unplaced_ambiguous` and `unplaced_absent` are separated for the reason every tri-state in this
+    codebase is: "the table names this key at several loci and the compiler will not pick one" and
+    "nothing has resolved this key" are different situations with different next moves, and one
+    number reporting both says neither.
+    """
+
+    filled: int = 0
+    unplaced_ambiguous: int = 0
+    unplaced_absent: int = 0
+    contradicted: list[str] = field(default_factory=list)
+
+
+def resolve_positional_rows(
+    rows: list[object],
+    resolution: dict[str, list[ResolutionRow]],
+    genome_build: str = "GRCh38",
+) -> PositionalFill:
+    """Fill the resolved coordinate into one 0.4-family positional table, **in place** (RM43).
+
+    `pharm_variants.csv`, `haplotypes.csv` and `heteroplasmy.csv` may identify a row by rsID alone —
+    their own models say so — and until 0.6 the compiler resolved `variants.csv` and materialized
+    every other table verbatim. A consumer matching a patient VCF by position therefore matched
+    nothing, silently, as an empty result rather than an error: the coordinates existed in the
+    `resolution.csv` sitting beside the spec and reached the artifact by no path at all.
+
+    Four rules, and the last two are what keep this from being the naive repair the roadmap rejected:
+
+    * **Fill only what the author left empty.** A cell the author wrote is never overwritten; that is
+      `enrich`'s inject-only doctrine (report, never repair) and it is also what makes the fill
+      idempotent.
+    * **Fill from exactly one locus, or from none.** One usable locus fills. Several are filtered by
+      `hosting_verdict` against whatever allele the row states — a `genotype` on a pharm row, the
+      defining `allele` on a haplotype junction, and nothing at all on a heteroplasmy band, which is a
+      measurement over a locus rather than a claim about a genotype. If that leaves one, it fills;
+      otherwise the row stays unplaced and is counted. There is deliberately **no expansion**: a
+      one-to-many rsID expands `variants.csv` into N coord-keyed rows, and doing the same here would
+      multiply a pharm annotation's `(variant_key, drug, genotype, …)` key across loci the author
+      never named.
+    * **A row whose own coordinate contradicts the table is left alone.** `haplotypes.csv` drafted
+      from CPIC carries a `start` with no `chrom`, so the fill has to complete a half-coordinate — and
+      completing it from a locus whose `start` disagrees would build a coordinate no source ever
+      stated. Reported, never repaired, and never fatal: the same shape as `resolve_from_table`'s
+      `_verify`, minus the strict escalation, because the row is left exactly as authored.
+    * **The row is mutated, not copied, and its identity is frozen.** `variant_key`/`authored_ident`
+      are stamped at load from the authored subset, so filling cannot re-key the row and
+      `reverse_module` re-emits the shape the author wrote (`_write_table_csv`).
+
+    GRCh38-bound for the same reason `resolve_from_table` is (RM15): the caller skips a non-GRCh38
+    module rather than joining rows this tier cannot re-derive an identity for.
+    """
+    report = PositionalFill()
+    for row in rows:
+        loci = _usable_loci(resolution.get(getattr(row, "variant_key", None) or ""), genome_build)
+        fillable = [
+            name
+            for name in ("rsid", "chrom", "start", "ref", "alts")
+            if name in type(row).model_fields and getattr(row, name) is None
+        ]
+        if not fillable:
+            continue
+        if not loci:
+            if row.chrom is None or row.start is None:
+                report.unplaced_absent += 1
+            continue
+        statement = _stated_allele(row)
+        candidates = (
+            loci if len(loci) == 1 or statement is None else _hostable_loci(loci, statement)[0]
+        )
+        if len(candidates) != 1:
+            if row.chrom is None or row.start is None:
+                report.unplaced_ambiguous += 1
+            continue
+        locus = candidates[0]
+        conflict = _authored_conflict(row, locus)
+        if conflict is not None:
+            report.contradicted.append(conflict)
+            continue
+        for name in fillable:
+            value = getattr(locus, name, None)
+            if value is not None:
+                setattr(row, name, value)
+        report.filled += 1
+    return report
+
+
+def _stated_allele(row: object) -> str | None:
+    """The allele statement a positional row makes, for the hosting filter — or `None` if it makes none.
+
+    A `PharmVariantRow` states a `genotype` (optional, so it really can be absent), a `HaplotypeRow`
+    states its defining `allele`, and a `HeteroplasmyRow` states neither. Reading the two field names
+    rather than branching on the model keeps this agreeing with `enrich._collect_subjects`, which
+    feeds the identical pair into the identical predicate.
+    """
+    return getattr(row, "genotype", None) or getattr(row, "allele", None)
+
+
+def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
+    """A sentence naming the authored identity cell the locus disagrees with, or `None`.
+
+    Only cells the author actually wrote are compared — a filled cell is by construction the locus's
+    own value. A half-coordinate (`start` with no `chrom`, the shape CPIC drafting produces) is the
+    case this exists for: completing it from a locus that puts the variant somewhere else would
+    fabricate a coordinate.
+    """
+    for name in ("rsid", "chrom", "start", "ref"):
+        authored = getattr(row, name, None)
+        against = getattr(locus, name, None)
+        if authored is not None and against is not None and str(authored) != str(against):
+            return (
+                f"{getattr(row, 'variant_key', None)}: authored {name}={authored!r} contradicts the "
+                f"resolution table's {name}={against!r}, so the rest of that row's coordinate is left "
+                f"unfilled rather than completed from a locus the row disagrees with"
+            )
+    return None
+
+
 def _locus_label(v: VariantRow) -> str:
     """`chrom:start ref>alts` for a message about a place, falling back to the key if it has none.
 

@@ -106,11 +106,16 @@ def _collect_subjects(
     compiled module's `artifact.digest`, the same hazard the link ordering in the chain below exists
     to avoid. Within that, first occurrence wins, so the emitted order is the authored order.
 
-    The PGx tables key **without** `alts` (`PharmVariantRow.variant_key` is that property, and a
-    `HaplotypeRow` key is derived the same way): a pharm annotation or a haplotype junction matches a
+    The PGx tables key **without** `alts`: a pharm annotation or a haplotype junction matches a
     variant at `chrom:start:ref` regardless of allele. Mixing that up would mint a VRS allele id for a
     row that never named an allele. `heteroplasmy.csv` is the exception and keys *with* `alts`,
     because its own `variant_key` does — see the block below.
+
+    All three tables carry `variant_key` as a **stamped field** since 0.6 (RM43) — it was a property
+    on two of them and absent from `HaplotypeRow` entirely, which is why the block below derives one
+    inline. The stamped value is the same expression, frozen at load from the authored columns, so
+    nothing here changes; and `PharmVariantRow.alts`, added by the same item, is deliberately not read
+    here because it is compiler-filled data rather than an authored fact.
     """
     subjects: list[_Subject] = [_subject_of_variant(v, genome_build) for v in variants]
 

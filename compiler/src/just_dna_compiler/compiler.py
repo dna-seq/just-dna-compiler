@@ -30,6 +30,7 @@ import yaml
 from just_dna_format.alleles import non_nucleotide_reason
 from just_dna_format.base import (
     DEFAULT_GENOME_BUILD,
+    IDENTITY_FIELDS,
     AuthoredModel,
     authored_field_names,
     derive_variant_key,
@@ -127,7 +128,11 @@ from just_dna_format.vrs import (
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.models import CompilationResult, ValidationResult
-from just_dna_compiler.resolution import hosting_verdict, resolve_from_table
+from just_dna_compiler.resolution import (
+    hosting_verdict,
+    resolve_from_table,
+    resolve_positional_rows,
+)
 
 # Genotype allele separators: `/` (unphased), `|` (phased). See ROADMAP 0.3 item 5b. Splitting on
 # both yields the allele list; this function discards the `|` vs `/` distinction. Phase itself is
@@ -178,9 +183,10 @@ _TABLE_KIND_CSVS: tuple[str, ...] = tuple(csv for csv, _, _ in _TABLE_KINDS)
 # last-resort tie-break for the 283 that differ by neither — a source accession as identity, the
 # same shape as `PgsRow.pgs_id`.
 _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
-    HaplotypeRow: lambda r: (
-        r.haplotype_name, derive_variant_key(r.rsid, r.chrom, r.start, r.ref), r.allele,
-    ),
+    # `r.variant_key` since 0.6 (RM43): the same expression this used to recompute, but stamped at
+    # load from the *authored* columns — so the duplicate check keys on what the author wrote rather
+    # than on whatever the resolution fill has since put in the cells.
+    HaplotypeRow: lambda r: (r.haplotype_name, r.variant_key, r.allele),
     AlleleFunctionRow: lambda r: (r.gene, r.allele),
     # `clinical_context` joined the key in 0.5.1 (RM29b): CPIC scopes one gene/drug pair to several
     # settings whose recommendations disagree, so without it the three clopidogrel rows are duplicates
@@ -305,11 +311,21 @@ def _list_fields(model: type[BaseModel]) -> set[str]:
 
 def _build_table(rows: list[Any], model: type[BaseModel], module_name: str) -> pl.DataFrame:
     """A binning/PGx/PGS table → parquet. Carries a `module` column (like weights/studies) so
-    `reverse_module` can recover the module name from any present parquet."""
+    `reverse_module` can recover the module name from any present parquet.
+
+    Reads each field off the row rather than through `model_dump()`, which is not a stylistic choice:
+    a stamped positional column (`variant_key`, `authored_ident`, the filled `alts` — RM43) is
+    declared `exclude=True` so it stays out of `content_signature`, and `model_dump()` honours that.
+    The parquet is the materialized shape and wants every field, so it asks the row directly. These
+    models are flat scalars plus one `list[str]`, so this is exactly what `model_dump()` returned
+    before, minus the exclusions."""
     schema: dict[str, Any] = {"module": pl.Utf8}
     for name, f in model.model_fields.items():
         schema[name] = _polars_type(f.annotation)
-    records = [{"module": module_name, **row.model_dump()} for row in rows]
+    records = [
+        {"module": module_name, **{name: getattr(row, name) for name in model.model_fields}}
+        for row in rows
+    ]
     return pl.DataFrame(records, schema=schema)
 
 
@@ -342,19 +358,42 @@ def _list_cell(value: list | None) -> str:
 def _write_table_csv(df: pl.DataFrame, model: type[BaseModel], path: Path) -> None:
     """Reverse of `_build_table`: parquet → the authored CSV. Drops the injected `module` column
     (not authored); renders each cell via `_scalar_cell`/`_list_cell` (None→"", list→pipe-joined,
-    bool→"true"/"false", integer-valued float→bare int)."""
-    # `authored_field_names`, not `model_fields`: identical today (no table-kind model carries a
-    # compiler-managed field) but it closes the third place the authored surface is derived. The two
-    # that preceded it both drifted, and a reverse writer that offered a stamped column would emit a
-    # CSV the compiler then refused to reload — the exact `authored_ident` bug, one tier over.
+    bool→"true"/"false", integer-valued float→bare int).
+
+    **A positional table re-emits the identity the author wrote, not the one the compiler filled**
+    (RM43). Since 0.6 the compiler joins `resolution.csv` onto `pharm_variants`/`haplotypes`/
+    `heteroplasmy` and materializes the resolved coordinate, so a straight passthrough here would
+    hand a machine-derived `chrom`/`start`/`ref`/`alts` back as *authored* data — moving
+    `content_signature` on every rsid-authored module, which is the exact failure `authored_ident`
+    exists to prevent. Any identity column the row's `authored_ident` does not name is written empty;
+    the fact itself is not lost, it goes to `resolution.csv` (see `_write_resolution_csv`).
+
+    A parquet with no `authored_ident` column — anything compiled before 0.6 — blanks nothing and
+    reverses exactly as it used to."""
+    # `authored_field_names`, not `model_fields`: this is what keeps the stamped columns (RM43's
+    # `variant_key`/`authored_ident`, and `alts` on the two PGx tables) out of the re-emitted CSV. The
+    # two hand-kept exclusion lists that preceded the marker both drifted, and a reverse writer that
+    # offered a stamped column would emit a CSV the compiler then refused to reload.
     fieldnames = authored_field_names(model)
     list_fields = _list_fields(model)
+    identity_columns = {name for name in IDENTITY_FIELDS if name in fieldnames}
+    stamps_identity = "authored_ident" in model.model_fields
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row in df.iter_rows(named=True):
+            authored = row.get("authored_ident") if stamps_identity else None
+            blanked = (
+                identity_columns - set(authored) if authored is not None else set()
+            )
             out = {
-                name: (_list_cell(row.get(name)) if name in list_fields else _scalar_cell(row.get(name)))
+                name: (
+                    ""
+                    if name in blanked
+                    else _list_cell(row.get(name))
+                    if name in list_fields
+                    else _scalar_cell(row.get(name))
+                )
                 for name in fieldnames
             }
             writer.writerow(out)
@@ -836,6 +875,57 @@ _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
 )
 
 
+def _apply_positional_resolution(
+    rows_by_csv: dict[str, list[Any]],
+    resolution_table: dict[str, list[ResolutionRow]],
+    genome_build: str = DEFAULT_GENOME_BUILD,
+) -> list[str]:
+    """Join the injected `resolution.csv` onto every positional 0.4-family table (RM43).
+
+    The compiler-side half of `resolution.resolve_positional_rows` — it picks the tables, handles the
+    build gate, and collapses the per-row findings into one line per table. Rows are filled **in
+    place**, so a caller that holds the lists gets the resolved rows back; run it before `_build_table`
+    materializes them, and before `_check_positional_joinability`, which then reports only what is
+    genuinely still unjoinable.
+
+    Runs in `validate_spec` as well as `compile_module`, and it must: the joinability warning is
+    computed from these rows in both, so filling on one side only would leave the pre-flight reporting
+    a gap the compile had already closed — and that sentence carries `UNJOINABLE_PHRASE`, which a
+    catalog reads as a trust signal (RM44). Pure computation over injected bytes with no `output_dir`,
+    which is this repo's standing test for what belongs in both.
+
+    **Skipped, with a warning, for a non-GRCh38 module**, exactly as `resolve_from_table` skips: the
+    identity minting behind these keys is GRCh38-only (RM15), so joining a table the compiler cannot
+    re-derive a key for would place rows against loci it has no way to check.
+    """
+    if not resolution_table:
+        return []
+    positional = [
+        (csv_name, rows_by_csv.get(csv_name) or []) for csv_name, _model in _POSITIONAL_TABLE_KINDS
+    ]
+    if not any(rows for _csv_name, rows in positional):
+        return []
+    if genome_build != DEFAULT_GENOME_BUILD:
+        return [
+            f"Positional-table fill skipped: the compiler is GRCh38-bound and this module's "
+            f"genome_build is {genome_build!r}, so the injected resolution table is not joined onto "
+            f"{', '.join(name for name, rows in positional if rows)} (RM15). Those rows keep the "
+            f"coordinates their author typed."
+        ]
+    warnings: list[str] = []
+    for csv_name, rows in positional:
+        if not rows:
+            continue
+        report = resolve_positional_rows(rows, resolution_table, genome_build)
+        if report.contradicted:
+            warnings.append(
+                f"{csv_name}: {len(report.contradicted)} row(s) authored an identity the resolution "
+                f"table disagrees with, and are left exactly as authored — "
+                f"{_examples(report.contradicted)}"
+            )
+    return warnings
+
+
 #: **A downstream trust badge substring-matches this phrase, so it is a contract, not prose (S13).**
 #: `compile_module` copies its warnings into `manifest.compilation.warnings`, which ships inside
 #: `manifest.json` — and a catalog reindexing from a published manifest has no spec directory left to
@@ -853,11 +943,12 @@ UNJOINABLE_PHRASE = "have no chrom+start"
 def _table_row_key(row: Any, genome_build: str) -> str | None:
     """The `variant_key` a 0.4-family row resolves under, exactly as the enricher derives it.
 
-    `PharmVariantRow` and `HeteroplasmyRow` carry the property; `HaplotypeRow` has none, and
-    `enrich._collect_subjects` derives one with `derive_variant_key(rsid, chrom, start, ref)` — *without*
-    `alts`, because a haplotype's defining allele is not the row's identity. Calling the same function
-    here rather than inventing a second convention is the whole point: two spellings of one key would
-    make this check disagree with the table it is reading.
+    All three positional models stamp the column since 0.6 (RM43) — `HaplotypeRow` had none at all
+    before, and `enrich._collect_subjects` derived one inline with
+    `derive_variant_key(rsid, chrom, start, ref)`, *without* `alts`, because a haplotype's defining
+    allele is not the row's identity. The stamped key is that same expression, frozen at load from the
+    authored columns, so this keeps agreeing with the table it reads. The fallback stays for a row
+    built outside the loader and for a caller passing something older.
     """
     key = getattr(row, "variant_key", None)
     if key:
@@ -873,29 +964,33 @@ def _check_positional_joinability(
     resolution_table: dict[str, list[ResolutionRow]],
     genome_build: str = DEFAULT_GENOME_BUILD,
 ) -> list[str]:
-    """Which 0.4-family rows a consumer cannot join to a VCF by position, and whether the answer exists.
+    """Which 0.4-family rows a consumer cannot join to a VCF by position, and why the fill left them.
 
-    **Resolution is SNP-core-scoped, and nothing said so.** `compile_module` resolves `variants.csv`
-    and materializes every other table verbatim (`_build_table` is `model_dump()` → parquet), so an
-    rsid-authored PGx module compiles clean, validates, publishes — and every row has a null
-    `chrom`/`start`. A VCF is joined by position, so such a table annotates *nothing*, silently, as an
-    empty result rather than an error. The consumer who reported this had a 1,482-row module in that
-    state and found it by reading parquet, because no tool said a word.
+    **Run AFTER `_apply_positional_resolution`, in both `validate_spec` and `compile_module`.** Until
+    0.6 this reported the whole gap — resolution was SNP-core-scoped, so an rsid-authored PGx module
+    compiled clean, validated, published, and had a null `chrom`/`start` on every row; the consumer
+    who reported it had a 1,482-row module in that state and found out by reading parquet. RM43 closed
+    that, and what is left for this check is the residue: rows the injected table does not place, or
+    places at more than one locus.
 
-    Reported as **counts per table, never a line per row**, and the second count is the interesting
-    one: how many of those rows the injected `resolution.csv` could place. That number is what
-    separates "this module was never enriched" from "the coordinates exist and this tier does not
-    apply them to this table" — a distinction the author cannot otherwise make, and the reason the
-    message names it. A **partial** coordinate is counted apart because it is the more deceptive shape:
-    `haplotypes.csv` drafted from CPIC carries a `start` with no `chrom` (CPIC publishes a position on
+    Reported as **counts per table, never a line per row**, and the second half is the interesting
+    one — *why* a row is still unplaced. Two readings, and the author's next move differs:
+
+    * the table names the key at **several** loci (or at loci the row's own allele contradicts), so
+      the compiler leaves it rather than picking one — the same refusal `resolve_from_table` makes,
+      and not something an enrich re-run fixes;
+    * **nothing** in the table names the key at all, which an enrich run does fix.
+
+    A **partial** coordinate is counted apart because it is the more deceptive shape: `haplotypes.csv`
+    drafted from CPIC carries a `start` with no `chrom` (CPIC publishes a position on
     `sequence_location` and the chromosome on `gene`), which reads as a coordinate and joins to nothing.
 
-    **A warning in both modes, and deliberately never a `strict` error.** Two independent reasons.
-    Rsid-only identity is legal by these models' own rule (`rsid`, *or* `chrom`+`start`), so escalating
-    would make `--strict` mean "author coordinates into your PGx tables" — the format tightening a field
-    it deliberately left open. And the remedy is not an authored edit at all: it is a compiler change
-    (RM43), so this is the `not_covered` / VRS-coverage class of finding, where refusing would make a
-    correct module uncompilable for a reason its author cannot clear.
+    **A warning in both modes, and deliberately never a `strict` error.** Rsid-only identity is legal
+    by these models' own rule (`rsid`, *or* `chrom`+`start`), so escalating would make `--strict` mean
+    "author coordinates into your PGx tables" — the format tightening a field it deliberately left
+    open. And what remains after the fill is, by construction, something no authored edit to *this*
+    table clears: it is the `not_covered` / VRS-coverage class, where refusing would make a correct
+    module uncompilable for a reason its author cannot act on.
     """
     warnings: list[str] = []
     for csv_name, _model in _POSITIONAL_TABLE_KINDS:
@@ -913,8 +1008,9 @@ def _check_positional_joinability(
             )
         ]
         detail = (
-            f"resolution.csv can place {len(placeable)} of them, and the compiler applies that table "
-            f"to variants.csv only"
+            f"resolution.csv names {len(placeable)} of them, but at more than one locus or at one "
+            f"the row's own allele contradicts, so the compiler leaves them unplaced rather than "
+            f"picking"
             if placeable
             else "no resolution.csv row places them — run `just-dna-enricher enrich` first"
         )
@@ -981,13 +1077,16 @@ def _check_binning_grounding(
     warnings: list[str] = []
     for csv_name, model in _BINNING_TABLE_KINDS:
         rows = [r for r in rows_by_csv.get(csv_name) or [] if not r.unresolved]
-        # `variant_key` is a property on `HeteroplasmyRow` alone, and it is `None` there when the row
-        # names only a gene — so this one test separates "could be grounded and is not" from "cannot
-        # be grounded at all" without naming a table.
+        # `variant_key` is declared on `HeteroplasmyRow` alone among the binning kinds, and it is
+        # `None` there when the row names only a gene — so this one test separates "could be grounded
+        # and is not" from "cannot be grounded at all" without naming a table. Read off
+        # `model_fields`, not `hasattr`: it became a stamped field in 0.6 (RM43) and a field is not a
+        # class attribute, so the `hasattr` this used to ask silently answered `False` and every
+        # heteroplasmy module got the message written for a gene-keyed table.
         ungrounded = [r for r in rows if getattr(r, "variant_key", None) is None]
         if not ungrounded:
             continue
-        if hasattr(model, "variant_key"):
+        if "variant_key" in model.model_fields:
             remedy = (
                 "these rows name no variant (no rsid, no chrom+start), so nothing can point at them; "
                 "fill those columns and a studies.csv row on the same variant grounds each bin"
@@ -2008,10 +2107,14 @@ def validate_spec(
             # entirely from a no-sale source compiles right up to the gate.
             all_errors.extend(_check_license_gate(injected_rows))
 
-    # Which 0.4-family rows a consumer could not join to a VCF by position, and whether the injected
-    # table already holds the answer. Pure computation over authored + injected bytes with no
-    # `output_dir`, so it belongs to the pre-flight by the standing rule — and it is worth the most
-    # here, where the remedy (enrich, or know what you are shipping) is still cheap.
+    # The positional fill (RM43), and then the report of what it could not place. Both run here for
+    # the same reason: pure computation over authored + injected bytes with no `output_dir`. The order
+    # matters — filling first is what makes the joinability line describe the residue rather than the
+    # whole table, and running the fill on one side only would have the pre-flight name a gap the
+    # compile has already closed.
+    all_warnings.extend(
+        _apply_positional_resolution(loaded_kinds, membership_table, declared_build)
+    )
     all_warnings.extend(
         _check_positional_joinability(loaded_kinds, membership_table, declared_build)
     )
@@ -2536,10 +2639,14 @@ def compile_module(
     if studies_df is not None:
         studies_df.write_parquet(output_dir / "studies.parquet", compression=compression)
 
-    # 0.4 table kinds (RM1): materialize each present CSV via the generic materializer.
+    # 0.4 table kinds (RM1): load each present CSV, then materialize via the generic materializer.
+    # Loading is a separate pass from building because the positional kinds are resolved in between:
+    # `_apply_positional_resolution` fills each row's coordinate from the injected table *before*
+    # `_build_table` freezes it into parquet (RM43). Gated on `resolve_with_ensembl` like every other
+    # resolution, so `--no-resolve` really does mean "consult nothing".
     table_rows: dict[str, int] = {}
     kind_rows: dict[str, list[Any]] = {}
-    for csv_name, parquet_name, model in _TABLE_KINDS:
+    for csv_name, _parquet_name, model in _TABLE_KINDS:
         kind_path = spec_dir / csv_name
         if not kind_path.exists():
             continue
@@ -2547,7 +2654,20 @@ def compile_module(
             kind_path, model, csv_name, genome_build=config.genome_build
         )
         kind_rows[csv_name] = rows
-        table_df = _build_table(rows, model, module_name)
+
+    if resolve_with_ensembl:
+        all_warnings.extend(
+            w
+            for w in _apply_positional_resolution(
+                kind_rows, resolution_table, config.genome_build
+            )
+            if w not in all_warnings
+        )
+
+    for csv_name, parquet_name, model in _TABLE_KINDS:
+        if csv_name not in kind_rows:
+            continue
+        table_df = _build_table(kind_rows[csv_name], model, module_name)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height
 
@@ -3667,19 +3787,30 @@ def reverse_module(
             weights_df, ann_lookup, ann_keyed_by_effect, default_curator, default_method,
             default_priority, output_dir / "variants.csv", genome_build=genome_build,
         )
-        if write_resolution:
-            _write_resolution_csv(
-                weights_df, output_dir / "resolution.csv", genome_build=genome_build
-            )
     studies_path = parquet_dir / "studies.parquet"
     if studies_path.exists():
         _write_studies_csv(pl.read_parquet(studies_path), output_dir / "studies.csv")
 
     # 0.4 table kinds (RM1): each present parquet → its authored CSV.
+    positional_frames: list[tuple[str, pl.DataFrame]] = []
     for csv_name, parquet_name, model in _TABLE_KINDS:
         kind_path = parquet_dir / parquet_name
         if kind_path.is_file():
-            _write_table_csv(pl.read_parquet(kind_path), model, output_dir / csv_name)
+            kind_df = pl.read_parquet(kind_path)
+            _write_table_csv(kind_df, model, output_dir / csv_name)
+            if csv_name in {name for name, _model in _POSITIONAL_TABLE_KINDS}:
+                positional_frames.append((csv_name, kind_df))
+
+    # `resolution.csv` last, because it is rebuilt from everything above. It is written from the SNP
+    # core **and** the positional tables since 0.6 (RM43): once the compiler fills a resolved
+    # coordinate into `pharm_variants`/`haplotypes`/`heteroplasmy`, a reverse that dropped the lookup
+    # table would emit a spec whose recompile leaves those parquets unfilled — so `compile → reverse →
+    # compile` would stop reproducing the artifact, which is Principle 7.
+    if write_resolution:
+        _write_resolution_csv(
+            weights_df, positional_frames, output_dir / "resolution.csv",
+            genome_build=genome_build,
+        )
 
     # 0.5 derived-fact sidecars: same round-trip, minus the columns that are recomputed rather than
     # stored. `_write_table_csv` drops any parquet column the model does not declare, so
@@ -3695,9 +3826,12 @@ def reverse_module(
 
 
 def _write_resolution_csv(
-    weights_df: pl.DataFrame, output_path: Path, genome_build: str = "GRCh38"
+    weights_df: pl.DataFrame | None,
+    positional: list[tuple[str, pl.DataFrame]],
+    output_path: Path,
+    genome_build: str = "GRCh38",
 ) -> None:
-    """Emit `resolution.csv` from the compiled weights — the resolved facts, so `reverse → compile`
+    """Emit `resolution.csv` from the compiled artifact — the resolved facts, so `reverse → compile`
     is fully offline (no Ensembl reference, no network).
 
     Each *positioned* weights row yields one `ResolutionRow` keyed by its frozen `variant_key`,
@@ -3706,6 +3840,23 @@ def _write_resolution_csv(
     Rows without a resolved position (a best-effort partial) carry no fact and are skipped. Emitted in
     the weights' authored order; `resolution_signature` is order-independent regardless. `fetched_at`
     is left blank (no wall-clock is read here, keeping the emit deterministic).
+
+    **The positional tables are a second source, and that is forced rather than chosen (RM43).** Since
+    0.6 the compiler fills a resolved coordinate into `pharm_variants`/`haplotypes`/`heteroplasmy`, so
+    a reverse that rebuilt this table from `weights.parquet` alone would hand back a spec whose
+    recompile leaves those parquets unfilled — `compile → reverse → compile` would stop reproducing
+    the artifact, breaking Principle 7. A PGx module carries no `weights.parquet` at all, and it is
+    exactly the module this matters most for.
+
+    Two ordering rules hold the two sources together, both borrowed from `enrich._collect_subjects`
+    rather than invented here:
+
+    * **weights first, and a key it emitted is never re-emitted.** `variants.csv` is the only table
+      carrying `alts` as an authored fact, so letting a PGx row win would change what the table says
+      about an allele — the same hazard that ordering exists to avoid one tier up.
+    * **one row per key from the positional side.** These tables are never expanded, so a key names
+      exactly one locus there; emitting a second row under one key would read back as a one-to-many
+      rsID and send the next compile into the expansion path.
 
     **Reverse emits facts and discards provenance, deliberately and completely.** `source` becomes
     `reversed`, `status` becomes `resolved`, `fetched_at` empties — and the provenance-only columns
@@ -3732,65 +3883,122 @@ def _write_resolution_csv(
         "variant_key", "rsid", "chrom", "start", "ref", "alts",
         "genome_build", "locus_index", "source", "status", "fetched_at",
     ]
-    with open(output_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        # A one-to-many rsid contributes N rows under ONE authored key, so `locus_index` counts
-        # within that key — matching what the enricher writes and what `resolve_from_table` expects to
-        # read back. Keying these on the per-locus `variant_key` instead (as this writer used to) left
-        # the re-emitted table unjoinable to the collapsed authored row, and `resolution_signature`
-        # moved across the round-trip.
-        seen_rows: set[tuple] = set()
-        locus_counter: dict[str, int] = {}
-        for row in weights_df.iter_rows(named=True):
+    # A one-to-many rsid contributes N rows under ONE authored key, so `locus_index` counts within
+    # that key — matching what the enricher writes and what `resolve_from_table` expects to read back.
+    # Keying these on the per-locus `variant_key` instead (as this writer used to) left the re-emitted
+    # table unjoinable to the collapsed authored row, and `resolution_signature` moved across the
+    # round-trip.
+    seen_rows: set[tuple] = set()
+    locus_counter: dict[str, int] = {}
+    emitted: list[dict[str, object]] = []
+
+    for row in (weights_df.iter_rows(named=True) if weights_df is not None else ()):
+        chrom, start = row.get("chrom"), row.get("start")
+        if chrom is None or start is None:
+            continue
+        alts_list = row.get("alts")
+        alts_cell = ",".join(alts_list) if alts_list else None
+        resolution_key = _resolution_key(row, chrom, start, alts_cell, genome_build)
+        # One authored row may appear several times in weights (one per genotype); the resolved
+        # fact is the same each time, so emit it once.
+        fact = (resolution_key, row.get("rsid"), chrom, start, row.get("ref"), alts_cell)
+        if fact in seen_rows:
+            continue
+        seen_rows.add(fact)
+        index = locus_counter.get(resolution_key, 0)
+        locus_counter[resolution_key] = index + 1
+        emitted.append(
+            _resolution_record(row, resolution_key, chrom, start, alts_cell, index, genome_build)
+        )
+
+    for _csv_name, table_df in positional:
+        for row in table_df.iter_rows(named=True):
             chrom, start = row.get("chrom"), row.get("start")
             if chrom is None or start is None:
                 continue
-            alts_list = row.get("alts")
-            alts_cell = ",".join(alts_list) if alts_list else None
-            authored = row.get("authored_ident")
-            if authored is not None:
-                authored_set = set(authored)
-                resolution_key = derive_variant_key(
-                    row.get("rsid") if "rsid" in authored_set else None,
-                    chrom if "chrom" in authored_set else None,
-                    start if "start" in authored_set else None,
-                    row.get("ref") if "ref" in authored_set else None,
-                    alts_cell if "alts" in authored_set else None,
-                    build=genome_build,
-                )
-            else:
-                resolution_key = row.get("variant_key") or derive_variant_key(
-                    row.get("rsid"), chrom, start, row.get("ref"), alts_cell,
-                    build=genome_build,
-                )
-            # One authored row may appear several times in weights (one per genotype); the resolved
-            # fact is the same each time, so emit it once.
-            fact = (resolution_key, row.get("rsid"), chrom, start, row.get("ref"), alts_cell)
-            if fact in seen_rows:
+            alts_cell = row.get("alts") or None
+            resolution_key = _resolution_key(row, chrom, start, alts_cell, genome_build)
+            if resolution_key in locus_counter:
                 continue
-            seen_rows.add(fact)
-            index = locus_counter.get(resolution_key, 0)
-            locus_counter[resolution_key] = index + 1
-            writer.writerow(
-                {
-                    "variant_key": resolution_key,
-                    "rsid": _scalar_cell(row.get("rsid")),
-                    "chrom": _scalar_cell(chrom),
-                    "start": _scalar_cell(start),
-                    "ref": _scalar_cell(row.get("ref")),
-                    "alts": alts_cell or "",
-                    # The module's own declared build, not a constant. A GRCh37 module's facts were
-                    # being written out labelled GRCh38 — a coordinate relabelled onto an assembly
-                    # where it names a different base. `resolve_from_table` filters rows on this
-                    # column, so the wrong label also made a reversed table unjoinable.
-                    "genome_build": genome_build,
-                    "locus_index": index,
-                    "source": "reversed",
-                    "status": "resolved",
-                    "fetched_at": "",
-                }
+            locus_counter[resolution_key] = 1
+            emitted.append(
+                _resolution_record(row, resolution_key, chrom, start, alts_cell, 0, genome_build)
             )
+
+    # A module that resolved nothing anywhere gets no file — writing a header-only `resolution.csv`
+    # into a reversed spec that never had one would invent a derived sidecar (and a `manifest.derived`
+    # entry) out of an absence. A module with a `weights.parquet` keeps the pre-0.6 behaviour of
+    # always writing, so nothing that already round-trips changes shape.
+    if weights_df is None and not emitted:
+        return
+    with open(output_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for record in emitted:
+            writer.writerow(record)
+
+
+def _resolution_key(
+    row: dict[str, Any],
+    chrom: str,
+    start: int,
+    alts_cell: str | None,
+    genome_build: str,
+) -> str:
+    """The key a reversed `resolution.csv` row is filed under: the identity the AUTHOR wrote.
+
+    Recomputed from `authored_ident` rather than read off the parquet's own `variant_key`, because on
+    the weights side those two differ exactly where it matters: a one-to-many rsID expansion re-keys
+    each emitted row onto its own locus, so the stored key names a locus while the injected table
+    named the rsID. Reading the stored column there would file N rows under N keys and leave the
+    collapsed authored row joining to none of them.
+
+    Falls back to the stored key, then to a fresh derivation, for an artifact compiled before
+    `authored_ident` existed.
+    """
+    if (authored := row.get("authored_ident")) is not None:
+        authored_set = set(authored)
+        return derive_variant_key(
+            row.get("rsid") if "rsid" in authored_set else None,
+            chrom if "chrom" in authored_set else None,
+            start if "start" in authored_set else None,
+            row.get("ref") if "ref" in authored_set else None,
+            alts_cell if "alts" in authored_set else None,
+            build=genome_build,
+        )
+    return row.get("variant_key") or derive_variant_key(
+        row.get("rsid"), chrom, start, row.get("ref"), alts_cell, build=genome_build
+    )
+
+
+def _resolution_record(
+    row: dict[str, Any],
+    resolution_key: str,
+    chrom: str,
+    start: int,
+    alts_cell: str | None,
+    locus_index: int,
+    genome_build: str,
+) -> dict[str, object]:
+    """One re-emitted `resolution.csv` row. Shared by the weights and positional passes so the two
+    sources cannot render the same fact two ways."""
+    return {
+        "variant_key": resolution_key,
+        "rsid": _scalar_cell(row.get("rsid")),
+        "chrom": _scalar_cell(chrom),
+        "start": _scalar_cell(start),
+        "ref": _scalar_cell(row.get("ref")),
+        "alts": alts_cell or "",
+        # The module's own declared build, not a constant. A GRCh37 module's facts were being
+        # written out labelled GRCh38 — a coordinate relabelled onto an assembly where it names a
+        # different base. `resolve_from_table` filters rows on this column, so the wrong label also
+        # made a reversed table unjoinable.
+        "genome_build": genome_build,
+        "locus_index": locus_index,
+        "source": "reversed",
+        "status": "resolved",
+        "fetched_at": "",
+    }
 
 
 def _most_common(df: pl.DataFrame, col: str) -> str | None:

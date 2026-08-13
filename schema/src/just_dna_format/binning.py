@@ -61,7 +61,7 @@ from typing import ClassVar
 
 from pydantic import Field, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, derive_variant_key, vocabulary
+from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
 from just_dna_format.vocab import check_vocab, validate_finite
 
 # Open, additive vocabulary of measured quantities (the `frozenset[str]` idiom, Principle 6). New
@@ -341,27 +341,24 @@ class HeteroplasmyRow(MeasureBinRow):
         description="Fixed: allele_fraction",
     )
 
-    @property
-    def variant_key(self) -> str | None:
-        """Which variant these bins are about, or `None` when the table names only a gene.
-
-        `None` is the pre-0.5 shape and groups exactly as it always did. A property rather than a
-        stamped field, like `PharmVariantRow.variant_key`: a heteroplasmy row is never resolved or
-        expanded, so there is nothing to freeze.
-
-        **Keyed against the build the loader injected** (`AuthoredModel._genome_build`, RM36). This
-        passes `alts`, so it can mint a `ga4gh:VA.…`, and a VA names its reference sequence by refget
-        accession — so it must know the assembly or it will claim the wrong one. A property cannot be
-        re-stamped the way `VariantRow.variant_key` is (that is a stored *field*; this is recomputed on
-        every access), so the build is told to the row at load instead of corrected after it. Before
-        that, one locus on a `genome_build: GRCh37` module got two identities: `6:26093141:G:A` from
-        `variants.csv` and a GRCh38 VA from here. `PharmVariantRow.variant_key` and the `HaplotypeRow`
-        key never had the problem — they omit `alts`, so they are build-independent by construction."""
-        if self.rsid is None and self.start is None:
-            return None
-        return derive_variant_key(
-            self.rsid, self.chrom, self.start, self.ref, self.alts, build=self._genome_build
-        )
+    variant_key: str | None = stamped_identity_field(
+        "Which variant these bins are about (rsid, else a coordinate key that includes `alts`), or "
+        "empty when the table names only a gene — the pre-0.5 shape, which groups exactly as it "
+        "always did. Stamped at load from the columns the author supplied, and re-derived when the "
+        "loader injects the module's build, because this key passes `alts` and can therefore mint a "
+        "`ga4gh:VA.…`, which names its reference sequence by refget accession and must know the "
+        "assembly or it will claim the wrong one (RM36). Part of `_KEY_FIELDS`, so all the identity "
+        "shapes collapse to one notion of which variant a row is about. Compiler-managed."
+    )
+    authored_ident: list[str] | None = stamped_identity_field(
+        "Which identity columns the author actually supplied, from {rsid, chrom, start, ref, alts}. "
+        "Stamped at load like `variant_key`, so the compiler can fill a resolved coordinate into the "
+        "parquet while `reverse_module` re-emits the authored shape — which is what keeps "
+        "`content_signature` stable across a round-trip (RM43). Compiler-managed."
+    )
+    #: The one positional table whose key includes `alts` — it always did, and narrowing it now would
+    #: re-key every published mtDNA module. See `AuthoredModel._KEY_INCLUDES_ALTS`.
+    _KEY_INCLUDES_ALTS: ClassVar[bool] = True
 
     @field_validator("reference_sequence")
     @classmethod

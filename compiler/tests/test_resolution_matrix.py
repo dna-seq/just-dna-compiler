@@ -50,6 +50,9 @@ def _row(key, rsid, chrom, start, ref, alts, idx=0, status="resolved", alternate
             f"{cell},\n")
 
 
+_PHARM_HEADER = "rsid,chrom,start,ref,gene,genotype,drug,conclusion\n"
+
+
 @dataclass(frozen=True)
 class Case:
     label: str
@@ -59,6 +62,11 @@ class Case:
     stable: bool
     #: True when `strict` must refuse. The contract: `not stable` implies this.
     strict_refuses: bool
+    #: `pharm_variants.csv` rows, for the positional half of the matrix (RM43). Since 0.6 the
+    #: injected table is joined onto the positional 0.4 kinds too, so the same authored-shape ×
+    #: mishap grid applies to them — and a table-only module (`variants=""`) is the shape that
+    #: motivated the item, since it carries no `weights.parquet` for reverse to rebuild from.
+    pharm: str = ""
 
 
 CASES: list[Case] = [
@@ -150,6 +158,36 @@ CASES: list[Case] = [
          _row("rs999", "rs999", 5, 500, "C", "G", 0)
          + _row("rs999", "rs999", 6, 600, "C", "G", 1),
          stable=False, strict_refuses=True),
+
+    # ── the positional 0.4 kinds (RM43). Same grid, no `variants.csv`: the module the item is about
+    #    carries no `weights.parquet` at all, so reverse has to rebuild `resolution.csv` from the
+    #    positional parquet or the recompile silently loses every coordinate. ────────────────────
+    Case("table-only, rsid-authored pharm row, 1:1 fill",
+         "", _row("rs777", "rs777", 7, 700, "C", "G"),
+         stable=True, strict_refuses=False,
+         pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
+    Case("table-only, rsid-authored pharm row, nothing in the table",
+         "", _row("rs111", "rs111", 7, 700, "C", "G"),
+         stable=True, strict_refuses=False,
+         pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
+    Case("table-only, coordinate-authored pharm row, rsid resolved",
+         "", _row(_KEY_COORD_ONLY, "rs777", 7, 700, "C", "G"),
+         stable=True, strict_refuses=False,
+         pharm=",7,700,C,SLCO1B1,C/G,simvastatin,c\n"),
+    Case("table-only, one-to-many rsid: left unplaced, never picked or expanded",
+         "",
+         _row("rs999", "rs999", 5, 500, "C", "G", 0)
+         + _row("rs999", "rs999", 6, 600, "C", "G", 1),
+         stable=True, strict_refuses=False,
+         pharm="rs999,,,,SLCO1B1,C/G,simvastatin,c\n"),
+    Case("table-only, half coordinate the table contradicts: left exactly as authored",
+         "", _row("rs777", "rs777", 7, 700, "C", "G"),
+         stable=True, strict_refuses=False,
+         pharm="rs777,,999,,SLCO1B1,C/G,simvastatin,c\n"),
+    Case("pharm row beside the SNP core on one key: weights own the fact",
+         "rs777,,,,,C/G,risk,c\n", _row("rs777", "rs777", 7, 700, "C", "G"),
+         stable=True, strict_refuses=False,
+         pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
 ]
 
 
@@ -157,8 +195,13 @@ def _spec(root: Path, case: Case) -> Path:
     spec = root / "spec"
     spec.mkdir(parents=True)
     (spec / "module_spec.yaml").write_text(_YAML)
-    (spec / "variants.csv").write_text(_VAR_HEADER + case.variants)
-    (spec / "studies.csv").write_text("rsid,pmid\nrs777,29165669\nrs999,29165669\n")
+    # `variants.csv` is optional (RM2 composition), and `studies.csv` is mandatory iff it is present —
+    # so a positional-only case writes neither, which is exactly the module shape RM43 is about.
+    if case.variants:
+        (spec / "variants.csv").write_text(_VAR_HEADER + case.variants)
+        (spec / "studies.csv").write_text("rsid,pmid\nrs777,29165669\nrs999,29165669\n")
+    if case.pharm:
+        (spec / "pharm_variants.csv").write_text(_PHARM_HEADER + case.pharm)
     (spec / "resolution.csv").write_text(_RES_HEADER + case.resolution)
     return spec
 

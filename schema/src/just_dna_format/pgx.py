@@ -23,7 +23,7 @@ from typing import ClassVar
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, derive_variant_key, vocabulary
+from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
 from just_dna_format.vocab import (
     VALID_PHENOTYPE_CATEGORIES,
     VALID_RECOMMENDATION_STRENGTH,
@@ -105,8 +105,31 @@ class HaplotypeRow(AuthoredModel):
         "this convention and it is stored as-is; do not subtract one",
     )
     ref: str | None = Field(default=None, description="Reference allele (position-only)")
+    alts: str | None = stamped_identity_field(
+        "Alternate allele(s) at this locus, comma-separated — **filled by the compiler** from the "
+        "injected resolution table, never authored (RM43). Distinct from `allele`, which is the one "
+        "allele that *defines this haplotype*: a locus may offer several ALTs and the haplotype names "
+        "one of them. It is here so `reverse_module` can rebuild `resolution.csv` from this parquet "
+        "without dropping the allele list the injected table carried. Parquet-only; outside the key."
+    )
     allele: str = Field(description="The defining (variant) allele on this haplotype, nucleotides")
     gene: str | None = Field(default=None, description="Gene symbol, e.g. CYP2D6")
+    variant_key: str | None = stamped_identity_field(
+        "Frozen machine identity (rsid, else chrom:start:ref), stamped at load from the columns the "
+        "author supplied and never re-derived. `HaplotypeRow` had none at all before 0.6, so "
+        "`enrich._collect_subjects` and the compiler each derived one inline; materializing it to "
+        "haplotypes.parquet gives a consumer the same key `weights.parquet` carries (RM43). "
+        "Compiler-managed: not authored, never written back by reverse_module."
+    )
+    authored_ident: list[str] | None = stamped_identity_field(
+        "Which identity columns the author actually supplied, from {rsid, chrom, start, ref}. "
+        "Stamped at load like `variant_key`, so the compiler can fill a resolved coordinate into the "
+        "parquet while `reverse_module` re-emits the authored shape — which is what keeps "
+        "`content_signature` stable across a round-trip. Compiler-managed."
+    )
+    #: A haplotype junction matches a variant at chrom:start:ref regardless of allele — the key the
+    #: enricher has always derived for this table, kept byte-identical so nothing re-keys.
+    _KEY_INCLUDES_ALTS: ClassVar[bool] = False
 
     @field_validator("allele")
     @classmethod
@@ -318,11 +341,33 @@ class PharmVariantRow(AuthoredModel):
         "this convention and it is stored as-is; do not subtract one",
     )
     ref: str | None = Field(default=None, description="Reference allele (position-only)")
+    alts: str | None = stamped_identity_field(
+        "Alternate allele(s) at this locus, comma-separated — **filled by the compiler** from the "
+        "injected resolution table, never authored (RM43). It is carried as *data*, not identity: "
+        "`variant_key` is still derived without it, so a pharm annotation keeps matching a variant at "
+        "chrom:start:ref regardless of allele, and what the column buys is a direct VCF join, since a "
+        "VCF row carries REF and ALT. Parquet-only: no CSV writer emits it."
+    )
     gene: str | None = Field(default=None, description="Gene symbol, e.g. VKORC1")
     genotype: str | None = Field(
         default=None,
         description="Genotype the response applies to, canonical sorted form, e.g. C/T",
     )
+    variant_key: str | None = stamped_identity_field(
+        "Frozen machine identity (rsid, else chrom:start:ref), stamped at load from the columns the "
+        "author supplied and never re-derived, so the compile-time coordinate fill cannot re-key the "
+        "row. Materialized to pharm_variants.parquet so a consumer can join this table to "
+        "weights.parquet without re-implementing the precedence rule (RM43). Compiler-managed: not "
+        "authored, never written back by reverse_module."
+    )
+    authored_ident: list[str] | None = stamped_identity_field(
+        "Which identity columns the author actually supplied, from {rsid, chrom, start, ref}. "
+        "Stamped at load like `variant_key`, so the compiler can fill a resolved coordinate into "
+        "the parquet while `reverse_module` re-emits the authored shape — which is what keeps "
+        "`content_signature` stable across a round-trip. Compiler-managed."
+    )
+    #: The key omits `alts` — see `stamped_identity_field` on `alts` above, and `_collect_subjects`.
+    _KEY_INCLUDES_ALTS: ClassVar[bool] = False
     #: rsid, or a full coordinate. Mirrors `_validate_identification` below.
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
         frozenset({"rsid"}),
@@ -362,11 +407,6 @@ class PharmVariantRow(AuthoredModel):
     @classmethod
     def _validate_phenotype_category(cls, v: str | None) -> str | None:
         return validate_phenotype_categories(v)
-
-    @property
-    def variant_key(self) -> str:
-        """Stable key matching VariantRow.variant_key (never resolved/expanded, so a property)."""
-        return derive_variant_key(self.rsid, self.chrom, self.start, self.ref)
 
     @model_validator(mode="after")
     def _validate_identification(self) -> "PharmVariantRow":

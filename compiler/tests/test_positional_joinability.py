@@ -1,9 +1,16 @@
-"""The 0.4 families are materialized verbatim, so an rsid-authored one joins to no VCF (S9).
+"""What is left unjoinable after the positional fill, and how the module is told (S9, then RM43).
 
-Resolution is SNP-core-scoped: `compile_module` resolves `variants.csv` and writes every other table
-straight through `_build_table`. That is deliberate and stays deliberate here — what was missing is
-that nothing said so, so a consumer shipped a 1,482-row pharmacogenomics module whose every row had a
-null coordinate and found out by reading parquet.
+This check shipped in 0.5.3 as *legibility*: resolution was SNP-core-scoped, `compile_module` wrote
+every other table straight through `_build_table`, and a consumer shipped a 1,482-row pharmacogenomics
+module whose every row had a null coordinate and found out by reading parquet. RM43 closed the gap
+itself — `_apply_positional_resolution` runs first now, in both `validate_spec` and `compile_module` —
+so what this file pins is the **residue**: a row the injected table does not place, or places at more
+than one locus, plus the two contracts that outlive the repair (the derived positional set, and
+`UNJOINABLE_PHRASE` as a published string).
+
+The fixtures moved with the behaviour. The two reference examples used to be the demonstration that
+the gap existed; they now demonstrate it is closed, and the modules that still warn are ones with no
+injected answer — which is the honest remaining case.
 
 Expectations are computed from the fixtures at runtime; the counts below are read off the authored
 CSVs, never off a data dump.
@@ -52,37 +59,40 @@ def test_the_positional_set_is_derived_from_the_models(tmp_path: Path) -> None:
         assert {"chrom", "start"} <= set(model.model_fields)
 
 
-def test_an_rsid_authored_pgx_module_is_told_it_joins_by_rsid_only() -> None:
-    """The reported case, on this tree's own example: compiles clean, no coordinate anywhere."""
-    authored = _rows(_PGX / "pharm_variants.csv")
-    unplaced = [r for r in authored if not (r.get("chrom") and r.get("start"))]
-    assert unplaced, "the fixture must be the rsid-authored shape this check is about"
-
-    finding = _finding(validate_spec(_PGX).warnings, "pharm_variants.csv")
-    assert finding is not None
-    assert f"{len(unplaced)} of {len(authored)} row(s)" in finding
-    # The second count is the actionable half: the coordinates exist, in the injected table.
-    assert f"resolution.csv can place {len(unplaced)} of them" in finding
-    assert "one half of a coordinate" not in finding, "these rows carry no coordinate at all"
+@pytest.mark.parametrize("spec", [_PGX, _STARS], ids=lambda p: p.name)
+def test_a_module_whose_table_answers_is_no_longer_warned_about(spec: Path) -> None:
+    """The two examples the check was written against. Both are rsid-authored with a `resolution.csv`
+    beside them, so after RM43 the coordinates arrive and there is nothing left to report — saying
+    otherwise would tell an author to fix something the compiler has already done."""
+    assert _finding(validate_spec(spec).warnings, "pharm_variants.csv") is None
+    assert _finding(validate_spec(spec).warnings, "haplotypes.csv") is None
 
 
-def test_a_half_coordinate_is_counted_apart_because_it_looks_like_a_position() -> None:
+def test_a_half_coordinate_is_counted_apart_because_it_looks_like_a_position(
+    tmp_path: Path,
+) -> None:
     """CPIC publishes a position on `sequence_location` and the chromosome on `gene`, so a drafted
     `haplotypes.csv` carries `start` with no `chrom` — which joins to nothing while looking like it
-    would."""
-    authored = _rows(_STARS / "haplotypes.csv")
-    half = [r for r in authored if r.get("start") and not r.get("chrom")]
-    assert half, "the fixture must carry the half-coordinate shape"
-
-    finding = _finding(validate_spec(_STARS).warnings, "haplotypes.csv")
+    would. The fill completes it where the table answers; where nothing does, it is still the more
+    deceptive shape and is still counted apart."""
+    spec = _pharm_spec(tmp_path / "half", coordinates=False, resolution=False)
+    (spec / "pharm_variants.csv").write_text(
+        "rsid,gene,genotype,drug,conclusion,start\n"
+        "rs4149056,SLCO1B1,C/C,simvastatin,c,21178615\n",
+        encoding="utf-8",
+    )
+    finding = _finding(validate_spec(spec).warnings, "pharm_variants.csv")
     assert finding is not None
-    assert f"{len(half)} carry one half of a coordinate" in finding
+    assert "1 carries one half of a coordinate" in finding
 
 
 def test_validate_and_compile_agree_and_the_compile_says_it_once(tmp_path: Path) -> None:
-    """`compile_module` runs `validate_spec` itself, so the sentence must be de-duplicated."""
-    validated = _finding(validate_spec(_PGX).warnings, "pharm_variants.csv")
-    result = compile_module(_PGX, tmp_path / "out")
+    """`compile_module` runs `validate_spec` itself, so the sentence must be de-duplicated — and both
+    must run the fill, or the pre-flight names a gap the compile has already closed."""
+    spec = _pharm_spec(tmp_path / "bare", coordinates=False, resolution=False)
+    validated = _finding(validate_spec(spec).warnings, "pharm_variants.csv")
+    assert validated is not None
+    result = compile_module(spec, tmp_path / "out")
     assert result.success
     compiled = [w for w in result.warnings if "joins by rsID only" in w]
     assert len(compiled) == 1
@@ -136,19 +146,22 @@ def test_the_key_is_derived_the_way_the_enricher_derives_it() -> None:
                             conclusion="c")
     assert _table_row_key(pharm, "GRCh38") == pharm.variant_key
 
-    # `HaplotypeRow` carries no `variant_key` at all; `enrich._collect_subjects` derives one without
-    # `alts`, because a haplotype's defining allele is not its identity.
+    # `HaplotypeRow` stamps the column since 0.6 (RM43); before that it had none at all and
+    # `enrich._collect_subjects` derived one inline. The stamped value must be that same expression —
+    # without `alts`, because a haplotype's defining allele is not its identity.
     hap = HaplotypeRow(haplotype_name="*2", rsid="rs4244285", allele="A", gene="CYP2C19")
     assert _table_row_key(hap, "GRCh38") == derive_variant_key(
         hap.rsid, hap.chrom, hap.start, hap.ref
     )
+    assert hap.variant_key == derive_variant_key(hap.rsid, hap.chrom, hap.start, hap.ref)
 
 
-@pytest.mark.parametrize("spec", [_PGX, _STARS], ids=lambda p: p.name)
-def test_the_finding_never_escalates_under_strict(spec: Path, tmp_path: Path) -> None:
-    """Rsid-only identity is legal by the model's own rule, and the remedy is a compiler change (RM43),
-    not an authored edit — so refusing here would make a correct module uncompilable."""
-    result = compile_module(spec, tmp_path / spec.name, strict=True)
+def test_the_finding_never_escalates_under_strict(tmp_path: Path) -> None:
+    """Rsid-only identity is legal by the model's own rule, and what survives the fill is by
+    construction something no authored edit to this table clears — so refusing here would make a
+    correct module uncompilable for a reason its author cannot act on."""
+    spec = _pharm_spec(tmp_path / "bare", coordinates=False, resolution=False)
+    result = compile_module(spec, tmp_path / "out", strict=True)
     assert result.success, result.errors
     assert [w for w in result.warnings if "joins by rsID only" in w]
 
@@ -162,13 +175,18 @@ def test_the_unjoinable_phrase_survives_into_the_manifest(tmp_path: Path) -> Non
     places it has to hold: the phrase is emitted verbatim, and it reaches
     `manifest.compilation.warnings` rather than only the caller's return value.
     """
-    result = compile_module(_PGX, tmp_path / "out")
+    bare = _pharm_spec(tmp_path / "bare", coordinates=False, resolution=False)
+    result = compile_module(bare, tmp_path / "out")
     assert result.success
     assert any(UNJOINABLE_PHRASE in w for w in result.warnings)
     assert any(UNJOINABLE_PHRASE in w for w in result.manifest.compilation.warnings)
 
     # …and it stays out of a module whose rows carry their coordinates, or the badge would be denied
-    # to modules that deserve it.
+    # to modules that deserve it — including, since RM43, the ones the compiler placed itself.
     placed = _pharm_spec(tmp_path / "placed", coordinates=True, resolution=True)
     placed_result = compile_module(placed, tmp_path / "out-placed")
     assert not [w for w in placed_result.manifest.compilation.warnings if UNJOINABLE_PHRASE in w]
+
+    filled = _pharm_spec(tmp_path / "filled", coordinates=False, resolution=True)
+    filled_result = compile_module(filled, tmp_path / "out-filled")
+    assert not [w for w in filled_result.manifest.compilation.warnings if UNJOINABLE_PHRASE in w]
