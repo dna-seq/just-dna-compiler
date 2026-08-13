@@ -47,11 +47,21 @@ A measurement that is *present but matches no bin* is a distinct third state ("n
 coherent (consumer round-2 C1).
 
 **`source_field` (round-2 3a) is a declarative *pointer*, not code.** It optionally names the VCF
-`FORMAT`/`INFO` field the consumer extracts the measure from (`REPCN`, `AF`, `CN|DS`) — pure
-indirection/addressing, deliberately constrained to a bare field-name token (optionally `|`-alternated)
-so it can never become an expression. That keeps it inside Principle 1 (declarative, non-Turing): a
-name that says *where the measurement lives*, never a transform that computes one. The module still
-holds no measurement.
+field the consumer extracts the measure from (`FORMAT/REPCN`, `FORMAT/AF`, `INFO/CN|FORMAT/DS`) —
+pure indirection/addressing, deliberately constrained to a field-name key (optionally namespace-
+qualified, optionally `|`-alternated) so it can never become an expression. That keeps it inside
+Principle 1 (declarative, non-Turing): a name that says *where the measurement lives*, never a
+transform that computes one. The module still holds no measurement.
+
+**A VCF field is identified by namespace and described by cardinality, and `source_field` used to
+carry neither** (RM53/RM54, 0.6). INFO and FORMAT are two reserved-key tables that collide on `DP`,
+`AD`, `ADF`, `ADR`, `MQ`, `AF` and — since 4.4 — `CN`, so `AF` alone names the cohort frequency of an
+ALT *or* this sample's fraction of it, and both are floats in `[0, 1]` that bin without complaint.
+`Number` then decides how many values come back: a pointer at a `Number=R` field returns one value
+per allele, reference first, of which none is the answer. So the namespace goes in the pointer
+(`FORMAT/AF`, bare still legal and still meaning unqualified) and the element goes in `source_element`
+— a closed set of **named rules** rather than an index, because `AD[1]` is the first line of an
+expression grammar and Principle 1 refuses it.
 """
 
 import math
@@ -136,14 +146,28 @@ class MeasureBinRow(AuthoredModel):
     source_field: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field the consumer extracts this measure from (e.g. REPCN, "
-            "AF, CN|DS). A declarative pointer (bare field-name token, optionally |-alternated), "
-            "never an expression — an extraction hint; the measurement still comes from the consumer."
+            "Optional VCF field the consumer extracts this measure from, best written with its "
+            "namespace (e.g. FORMAT/REPCN, FORMAT/AF, INFO/CN|FORMAT/DS). A declarative pointer "
+            "(field-name key, optionally qualified INFO/ or FORMAT/, optionally |-alternated), never "
+            "an expression — an extraction hint; the measurement still comes from the consumer. A "
+            "bare key means unqualified, and INFO and FORMAT define different fields under DP, AD, "
+            "ADF, ADR, MQ, AF and CN."
+        ),
+    )
+    source_element: str | None = Field(
+        default=None,
+        description=(
+            "Which element of `source_field` this bin is measured against, when the field returns a "
+            "list (VCF Number=A/R/G/P/.) rather than one value: largest|largest_alt|smallest|"
+            "smallest_alt|sum|sum_alt|annotated_alt|reference. A named rule, never an index. On a "
+            "Number=R field the reference is element zero, which is why each ranging rule comes in a "
+            "pair — the bare name counts it, the _alt name does not. Leave empty for a scalar field."
         ),
     )
 
-    # `source_field`'s pointer grammar is validated on `AuthoredModel` — it is shared with
-    # `VariantRow.callable_from`, and a validator used by two models lives on the base.
+    # `source_field`'s pointer grammar and `source_element`'s vocabulary are both validated on
+    # `AuthoredModel` — they are shared with `VariantRow.callable_from`/`callable_element` and
+    # `quality_from`/`quality_element`, and a validator used by more than one model lives on the base.
 
     @field_validator("measure_min", "measure_max")
     @classmethod

@@ -78,9 +78,37 @@ heteroplasmy read, and the conclusions say so — the low-blood row tells a read
 muscle before reassuring anyone, because blood is the tissue most likely to look innocent.
 
 `variants.csv` carries the two variants as **homoplasmic** single-allele genotypes, which is the other
-half of the mitochondrial shape (§4). `requires_callable=true` with `callable_from=DP`: a
+half of the mitochondrial shape (§4). `requires_callable=true` with `callable_from=FORMAT/DP`: a
 mitochondrial no-call is not a reference call, and at these loci that distinction is the whole
 finding.
+
+## The two pointers were wrong, in both columns, until 0.6 (RM53/RM54)
+
+This module shipped with `source_field=AF` and `callable_from=DP`, and both are ambiguous in the way
+that costs a wrong answer rather than a parse error. **A VCF field is not identified by its name.** It
+is identified by *namespace*, and INFO and FORMAT are two reserved-key tables that overlap on `DP`,
+`AD`, `ADF`, `ADR`, `MQ`, `AF` and — new in VCF 4.4 — `CN`.
+
+`AF` here means **FORMAT/AF**: this person's heteroplasmy fraction of m.3243A>G in this tissue. `AF` as
+the spec reserves it is **INFO/AF**: the cohort allele frequency of that ALT. Both are floats in
+`[0, 1]`, both bin cleanly against `0.0–0.1 / 0.1–0.3 / 0.3–1.0`, and one of them tells a carrier they
+are asymptomatic on the strength of how rare the variant is in a reference panel. Nothing in the schema,
+the compiler or the consumer contract could tell them apart. `callable_from=DP` was the same error one
+column over: INFO/DP is the cohort's combined depth and says nothing about whether *this* sample's
+position was callable, which is the entire question `requires_callable` exists to make a consumer ask.
+
+The cells now read `FORMAT/AF` and `FORMAT/DP`, and `heteroplasmy.csv` carries
+`source_element=annotated_alt` — `FORMAT/AF` is one value per ALT, so the bin is measured against the
+element for the allele the row is about. A bare key is still legal and still means *unqualified*
+(nothing published breaks), but the compiler now warns whenever one is a known collision. Both
+`content_signature` and `artifact.digest` moved: that is a correction, not a regression, and the round
+trip was re-verified rather than assumed.
+
+The cardinality half earns no automatic warning here, and the reason is worth knowing: the spec
+reserves `INFO/AF` and does **not** reserve `FORMAT/AF`, which every caller nevertheless emits. The
+compiler reads cardinality from the spec's own tables and nothing else — asserting a `Number` for a
+field the spec never described would be a source convention wearing a fact — so `annotated_alt` is
+authored here deliberately rather than prompted.
 
 ## Reproduce
 

@@ -49,13 +49,239 @@ ALLELE_PATTERN: re.Pattern[str] = re.compile(r"^[ACGT]+$", re.IGNORECASE)
 TRAIT_ID_PATTERN: re.Pattern[str] = re.compile(r"^[A-Za-z][A-Za-z]*[:_]\w+$")
 # Separators accepted inside a multi-valued CSV cell (`flags`, `trait_efo_id`, `training_ancestry`).
 MULTI_SEP: re.Pattern[str] = re.compile(r"[,;|]")
-# A VCF field-name pointer: one bare token, optionally `|`-alternated (`CN|DS`). Lives here rather
-# than on `binning` because two models now point into a VCF this way — `source_field` names where the
-# measured quantity is, `callable_from` names where the callability signal is — and a grammar shared
-# by two models belongs on the leaf both can import (see `validate_field_token` below).
+# A VCF field-name pointer: a key, optionally namespace-qualified (`INFO/DP`, `FORMAT/DP`), and the
+# whole thing optionally `|`-alternated (`CN|DS`). Lives here rather than on `binning` because three
+# models now point into a VCF this way — `source_field` names where the measured quantity is,
+# `callable_from` where the callability signal is, `quality_from` where the confidence floor is stated
+# — and a grammar shared by three models belongs on the leaf all three can import (see
+# `validate_field_token` below).
+#
+# The key charset is the spec's own (§1.6.1.8 for INFO, §1.6.2 for FORMAT): a dot is legal *inside* a
+# key, and `1000G` is a legal key beginning with a digit, reserved by name. The old grammar
+# (`[A-Za-z_][A-Za-z0-9_]*`) allowed neither, so it claimed to describe VCF field names while refusing
+# two shapes the spec names by hand (RM61). Widening only — every token that matched before still
+# matches.
+#
+# One charset serves both namespaces, on purpose. The spec reserves the legacy `1000G` under INFO
+# alone, so `FORMAT/1000G` is strictly speaking not a legal *header* key — but this is a pointer at a
+# field, not a header being emitted, and splitting the grammar in two to refuse a spelling nobody
+# writes buys a distinction with no consequence.
+
+#: The two key namespaces. A VCF field is identified by namespace *and* name; the two reserved-key
+#: tables overlap deliberately, so a bare name names two different fields (RM53).
+VCF_NAMESPACES: frozenset[str] = frozenset({"INFO", "FORMAT"})
+_VCF_KEY = r"(?:[A-Za-z_][0-9A-Za-z_.]*|1000G)"
+_VCF_POINTER_ATOM = rf"(?:(?:INFO|FORMAT)/)?{_VCF_KEY}"
 SOURCE_FIELD_PATTERN: re.Pattern[str] = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*(\|[A-Za-z_][A-Za-z0-9_]*)*$"
+    rf"^{_VCF_POINTER_ATOM}(?:\|{_VCF_POINTER_ATOM})*$"
 )
+
+# ── The VCF field model: namespace, and cardinality (RM53 / RM54) ────────────────────────────────
+# A VCF field is identified by *namespace* (which of the two reserved-key tables it is drawn from) and
+# described by *cardinality* (`Number`, which says how many values come back and what each one is of).
+# A bare token names neither, and where both readings are type-compatible nothing detects the
+# confusion: a consumer reads a well-formed number of the wrong kind and bins it without error.
+#
+# Both constants below are transcribed from the VCFv4.4 specification's own reserved-key tables and are
+# fixed for that spec version — this is not a source convention (P2): nothing here describes what any
+# particular caller emits, and a key the tables do not reserve is simply absent, which reads as
+# *unknown* rather than as a claim (the house three-valued rule).
+
+#: Keys reserved in **both** namespaces with different meanings. A bare one of these is ambiguous in a
+#: way that costs a wrong answer rather than a parse error, which is why it earns its own warning.
+VCF_COLLIDING_KEYS: frozenset[str] = frozenset(
+    {"DP", "AD", "ADF", "ADR", "MQ", "AF", "CN"}
+)
+
+#: What each collision *costs* — the two readings, so a message can name them rather than saying
+#: "ambiguous". Total over `VCF_COLLIDING_KEYS` (a test pins that).
+VCF_COLLISION_REASONS: dict[str, str] = {
+    "DP": (
+        "INFO/DP is the combined read depth across all samples; FORMAT/DP is this sample's depth at "
+        "the position"
+    ),
+    "AD": (
+        "INFO/AD is the total read depth per allele across samples; FORMAT/AD is this sample's per "
+        "allele depth"
+    ),
+    "ADF": (
+        "INFO/ADF is the total forward-strand read depth per allele; FORMAT/ADF is this sample's"
+    ),
+    "ADR": (
+        "INFO/ADR is the total reverse-strand read depth per allele; FORMAT/ADR is this sample's"
+    ),
+    "MQ": (
+        "INFO/MQ is an RMS mapping quality typed Float; FORMAT/MQ is an RMS mapping quality typed "
+        "Integer — the two differ in type, not only in scope"
+    ),
+    "AF": (
+        "INFO/AF is the cohort allele frequency of the ALT; FORMAT/AF is not reserved by the spec but "
+        "is universally emitted as this sample's allele fraction (VAF) — a heteroplasmy or tumour "
+        "fraction is the second one, and the cohort frequency says nothing about this person"
+    ),
+    "CN": (
+        "INFO/CN is the allele-specific copy number and FORMAT/CN is the sample's total copy number "
+        "(redefined that way in VCF 4.4, §7.2) — the two answers differ by a factor of the ploidy"
+    ),
+}
+
+#: `Number` per **qualified** key, from the reserved-key tables (VCF 4.4 §1.6.1.8 Table 1 for INFO,
+#: §1.6.2 Table 2 for FORMAT, plus the structural/copy-number keys of §5.6). Deliberately partial: it
+#: carries the reserved keys and nothing else, because a caller-specific key's cardinality is a source
+#: convention this tier does not get to assert. An absent key is *unknown*, and unknown withholds.
+VCF_FIELD_NUMBER: dict[str, str] = {
+    # INFO — Table 1.
+    "INFO/AA": "1",
+    "INFO/AC": "A",
+    "INFO/AD": "R",
+    "INFO/ADF": "R",
+    "INFO/ADR": "R",
+    "INFO/AF": "A",
+    "INFO/AN": "1",
+    "INFO/BQ": "1",
+    "INFO/CIGAR": "A",
+    "INFO/CN": "A",
+    "INFO/DB": "0",
+    "INFO/DP": "1",
+    "INFO/END": "1",
+    "INFO/H2": "0",
+    "INFO/H3": "0",
+    "INFO/MQ": "1",
+    "INFO/MQ0": "1",
+    "INFO/NS": "1",
+    "INFO/SB": "4",
+    "INFO/SOMATIC": "0",
+    "INFO/VALIDATED": "0",
+    "INFO/1000G": "0",
+    # FORMAT — Table 2.
+    "FORMAT/AD": "R",
+    "FORMAT/ADF": "R",
+    "FORMAT/ADR": "R",
+    "FORMAT/CN": "1",
+    "FORMAT/CNL": "G",
+    "FORMAT/CNP": "G",
+    "FORMAT/CNQ": "1",
+    "FORMAT/DP": "1",
+    "FORMAT/EC": "A",
+    "FORMAT/FT": "1",
+    "FORMAT/GL": "G",
+    "FORMAT/GP": "G",
+    "FORMAT/GQ": "1",
+    "FORMAT/GT": "1",
+    "FORMAT/HQ": "2",
+    "FORMAT/MQ": "1",
+    "FORMAT/PL": "G",
+    "FORMAT/PQ": "1",
+    "FORMAT/PS": "1",
+    "FORMAT/PSL": "P",
+    "FORMAT/PSO": "P",
+    "FORMAT/PSQ": "P",
+}
+
+#: What each multi-valued `Number` code means, for a message that explains rather than accuses.
+VCF_NUMBER_MEANINGS: dict[str, str] = {
+    "A": "one value per ALT allele, in ALT order",
+    "R": "one value per allele, reference first",
+    "G": "one value per genotype",
+    "P": "one value per allele of the sample's GT",
+    ".": "an unbounded list",
+    "2": "a fixed pair",
+    "4": "a fixed quadruple",
+}
+
+#: Which element of a multi-valued field a pointer means — a **closed set of named rules**, applied by
+#: the consumer (RM54). Not an index: `AD[1]` is the first line of an expression grammar, which
+#: Principle 1 refuses and which is the reason these pointers were a bare token to begin with. A named
+#: rule is data, it terminates, and it needs no evaluator.
+#:
+#: "Element" means *one of the values the field carries for this record*, and that is deliberately
+#: wider than a VCF `Number` slot. The spec's own multi-valued cardinalities (`A`, `R`, `G`, `P`, `.`)
+#: are the common case, but a caller may also pack several values into a single cell —
+#: ExpansionHunter's `REPCN` reports both repeat alleles as `17/42` — and a rule that only spoke about
+#: `Number` would have nothing to say about the flagship case it was built for. How the values are
+#: encoded is the caller's business and this tier holds no opinion on it (P2); which of them the
+#: annotation means is the module's, and that is what this column states.
+#:
+#: The reference-inclusion trap is written into the vocabulary rather than left to a footnote: on a
+#: `Number=R` field the reference is element zero, so "the larger of the two" has two answers. Every
+#: ranging rule therefore comes in a pair — the bare name ranges over every value, the `_alt` name
+#: ranges over the ALT elements only — and on a field with no reference element (`Number=A`, `G`, `P`,
+#: `.`, or a packed cell of the sample's own alleles) the two coincide.
+VALID_ELEMENT_RULES: frozenset[str] = frozenset(
+    {
+        "largest",
+        "largest_alt",
+        "smallest",
+        "smallest_alt",
+        "sum",
+        "sum_alt",
+        "annotated_alt",
+        "reference",
+    }
+)
+
+#: One sentence per member, total over `VALID_ELEMENT_RULES` (a test pins that). This is where the
+#: reference-inclusion answer actually lives, so a member can never be silent about it.
+ELEMENT_RULE_MEANINGS: dict[str, str] = {
+    "largest": (
+        "the greatest of the values the field carries for this record, the reference element included "
+        "where the field has one (Number=R). This is the rule a dominant repeat expansion wants: the "
+        "longer of the sample's two alleles, whichever of them happens to be reference-length"
+    ),
+    "largest_alt": (
+        "the greatest element among the ALT elements only; on a Number=R field this skips element "
+        "zero, which is the reference"
+    ),
+    "smallest": (
+        "the least of the values the field carries for this record, the reference element included "
+        "where the field has one (Number=R)"
+    ),
+    "smallest_alt": (
+        "the least element among the ALT elements only; on a Number=R field this skips element zero, "
+        "which is the reference"
+    ),
+    "sum": (
+        "the sum of every value the field carries, the reference element included where the field has "
+        "one — the denominator of an allele fraction computed from AD"
+    ),
+    "sum_alt": (
+        "the sum of the ALT elements only; on a Number=R field this skips element zero, which is the "
+        "reference"
+    ),
+    "annotated_alt": (
+        "the element aligned with the ALT allele this row is about — the allele the consumer matched "
+        "the record on, at its index in the record's ALT list, which is element index+1 on a "
+        "Number=R field because element zero there is the reference. Where the row names no single "
+        "ALT, or the record carries none of the ones it names, the rule decides nothing and a "
+        "consumer withholds rather than picking"
+    ),
+    "reference": (
+        "the reference element — element zero of a Number=R field. A field with no reference element "
+        "(Number=A, G, P) has nothing for this rule to name, and a consumer withholds"
+    ),
+}
+
+#: Every column that carries a VCF field pointer. The namespace question (RM53) is theirs equally —
+#: `callable_from=DP` is the same error `source_field=AF` is, one column over — so the collision check
+#: reads *this*, never `VCF_POINTER_COMPANIONS` below, which answers a different question.
+VCF_POINTER_FIELDS: tuple[str, ...] = ("source_field", "callable_from", "quality_from")
+
+#: Each element-rule column and the pointer column it qualifies. One map, so the pair rule, the
+#: warning and the authoring reference read one relation instead of three copies of it.
+#:
+#: **One entry, deliberately.** The element rule (RM54) shipped on the binning tables' `source_field`
+#: alone, because that is where the defect has an instantiation: `repeat_alleles.csv` is a table about
+#: dominant repeat disorders, the clinical rule for HTT is *the larger of the two alleles*, and
+#: `reference_examples/htt_repeat_expansion` stated four thresholds against a multi-valued field with
+#: nowhere to say which value it meant. `callable_from` and `quality_from` can name a multi-valued
+#: field too (`FORMAT/AD`), and no module does; under the 0.6 charter amendment an authored column
+#: costs full price and `variants.csv` is the table every author writes, so those two wait for a real
+#: case. Nothing is closed off — a companion column is additive whenever one is wanted (P3), the names
+#: are held in `RESERVED_NAMES_0_4` so they survive the one-way door, and everything that reads this
+#: map is generic over it.
+VCF_POINTER_COMPANIONS: dict[str, str] = {
+    "source_element": "source_field",
+}
 
 # ── Reserved namespace (0.4) ──────────────────────────────────────────────────────────────────
 # Names reserved because they are **genuine anticipated module-side axes** (CONSTITUTION Principle 5:
@@ -80,6 +306,14 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
         # module may pin it explicitly, e.g. a specific PharmVar release). Annotation-side addressing,
         # not a measurement — a real future axis.
         "reference_db",
+        # The two element-rule columns RM54 did *not* build (0.6). `source_element` shipped on the
+        # binning tables; these are its companions on `VariantRow`'s two pointers, withheld because no
+        # module points either at a multi-valued field and an authored column costs full price. They
+        # are reserved rather than merely absent precisely because the symmetry makes them guessable:
+        # an author who reasons "if source_field has one, callable_from must too" should hear what the
+        # name is held for, not the generic stray-column message.
+        "callable_element",
+        "quality_element",
     }
 )
 # NOTE: `requires_callable`, `acmg_sf`, `actionability` were reserved here and are now BUILT as
@@ -98,6 +332,15 @@ RESERVED_NAME_REASONS: dict[str, str] = {
     "reference_db": (
         "names which reference database the app should join this annotation against — reserved so a "
         "module can pin its join target explicitly instead of relying on the implicit default"
+    ),
+    "callable_element": (
+        "would say which element of a multi-valued `callable_from` to read, the way `source_element` "
+        "does for `source_field` — reserved, not built: no module points `callable_from` at a "
+        "multi-valued field, and the columns a human writes are the expensive kind"
+    ),
+    "quality_element": (
+        "would say which element of a multi-valued `quality_from` the `min_quality` floor is stated "
+        "against — reserved on the same grounds as `callable_element`"
     ),
 }
 
@@ -463,20 +706,96 @@ def reject_reserved(data: object) -> object:
     return data
 
 
+def split_field_pointer(value: str) -> list[tuple[str | None, str]]:
+    """A pointer cell → its `(namespace, key)` atoms, in authored order.
+
+    `|` is *alternation between fields* (try the first, fall back to the next) and never indexing, so
+    a cell yields one atom per alternative. `namespace` is `None` for a bare key, which means
+    **unqualified** — an honest absence, not a default: the whole point of RM53 is that guessing the
+    namespace converts *unstated* into a *stated* answer, and it would be wrong for the very first
+    module that used the column."""
+    atoms: list[tuple[str | None, str]] = []
+    for part in value.split("|"):
+        head, sep, tail = part.partition("/")
+        if sep and head in VCF_NAMESPACES:
+            atoms.append((head, tail))
+        else:
+            atoms.append((None, part))
+    return atoms
+
+
+def vcf_field_number(namespace: str | None, key: str) -> str | None:
+    """The `Number` the VCF spec reserves for this field, or `None` when it is not knowable here.
+
+    Three-valued, and the third value is the common one. A qualified pointer is looked up directly.
+
+    A **bare** key splits on whether it is a known collision. For a key only one namespace reserves,
+    the bare form is not ambiguous at all — no INFO table defines `GQ` — so the single entry is the
+    answer. For a colliding key both namespaces have to be in the table *and* agree: `AD` is `R`
+    either way, so its cardinality is settled even though its meaning is not, while `CN` is `A` under
+    INFO and `1` under FORMAT and has no answer until the pointer says which. `AF` is the case that
+    makes the distinction load-bearing — the spec reserves `INFO/AF` and does **not** reserve
+    `FORMAT/AF` (which every caller nevertheless emits), so reading the one known entry as the bare
+    key's cardinality would answer a question about a field the spec never described.
+
+    Anything the reserved tables do not carry (a caller's own key, `REPCN`) is unknown, and unknown
+    withholds: asserting a cardinality for a field this tier has never seen described would be a
+    source convention wearing a fact."""
+    if namespace is not None:
+        return VCF_FIELD_NUMBER.get(f"{namespace}/{key}")
+    known = [
+        VCF_FIELD_NUMBER[f"{ns}/{key}"]
+        for ns in sorted(VCF_NAMESPACES)
+        if f"{ns}/{key}" in VCF_FIELD_NUMBER
+    ]
+    if key in VCF_COLLIDING_KEYS and len(known) < len(VCF_NAMESPACES):
+        return None
+    return known[0] if len(set(known)) == 1 else None
+
+
+def is_multi_valued_number(number: str | None) -> bool:
+    """Whether a `Number` code describes a value list rather than a single value.
+
+    `0` is a Flag (present or absent) and `1` is a scalar; everything else — `A`, `R`, `G`, `P`, `.`
+    and the fixed counts `2`/`4` — returns more than one value, so a pointer at it names a list and
+    not a number. `None` (unknown) is **not** multi-valued: withhold, never negate, and never accuse."""
+    return number is not None and number not in {"0", "1"}
+
+
 def validate_field_token(value: str | None, field_name: str) -> str | None:
-    """Validate a **VCF field-name pointer**: one bare token, optionally `|`-alternated (`CN|DS`).
+    """Validate a **VCF field-name pointer**: a key, optionally namespace-qualified, optionally
+    `|`-alternated (`FORMAT/REPCN`, `INFO/DP|FORMAT/DP`, `CN|DS`).
 
     The grammar is what keeps such a column a *pointer* and not an expression — no operators, no
     whitespace, no code — which is what lets Principle 1 (declarative, data-not-code) hold while a
-    module still says where in a VCF its quantity or its callability signal lives.
+    module still says where in a VCF its quantity, its callability signal or its confidence floor
+    lives.
 
-    Shared by `binning.MeasureBinRow.source_field` (the measured quantity) and
-    `spec.VariantRow.callable_from` (the callability signal), so it lives on `AuthoredModel` rather
-    than being copied per model."""
+    Two widenings landed in 0.6, both strictly additive (P3 — every cell that validated before still
+    validates and still means the same thing):
+
+    * **The namespace qualifier** (RM53). A VCF field is identified by namespace *and* name, and the
+      two reserved-key tables collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and — new in 4.4 — `CN`.
+      A bare key stays legal and keeps meaning *unqualified*; the compiler warns when an unqualified
+      one is a known collision, which is what stops the bare spelling from looking like a decision.
+    * **The spec's own key charset** (RM61). A dot is legal inside a key and `1000G` is a legal key,
+      both reserved by name; the previous grammar refused them while claiming to describe VCF field
+      names.
+
+    The namespace is matched case-sensitively, unlike the `-`/`_` slip `match_vocab` absorbs: `INFO/`
+    and `FORMAT/` are how every VCF header, every spec table and `bcftools` spell it, so there is no
+    established lowercase spelling for an author to slip into.
+
+    Shared by `binning.MeasureBinRow.source_field` (the measured quantity),
+    `spec.VariantRow.callable_from` (the callability signal) and `spec.VariantRow.quality_from` (the
+    field the `min_quality` floor is stated against), so it lives on `AuthoredModel` rather than being
+    copied per model."""
     if value is not None and not SOURCE_FIELD_PATTERN.match(value):
         raise ValueError(
-            f"{field_name} must be a bare VCF field-name token, optionally |-alternated "
-            f"(e.g. REPCN, CN|DS) — a pointer, not an expression, got: {value!r}"
+            f"{field_name} must be a VCF field-name pointer — a key, optionally qualified by its "
+            f"namespace and optionally |-alternated (e.g. REPCN, FORMAT/REPCN, CN|DS, "
+            f"INFO/DP|FORMAT/DP) — a pointer, not an expression, got: {value!r}. A namespace prefix "
+            f"is one of {sorted(VCF_NAMESPACES)} followed by '/'."
         )
     return value
 

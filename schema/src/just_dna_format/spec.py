@@ -396,12 +396,19 @@ class VariantRow(AuthoredModel):
     callable_from: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field(s) a consumer establishes callability from (e.g. DP, "
-            "GQ, FT, or DP|GQ). A declarative pointer, never an expression: it names where the "
-            "evidence for 'this position was actually callable' lives, so a consumer can tell a "
-            "confirmed negative from an uncovered one instead of reading both as reference."
+            "Optional VCF field(s) a consumer establishes callability from, best written with the "
+            "namespace (e.g. FORMAT/DP, FORMAT/GQ, FORMAT/FT, or FORMAT/DP|FORMAT/GQ). A declarative "
+            "pointer, never an expression: it names where the evidence for 'this position was "
+            "actually callable' lives, so a consumer can tell a confirmed negative from an uncovered "
+            "one instead of reading both as reference. A bare key means unqualified — and INFO/DP is "
+            "the cohort's combined depth, which says nothing about whether this sample was callable."
         ),
     )
+    # There is no `callable_element` here, and the absence is a decision (RM54, 0.6). The binning
+    # tables' `source_field` got the element rule because that is where the defect had a real case;
+    # `callable_from` can name a multi-valued field (`FORMAT/AD`) and no module does, and under the
+    # 0.6 charter amendment a `variants.csv` column is the most expensive kind of addition this format
+    # makes. The name is held in `vocab.RESERVED_NAMES_0_4` so it survives the one-way door.
 
     # ── 0.5.1: RM29(a), the call-confidence cofactor. Two columns, not a predicate. ──
     #
@@ -418,11 +425,14 @@ class VariantRow(AuthoredModel):
     quality_from: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field the `min_quality` floor is stated against (e.g. GQ, "
-            "QUAL, DP). Same bare-token pointer grammar as `source_field`/`callable_from`; a pointer, "
-            "never an expression."
+            "Optional VCF field the `min_quality` floor is stated against, best written with the "
+            "namespace (e.g. FORMAT/GQ, QUAL, FORMAT/DP). Same pointer grammar as "
+            "`source_field`/`callable_from`; a pointer, never an expression. A bare key means "
+            "unqualified, and INFO/MQ is a Float where FORMAT/MQ is an Integer."
         ),
     )
+    # No `quality_element` either, and for the same reason as `callable_element` above: `min_quality`
+    # is a scalar floor, so a multi-valued `quality_from` would need one — and nothing points at one.
     min_quality: float | None = Field(
         default=None,
         description=(

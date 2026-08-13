@@ -26,10 +26,27 @@ single coordinate — the locus is named by `(gene, repeat_unit)`, not by a posi
 it counted, and two callers using different motif definitions produce incomparable numbers. The
 duplicate/overlap rules group on `(gene, repeat_unit)` for exactly this reason.
 
-**`source_field=REPCN` binds the table to a VCF without any glue.** It is a declarative pointer — a
-bare field name, never an expression — naming where in an ExpansionHunter VCF the count lives
-(`FORMAT/REPCN`, with `INFO/RU` carrying the motif). The consumer reads the field; the module never
+**`source_field=FORMAT/REPCN` + `source_element=largest` binds the table to a VCF without any glue.**
+It is a declarative pointer — a field name, never an expression — naming where in an ExpansionHunter
+VCF the count lives (with `INFO/RU` carrying the motif). The consumer reads the field; the module never
 computes anything.
+
+**Both halves of that pointer were re-authored in 0.6, and the second one was a wrong answer waiting
+to happen (RM53/RM54).** It used to read `source_field=REPCN` alone. `REPCN` returns **one count per
+allele**, and Huntington disease is dominant: the clinical rule is *the larger of the two*. A consumer
+that averaged the pair, took the first, or took the shorter allele got a well-formed number and a wrong
+answer, and every offline gate passed — including `--strict`, which is the mode this README prints.
+There was nowhere in the schema to say "larger", so `source_element` was added as a closed set of named
+selection rules (an index like `REPCN[max]` was refused: it is the first line of an expression grammar,
+which the charter's declarative-not-code principle exists to keep out). The namespace was added at the
+same time for the same class of reason — INFO and FORMAT are two key tables that collide on seven
+names. `content_signature` and `artifact.digest` both moved; that is a correction, not a regression,
+and the round trip was re-verified rather than assumed.
+
+`largest` rather than `largest_alt` is deliberate and the pair exists because of a trap: on a
+`Number=R` VCF field the reference is element zero, so "the larger of the two" has two answers. `REPCN`
+has no reference element — both values are the sample's own alleles, and the longer one may perfectly
+well be the reference-length one — so the rule that ranges over the whole list is the right one here.
 
 **The `unresolved` row is mandatory, and it is not the same as "normal".** A short-read caller that
 cannot span a long expansion returns no confident count, and the failure mode this row prevents is

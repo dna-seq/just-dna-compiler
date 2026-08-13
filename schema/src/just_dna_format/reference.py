@@ -51,7 +51,9 @@ from just_dna_format.spec import (
     VariantRow,
 )
 from just_dna_format.vocab import (
+    ELEMENT_RULE_MEANINGS,
     RESERVED_NAMES_0_4,
+    VCF_POINTER_COMPANIONS,
 )
 
 # The authored surface, grouped by role. Order is the reading order for an author/agent.
@@ -189,6 +191,15 @@ def authoring_reference() -> dict[str, Any]:
         # which is why the marker carries that flag and why `actionability` now appears below.
         "vocabularies": _collect_vocabularies(closed=True),
         "open_recommended": _collect_vocabularies(closed=False),
+        # Per-member prose, for the vocabularies where the member *name* cannot carry the whole rule.
+        # The element rules (RM54) are the case that forced it: on a `Number=R` VCF field the
+        # reference is element zero, so "the larger of the two" has two answers, and a vocabulary that
+        # is silent about which one it means repeats the defect it was added to fix one level down.
+        # Keyed by the same names as `vocabularies` above, so a consumer that found a member there
+        # can look up what it means without a second lookup table of its own.
+        "vocabulary_notes": {
+            name: dict(ELEMENT_RULE_MEANINGS) for name in sorted(VCF_POINTER_COMPANIONS)
+        },
         # Alternative identity-column sets, any ONE of which satisfies a row's requirement. Field-level
         # `required` cannot express "rsid OR chrom+start" — that rule is a model validator — so a tool
         # listing required columns told an author a `variants.csv` row needed no identifier at all.
