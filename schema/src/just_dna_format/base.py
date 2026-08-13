@@ -6,7 +6,9 @@ Consolidates the boilerplate that was copy-pasted across the row models into one
   a reserved name fails with a specific diagnosis and any other unknown/misspelled column fails with
   the generic message (see `vocab.reject_reserved`); and
 - the **field validators for the shared authored vocabulary** — `rsid`, `trait_efo_id`, `direction`,
-  `clin_sig`, `stat_significance`, `evidence_level`, finite-`effect_size`, and `genotype`.
+  `clin_sig`, `stat_significance`, `evidence_level`, finite-`effect_size`, `genotype`, the VCF
+  field-pointer grammar (`source_field`/`callable_from`/`quality_from`) and the element rule that
+  qualifies each of those (`source_element`/`callable_element`/`quality_element`).
 
 Each field validator uses `check_fields=False`, so a subclass runs it only for the fields it actually
 declares (a model without `clin_sig` simply never runs the `clin_sig` check) and a model that *adds*
@@ -43,8 +45,10 @@ from just_dna_format.vocab import (
     ALLELE_PATTERN,
     VALID_CLIN_SIG,
     VALID_DIRECTIONS,
+    VALID_ELEMENT_RULES,
     VALID_EVIDENCE_LEVELS,
     VALID_SIGNIFICANCE,
+    VCF_POINTER_COMPANIONS,
     check_vocab,
     reject_misplaced,
     reject_reserved,
@@ -148,6 +152,11 @@ SHARED_VOCABULARIES: dict[str, frozenset[str]] = {
     "clin_sig": VALID_CLIN_SIG,
     "stat_significance": VALID_SIGNIFICANCE,
     "evidence_level": VALID_EVIDENCE_LEVELS,
+    # The element-rule column(s) (RM54) — `source_element` today, and whatever companion a later
+    # release adds beside another pointer. Derived from `VCF_POINTER_COMPANIONS` rather than listed,
+    # so the vocabulary a tool offers and the set the validator enforces cannot drift apart from the
+    # relation the check reads.
+    **dict.fromkeys(VCF_POINTER_COMPANIONS, VALID_ELEMENT_RULES),
 }
 
 
@@ -506,10 +515,16 @@ class AuthoredModel(BaseModel):
     def _validate_trait_efo_id(cls, v: str | None) -> str | None:
         return validate_trait_ids(v)
 
-    # The four below read their vocabulary out of `SHARED_VOCABULARIES`, which is also what
+    # The five below read their vocabulary out of `SHARED_VOCABULARIES`, which is also what
     # `field_vocabularies` reports — so the set a tool offers an author is the same object the
-    # validator rejects against, not a copy of it.
+    # validator rejects against, not a copy of it. A field named here must have an entry there, which
+    # is why a future element-rule companion adds itself to `VCF_POINTER_COMPANIONS` *and* to this
+    # list. Adding it to the map alone would mark the field with a `closed` vocabulary that nothing
+    # rejects against, and `test_reference.test_declared_closed_options_are_exactly_what_is_accepted`
+    # catches precisely that — it discovers enforcement by *behaviour*, so it cannot be satisfied by
+    # the declaration it is checking.
     @field_validator("direction", "clin_sig", "stat_significance", "evidence_level",
+                     "source_element",
                      check_fields=False)
     @classmethod
     def _validate_shared_vocabulary(cls, v: str | None, info: ValidationInfo) -> str | None:
@@ -529,6 +544,29 @@ class AuthoredModel(BaseModel):
         # `quality_from` (which confidence field the row's `min_quality` floor is stated against).
         return validate_field_token(v, info.field_name or "source_field")
 
+    @model_validator(mode="after")
+    def _validate_pointer_companions(self) -> "AuthoredModel":
+        # An element rule qualifies a pointer (RM54): it says *which* of a multi-valued field's
+        # values the pointer means. With no pointer beside it there is nothing to qualify, so the
+        # cell names nothing at all — the row would state a selection over an unstated field. The
+        # converse is not an error: a pointer with no element rule is the ordinary case (a scalar
+        # field needs no selection), and demanding one would break every module carrying a pointer
+        # today (P3). Reachable only by a module authored after this release, since neither column
+        # existed before it.
+        for element_field, pointer_field in VCF_POINTER_COMPANIONS.items():
+            if element_field not in type(self).model_fields:
+                continue
+            if (
+                getattr(self, element_field, None) is not None
+                and getattr(self, pointer_field, None) is None
+            ):
+                raise ValueError(
+                    f"{element_field} says which element of a multi-valued VCF field to read, and "
+                    f"{pointer_field} is empty — there is no field for it to select from. Set "
+                    f"{pointer_field} to the field this rule applies to, or clear {element_field}."
+                )
+        return self
+
     @field_validator("genotype", check_fields=False)
     @classmethod
     def _validate_genotype(cls, v: str | None) -> str | None:
@@ -536,8 +574,18 @@ class AuthoredModel(BaseModel):
         # from the annotation, so the shared grammar only has to let a genuine absence through.
         if v is None:
             return v
-        # Phased (order-significant): pipe-separated, exactly two alleles, NOT sorted — phase encodes
-        # which allele sits on which homolog. ROADMAP 0.3 item 5b.
+        # Phased: pipe-separated, exactly two alleles, and NOT sorted — the authored order is preserved
+        # through compile → reverse → compile (P7 pins it, and that has not changed). ROADMAP 0.3 5b.
+        #
+        # What the order *means* is narrower than this comment used to claim (RM63). It said "phase
+        # encodes which allele sits on which homolog", and VCF defines allele order only **within a
+        # phase set**: §1.6.2 adds PSL precisely because with PS alone a genotype "isn't connected to
+        # any specific haplotype (i.e. first or second)". There is no global first homolog, and
+        # `variants.csv` carries no phase-set column — so an authored `A|G` and an authored `G|A` are
+        # distinguishable to us and indistinguishable to any consumer, and two rows both written `A|G`
+        # assert nothing about being in cis. Read a pipe here as **heterozygous, phase recorded but
+        # unaddressable**. The cis/trans case a module actually needs is carried by `DiplotypeRow` and
+        # the phase-ambiguity check, which is why this is an overclaiming comment rather than a defect.
         if "|" in v:
             parts = v.split("|")
             if len(parts) != 2:

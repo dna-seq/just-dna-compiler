@@ -40,6 +40,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
+from just_dna_enricher.verification import ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,12 @@ class ClinPgxResult:
     dataset: str | None = None
     mode: str = "best_effort"
     declared_use: str = "unstated"
+    #: Authored levels actually looked up, and why the look-up did not happen (RM45). An empty
+    #: `conflicts` list says three different things on its own — nothing disagreed, no snapshot was
+    #: available, the module carries no PGx table — and only the count and the reason separate them.
+    #: `not_checked` is a `VALID_VERIFICATION_SKIPS` member and is `None` exactly when the pass ran.
+    compared: int = 0
+    not_checked: str | None = None
 
 
 def _normalize_genotype(value: str | None) -> str | None:
@@ -167,7 +174,8 @@ def enrich_clinpgx(
         result.warnings.append(
             "ClinPGx cross-check skipped: the module carries no pharm_variants.csv."
         )
-        return result
+        result.not_checked = "nothing_to_check"
+        return _attest(result, spec_dir, write=write)
     authored, errors, _ = load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
     if errors:
         raise ClinPgxEnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
@@ -176,7 +184,10 @@ def enrich_clinpgx(
     if reason is not None:
         result.warnings.append(reason)
         logger.warning("%s", reason)
-        return result
+        # `not_permitted`, never `offline`: what clears this is a *declaration*, not egress, and a
+        # reader sent looking for a network problem would find none.
+        result.not_checked = "not_permitted"
+        return _attest(result, spec_dir, write=write)
 
     reference = Path(snapshot) if snapshot is not None else resolve_clinpgx_reference()
     if reference is None and not offline and download:
@@ -195,7 +206,8 @@ def enrich_clinpgx(
             + ". Build one with `just-dna-enricher clinpgx build --out <dir>`, or point at it with "
             "$JUST_DNA_CLINPGX_CACHE."
         )
-        return result
+        result.not_checked = "offline" if offline else "no_reference"
+        return _attest(result, spec_dir, write=write)
 
     snapshot_rows, release = load_snapshot(reference)
     result.dataset = release.get("dataset")
@@ -230,6 +242,11 @@ def enrich_clinpgx(
     for row in authored:
         if not row.rsid or not row.evidence_level:
             continue
+        # Counted here rather than as `len(authored)`: a row with no level makes no claim to check, and
+        # the denominator must be claims compared. The ambiguous-annotation branch below `continue`s
+        # *after* this increment on purpose — that row was looked up and the answer was "cannot tell",
+        # which is a comparison that ran and settled nothing, not one that never happened.
+        result.compared += 1
         drug, genotype = row.drug.strip().lower(), _normalize_genotype(row.genotype)
         category = _normalize_category(row.phenotype_category)
         reported: str | None = None
@@ -286,4 +303,36 @@ def enrich_clinpgx(
 
     if write:
         merge_sources_file(result.rows, spec_dir, error=ClinPgxEnrichmentError)
+    return _attest(result, spec_dir, write=write)
+
+
+def _attest(result: ClinPgxResult, spec_dir: Path, *, write: bool) -> ClinPgxResult:
+    """Record what this pass checked into `verification.json`, then hand the result back.
+
+    Called on **every** return path including the skips, which is the whole point: a pass that records
+    its findings and stays silent about not having run leaves the manifest unable to tell the two apart
+    — the defect RM45 exists to close, and a skip is the case it closes.
+
+    Not called on the `strict` refusal, and that is deliberate rather than an omission: that path
+    raises, so the run produced no artifact to attest, and writing an attestation on the way out of a
+    failure would leave a record of a check beside a module the author is about to change.
+    """
+    record = (
+        skipped(
+            "pgx_evidence_level",
+            result.not_checked,
+            detail=result.warnings[-1] if result.warnings else None,
+            source="clinpgx",
+        )
+        if result.not_checked is not None
+        else ran(
+            "pgx_evidence_level",
+            subjects=result.compared,
+            findings=len(result.conflicts),
+            source="clinpgx",
+            release=result.dataset,
+        )
+    )
+    if write:
+        record_verification([record], spec_dir, error=ClinPgxEnrichmentError)
     return result

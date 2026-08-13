@@ -18,7 +18,7 @@ from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_
 from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
-from just_dna_format.manifest import GenePanelSpec, VerificationRecord
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
@@ -26,16 +26,28 @@ from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
 from just_dna_enricher.clinical import (
-    ClinSigCheck,
+    ClinSigAudit,
     ClinSigConflict,
+    audit_clin_sig,
     tautology_reason,
-    verify_clin_sig,
 )
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
+from just_dna_enricher.grch37 import (
+    BuildDiagnosis,
+    BuildDiagnosisResult,
+    Grch37Client,
+    diagnose_wrong_build,
+    summarize_build_diagnoses,
+)
 from just_dna_enricher.identifiers import RsidStatus, check_rsids
-from just_dna_enricher.licensing import record_source_terms, resolution_authority, sidecar_path
+from just_dna_enricher.licensing import (
+    read_sources_file,
+    record_source_terms,
+    resolution_authority,
+    sidecar_path,
+)
 from just_dna_enricher.locations import (
     read_release,
     resolve_clinvar_reference,
@@ -294,20 +306,6 @@ def spec_genome_build(spec_dir: Path) -> str:
     return config.genome_build
 
 
-def spec_panel(spec_dir: Path) -> GenePanelSpec | None:
-    """The module's `panel:` declaration, or `None` when it has none (or no readable yaml).
-
-    Deliberately gentler than `spec_genome_build`, which raises on an unreadable spec: a build is
-    something enrichment *must* know before it writes anything, while a panel declaration only ever
-    lets a check be skipped. An unreadable spec therefore means "no declaration", so the checks all
-    run — the conservative direction.
-    """
-    if not (spec_dir / "module_spec.yaml").exists():
-        return None
-    config, _errors, _ = _load_yaml(spec_dir / "module_spec.yaml")
-    return config.panel if config is not None else None
-
-
 @dataclass
 class EnrichmentResult:
     rows: list[ResolutionRow]
@@ -317,6 +315,15 @@ class EnrichmentResult:
     # Authored data that disagrees with the reference genome. Reported, never repaired — see
     # `sequences.verify_reference_alleles`. Empty when the check could not run (offline).
     ref_mismatches: list[RefMismatch] = field(default_factory=list)
+    # Which of those mismatched rows read as GRCh37 coordinates in a GRCh38 module (RM48). Computed
+    # only over `ref_mismatches`, so a module whose refs agree costs no request at all, and grouped by
+    # evidence class rather than by row.
+    build_diagnoses: list[BuildDiagnosis] = field(default_factory=list)
+    # Why the diagnosis above did not run, or `None` when it did. Same rule as `clin_sig_not_checked`:
+    # an empty list otherwise means both "asked, and nothing points at another build" and "never
+    # asked", and only one of those is a clean bill. `no_ref_mismatches` (nothing to diagnose) and
+    # `skipped_offline` are the two ways it does not run.
+    build_not_diagnosed: str | None = None
     # Authored `clin_sig` values ClinVar's own records do not support. Warnings in BOTH modes on
     # purpose — see `clinical.verify_clin_sig`. Empty when no snapshot was provisioned.
     clin_sig_conflicts: list[ClinSigConflict] = field(default_factory=list)
@@ -324,8 +331,16 @@ class EnrichmentResult:
     # two opposite things on its own — "compared everything, nothing disagreed" and "never compared" —
     # and a consumer reading the first when the second happened is being told a check passed that was
     # never put. So the skip carries its reason (S4): `not_requested`, `no_snapshot`, or the
-    # drafted-from-this-release tautology, which is the one that used to report a confident zero.
+    # drafted-from-this-release tautology, which is the one that used to report a confident zero, and
+    # `unusable_snapshot` for a reference that is present but not queryable.
     clin_sig_not_checked: str | None = None
+    # The per-row split behind that tautology, and **only** there: `strict` over a module whose licence
+    # row says it was drafted from this very snapshot looks every value up and reports how many are
+    # still copies, how many a human wrote, and how many conflict (RM4). `None` — never an audit of
+    # zeros — on every other run: `best_effort` deliberately does not pay for it (the reason is in
+    # `clin_sig_not_checked`), and for a module that never claimed a draft the copied/authored split
+    # would assert a provenance nobody established.
+    clin_sig_audit: ClinSigAudit | None = None
     # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
     # columns and reported; never substituted — see `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = field(default_factory=list)
@@ -379,6 +394,7 @@ def enrich(
     keep_par_twin: bool = False,
     resolver: EnsemblResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
+    grch37_client: Grch37Client | None = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
 
@@ -399,6 +415,12 @@ def enrich(
     follows the mode, mirroring the compiler's VRS verify pass: `strict` treats a mismatch as fatal
     (its contract is a reproducible artifact, and a wrong `ref` can silently mint a *different* allele
     id), while `best_effort` warns and carries on. Needs sequence access, so it is skipped offline.
+
+    A mismatch is then asked one further question, over those rows **only**: does the coordinate read
+    as GRCh37 rather than as a wrong cell? That needs the live GRCh37 service, so it is skipped
+    offline, it is bounded (`grch37.DEFAULT_DIAGNOSIS_LIMIT` — a systematic wrong build answers the
+    same on every row), and `grch37_client` injects the client the way `resolver`/`gnomad_client` do.
+    It adds no flag of its own: `verify_ref` gates the family and `--offline` is the egress switch.
 
     `verify_clinsig` compares each authored `clin_sig` against the ClinVar snapshot's own. It is
     offline-capable (the snapshot is local) and is the **one check whose severity does not follow the
@@ -751,6 +773,31 @@ def enrich(
     for line in summarize_ref_mismatches(ref_mismatches):
         logger.warning("Reference-allele mismatch — %s", line)
 
+    # Why does the ref disagree? A shifted `start` is one answer and `_read_with_neighbours` already
+    # gives it; the other, which no offline check can reach, is that the whole coordinate is on the
+    # old assembly. Asked of the mismatched rows **only** — that set is the cost control, and a module
+    # whose refs agree makes no request here at all (RM48).
+    #
+    # The client is a parameter for the reason `resolver`/`gnomad_client` are: a network dependency
+    # constructed inside this function cannot be replaced, so a *unit* test of some neighbouring
+    # behaviour egresses whether or not it means to, and the suite's opt-in-network rule quietly
+    # becomes advisory. Passing `None` still lets the pass build and close its own.
+    build = diagnose_wrong_build(ref_mismatches, offline=offline, client=grch37_client)
+    if build.not_checked == "skipped_offline":
+        logger.info(
+            "Wrong-build diagnosis skipped: --offline. The GRCh37 service is the only thing that can "
+            "tell an old-assembly coordinate from a wrong ref, and there is no local GRCh37 data."
+        )
+    if build.sampled:
+        logger.warning(
+            "Old-assembly diagnosis looked at %d of %d mismatched row(s): a systematic wrong build "
+            "gives the same answer on every row, so the pass is bounded rather than paying two paced "
+            "requests each. Fix what it names and re-run to see the rest.",
+            build.examined, build.total,
+        )
+    for line in summarize_build_diagnoses(build.diagnoses):
+        logger.warning("Old-assembly coordinate — %s", line)
+
     # Second validation pass: does the module's clinical call agree with ClinVar's? Offline-capable
     # (the snapshot is local), and — unlike every other check here — it stays a warning in `strict`
     # too. See `clinical.verify_clin_sig`: escalating would make the format arbitrate a clinical
@@ -759,28 +806,53 @@ def enrich(
     # snapshot would be compared against its own source, and reporting "0 conflicts" for a structurally
     # guaranteed result looks like evidence without being any (S4). The skip states its reason rather
     # than quietly returning the same empty list a real pass returns.
-    clin_sig_check = ClinSigCheck([], 0, "not_requested")
+    # The skip is a MODE LADDER since RM4, because the module-level skip has a hole in it: a cell
+    # edited by hand after the draft is no longer a copy of anything, and no module-level fact can see
+    # that. `best_effort` keeps the cheap skip and names the hole; `strict` pays the look-up and
+    # reports the split — copied / authored by hand / conflicting — which is what "never a meaningless
+    # zero" costs. Deciding per row in both modes was the obvious repair and it re-spends the whole
+    # 90% saving, since deciding whether a value is still a copy *is* the look-up.
+    clin_sig_conflicts: list[ClinSigConflict] = []
     clin_sig_not_checked: str | None = None
-    tautology: str | None = None
+    clin_sig_audit: ClinSigAudit | None = None
+    # What the comparison was evaluated OVER, for the attestation (RM45). `None` until the look-up
+    # runs, and never a zero standing in for it: `ClinSigAudit.compared` is the count the check itself
+    # arrived at, and re-deriving one here from `variants` would be the recomputation RM40/RM41 rules
+    # out — the two could disagree, and then the manifest's own halves would.
+    clin_sig_compared: int | None = None
+    # Which closed `VALID_VERIFICATION_SKIPS` key the prose reason above maps onto. Recorded beside the
+    # sentence rather than parsed back out of it, which is the whole point of RM45's vocabularies.
+    clin_sig_skip: str | None = None
     if not verify_clinsig:
         clin_sig_not_checked = "not_requested"
+        clin_sig_skip = "not_requested"
     elif clinvar_ref is None:
         clin_sig_not_checked = "no_snapshot"
-        clin_sig_check = ClinSigCheck([], 0, "no_reference")
+        clin_sig_skip = "no_reference"
     else:
-        tautology = tautology_reason(spec_panel(spec_dir), clinvar_ref)
-        clin_sig_not_checked = tautology
-        if tautology is None:
-            clin_sig_check = verify_clin_sig(variants, out, reference=clinvar_ref)
-            # The check's own internal skip reaches the result now. A snapshot that is present but
-            # will not answer used to leave this `None` — the run stating a cross-check it never
-            # completed, which is the S4 defect surviving inside the machinery S4 built.
-            if clin_sig_check.not_checked is not None:
-                clin_sig_not_checked = "no_snapshot"
+        drafted_from_it = tautology_reason(read_sources_file(spec_dir), clinvar_ref)
+        if drafted_from_it is not None and mode != "strict":
+            clin_sig_not_checked = drafted_from_it
+            clin_sig_skip = "tautology"
+            logger.info("ClinVar clin_sig cross-check not run: %s.", drafted_from_it)
         else:
-            clin_sig_check = ClinSigCheck([], 0, "tautology")
-            logger.info("ClinVar clin_sig cross-check not run: %s.", tautology)
-    clin_sig_conflicts = clin_sig_check.conflicts
+            audit = audit_clin_sig(variants, out, reference=clinvar_ref)
+            if audit is None:
+                clin_sig_not_checked = "unusable_snapshot"
+                clin_sig_skip = "no_reference"
+            else:
+                clin_sig_conflicts = audit.conflicts
+                clin_sig_compared = audit.compared
+                if drafted_from_it is not None:
+                    # Kept only where drafting was *established*. The copied/authored split is a
+                    # provenance reading, and for a module that never claimed a draft a value equal to
+                    # ClinVar's is merely consistent with it — calling that "copied" would assert a
+                    # provenance nobody established.
+                    clin_sig_audit = audit
+                    logger.warning(
+                        "ClinVar clin_sig audit (strict, drafted module) — %s. %s", audit,
+                        "The copies could not have failed this check; the rest could.",
+                    )
     for conflict in clin_sig_conflicts:
         logger.warning("ClinVar clin_sig %s — %s",
                        "conflict" if conflict.opposed else "difference", conflict)
@@ -820,7 +892,8 @@ def enrich(
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
-        clin_sig_not_checked=clin_sig_not_checked,
+        clin_sig_not_checked=clin_sig_not_checked, clin_sig_audit=clin_sig_audit,
+        build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
     )
@@ -840,11 +913,22 @@ def enrich(
         # Deliberately checked BEFORE the unresolved gate: a wrong `ref` is a worse diagnosis than a
         # missing position (it can mint a well-formed id for the wrong allele), so it should be the
         # error the author sees first.
+        # The build diagnosis travels **inside** the refusal, not beside it. It is computed above in
+        # both modes, and a `strict` run raises here and returns nothing — so a diagnosis left on the
+        # result object would be visible only to the mode that does not need it, and invisible to the
+        # one whose whole output is this sentence.
+        because = (
+            " " + "; ".join(summarize_build_diagnoses(build.diagnoses)) + "."
+            if build.diagnoses
+            else ""
+        )
         raise EnrichmentError(
             f"strict enrichment: {len(ref_mismatches)} row(s) disagree with the {genome_build} "
             f"reference sequence. "
             + "; ".join(summarize_ref_mismatches(ref_mismatches))
-            + ". Fix the authored coordinates (a shifted position, or a wrong ref length, silently "
+            + "."
+            + because
+            + " Fix the authored coordinates (a shifted position, or a wrong ref length, silently "
             "mints a different allele id), or enrich with mode='best_effort' to record them as "
             "warnings."
         )
@@ -881,7 +965,7 @@ def enrich(
     if write:
         _write_resolution_csv(out, resolution_path)
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
-        # document, so recording per check would pay it three times for one guarantee. It goes after
+        # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
         # over the **authored** files, which none of these writes touch.
         record_verification(
@@ -889,9 +973,12 @@ def enrich(
                 offline=offline,
                 verify_ref=verify_ref,
                 ref_check=ref_check,
+                build=build,
                 verify_clinsig=verify_clinsig,
-                clin_sig_check=clin_sig_check,
-                tautology=tautology,
+                clin_sig_compared=clin_sig_compared,
+                clin_sig_conflicts=clin_sig_conflicts,
+                clin_sig_skip=clin_sig_skip,
+                clin_sig_detail=clin_sig_not_checked,
                 clinvar_ref=clinvar_ref,
                 verify_rsids=verify_rsids,
                 rsid_subjects=rsid_subjects,
@@ -917,15 +1004,18 @@ def _verification_records(
     offline: bool,
     verify_ref: bool,
     ref_check: RefCheck,
+    build: BuildDiagnosisResult,
     verify_clinsig: bool,
-    clin_sig_check: ClinSigCheck,
-    tautology: str | None,
+    clin_sig_compared: int | None,
+    clin_sig_conflicts: list[ClinSigConflict],
+    clin_sig_skip: str | None,
+    clin_sig_detail: str | None,
     clinvar_ref: Path | None,
     verify_rsids: bool,
     rsid_subjects: int,
     stale_rsids: list[RsidStatus],
 ) -> list[VerificationRecord]:
-    """The three checks this pass puts, as records `verification.json` can carry (RM45).
+    """The four checks this pass puts, as records `verification.json` can carry (RM45).
 
     Every count comes from the check that produced it — never re-derived here. That is the whole
     reason `verify_reference_alleles` and `verify_clin_sig` now return what they compared: a
@@ -962,20 +1052,60 @@ def _verification_records(
             )
         )
 
+    # Wrong build (RM48). Its subject set is the ref-mismatched rows and nothing else — the pass is
+    # *bounded* on purpose (`DEFAULT_DIAGNOSIS_LIMIT`), so `examined` is the honest denominator and
+    # `total` is not: recording the larger number would claim rows the pass deliberately did not ask
+    # about. `sampled` is why that distinction has to be kept rather than smoothed over, and the detail
+    # line says so where it applies.
+    #
+    # It rides on the reference-allele check having run at all: with no mismatches there is nothing to
+    # diagnose, which the pass itself reports as `no_ref_mismatches` — recorded as `nothing_to_check`,
+    # because "no row was in scope" is exactly what that member means, and it is emphatically not a
+    # finding of zero wrong builds.
+    if build.not_checked is not None:
+        records.append(
+            skipped(
+                "genome_build_agreement",
+                "offline" if build.not_checked == "skipped_offline" else "nothing_to_check",
+                detail=(
+                    "no authored ref disagreed with the reference, so no row needed a build diagnosis"
+                    if build.not_checked == "no_ref_mismatches"
+                    else "the GRCh37 service is the only thing that can tell an old-assembly "
+                    "coordinate from a wrong ref, and there is no local GRCh37 data"
+                ),
+                source="ensembl-grch37",
+            )
+        )
+    else:
+        records.append(
+            ran(
+                "genome_build_agreement",
+                subjects=build.examined,
+                findings=len(build.diagnoses),
+                source="ensembl-grch37",
+                detail=(
+                    f"bounded sample: {build.examined} of {build.total} mismatched row(s) asked about"
+                    if build.sampled
+                    else None
+                ),
+            )
+        )
+
     # Clinical significance. `release` is the snapshot's own `release.json` answer, which is what a
     # consumer needs to know *which* ClinVar the calls were weighed against — the same reason a
     # frequency row carries its `dataset`. `None` when the snapshot cannot state one, never a guess.
     clinvar_release = _clinvar_release(clinvar_ref)
-    if not verify_clinsig:
-        records.append(skipped("clinical_significance", "not_requested", source="clinvar"))
-    elif clin_sig_check.not_checked is not None:
+    if clin_sig_compared is None:
+        # The look-up did not run, and `clin_sig_skip` says which of the closed reasons applies. Keyed
+        # on the *count being absent* rather than on re-testing the flags, so the record cannot claim a
+        # comparison the pass did not make: there is no path where a look-up ran and left it `None`.
         records.append(
             skipped(
                 "clinical_significance",
-                clin_sig_check.not_checked,
-                # The tautology sentence beside the machine key, never instead of it: `tautology_reason`
-                # writes the good one and this is where it survives the run.
-                detail=tautology,
+                clin_sig_skip or "not_requested",
+                # The prose reason beside the machine key, never instead of it: `tautology_reason`
+                # writes a good sentence and this is where it survives the run.
+                detail=clin_sig_detail,
                 source="clinvar",
             )
         )
@@ -983,8 +1113,8 @@ def _verification_records(
         records.append(
             ran(
                 "clinical_significance",
-                subjects=clin_sig_check.subjects,
-                findings=len(clin_sig_check.conflicts),
+                subjects=clin_sig_compared,
+                findings=len(clin_sig_conflicts),
                 source="clinvar",
                 release=clinvar_release,
             )

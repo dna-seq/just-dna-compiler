@@ -16,9 +16,10 @@ import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import compile_module, validate_spec
+from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_compiler.draft import DRAFTABLE, blank_template
 from just_dna_format.layout import (
+    DERIVED_SUBDIR,
     LICENSING_CSV,
     SOURCES_CSV,
     SidecarCollision,
@@ -194,6 +195,115 @@ def test_the_near_miss_guard_does_not_flag_the_new_name(tmp_path: Path) -> None:
     assert not any(LICENSING_CSV in w and "one small edit" in w for w in result.warnings)
 
 
+# ── reverse ────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_reverse_emits_the_preferred_spelling(tmp_path: Path) -> None:
+    """`reverse` regenerates a spec, so the spelling it writes is the one 1.0 will keep.
+
+    It used to join `_FACT_TABLES`' name on by hand, and that tuple names the licence table by its
+    *deprecated* spelling because the parquet and the manifest key keep it — so a module compiled
+    clean, reversed, and recompiled deprecation-warned on the second pass. `manifest.compilation.
+    warnings` is a published field a catalog reindexes from (RM44), so the module and its own round
+    trip disagreed about it.
+    """
+    spec_dir = _with_sources(tmp_path, LICENSING_CSV)
+    out = tmp_path / "out"
+    _compile(spec_dir, out)
+
+    reversed_spec = tmp_path / "reversed"
+    reverse_module(out, reversed_spec)
+
+    assert (reversed_spec / LICENSING_CSV).is_file()
+    assert not (reversed_spec / SOURCES_CSV).exists()
+
+    again = compile_module(reversed_spec, tmp_path / "out_again", resolve_with_ensembl=True)
+    assert again.success, again.errors
+    assert not any("deprecated spelling" in w for w in again.warnings), again.warnings
+
+
+def test_the_round_trip_moves_no_identity_when_the_name_changes(tmp_path: Path) -> None:
+    """A module on the old name reverses onto the new one, and every signature is unchanged.
+
+    This is what makes the previous test a fix rather than a trade: the fact sidecars are outside
+    `_INPUT_FILES` and hashed by their facts, so the filename enters nothing a consumer keys on.
+    Measured across all four — the artifact digest, the authored content signature, the resolution
+    signature and the whole `manifest.sources` block — rather than argued from that.
+    """
+    spec_dir = _with_sources(tmp_path, SOURCES_CSV)
+    out = tmp_path / "out"
+    before = _compile(spec_dir, out)
+
+    reversed_spec = tmp_path / "reversed"
+    reverse_module(out, reversed_spec)
+    assert (reversed_spec / LICENSING_CSV).is_file(), "reverse migrates the name"
+    after = _compile(reversed_spec, tmp_path / "out_again")
+
+    assert before["artifact"]["digest"] == after["artifact"]["digest"]
+    assert before["content_signature"] == after["content_signature"]
+    assert before["sources"] == after["sources"]
+    assert before["compilation"]["resolution_signature"] == after["compilation"]["resolution_signature"]
+
+
+@pytest.mark.parametrize("subdir", ["", DERIVED_SUBDIR])
+def test_reverse_writes_to_the_copy_the_output_directory_already_has(
+    tmp_path: Path, subdir: str
+) -> None:
+    """Write to the file you read, in `reverse` too — or it leaves the collision behind it.
+
+    Reversing over a tree that already carries the deprecated name (or a `derived/` split) and always
+    creating the preferred one at the root would produce two copies of one hand-editable table, which
+    the next compile refuses naming both. Following the existing copy is the same rule every other
+    writer obeys; a *fresh* directory has nothing to follow, which is why the test above sees the
+    preferred spelling instead.
+    """
+    spec_dir = _with_sources(tmp_path, LICENSING_CSV)
+    out = tmp_path / "out"
+    _compile(spec_dir, out)
+
+    reversed_spec = tmp_path / "reversed"
+    stale = reversed_spec / subdir / SOURCES_CSV
+    stale.parent.mkdir(parents=True)
+    stale.write_text("source,layer\n")
+
+    reverse_module(out, reversed_spec)
+
+    present = sorted(
+        path.relative_to(reversed_spec).as_posix()
+        for path in reversed_spec.rglob("*")
+        if path.name in (SOURCES_CSV, LICENSING_CSV)
+    )
+    assert present == [stale.relative_to(reversed_spec).as_posix()]
+    assert resolve_sidecar(reversed_spec, SOURCES_CSV) == stale
+    assert stale.read_text() != "source,layer\n", "the stale placeholder must have been rewritten"
+
+
+def test_reverse_refuses_a_colliding_output_directory_before_writing_anything(
+    tmp_path: Path,
+) -> None:
+    """Resolving the destinations first is what keeps the refusal from leaving a half-rebuilt spec.
+
+    Following the module's existing copy gives `reverse` a way to fail that joining a name on did not
+    have. Raised late — at the fact-table loop, which runs last — it would land after
+    `module_spec.yaml` and the authored CSVs had already been rewritten, so a directory that could not
+    be finished would still have been damaged. Resolved up front, a collision costs nothing.
+    """
+    spec_dir = _with_sources(tmp_path, LICENSING_CSV)
+    out = tmp_path / "out"
+    _compile(spec_dir, out)
+
+    colliding = tmp_path / "colliding"
+    colliding.mkdir()
+    (colliding / SOURCES_CSV).write_text("source,layer\n")
+    (colliding / LICENSING_CSV).write_text("source,layer\n")
+
+    with pytest.raises(SidecarCollision) as caught:
+        reverse_module(out, colliding)
+
+    assert SOURCES_CSV in str(caught.value) and LICENSING_CSV in str(caught.value)
+    assert sorted(path.name for path in colliding.iterdir()) == [LICENSING_CSV, SOURCES_CSV]
+
+
 # ── drafting ───────────────────────────────────────────────────────────────────────────────────
 
 
@@ -206,3 +316,71 @@ def test_both_spellings_are_draftable_onto_the_same_model() -> None:
     assert DRAFTABLE[SOURCES_CSV] is SourceRow
     assert DRAFTABLE[LICENSING_CSV] is SourceRow
     assert blank_template(LICENSING_CSV) == blank_template(SOURCES_CSV)
+
+
+def test_drafting_writes_the_spelling_the_module_already_carries(tmp_path: Path) -> None:
+    """Two accepted spellings made the *writer* able to create the collision the reader refuses.
+
+    `DRAFTABLE` takes both names as keys, so a caller may legitimately ask for `licensing.csv` on a
+    module that carries `sources.csv` — and the literal `spec_dir / csv_name` join then left two
+    files behind, which `compile_module` refuses by design. That is the collision arrived at by
+    following the documented surface rather than by misusing it, which is exactly the failure
+    `layout.sidecar_write_path` exists to prevent. **Write to the file you read.**
+
+    Watched failing before the fix: the append created a second file and the recompile refused with
+    "…are the same table in two places".
+    """
+    from just_dna_compiler.draft import append_rows
+
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / SOURCES_CSV).write_text(
+        "source,layer,license,license_url,license_sha256,attribution,notice,share_alike,"
+        "commercial_use,redistribution,declared_use,dataset,fetched_at\n"
+        "ensembl,resolution,Apache-2.0,,,Ensembl,,false,true,true,unstated,,\n",
+        encoding="utf-8",
+    )
+    append_rows(spec, LICENSING_CSV, [SourceRow(source="clinvar", layer="clinical_assertion")])
+
+    assert not (spec / LICENSING_CSV).exists(), "a second copy of the same table was created"
+    assert {r["source"] for r in _rows(spec / SOURCES_CSV)} == {"ensembl", "clinvar"}
+
+
+def test_drafting_honours_the_name_asked_for_when_the_module_carries_neither(tmp_path: Path) -> None:
+    """The other half, and the reason the fix is narrower than `sidecar_write_path`.
+
+    Here the filename is the caller's own argument, not a fixed name a pass writes under, so an absent
+    file is created as asked. Redirecting `draft sources.csv` to `licensing.csv` would answer a
+    different question than the one put — only the two-copies collision is repaired.
+    """
+    from just_dna_compiler.draft import append_rows
+
+    for name in (SOURCES_CSV, LICENSING_CSV):
+        spec = tmp_path / f"spec_{name}"
+        spec.mkdir()
+        append_rows(spec, name, [SourceRow(source="clinvar", layer="annotation")])
+        assert (spec / name).exists()
+        assert len(list(spec.glob("*.csv"))) == 1
+
+
+def test_drafting_onto_a_module_that_already_carries_both_refuses(tmp_path: Path) -> None:
+    """Appending to an already-broken module would make a third claim about one table."""
+    from just_dna_compiler.draft import DraftError, append_rows
+
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    header = (
+        "source,layer,license,license_url,license_sha256,attribution,notice,share_alike,"
+        "commercial_use,redistribution,declared_use,dataset,fetched_at\n"
+    )
+    (spec / SOURCES_CSV).write_text(header, encoding="utf-8")
+    (spec / LICENSING_CSV).write_text(header, encoding="utf-8")
+    with pytest.raises(DraftError, match="same table in two places"):
+        append_rows(spec, LICENSING_CSV, [SourceRow(source="clinvar", layer="annotation")])
+
+
+def _rows(path: Path) -> list[dict]:
+    import csv
+
+    with path.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))

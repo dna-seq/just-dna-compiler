@@ -134,3 +134,109 @@ def test_editing_the_module_after_recording_invalidates_the_record(tmp_path: Pat
 
     (spec / "variants.csv").write_text((spec / "variants.csv").read_text() + "\n")
     assert attestation_failure(doc, module_binding(authored_input_entries(spec))) is not None
+
+
+# ── the records `enrich()` itself builds, per check ──────────────────────────────────────────────
+
+
+def test_the_build_diagnosis_denominator_is_what_it_examined_not_what_existed() -> None:
+    """`_verification_records` must publish `examined`, never `total` (RM48 + RM45).
+
+    The wrong-build pass is deliberately bounded (`DEFAULT_DIAGNOSIS_LIMIT`), so on a panel authored
+    wholesale on hg19 it asks about a sample. Recording `total` would claim rows it chose not to ask
+    about — the denominator has to be what was actually compared, and `sampled` is why the two differ
+    at all.
+    """
+    from just_dna_enricher.enrich import _verification_records
+    from just_dna_enricher.grch37 import BuildDiagnosis, BuildDiagnosisResult
+    from just_dna_enricher.sequences import RefCheck
+
+    diagnosis = BuildDiagnosis(
+        variant_key="6:26093141:G", chrom="6", start=26093141, claimed="G",
+        reason="dbsnp_corroborated", rsids=["rs1800562"],
+    )
+    build = BuildDiagnosisResult(diagnoses=[diagnosis], examined=50, total=328)
+    records = {
+        r.check: r
+        for r in _verification_records(
+            offline=False,
+            verify_ref=True,
+            ref_check=RefCheck([], 12),
+            build=build,
+            verify_clinsig=False,
+            clin_sig_compared=None,
+            clin_sig_conflicts=[],
+            clin_sig_skip="not_requested",
+            clin_sig_detail=None,
+            clinvar_ref=None,
+            verify_rsids=False,
+            rsid_subjects=0,
+            stale_rsids=[],
+        )
+    }
+    record = records["genome_build_agreement"]
+    assert (record.subjects, record.findings) == (50, 1)
+    assert record.skipped is None
+    assert "50 of 328" in (record.detail or ""), "a sample must say it was one"
+
+
+def test_no_ref_mismatch_means_nothing_to_check_not_a_clean_build() -> None:
+    """An empty diagnosis list with no mismatches is *no row was in scope*, never *no wrong builds*.
+
+    Recording it as a run with zero findings would assert that every coordinate was checked against the
+    other assembly, which is exactly the claim the pass declines to make.
+    """
+    from just_dna_enricher.enrich import _verification_records
+    from just_dna_enricher.grch37 import BuildDiagnosisResult
+    from just_dna_enricher.sequences import RefCheck
+
+    records = {
+        r.check: r
+        for r in _verification_records(
+            offline=False,
+            verify_ref=True,
+            ref_check=RefCheck([], 12),
+            build=BuildDiagnosisResult(not_checked="no_ref_mismatches"),
+            verify_clinsig=False,
+            clin_sig_compared=None,
+            clin_sig_conflicts=[],
+            clin_sig_skip="not_requested",
+            clin_sig_detail=None,
+            clinvar_ref=None,
+            verify_rsids=False,
+            rsid_subjects=0,
+            stale_rsids=[],
+        )
+    }
+    assert records["genome_build_agreement"].skipped == "nothing_to_check"
+    # And the reference-allele check beside it DID run, over its own denominator.
+    assert (records["reference_allele"].subjects, records["reference_allele"].findings) == (12, 0)
+
+
+def test_offline_separates_the_two_reasons_a_build_check_can_be_absent() -> None:
+    """`offline` is cleared by egress; `nothing_to_check` by nothing at all. Different remedies."""
+    from just_dna_enricher.enrich import _verification_records
+    from just_dna_enricher.grch37 import BuildDiagnosisResult
+    from just_dna_enricher.sequences import RefCheck
+
+    records = {
+        r.check: r
+        for r in _verification_records(
+            offline=True,
+            verify_ref=True,
+            ref_check=RefCheck([], 0, "offline"),
+            build=BuildDiagnosisResult(not_checked="skipped_offline"),
+            verify_clinsig=False,
+            clin_sig_compared=None,
+            clin_sig_conflicts=[],
+            clin_sig_skip="not_requested",
+            clin_sig_detail=None,
+            clinvar_ref=None,
+            verify_rsids=True,
+            rsid_subjects=0,
+            stale_rsids=[],
+        )
+    }
+    assert records["genome_build_agreement"].skipped == "offline"
+    assert records["reference_allele"].skipped == "offline"
+    assert records["rsid_currency"].skipped == "offline"

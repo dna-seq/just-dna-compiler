@@ -17,12 +17,16 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | Check | Compares | Where |
 |---|---|---|
 | **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` |
+| **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
-| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` (warning) |
+| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` (warning), and `resolver._check_rsid_coord_consistency` against the injected snapshot — one question, two tiers, so one attestation name |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
 | **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**) |
+| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
+| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` |
+| **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` |
 | **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) |
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
@@ -46,19 +50,43 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   `skipped(check, reason, detail=…)` when it did not. Both vocabularies are closed
   (`VALID_VERIFICATION_CHECKS`, `VALID_VERIFICATION_SKIPS`); the human sentence rides in `detail`,
   beside the machine key and never instead of it.
-- **The denominator comes from the check, never from the caller.** This is why
-  `verify_reference_alleles` and `verify_clin_sig` return `RefCheck`/`ClinSigCheck` rather than bare
-  finding lists: a count recomputed beside a check can disagree with it. Both also surfaced a real
-  hole doing so — each had an *internal* skip (no sequence access; a snapshot present but not
-  queryable) that returned an empty list indistinguishable from a clean pass, which is S4's defect
+- **The denominator comes from the check, never from the caller.** `verify_reference_alleles` returns
+  a `RefCheck` and `audit_clin_sig` a `ClinSigAudit` (or `None`), so the count travels with the finding
+  it belongs to: a count recomputed beside a check can disagree with it, and then the manifest's own
+  two halves disagree. `_verification_records` deliberately takes neither `variants` nor `rows` — a
+  function that cannot see the tables cannot be tempted to count them. Wiring this up surfaced a real
+  hole in two passes: each had an *internal* skip (no sequence access; a snapshot present but not
+  queryable) returning an empty list indistinguishable from a clean pass, which is S4's defect
   surviving inside the machinery S4 built.
+- **The denominator is what was EXAMINED, not what existed.** The wrong-build pass is bounded
+  (`DEFAULT_DIAGNOSIS_LIMIT`), so on a panel authored wholesale on hg19 it asks about a sample;
+  recording `total` there would claim rows it chose not to ask about. `sampled` is why the two can
+  differ, and the record's `detail` says so when they do.
+- **Every early return records its skip, not just the successful path.** `enrich_clinpgx` is the worked
+  example: it returns early on no `pharm_variants.csv`, on a licensing refusal, and on no snapshot, and
+  all three go through one `_attest` helper. A pass that records its findings and stays silent about
+  not having run leaves the manifest unable to tell those apart, which is the defect the item exists to
+  close — the skip is the case it closes. The one exception is a `strict` refusal, which raises: no
+  artifact was produced, so there is nothing to attest a check against.
 - **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
-  three of its checks at the end of the run. A separate command writes its own; the merge is what keeps
+  four of its checks at the end of the run. A separate command writes its own; the merge is what keeps
   both in one document, replacing per check and never erasing a check this run did not put.
 - **The attestation is bound to the module's authored bytes.** Edit `variants.csv` afterwards and the
   compiler drops the block with a warning — correctly, because the checks were put against rows that no
   longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
   read off each record's own `release`.
+
+**Which of these attest, and which are recording passes rather than checks.** `enrich()` attests four
+(reference allele, wrong build, clinical significance, rsID currency) and `enrich_clinpgx` attests its
+own; the rest report to their result object and are wired in as their commands grow the call. The line
+that decides whether a pass belongs in `VALID_VERIFICATION_CHECKS` at all is whether it compares
+something the module **asserts** — so `gene_validity.csv` and `clinical_assertions.csv`, which record
+what ClinGen and ClinVar say and adjudicate nothing, have no check name and must not gain one: a
+member for them would let a manifest report a check where no question was put. `frequencies.csv`,
+`gene_metrics.csv` and the per-article licence columns are the same class. The three rows in the table
+above that are recording rather than comparing — **Ambiguous back-fill**, **Article licence** and
+**Source coverage** — are kept here because a reader wants the whole surface in one place, and they are
+named as the exception rather than left to be inferred.
 
 **Two of these break the severity rule in opposite directions, and both are deliberate.** The
 allele-function check joins the clinical cross-check in warning under `strict` too: PharmVar and CPIC
@@ -123,10 +151,12 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
 | `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe` | stdlib |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
-| `literature` | pass 4: `studies.csv` → `literature.csv` (PubMed + Europe PMC), fulltext quote match | `httpx`, `tenacity` |
+| `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
 | `identifiers` | rsID / trait-CURIE / gene-symbol currency (dbSNP, OLS4, HGNC) | `httpx`, `tenacity` |
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
+| `gene_validity` | RM24: curated gene–disease assertions → `gene_validity.csv` (ClinGen expert panels, GenCC's aggregate; both CC0) | `httpx`, format |
+| `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
@@ -150,7 +180,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar` build+publish, `vrs mint` | `typer` |
+| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar` build+publish, `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
 
@@ -178,7 +208,8 @@ really sleeping.
 | **NCBI E-utilities** | `eutils` → literature + rsID currency | **3 req/s** without a key; **10 req/s** with `NCBI_API_KEY` | `1/3 s` or `1/10 s` from whether the key is present; esummary batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set; key optional |
 | **PharmVar** | `pharmvar` / `pgx` | **2 req/s** (OpenAPI “Limitations”) | `PHARMVAR_MIN_INTERVAL=0.5` | `Api-Key` header from `PHARMVAR_API_KEY` (personal; never written to a module) |
 | **Crossref** | `literature.CrossrefClient` (DOI existence) | **polite pool**: 10 req/s single-DOI (5 public); concurrency 3 polite / 1 public (Crossref docs, Dec 2025 revision) | `min_request_interval=0.1` (10/s — polite single-DOI ceiling) | User-Agent `just-dna-enricher (mailto:…)` when `JUST_DNA_CONTACT_EMAIL` is set → polite pool; omitted rather than invented |
-| **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
+| **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts + per-article licence) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
+| **PMC ID converter** | `literature.PmcIdConverterClient` (PMCID → PMID, reporting only) | no published figure; the service documents a **200-id** batch ceiling | `min_request_interval=0.5` (2/s), batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set |
 | **OLS4 + HGNC** | `identifiers.OntologyClient` | neither publishes a documented limit | `min_request_interval=0.2` (courtesy — GET-per-id, unbatched) | `Accept: application/json` |
 | **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — live path is the last link after cache/snapshot, so volume stays low; tenacity on transport only | none |
 | **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
@@ -186,6 +217,8 @@ really sleeping.
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
 | **ClinGen** dosage TSV | `clingen` | n/a (one file) | single download, then local parse | none |
+| **ClinGen** gene-validity CSV | `gene_validity` | n/a (one file, ~1 MB) | single download, then local parse | none |
+| **GenCC** submissions CSV | `gene_validity` | n/a (one file, ~28 MB) | single download, then local parse; the client's timeout is 180 s because one response *is* the whole export | none |
 | **ACMG SF list** | `acmg` | n/a | one HTML GET (~75 KB) or a local `--sf-list` workbook | none |
 | **Hugging Face Hub** | `download` (snapshots), `upload` (modules / references) | **5-minute fixed windows**, three buckets — see below | **no custom gate**; `huggingface_hub` handles 429 via `RateLimit` / `RateLimit-Policy` headers (smart retry in 1.2+) | `HF_TOKEN` / `hf auth login` — anonymous shares a per-IP pool; a free token is the usual fix |
 
@@ -716,8 +749,8 @@ from a failure.
   one DuckDB relation and every query would die on `Referenced column "clin_sig" not found`. A foreign
   file *already* in a local cache is reported, never deleted, and the message names it and the fix.
   `release.json` comes down with the data, so a provisioned snapshot can state its own release — it is
-  what `GenePanelSpec.reference_sha256` pins against (RM4), and a cache that cannot state its
-  `source_sha256` is only a cache. A repo without one still provisions; absence is not an error.
+  what a drafted module's recorded `dataset` is derived from (RM4), and a cache that cannot state its
+  release is one a drafted module cannot name. A repo without one still provisions; absence is not an error.
   **`LICENSE.txt` rides along on the same rule, and it did not until 0.5.1.** `upload`'s allow-patterns
   were `data/*.parquet`, `citations/*.parquet` and `release.json`, so publishing a share-alike snapshot
   silently dropped the one file the pinned-licence design exists for — `clinpgx_build` extracts ClinPGx's
@@ -890,6 +923,81 @@ module asking about one locus repeatedly costs one round trip, and the same `Seq
 with indel minting so a run builds one proxy in total. Needs sequence access, so `--offline` skips it:
 a check that cannot run is not a check that passed, and the run says so rather than implying success.
 
+### The old assembly: rs-number recovery and a wrong-build diagnosis (`grch37.py`, RM48)
+
+An author curating from older literature has hg19/GRCh37 coordinates and the module must be GRCh38.
+Nothing in these four packages converts, so the conversion happens off-tool and lands as an ordinary
+authored coordinate with no provenance at all. The compiler refuses the coordinates that are provably
+impossible; this module answers the ones that are merely *wrong*.
+
+**No chain file, no provisioned asset, no new licence.** The roadmap's stated blocker was that
+recovering an rs-number needs "either an hg19-keyed dbSNP surface or a chain file … i.e. the whole
+snapshot apparatus for one authoring convenience". Probed 2026-08-13 and false: Ensembl runs a
+**permanent GRCh37 REST service** at `grch37.rest.ensembl.org` with the same API shape, serving both
+dbSNP variants (`/overlap/region`) and reference bases (`/sequence/region`). The same request that
+answers "which rs-numbers sit here on GRCh37" also discriminates the builds outright —
+`7:140453135..140453137` is `CAC` on GRCh37 and `GTT` on GRCh38.
+
+**Recovery, never liftover, and the reporter argued their own request down.** If the paper gives an
+rs-number, liftover is unnecessary *and strictly worse*: authoring the rs-number **produces** the
+independent second value `resolution._verify` cross-examines. So liftover is only reachable where there
+is no rs-number and only an old coordinate — and in exactly that case the lifted coordinate becomes the
+row's **sole identity with nothing to check it against**, a generator of unverifiable-by-construction
+identities. That is the hazard class behind this tree's 3,038-row off-by-one, where a content-addressed
+id was a correct digest of the wrong input and every offline gate passed, `--strict` included.
+
+`recover_rsid(chrom, start, *, ref, alts, client, offline)` answers with one of **four** outcomes.
+Three of them — `recovered` / `ambiguous` / `none` — are the ones `pyliftover` fuses, reporting "no
+result" both for a position that maps nowhere and for one that maps to several. The fourth is
+`unchecked`, on the other axis: S20 established in this same resolution path that an unreachable source
+is unchecked rather than absent. A **4xx is an answer** (the service 400s on an unknown contig and on a
+position past the end of one); only a 5xx, a transport error or a timeout is `unchecked`. `--offline`
+reports `skipped_offline`, never a pass.
+
+The match is **anchored on the authored position**: a candidate must start exactly there, carry the
+authored `ref`, and contain every authored alt. Anchoring is what keeps it honest — at
+`7:140453136` seven features overlap the base, two merely span it, one is an HGMD record with no
+rs-number, and four dbSNP records genuinely start there, which is why a position-only query is
+`ambiguous` rather than under-specified. The consequence to know: an indel authored in VCF's padded
+spelling (POS on the base *before* the event) will not match Ensembl's unpadded record and comes back
+`none` with that said, rather than wrong.
+
+`diagnose_wrong_build(mismatches, *, client, offline)` runs **only over rows the reference-allele check
+already rejected**, which is the whole cost control — a module whose refs agree makes no request here.
+`verify_reference_alleles` skips any build `refget_accession` has no table for, so a `RefMismatch` only
+ever exists for a GRCh38 module, which makes "the other assembly" always GRCh37 rather than a parameter.
+Three tiers of evidence, and the message says which one it has:
+
+| Tier | Evidence | What it licenses |
+|---|---|---|
+| `single_base_match` | one authored base equals the GRCh37 base there | suggestive only — one base in four agrees by chance, and VCF 4.4 §1.6.1.4 requires an ambiguous reference base to be reduced to the first alphabetically, so an authored `A` may be a lossily reduced `R` |
+| `multi_base_match` | several consecutive bases agree | chance does not explain it |
+| `dbsnp_corroborated` | the bases agree **and** GRCh37 dbSNP records a variant starting there | the strongest, and the only one that names the rs-number to author instead |
+
+The two strong tiers **supersede the ±1 neighbour reading**, and that is not decoration. On the real
+HFE pair — `6:26093141` and `6:26091179`, authored from the GRCh37 literature into a GRCh38 module —
+`_read_with_neighbours` reports "coordinate shifted 1 base to the right" for *both*, confidently and
+wrongly: the true variants are 228 and 411 bases away, and a neighbouring base equal to the authored
+ref is a one-in-four event. Two explanations printed side by side with nothing to order them is the
+shape this codebase keeps fixing, so the summary says which wins. A single-base match does **not**
+supersede a shift — both rest on one agreeing base, and ordering them would invent a verdict.
+
+`BuildDiagnosisResult.not_checked` carries the reason when the pass did not run (`skipped_offline`,
+`no_ref_mismatches`) and is `None` exactly when it did, for the same reason `clin_sig_not_checked`
+exists: an empty list otherwise says both "asked, and nothing points at another build" and "never
+asked". The diagnosis travels **inside** the `strict` refusal rather than beside it, because a strict
+run raises and returns nothing, so a result-object-only answer would be visible to the mode that does
+not need it and invisible to the one whose whole output is that sentence.
+
+**It writes nothing.** `just-dna-enricher hint recover --chrom 7 --start 140453136 --ref A --alts T`
+reports `rs113488022` as an advisory `Alteration` with `applied=False` and `refusal="identity_bearing"`
+— the sharpest refusal in the table, because an rs-number *is* the row's identity and a machine filling
+one performs an identity migration by network lookup with no authored edit anywhere. Several candidates
+are reported and never picked. The author types the rs-number into `variants.csv` and drops the old
+coordinate; a later `enrich` places it on whichever build the module declares, and `resolution.csv`'s
+`source` column records which link answered. That is where provenance goes — never into an ordinary
+authored coordinate.
+
 ## GA4GH VRS allele identity (`vrs.py`)
 
 `mint_resolution_rows(rows, *, minter, offline, source_ids)` stamps `vrs_id`/`vrs_spec` onto resolved
@@ -974,8 +1082,9 @@ The resolver link reads only `chrom/start/ref/alt`; the rest is annotation the p
 by an explicit **severity order** (a multi-valued `CLNSIG` picks the most severe, splitting on `|`/`/`/`,`
 so `Pathogenic,_low_penetrance` is recognised) while `clin_sig_raw` keeps the verbatim `CLNSIG`
 (lossless, auditable). A `release.json` records provenance (`clinvar_file_date` from the VCF `##fileDate`,
-`source_url`, `source_sha256`, `record_count`, `built_at`, `builder_version`) — the values that feed
-`GenePanelSpec.reference`/`reference_sha256` when RM4 lands.
+`source_url`, `source_sha256`, `record_count`, `built_at`, `builder_version`) — the values
+`clinvar.clinvar_dataset_label` turns into the `dataset` a drafted module's licence row records (RM4),
+which is what the clinical cross-check reads back to know it would be comparing a value against itself.
 
 **Coordinate convention — no shift.** `start` is the **1-based VCF POS**, passed through unchanged; the
 Ensembl snapshot uses the same convention, so a variant resolved by either reference lands on the same
@@ -1014,24 +1123,220 @@ are flagged as such.
 `clin_sig` came out of `draft_gene_panel`, the comparison is a value against itself: a consumer
 measured 27.1 s with the check on and 2.6 s with it off on a 7,818-row panel, byte-identical output,
 and 0 conflicts either way — necessarily 0. That zero is the problem rather than the cost: it looks
-like evidence and is none. `clinical.tautology_reason` compares the module's `panel:` declaration
-(`GenePanelSpec.reference` / `reference_sha256`, RM4) against the snapshot's own `release.json`
-(`clinvar_file_date` / `source_sha256`), and only an **established match** skips the pass. No `panel:`
-block, a panel over another source, an unstated pin, a different release, or a `release.json` that
-cannot be read all leave the check running — an unknown is never a permission to skip.
+like evidence and is none.
+
+**The marker is machine-written, not authored (RM4, 0.6).** `clinvar_draft` stamps the release it
+copied the rows out of into the `dataset` column of the `clinvar`/`annotation` row it already had to
+write in the licence table — `clinvar_2026-06-27`, from `clinvar.clinvar_dataset_label`, which prefers
+`release.json`'s `clinvar_file_date` and falls back to its `source_sha256`. `clinical.tautology_reason`
+recomputes that same label from the snapshot in hand and compares. **Both sides call the one function**,
+so the writer and the reader cannot drift apart — and this drift would be silent, since a disagreement
+about the label does not fail, it just never matches.
+
+**Widening a panel from a newer snapshot withdraws the label rather than re-writing it.**
+`merge_sources_csv` is never-clobber so a curator's hand-written terms survive a re-run, and `dataset`
+inherited that protection the moment RM4 made it load-bearing — leaving the row naming the older
+release while half the rows came from a newer one, in the column `manifest.sources` publishes.
+`licensing.withdraw_stale_dataset` blanks it instead, and only when rows were actually added: a module
+carrying two releases has no single release to name, so the honest value is unknown, and an empty
+`dataset` skips nothing. The terms on the row are untouched. Re-labelling to the newer release was the
+other candidate and it is the same false claim pointing the other way.
+
+It keys on `dataset` rather than on the module's `panel:` block because the claim is *provenance* —
+these rows came from this snapshot — and the tool that copied them is the authority on it. Asking an
+author to maintain a declaration whose only reader is one skip is bureaucracy the enricher exists to
+remove. **`panel:` is deprecated in 0.6 and reads nothing here any more**; a 0.5 module whose pin
+matches gets the check *run*, which is the safe direction. Only an **established match** skips: no
+licence table, a ClinVar row with no `dataset`, a different release, or a `release.json` that cannot be
+read all leave the check running. The row must be at the **`annotation`** layer — `enrich()` writes a
+second `clinvar` row at the `resolution` layer for the coordinates it looked up, and a coordinate is
+not a copied clinical call.
+
+**The skip has a hole, and it closes on a mode ladder (RM4).** A cell edited by hand after the draft is
+no longer a copy of anything, and no module-level fact can see that.
+
+| mode | what happens |
+|---|---|
+| `best_effort` | the cheap module-level skip, **plus a notice naming the hole** — a hand-edited cell, and rows added from another release, are what it cannot see |
+| `strict` | no skip: every value is looked up and the split reported on `EnrichmentResult.clin_sig_audit` — **copied** (still ClinVar's own word), **authored** (a human wrote or edited it, and it does not oppose), **conflicts**, and **no_record** for a comparison the snapshot could not answer |
+
+Deciding *per row* in both modes was the obvious repair and it re-spends the whole 90% saving, because
+deciding whether a value is still a copy **is** the look-up. Hence the ladder. `strict` still does not
+escalate a conflict into a failure — that is this check's standing exception and it is unchanged.
+
+The audit is kept **only where drafting was established**: for a module that never claimed a draft, a
+value equal to ClinVar's is merely *consistent* with it, and calling that "copied" would assert a
+provenance nobody established. Counts are per comparison — one per resolved locus a variant has —
+and variants with no resolved locus are `EnrichmentResult.unresolved`, not recounted here.
+
+**"Copied" is allele-exact, and in the locus-wide fallback nothing is counted as copied at all.** Where
+the ALT the annotation is about could not be pinned down, the candidates span every ALT at the locus, so
+an exact string match may be a *sibling* allele's call — and `rs334`'s locus, with a pathogenic `T>A`
+beside a likely-benign `T>G`, is exactly where that happens. Such a row falls through to the camp logic
+and lands in **authored**, which understates rather than misattributing: saying "copied" would tell a
+reader no human wrote a cell a human may well have written, on the one question this audit exists to
+answer.
 
 The skip carries its reason on `EnrichmentResult.clin_sig_not_checked`, because an empty
 `clin_sig_conflicts` says two opposite things on its own ("compared everything, nothing disagreed" and
 "never compared"), and a consumer reading the first when the second happened has been told a check
 passed that was never put. Its values are `not_requested` (the author's own `--no-verify-clinsig`),
-`no_snapshot`, the tautology sentence, or `None` when the check really ran. Where a **human** typed the
-`clin_sig`, nothing changes — that is the case this check exists for.
+`no_snapshot`, `unusable_snapshot` (present but not queryable — `audit_clin_sig` returns `None` rather
+than an audit of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
+typed the `clin_sig`, nothing changes — that is the case this check exists for.
+
+## Gene–disease validity (`gene_validity.py`, online only) — RM24
+
+`enrich_gene_validity(spec_dir, *, source, mode, offline, write, export_text, url)` takes the `gene`
+column of `variants.csv` and writes `gene_validity.csv`: one row per **(gene, disease, mode of
+inheritance, submitter)**. `just-dna-enricher gene-validity spec/ [--source clingen|gencc]`.
+
+The question `gene_metrics.csv` cannot answer. Constraint says how intolerant of variation a gene
+*looks* in a population sample; ClinGen's dosage rating says whether losing a copy causes disease;
+neither says whether variation in *this* gene causes *this* disease, which is the claim a clinical
+module most often rests on without recording anywhere.
+
+**Two submitters, and they are different kinds of thing.** ClinGen publishes expert-panel curations —
+one assertion per (gene, disease, MOI), each from a named Gene Curation Expert Panel working to a
+numbered SOP. GenCC publishes an *aggregate* of nineteen submitters, ClinGen among them, plus
+Orphanet, PanelApp and several laboratories; the same gene–disease pair routinely carries several
+submitters at different strengths, and that disagreement is the data.
+
+**Three things established by reading the real files** (2026-08-13 downloads: ClinGen 3,659 rows,
+GenCC 30,410), each of which decided part of the shape:
+
+- **Mode of inheritance is part of the key.** 59 (gene, disease) pairs in ClinGen carry two rows
+  differing only there. `(gene, disease, moi)` has zero collisions; `(gene, disease)` silently keeps
+  one curation and drops the other.
+- **`submitter` is in the key too**, or GenCC collapses to one arbitrary opinion per pair — the
+  bare-triple mistake the ClinPGx cross-check paid for once already.
+- **The two vocabularies disagree in spelling and agree in meaning**, so both are mapped onto
+  `vocab.VALID_GENE_VALIDITY` / `VALID_INHERITANCE_MODE` at this boundary: `Disputed` and
+  `Disputed Evidence` are one member, `AD` and `Autosomal dominant` are one member. A consumer
+  filtering on one spelling would silently miss the other's rows. The submitter's wording survives in
+  `classification_raw`, so the mapping stays auditable, and a wording this release does not model is
+  left unset with **one aggregated warning** naming the distinct values — never one line per row.
+
+**A gene the submitter has not curated gets no row**, and is reported in `missing`. That is
+`clingen.py`'s rule and its reason: a curating body's silence means nobody has assessed the gene yet,
+which is not a fact about the gene, so a `not_found` row would state one. (The ClinVar pass below goes
+the other way, because ClinVar covers the genome — "asked and absent" really is a fact there.)
+
+**`--offline` is a no-op with a warning** (`skipped_offline`), never a failure: neither submitter ships
+a snapshot, and both files are small enough to fetch whole. An injected `export_text=` still wins,
+because handing over bytes you already hold is not egress.
+
+**Both sources are CC0**, so a module using this table stays sellable — `GENCC_TERMS` joins
+`CLINGEN_TERMS` in `licensing.TERMS_BY_SOURCE`, and the pass records its `SourceRow` at the new
+`gene_validity` layer. GenCC's attribution names *the contributing sources* as well as GenCC, because
+crediting only the aggregator credits nobody who did the work.
+
+> **HPO ships no route, and both reasons came from probing rather than from taste.** Its release
+> declares `terms:license https://hpo.jax.org/app/license`; that URL answers **HTTP 404** with a
+> JavaScript shell, and OBO Foundry records the licence as a bare label `hpo` with no SPDX id — so the
+> terms cannot be established from any machine-readable source, and an unestablished permission is not
+> a permission (the PharmVar rule). Recording it with `commercial_use=None` would flip every carrying
+> module's manifest verdict to *undetermined*, which contradicts the sellability this table was
+> designed to keep. Separately, the file the item named — `genes_to_phenotype.txt` — is gene × HP
+> feature × frequency, a different grain from this table entirely; `genes_to_disease.txt` fits
+> structurally, but its `association_type` (MENDELIAN / POLYGENIC / UNKNOWN, 8,288 of 15,944 rows
+> UNKNOWN) is a **mechanism class, not an evidence grade**, and putting it in `classification` would
+> overload the axis (P5). The row shape holds an HPO row perfectly well; what is missing is a link this
+> tier may take the data over.
+
+## Clinical assertions (`assertions.py`, offline capable) — RM25
+
+`enrich_clinical_assertions(spec_dir, *, mode, offline, clinvar_cache, download, write)` reads
+`resolution.csv` and the ClinVar snapshot and writes `clinical_assertions.csv`: one row per **(allele,
+archive record)** carrying the clinical call, ClinVar's own review wording, the 0-to-4 star rating and
+the VariationID. `just-dna-enricher assertions spec/`.
+
+**The number this workspace was already computing and discarding.**
+`clinical.ClinSigFinding.confidence` rendered the star rating into a warning string and kept nothing;
+`clinvar_draft.draft_gene_panel` used it as a *filter* (default 2 — multiple submitters, no conflicts)
+and kept nothing. So a compiled module flattened a one-star single submission and a practice guideline
+to the same `clin_sig`, and every consumer that wanted the difference re-derived it. A number
+recomputed downstream is a place to drift (RM40/RM41, a fourth time).
+
+**It records; it does not adjudicate.** `clinical.verify_clin_sig` — comparing the *author's*
+`clin_sig` against ClinVar's — is untouched, and still warns in **both** modes on purpose, because
+failing would make the format arbitrate a clinical dispute. Escalating that check stays parked
+deliberately, and nothing in this pass moves it.
+
+Four mechanics worth keeping straight:
+
+- **Structured like `enrich_frequencies`, because the input is the same.** It consumes `resolution.csv`
+  rather than `variants.csv`: a clinical record is per *allele at a coordinate*, and the resolution
+  table is where an rsID has already become `chrom-pos-ref-alt`. That also sidesteps the
+  multi-allelic-rsID problem — one rsID at one locus legitimately carries a pathogenic, a benign and an
+  uncertain allele (`rs33922842` in HBB), so looking clinical significance up by rsID would
+  manufacture disagreements out of ClinVar agreeing with itself.
+- **Snapshot-first and fully offline-capable**, unlike the frequency pass: ClinVar ships as a snapshot,
+  so with one provisioned this pass never touches the network. With none found and not `offline` it
+  calls `download.ensure_clinvar_snapshot` — the `enrich()` shape, `--offline` as the only switch — and
+  with none reachable at all it is a **no-op with a warning** (`skipped_no_snapshot`), leaving any
+  existing table as the pin.
+- **`dataset` is the snapshot's own release**, read from `release.json` (the RM38 rule): a consumer
+  must be able to tell a pinned file from whatever happened to be current, and a re-review is only
+  visible against a stated release. A snapshot that cannot state one gets `clinvar_unknown` rather than
+  a fabricated date.
+- **A coordinate on another build is never queried.** ClinVar's lookup key is `(chrom, start, ref,
+  alt)` and carries no assembly, so a GRCh37 coordinate is a well-formed query returning a *different
+  variant's* clinical call under this module's key — the same failure the frequency pass had against
+  gnomAD. Such rows are reported in `off_build`, kept apart from `missing` because nobody asked about
+  them, and are **outside the `strict` gate**: a coordinate on another assembly is reproducibly out of
+  this snapshot's reach, so refusing would make a GRCh37 module uncompilable for a reason no authored
+  edit could fix.
+
+`clinvar_build.review_stars` is the one place the CLNREVSTAT-to-rating convention lives, and it became
+public and **tri-state** in 0.6: `None` for a record that states no review status *and* for a wording
+this release does not model, `0` for ClinVar's own "no assertion criteria provided". It used to answer
+`0` to all three, which files an unread record under the weakest rating available — a claim nobody
+made. That is also why `ClinicalAssertionRow` stores the rating as a column instead of deriving it
+from the prose beside it: the derivation is a **ClinVar convention**, and Principle 2 keeps source
+conventions out of the schema tier entirely.
 
 ## The literature pack (`literature.py`, online only)
 
-Pass 4: `studies.csv` in, `literature.csv` out. Three questions of decreasing coverage — does the
+Pass 4: a module's citations in, `literature.csv` out. Three questions of decreasing coverage — does the
 citation exist (PubMed `esummary`), do the identifiers agree (DOI/PMCID arrive in the same response),
-and does the quoted passage appear in the article (Europe PMC fulltext, open-access subset only).
+and does the quoted passage appear in the article (Europe PMC fulltext, open-access subset only) — plus
+the article's own **licence**, which arrives in the same Europe PMC response.
+
+**There are two citation sites since 0.6, and this pass reads both (RM47).** `studies.csv`, and a
+`pmid` on a binning row, which grounds the *threshold* it sits on. A module whose only citations are
+bin pointers is enriched exactly like one with a `studies.csv`; a module with neither is refused, since
+the relaxation is about *where* a citation may live and not about whether one is needed. The bin
+pointers are read through `just_dna_compiler.load_binning_rows` / `binning_citations` — public for the
+RM41 reason, because the alternatives were importing a private symbol or hand-keeping a second list of
+the binning kinds here, and that list goes stale on the fifth kind. A bin-only citation contributes no
+quote and no authored DOI (a binning row has neither column), so it reads as *nothing to check* rather
+than as an unretrievable fulltext.
+
+**The article's licence is recorded per article, and there is no `pubmed` row in the licence table
+(RM46).** The pass writes `source="pubmed"` into every row it produces and `TERMS_BY_SOURCE` has no
+entry for it — deliberately, and permanently: a literature source's terms are **per article, not per
+source**. PubMed's metadata is one thing; the article belongs to its publisher, and Europe PMC's open
+subset spans CC-BY, CC-BY-NC and bronze, so one `pubmed` row would be right for a module citing only
+ids and a false all-clear for one carrying a `provenance_quote` lifted from a CC-BY-NC article — wrong
+in the dangerous direction, since that quote is publisher text in the module's own *annotation* layer.
+Four mechanics:
+
+- **`license` is stored verbatim** as Europe PMC spells it (`cc by`, `cc by-nc`, `cc by-nc-nd` — probed
+  over 100 records on 2026-08-13), and `licensing.article_terms` maps it to the three rights at **read**
+  time, so a mapping correction reaches rows already written. Same rule as `cpic_build`.
+- **The licence is independent of `is_open_access`** and is not derived from it: PMID 28546431 comes
+  back `isOpenAccess: N` with `license: cc by`, because the flag describes Europe PMC's OA subset while
+  the licence describes the article.
+- **Three orthogonal axes, and `None` is never `False`.** CC BY-NC forbids sale and expressly allows
+  sharing, which is why `redistribution` is its own column; a licence this tier has not read leaves all
+  three null rather than guessing in either direction.
+- **Quoting a non-commercial article warns and never gates.** The compiler reports it (reading the
+  recorded fact, so it still owns no source convention), in both modes, aggregated by licence. It is
+  the same call as the ClinVar `clin_sig` cross-check: refusing would make the format arbitrate a
+  copyright question. And note the merge rule's consequence — rows written before 0.6 carry no
+  `license`, and a re-run will not back-fill them, because merge-not-clobber cannot tell an absent
+  value from a curator's deliberate blank. Delete `literature.csv` to re-derive.
 
 **Coverage is partial by nature, and reporting it as a fraction is part of the check.** A pass that said
 "0 quotes found" for an article it could not read would be describing its own reach as a defect in the
@@ -1073,17 +1378,46 @@ things close most of that gap:
 **Google Scholar is not an option** and it is worth saying so rather than leaving it as an open idea:
 it publishes no API, and automated querying violates its terms and is blocked in practice.
 
-Three services, not the three the plan budgeted for — the plan's third was the ID converter, and both
-corrections below came from probing:
+Both corrections below came from probing:
 
-- **The PMC ID converter is not used.** `esummary` already returns `doi` and `pmc` in `articleids`, and
-  Europe PMC's `search` returns them too, so the converter is a third request for data already in hand.
-  Worse, it answers a *different question*: for PMID 12345678 — a real, indexed PubMed record — it
-  replies `status: error, "Identifier not found in PMC"`. Wired in as an existence check it would report
-  every paywalled article as a broken citation.
+- **The PMC ID converter is not used *by this pass*, and the reason is directional.** `esummary` already
+  returns `doi` and `pmc` in `articleids`, and Europe PMC's `search` returns them too, so calling the
+  converter for **PMID → PMCID** is a third request for data already in hand. Worse, it answers a
+  *different question*: for PMID 12345678 — a real, indexed PubMed record — it replies
+  `status: error, "Identifier not found in PMC"`. Wired in as an existence check it would report every
+  paywalled article as a broken citation. None of that says anything about **PMCID → PMID**, which is
+  the direction the converter exists for and the one a curator has no other route to — see the PMC id
+  section below.
 - **Europe PMC is not an existence oracle.** Asked about three ids where one does not exist, it returns
   two results and silently omits the third — no error, no marker. PubMed decides existence; Europe PMC
   decides retrievability.
+
+**PubMed and PubMed Central ids are one letter apart, and the outcome used to turn on a space (RM50).**
+`StudyRow.pmid` is free-form and validated through `spec.extract_pmids`, whose pattern is `\b(\d{1,8})\b`
+— so `PMC3110566` came back empty (no word boundary between `C` and a digit) while **`PMC 3110566` came
+back `['3110566']`**, and 3110566 is a real PMID for an unrelated article, because PubMed ids are
+densely allocated. One spelling of one mistake was refused with a message that never said "PMCID"; the
+other was accepted as a confident citation of the wrong paper. Three things ship for it, all of them
+diagnosis and none of them repair:
+
+- **The schema refuses a digit run whose immediate context spells `PMC` in any spacing**
+  (`spec.PMCID_PATTERN`, `spec.extract_pmcids`) and the message **names the id it saw** rather than the
+  one it wanted. Narrow by construction: a cell carrying both (`21551363; PMC3110566`) still yields the
+  real PMID and is accepted, so only a cell whose sole numeric content is a PMC id refuses — and that
+  cell previously resolved to another article entirely.
+- **`literature._pmcid_conflicts`** catches what the schema cannot see: a cell like
+  `21551363 (PMC3110567)` carries a real PubMed id, so nothing refuses it, while the two halves name
+  different articles. It costs no request — the PMC id is already in the `esummary` `articleids` block
+  — and it is the `_doi_conflicts` shape, including `strict` refusing.
+- **`lookup_citation(pmcid=…)` / `hint citation --pmcid`** resolves the other direction through NCBI's
+  converter and then asks PubMed *which paper that is*, because a converter that hands back a number and
+  stops is the same existence-is-not-identity failure one registry over. The resolved id comes back as
+  an **advisory** (`applied=False`, `refusal="redundancy_bearing"`): filling `pmid` from NCBI would make
+  `LiteratureRow.exists` compare NCBI with itself, which is the argument already made for `doi`. Four
+  outcomes, spelled four ways — resolved, in PMC with no PubMed id, not in PMC, and never answered —
+  because collapsing the last two would render a failed request as a definite negative (S20). The
+  address is `pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/`; the long-published
+  `www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/` 301-redirects to it.
 
 **On evaluating `provenance_regex` here.** The charter requires a linear-time/ReDoS-safe engine, written
 when the match was specified as consumer-side. Here the pattern comes from the module being enriched and
@@ -1708,10 +2042,15 @@ just-dna-enricher enrich spec/ --no-verify-ref     # skip the reference-allele c
 just-dna-enricher enrich spec/ --no-verify-clinsig # skip the ClinVar clin_sig cross-check
 just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdrawal check
 just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseudoautosomal locus
-just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
+just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only);
+                                                   #   reads studies.csv AND any binning row's pmid
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC) + gene/chromosome agreement
 just-dna-enricher dosage spec/ --offline           # no-op with a warning (ClinGen has no snapshot)
+just-dna-enricher gene-validity spec/              # RM24: ClinGen expert-panel gene-disease assertions
+just-dna-enricher gene-validity spec/ --source gencc  # …or GenCC's aggregate of nineteen submitters
+just-dna-enricher assertions spec/                 # RM25: ClinVar's call + review tier per allele
+just-dna-enricher assertions spec/ --offline       # snapshot only; no snapshot → no-op with a warning
 
 # Caches — provision once, then every gated pass runs with zero egress. See "The caches".
 just-dna-enricher cache status                     # what is present, where, which release
@@ -1737,6 +2076,7 @@ just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --population NVI
 just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use non-commercial
 just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1   # ClinVar gene panel (snapshot auto)
 just-dna-enricher draft-panel spec/ --gene MTHFR --snapshot cv/ --offline   # a snapshot you built
+just-dna-enricher draft-panel spec/ --gene MTHFR --no-download   # use a cached snapshot; fetch none
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
 
@@ -1746,6 +2086,7 @@ just-dna-enricher hint variant --rsid rs334 --ambiguity      # warn when the ans
 just-dna-enricher hint variant --rsid rs1801133 --frequencies  # + gnomAD populations (paced ~6s)
 just-dna-enricher hint variant --rsid rs1801133 --offline --json
 just-dna-enricher hint citation --pmid 9545397               # which paper it is + the DOI/PMC id it carries (--json)
+just-dna-enricher hint citation --pmcid PMC3110566           # the PubMed id for a PMC id — reported, never written
 just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent
 just-dna-enricher hint gene MTHFR                            # approved | retired | unknown
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)

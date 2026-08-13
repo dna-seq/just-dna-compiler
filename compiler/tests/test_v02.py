@@ -8,7 +8,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module
+from just_dna_compiler.compiler import compile_module, validate_spec
 from just_dna_format.integrity import IntegrityError, sha256_file, verify_manifest
 from just_dna_format.manifest import README_CANDIDATES
 from just_dna_format.signing import generate_private_key_pem, public_key_b64_from_pem, sign_digest
@@ -108,6 +108,36 @@ def test_panel_passthrough_verbatim(tmp_path: Path) -> None:
     assert m.panel.reference_sha256 == "sha256:deadbeef"
     # Panel does not materialize variants: count still reflects only variants.csv.
     assert m.stats.variant_count == 2
+
+
+def test_the_panel_block_still_compiles_and_says_it_is_going(tmp_path: Path) -> None:
+    """RM4: deprecated in 0.6, removed at 1.0 — warn-only, so nothing about the test above changes.
+
+    The warning has to be *actionable* (the charter scopes the cadence on exactly that), which here
+    means naming the release it goes in, what to do, and what took over the one job the block still
+    had. It is emitted once, by `validate_spec`, and `compile_module` seeds its warnings from there —
+    so a module that carries the block does not print it twice, and a catalog reading only the
+    published manifest still sees it.
+    """
+    spec = _write_spec(tmp_path / "s")
+    result = compile_module(spec, tmp_path / "o", resolve_with_ensembl=False)
+    assert result.success, result.errors
+
+    emitted = [w for w in result.warnings if "`panel:` block" in w]
+    assert len(emitted) == 1
+    assert "removed at 1.0" in emitted[0] and "dataset" in emitted[0]
+    assert result.manifest is not None
+    assert emitted == [w for w in result.manifest.compilation.warnings if "`panel:` block" in w]
+    assert [w for w in validate_spec(spec).warnings if "`panel:` block" in w] == emitted
+
+    # And a module without the block is silent: a deprecation nobody triggered is not a finding.
+    plain = tmp_path / "plain"
+    _write_spec(plain)
+    (plain / "module_spec.yaml").write_text(
+        _YAML[: _YAML.index("panel:")], encoding="utf-8"
+    )
+    quiet = compile_module(plain, tmp_path / "o2", resolve_with_ensembl=False)
+    assert quiet.success and not [w for w in quiet.warnings if "`panel:` block" in w]
 
 
 def test_icon_set_flows_to_manifest(tmp_path: Path) -> None:

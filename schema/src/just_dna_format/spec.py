@@ -47,6 +47,7 @@ from just_dna_format.vocab import (
     validate_finite,
 )
 from just_dna_format.vocab import MULTI_SEP as _MULTI_SEP
+from just_dna_format.vrs import normalize_chrom, sole_build_naming_contig
 
 # The orthogonal-axis vocabularies and identifier grammars now live in `vocab` (shared across the
 # authored models). `VALID_DIRECTIONS`/`VALID_SIGNIFICANCE`/`VALID_CLIN_SIG` (and `ALLELE_PATTERN`)
@@ -70,6 +71,14 @@ RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
 # (`[PMID: 9545397]`), or as a `;`-joined list (`PMID 17478681; PMID: 30278588`). We accept any
 # string that carries at least one PMID token and keep it verbatim (ROADMAP item 6 / Obs #4).
 PMID_PATTERN: re.Pattern[str] = re.compile(r"\b(\d{1,8})\b")
+# PubMed and PubMed Central number articles independently, and their identifiers are one letter apart
+# (RM50). `PMC3110566` never parsed as a PMID (there is no word boundary between `C` and a digit), but
+# **`PMC 3110566` did** — and 3110566 is a real PMID for an unrelated article, because PMIDs are
+# densely allocated. So the outcome turned on a space and the accepted spelling silently cited the
+# wrong paper. This pattern names the PMC context in **any** spacing (`PMC3110566`, `PMC 3110566`,
+# `PMC-3110566`, `pmcid: 3110566`), so `extract_pmids` can decline the digits inside it and the
+# refusal can say which id it saw rather than which one it wanted.
+PMCID_PATTERN: re.Pattern[str] = re.compile(r"PMC(?:ID)?\s*[:\-]?\s*(\d{1,9})", re.IGNORECASE)
 # A DOI is `10.<registrant>/<suffix>` (Crockford/Handle grammar). Real sources present it bare
 # (`10.1234/abc.def`) or wrapped in a URL (`https://doi.org/10.1234/abc`); we accept any string that
 # carries one DOI token and keep it verbatim, mirroring the PMID contract. Wider than a PMID: it also
@@ -77,15 +86,80 @@ PMID_PATTERN: re.Pattern[str] = re.compile(r"\b(\d{1,8})\b")
 DOI_PATTERN: re.Pattern[str] = re.compile(r"10\.\d{4,9}/\S+")
 
 
+def extract_pmcids(raw: str) -> list[str]:
+    """Pull PubMed **Central** ids out of a free-form reference string, canonicalized to `PMC…`.
+
+    In order, de-duplicated, and tolerant of the spacings a hand-written cell produces (`PMC3110566`,
+    `PMC 3110566`, `pmcid: 3110566`). This exists so a refusal can name the identifier the author
+    actually wrote — a generic "must contain at least one PubMed ID" is a dead end where a specific
+    "that is a PMCID" is a fix — and so the enricher can cross-check an authored PMC id against the
+    one PubMed reports for the same record.
+    """
+    seen: dict[str, None] = {}
+    for match in PMCID_PATTERN.finditer(raw):
+        seen.setdefault(f"PMC{match.group(1)}", None)
+    return list(seen)
+
+
 def extract_pmids(raw: str) -> list[str]:
     """Pull digit-only PMIDs out of a free-form reference string, in order, de-duplicated.
 
     Handles bare digits, the bracketed/prefixed `[PMID: N]` / `PMID N` forms, and `;`-joined
-    lists. Returns an empty list when the string carries no PMID token (e.g. a dbSNP URL)."""
+    lists. Returns an empty list when the string carries no PMID token (e.g. a dbSNP URL).
+
+    **A digit run whose immediate context spells `PMC` is not a PMID and is skipped** (RM50). It is a
+    different registry's number for (usually) a different article, so reading it as a PubMed id is a
+    confident citation of the wrong paper. A cell carrying both — `21551363; PMC3110566` — still
+    yields the real PMID; only a cell whose sole numeric content is a PMC id comes back empty, which
+    is what lets `validate_pmid_cell` name it.
+    """
+    excluded = [match.span(1) for match in PMCID_PATTERN.finditer(raw)]
     seen: dict[str, None] = {}
     for match in PMID_PATTERN.finditer(raw):
+        start = match.start(1)
+        if any(lo <= start < hi for lo, hi in excluded):
+            continue
         seen.setdefault(match.group(1), None)
     return list(seen)
+
+
+def validate_pmid_cell(value: str | None, field: str, *, required: bool) -> str | None:
+    """The shared grammar for a free-form citation pointer, kept verbatim on success.
+
+    Two models carry one, so the rule lives here rather than being copied: `StudyRow.pmid` (required —
+    grounding evidence is mandatory for a variant) and `MeasureBinRow.pmid` (optional — RM47's bin
+    pointer, which grounds a *boundary*). `required` is the only difference; the diagnosis is not.
+
+    The PMCID branch is the whole point of separating this out (RM50). Before it, a cell reading
+    `PMC 3110566` was accepted as PMID 3110566 and a cell reading `PMC3110566` was refused with a
+    message that never used the word PMCID — the same mistake, diagnosed two different unhelpful ways.
+    Now both are refused and the message names the id that was seen. **It never repairs**: converting a
+    PMC id to a PMID needs the registry, which this tier does not have and would not use if it did
+    (`just-dna-enricher hint citation --pmcid` is the reporting route).
+    """
+    if value is None:
+        if required:
+            raise ValueError(f"{field} must not be empty")
+        return None
+    value = str(value).strip()
+    if not value:
+        if required:
+            raise ValueError(f"{field} must not be empty")
+        return None
+    if extract_pmids(value):
+        return value  # kept verbatim; use extract_pmids(value) to recover digit-only ids
+    pmcids = extract_pmcids(value)
+    if pmcids:
+        raise ValueError(
+            f"{field} names PubMed Central id(s) {pmcids} and no PubMed ID. PMC and PubMed number "
+            f"articles independently, so a PMC id's digits are a different article's PMID — reading "
+            f"them as one would cite the wrong paper. Look the PMID up (e.g. "
+            f"`just-dna-enricher hint citation --pmcid {pmcids[0]}`) and write that, got: {value!r}"
+        )
+    raise ValueError(
+        f"{field} must contain at least one PubMed ID (bare digits, or a bracketed/prefixed "
+        f"form like '[PMID: 9545397]'), got: {value!r}"
+    )
 
 
 class ModuleInfo(Display):
@@ -212,9 +286,12 @@ class ModuleSpecConfig(BaseModel):
     panel: GenePanelSpec | None = Field(
         default=None,
         description=(
-            "Optional gene-panel declaration (ROADMAP item 7). Descriptive provenance for modules "
-            "derived from a gene set + significance predicate; the compiler records it verbatim "
-            "but does not materialize variants from it in this version."
+            "DEPRECATED in 0.6, removed at 1.0 (RM4) — delete it. Descriptive provenance for modules "
+            "derived from a gene set + significance predicate; the compiler records it verbatim and "
+            "never materialized variants from it. Its one machine reader, the enricher's ClinVar "
+            "clin_sig cross-check, now reads the drafted-from release out of the licence row's "
+            "`dataset` column, which the drafting pass writes itself. A module carrying the block "
+            "still compiles, with a deprecation warning."
         ),
     )
     authorship: list[Contribution] = Field(
@@ -255,7 +332,10 @@ class VariantRow(AuthoredModel):
     chrom: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("chromosome", VALID_CHROMOSOMES),
-        description="Chromosome without 'chr' prefix",
+        description=(
+            "Chromosome. A 'chr'/'CHR' prefix is accepted and stripped, and the mitochondrion may be "
+            "written MT, chrMT, M or chrM — all fold to MT, which is what gets stored"
+        ),
     )
     start: int | None = Field(
         default=None,
@@ -418,12 +498,23 @@ class VariantRow(AuthoredModel):
     callable_from: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field(s) a consumer establishes callability from (e.g. DP, "
-            "GQ, FT, or DP|GQ). A declarative pointer, never an expression: it names where the "
-            "evidence for 'this position was actually callable' lives, so a consumer can tell a "
-            "confirmed negative from an uncovered one instead of reading both as reference."
+            "Optional VCF field(s) a consumer establishes callability from, best written with the "
+            "namespace (e.g. FORMAT/DP, FORMAT/GQ, FORMAT/FT, or FORMAT/DP|FORMAT/GQ). A declarative "
+            "pointer, never an expression: it names where the evidence for 'this position was "
+            "actually callable' lives, so a consumer can tell a confirmed negative from an uncovered "
+            "one instead of reading both as reference. A bare key means unqualified — and INFO/DP is "
+            "the cohort's combined depth, which says nothing about whether this sample was callable. "
+            "Reference evidence usually arrives as a gVCF *block* (one record with END=), so a "
+            "consumer finds it by interval containment rather than an equality join on position, "
+            "and the block's floor is FORMAT/MIN_DP — a DP of 25 averaged over 14 bases is "
+            "compatible with an uncovered base inside them."
         ),
     )
+    # There is no `callable_element` here, and the absence is a decision (RM54, 0.6). The binning
+    # tables' `source_field` got the element rule because that is where the defect had a real case;
+    # `callable_from` can name a multi-valued field (`FORMAT/AD`) and no module does, and under the
+    # 0.6 charter amendment a `variants.csv` column is the most expensive kind of addition this format
+    # makes. The name is held in `vocab.RESERVED_NAMES_0_4` so it survives the one-way door.
 
     # ── 0.5.1: RM29(a), the call-confidence cofactor. Two columns, not a predicate. ──
     #
@@ -440,11 +531,18 @@ class VariantRow(AuthoredModel):
     quality_from: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field the `min_quality` floor is stated against (e.g. GQ, "
-            "QUAL, DP). Same bare-token pointer grammar as `source_field`/`callable_from`; a pointer, "
-            "never an expression."
+            "Optional VCF field the `min_quality` floor is stated against, best written with the "
+            "namespace (e.g. FORMAT/GQ, QUAL, FORMAT/DP). Same pointer grammar as "
+            "`source_field`/`callable_from`; a pointer, never an expression. A bare key means "
+            "unqualified, and INFO/MQ is a Float where FORMAT/MQ is an Integer. Prefer a per-sample "
+            "confidence field: QUAL changes sign with the record (VCF 1.6.1.6 — prob(no variant) on "
+            "a variant record, prob(variant) where ALT is '.'), so on a requires_callable row, whose "
+            "evidence is the reference record, a high QUAL says the position is probably variant and "
+            "the floor demands the opposite of what the row is about."
         ),
     )
+    # No `quality_element` either, and for the same reason as `callable_element` above: `min_quality`
+    # is a scalar floor, so a multi-valued `quality_from` would need one — and nothing points at one.
     min_quality: float | None = Field(
         default=None,
         description=(
@@ -577,14 +675,56 @@ class VariantRow(AuthoredModel):
     @field_validator("chrom")
     @classmethod
     def _validate_chrom(cls, v: str | None) -> str | None:
-        if v is not None:
-            normalized = v.removeprefix("chr")
-            if normalized not in VALID_CHROMOSOMES:
-                raise ValueError(
-                    f"chrom must be one of 1-22, X, Y, MT (without 'chr' prefix), got: {v!r}"
-                )
-            return normalized
-        return v
+        """Fold the author's spelling to this format's member, or refuse and say why (RM60 + RM48).
+
+        **The gate and the normalizer disagreed, and the stricter one was the gate.** This did
+        `removeprefix("chr")` and then required membership, while `vrs.normalize_chrom` — in the same
+        package, and what every id-minting path already runs — also strips `CHR`/`Chr` and folds
+        `M`/`chrM` to `MT`. So `MT` and `chrMT` validated and `chrM`, `M` and `CHR7` did not, with a
+        message that lists `MT` and never mentions that `chrM` is the same contig. That matters because
+        real GRCh38 files split on exactly this: Ensembl-style writes `MT`, the hs38DH analysis set most
+        human pipelines actually align against writes `chrM`.
+
+        Routing the gate through the normalizer **widens only** (P3): every value that validated before
+        still validates and still normalizes to the same member, so no published module changes and no
+        stored key moves. Alt contigs, scaffolds, patches and decoys stay rejected, correctly and by
+        charter — `REFGET_GRCh38` is primary assembly only. Same class as the 0.6 `-`-for-`_` vocabulary
+        tolerance: what is stored is always the declared member, never the author's spelling, so nothing
+        downstream ever sees two spellings of one contig.
+
+        **And when the rejected name is another build's, say which (RM48).** The verdict does not
+        change — an unplaced scaffold is out of this vocabulary either way — but whether the author
+        learns *why* does, because `GL000209.1` and `KI270728.1` do not arrive by typo. They arrive by
+        pasting rows out of a VCF built on the other assembly, which means the module's *other* rows
+        are probably on it too. Told only "chrom must be one of 1-22, X, Y, MT", an author deletes the
+        scaffold row and ships the rest; told which build names it, they check the build. Same
+        generic-rejection-is-a-dead-end rule as `reject_reserved` and `reject_misplaced`: diagnose,
+        decide nothing new. `sole_build_naming_contig` withholds on every name its tables cannot
+        settle, so a contig both builds carry adds no clause rather than a guess.
+
+        The two halves compose in one direction only, and it is worth saying which: the widening
+        decides what is *accepted*, the diagnosis only enriches what is *refused*. Neither can turn a
+        rejection into an acceptance or the reverse.
+        """
+        if v is None:
+            return v
+        normalized = normalize_chrom(v)
+        if normalized is None or normalized not in VALID_CHROMOSOMES:
+            elsewhere = sole_build_naming_contig(v)
+            because = (
+                f" — that is a top-level sequence of {elsewhere} and of no other build this schema "
+                f"knows, so these rows are most likely on {elsewhere} rather than on the build the "
+                f"module declares"
+                if elsewhere
+                else ""
+            )
+            raise ValueError(
+                f"chrom must be one of 1-22, X, Y, MT, got: {v!r}. A 'chr'/'CHR' prefix is accepted "
+                f"and stripped, and 'M'/'chrM' is accepted as a spelling of MT; an alt contig, "
+                f"scaffold, patch or decoy is not — this format keys on the primary assembly "
+                f"only{because}"
+            )
+        return normalized
 
     # `genotype`'s grammar lives on `AuthoredModel` since 0.5 — `PharmVariantRow` declares the same
     # field, and a validator shared by two models belongs on the base (see base.py).
@@ -664,11 +804,14 @@ class StudyRow(AuthoredModel):
         description="1-based position, VCF POS convention (position-only variants) — do not subtract one",
     )
     ref: str | None = Field(default=None, description="Reference allele (position-only variants)")
-    #: rsid, or a bare chrom (no `start` — see `_validate_study_identification`).
-    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
-        frozenset({"rsid"}),
-        frozenset({"chrom"}),
-    )
+    #: **Empty since 0.6 (RM47): a study row need not name a variant at all.** It used to be
+    #: `({rsid}, {chrom})` — rsid, or a bare `chrom` with no `start`. The rule was unsatisfiable for
+    #: exactly the modules that most needed a citation: a `repeat_alleles.csv`/`copynumbers.csv`/
+    #: `activity_phenotype.csv` row is keyed `(gene, …)` and names no variant, so an author grounding
+    #: a threshold had to invent one — writing a bare `chrom=4` for HTT, which asserts a locus the
+    #: paper is not about. Widening an either-or rule only makes previously-*invalid* rows valid, so
+    #: no published module breaks (P3/P8: nothing became required and nothing was retyped).
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = ()
 
     pmid: str = Field(description="PubMed ID or reference — free-form, must be non-empty")
     population: str | None = Field(default=None, description="Study population")
@@ -733,9 +876,19 @@ class StudyRow(AuthoredModel):
     )
 
     @property
-    def variant_key(self) -> str:
-        """Stable key matching VariantRow.variant_key. StudyRow is never resolved/expanded, so its
-        key stays a derived property (no freezing needed)."""
+    def variant_key(self) -> str | None:
+        """Stable key matching VariantRow.variant_key, or `None` when the row names no variant.
+
+        StudyRow is never resolved/expanded, so its key stays a derived property (no freezing needed).
+
+        `None` is the 0.6 shape (RM47): a citation row may now describe the module or a gene-keyed
+        binning table rather than a variant, and `derive_variant_key(None, None, None, None)` would
+        otherwise hand back the string `"None:None:None"` — a key that looks like an identity and
+        names nothing. Same reasoning as `HeteroplasmyRow.variant_key`, and the reason the orphan half
+        of the compiler's study cross-check skips these rows: a row that names no variant cannot
+        reference one that is missing."""
+        if self.rsid is None and self.chrom is None:
+            return None
         return derive_variant_key(self.rsid, self.chrom, self.start, self.ref)
 
     @property
@@ -755,15 +908,11 @@ class StudyRow(AuthoredModel):
     @field_validator("pmid")
     @classmethod
     def _validate_pmid(cls, v: str) -> str:
-        v = str(v).strip()
-        if not v:
-            raise ValueError("pmid must not be empty")
-        if not extract_pmids(v):
-            raise ValueError(
-                f"pmid must contain at least one PubMed ID (bare digits, or a bracketed/prefixed "
-                f"form like '[PMID: 9545397]'), got: {v!r}"
-            )
-        return v  # kept verbatim; use extract_pmids(pmid) to recover digit-only ids
+        # Shared with `MeasureBinRow.pmid` — see `validate_pmid_cell`. Required here: grounding
+        # evidence is mandatory for a variant annotation.
+        checked = validate_pmid_cell(v, "pmid", required=True)
+        assert checked is not None
+        return checked
 
     @field_validator("doi")
     @classmethod
@@ -792,11 +941,25 @@ class StudyRow(AuthoredModel):
 
     @model_validator(mode="after")
     def _validate_study_identification(self) -> "StudyRow":
-        # NOTE the asymmetry with `VariantRow`: this rule accepts a bare `chrom`, no `start`. The
-        # message below says "chrom + start" and the code does not require `start` — declared as
-        # written, not as worded, because `REQUIRED_ANY_OF` must describe what actually validates.
+        # **A row may name NO variant since 0.6 (RM47), but never half of one.** The old rule demanded
+        # an rsid or a bare `chrom`, which a citation grounding a *bin boundary* cannot supply:
+        # `repeat_alleles.csv` is keyed `(gene, repeat_unit)`, so the rule pushed authors into writing a
+        # bare `chrom=4` for HTT — an assertion about a locus in a row that is about a threshold. What
+        # the relaxation legalises is the empty subject, and only that. A row carrying `start`/`ref`
+        # with no `rsid` and no `chrom` is the commonest CSV slip (a blank cell in the middle of a
+        # coordinate) and it is not a subject-less citation: `variant_key` would answer `None` while
+        # `studies.parquet` still carried the orphaned position, so the row would read as grounding the
+        # module while holding a coordinate nothing can join. `VariantRow` refuses a partial coordinate
+        # for the same reason.
         if self.rsid is None and self.chrom is None:
-            raise ValueError(
-                "At least one identifier is required: provide rsid or position (chrom + start)"
-            )
+            dangling = [
+                name for name, value in (("start", self.start), ("ref", self.ref))
+                if value is not None
+            ]
+            if dangling:
+                raise ValueError(
+                    f"a study row may name no variant at all — a citation can ground the module or a "
+                    f"binning bound — but {dangling} without rsid or chrom is a half-written "
+                    f"coordinate, not an absent one. Add chrom, or clear these columns."
+                )
         return self

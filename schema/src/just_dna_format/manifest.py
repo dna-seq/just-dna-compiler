@@ -298,6 +298,128 @@ class GeneMetrics(BaseModel):
     genes: list[str] = Field(default_factory=list, description="Sorted gene symbols covered")
 
 
+class GeneValidity(BaseModel):
+    """Summary of a module's injected gene–disease validity sidecar (0.6, RM24).
+
+    Out of `artifact.digest`, like every sibling block. `classifications` is emitted **sorted** rather
+    than in strength order, for the reason `Frequency.populations` is emitted in canonical order and
+    everything else sorted: a set-like facet has no order of its own, and a sorted list is the only one
+    that cannot drift. A consumer that wants the ladder reads `vocab.ORDERED_GENE_VALIDITY`, which is
+    published precisely so this block does not have to encode it.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description=(
+            "Fact-hash of gene_validity.csv (integrity.gene_validity_signature); out of artifact.digest"
+        ),
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of GeneValidityRow.source values"
+    )
+    datasets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted union of GeneValidityRow.dataset values, e.g. "
+            "['clingen_gene_validity_2026-08-13'] — which curation releases these verdicts are from."
+        ),
+    )
+    row_count: int = Field(default=0, description="Number of assertions recorded")
+    genes: list[str] = Field(default_factory=list, description="Sorted gene symbols covered")
+    diseases: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted disease CURIEs asserted against, so a catalog can index a module by condition "
+            "without opening the parquet."
+        ),
+    )
+    classifications: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted union of the strengths present. Read it as a set, not a verdict: a module whose "
+            "list contains 'refuted' carries a gene somebody has argued against, which is information "
+            "rather than a defect."
+        ),
+    )
+    submitters: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted union of who made the assertions — an expert panel on ClinGen, a laboratory on "
+            "GenCC. Published because on an aggregate the submitter is half the claim."
+        ),
+    )
+
+
+class ClinicalAssertions(BaseModel):
+    """Summary of a module's injected clinical-assertion sidecar (0.6, RM25).
+
+    The counters exist for the same reason `Literature`'s do: the point of the table is that a
+    one-star single submission and a practice guideline are not the same claim, so a summary that
+    reported only a row count would throw away exactly what was gained. `max_review_stars` and
+    `min_review_stars` are the two ends a catalog can filter on without reading the parquet —
+    published as the two counts rather than an average, which would be a number describing no record.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description=(
+            "Fact-hash of clinical_assertions.csv (integrity.clinical_assertion_signature); out of "
+            "artifact.digest"
+        ),
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of ClinicalAssertionRow.source values"
+    )
+    datasets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted union of the archive releases these records are from, e.g. ['clinvar_2026-06-27']."
+        ),
+    )
+    row_count: int = Field(default=0, description="Number of archive records recorded")
+    variant_count: int = Field(
+        default=0,
+        description=(
+            "Distinct alleles covered. Lower than `row_count` whenever the archive holds several "
+            "records for one allele under different conditions, which is ordinary."
+        ),
+    )
+    clin_sigs: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the clinical calls present, in the module vocabulary",
+    )
+    min_review_stars: int | None = Field(
+        default=None,
+        description=(
+            "Lowest star rating any recorded record carries, or null when none states a review status. "
+            "Null is not zero: 0 is the rating 'no assertion criteria provided', and a module with no "
+            "rated record at all has made no such claim."
+        ),
+    )
+    max_review_stars: int | None = Field(
+        default=None,
+        description=(
+            "Highest star rating any recorded record carries, or null when none states one. Read the "
+            "pair together — a module spanning 0 to 4 is mixing evidence tiers, which is the thing "
+            "this table was built to make visible."
+        ),
+    )
+    unrated_count: int = Field(
+        default=0,
+        description=(
+            "Records whose review status the archive did not state (`review_stars` is null). Reported "
+            "separately from a 0-star record for the reason above."
+        ),
+    )
+    not_found_count: int = Field(
+        default=0,
+        description=(
+            "Alleles the archive was consulted about and has no record for (`status` is 'not_found'). "
+            "A fact about the archive, not a gap in the pass — an allele nobody asked about has no row."
+        ),
+    )
+
+
 class Literature(BaseModel):
     """Summary of a module's injected citation sidecar (0.5), out of `artifact.digest`.
 
@@ -451,10 +573,19 @@ class GenePanelSpec(BaseModel):
     """Declares a module derived from a *gene set + significance predicate* over a reference,
     rather than an enumerated variant table (SPEC ROADMAP item 7).
 
+    **Deprecated in 0.6, removed at 1.0 (RM4).** Compile-time materialization was dropped rather than
+    built: the compiler must not create rows no curator wrote, and expanding a declaration at compile
+    would make a module's content depend on an external file while leaving `reverse` to choose between
+    re-emitting the declaration (rows lost) and the rows (declaration lost) — neither a fixed point.
+    The want is served by enricher draft-scaffolding, where the rows are authored bytes before the
+    compiler sees them and the author's no-op over the drafted subset is still an authorial act. The
+    block's one remaining machine reader — the enricher's ClinVar `clin_sig` cross-check, deciding
+    whether a drafted module is being compared against its own source — now reads the licence row's
+    `dataset` column instead, which the drafting pass writes itself.
+
     This is the authored *interface* only: the compiler records it verbatim but does not
     materialize it (an app-level adapter enumerates the matching variants into `variants.csv`
-    today). Native compile-time materialization is a follow-up gated on a working ClinVar
-    reference mixin. Optional and backwards-compatible — absent on ordinary variant modules.
+    today). Optional and backwards-compatible — absent on ordinary variant modules.
 
     `extra="forbid"` so a typo in the authored `panel:` block is caught, not silently dropped.
     """
@@ -901,6 +1032,23 @@ class ModuleManifest(BaseModel):
     gene_metrics: GeneMetrics | None = Field(
         default=None,
         description="Summary of the injected gene-constraint sidecar (0.5), when the module carries one.",
+    )
+    gene_validity: GeneValidity | None = Field(
+        default=None,
+        description=(
+            "Summary of the injected gene–disease validity sidecar (0.6), when the module carries one. "
+            "Beside `gene_metrics` rather than folded into it because the grain differs: constraint is "
+            "one value per gene, a validity assertion is one per gene × disease × inheritance mode."
+        ),
+    )
+    clinical_assertions: ClinicalAssertions | None = Field(
+        default=None,
+        description=(
+            "Summary of the injected clinical-assertion sidecar (0.6), when the module carries one. "
+            "Carries the star-rating range as well as the fact-hash, because the distinction between a "
+            "single-submitter call and a practice guideline is the whole reason the table exists and a "
+            "row count alone would discard it."
+        ),
     )
     literature: Literature | None = Field(
         default=None,

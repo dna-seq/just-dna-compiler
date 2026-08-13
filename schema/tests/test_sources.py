@@ -24,7 +24,11 @@ def _row(**kw) -> SourceRow:
 
 def test_layer_and_declared_use_are_closed_vocabularies() -> None:
     assert {
-        "resolution", "frequency", "gene_metrics", "literature", "annotation"
+        "resolution", "frequency", "gene_metrics", "literature",
+        # 0.6 (RM24/RM25) — fact-class like the four above, so neither taints; each is written by the
+        # pass that owns the table it names.
+        "gene_validity", "clinical_assertion",
+        "annotation",
     } == VALID_SOURCE_LAYERS
     assert {"unstated", "non_commercial", "commercial"} == VALID_DECLARED_USE
     with pytest.raises(ValidationError):

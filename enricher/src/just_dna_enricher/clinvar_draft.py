@@ -45,9 +45,14 @@ from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from pydantic import ValidationError
 
-from just_dna_enricher.clinvar import citations_for, select_by_gene
+from just_dna_enricher.clinvar import citations_for, clinvar_dataset_label, select_by_gene
 from just_dna_enricher.download import ensure_clinvar_snapshot
-from just_dna_enricher.licensing import CLINVAR_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.licensing import (
+    CLINVAR_TERMS,
+    check_declared_use,
+    merge_sources_file,
+    withdraw_stale_dataset,
+)
 from just_dna_enricher.locations import resolve_clinvar_reference
 
 logger = logging.getLogger(__name__)
@@ -392,9 +397,16 @@ def _resolve_snapshot(
                 f"locally built one, or build it with `just-dna-enricher clinvar build`."
             )
     if reference is None:
+        # Name the switch that actually stopped it, or none. `--offline` and `--no-download` both
+        # close this path and the older message named only the first, so an author who passed the
+        # second was told to drop a flag they had not used — and after a *failed* provisioning
+        # attempt, where neither is set, it named a flag nobody could drop.
+        blocked = "--offline" if offline else ("--no-download" if not download else "")
         raise ClinVarDraftError(
-            "no ClinVar snapshot found. Drop --offline to download the published one, pass "
-            "--snapshot PATH, or build it yourself with `just-dna-enricher clinvar build --download`."
+            "no ClinVar snapshot found. "
+            + (f"Drop {blocked} to download the published one, or pass " if blocked else "Pass ")
+            + "--snapshot PATH, or build it yourself with `just-dna-enricher clinvar build "
+            "--download`."
             + (f" ({warnings[0]})" if warnings else "")
         )
     return Path(reference), warnings
@@ -571,12 +583,44 @@ def draft_gene_panel(
             f"direction the submitters did not. So `state` is yours to decide too, per row. "
             f"Affected: {shown}."
         )
+    # WHICH release the rows were copied out of, in the column that exists to say so (RM4). The draft
+    # was machined, so the marker is machined too: `clinical.tautology_reason` reads this back and can
+    # then skip a check that a drafted module makes structurally unfailable, without the author having
+    # to maintain a `panel:` block by hand for the sole benefit of one check. A snapshot that cannot
+    # state its release leaves the cell empty rather than carrying a guess — and says so, because the
+    # consequence is invisible otherwise.
+    dataset = clinvar_dataset_label(reference)
+    if dataset is None:
+        warnings.append(
+            "this snapshot does not say which ClinVar release it carries (no readable release.json), "
+            "so the licence row records no dataset: nothing downstream can tell these rows were copied "
+            "out of it, and the clin_sig cross-check will compare every one of them against it in full. "
+            "That is the conservative outcome rather than a defect in the module. Build the snapshot "
+            "with `just-dna-enricher clinvar build`, which writes the release.json this reads."
+        )
     if not dry_run:
         # A source that rows were copied out of must be recorded, permissive terms or not: the compile
-        # gate and `manifest.sources` read sources.csv and nothing else.
+        # gate and `manifest.sources` read the licence table and nothing else.
         merge_sources_file(
-            [CLINVAR_TERMS.row("annotation", declared_use=declared_use)],
+            [CLINVAR_TERMS.row("annotation", declared_use=declared_use, dataset=dataset)],
             spec_dir,
             error=ClinVarDraftError,
         )
+        # Widening a panel from a NEWER snapshot leaves the row naming the older release, because the
+        # merge above is never-clobber (a curator's terms must survive a re-run). For `dataset` that
+        # protection produces a false claim, so the stale label is withdrawn — never re-labelled: the
+        # module now carries rows from two releases and one column cannot name both. Gated on rows
+        # actually being added, since a re-draft that added none changed nothing to be honest about.
+        if report.added:
+            superseded = withdraw_stale_dataset(
+                spec_dir, CLINVAR_TERMS.source, "annotation", dataset, error=ClinVarDraftError
+            )
+            if superseded is not None:
+                warnings.append(
+                    f"this module already recorded rows drafted from {superseded}, and these came from "
+                    f"{dataset or 'a snapshot that does not state its release'} — so the licence row's "
+                    f"dataset has been cleared rather than re-labelled: it cannot name two releases, "
+                    f"and naming one would be a claim about rows that did not come from it. The "
+                    f"consequence is that the clin_sig cross-check now runs over the whole table again."
+                )
     return ClinVarDraftResult(reports=reports, warnings=warnings)

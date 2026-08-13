@@ -169,6 +169,31 @@ CLINGEN_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# GenCC, read off `search.thegencc.org` on 2026-08-13: "The GenCC data are available free of
+# restriction under a CC0 1.0 Universal (CC0 1.0) Public Domain Dedication. The GenCC requests that you
+# give attribution to GenCC and the contributing sources whenever possible and appropriate."
+#
+# ClinGen's shape exactly, and the second half of that sentence is why `attribution` names the
+# contributing sources as well as GenCC: the file is an *aggregate* of nineteen submitters, so crediting
+# only the aggregator credits nobody who did the work. `share_alike` stays False because a request is
+# not a licence condition, and recording it as one would overstate the obligation.
+#
+# The diagnostic-use line from the same page rides in `notice` — the table exists to carry a use
+# restriction a consumer needs and no flag expresses, not only the prohibitions a gate reads.
+GENCC_TERMS = SourceTerms(
+    source="gencc",
+    license="CC0-1.0",
+    license_url="https://search.thegencc.org/",
+    attribution="The GenCC (https://thegencc.org) and its contributing submitters",
+    notice=(
+        "CC0 public-domain dedication; attribution to GenCC and the contributing sources requested "
+        "but not required. Not intended for direct diagnostic use or medical decision-making."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
 # ClinVar is NCBI public-domain: US-government work, no copyright asserted over the aggregate. It is
 # already consulted as a resolver link and for the `clin_sig` cross-check; a drafting provider *copies*
 # rows out of it, which is the point at which a module must be able to say where they came from. The
@@ -248,6 +273,61 @@ RESOLUTION_AUTHORITY_BY_LINK: dict[str, str] = {
     "gnomad": "gnomad",
 }
 
+@dataclass(frozen=True)
+class ArticleTerms:
+    """The three rights a cited **article** carries, read off its own licence (RM46).
+
+    A separate shape from `SourceTerms` because it answers a different question about a different
+    thing. `SourceTerms` describes a *service* and produces a `SourceRow`; this describes one paper
+    and lands on the `LiteratureRow` for it. There is deliberately **no `pubmed` entry in
+    `TERMS_BY_SOURCE`** and there will not be one: a literature source's terms are per article, not
+    per source — PubMed's metadata is one thing and the publisher's article is another, and Europe
+    PMC's open subset spans CC-BY, CC-BY-NC and bronze. One `pubmed` row would be right for a module
+    citing only ids and a false all-clear for one carrying a `provenance_quote` lifted from a
+    CC-BY-NC article, since that quote is publisher text in the module's own annotation layer.
+    """
+
+    share_alike: bool | None = None
+    commercial_use: bool | None = None
+    redistribution: bool | None = None
+
+
+#: Rights by the licence string Europe PMC actually publishes, probed 2026-08-13 over its core search
+#: result: the values are lowercase Creative Commons spellings (`cc by`, `cc by-nc`, `cc by-nc-nd`),
+#: and they are recorded **verbatim** on the row — this map is applied at read time so a correction
+#: here reaches rows already written, the same rule `cpic_build` follows.
+#:
+#: Total over what the CC family means and nothing else. `-nc` forbids sale; `-sa` is viral; every CC
+#: licence and CC0 permit redistribution, which is the axis `commercial_use` alone understates. An
+#: unrecognised or absent value maps to all-`None` — unknown, withheld, never `False`: "we could not
+#: establish the terms" is not a finding that they forbid anything (the house tri-state).
+ARTICLE_TERMS_BY_LICENSE: dict[str, ArticleTerms] = {
+    "cc0": ArticleTerms(share_alike=False, commercial_use=True, redistribution=True),
+    "cc by": ArticleTerms(share_alike=False, commercial_use=True, redistribution=True),
+    "cc by-sa": ArticleTerms(share_alike=True, commercial_use=True, redistribution=True),
+    "cc by-nd": ArticleTerms(share_alike=False, commercial_use=True, redistribution=True),
+    "cc by-nc": ArticleTerms(share_alike=False, commercial_use=False, redistribution=True),
+    "cc by-nc-sa": ArticleTerms(share_alike=True, commercial_use=False, redistribution=True),
+    "cc by-nc-nd": ArticleTerms(share_alike=False, commercial_use=False, redistribution=True),
+}
+
+
+def article_terms(license_name: str | None) -> ArticleTerms:
+    """The rights a licence string grants, or all-unknown when it names nothing this tier knows.
+
+    Case- and whitespace-insensitive, and tolerant of the `CC-BY-NC` spelling as well as Europe PMC's
+    own `cc by-nc`, because the same value reaches this function from a hand-edited sidecar. Nothing
+    is inferred from a substring: a licence this tier has not read is unknown, and an unknown right is
+    withheld rather than guessed in either direction.
+    """
+    if not license_name or not license_name.strip():
+        return ArticleTerms()
+    key = " ".join(license_name.strip().lower().replace("_", "-").split())
+    return ARTICLE_TERMS_BY_LICENSE.get(key) or ARTICLE_TERMS_BY_LICENSE.get(
+        key.replace("cc-", "cc ", 1), ArticleTerms()
+    )
+
+
 #: Every source whose terms this tier can state, by the identifier that joins `sources.csv.source`.
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
@@ -256,6 +336,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         CPIC_TERMS,
         PHARMVAR_TERMS,
         CLINGEN_TERMS,
+        GENCC_TERMS,
         CLINVAR_TERMS,
         ENSEMBL_TERMS,
         GNOMAD_TERMS,
@@ -440,3 +521,65 @@ def merge_sources_file(
             raise error(f"existing {path.name} is invalid: {errors[0]}")
         existing = parsed
     return merge_sources_csv(rows, path, existing)
+
+
+def withdraw_stale_dataset(
+    spec_dir: Path, source: str, layer: str, dataset: str | None, *, error: type[Exception]
+) -> str | None:
+    """Blank a recorded `dataset` that this run's rows did not come from. Returns what it withdrew.
+
+    The one place anything overwrites a cell `merge_sources_file` would have kept, and it is narrow on
+    purpose: `merge_sources_csv` is never-clobber so a curator's hand-written **terms** survive a
+    re-run, which is right, and `dataset` inherited that protection at the moment RM4 made it
+    load-bearing. A module drafted from one release and then widened from a newer one kept the older
+    label — a licence row asserting a release half its rows did not come from, in the column a
+    published `manifest.sources` carries and the clinical cross-check keys on.
+
+    It only ever **withdraws**, never re-labels, because the honest value for a module carrying rows
+    from two releases is not the newer label either — one column cannot name two releases, so the
+    answer is unknown and unknown is withheld (the house rule). That is also the safe direction for
+    everything downstream: an empty `dataset` skips nothing, so the cross-check simply runs.
+
+    `None` when there was nothing to withdraw — no row, or a row already naming this run's release.
+    The caller decides whether its rows even changed the module's provenance; a re-draft that added
+    nothing must not reach this at all.
+    """
+    path = sources_path(spec_dir, error=error)
+    if not path.exists():
+        return None
+    rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
+    if errors:
+        raise error(f"existing {path.name} is invalid: {errors[0]}")
+    recorded = next((r for r in rows if r.source == source and r.layer == layer), None)
+    if recorded is None or (recorded.dataset or None) == (dataset or None):
+        return None
+    withdrawn = recorded.dataset
+    recorded.dataset = None
+    write_sources_csv(rows, path)
+    return withdrawn
+
+
+def read_sources_file(spec_dir: Path) -> list[SourceRow]:
+    """The module's licence rows as recorded, or `[]` when there are none that can be read.
+
+    The gentle counterpart to the strict load inside `merge_sources_file`, for a *reader* whose only
+    power is to let a check be skipped — `clinical.tautology_reason`, which asks whether the licence
+    row says these annotation rows were drafted from the snapshot the check is about to read (RM4).
+
+    Gentle deliberately, and in the same direction the rest of this codebase withholds: a table that
+    could not be read has established nothing, so `[]` leaves every check running. A pass that
+    *writes* must still fail loudly on an unreadable table — merging into one that did not load would
+    drop rows already recorded — and `merge_sources_file` does.
+    """
+    try:
+        path = sidecar_write_path(spec_dir, SOURCES_CSV)
+    except SidecarCollision as exc:
+        logger.warning("Cannot read this module's licence table (%s); treating it as unrecorded.", exc)
+        return []
+    if not path.exists():
+        return []
+    rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
+    if errors:
+        logger.warning("%s is invalid (%s); treating it as unrecorded.", path.name, errors[0])
+        return []
+    return rows

@@ -117,6 +117,14 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
         "alleles (`<DEL:1500>`), which is a different spelling from CPIC's `DELTCT`; holding this one "
         "would still need a release"
     ),
+    # The third reason `non_nucleotide_reason` answers since RM58. CPIC has never been observed to write
+    # it, but this map is indexed directly by `_unusable_warnings`, so an unlisted member is a KeyError
+    # in a warning path rather than a missing sentence — the reason it is filled in here on the same
+    # commit as the classifier gains it, and not when a real `.` first arrives.
+    "missing": (
+        "VCF's MISSING marker rather than an allele — a claim that there is no alternate allele at all, "
+        "so there is no defining variant to record and nothing a future release could widen to hold"
+    ),
 }
 
 

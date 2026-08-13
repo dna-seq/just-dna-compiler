@@ -249,14 +249,13 @@ def test_the_manifest_block_carries_the_records_whole(tmp_path) -> None:
 def test_every_check_name_is_a_verification_question() -> None:
     """The membership rule, asserted as a set so a drive-by addition has to answer for itself.
 
-    Fixed once here rather than grown ad hoc, because a name is permanent within a major. Two members
-    have no emitter in this workspace yet, on the `withdrawn` precedent — the release that needs them
-    should not have to invent a spelling — and the ClinVar assertion tier is deliberately absent: it
-    records a source's review status and compares nothing the author wrote.
+    Fixed once here rather than grown ad hoc, because a name is permanent within a major. The set is
+    written out in full so a drive-by addition has to answer for itself against the membership rule.
     """
     assert {
         "reference_allele",
         "rsid_currency",
+        "rsid_coordinate_agreement",
         "clinical_significance",
         "acmg_secondary_findings",
         "gene_symbol_currency",
@@ -267,13 +266,40 @@ def test_every_check_name_is_a_verification_question() -> None:
         "provenance_quote",
         "dosage_sensitivity",
         "allele_function",
+        "pgx_evidence_level",
         "vrs_allele_id",
         "gene_disease_validity",
         "genome_build_agreement",
     } == VALID_VERIFICATION_CHECKS
-    assert "clinvar_assertion_tier" not in VALID_VERIFICATION_CHECKS
 
 
-def test_a_choice_and_a_capability_are_different_skips() -> None:
-    """`not_requested` is cleared by a flag; `offline` by egress. Merging them loses the remedy."""
-    assert {"not_requested", "offline"} <= VALID_VERIFICATION_SKIPS
+def test_a_pass_that_only_records_a_source_gets_no_member() -> None:
+    """The exclusion half of the rule, which is the half that would silently rot.
+
+    0.6 added two derived tables whose passes read a source and write it down — the ClinVar assertion
+    tier and gene-disease validity. Neither compares anything the author wrote (`assertions.py`'s own
+    docstring: "records what ClinVar says and adjudicates nothing"), so neither may have a check name:
+    a member would let a manifest report a check where no question was put, which is exactly the
+    confusion RM45 exists to end.
+
+    `gene_disease_validity` IS a member, and that is not a contradiction — it is reserved for a future
+    pass that checks an *authored* gene/phenotype pair against those verdicts, which is a different
+    question from recording them. The names below are the recording passes, and none of them appears.
+    """
+    for recorded_not_checked in (
+        "clinvar_assertion_tier",
+        "clinical_assertions",
+        "allele_frequency",
+        "gene_constraint",
+        "article_license",
+    ):
+        assert recorded_not_checked not in VALID_VERIFICATION_CHECKS
+
+
+def test_each_skip_names_a_different_remedy() -> None:
+    """Three that must never be merged, because each is cleared by a different action.
+
+    `not_requested` by a flag, `offline` by egress, `not_permitted` by a declaration — and a reader who
+    saw a licensing skip spelled `offline` would go looking for a network problem that does not exist.
+    """
+    assert {"not_requested", "offline", "not_permitted"} <= VALID_VERIFICATION_SKIPS

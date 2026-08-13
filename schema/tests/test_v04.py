@@ -219,13 +219,16 @@ def _validation_message(model, **kwargs) -> str:
 
 
 def test_reserved_set_is_the_expected_shape() -> None:
-    # Only genuine anticipated MODULE-side axes are reserved — `reference_db` (join-target DB hint) is
-    # the last one left. `callable_from` was reserved for RM6 and is now BUILT as a `VariantRow`
-    # column, so it leaves the set: a reserved name is refused at author time, which would make the
-    # built column unwritable. `caller`/`caller_version` were DROPPED for the opposite reason — they
-    # name a consumer-side measurement (which tool made a call), so there is no future module axis to
-    # reserve, and barring them by name would be arbitrary; `extra="forbid"` rejects them generically.
-    assert frozenset({"reference_db"}) == RESERVED_NAMES_0_4
+    # Only genuine anticipated MODULE-side axes are reserved — `reference_db` (join-target DB hint),
+    # plus the two element-rule companions 0.6 deliberately did not build (RM54: `source_element`
+    # shipped on the binning tables, and `callable_element`/`quality_element` wait for a module that
+    # points `callable_from`/`quality_from` at a multi-valued field). `callable_from` itself was
+    # reserved for RM6 and is now BUILT as a `VariantRow` column, so it leaves the set: a reserved
+    # name is refused at author time, which would make the built column unwritable.
+    # `caller`/`caller_version` were DROPPED for the opposite reason — they name a consumer-side
+    # measurement (which tool made a call), so there is no future module axis to reserve, and barring
+    # them by name would be arbitrary; `extra="forbid"` rejects them generically.
+    assert frozenset({"reference_db", "callable_element", "quality_element"}) == RESERVED_NAMES_0_4
     assert set(RESERVED_NAME_REASONS) == RESERVED_NAMES_0_4  # every reserved name has a reason
 
 

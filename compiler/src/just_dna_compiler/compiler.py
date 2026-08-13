@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Union, get_args, get_origin
+from typing import Any, NamedTuple, Union, get_args, get_origin
 
 import polars as pl
 import yaml
@@ -35,6 +35,7 @@ from just_dna_format.alleles import (
     non_nucleotide_reason,
     symbolic_allele_defect,
 )
+from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import (
     DEFAULT_GENOME_BUILD,
     IDENTITY_FIELDS,
@@ -48,10 +49,12 @@ from just_dna_format.binning import (
     HeteroplasmyRow,
     MeasureBinRow,
     RepeatAlleleRow,
+    measurement_shape_warnings,
     validate_bins,
 )
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.layout import (
     DERIVED_SUBDIR,
@@ -62,6 +65,7 @@ from just_dna_format.layout import (
     resolve_sidecar,
     sidecar_relative_names,
     sidecar_spellings,
+    sidecar_write_path,
 )
 from just_dna_format.integrity import (
     build_artifact,
@@ -76,7 +80,13 @@ from just_dna_format.integrity import (
     frequency_signature as _frequency_signature,
 )
 from just_dna_format.integrity import (
+    clinical_assertion_signature as _clinical_assertion_signature,
+)
+from just_dna_format.integrity import (
     gene_metrics_signature as _gene_metrics_signature,
+)
+from just_dna_format.integrity import (
+    gene_validity_signature as _gene_validity_signature,
 )
 from just_dna_format.integrity import (
     literature_signature as _literature_signature,
@@ -92,11 +102,13 @@ from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
     README_EXTENSIONS,
+    ClinicalAssertions,
     Compilation,
     Display,
     FileEntry,
     Frequency,
     GeneMetrics,
+    GeneValidity,
     Identity,
     Literature,
     ModuleManifest,
@@ -132,12 +144,26 @@ from just_dna_format.spec import (
     VariantRow,
     extract_pmids,
 )
-from just_dna_format.vocab import population_sort_key
+from just_dna_format.vocab import (
+    VALID_ELEMENT_RULES,
+    VCF_COLLIDING_KEYS,
+    VCF_COLLISION_REASONS,
+    VCF_NUMBER_MEANINGS,
+    VCF_POINTER_COMPANIONS,
+    VCF_POINTER_FIELDS,
+    is_multi_valued_number,
+    population_sort_key,
+    split_field_pointer,
+    vcf_field_number,
+)
 from just_dna_format.vrs import (
     UnsupportedBuildError,
+    builds_containing_position,
+    contig_length,
     derive_vrs_allele_id,
     in_pseudoautosomal_region,
     is_substitution,
+    sole_build_naming_contig,
     split_vrs_ids,
 )
 from pydantic import BaseModel, ValidationError
@@ -234,6 +260,10 @@ _OUTPUT_FILES: tuple[str, ...] = (
     "frequencies.parquet",
     "gene_metrics.parquet",
     "literature.parquet",
+    # The 0.6 pair (RM24/RM25), on the same terms as the four above. This tuple is hand-listed where
+    # `_DERIVED_FILES` is derived, so a new fact table has to be added here and only here.
+    "gene_validity.parquet",
+    "clinical_assertions.parquet",
     "sources.parquet",
 )
 
@@ -242,10 +272,18 @@ _OUTPUT_FILES: tuple[str, ...] = (
 # reserved-namespace guard, duplicate-key checks and raw-byte input hashing. A machine-produced
 # reference-fact table is a third category — injected, fact-hashed, human-overridable — and folding it
 # into the table kinds would blur exactly the line the 0.5 rework drew.
+#
+# **`sources.csv` stays last, and that is load-bearing.** The compile loop stores each model's parsed
+# rows into `fact_rows` *before* calling that model's check, and `_sources_checks` reads `fact_rows`
+# to decide which declared sources a table actually used. A new fact table added after it would have
+# its `source` column invisible to that check, so every module carrying one would be told its own
+# licence row is an orphan. Add before `sources.csv`, never after.
 _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("frequencies.csv", "frequencies.parquet", FrequencyRow),
     ("gene_metrics.csv", "gene_metrics.parquet", GeneMetricsRow),
     ("literature.csv", "literature.parquet", LiteratureRow),
+    ("gene_validity.csv", "gene_validity.parquet", GeneValidityRow),
+    ("clinical_assertions.csv", "clinical_assertions.parquet", ClinicalAssertionRow),
     ("sources.csv", "sources.parquet", SourceRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
@@ -905,11 +943,151 @@ def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38
     return warnings
 
 
+def _coordinate_label(row: Any) -> str:
+    """How one offending row is named in a grouped message: its coordinate, and its rsid if it has one.
+
+    Not `variant_key`: for exactly the rows this reports, the key *is* the coordinate (an impossible
+    position mints no VRS id), so naming both would print the same numbers twice. The rsid is the one
+    thing worth adding, because it is what the author will search their CSV for.
+    """
+    rsid = getattr(row, "rsid", None)
+    return f"{row.chrom}:{row.start}" + (f" ({rsid})" if rsid else "")
+
+
+class _CoordinateTable(NamedTuple):
+    """One table's rows, the build they are recorded under, and who wrote them.
+
+    `authored` decides the **remedy**, not the verdict. "Declare `genome_build: GRCh37`" is sound
+    advice about a table a human typed and nonsense about `resolution.csv`, whose build is a per-row
+    column on a machine-written sidecar: a GRCh37 module can carry a stale row stamped `GRCh38`, and
+    telling its author to declare the build they already declared sends them to the wrong file. The
+    fix there is to delete the sidecar and re-run the enricher.
+    """
+
+    label: str
+    build: str
+    authored: bool
+    rows: Iterable[Any]
+
+
+def _check_build_coordinates(tables: Iterable[_CoordinateTable]) -> list[str]:
+    """Coordinates that cannot exist in the build they are recorded under (RM48). Errors, both modes.
+
+    An author curating from older literature has hg19/GRCh37 coordinates and the module must be
+    GRCh38. Nothing in these packages converts, so the conversion happens off-tool and lands as an
+    ordinary authored coordinate carrying no provenance at all — and the two shapes below are the ones
+    that are **provably** wrong with no sequence, no network and no provisioned asset, which is what
+    puts them in the compiler rather than the enricher:
+
+    - **a position past the end of its contig.** GRCh38's chromosome 1 ends at 248,956,422 and
+      GRCh37's runs to 249,250,621, so an un-lifted coordinate in that 294 kb tail is a claim about a
+      base that does not exist. When the position *is* inside another tabled build's contig the
+      message says which — that is the whole diagnosis, and it costs one dict lookup.
+    - **a contig named by only one build.** The 25 primary contigs are spelled identically in both, so
+      this is entirely about unplaced scaffolds: `GL000209.1` is GRCh37's and `KI270728.1` is
+      GRCh38's, and neither exists in the other. A shared scaffold, a patch, an alt locus or an
+      unversioned accession settles nothing and is left alone (`vrs.sole_build_naming_contig`).
+
+    **Error in both modes**, which is the `_cross_validate_variants` inconsistent-reference-allele
+    class rather than a mode ladder: `strict` means *reproducible artifact*, and these rows are not
+    unreproducible, they are false. Nothing downstream can catch them either — a VRS id minted at an
+    impossible position is a correct digest of the wrong input, exactly as the 3,038-row off-by-one
+    was.
+
+    Findings are grouped by **reason** (table, contig, and which other build explains it) rather than
+    by row, because a wrong-build panel produces one of these per variant: 2,400 rows disagreeing one
+    by one reads as hopeless, while "2,400 rows carry GRCh37 coordinates" is a one-line fix. The
+    `summarize_ref_mismatches` shape, on the offline half.
+
+    Each table arrives as a `_CoordinateTable` — the build travels *per table* because
+    `resolution.csv` records its own on every row and a module's yaml speaks only for the authored
+    ones; comparing a resolution row against the module's declared build would be the wrong question
+    for a row that says which build it is in. `authored` picks the remedy for the same reason.
+    """
+    beyond: dict[tuple[str, str, bool, str, tuple[str, ...]], list[str]] = {}
+    misnamed: dict[tuple[str, str, bool, str, str], list[str]] = {}
+    for label, build, authored, rows in tables:
+        for row in rows:
+            chrom, start = getattr(row, "chrom", None), getattr(row, "start", None)
+            if chrom is None:
+                continue
+            elsewhere = sole_build_naming_contig(chrom)
+            if elsewhere is not None and elsewhere != build:
+                misnamed.setdefault(
+                    (label, build, authored, str(chrom), elsewhere), []
+                ).append(_coordinate_label(row))
+                continue
+            length = contig_length(chrom, build)
+            if start is None or length is None or start <= length:
+                continue
+            others = tuple(b for b in builds_containing_position(chrom, start) if b != build)
+            beyond.setdefault((label, build, authored, str(chrom), others), []).append(
+                _coordinate_label(row)
+            )
+
+    errors: list[str] = []
+    for (label, build, authored, chrom, others), found in beyond.items():
+        length = contig_length(chrom, build)
+        if others:
+            elsewhere = others[0]
+            explanation = (
+                f"every one of those positions is inside {elsewhere}'s {chrom} "
+                f"({contig_length(chrom, elsewhere):,} bp), so this reads as an un-lifted "
+                f"{elsewhere} coordinate under a {build} heading. Recover the rs-numbers with "
+                f"`just-dna-enricher hint recover --chrom {chrom} --start …` and author those "
+                f"instead — an rs-number resolves into a coordinate the compiler can cross-examine, "
+                f"where a converted position is its own only witness. Or "
+                + _build_remedy(authored, elsewhere)
+            )
+        else:
+            explanation = (
+                f"no build this compiler knows has a contig {chrom} that long, so the position is "
+                f"wrong in every frame — check the contig and the position together"
+            )
+        errors.append(
+            f"{label}: {len(found)} row(s) place a variant past the end of {chrom} on {build} "
+            f"({length:,} bp) — {explanation} ({_examples(found)})"
+        )
+    for (label, build, authored, chrom, elsewhere), found in misnamed.items():
+        errors.append(
+            f"{label}: {len(found)} row(s) name contig {chrom}, which is a top-level sequence of "
+            f"{elsewhere} and of no other build this compiler knows, while the rows are recorded as "
+            f"{build}. A coordinate on it means nothing here: fix the contig, or "
+            + _build_remedy(authored, elsewhere)
+            + f" ({_examples(found)})"
+        )
+    return errors
+
+
+def _build_remedy(authored: bool, elsewhere: str) -> str:
+    """Where the build is actually declared for this table — which is not the same file for both."""
+    if authored:
+        return f"declare `genome_build: {elsewhere}` if the whole module is on that assembly."
+    return (
+        f"delete the sidecar and re-run `just-dna-enricher enrich` if these rows are stale — the "
+        f"build is a per-row column here, not the module's declaration, so a module already "
+        f"declaring {elsewhere} can still carry rows stamped otherwise."
+    )
+
+
 #: The 0.4 table kinds that can name a locus, derived from the models rather than listed: a table is
 #: positional exactly when it declares both `chrom` and `start`. Today that is `heteroplasmy.csv`,
-#: `haplotypes.csv` and `pharm_variants.csv`; the rest are gene- or score-keyed and are not joinable by
-#: position at all, which is a property of what they describe rather than a gap. Hand-keeping this would
-#: be the `SOURCES_FIELDNAMES` mistake again — a list that silently loses a member.
+#: `haplotypes.csv` and `pharm_variants.csv`. Hand-keeping this would be the `SOURCES_FIELDNAMES`
+#: mistake again — a list that silently loses a member.
+#:
+#: **What the rest of the kinds are is two different things, and this comment used to call them one
+#: (RM65).** It read "the rest are gene- or score-keyed and are not joinable by position at all, which
+#: is a property of what they describe rather than a gap". True of `allele_function.csv` and `pgs.csv`,
+#: which describe an allele's function and a score — neither has a place on a contig. **False of
+#: `repeat_alleles.csv` and `copynumbers.csv`**, and the spec says so: VCF 4.4 §5.6 has POS and INFO
+#: SVLEN specify the genomic interval a copy number is defined over, and §5.7 says a `<CNV:TR>`
+#: record's POS and END *"should match the STR/VNTR reference catalog sizes for catalog-based
+#: callers"*. A tandem repeat and a copy-number segment are loci with coordinates, emitted at fixed
+#: published positions — so their non-joinability is a **gap in this schema**, not a property of the
+#: thing described, and a consumer holding an ExpansionHunter or `<CNV:TR>` VCF has to annotate a gene
+#: symbol for themselves to reach our HTT row. The columns that would close it wait for 0.7+, gated on
+#: a real repeat-caller sample; what is corrected here is the claim, because a claim the spec
+#: contradicts is a defect in its own right whatever release fixes the underlying gap.
 _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
     (csv_name, model)
     for csv_name, _parquet, model in _TABLE_KINDS
@@ -1117,22 +1295,20 @@ def _check_binning_grounding(
     README says "a module making a novel claim should carry its evidence" — advice the schema had no
     place to take.
 
-    **What it does not claim.** This reports an absence; it cannot report a *link*, because for three
-    of the four kinds there is nothing to link. `studies.csv` identifies its subject by rsid or by
-    `chrom`(+`start`), and an `activity_phenotype.csv` / `copynumbers.csv` / `repeat_alleles.csv` row
-    is keyed on `(gene, …)` — so a study row can be authored, and it grounds the module, but no rule
-    can tie it to a bound. Making that tie is a schema question with more than one defensible answer
-    (RM47), so what ships here is the visible decision the consumer asked for, not a half-chosen one.
+    **The remedy became sayable in 0.6 (RM47).** Until then this could report an absence and never a
+    *link*: `studies.csv` identified its subject by rsid or `chrom`, and an `activity_phenotype.csv` /
+    `copynumbers.csv` / `repeat_alleles.csv` row is keyed `(gene, …)`, so a study row grounded the
+    module and no rule could tie it to a bound. `MeasureBinRow.pmid` is now the tie — a pointer on the
+    row that states the threshold — and `StudyRow`'s subject requirement was relaxed in the same
+    release so the citation row describing that paper need not invent a variant to hang off. So the
+    message names one remedy for every kind, and the `heteroplasmy.csv`-only branch (whose rows can
+    also be pointed at by identity, which is what `reference_examples/mt_heteroplasmy` does) is now an
+    *additional* route rather than the only actionable one.
 
-    **`heteroplasmy.csv` is the exception and gets the actionable message.** It has carried optional
-    `rsid`/`chrom`/`start`/`ref`/`alts` since 0.5.1, so a row naming its variant *can* be pointed at by
-    a study row on the same identity — which is exactly what `reference_examples/mt_heteroplasmy` does.
-    The distinction is derived from the model (`variant_key` is `None` only when the row names no
-    variant), never from the table name.
-
-    Fires only when the module records **no** study rows at all. Once an author has written a
-    `studies.csv`, saying more would be nagging about a link the format cannot yet express — and on a
-    module carrying `variants.csv` the missing table is already a hard error, so this never doubles it.
+    **A bin that carries a `pmid` is grounded and is not counted**, derived from the row rather than
+    the table. Fires only when the module records **no** study rows at all *and* some bin cites
+    nothing: once an author has written a `studies.csv`, saying more would be nagging, and on a module
+    carrying `variants.csv` the missing table is already a hard error, so this never doubles it.
     A warning in both modes: the remedy is an authored edit, but `strict` means *reproducible
     artifact*, an unrelated axis (P5), and a module that cites nothing still reproduces exactly.
     """
@@ -1141,32 +1317,382 @@ def _check_binning_grounding(
     warnings: list[str] = []
     for csv_name, model in _BINNING_TABLE_KINDS:
         rows = [r for r in rows_by_csv.get(csv_name) or [] if not r.unresolved]
-        # `variant_key` is declared on `HeteroplasmyRow` alone among the binning kinds, and it is
-        # `None` there when the row names only a gene — so this one test separates "could be grounded
-        # and is not" from "cannot be grounded at all" without naming a table. Read off
-        # `model_fields`, not `hasattr`: it became a stamped field in 0.6 (RM43) and a field is not a
-        # class attribute, so the `hasattr` this used to ask silently answered `False` and every
-        # heteroplasmy module got the message written for a gene-keyed table.
-        ungrounded = [r for r in rows if getattr(r, "variant_key", None) is None]
+        # Two ways a bin can be grounded, both read off the row and never off the table name: its own
+        # `pmid` (RM47, every kind), or — for the one kind whose model carries a variant identity —
+        # naming the variant a study row can then name back.
+        ungrounded = [
+            r for r in rows if r.pmid is None and getattr(r, "variant_key", None) is None
+        ]
         if not ungrounded:
             continue
+        remedy = (
+            "cite the boundary itself: put the PubMed id on the bin row (`pmid`), and describe the "
+            "paper in a studies.csv row, which since 0.6 need not name a variant"
+        )
+        # Read off `model_fields`, **not `hasattr`**: `variant_key` became a *stamped field* in 0.6
+        # (RM43) and a field is not a class attribute, so `hasattr` silently answers `False` and every
+        # heteroplasmy module gets the message written for a gene-keyed table. Two lanes of this same
+        # release wrote these two lines — the `pmid` route and the `model_fields` repair — and the
+        # `hasattr` spelling arrived with the first because RM43 had not landed under it yet.
         if "variant_key" in model.model_fields:
-            remedy = (
-                "these rows name no variant (no rsid, no chrom+start), so nothing can point at them; "
-                "fill those columns and a studies.csv row on the same variant grounds each bin"
+            remedy += (
+                "; alternatively fill this kind's rsid/chrom+start, and a studies.csv row on the "
+                "same variant grounds each bin"
             )
         else:
+            # Deliberately does NOT restate the pre-RM47 claim that nothing can point at these bins.
+            # It was true and it is now retired: `pmid` on the bin is exactly the route that claim said
+            # did not exist, and repeating it would leave an author reading a finding no edit can clear
+            # — the defect this codebase treats as a defect everywhere else. Say which route applies to
+            # a gene-keyed kind, and say it in the affirmative.
             key = ", ".join(f for f in model._KEY_FIELDS if f != "variant_key")
-            remedy = (
-                f"studies.csv identifies its subject by rsid or chrom+start, which a ({key}) row does "
-                f"not have, so no study row can name one of these bins — a studies.csv grounds the "
-                f"module as a whole, which is the most this format states today"
+            remedy += (
+                f"; for a ({key}) row the bin's own pmid is the route, because studies.csv identifies "
+                f"its subject by rsid or chrom+start, so a study row grounds the module while the bin "
+                f"pointer grounds this threshold"
             )
         warnings.append(
             f"{csv_name}: {len(ungrounded)} of {len(rows)} bin(s) state a threshold and the module "
-            f"records no grounding evidence at all (no studies.csv rows). {remedy}."
+            f"records no grounding evidence at all (no studies.csv rows, no bin pmid). {remedy}."
         )
     return warnings
+
+
+def _check_measure_shape(rows_by_csv: dict[str, list[Any]]) -> list[str]:
+    """Per binning table: what its integer tiling cannot express about its source measurement.
+
+    A thin loop over `binning.measurement_shape_warnings`, which owns both findings (RM55, RM56) because
+    it owns `_INTEGER_KINDS` — the set whose premise VCF 4.4 withdrew. The kinds are derived from the
+    models via `_BINNING_TABLE_KINDS` for the same reason that tuple exists, so a sixth binning kind
+    cannot silently escape the check.
+    """
+    warnings: list[str] = []
+    for csv_name, _model in _BINNING_TABLE_KINDS:
+        rows = rows_by_csv.get(csv_name) or []
+        warnings.extend(f"{csv_name}: {w}" for w in measurement_shape_warnings(rows))
+    return warnings
+
+
+#: The fragment of the RM57 warning that names the finding, for the same reason the two phrases in
+#: `binning` are named: a manifest carries the prose and no field.
+QUAL_INVERSION_PHRASE = "QUAL means the opposite thing on the record this row is read from"
+
+#: The one VCF column whose Phred-scaled assertion changes sign with the record (§1.6.1.6). Matched on
+#: the bare token: a `quality_from` cell is `|`-alternated and may carry an `INFO/`-style namespace,
+#: neither of which changes which field is named.
+_INVERTING_QUALITY_FIELD = "QUAL"
+
+
+def _quality_fields(pointer: str | None) -> list[str]:
+    """The field tokens a pointer cell names, upper-cased and with any namespace stripped.
+
+    A pointer is `|`-alternated, so `DP|QUAL` names two fields and both must be looked at; and a
+    qualified spelling (`INFO/DP`) names the same field as its bare form, which is what the trailing
+    `rsplit` is for. Case is folded because this feeds a *warning* — being generous about the spelling
+    of the thing being warned about is the right direction to be wrong in.
+    """
+    if not pointer:
+        return []
+    return [part.rsplit("/", 1)[-1].strip().upper() for part in pointer.split("|") if part.strip()]
+
+
+def _check_quality_inversion(variants: list[VariantRow]) -> list[str]:
+    """A `requires_callable` row whose quality floor is stated against `QUAL` (RM57).
+
+    §1.6.1.6 defines QUAL as *"−10log10 prob(variant)"* where ALT is `.` and *"−10log10 prob(no
+    variant)"* otherwise — **the sign of the assertion flips with the record**. A QUAL of 60 on a variant
+    record means the variant is almost certainly real; the same 60 on a monomorphic reference record
+    means the position is almost certainly *variant*, which is the opposite of a clean reference call.
+
+    `requires_callable` marks the rows where the *absence* of the variant is the informative call, and a
+    consumer evaluating one reads the reference record — a gVCF `<*>` block (§5.5) or a monomorphic
+    `ALT=.` record — which is exactly where QUAL is inverted. So `requires_callable=true,
+    quality_from=QUAL, min_quality=30` asks the consumer to require evidence that the position *is*
+    variant before asserting that it is not, and raising the floor makes the answer more confidently
+    wrong rather than safer. `min_quality` is monotone in one direction only, so nothing else catches it.
+
+    **A warning in both modes, and refusing the combination was considered and rejected.** A validator
+    here would encode one reading of a field whose meaning depends on a record this tier will never see,
+    and it would refuse the legitimate case — the same row read against a *variant* record elsewhere in
+    the same file, where the floor means what its author intended. Aggregated to one line with examples,
+    because a gene panel can carry hundreds of `requires_callable` rows and a line each would bury every
+    other finding the run produces.
+    """
+    offenders = [
+        v
+        for v in variants
+        if v.requires_callable is True
+        and _INVERTING_QUALITY_FIELD in _quality_fields(v.quality_from)
+    ]
+    if not offenders:
+        return []
+    shown = ", ".join(str(v.variant_key) for v in offenders[:3])
+    rest = f" (+{len(offenders) - 3} more)" if len(offenders) > 3 else ""
+    return [
+        f"variants.csv: {len(offenders)} row(s) set requires_callable=true and state their min_quality "
+        f"floor against QUAL. {QUAL_INVERSION_PHRASE}: VCF §1.6.1.6 makes QUAL -10log10 prob(no "
+        f"variant) on a variant record but -10log10 prob(variant) where ALT is '.', so on the reference "
+        f"record a consumer must read to prove this absence, a HIGH QUAL says the position is probably "
+        f"variant — and the higher the floor, the more confidently wrong the result. State the floor "
+        f"against a per-sample confidence field instead (GQ), or against the reference block's MIN_DP. "
+        f"e.g. {shown}{rest}."
+    ]
+
+
+#: The fragment of the RM58 warning that names the finding. Same reason as the phrases above.
+MISSING_ALLELE_PHRASE = "is VCF's MISSING marker, not an allele"
+
+#: Every authored table that declares an `alts` column, derived from the models rather than named: the
+#: SNP core plus whichever table kinds carry one. A name list here would lose a kind the way
+#: `SOURCES_FIELDNAMES` lost a column.
+_ALTS_BEARING_KINDS: tuple[str, ...] = tuple(
+    csv_name for csv_name, _parquet, model in _TABLE_KINDS if "alts" in model.model_fields
+)
+
+
+def _check_missing_allele_marker(
+    variants: list[VariantRow],
+    rows_by_csv: dict[str, list[Any]],
+    genome_build: str = DEFAULT_GENOME_BUILD,
+) -> list[str]:
+    """An `alts` cell spelling VCF's MISSING marker, which splits the row's identity (RM58).
+
+    `.` in ALT means *there are no alternate alleles* — a monomorphic reference record, which §1.1's own
+    first worked example carries. No `ref`/`alts` column has a nucleotide grammar (deliberately: adding
+    one would tighten the field RM5 exists to widen and would stop existing modules validating), so the
+    cell loads, and `derive_variant_key` then folds it in as though it named an allele. The result is
+    that a row writing `alts=.` and a row leaving the cell empty describe **one site under two keys** —
+    `1:1:A:.` and `1:1:A` — with different `content_signature`s and no dedup between them. That is the
+    only VCF-conformance finding in this batch that reaches identity, and until now nothing said a word
+    about it: `alleles.non_nucleotide_reason` filed `.` under `"notation"` beside `<DEL>`, and the sites
+    that consult it only run when a hosting verdict has already failed, which a monomorphic row never
+    reaches.
+
+    **A diagnosis, not a grammar** — the value is still accepted, exactly as `<DEL>` and `N` are. The
+    remedy is an authored edit and an unambiguous one (leave the cell empty), which is what separates
+    this from RM55/RM56 next door; it is still a warning in both modes, because `strict` means
+    *reproducible artifact* and a module spelling `.` reproduces perfectly. Reported per table with a
+    count and, where the split is real, the two keys side by side: on an rsid-authored row both keys are
+    the rsid, so the cell is wrong without the identity consequence following, and claiming otherwise
+    would be a false statement about that row.
+    """
+    warnings: list[str] = []
+    tables: list[tuple[str, list[Any]]] = [("variants.csv", list(variants))]
+    tables.extend((csv_name, rows_by_csv.get(csv_name) or []) for csv_name in _ALTS_BEARING_KINDS)
+    for csv_name, rows in tables:
+        offenders = [
+            row
+            for row in rows
+            if any(
+                non_nucleotide_reason(a) == "missing"
+                for a in (getattr(row, "alts", None) or "").split(",")
+            )
+        ]
+        if not offenders:
+            continue
+        # The identity split needs a coordinate, and **a row with no identity at all is not a split**.
+        # Two shapes reach here without one and both must take the no-split branch. An rsid
+        # short-circuits `derive_variant_key`, so both spellings of such a row key identically. And a
+        # gene-only `heteroplasmy.csv` row — the pre-0.5 shape, still legal — has `variant_key is None`
+        # while `derive_variant_key(None, None, None, None)` returns the *string* `'None:None:None'`, so
+        # comparing the two always differs and the message read "e.g. None rather than None:None:None"
+        # about a row that names no variant. Guard on the identity, never on the comparison.
+        split: list[tuple[Any, str]] = []
+        for row in offenders:
+            key = getattr(row, "variant_key", None)
+            if key is None:
+                continue
+            without = derive_variant_key(
+                getattr(row, "rsid", None),
+                getattr(row, "chrom", None),
+                getattr(row, "start", None),
+                getattr(row, "ref", None),
+                build=genome_build,
+            )
+            if key != without:
+                split.append((row, str(without)))
+        if split:
+            row, without = split[0]
+            detail = (
+                f"{len(split)} of them key differently from the same row with an empty cell (e.g. "
+                f"{row.variant_key} rather than {without}), so this module and one authoring the same "
+                f"site with the cell left empty carry two identities for one site, and neither "
+                f"content_signature dedups against the other"
+            )
+        else:
+            detail = (
+                "no row's identity is affected — an rsid-keyed row keys the same either way, and a "
+                "gene-keyed row names no variant at all — so the cell is simply claiming an allele "
+                "that does not exist"
+            )
+        warnings.append(
+            f"{csv_name}: {len(offenders)} row(s) write '.' in alts, which {MISSING_ALLELE_PHRASE} — "
+            f"it states that the record has no alternate allele (VCF §1.6.1.5), so it is not the same "
+            f"kind of thing as a symbolic allele like <DEL>. {detail}. Leave the cell empty instead."
+        )
+    return warnings
+
+
+def _check_vcf_pointers(
+    variants: list[VariantRow], rows_by_csv: dict[str, list[Any]]
+) -> list[str]:
+    """A VCF pointer that does not identify the field it points at (RM53), or that points at a list
+    without saying which element (RM54).
+
+    **A VCF field is not identified by its name.** It is identified by *namespace* — INFO and FORMAT
+    are two reserved-key tables that collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and, since 4.4,
+    `CN` — and described by *cardinality* (`Number`, which says how many values come back and what
+    each one is of). Both readings of a colliding key are usually type-compatible, so nothing detects
+    the confusion: a consumer reads a well-formed number of the wrong kind and bins it without error.
+    `reference_examples/mt_heteroplasmy` shipped `source_field=AF` meaning this person's heteroplasmy
+    fraction, where the spec's `AF` is the cohort frequency of the same ALT — one of those tells a
+    carrier they are asymptomatic on the strength of how rare the variant is in a reference panel.
+
+    **Two findings, both warnings in both modes.** The pointer grammar was widened rather than
+    replaced, so a bare key is still legal and still means *unqualified* (P3); escalating under
+    `strict` would refuse modules that compile today, and `strict` means *reproducible artifact*
+    anyway — an unqualified pointer reproduces perfectly, it is only ambiguous (P5). The remedy for
+    both is a one-cell authored edit, which is what separates them from the `not_covered` class.
+
+    **What it declines to say.** The cardinality half reads `vocab.VCF_FIELD_NUMBER`, a transcription
+    of the spec's own reserved-key tables, and answers `None` for anything not in them — a caller's
+    private key (`REPCN` is ExpansionHunter's, not the spec's) has no cardinality this tier is
+    entitled to assert, and asserting one would be a source convention wearing a fact (P2). Unknown
+    withholds. It also answers `None` for a *bare* key whose two namespaces disagree (`CN` is `A`
+    under INFO and `1` under FORMAT), which is exactly the case the collision half already names.
+
+    **The mirror case — an element rule on a field the spec calls single-valued — is deliberately
+    *not* reported.** It looks like the obvious second half of the cardinality check and it would fire
+    on the correct authoring of the flagship case: a caller that packs several values into one cell
+    declares that cell `Number=1, Type=String`, which is exactly what ExpansionHunter's `REPCN`
+    (`17/42`) is. Separating "one value" from "several values in one string" turns on `Type`, which
+    this tier does not model and which no `Number` can answer. Where it cannot decide, it withholds
+    rather than accusing a correct row.
+
+    **The two halves quantify over different column sets, and that is not an oversight.** The
+    namespace question belongs to every pointer column (`VCF_POINTER_FIELDS`) — the decision names
+    `callable_from=DP` as the same error `source_field=AF` is, one column over. The cardinality
+    question is only askable where a column exists to answer it, and 0.6 built one companion
+    (`VCF_POINTER_COMPANIONS`); telling an author to fill a column the schema does not have would be
+    a finding no edit could clear, which this codebase treats as a defect wherever else it appears.
+
+    Aggregated by reason rather than by row: a panel pointing every bin at one field would otherwise
+    print the same sentence hundreds of times, and two reasons under one message is the other half of
+    that mistake."""
+    tables: list[tuple[str, list[Any]]] = [("variants.csv", variants)]
+    tables.extend(
+        (csv_name, rows_by_csv.get(csv_name) or []) for csv_name, _model in _BINNING_TABLE_KINDS
+    )
+    # (csv, pointer column, bare key) -> rows, and (csv, element column, atom, Number) -> rows.
+    collisions: dict[tuple[str, str, str], int] = {}
+    unselected: dict[tuple[str, str, str, str], int] = {}
+    for csv_name, rows in tables:
+        for row in rows:
+            declared = type(row).model_fields
+            for pointer_field in VCF_POINTER_FIELDS:
+                if pointer_field not in declared:
+                    continue
+                pointer = getattr(row, pointer_field, None)
+                if not pointer:
+                    continue
+                companions = [
+                    element
+                    for element, target in VCF_POINTER_COMPANIONS.items()
+                    if target == pointer_field and element in declared
+                ]
+                selected = any(getattr(row, element, None) is not None for element in companions)
+                for namespace, key in split_field_pointer(pointer):
+                    if namespace is None and key in VCF_COLLIDING_KEYS:
+                        seat = (csv_name, pointer_field, key)
+                        collisions[seat] = collisions.get(seat, 0) + 1
+                    if selected or not companions:
+                        continue
+                    number = vcf_field_number(namespace, key)
+                    if is_multi_valued_number(number):
+                        atom = key if namespace is None else f"{namespace}/{key}"
+                        slot = (csv_name, companions[0], atom, number or "")
+                        unselected[slot] = unselected.get(slot, 0) + 1
+    warnings: list[str] = []
+    if collisions:
+        where = "; ".join(
+            f"{csv_name} {pointer_field}={key} ({n} row(s))"
+            for (csv_name, pointer_field, key), n in sorted(collisions.items())
+        )
+        keys = sorted({key for _csv, _field, key in collisions})
+        reasons = " ".join(f"{key}: {VCF_COLLISION_REASONS[key]}." for key in keys)
+        warnings.append(
+            f"{sum(collisions.values())} VCF pointer cell(s) name a key that INFO and FORMAT both "
+            f"define, so the pointer does not say which field it means: {where}. {reasons} Qualify "
+            f"the pointer — INFO/{keys[0]} or FORMAT/{keys[0]} — a bare key stays legal and keeps "
+            f"meaning unqualified, which is why this is a warning and not a refusal."
+        )
+    if unselected:
+        where = "; ".join(
+            f"{csv_name} {VCF_POINTER_COMPANIONS[element_field]}={atom} (Number={number}, "
+            f"{VCF_NUMBER_MEANINGS.get(number, 'a value list')}; {n} row(s), {element_field} empty)"
+            for (csv_name, element_field, atom, number), n in sorted(unselected.items())
+        )
+        warnings.append(
+            f"{sum(unselected.values())} VCF pointer cell(s) point at a field the spec defines as "
+            f"multi-valued and state no element rule, so the pointer names a list rather than a "
+            f"number: {where}. Set the companion column to one of "
+            f"{sorted(VALID_ELEMENT_RULES)} — on a Number=R field the reference is element zero, "
+            f"which is why each ranging rule comes in a pair (largest counts it, largest_alt does "
+            f"not)."
+        )
+    return warnings
+
+
+def load_binning_rows(spec_dir: Path) -> dict[str, list[MeasureBinRow]]:
+    """Every binning table present beside a spec, keyed by CSV name — the citations a module's
+    *thresholds* carry (`MeasureBinRow.pmid`, RM47).
+
+    Public because a second tier needs it: the enricher's literature pass has to check the bin
+    pointers alongside `studies.csv`, and its two alternatives were importing a private symbol or
+    hand-keeping a parallel list of the binning kinds — the RM40/RM41 shape exactly, and the list
+    would go stale on the fifth kind. Row errors are raised rather than returned: a caller wanting the
+    per-row diagnosis has `validate_spec`, and a pass reading citations out of a table it could not
+    parse would silently under-report.
+    """
+    spec_dir = Path(spec_dir)
+    config, _, _ = _load_yaml(spec_dir / "module_spec.yaml")
+    declared_build = config.genome_build if config else DEFAULT_GENOME_BUILD
+    out: dict[str, list[MeasureBinRow]] = {}
+    for csv_name, model in _BINNING_TABLE_KINDS:
+        # `spec_dir / csv_name`, never `_locate_sidecar`: that resolver is scoped to the
+        # machine-written sidecars, and an authored table has exactly one legal name in exactly one
+        # legal place (RM49/RM51). Both compile-side load loops read authored kinds this way, and a
+        # reader that resolved them differently would find a table the compiler does not — which for
+        # this function would mean the enricher writing `literature.csv` rows for citations
+        # `_cross_check_literature` then reports as orphans.
+        path = spec_dir / csv_name
+        if not path.is_file():
+            continue
+        rows, errors, _ = _load_csv_rows(path, model, csv_name, genome_build=declared_build)
+        if errors:
+            raise ValueError(f"{csv_name} is invalid: {errors[0]}")
+        out[csv_name] = rows
+    return out
+
+
+def binning_citations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
+    """Digit-only PMIDs the binning tables cite (`MeasureBinRow.pmid`), de-duplicated.
+
+    Takes the whole table-kind map a caller already holds and reads only the binning kinds out of it,
+    so a caller cannot accidentally hand over a `haplotypes.csv` (no `pmid` column) and get an
+    attribute error. The kind set is derived from the models, never hand-listed.
+
+    First-occurrence order rather than sorted, because it feeds emission order downstream (P7), and
+    normalization goes through `extract_pmids` so the bin pointer and `studies.csv` cannot drift into
+    two spellings of one citation.
+    """
+    seen: dict[str, None] = {}
+    for csv_name, _model in _BINNING_TABLE_KINDS:
+        for row in rows_by_csv.get(csv_name) or []:
+            if row.pmid:
+                for pmid in extract_pmids(row.pmid):
+                    seen.setdefault(pmid, None)
+    return list(seen)
 
 
 def _allowed_alleles(
@@ -1273,6 +1799,7 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     ambiguity = [a for a, reason in offenders.items() if reason == "ambiguity"]
     symbolic = [a for a, reason in offenders.items() if reason == "symbolic"]
     notation = [a for a, reason in offenders.items() if reason == "notation"]
+    missing = [a for a, reason in offenders.items() if reason == "missing"]
     parts: list[str] = []
     if ambiguity:
         parts.append(
@@ -1291,6 +1818,15 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
             f"{', '.join(repr(a) for a in notation)} is neither a nucleotide string nor a symbolic "
             f"allele the format holds (a repeat notation like `AAAGGGGCG(2)`, a deletion spelling like "
             f"`DELTCT`, or a typo) — a grammar gap rather than a genotype error"
+        )
+    if missing:
+        # Third reason, third consequence (RM58), and the one that must NOT borrow either sentence
+        # above: `.` is VCF's MISSING marker, so the locus is asserting that it has no alternate
+        # allele. That is not an uncertainty and not a grammar gap — there is nothing to widen.
+        parts.append(
+            f"{', '.join(repr(a) for a in missing)} is VCF's MISSING marker rather than an allele — the "
+            f"locus states that it has no alternate allele, so no genotype can match it; leave the cell "
+            f"empty instead"
         )
     return "; and ".join(parts)
 
@@ -2089,7 +2625,13 @@ def _cross_validate_studies(
     A study matches a variant on **any shared identifier** — same rsid or same `chrom:start:ref` —
     not on frozen-key equality. Keying strictly on `variant_key` would false-orphan a study that
     references a variant by a different (but co-identifying) handle than the one the variant froze its
-    key to (e.g. a coord-keyed variant referenced by rsid)."""
+    key to (e.g. a coord-keyed variant referenced by rsid).
+
+    **A row that names no variant is not an orphan** (RM47): since 0.6 a citation row may ground the
+    module or a binning bound rather than a locus, and a row referencing nothing cannot reference
+    something missing. Its dedup key is `(None, pmid)`, so two subject-less rows citing one paper are
+    still a duplicate — deliberately: they are the same claim written twice, and the whole point of
+    the relaxation is that one such row is enough."""
     warnings: list[str] = []
     variant_rsids = {v.rsid for v in variants if v.rsid is not None}
     variant_coords = {
@@ -2097,6 +2639,8 @@ def _cross_validate_studies(
     }
     orphans: list[str] = []
     for row in studies:
+        if row.variant_key is None:
+            continue
         by_rsid = row.rsid is not None and row.rsid in variant_rsids
         by_coord = (
             row.chrom is not None
@@ -2108,7 +2652,7 @@ def _cross_validate_studies(
         warnings.append(
             f"Studies reference variants not in variants.csv: {sorted(set(orphans))}"
         )
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str | None, str]] = set()
     for row in studies:
         key = (row.variant_key, row.pmid)
         if key in seen:
@@ -2180,12 +2724,12 @@ _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
 )
 
 
-#: Extensions the near-miss guard inspects. `.json` joined `.csv` when `verification.json` landed
-#: (RM45), and it retroactively covers `provenance.json`, which had been in `_KNOWN_SPEC_FILES` since
-#: 0.4 with no suffix that could reach it — so a `provenence.json` was already invisible to the guard
-#: written to catch exactly that. The guard's precision comes from the near-miss cutoff, not from the
-#: extension, so widening it warns about a typo without warning about the notes file beside it.
-_NEAR_MISS_SUFFIXES: frozenset[str] = frozenset({".csv", ".json"})
+#: Extensions the near-miss guard inspects **at the spec root**. `.json` joined `.csv` when
+#: `verification.json` landed (RM45); `derived/` deliberately stays `.csv`-only, and the reason the two
+#: differ is argued at the loop in `_check_misspelled_tables`. The guard's precision comes from the
+#: near-miss cutoff rather than from the extension, which is what lets it warn about a typo without
+#: warning about the curation notes beside it.
+_ROOT_NEAR_MISS_SUFFIXES: frozenset[str] = frozenset({".csv", ".json"})
 
 
 def _check_misspelled_tables(spec_dir: Path) -> list[str]:
@@ -2210,28 +2754,70 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
     high-precision or it undoes the tolerance. `difflib` at a 0.8 cutoff catches a transposition, a
     doubled or dropped letter, and a singular/plural slip, and stays quiet on an unrelated name.
 
-    **`derived/` is scanned too, and against its own smaller name set (RM49).** Tolerating a second
+    **`derived/` is scanned too, and it takes TWO tests rather than one (RM49).** Tolerating a second
     input location without teaching this check about it would put a typo'd `derived/varaints.csv`
     exactly where the guard cannot see it — re-opening the hole S16 closed, as the price of a
     convenience. That is also the argument against "search any subdirectory": one fixed name is the
-    only version where the guard can follow. The name set there is the *derived* files alone, because
-    an authored table has no business in that directory, so `derived/variants.csv` is itself the
-    near miss worth reporting rather than a file to accept."""
+    only version where the guard can follow.
+
+    What is *legal* there is the derived files alone, but that smaller set is the wrong thing to
+    fuzzy-match against, and matching against it was measured to catch neither case: at a 0.8 cutoff
+    `variants.csv`, `studies.csv` and `repeat_alleles.csv` are **no** near miss of any sidecar name,
+    and neither is `varaints.csv` — the very file this check exists for. So the two mistakes are
+    separated. An **authored table name under `derived/` is an exact match against the wrong name
+    set**, which is a sharper test than any fuzzy one and is reported as a misplaced table: those rows
+    are read from nowhere, and a module that keeps another table at the root compiles green without
+    them. Anything else there is fuzzy-matched against the **full** known set, so a typo'd authored
+    name lands too. The mirror case stays silent by construction — a derived sidecar at the spec root
+    is a legal place for it, so the root's own legal set already accepts it."""
     if not spec_dir.is_dir():
         return []
     derived_names = frozenset(
         name for csv in _DERIVED_FILES for name in sidecar_spellings(csv)
     )
+    # The authored DSL: one legal name in one legal place, so any of these under `derived/` is
+    # misplaced. Derived by subtraction rather than listed — a new table kind joins it for free.
+    authored_names = _KNOWN_SPEC_FILES - derived_names
     warnings: list[str] = []
-    for directory, known in ((spec_dir, _KNOWN_SPEC_FILES), (spec_dir / DERIVED_SUBDIR, derived_names)):
+    # The suffix set is **per directory**, and the asymmetry is the point rather than an oversight.
+    #
+    # Under `derived/`, both branches below are about a **table** whose rows are being dropped, so both
+    # stay behind the `.csv` filter. `derived/provenance.json` and `derived/module_spec.yaml` are
+    # therefore ordinary tolerated strays: neither has rows to lose, a misplaced `module_spec.yaml`
+    # cannot hide (the root one is required and its absence is an error), and `provenance.json` is
+    # exactly the machine-written document a registry splitting a tree might reasonably put there.
+    # Widening *that* branch would actively misreport it — `provenance.json` is in the authored set by
+    # subtraction, so it would be named as an authored table in the wrong place, which it is not.
+    #
+    # At the **root** the near-miss branch reads `.json` too (RM45). What is lost there is not rows but
+    # a whole document: a typo'd `verifcation.json` silently is not an attestation, so the module reads
+    # as *nothing verified* while its author believes the checks are recorded — the same silent-success
+    # shape, one file kind over. It retroactively covers `provenance.json`, which had been in the
+    # known-name set since 0.4 with no suffix that could reach it. Neither `published.json` nor any
+    # other registry receipt is within one edit of a known name, which is the property that keeps the
+    # tolerance beside it intact (measured, not assumed).
+    scans = (
+        (spec_dir, _KNOWN_SPEC_FILES, _ROOT_NEAR_MISS_SUFFIXES),
+        (spec_dir / DERIVED_SUBDIR, derived_names, frozenset({".csv"})),
+    )
+    for directory, legal, suffixes in scans:
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):
-            if not path.is_file() or path.name in known or path.suffix not in _NEAR_MISS_SUFFIXES:
+            if not path.is_file() or path.name in legal or path.suffix not in suffixes:
                 continue
-            close = difflib.get_close_matches(path.name, sorted(known), n=1, cutoff=0.8)
+            shown = path.relative_to(spec_dir)
+            if path.name in authored_names:
+                warnings.append(
+                    f"{shown} is an authored table sitting in {DERIVED_SUBDIR}/, which holds only the "
+                    f"machine-written sidecars — every row in it is being silently ignored. Move it to "
+                    f"the spec root. Only resolution.csv and the fact tables have a second legal home."
+                )
+                continue
+            close = difflib.get_close_matches(
+                path.name, sorted(_KNOWN_SPEC_FILES), n=1, cutoff=0.8
+            )
             if close:
-                shown = path.relative_to(spec_dir)
                 warnings.append(
                     f"{shown} is not a table this compiler reads, and it is one small edit from "
                     f"{close[0]!r} — if that is a typo, every row in it is being silently ignored. "
@@ -2293,6 +2879,21 @@ def validate_spec(
             f"dropped injected authority keys from module: block (registry-stamped, not authored): "
             f"{dropped_authority}"
         )
+    # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
+    # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
+    # cadence is deprecate in a minor, remove at the next major, and the deprecation is *actionable*
+    # here because the thing that replaced it needs nothing from the author: the enricher records the
+    # drafted-from release into the licence row's `dataset` column itself.
+    if config is not None and config.panel is not None:
+        all_warnings.append(
+            "module_spec.yaml declares a `panel:` block. It is deprecated in 0.6 and removed at 1.0: "
+            "the compiler never materialized rows from it, and the one thing that did read it — the "
+            "enricher's ClinVar clin_sig cross-check, deciding whether a drafted module is being "
+            "compared against its own source — now reads the `dataset` column of the module's "
+            "licence row, which `just-dna-enricher draft-panel` writes itself. Delete the block; the "
+            "rows it describes are the authored variants.csv rows, and nothing else is lost."
+        )
+
     # `module.version` is advisory (the registry stamps the canonical Identity.version) and is COERCED
     # to SemVer by `ModuleInfo` since 0.5 (RM17). Report the rewrite rather than performing it here:
     # the model already did it, and `version_coerced_from` is how it says so. A clean
@@ -2370,6 +2971,12 @@ def validate_spec(
     # Filled from `resolution.csv` below when it is present, and deliberately usable empty: allele
     # membership needs it only for a row that did not author its own `ref`/`alts`.
     membership_table: dict[str, list[ResolutionRow]] = {}
+    # Injected resolution rows, grouped by the build each one records rather than by the module's:
+    # `ResolutionRow.genome_build` is a column, so a row states which frame its numbers are in and
+    # that is the frame its coordinate has to be possible in (RM48).
+    resolution_by_build: dict[str, list[ResolutionRow]] = {}
+    # Filled from `literature.csv` below; cross-checked once `studies.csv` is loaded further down.
+    literature_rows: list[LiteratureRow] = []
 
     # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
@@ -2399,6 +3006,9 @@ def validate_spec(
         if model is ResolutionRow and not injected_errors:
             for injected_row in injected_rows:
                 membership_table.setdefault(injected_row.variant_key, []).append(injected_row)
+                resolution_by_build.setdefault(
+                    injected_row.genome_build, []
+                ).append(injected_row)
             # A `ga4gh:VA.…` is the one column checkable with no reference, no network and no
             # dependency, so there is nothing about it that needs an `output_dir`. A **mismatch** is an
             # error in *both* modes, which is why this gap was reachable without `--strict` at all:
@@ -2412,6 +3022,13 @@ def validate_spec(
             # nothing else. It reports here too so an author sees the shortfall at pre-flight, where
             # the remedy (re-run the mint pass) is still cheap.
             all_warnings.extend(_vrs_coverage_warnings(injected_rows))
+        if model is LiteratureRow and not injected_errors:
+            # Stashed rather than checked here: the citation sites (`studies.csv`, and since 0.6 the
+            # binning tables' `pmid`) are loaded further down, so the cross-check runs once both are
+            # in hand. Parity by CHECK, not by table — this is pure computation over injected and
+            # authored bytes with no `output_dir`, so it belongs to the pre-flight, and it was
+            # compile-only for the same reason `_check_allele_membership` was: nobody asked.
+            literature_rows = injected_rows
         if model is SourceRow and not injected_errors:
             # The licence gate, run here for the same reason. It refuses in **both** modes and is pure
             # computation over injected bytes (the compiler holds no source→licence map, P2), so there
@@ -2501,6 +3118,14 @@ def validate_spec(
     # the requirement above, so nothing used to report a module that grounds none of them. Pure
     # computation over authored bytes with no `output_dir`, so it belongs to the pre-flight.
     all_warnings.extend(_check_binning_grounding(loaded_kinds, studies))
+    # And the other defect those same tables carry: an integer tiling for a measurement VCF 4.4 makes
+    # fractional and interval-valued (RM55/RM56). Same rule for why it is here — pure computation over
+    # authored bytes, no `output_dir`.
+    all_warnings.extend(_check_measure_shape(loaded_kinds))
+    # `.` in an alts cell, on every table that has one (RM58). Also pure, also authored-only, and it
+    # reads `loaded_kinds` plus `variants` rather than a table name, so a future kind with an `alts`
+    # column joins the check by declaring the column.
+    all_warnings.extend(_check_missing_allele_marker(variants, loaded_kinds, declared_build))
 
     # Symbolic/structural alleles the module cannot actually apply (RM5). Pure computation over
     # authored bytes and a **mode ladder** on the droppable tables, so it belongs here by the standing
@@ -2512,10 +3137,51 @@ def validate_spec(
     all_errors.extend(symbolic_errors)
     all_warnings.extend(symbolic_warnings)
 
+    # Coordinates that cannot exist in the build they are recorded under (RM48) — pure arithmetic over
+    # authored and injected bytes with no `output_dir`, so it belongs to the pre-flight by the standing
+    # rule, and it is the finding an author most wants *before* a compile: a wrong-build coordinate is
+    # cheap to fix and impossible to notice once it is a published digest.
+    #
+    # `resolution.csv` is in scope on purpose. Leaving it out would recreate the parity defect this
+    # check exists beside: an rsid-only authored row carries no coordinate here, so `validate` would
+    # see nothing while `compile` fills the position from the injected table and refuses — a green
+    # pre-flight followed by a refusal for a change the author did not make. Each resolution row is
+    # judged against **its own** `genome_build`, which is what that column is for.
+    all_errors.extend(
+        _check_build_coordinates(
+            [
+                _CoordinateTable("variants.csv", declared_build, True, variants),
+                _CoordinateTable("studies.csv", declared_build, True, studies),
+                *(
+                    _CoordinateTable(
+                        csv_name, declared_build, True, loaded_kinds.get(csv_name) or []
+                    )
+                    for csv_name, _model in _POSITIONAL_TABLE_KINDS
+                ),
+                *(
+                    _CoordinateTable("resolution.csv", build, False, rows)
+                    for build, rows in sorted(resolution_by_build.items())
+                ),
+            ]
+        )
+    )
+
+    # Same rule about where a check belongs: the VCF pointer columns are authored cells read against
+    # two spec-derived constants, with no resolution step and no `output_dir` in sight, so the
+    # pre-flight is exactly where an author should hear about them.
+    all_warnings.extend(_check_vcf_pointers(variants, loaded_kinds))
+
+    # The injected citation sidecar against BOTH citation sites, now that studies are loaded.
+    all_warnings.extend(_cross_check_literature(literature_rows, studies, loaded_kinds))
+
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
         all_warnings.extend(cross_warnings)
+        # The quality floor that inverts on the record it is read from (RM57). Authored cells only —
+        # resolution fills neither `requires_callable` nor `quality_from` — so the pre-flight sees
+        # exactly what the compile will.
+        all_warnings.extend(_check_quality_inversion(variants))
         # Allele membership, which was compile-only and should never have been. It is pure computation
         # over authored rows plus the injected table, needs no `output_dir` — the standing rule for what
         # belongs here — and it is a **mode ladder**, so `validate --strict` reported `valid` for a
@@ -3000,6 +3666,22 @@ def compile_module(
         w for w in _check_contig_ploidy(variants, config.genome_build) if w not in all_warnings
     )
 
+    # Wrong-build coordinates, re-run **here** for the same reason ploidy is: this is the first point
+    # at which `chrom`/`start` are final. `validate_spec` sees an rsid-only row with no coordinate at
+    # all; resolution has since filled one, and the deprecated `ensembl_cache` path fills it from a
+    # reference `validate_spec` never opened. Unlike ploidy this needs no de-duplication: it returns
+    # errors, `compile_module` returns early on any validation error, so anything reaching here is a
+    # coordinate the pre-flight could not have seen.
+    build_errors = _check_build_coordinates(
+        [_CoordinateTable("variants.csv", config.genome_build, True, variants)]
+    )
+    if build_errors:
+        return CompilationResult(
+            success=False,
+            errors=[f"post-resolution: {e}" for e in build_errors],
+            warnings=all_warnings,
+        )
+
     # Outcome axis (orthogonal to the requested `resolution_mode` policy, Principle 5): did every
     # in-scope variant resolve to a genomic position? Vacuously true for a table-kind-only module —
     # which is why the denominator travels beside it into the manifest (RM44). Both come from the same
@@ -3100,6 +3782,31 @@ def compile_module(
     all_warnings.extend(
         w for w in _check_binning_grounding(kind_rows, studies) if w not in all_warnings
     )
+    # `kind_rows` is freshly loaded and never resolved, so re-running the binning check here produces
+    # the identical sentence and the message-dedup above does its job.
+    all_warnings.extend(w for w in _check_measure_shape(kind_rows) if w not in all_warnings)
+
+    # **THREE checks of this round are deliberately NOT re-run here, and that is the fix rather than an
+    # omission.** `_check_missing_allele_marker`, `_check_quality_inversion` and `_check_vcf_pointers`
+    # all read authored cells (`alts`, `requires_callable` + `quality_from`, the pointer columns) that
+    # resolution never fills, so `validate_spec`'s pass — which runs before any expansion — already has
+    # the right answer, and it reaches this list through `all_warnings = list(validation.warnings)`
+    # above. Running any of them again on `variants` would count the *expanded* rows: by this point
+    # `variants` is `outcome.variants`, one row per resolved locus, so a one-to-many rsid becomes N rows
+    # carrying one authored genotype and the same finding is reported with a different count and
+    # different example keys. The de-duplication above keys on the **message**, so two sentences
+    # differing only in their count can never collapse, and both are published into
+    # `manifest.compilation.warnings` — a surface RM44 established that consumers parse. Measured twice,
+    # independently, on the way in: an rsid-only `requires_callable` row over a two-locus
+    # `resolution.csv` emitted "1 row(s) …" beside "2 row(s) …", and the pointer check emitted 328
+    # beside 337 on `pathogenic_clinvar`.
+    #
+    # Nothing is lost by staying behind resolution: all three are warning-only in both modes, so there
+    # is no severity for a re-run to recover — which is the whole reason the *mode-ladder* checks re-run
+    # at all. This is the mirror of the `_check_contig_ploidy` lesson rather than a contradiction of it:
+    # that warning had to **move** here because resolution fills its input; these three must stay behind
+    # it because resolution fills nothing they read. The rule that covers both: re-run a check after
+    # resolution exactly when resolution changes its input, and never when the message embeds a count.
 
     # 0.5 derived-fact sidecars: materialize each present CSV, and cross-check it against what the
     # module actually contains. A row describing something the module never mentions is a warning, not
@@ -3121,7 +3828,18 @@ def compile_module(
         return [], warns
 
     def _literature_checks(rows: list) -> tuple[list[str], list[str]]:
-        return [], list(_cross_check_literature(rows, studies))
+        # De-duplicated on the message: `compile_module` runs `validate_spec`, which runs this same
+        # check, so a finding living in both places would otherwise print twice (the
+        # `_check_contig_ploidy` idiom).
+        return [], [
+            w for w in _cross_check_literature(rows, studies, kind_rows) if w not in all_warnings
+        ]
+
+    def _gene_validity_checks(rows: list) -> tuple[list[str], list[str]]:
+        return [], list(_cross_check_gene_validity(rows, variants))
+
+    def _clinical_assertion_checks(rows: list) -> tuple[list[str], list[str]]:
+        return [], list(_cross_check_clinical_assertions(rows, variants))
 
     def _sources_checks(rows: list) -> tuple[list[str], list[str]]:
         # `sources.csv` is last in `_FACT_TABLES`, so the other sidecars are already parsed into
@@ -3139,12 +3857,10 @@ def compile_module(
         # simply says nothing rather than saying the wrong thing.
         used = {r.authority for r in resolution_rows if r.authority}
         for model, parsed in fact_rows.items():
-            if model is SourceRow:
+            if model in (SourceRow, LiteratureRow):
                 continue
             used |= {getattr(r, "source", None) for r in parsed if getattr(r, "source", None)}
-        # `studies` is the module's own literature evidence, and it has no `source` column to join —
-        # so a literature-layer declaration beside it is uncorroborable rather than stale (S23).
-        warns = _source_checks(rows, {s for s in used if s}, literature_evidenced=bool(studies))
+        warns = _source_checks(rows, {s for s in used if s})
         warns.extend(_check_declared_license_agrees(rows, config.license if config else None))
         return [], warns
 
@@ -3152,6 +3868,13 @@ def compile_module(
         FrequencyRow: (_frequency_checks, lambda rows: _build_frequencies(rows, module_name)),
         GeneMetricsRow: (_gene_metrics_checks, lambda rows: _build_table(rows, GeneMetricsRow, module_name)),
         LiteratureRow: (_literature_checks, lambda rows: _build_table(rows, LiteratureRow, module_name)),
+        GeneValidityRow: (
+            _gene_validity_checks, lambda rows: _build_table(rows, GeneValidityRow, module_name),
+        ),
+        ClinicalAssertionRow: (
+            _clinical_assertion_checks,
+            lambda rows: _build_table(rows, ClinicalAssertionRow, module_name),
+        ),
         SourceRow: (_sources_checks, lambda rows: _build_table(rows, SourceRow, module_name)),
     }
 
@@ -3184,6 +3907,8 @@ def compile_module(
     frequency_rows: list[FrequencyRow] = fact_rows.get(FrequencyRow, [])
     gene_metrics_rows: list[GeneMetricsRow] = fact_rows.get(GeneMetricsRow, [])
     literature_rows: list[LiteratureRow] = fact_rows.get(LiteratureRow, [])
+    gene_validity_rows: list[GeneValidityRow] = fact_rows.get(GeneValidityRow, [])
+    clinical_assertion_rows: list[ClinicalAssertionRow] = fact_rows.get(ClinicalAssertionRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
 
     logs = _collect_logs(spec_dir, output_dir, log_files)
@@ -3235,6 +3960,8 @@ def compile_module(
         resolution_sources=resolution_sources,
         frequency=_frequency_block(frequency_rows),
         gene_metrics=_gene_metrics_block(gene_metrics_rows),
+        gene_validity=_gene_validity_block(gene_validity_rows),
+        clinical_assertions=_clinical_assertions_block(clinical_assertion_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),
         verification=verification,
@@ -3291,6 +4018,55 @@ def _gene_metrics_block(rows: list[GeneMetricsRow]) -> GeneMetrics | None:
     )
 
 
+def _gene_validity_block(rows: list[GeneValidityRow]) -> GeneValidity | None:
+    """The manifest's `gene_validity` summary, or `None` when the module carries no such sidecar.
+
+    Every facet is a sorted set, including `classifications` — the strength ladder is published once,
+    as `vocab.ORDERED_GENE_VALIDITY`, so this block does not encode a second copy of it that could
+    drift. `diseases` is here because indexing a module by condition is the reason a catalog would
+    read this block instead of the parquet.
+    """
+    if not rows:
+        return None
+    return GeneValidity(
+        signature=_gene_validity_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        genes=sorted({r.gene for r in rows}),
+        diseases=sorted({r.disease_id for r in rows if r.disease_id}),
+        classifications=sorted({r.classification for r in rows if r.classification}),
+        submitters=sorted({r.submitter for r in rows if r.submitter}),
+    )
+
+
+def _clinical_assertions_block(rows: list[ClinicalAssertionRow]) -> ClinicalAssertions | None:
+    """The manifest's `clinical_assertions` summary, or `None` when the module carries no such sidecar.
+
+    The star range is `min`/`max` over the rows that state one, and `None` when none does — never a
+    zero. That is the same rule `Literature.quotes_found` follows and it matters more here: 0 is a real
+    rating ("no assertion criteria provided"), so collapsing "nothing was rated" into it would report
+    the module's evidence as the worst kind available rather than as unstated. `unrated_count` carries
+    the size of that gap, because a range over an unstated fraction is not something a catalog can
+    filter on.
+    """
+    if not rows:
+        return None
+    rated = [r.review_stars for r in rows if r.review_stars is not None]
+    return ClinicalAssertions(
+        signature=_clinical_assertion_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        variant_count=len({r.variant_key for r in rows}),
+        clin_sigs=sorted({r.clin_sig for r in rows if r.clin_sig}),
+        min_review_stars=min(rated) if rated else None,
+        max_review_stars=max(rated) if rated else None,
+        unrated_count=sum(1 for r in rows if r.review_stars is None),
+        not_found_count=sum(1 for r in rows if r.status == "not_found"),
+    )
+
+
 def _check_license_gate(rows: list[SourceRow]) -> list[str]:
     """Refuse to compile a module whose sources forbid sale and that records no matching declaration.
 
@@ -3327,9 +4103,12 @@ def _check_license_gate(rows: list[SourceRow]) -> list[str]:
     ]
 
 
-def _source_checks(
-    rows: list[SourceRow], used_sources: set[str], *, literature_evidenced: bool = False
-) -> list[str]:
+#: The `sources.csv` layers no fact table's `source` column can ever corroborate, so a declaration at
+#: one of them is uncorroborable rather than stale. See `_source_checks` for why each is here.
+_UNCORROBORABLE_LAYERS: frozenset[str] = frozenset({"annotation", "literature"})
+
+
+def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
     """Warning-only coherence for `sources.csv`. Never escalates under `strict`.
 
     Two findings, both mirroring the existing orphan-sidecar precedent (don't punish the author for
@@ -3352,21 +4131,37 @@ def _source_checks(
     `pgx_draft` both write exactly one such row, and it is the row that makes the licence gate work.
     Warning that the load-bearing row looks unused is the opposite of useful.
 
-    **`literature` joins that exemption whenever the module's literature evidence is `studies.csv`
-    (S23).** The same argument, reached by the same route: `studies.csv` is the hand-curated literature
-    table and carries no `source` column *by the design the annotation exemption cites*, so a module
-    citing a PMID through it can never corroborate the service the curator read the record through.
-    Only `literature.csv` — which the enricher writes, with a `source` column — can, and a module that
-    has none has nothing to join. The old behaviour inverted the incentive exactly where it matters
-    most: `vocab.MISPLACED_COLUMN_REASONS['source']` tells an author to declare a hand-read source by
-    adding a row to `sources.csv`, and doing so earned a warning that the row is unused, while deleting
-    it — and shipping with the provenance unrecorded — was silent. Compliance warned, omission quiet.
-    An over-declaration here is the cheap error; an author talked out of recording their terms is not.
+    **`literature` joins that exemption, and since 0.6 it joins it unconditionally (S23, then RM46).**
+    The same argument, reached by the same route: `studies.csv` is the hand-curated literature table
+    and carries no `source` column *by the design the annotation exemption cites*, so a module citing
+    a PMID through it can never corroborate the service the curator read the record through. That left
+    `literature.csv` — enricher-written, with a `source` column — as the only possible corroborator,
+    which is why the exemption used to be conditional on the module having no study rows.
+
+    RM46 removed that last joinable value, and the reason is the point rather than a simplification.
+    `literature.csv`'s `source` names the **bibliographic registry that answered** (`pubmed`), not a
+    licensed source, and the tier has no terms constant for it *because a literature source's terms
+    are per article, not per source*: PubMed's metadata is one thing and the publisher's article is
+    another, and Europe PMC's open subset spans CC-BY, CC-BY-NC and bronze. So the article's terms are
+    recorded on the literature row itself (`license`/`share_alike`/`commercial_use`/`redistribution`)
+    and its `source` is excluded from `used_sources` by the caller. A single `pubmed` row in
+    `sources.csv` would be wrong in the dangerous direction — right for a module citing only ids, and
+    a false all-clear for one carrying a `provenance_quote` lifted from a CC-BY-NC article. Nothing
+    can therefore corroborate a literature-layer declaration, `studies.csv` or no, so the conditional
+    could no longer distinguish anything.
+
+    Note which way the old behaviour pushed an author, because that is what makes the exemption worth
+    keeping: `vocab.MISPLACED_COLUMN_REASONS['source']` tells an author to declare a hand-read source
+    by adding a row to `sources.csv`, and doing so earned a warning that the row is unused, while
+    deleting it — and shipping with the provenance unrecorded — was silent. Compliance warned,
+    omission quiet. An over-declaration here is the cheap error; an author talked out of recording
+    their terms is not. `frequency` still warns, because `frequencies.csv` *is* machine-written with a
+    `source` column naming a licensed source, so a frequency declaration in a module with no
+    frequencies really is stale.
     """
     warnings: list[str] = []
     declared = {r.source for r in rows}
-    uncorroborable = {"annotation", "literature"} if literature_evidenced else {"annotation"}
-    corroborable = {r.source for r in rows if r.layer not in uncorroborable}
+    corroborable = {r.source for r in rows if r.layer not in _UNCORROBORABLE_LAYERS}
     orphans = sorted(corroborable - used_sources)
     if orphans:
         warnings.append(
@@ -3549,6 +4344,8 @@ def _build_manifest(
     vrs_alleles_identified: int = 0,
     frequency: Frequency | None = None,
     gene_metrics: GeneMetrics | None = None,
+    gene_validity: GeneValidity | None = None,
+    clinical_assertions: ClinicalAssertions | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
     verification: Verification | None = None,
@@ -3603,6 +4400,8 @@ def _build_manifest(
         ),
         frequency=frequency,
         gene_metrics=gene_metrics,
+        gene_validity=gene_validity,
+        clinical_assertions=clinical_assertions,
         literature=literature,
         sources=sources,
         verification=verification,
@@ -3880,18 +4679,35 @@ def _cross_check_frequencies(
 
 
 def _cross_check_literature(
-    rows: list[LiteratureRow], studies: list[StudyRow]
+    rows: list[LiteratureRow],
+    studies: list[StudyRow],
+    bin_rows: dict[str, list[MeasureBinRow]] | None = None,
 ) -> list[str]:
-    """Two orphan directions, and one finding that is not an orphan at all.
+    """Two orphan directions, one finding that is not an orphan at all, and one licensing notice.
 
-    * a literature row for a PMID no study cites — the sidecar is stale or over-broad (warning, the
-      same reasoning as the frequency/gene-metrics orphan checks: an extra row is harmless);
+    * a literature row for a PMID **nothing in the module cites** — the sidecar is stale or over-broad
+      (warning, the same reasoning as the frequency/gene-metrics orphan checks: an extra row is
+      harmless);
     * a **nonexistent citation** (`exists is False`) — not an orphan but a defect in the module, and
-      the compiler can surface it offline because the enricher already recorded the verdict as a fact.
+      the compiler can surface it offline because the enricher already recorded the verdict as a fact;
+    * a **quote lifted from an article whose licence forbids commercial reuse** (RM46).
 
-    Matched on digit-only PMIDs, since `StudyRow.pmid` is free-form and may carry several ids or a
-    `[PMID: N]` wrapper — `extract_pmids` is the same normalizer the enricher pass uses, so the two
-    sides cannot drift apart.
+    **There are two citation sites since 0.6, and both count** (RM47). `studies.csv` was the only one
+    until binning rows gained a `pmid`, and reading only the first would have made every
+    threshold-grounding citation look like an orphan — shipping evidence the compiler then reported as
+    stale, which is worse than the honest gap the column replaced.
+
+    Matched on digit-only PMIDs, since both `StudyRow.pmid` and `MeasureBinRow.pmid` are free-form and
+    may carry several ids or a `[PMID: N]` wrapper — `extract_pmids` is the same normalizer the
+    enricher pass uses, so the sides cannot drift apart.
+
+    **The non-commercial notice warns in both modes and gates nothing.** It is the third such
+    exception, after the ClinVar `clin_sig` cross-check and `_check_declared_license_agrees`, and for
+    the same reason: refusing would make the format arbitrate a copyright question. What it can
+    honestly do is make the tension visible, because a `provenance_quote` is publisher text sitting in
+    the module's own *annotation* layer — precisely where the licence gate bites — while the article's
+    terms are recorded per article here and never as a `sources.csv` row. Grouped by licence rather
+    than one line per citation, since a panel cites in the hundreds.
     """
     if not rows:
         return []
@@ -3899,6 +4715,7 @@ def _cross_check_literature(
     cited: set[str] = set()
     for study in studies:
         cited.update(extract_pmids(study.pmid))
+    cited.update(binning_citations(bin_rows or {}))
 
     missing = sorted({r.pmid for r in rows if r.exists is False})
     if missing:
@@ -3914,7 +4731,44 @@ def _cross_check_literature(
                 f"literature.csv describes {len(orphans)} citation(s) no study in this module cites: "
                 f"{orphans}"
             )
+    findings.extend(_check_quoted_article_licenses(rows, studies))
     return findings
+
+
+def _check_quoted_article_licenses(
+    rows: list[LiteratureRow], studies: list[StudyRow]
+) -> list[str]:
+    """Quotes taken from articles whose licence forbids commercial reuse (RM46). Warning-only.
+
+    Keyed on the *quote*, not on the citation: naming a PMID costs nothing under any licence, while a
+    `provenance_quote` / `provenance_regex` copies the publisher's own words into `studies.csv`, which
+    is authored content the module ships. `commercial_use is False` is a recorded fact the enricher
+    read off the article's licence; `None` is unknown and withholds, as everywhere else.
+
+    Aggregated by licence string, one line per licence, because a repeated per-row warning buries
+    every other finding a compile produces (the lesson CPIC taught four times).
+    """
+    quoted = {
+        pmid
+        for study in studies
+        if study.provenance_quote or study.provenance_regex
+        for pmid in extract_pmids(study.pmid)
+    }
+    if not quoted:
+        return []
+    by_license: dict[str, list[str]] = {}
+    for row in rows:
+        if row.commercial_use is False and row.pmid in quoted:
+            by_license.setdefault(row.license or "an unnamed non-commercial licence", []).append(
+                row.pmid
+            )
+    return [
+        f"{len(pmids)} study quote(s) come from article(s) licensed {license_name!r}, which forbids "
+        f"commercial reuse: {sorted(pmids)}. Not adjudicated here — quoting for comment or research "
+        f"is often fine and the format is not the tier that decides — but the passage is publisher "
+        f"text in this module's annotation layer, so a commercial distribution has to answer for it"
+        for license_name, pmids in sorted(by_license.items())
+    ]
 
 
 def _check_ba1_lint(
@@ -4004,6 +4858,68 @@ def _cross_check_gene_metrics(
         return []
     return [
         f"gene_metrics.csv names {len(orphans)} gene(s) this module never mentions: {orphans}"
+    ]
+
+
+def _cross_check_gene_validity(
+    rows: list[GeneValidityRow], variants: list[VariantRow]
+) -> list[str]:
+    """Warn when a gene-validity row names a gene the module never mentions (RM24).
+
+    The gene-metrics orphan check with one table swapped, deliberately: the two sidecars answer
+    different questions about the same key, so an over-broad table fails the same way and a reader
+    should see the same sentence. Warning-only for the same reason — an extra row is harmless, and the
+    compiler cannot tell a stale row from a curator's deliberate context.
+    """
+    if not variants:
+        return []
+    genes = {v.gene for v in variants if v.gene}
+    if not genes:
+        return []
+    orphans = sorted({r.gene for r in rows if r.gene not in genes})
+    if not orphans:
+        return []
+    return [
+        f"gene_validity.csv names {len(orphans)} gene(s) this module never mentions: {orphans}"
+    ]
+
+
+def _cross_check_clinical_assertions(
+    rows: list[ClinicalAssertionRow], variants: list[VariantRow]
+) -> list[str]:
+    """Warn when a clinical-assertion row describes a coordinate no variant in the module sits at.
+
+    Matched at *position* level (`chrom:start:ref`, no alt), exactly as `_cross_check_frequencies`
+    does and for its reason: the sidecar is per-allele while a module row may be position-only or
+    multi-allelic, so comparing `variant_key` for equality would false-alarm on rows that are about
+    the same locus.
+
+    **It does not compare the calls.** Whether the module's own `clin_sig` agrees with the archive's
+    is `enricher.clinical.verify_clin_sig`'s question, it needs a reference the compiler is barred
+    from holding, and it warns in both modes on purpose because failing would make the format
+    arbitrate a clinical dispute. Recording the archive's side in a table does not move that line, and
+    a coherence check here must not quietly become the escalation that was parked.
+    """
+    if not variants:
+        return []
+    positions = {
+        derive_variant_key(None, v.chrom, v.start, v.ref) for v in variants if v.chrom is not None
+    }
+    if not positions:
+        return []
+    orphans = sorted(
+        {
+            f"{r.chrom}:{r.start}:{r.ref}"
+            for r in rows
+            if r.chrom is not None
+            and derive_variant_key(None, r.chrom, r.start, r.ref) not in positions
+        }
+    )
+    if not orphans:
+        return []
+    return [
+        f"clinical_assertions.csv describes {len(orphans)} coordinate(s) no variant in this module "
+        f"sits at: {orphans}"
     ]
 
 
@@ -4190,7 +5106,15 @@ def reverse_module(
     the artifact — so `reverse → compile` reproduces the identical `artifact.digest` with **no network
     and no Ensembl reference** (Principle 7 hardened from reference-dependent to self-contained). A
     coord-keyed row's resolved rsid, dropped from `variants.csv`, is carried here and restored on
-    recompile via `resolution.resolve_from_table`."""
+    recompile via `resolution.resolve_from_table`.
+
+    The authored tables are written under their one legal name at the root. The machine-written
+    sidecars go through `layout.sidecar_write_path`, so a fresh tree gets the **preferred** spelling
+    (`licensing.csv`, not the deprecated `sources.csv` `_FACT_TABLES` still names for its parquet) and
+    an output directory that already carries a copy has that copy overwritten rather than joined by a
+    second one. Reversing into a directory that already holds two copies of one sidecar raises
+    `layout.SidecarCollision`: which of two hand-editable claims to overwrite is not something this
+    function may decide silently."""
     parquet_dir = Path(parquet_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -4198,6 +5122,23 @@ def reverse_module(
     # SNP core is optional (RM2): a module may have no weights.parquet.
     weights_path = parquet_dir / "weights.parquet"
     weights_df = pl.read_parquet(weights_path) if weights_path.is_file() else None
+
+    # Every sidecar destination is resolved BEFORE the first write, and only for the tables this
+    # artifact will actually produce. `sidecar_write_path` raises on an output directory that already
+    # holds two copies of one table, and resolving late would raise it *after* `module_spec.yaml` and
+    # the authored CSVs had been rewritten — a refusal that leaves a half-rebuilt spec behind. The
+    # collision is refused with nothing touched instead, which is what the rest of this layout does.
+    sidecar_paths: dict[str, Path] = {
+        csv_name: sidecar_write_path(output_dir, csv_name)
+        for csv_name, parquet_name, _ in _FACT_TABLES
+        if (parquet_dir / parquet_name).is_file()
+    }
+    # Not `and weights_df is not None`: since RM43 the lookup table is rebuilt from the positional
+    # parquets too, so a table-only module emits one and needs its path resolved the same way. The
+    # writer itself returns before creating a file when there is nothing to write, so resolving the
+    # path unconditionally cannot leave an empty `resolution.csv` behind.
+    if write_resolution:
+        sidecar_paths["resolution.csv"] = sidecar_write_path(output_dir, "resolution.csv")
 
     if module_name is None:
         module_name = _module_name_from_parquets(parquet_dir) or parquet_dir.name
@@ -4288,9 +5229,14 @@ def reverse_module(
     # coordinate into `pharm_variants`/`haplotypes`/`heteroplasmy`, a reverse that dropped the lookup
     # table would emit a spec whose recompile leaves those parquets unfilled — so `compile → reverse →
     # compile` would stop reproducing the artifact, which is Principle 7.
+    # Through `sidecar_paths`, never `output_dir / "resolution.csv"` — the literal join RM51 abolishes.
+    # Worth spelling out because the two halves of this arrived in different lanes and nearly cancelled:
+    # RM43 *moved* this call out of the `weights_df is not None` block so a table-only module emits one,
+    # while RM51's repair was applied to the call site at its old address. Taking either side of that
+    # merge alone loses the other.
     if write_resolution:
         _write_resolution_csv(
-            weights_df, positional_frames, output_dir / "resolution.csv",
+            weights_df, positional_frames, sidecar_paths["resolution.csv"],
             genome_build=genome_build,
         )
 
@@ -4299,10 +5245,21 @@ def reverse_module(
     # `allele_frequency` (derived on write, absent from `FrequencyRow`'s fields) falls away by
     # construction rather than by a special case — re-deriving it on the next compile reproduces the
     # identical parquet.
+    #
+    # The filename comes from `sidecar_paths` (resolved above), not `output_dir / csv_name`: `_FACT_TABLES`
+    # names the licence table by its *deprecated* spelling (the parquet and the manifest key keep it,
+    # since only a major may rename those), so joining that name on by hand emitted `sources.csv` and
+    # made `compile → reverse → compile` deprecation-warn on a module whose own compile is silent —
+    # and `manifest.compilation.warnings` is a published field (RM44), so the module and its own round
+    # trip disagreed on it. This is the same "write to the file you read" rule every other writer
+    # follows rather than an exception to it: reverse builds a spec tree from an artifact, so on a
+    # fresh directory there is nothing to follow and the rule yields the preferred spelling, while
+    # reversing over a tree that already carries the old name (or a `derived/` split) overwrites that
+    # copy instead of leaving a second one behind — which is the collision the rule exists to prevent.
     for csv_name, parquet_name, model in _FACT_TABLES:
         fact_path = parquet_dir / parquet_name
         if fact_path.is_file():
-            _write_table_csv(pl.read_parquet(fact_path), model, output_dir / csv_name)
+            _write_table_csv(pl.read_parquet(fact_path), model, sidecar_paths[csv_name])
 
     return output_dir
 

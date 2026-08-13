@@ -4,6 +4,8 @@
     just-dna-enricher frequencies spec/                 # pass 2: allele frequency (online only)
     just-dna-enricher gene-metrics spec/                # pass 3: gene constraint (offline capable)
     just-dna-enricher literature spec/                  # pass 4: citations (online only)
+    just-dna-enricher gene-validity spec/ --source gencc  # curated gene-disease assertions (online)
+    just-dna-enricher assertions spec/                  # ClinVar call + review tier (offline capable)
     just-dna-enricher enrich-and-compile spec/ out/ --frequencies --gene-metrics
     just-dna-enricher gnomad constraint build --download --out gnomad_constraint/   # [dev]
     just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            # [dev]
@@ -18,6 +20,11 @@ from just_dna_compiler.draft import DraftError, authoring_requirements, blank_te
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
 from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
+from just_dna_enricher.assertions import (
+    ASSERTION_GENOME_BUILD,
+    ClinicalAssertionError,
+    enrich_clinical_assertions,
+)
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
     ClinGenError,
@@ -51,6 +58,14 @@ from just_dna_enricher.download import (
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
+from just_dna_enricher.gene_validity import (
+    CLINGEN_SOURCE as CLINGEN_VALIDITY_SOURCE,
+)
+from just_dna_enricher.gene_validity import (
+    GeneValidityError,
+    enrich_gene_validity,
+)
+from just_dna_enricher.grch37 import GRCH37_BUILD, summarize_build_diagnoses
 from just_dna_enricher.identifiers import check_identifiers
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
@@ -76,6 +91,7 @@ from just_dna_enricher.lookup import (
     as_report_rows,
     lookup_citation,
     lookup_gene,
+    lookup_old_assembly,
     lookup_trait,
     lookup_variant,
 )
@@ -178,6 +194,21 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # contradicting the genome, a different and worse thing than a variant the chain could not find.
     for line in summarize_ref_mismatches(result.ref_mismatches):
         typer.secho(f"  ref mismatch: {line}", fg=typer.colors.RED, err=True)
+    # Why the ref disagrees, when GRCh37 explains it (RM48). Printed right under the mismatch it
+    # diagnoses, because a wrong build is a different remedy from a wrong cell: one row is edited, a
+    # whole module is re-authored from rs-numbers.
+    for line in summarize_build_diagnoses(result.build_diagnoses):
+        typer.secho(f"  old-assembly coordinate: {line}", fg=typer.colors.RED, err=True)
+    # Unconditional on `ref_mismatches`, because gating it on them made it unreachable: offline
+    # skips the reference check too, so the list is always empty in exactly the runs this notice is
+    # about. Which is the point worth saying — an offline run checked neither, and silence here would
+    # read as "checked, all clear" (S4).
+    if result.build_not_diagnosed == "skipped_offline":
+        typer.secho(
+            "  reference-allele check and wrong-build diagnosis not run: --offline (both need a "
+            "live sequence service, and neither has a local equivalent)",
+            fg=typer.colors.CYAN,
+        )
     for stale in result.stale_rsids:
         typer.secho(f"  stale rsid: {stale}", fg=typer.colors.YELLOW, err=True)
     for conflict in result.clin_sig_conflicts:
@@ -189,12 +220,16 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # thing it must never mean (S4). `not_requested` is the author's own `--no-verify-clinsig` and
     # needs no echo back.
     if result.clin_sig_not_checked and result.clin_sig_not_checked != "not_requested":
-        reason = (
-            "no ClinVar snapshot this run"
-            if result.clin_sig_not_checked == "no_snapshot"
-            else result.clin_sig_not_checked
-        )
+        reason = {
+            "no_snapshot": "no ClinVar snapshot this run",
+            "unusable_snapshot": "the ClinVar snapshot is present but not queryable",
+        }.get(result.clin_sig_not_checked, result.clin_sig_not_checked)
         typer.secho(f"  clin_sig cross-check not run: {reason}", fg=typer.colors.CYAN)
+    # One aggregated line, never one per row: on a drafted panel this is thousands of comparisons and
+    # what the author has to know is the split. The conflicts themselves printed above, individually,
+    # because those are the rows that need answering.
+    if result.clin_sig_audit is not None:
+        typer.secho(f"  clin_sig audit: {result.clin_sig_audit}", fg=typer.colors.CYAN)
 
 
 @app.command("frequencies")
@@ -294,6 +329,113 @@ def dosage_(
         typer.secho(f"  not in the ClinGen curation list: {result.missing}", fg=typer.colors.YELLOW)
 
 
+@app.command("gene-validity")
+def gene_validity_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    source: str = typer.Option(
+        CLINGEN_VALIDITY_SOURCE, "--source",
+        help="Which submitter to read: clingen (expert panels) or gencc (an aggregate of nineteen).",
+    ),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail unless every gene carries a curated assertion."
+    ),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="No-op with a warning: neither ClinGen nor GenCC publishes an offline snapshot.",
+    ),
+    url: str | None = typer.Option(None, "--url", help="Override the submitter's export URL."),
+) -> None:
+    """Fill gene_validity.csv with curated gene-disease assertions for the genes variants.csv names.
+
+    One row per (gene, disease, mode of inheritance, submitter) — the source's own grain. Mode of
+    inheritance is in the key because 59 ClinGen (gene, disease) pairs carry two curations that differ
+    only there, and `submitter` is in it because GenCC publishes the disagreement between submitters,
+    which is the thing it exists to publish.
+    """
+    try:
+        result = enrich_gene_validity(spec_dir, source=source, mode=_mode(strict), offline=offline,
+                                      url=url)
+    except GeneValidityError as exc:
+        typer.secho(f"GENE VALIDITY FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped_offline:
+        typer.secho(
+            "skipped: --offline (no gene-validity submitter publishes an offline snapshot)",
+            fg=typer.colors.YELLOW,
+        )
+        return
+    # The path the pass actually wrote, not `spec_dir / <name>` — a module keeping its sidecars under
+    # `derived/` (RM49) is written there, and printing a guess sends the author to a file that is not
+    # the one that changed.
+    typer.secho(
+        f"gene validity: {sidecar_path(spec_dir, 'gene_validity.csv', error=GeneValidityError)}",
+        fg=typer.colors.GREEN,
+    )
+    typer.echo(
+        f"dataset: {result.dataset}  rows: {len(result.rows)}  genes curated: {len(result.covered)}"
+    )
+    if result.missing:
+        # Both submitters curate a subset by design, so this is information rather than a problem.
+        typer.secho(f"  no {source} assertion: {result.missing}", fg=typer.colors.YELLOW)
+    if result.unmapped:
+        typer.secho(
+            f"  wordings this release does not model (kept verbatim in classification_raw): "
+            f"{result.unmapped}",
+            fg=typer.colors.YELLOW, err=True,
+        )
+
+
+@app.command("assertions")
+def assertions_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail unless every resolved allele has a ClinVar record."
+    ),
+    offline: bool = typer.Option(False, "--offline", help="Snapshot only: never touch the network."),
+    clinvar_cache: Path | None = typer.Option(
+        None, "--clinvar-cache", help="Explicit ClinVar snapshot directory."
+    ),
+) -> None:
+    """Fill clinical_assertions.csv from the coordinates already in resolution.csv.
+
+    Records what ClinVar says about each allele **and how much review sits behind it** — the star
+    rating a compiled module previously discarded, so a one-star single submission and a practice
+    guideline stopped being the same claim. Offline-capable: with a snapshot provisioned this pass
+    never touches the network, and with none reachable it is a no-op rather than a failure.
+
+    It records; it does not adjudicate. Whether the module's own clin_sig agrees with ClinVar's is the
+    `enrich` cross-check's question, and that one warns in both modes on purpose.
+    """
+    try:
+        result = enrich_clinical_assertions(
+            spec_dir, mode=_mode(strict), offline=offline, clinvar_cache=clinvar_cache,
+        )
+    except ClinicalAssertionError as exc:
+        typer.secho(f"ASSERTIONS FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped_no_snapshot:
+        typer.secho(
+            "skipped: no ClinVar snapshot reachable (provision one with `clinvar pull`)",
+            fg=typer.colors.YELLOW,
+        )
+        return
+    typer.secho(
+        "clinical assertions: "
+        f"{sidecar_path(spec_dir, 'clinical_assertions.csv', error=ClinicalAssertionError)}",
+        fg=typer.colors.GREEN,
+    )
+    typer.echo(
+        f"dataset: {result.dataset}  rows: {len(result.rows)}  alleles covered: {len(result.covered)}"
+    )
+    if result.missing:
+        typer.secho(f"  no ClinVar record: {result.missing}", fg=typer.colors.YELLOW)
+    if result.off_build:
+        typer.secho(
+            f"  not on {ASSERTION_GENOME_BUILD}, so never queried: {result.off_build}",
+            fg=typer.colors.YELLOW, err=True,
+        )
+
+
 @app.command("literature")
 def literature_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
@@ -308,7 +450,11 @@ def literature_(
         help="Also confirm the authored DOI resolves in Crossref (covers preprints/books).",
     ),
 ) -> None:
-    """Fill literature.csv from the citations in studies.csv (pass 4, online only)."""
+    """Fill literature.csv from a module's citations (pass 4, online only).
+
+    Two citation sites since 0.6: `studies.csv`, and a `pmid` on a binning row, which grounds the
+    threshold it sits on.
+    """
     try:
         result = enrich_literature(
             spec_dir, mode=_mode(strict), offline=offline, check_fulltext=check_fulltext,
@@ -331,6 +477,22 @@ def literature_(
         typer.secho(f"  Crossref has no record of: {result.doi_missing}", fg=typer.colors.RED, err=True)
     for conflict in result.doi_conflicts:
         typer.secho(f"  doi conflict: {conflict}", fg=typer.colors.RED, err=True)
+    # Printed for the same reason and in the same place: a cross-check that only ever speaks under
+    # `--strict` is invisible in the mode almost every author runs, and the two identifiers naming
+    # different articles is exactly the case the schema's PMC guard cannot see (RM50).
+    for conflict in result.pmcid_conflicts:
+        typer.secho(f"  pmcid conflict: {conflict}", fg=typer.colors.RED, err=True)
+    noncommercial = sorted(
+        {r.pmid for r in result.rows if r.commercial_use is False and (r.quotes_authored or 0) > 0}
+    )
+    if noncommercial:
+        # Yellow, not red, and never a non-zero exit: quoting for comment or research is often fine,
+        # and the format is not the tier that adjudicates copyright (the `clin_sig` precedent).
+        typer.secho(
+            f"  quoted under a non-commercial licence: {noncommercial} — the passage is publisher "
+            f"text in this module's annotation layer",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("pgx")
@@ -1350,10 +1512,52 @@ def hint_variant_(
     _echo_hint(hint)
 
 
+@hint_app.command("recover")
+def hint_recover_(
+    chrom: str = typer.Option(..., "--chrom", help="Chromosome of the old coordinate."),
+    start: int = typer.Option(..., "--start", help=f"1-based {GRCH37_BUILD} position."),
+    ref: str | None = typer.Option(None, "--ref", help="Reference allele, to narrow the answer."),
+    alts: str | None = typer.Option(None, "--alts", help="Alt allele(s), comma-separated."),
+    offline: bool = typer.Option(False, "--offline", help="Skip the lookup and say so."),
+    as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
+) -> None:
+    """Which rs-number GRCh37 dbSNP records at an hg19/GRCh37 coordinate.
+
+    For a paper that predates GRCh38. Author the **rs-number**, not a converted position: an
+    rs-number resolves into a coordinate the compiler can cross-examine, where a lifted-over position
+    becomes the row's only witness to itself. Nothing is written — the rs-number is the row's
+    identity, and a machine filling one migrates `variant_key` with no authored edit anywhere.
+    """
+    hint = lookup_old_assembly(
+        chrom=chrom, start=start, ref=ref, alts=alts, offline=offline
+    )
+    if as_json:
+        typer.echo(json.dumps({
+            "chrom": hint.recovery.chrom,
+            "start": hint.recovery.start,
+            "genome_build": GRCH37_BUILD,
+            "outcome": hint.recovery.outcome,
+            "rsids": hint.recovery.rsids,
+            "candidates": hint.recovery.candidates,
+            "advisory": as_report_rows(hint),
+            "findings": [f"{f.level}: {f.message}" for f in hint.findings],
+        }, indent=2, default=str))
+        return
+    for candidate in hint.recovery.candidates:
+        typer.echo(
+            f"candidate\t{candidate['rsid']}\t{GRCH37_BUILD} {hint.recovery.chrom}:"
+            f"{candidate['start']}-{candidate['end']}\t{'/'.join(candidate['alleles'])}"
+        )
+    _echo_hint(hint)
+
+
 @hint_app.command("citation")
 def hint_citation_(
     pmid: str | None = typer.Option(None, "--pmid", help="PubMed id to check."),
     doi: str | None = typer.Option(None, "--doi", help="DOI to check (the one you authored)."),
+    pmcid: str | None = typer.Option(
+        None, "--pmcid", help="PubMed Central id (PMC…) to resolve to the PubMed id tables key on."
+    ),
     offline: bool = typer.Option(False, "--offline", help="Skip the check and say so."),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
 ) -> None:
@@ -1367,11 +1571,16 @@ def hint_citation_(
     very likely to be a real record for a different article, and `pmid_exists` alone cannot catch a
     fabricated citation. The title, journal, year and first author come back in the same response and
     are printed for exactly that comparison (S12).
+
+    **`--pmcid` goes the other way.** `studies.csv` and a binning row's `pmid` both key on the PubMed
+    id, and a curator holding only a `PMC…` id had no route to it — the schema refused the cell and
+    named no remedy. This resolves it and then asks PubMed which paper that is. The id is **reported,
+    never written**: filling `pmid` from NCBI would make the existence check compare NCBI with itself.
     """
-    if pmid is None and doi is None:
-        typer.secho("give --pmid or --doi", fg=typer.colors.RED, err=True)
+    if pmid is None and doi is None and pmcid is None:
+        typer.secho("give --pmid, --doi or --pmcid", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    hint = lookup_citation(pmid=pmid, doi=doi, offline=offline)
+    hint = lookup_citation(pmid=pmid, doi=doi, pmcid=pmcid, offline=offline)
     if as_json:
         typer.echo(json.dumps({
             "pmid": hint.pmid,
@@ -1479,6 +1688,12 @@ def draft_panel_(
     offline: bool = typer.Option(
         False, "--offline", help="Use a local snapshot only: never download one.",
     ),
+    download: bool = typer.Option(
+        True, "--download/--no-download",
+        help="Provision the published snapshot when no local one is found. Fetching it is this "
+             "command's only network use, so --no-download coincides with --offline today; it is a "
+             "separate switch because it says 'do not go and get one', not 'make no request'.",
+    ),
     clin_sig: str | None = typer.Option(
         None, "--clin-sig",
         help="Comma-separated calls to include. Default: pathogenic,likely_pathogenic.",
@@ -1507,7 +1722,7 @@ def draft_panel_(
     )
     try:
         result = draft_gene_panel(
-            spec_dir, gene, snapshot=snapshot, offline=offline,
+            spec_dir, gene, snapshot=snapshot, offline=offline, download=download,
             **({"clin_sig": calls} if calls else {}),
             min_review_stars=min_review_stars, max_citations=max_citations,
             declared_use=_use(use), dry_run=dry_run,

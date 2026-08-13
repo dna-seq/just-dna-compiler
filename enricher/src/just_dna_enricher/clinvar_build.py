@@ -166,8 +166,24 @@ def _normalize_clin_sig(raw: str | None) -> str:
     return "other"
 
 
-def _review_stars(revstat: str | None) -> int:
-    return _REVIEW_STARS.get((revstat or "").strip(), 0)
+def review_stars(revstat: str | None) -> int | None:
+    """One CLNREVSTAT wording → ClinVar's 0-to-4 gold-star rating, or `None` for no wording at all.
+
+    **Public since 0.6 (RM25), and tri-state since 0.6.** It is the one place this workspace holds
+    ClinVar's review-status convention — Principle 2 keeps it out of the schema tier entirely, which
+    is why `ClinicalAssertionRow` stores the rating as a column instead of deriving it from the prose
+    beside it — so a second reader of that convention must reach this function rather than grow a copy.
+
+    `None` and `0` are different answers and the distinction is the whole point of the table this now
+    feeds: `0` is the *rating* ClinVar gives a submission with no assertion criteria, while `None`
+    means the record states no review status for anything to be rated. An **unrecognized** wording is
+    also `None`, not `0` — a wording this release does not model is an unknown, and answering `0` would
+    record a definite rating where none was read. Withhold rather than guess, as everywhere else.
+    """
+    text = (revstat or "").strip()
+    if not text:
+        return None
+    return _REVIEW_STARS.get(text)
 
 
 # ── VCF parsing (idioms leeched from just-dna-lite v1_port.clinvar, kept for all records) ───────
@@ -515,7 +531,7 @@ def build_snapshot(
             "clin_sig": _normalize_clin_sig(clnsig_raw),
             "clin_sig_raw": clnsig_raw,
             "review_status": info_d.get("CLNREVSTAT"),
-            "review_stars": _review_stars(info_d.get("CLNREVSTAT")),
+            "review_stars": review_stars(info_d.get("CLNREVSTAT")),
             "condition": _condition(info_d.get("CLNDN")),
             "molecular_consequence": _molecular_consequence(info_d.get("MC")),
             "variant_type": info_d.get("CLNVC"),
