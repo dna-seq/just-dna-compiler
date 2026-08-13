@@ -210,6 +210,7 @@ just-dna-enricher hint variant --rsid rs1801133          # locus, ref, alts — 
 just-dna-enricher hint variant --rsid rs334 --ambiguity  # warn when the answer is not unique
 just-dna-enricher hint variant --chrom 1 --start 11796321 --ref G --alts A   # allele-exact by coordinate
 just-dna-enricher hint citation --pmid 7647779           # does it exist, and what DOI does it carry
+just-dna-enricher hint citation --pmcid PMC3110566       # the PubMed id for a PMC id you hold
 just-dna-enricher hint trait EFO_0004541                 # current | obsolete | absent
 just-dna-enricher hint gene MTHFR                        # approved | retired | unknown
 ```
@@ -274,8 +275,17 @@ just-dna-enricher enrich spec/ --offline        # caches only, zero egress
 just-dna-enricher frequencies spec/             # → frequencies.csv   (gnomAD, paced ~6s/batch)
 just-dna-enricher gene-metrics spec/            # → gene_metrics.csv  (gnomAD constraint)
 just-dna-enricher dosage spec/                  # → ClinGen dosage rows onto gene_metrics.csv
-just-dna-enricher literature spec/              # → literature.csv    (PMID/DOI/quotes)
+just-dna-enricher literature spec/              # → literature.csv    (PMID/DOI/quotes, article licence)
+just-dna-enricher gene-validity spec/           # → gene_validity.csv (ClinGen or GenCC; --source)
+just-dna-enricher assertions spec/              # → clinical_assertions.csv (ClinVar call + review stars)
 ```
+
+Every one of these writes a **derived** table: machine-written, and yours to regenerate rather than
+edit. They all take `--offline`, and each one that cannot answer offline says so instead of writing a
+row that claims nothing was found. `gene-validity` reads one submitter at a time (`--source clingen`
+or `--source gencc`) because the two disagree on purpose — GenCC is an aggregate of nineteen
+submitters and that disagreement is the data, so it is recorded per submitter rather than collapsed
+into one verdict.
 
 `enrich` runs several links in order (Ensembl cache → ClinVar snapshot → live Ensembl → gnomAD), each
 of which can be turned off (`--no-clinvar`, `--no-gnomad`), and folds in three checks you can also

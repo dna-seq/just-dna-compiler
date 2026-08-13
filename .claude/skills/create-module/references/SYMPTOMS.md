@@ -352,6 +352,45 @@ usually a *block* (one record spanning a range), so it is found by interval cont
 matching a position, and `DP` on a block is the average over it — `MIN_DP` is the floor, and the floor
 is what a callability threshold is about.
 
+**`pmid names PubMed Central id(s) ['PMC3110566'] and no PubMed ID`**
+You wrote a PMC id where a PubMed id goes. They are one letter apart and they number articles
+**independently**, so a PMC id's digits are a real PMID for a *different* article — writing them
+through would cite the wrong paper with nothing to catch it. The refusal names the id it saw rather
+than the one it wanted, and it never converts: run
+`just-dna-enricher hint citation --pmcid PMC3110566` and write the PMID it reports. Note that
+`PMC3110566` and `PMC 3110566` now behave the same; the spaced form used to be silently *accepted* as
+PMID 3110566, so a cell that compiled before may refuse now — that is the fix, not a regression.
+
+**`N row(s) place a variant past the end of <CHROM> on <BUILD>`**
+The position cannot exist in the build the module declares — it is not a warning, it is arithmetic,
+so it is an error in both modes. Two readings, and the message says which applies: if the position
+fits the *other* assembly's contig, the rows are probably GRCh37 coordinates in a GRCh38 module, and
+the whole file is suspect rather than that one row. If no known build has a contig that long, the
+contig and the position disagree with each other and both need checking. Do **not** convert
+coordinates by hand to make it pass — if the paper gives an rs number, author that instead and let
+`enrich` supply the coordinate, which is the one route that produces something independently checkable.
+
+**`N row(s) name contig <X>, which is a top-level sequence of <BUILD> and of no other build`**
+Same family, arriving through the contig name rather than the number. A scaffold like `GL000209.1`
+does not get typed by accident — it gets pasted out of a VCF built on the other assembly, so treat it
+as evidence about the *file*, not about the row. The same clause appears when a `chrom` cell is
+refused outright.
+
+**`VCF pointer cell(s) name a key that INFO and FORMAT both define`** — a warning, not a refusal
+`DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and `CN` exist in **both** VCF tables and mean different things:
+`INFO/AF` is the cohort's allele frequency, `FORMAT/AF` is this sample's. Both are floats in the same
+range, so nothing downstream can detect the confusion — a consumer reads a well-formed number of the
+wrong kind. Qualify the pointer (`FORMAT/AF`). A bare key stays legal and keeps meaning *unqualified*,
+which is why this warns rather than refuses.
+
+**`point at a field the spec defines as multi-valued and state no element rule`** — also a warning
+The field returns a list, not a number: `Number=A` is one value per ALT, `Number=R` one per allele
+with the **reference first**, and a repeat caller's `REPCN` carries both alleles. Set the companion
+column to say which element you mean. On a `Number=R` field the reference is element zero, which is
+why each ranging rule comes in a pair — `largest` counts the reference, `largest_alt` does not. This
+matters most where it looks least urgent: a dominant repeat expansion is judged on *the larger* of
+the two alleles, and a consumer that averages them or takes the first gets a well-formed wrong answer.
+
 ## Checks
 
 **`acmg_sf=false but <GENE> is on ACMG SF v3.3`**
