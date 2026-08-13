@@ -1835,7 +1835,13 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):
-            if not path.is_file() or path.name in legal:
+            # Both branches below are about a **table** whose rows are being dropped, so both stay
+            # behind the `.csv` filter. `derived/provenance.json` and `derived/module_spec.yaml` are
+            # therefore ordinary tolerated strays: neither has rows to lose, a misplaced
+            # `module_spec.yaml` cannot hide (the root one is required and its absence is an error),
+            # and `provenance.json` is exactly the machine-written document a registry splitting a
+            # tree might reasonably put there.
+            if not path.is_file() or path.name in legal or path.suffix != ".csv":
                 continue
             shown = path.relative_to(spec_dir)
             if path.name in authored_names:
@@ -1844,8 +1850,6 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
                     f"machine-written sidecars — every row in it is being silently ignored. Move it to "
                     f"the spec root. Only resolution.csv and the fact tables have a second legal home."
                 )
-                continue
-            if path.suffix != ".csv":
                 continue
             close = difflib.get_close_matches(
                 path.name, sorted(_KNOWN_SPEC_FILES), n=1, cutoff=0.8
@@ -3629,6 +3633,19 @@ def reverse_module(
     weights_path = parquet_dir / "weights.parquet"
     weights_df = pl.read_parquet(weights_path) if weights_path.is_file() else None
 
+    # Every sidecar destination is resolved BEFORE the first write, and only for the tables this
+    # artifact will actually produce. `sidecar_write_path` raises on an output directory that already
+    # holds two copies of one table, and resolving late would raise it *after* `module_spec.yaml` and
+    # the authored CSVs had been rewritten — a refusal that leaves a half-rebuilt spec behind. The
+    # collision is refused with nothing touched instead, which is what the rest of this layout does.
+    sidecar_paths: dict[str, Path] = {
+        csv_name: sidecar_write_path(output_dir, csv_name)
+        for csv_name, parquet_name, _ in _FACT_TABLES
+        if (parquet_dir / parquet_name).is_file()
+    }
+    if write_resolution and weights_df is not None:
+        sidecar_paths["resolution.csv"] = sidecar_write_path(output_dir, "resolution.csv")
+
     if module_name is None:
         module_name = _module_name_from_parquets(parquet_dir) or parquet_dir.name
     if genome_build is None:
@@ -3701,9 +3718,7 @@ def reverse_module(
         )
         if write_resolution:
             _write_resolution_csv(
-                weights_df,
-                sidecar_write_path(output_dir, "resolution.csv"),
-                genome_build=genome_build,
+                weights_df, sidecar_paths["resolution.csv"], genome_build=genome_build
             )
     studies_path = parquet_dir / "studies.parquet"
     if studies_path.exists():
@@ -3721,7 +3736,7 @@ def reverse_module(
     # construction rather than by a special case — re-deriving it on the next compile reproduces the
     # identical parquet.
     #
-    # The filename goes through `sidecar_write_path`, not `output_dir / csv_name`: `_FACT_TABLES`
+    # The filename comes from `sidecar_paths` (resolved above), not `output_dir / csv_name`: `_FACT_TABLES`
     # names the licence table by its *deprecated* spelling (the parquet and the manifest key keep it,
     # since only a major may rename those), so joining that name on by hand emitted `sources.csv` and
     # made `compile → reverse → compile` deprecation-warn on a module whose own compile is silent —
@@ -3734,9 +3749,7 @@ def reverse_module(
     for csv_name, parquet_name, model in _FACT_TABLES:
         fact_path = parquet_dir / parquet_name
         if fact_path.is_file():
-            _write_table_csv(
-                pl.read_parquet(fact_path), model, sidecar_write_path(output_dir, csv_name)
-            )
+            _write_table_csv(pl.read_parquet(fact_path), model, sidecar_paths[csv_name])
 
     return output_dir
 

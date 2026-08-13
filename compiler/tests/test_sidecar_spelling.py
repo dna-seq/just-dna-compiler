@@ -278,6 +278,32 @@ def test_reverse_writes_to_the_copy_the_output_directory_already_has(
     assert stale.read_text() != "source,layer\n", "the stale placeholder must have been rewritten"
 
 
+def test_reverse_refuses_a_colliding_output_directory_before_writing_anything(
+    tmp_path: Path,
+) -> None:
+    """Resolving the destinations first is what keeps the refusal from leaving a half-rebuilt spec.
+
+    Following the module's existing copy gives `reverse` a way to fail that joining a name on did not
+    have. Raised late — at the fact-table loop, which runs last — it would land after
+    `module_spec.yaml` and the authored CSVs had already been rewritten, so a directory that could not
+    be finished would still have been damaged. Resolved up front, a collision costs nothing.
+    """
+    spec_dir = _with_sources(tmp_path, LICENSING_CSV)
+    out = tmp_path / "out"
+    _compile(spec_dir, out)
+
+    colliding = tmp_path / "colliding"
+    colliding.mkdir()
+    (colliding / SOURCES_CSV).write_text("source,layer\n")
+    (colliding / LICENSING_CSV).write_text("source,layer\n")
+
+    with pytest.raises(SidecarCollision) as caught:
+        reverse_module(out, colliding)
+
+    assert SOURCES_CSV in str(caught.value) and LICENSING_CSV in str(caught.value)
+    assert sorted(path.name for path in colliding.iterdir()) == [LICENSING_CSV, SOURCES_CSV]
+
+
 # ── drafting ───────────────────────────────────────────────────────────────────────────────────
 
 

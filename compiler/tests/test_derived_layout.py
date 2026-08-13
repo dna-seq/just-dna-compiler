@@ -245,6 +245,25 @@ def test_a_derived_sidecar_at_the_spec_root_is_not_flagged(tmp_path: Path) -> No
     ), result.warnings
 
 
+def test_a_non_table_document_in_the_subdirectory_is_not_called_a_table(tmp_path: Path) -> None:
+    """Both branches speak of rows being dropped, so both stay behind the `.csv` filter.
+
+    `provenance.json` is machine-written and is exactly what a registry splitting a tree might put
+    there; a stray `module_spec.yaml` cannot hide anything either, since the root one is required and
+    its absence is an error rather than a silence. Telling either that "every row in it is being
+    silently ignored" would be a false sentence about a document with no rows.
+    """
+    spec_dir = _split(_flat(tmp_path))
+    (spec_dir / DERIVED_SUBDIR / "provenance.json").write_text("{}\n")
+    (spec_dir / DERIVED_SUBDIR / "module_spec.yaml").write_text("module: {}\n")
+
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+    assert not any(
+        "provenance.json" in w or "module_spec.yaml" in w for w in result.warnings
+    ), result.warnings
+
+
 def test_the_near_miss_guard_follows_into_the_subdirectory(tmp_path: Path) -> None:
     """Tolerating a second location must not put a typo where the guard cannot see it.
 
