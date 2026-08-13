@@ -47,6 +47,7 @@ from just_dna_format.vocab import (
     validate_finite,
 )
 from just_dna_format.vocab import MULTI_SEP as _MULTI_SEP
+from just_dna_format.vrs import sole_build_naming_contig
 
 # The orthogonal-axis vocabularies and identifier grammars now live in `vocab` (shared across the
 # authored models). `VALID_DIRECTIONS`/`VALID_SIGNIFICANCE`/`VALID_CLIN_SIG` (and `ALLELE_PATTERN`)
@@ -555,11 +556,30 @@ class VariantRow(AuthoredModel):
     @field_validator("chrom")
     @classmethod
     def _validate_chrom(cls, v: str | None) -> str | None:
+        """Primary contigs only — and when the name is another build's, say so (RM48).
+
+        The verdict does not change: an unplaced scaffold is out of this vocabulary either way. What
+        changes is whether the author learns *why* their value is there, and that matters because
+        `GL000209.1` and `KI270728.1` do not arrive by typo — they arrive by pasting rows out of a VCF
+        built on the other assembly, which means the module's *other* rows are probably on it too.
+        Told only "chrom must be one of 1-22, X, Y, MT", an author deletes the scaffold row and ships
+        the rest; told which build names it, they check the build. Same generic-rejection-is-a-dead-end
+        rule as `reject_reserved` and `reject_misplaced`: diagnose, decide nothing new.
+        """
         if v is not None:
             normalized = v.removeprefix("chr")
             if normalized not in VALID_CHROMOSOMES:
+                elsewhere = sole_build_naming_contig(normalized)
+                because = (
+                    f" — that is a top-level sequence of {elsewhere} and of no other build this "
+                    f"schema knows, so these rows are most likely on {elsewhere} rather than on the "
+                    f"build the module declares"
+                    if elsewhere
+                    else ""
+                )
                 raise ValueError(
                     f"chrom must be one of 1-22, X, Y, MT (without 'chr' prefix), got: {v!r}"
+                    f"{because}"
                 )
             return normalized
         return v

@@ -17,6 +17,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | Check | Compares | Where |
 |---|---|---|
 | **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` |
+| **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` (warning) |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
@@ -863,6 +864,81 @@ checked — abstaining beats inventing a verdict. Reads are cached by `(accessio
 module asking about one locus repeatedly costs one round trip, and the same `SequenceProxy` is shared
 with indel minting so a run builds one proxy in total. Needs sequence access, so `--offline` skips it:
 a check that cannot run is not a check that passed, and the run says so rather than implying success.
+
+### The old assembly: rs-number recovery and a wrong-build diagnosis (`grch37.py`, RM48)
+
+An author curating from older literature has hg19/GRCh37 coordinates and the module must be GRCh38.
+Nothing in these four packages converts, so the conversion happens off-tool and lands as an ordinary
+authored coordinate with no provenance at all. The compiler refuses the coordinates that are provably
+impossible; this module answers the ones that are merely *wrong*.
+
+**No chain file, no provisioned asset, no new licence.** The roadmap's stated blocker was that
+recovering an rs-number needs "either an hg19-keyed dbSNP surface or a chain file … i.e. the whole
+snapshot apparatus for one authoring convenience". Probed 2026-08-13 and false: Ensembl runs a
+**permanent GRCh37 REST service** at `grch37.rest.ensembl.org` with the same API shape, serving both
+dbSNP variants (`/overlap/region`) and reference bases (`/sequence/region`). The same request that
+answers "which rs-numbers sit here on GRCh37" also discriminates the builds outright —
+`7:140453135..140453137` is `CAC` on GRCh37 and `GTT` on GRCh38.
+
+**Recovery, never liftover, and the reporter argued their own request down.** If the paper gives an
+rs-number, liftover is unnecessary *and strictly worse*: authoring the rs-number **produces** the
+independent second value `resolution._verify` cross-examines. So liftover is only reachable where there
+is no rs-number and only an old coordinate — and in exactly that case the lifted coordinate becomes the
+row's **sole identity with nothing to check it against**, a generator of unverifiable-by-construction
+identities. That is the hazard class behind this tree's 3,038-row off-by-one, where a content-addressed
+id was a correct digest of the wrong input and every offline gate passed, `--strict` included.
+
+`recover_rsid(chrom, start, *, ref, alts, client, offline)` answers with one of **four** outcomes.
+Three of them — `recovered` / `ambiguous` / `none` — are the ones `pyliftover` fuses, reporting "no
+result" both for a position that maps nowhere and for one that maps to several. The fourth is
+`unchecked`, on the other axis: S20 established in this same resolution path that an unreachable source
+is unchecked rather than absent. A **4xx is an answer** (the service 400s on an unknown contig and on a
+position past the end of one); only a 5xx, a transport error or a timeout is `unchecked`. `--offline`
+reports `skipped_offline`, never a pass.
+
+The match is **anchored on the authored position**: a candidate must start exactly there, carry the
+authored `ref`, and contain every authored alt. Anchoring is what keeps it honest — at
+`7:140453136` seven features overlap the base, two merely span it, one is an HGMD record with no
+rs-number, and four dbSNP records genuinely start there, which is why a position-only query is
+`ambiguous` rather than under-specified. The consequence to know: an indel authored in VCF's padded
+spelling (POS on the base *before* the event) will not match Ensembl's unpadded record and comes back
+`none` with that said, rather than wrong.
+
+`diagnose_wrong_build(mismatches, *, client, offline)` runs **only over rows the reference-allele check
+already rejected**, which is the whole cost control — a module whose refs agree makes no request here.
+`verify_reference_alleles` skips any build `refget_accession` has no table for, so a `RefMismatch` only
+ever exists for a GRCh38 module, which makes "the other assembly" always GRCh37 rather than a parameter.
+Three tiers of evidence, and the message says which one it has:
+
+| Tier | Evidence | What it licenses |
+|---|---|---|
+| `single_base_match` | one authored base equals the GRCh37 base there | suggestive only — one base in four agrees by chance, and VCF 4.4 §1.6.1.4 requires an ambiguous reference base to be reduced to the first alphabetically, so an authored `A` may be a lossily reduced `R` |
+| `multi_base_match` | several consecutive bases agree | chance does not explain it |
+| `dbsnp_corroborated` | the bases agree **and** GRCh37 dbSNP records a variant starting there | the strongest, and the only one that names the rs-number to author instead |
+
+The two strong tiers **supersede the ±1 neighbour reading**, and that is not decoration. On the real
+HFE pair — `6:26093141` and `6:26091179`, authored from the GRCh37 literature into a GRCh38 module —
+`_read_with_neighbours` reports "coordinate shifted 1 base to the right" for *both*, confidently and
+wrongly: the true variants are 228 and 411 bases away, and a neighbouring base equal to the authored
+ref is a one-in-four event. Two explanations printed side by side with nothing to order them is the
+shape this codebase keeps fixing, so the summary says which wins. A single-base match does **not**
+supersede a shift — both rest on one agreeing base, and ordering them would invent a verdict.
+
+`BuildDiagnosisResult.not_checked` carries the reason when the pass did not run (`skipped_offline`,
+`no_ref_mismatches`) and is `None` exactly when it did, for the same reason `clin_sig_not_checked`
+exists: an empty list otherwise says both "asked, and nothing points at another build" and "never
+asked". The diagnosis travels **inside** the `strict` refusal rather than beside it, because a strict
+run raises and returns nothing, so a result-object-only answer would be visible to the mode that does
+not need it and invisible to the one whose whole output is that sentence.
+
+**It writes nothing.** `just-dna-enricher hint recover --chrom 7 --start 140453136 --ref A --alts T`
+reports `rs113488022` as an advisory `Alteration` with `applied=False` and `refusal="identity_bearing"`
+— the sharpest refusal in the table, because an rs-number *is* the row's identity and a machine filling
+one performs an identity migration by network lookup with no authored edit anywhere. Several candidates
+are reported and never picked. The author types the rs-number into `variants.csv` and drops the old
+coordinate; a later `enrich` places it on whichever build the module declares, and `resolution.csv`'s
+`source` column records which link answered. That is where provenance goes — never into an ordinary
+authored coordinate.
 
 ## GA4GH VRS allele identity (`vrs.py`)
 

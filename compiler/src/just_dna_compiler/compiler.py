@@ -23,7 +23,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any, Union, get_args, get_origin
+from typing import Any, NamedTuple, Union, get_args, get_origin
 
 import polars as pl
 import yaml
@@ -119,9 +119,12 @@ from just_dna_format.spec import (
 from just_dna_format.vocab import population_sort_key
 from just_dna_format.vrs import (
     UnsupportedBuildError,
+    builds_containing_position,
+    contig_length,
     derive_vrs_allele_id,
     in_pseudoautosomal_region,
     is_substitution,
+    sole_build_naming_contig,
     split_vrs_ids,
 )
 from pydantic import BaseModel, ValidationError
@@ -822,6 +825,133 @@ def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38
             f"a single-allele genotype (e.g. 'G') for a homoplasmic/hemizygous call"
         )
     return warnings
+
+
+def _coordinate_label(row: Any) -> str:
+    """How one offending row is named in a grouped message: its coordinate, and its rsid if it has one.
+
+    Not `variant_key`: for exactly the rows this reports, the key *is* the coordinate (an impossible
+    position mints no VRS id), so naming both would print the same numbers twice. The rsid is the one
+    thing worth adding, because it is what the author will search their CSV for.
+    """
+    rsid = getattr(row, "rsid", None)
+    return f"{row.chrom}:{row.start}" + (f" ({rsid})" if rsid else "")
+
+
+class _CoordinateTable(NamedTuple):
+    """One table's rows, the build they are recorded under, and who wrote them.
+
+    `authored` decides the **remedy**, not the verdict. "Declare `genome_build: GRCh37`" is sound
+    advice about a table a human typed and nonsense about `resolution.csv`, whose build is a per-row
+    column on a machine-written sidecar: a GRCh37 module can carry a stale row stamped `GRCh38`, and
+    telling its author to declare the build they already declared sends them to the wrong file. The
+    fix there is to delete the sidecar and re-run the enricher.
+    """
+
+    label: str
+    build: str
+    authored: bool
+    rows: Iterable[Any]
+
+
+def _check_build_coordinates(tables: Iterable[_CoordinateTable]) -> list[str]:
+    """Coordinates that cannot exist in the build they are recorded under (RM48). Errors, both modes.
+
+    An author curating from older literature has hg19/GRCh37 coordinates and the module must be
+    GRCh38. Nothing in these packages converts, so the conversion happens off-tool and lands as an
+    ordinary authored coordinate carrying no provenance at all — and the two shapes below are the ones
+    that are **provably** wrong with no sequence, no network and no provisioned asset, which is what
+    puts them in the compiler rather than the enricher:
+
+    - **a position past the end of its contig.** GRCh38's chromosome 1 ends at 248,956,422 and
+      GRCh37's runs to 249,250,621, so an un-lifted coordinate in that 294 kb tail is a claim about a
+      base that does not exist. When the position *is* inside another tabled build's contig the
+      message says which — that is the whole diagnosis, and it costs one dict lookup.
+    - **a contig named by only one build.** The 25 primary contigs are spelled identically in both, so
+      this is entirely about unplaced scaffolds: `GL000209.1` is GRCh37's and `KI270728.1` is
+      GRCh38's, and neither exists in the other. A shared scaffold, a patch, an alt locus or an
+      unversioned accession settles nothing and is left alone (`vrs.sole_build_naming_contig`).
+
+    **Error in both modes**, which is the `_cross_validate_variants` inconsistent-reference-allele
+    class rather than a mode ladder: `strict` means *reproducible artifact*, and these rows are not
+    unreproducible, they are false. Nothing downstream can catch them either — a VRS id minted at an
+    impossible position is a correct digest of the wrong input, exactly as the 3,038-row off-by-one
+    was.
+
+    Findings are grouped by **reason** (table, contig, and which other build explains it) rather than
+    by row, because a wrong-build panel produces one of these per variant: 2,400 rows disagreeing one
+    by one reads as hopeless, while "2,400 rows carry GRCh37 coordinates" is a one-line fix. The
+    `summarize_ref_mismatches` shape, on the offline half.
+
+    Each table arrives as a `_CoordinateTable` — the build travels *per table* because
+    `resolution.csv` records its own on every row and a module's yaml speaks only for the authored
+    ones; comparing a resolution row against the module's declared build would be the wrong question
+    for a row that says which build it is in. `authored` picks the remedy for the same reason.
+    """
+    beyond: dict[tuple[str, str, bool, str, tuple[str, ...]], list[str]] = {}
+    misnamed: dict[tuple[str, str, bool, str, str], list[str]] = {}
+    for label, build, authored, rows in tables:
+        for row in rows:
+            chrom, start = getattr(row, "chrom", None), getattr(row, "start", None)
+            if chrom is None:
+                continue
+            elsewhere = sole_build_naming_contig(chrom)
+            if elsewhere is not None and elsewhere != build:
+                misnamed.setdefault(
+                    (label, build, authored, str(chrom), elsewhere), []
+                ).append(_coordinate_label(row))
+                continue
+            length = contig_length(chrom, build)
+            if start is None or length is None or start <= length:
+                continue
+            others = tuple(b for b in builds_containing_position(chrom, start) if b != build)
+            beyond.setdefault((label, build, authored, str(chrom), others), []).append(
+                _coordinate_label(row)
+            )
+
+    errors: list[str] = []
+    for (label, build, authored, chrom, others), found in beyond.items():
+        length = contig_length(chrom, build)
+        if others:
+            elsewhere = others[0]
+            explanation = (
+                f"every one of those positions is inside {elsewhere}'s {chrom} "
+                f"({contig_length(chrom, elsewhere):,} bp), so this reads as an un-lifted "
+                f"{elsewhere} coordinate under a {build} heading. Recover the rs-numbers with "
+                f"`just-dna-enricher hint recover --chrom {chrom} --start …` and author those "
+                f"instead — an rs-number resolves into a coordinate the compiler can cross-examine, "
+                f"where a converted position is its own only witness. "
+                + _build_remedy(authored, elsewhere)
+            )
+        else:
+            explanation = (
+                f"no build this compiler knows has a contig {chrom} that long, so the position is "
+                f"wrong in every frame — check the contig and the position together"
+            )
+        errors.append(
+            f"{label}: {len(found)} row(s) place a variant past the end of {chrom} on {build} "
+            f"({length:,} bp) — {explanation} ({_examples(found)})"
+        )
+    for (label, build, authored, chrom, elsewhere), found in misnamed.items():
+        errors.append(
+            f"{label}: {len(found)} row(s) name contig {chrom}, which is a top-level sequence of "
+            f"{elsewhere} and of no other build this compiler knows, while the rows are recorded as "
+            f"{build}. A coordinate on it means nothing here: fix the contig, or "
+            + _build_remedy(authored, elsewhere)
+            + f" ({_examples(found)})"
+        )
+    return errors
+
+
+def _build_remedy(authored: bool, elsewhere: str) -> str:
+    """Where the build is actually declared for this table — which is not the same file for both."""
+    if authored:
+        return f"declare `genome_build: {elsewhere}` if the whole module is on that assembly."
+    return (
+        f"delete the sidecar and re-run `just-dna-enricher enrich` if these rows are stale — the "
+        f"build is a per-row column here, not the module's declaration, so a module already "
+        f"declaring {elsewhere} can still carry rows stamped otherwise."
+    )
 
 
 #: The 0.4 table kinds that can name a locus, derived from the models rather than listed: a table is
@@ -1958,6 +2088,10 @@ def validate_spec(
     # Filled from `resolution.csv` below when it is present, and deliberately usable empty: allele
     # membership needs it only for a row that did not author its own `ref`/`alts`.
     membership_table: dict[str, list[ResolutionRow]] = {}
+    # Injected resolution rows, grouped by the build each one records rather than by the module's:
+    # `ResolutionRow.genome_build` is a column, so a row states which frame its numbers are in and
+    # that is the frame its coordinate has to be possible in (RM48).
+    resolution_by_build: dict[str, list[ResolutionRow]] = {}
 
     # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
@@ -1987,6 +2121,9 @@ def validate_spec(
         if model is ResolutionRow and not injected_errors:
             for injected_row in injected_rows:
                 membership_table.setdefault(injected_row.variant_key, []).append(injected_row)
+                resolution_by_build.setdefault(
+                    injected_row.genome_build, []
+                ).append(injected_row)
             # A `ga4gh:VA.…` is the one column checkable with no reference, no network and no
             # dependency, so there is nothing about it that needs an `output_dir`. A **mismatch** is an
             # error in *both* modes, which is why this gap was reachable without `--strict` at all:
@@ -2058,6 +2195,35 @@ def validate_spec(
     # the requirement above, so nothing used to report a module that grounds none of them. Pure
     # computation over authored bytes with no `output_dir`, so it belongs to the pre-flight.
     all_warnings.extend(_check_binning_grounding(loaded_kinds, studies))
+
+    # Coordinates that cannot exist in the build they are recorded under (RM48) — pure arithmetic over
+    # authored and injected bytes with no `output_dir`, so it belongs to the pre-flight by the standing
+    # rule, and it is the finding an author most wants *before* a compile: a wrong-build coordinate is
+    # cheap to fix and impossible to notice once it is a published digest.
+    #
+    # `resolution.csv` is in scope on purpose. Leaving it out would recreate the parity defect this
+    # check exists beside: an rsid-only authored row carries no coordinate here, so `validate` would
+    # see nothing while `compile` fills the position from the injected table and refuses — a green
+    # pre-flight followed by a refusal for a change the author did not make. Each resolution row is
+    # judged against **its own** `genome_build`, which is what that column is for.
+    all_errors.extend(
+        _check_build_coordinates(
+            [
+                _CoordinateTable("variants.csv", declared_build, True, variants),
+                _CoordinateTable("studies.csv", declared_build, True, studies),
+                *(
+                    _CoordinateTable(
+                        csv_name, declared_build, True, loaded_kinds.get(csv_name) or []
+                    )
+                    for csv_name, _model in _POSITIONAL_TABLE_KINDS
+                ),
+                *(
+                    _CoordinateTable("resolution.csv", build, False, rows)
+                    for build, rows in sorted(resolution_by_build.items())
+                ),
+            ]
+        )
+    )
 
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
@@ -2472,6 +2638,22 @@ def compile_module(
     all_warnings.extend(
         w for w in _check_contig_ploidy(variants, config.genome_build) if w not in all_warnings
     )
+
+    # Wrong-build coordinates, re-run **here** for the same reason ploidy is: this is the first point
+    # at which `chrom`/`start` are final. `validate_spec` sees an rsid-only row with no coordinate at
+    # all; resolution has since filled one, and the deprecated `ensembl_cache` path fills it from a
+    # reference `validate_spec` never opened. Unlike ploidy this needs no de-duplication: it returns
+    # errors, `compile_module` returns early on any validation error, so anything reaching here is a
+    # coordinate the pre-flight could not have seen.
+    build_errors = _check_build_coordinates(
+        [_CoordinateTable("variants.csv", config.genome_build, True, variants)]
+    )
+    if build_errors:
+        return CompilationResult(
+            success=False,
+            errors=[f"post-resolution: {e}" for e in build_errors],
+            warnings=all_warnings,
+        )
 
     # Outcome axis (orthogonal to the requested `resolution_mode` policy, Principle 5): did every
     # in-scope variant resolve to a genomic position? Vacuously true for a table-kind-only module —

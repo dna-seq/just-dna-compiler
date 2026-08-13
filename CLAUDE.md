@@ -615,6 +615,27 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   neighbour that happens to equal `ref` hides it), and both docs say so rather than implying a clean bill.
   Findings are grouped by **reason** via `summarize_ref_mismatches`; 56 lines became 2 on a 69-variant
   module.
+- **The ±1 shift reading is CONFIDENT AND WRONG on an old-assembly coordinate — RM48 is what orders the
+  two (0.6).** Real instance, not hypothetical: take `reference_examples/grch37_build/`'s own two HFE
+  rows (`6:26093141 G>A`, `6:26091179 C>G`) and declare `genome_build: GRCh38` — the RM48 scenario
+  exactly — and `_read_with_neighbours` reports "coordinate shifted 1 base to the right" for **both**,
+  because a neighbouring base equal to the authored `ref` is a one-in-four event and the true variants
+  are 228 and 411 bases away. The old-assembly pass reads the same coordinate on GRCh37, finds the
+  authored ref *and* a dbSNP record starting there, and names `rs1800562`/`rs1799945`. Four things to
+  keep straight. **Two explanations printed side by side with nothing to order them is the defect**, so
+  `summarize_build_diagnoses` says which supersedes — and only the two strong tiers do
+  (`dbsnp_corroborated`, `multi_base_match`); a **single-base** GRCh37 match rests on exactly the same
+  one-in-four coincidence as the shift reading, so ordering those two would invent a verdict. VCF 4.4
+  §1.6.1.4 gives a second competing explanation for any single-base disagreement — an ambiguous
+  reference base must be reduced to the first alphabetically, so an authored `A` may be a lossily
+  reduced `R` — and the message carries it. **The roadmap's stated blocker was checked and is false**:
+  `grch37.rest.ensembl.org` is permanent, unauthenticated and same-shaped, so there is no chain file, no
+  provisioned asset and no new licence; `PRIMARY_CONTIG_LENGTHS`/`CONTIGS_ONLY_IN` are 25 numbers and
+  ~200 names per build, committed beside `PAR_GRCh38` and re-derived by a network-gated test. **No
+  GRCh37 refget accession was added** — a length answers "could this exist", an accession is what an
+  identity is a function of, and the second is RM15. And **recovery reports, never fills**: filling the
+  rs-number would make resolution verify a value against the service that produced it, and `rsid` is
+  `identity_bearing`, the sharpest refusal in `lookup._REFUSAL_BY_COLUMN`.
 - **`content_signature` hashes a variant row's EFFECTIVE `curator`/`method`/`priority`, not its cell
   (RM37, shipped).** `defaults:` in `module_spec.yaml` and a per-row cell are two spellings of one value,
   and `reverse_module` re-emits it in the other place (it infers the module default via `_most_common`

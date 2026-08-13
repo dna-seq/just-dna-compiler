@@ -38,6 +38,7 @@ from just_dna_enricher.clinvar import lookup_loci as clinvar_lookup_loci
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.eutils import EutilsClient, is_missing
 from just_dna_enricher.gnomad import GnomadClient
+from just_dna_enricher.grch37 import GRCH37_BUILD, Grch37Client, RsidRecovery, recover_rsid
 from just_dna_enricher.identifiers import (
     GeneStatus,
     OntologyClient,
@@ -90,10 +91,12 @@ class LookupClients:
     crossref: CrossrefClient | None = None
     ontology: OntologyClient | None = None
     ensembl: EnsemblResolver | None = None
+    grch37: Grch37Client | None = None
 
     def close(self) -> None:
         for client in (
             self.gnomad, self.eutils, self.europepmc, self.crossref, self.ontology, self.ensembl,
+            self.grch37,
         ):
             closer = getattr(client, "close", None)
             if closer is not None:
@@ -469,6 +472,73 @@ def _offer_coordinates(hint: VariantHint) -> None:
                 "itself, and for an rsid-only row that check would not run at all",
             )
         )
+
+
+@dataclass
+class OldAssemblyHint:
+    """What GRCh37 dbSNP records at an old coordinate, and why it is not written for you (RM48)."""
+
+    recovery: RsidRecovery
+    findings: list[Finding] = field(default_factory=list)
+    alterations: list[Alteration] = field(default_factory=list)
+
+    def __str__(self) -> str:
+        return str(self.recovery)
+
+
+def lookup_old_assembly(
+    *,
+    chrom: str,
+    start: int,
+    ref: str | None = None,
+    alts: str | None = None,
+    offline: bool = False,
+    clients: LookupClients | None = None,
+) -> OldAssemblyHint:
+    """Answer "I have an hg19 coordinate — what is its rs-number?".
+
+    The authoring answer to a paper that predates GRCh38. It is **recovery, not liftover**, and the
+    difference is the whole design: an rs-number authored into `variants.csv` resolves through the
+    ordinary chain into a coordinate `resolution._verify` can cross-examine, while a lifted-over
+    position becomes the row's sole identity with nothing to check it against — an
+    unverifiable-by-construction identity, which is the hazard class behind this tree's 3,038-row
+    off-by-one.
+
+    Nothing is written, and the refusal is the sharpest one in `_REFUSAL_BY_COLUMN`: `rsid` is
+    `identity_bearing`, so a machine filling it would be performing an identity migration by network
+    lookup, exactly as `_check_rsid_currency` refuses to do for a merged id.
+
+    Several candidates are **reported, never picked** — `--ref`/`--alts` narrow them, and a pick among
+    equals is not a finding.
+    """
+    clients = clients or LookupClients()
+    if not offline and clients.grch37 is None:
+        clients.grch37 = Grch37Client()
+    recovery = recover_rsid(
+        chrom, start, ref=ref, alts=alts, client=clients.grch37, offline=offline
+    )
+    hint = OldAssemblyHint(recovery=recovery)
+    level = {
+        "recovered": "info",
+        "ambiguous": "warning",
+        "none": "info",
+        "unchecked": "warning",
+        "skipped_offline": "info",
+    }[recovery.outcome]
+    hint.findings.append(Finding(None, None, level, str(recovery)))
+    for candidate in recovery.candidates:
+        hint.alterations.append(
+            _advisory(
+                "rsid",
+                candidate["rsid"],
+                f"dbsnp-{GRCH37_BUILD.lower()}",
+                "reported, never written: an rs-number is the row's identity, and filling one from a "
+                "lookup migrates variant_key with no authored edit anywhere. Type it into "
+                "variants.csv and drop the old coordinate — resolution will place it on the build "
+                "the module declares",
+            )
+        )
+    return hint
 
 
 def lookup_citation(

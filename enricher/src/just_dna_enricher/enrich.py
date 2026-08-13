@@ -29,6 +29,12 @@ from just_dna_enricher.clinical import ClinSigConflict, tautology_reason, verify
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
+from just_dna_enricher.grch37 import (
+    BuildDiagnosis,
+    Grch37Client,
+    diagnose_wrong_build,
+    summarize_build_diagnoses,
+)
 from just_dna_enricher.identifiers import RsidStatus, check_rsids
 from just_dna_enricher.licensing import record_source_terms, resolution_authority, sidecar_path
 from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
@@ -301,6 +307,15 @@ class EnrichmentResult:
     # Authored data that disagrees with the reference genome. Reported, never repaired — see
     # `sequences.verify_reference_alleles`. Empty when the check could not run (offline).
     ref_mismatches: list[RefMismatch] = field(default_factory=list)
+    # Which of those mismatched rows read as GRCh37 coordinates in a GRCh38 module (RM48). Computed
+    # only over `ref_mismatches`, so a module whose refs agree costs no request at all, and grouped by
+    # evidence class rather than by row.
+    build_diagnoses: list[BuildDiagnosis] = field(default_factory=list)
+    # Why the diagnosis above did not run, or `None` when it did. Same rule as `clin_sig_not_checked`:
+    # an empty list otherwise means both "asked, and nothing points at another build" and "never
+    # asked", and only one of those is a clean bill. `no_ref_mismatches` (nothing to diagnose) and
+    # `skipped_offline` are the two ways it does not run.
+    build_not_diagnosed: str | None = None
     # Authored `clin_sig` values ClinVar's own records do not support. Warnings in BOTH modes on
     # purpose — see `clinical.verify_clin_sig`. Empty when no snapshot was provisioned.
     clin_sig_conflicts: list[ClinSigConflict] = field(default_factory=list)
@@ -363,6 +378,7 @@ def enrich(
     keep_par_twin: bool = False,
     resolver: EnsemblResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
+    grch37_client: Grch37Client | None = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
 
@@ -383,6 +399,12 @@ def enrich(
     follows the mode, mirroring the compiler's VRS verify pass: `strict` treats a mismatch as fatal
     (its contract is a reproducible artifact, and a wrong `ref` can silently mint a *different* allele
     id), while `best_effort` warns and carries on. Needs sequence access, so it is skipped offline.
+
+    A mismatch is then asked one further question, over those rows **only**: does the coordinate read
+    as GRCh37 rather than as a wrong cell? That needs the live GRCh37 service, so it is skipped
+    offline, it is bounded (`grch37.DEFAULT_DIAGNOSIS_LIMIT` — a systematic wrong build answers the
+    same on every row), and `grch37_client` injects the client the way `resolver`/`gnomad_client` do.
+    It adds no flag of its own: `verify_ref` gates the family and `--offline` is the egress switch.
 
     `verify_clinsig` compares each authored `clin_sig` against the ClinVar snapshot's own. It is
     offline-capable (the snapshot is local) and is the **one check whose severity does not follow the
@@ -732,6 +754,31 @@ def enrich(
     for line in summarize_ref_mismatches(ref_mismatches):
         logger.warning("Reference-allele mismatch — %s", line)
 
+    # Why does the ref disagree? A shifted `start` is one answer and `_read_with_neighbours` already
+    # gives it; the other, which no offline check can reach, is that the whole coordinate is on the
+    # old assembly. Asked of the mismatched rows **only** — that set is the cost control, and a module
+    # whose refs agree makes no request here at all (RM48).
+    #
+    # The client is a parameter for the reason `resolver`/`gnomad_client` are: a network dependency
+    # constructed inside this function cannot be replaced, so a *unit* test of some neighbouring
+    # behaviour egresses whether or not it means to, and the suite's opt-in-network rule quietly
+    # becomes advisory. Passing `None` still lets the pass build and close its own.
+    build = diagnose_wrong_build(ref_mismatches, offline=offline, client=grch37_client)
+    if build.not_checked == "skipped_offline":
+        logger.info(
+            "Wrong-build diagnosis skipped: --offline. The GRCh37 service is the only thing that can "
+            "tell an old-assembly coordinate from a wrong ref, and there is no local GRCh37 data."
+        )
+    if build.sampled:
+        logger.warning(
+            "Old-assembly diagnosis looked at %d of %d mismatched row(s): a systematic wrong build "
+            "gives the same answer on every row, so the pass is bounded rather than paying two paced "
+            "requests each. Fix what it names and re-run to see the rest.",
+            build.examined, build.total,
+        )
+    for line in summarize_build_diagnoses(build.diagnoses):
+        logger.warning("Old-assembly coordinate — %s", line)
+
     # Second validation pass: does the module's clinical call agree with ClinVar's? Offline-capable
     # (the snapshot is local), and — unlike every other check here — it stays a warning in `strict`
     # too. See `clinical.verify_clin_sig`: escalating would make the format arbitrate a clinical
@@ -789,6 +836,7 @@ def enrich(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
         clin_sig_not_checked=clin_sig_not_checked,
+        build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
     )
@@ -808,11 +856,22 @@ def enrich(
         # Deliberately checked BEFORE the unresolved gate: a wrong `ref` is a worse diagnosis than a
         # missing position (it can mint a well-formed id for the wrong allele), so it should be the
         # error the author sees first.
+        # The build diagnosis travels **inside** the refusal, not beside it. It is computed above in
+        # both modes, and a `strict` run raises here and returns nothing — so a diagnosis left on the
+        # result object would be visible only to the mode that does not need it, and invisible to the
+        # one whose whole output is this sentence.
+        because = (
+            " " + "; ".join(summarize_build_diagnoses(build.diagnoses)) + "."
+            if build.diagnoses
+            else ""
+        )
         raise EnrichmentError(
             f"strict enrichment: {len(ref_mismatches)} row(s) disagree with the {genome_build} "
             f"reference sequence. "
             + "; ".join(summarize_ref_mismatches(ref_mismatches))
-            + ". Fix the authored coordinates (a shifted position, or a wrong ref length, silently "
+            + "."
+            + because
+            + " Fix the authored coordinates (a shifted position, or a wrong ref length, silently "
             "mints a different allele id), or enrich with mode='best_effort' to record them as "
             "warnings."
         )
