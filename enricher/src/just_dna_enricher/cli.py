@@ -4,6 +4,8 @@
     just-dna-enricher frequencies spec/                 # pass 2: allele frequency (online only)
     just-dna-enricher gene-metrics spec/                # pass 3: gene constraint (offline capable)
     just-dna-enricher literature spec/                  # pass 4: citations (online only)
+    just-dna-enricher gene-validity spec/ --source gencc  # curated gene-disease assertions (online)
+    just-dna-enricher assertions spec/                  # ClinVar call + review tier (offline capable)
     just-dna-enricher enrich-and-compile spec/ out/ --frequencies --gene-metrics
     just-dna-enricher gnomad constraint build --download --out gnomad_constraint/   # [dev]
     just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            # [dev]
@@ -18,6 +20,11 @@ from just_dna_compiler.draft import DraftError, authoring_requirements, blank_te
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
 from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
+from just_dna_enricher.assertions import (
+    ASSERTION_GENOME_BUILD,
+    ClinicalAssertionError,
+    enrich_clinical_assertions,
+)
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
     ClinGenError,
@@ -51,6 +58,13 @@ from just_dna_enricher.download import (
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
+from just_dna_enricher.gene_validity import (
+    CLINGEN_SOURCE as CLINGEN_VALIDITY_SOURCE,
+)
+from just_dna_enricher.gene_validity import (
+    GeneValidityError,
+    enrich_gene_validity,
+)
 from just_dna_enricher.identifiers import check_identifiers
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
@@ -292,6 +306,103 @@ def dosage_(
     if result.missing:
         # ClinGen curates a subset by design, so this is information rather than a problem.
         typer.secho(f"  not in the ClinGen curation list: {result.missing}", fg=typer.colors.YELLOW)
+
+
+@app.command("gene-validity")
+def gene_validity_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    source: str = typer.Option(
+        CLINGEN_VALIDITY_SOURCE, "--source",
+        help="Which submitter to read: clingen (expert panels) or gencc (an aggregate of nineteen).",
+    ),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail unless every gene carries a curated assertion."
+    ),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="No-op with a warning: neither ClinGen nor GenCC publishes an offline snapshot.",
+    ),
+    url: str | None = typer.Option(None, "--url", help="Override the submitter's export URL."),
+) -> None:
+    """Fill gene_validity.csv with curated gene-disease assertions for the genes variants.csv names.
+
+    One row per (gene, disease, mode of inheritance, submitter) — the source's own grain. Mode of
+    inheritance is in the key because 59 ClinGen (gene, disease) pairs carry two curations that differ
+    only there, and `submitter` is in it because GenCC publishes the disagreement between submitters,
+    which is the thing it exists to publish.
+    """
+    try:
+        result = enrich_gene_validity(spec_dir, source=source, mode=_mode(strict), offline=offline,
+                                      url=url)
+    except GeneValidityError as exc:
+        typer.secho(f"GENE VALIDITY FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped_offline:
+        typer.secho(
+            "skipped: --offline (no gene-validity submitter publishes an offline snapshot)",
+            fg=typer.colors.YELLOW,
+        )
+        return
+    typer.secho(f"gene validity: {spec_dir / 'gene_validity.csv'}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"dataset: {result.dataset}  rows: {len(result.rows)}  genes curated: {len(result.covered)}"
+    )
+    if result.missing:
+        # Both submitters curate a subset by design, so this is information rather than a problem.
+        typer.secho(f"  no {source} assertion: {result.missing}", fg=typer.colors.YELLOW)
+    if result.unmapped:
+        typer.secho(
+            f"  wordings this release does not model (kept verbatim in classification_raw): "
+            f"{result.unmapped}",
+            fg=typer.colors.YELLOW, err=True,
+        )
+
+
+@app.command("assertions")
+def assertions_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail unless every resolved allele has a ClinVar record."
+    ),
+    offline: bool = typer.Option(False, "--offline", help="Snapshot only: never touch the network."),
+    clinvar_cache: Path | None = typer.Option(
+        None, "--clinvar-cache", help="Explicit ClinVar snapshot directory."
+    ),
+) -> None:
+    """Fill clinical_assertions.csv from the coordinates already in resolution.csv.
+
+    Records what ClinVar says about each allele **and how much review sits behind it** — the star
+    rating a compiled module previously discarded, so a one-star single submission and a practice
+    guideline stopped being the same claim. Offline-capable: with a snapshot provisioned this pass
+    never touches the network, and with none reachable it is a no-op rather than a failure.
+
+    It records; it does not adjudicate. Whether the module's own clin_sig agrees with ClinVar's is the
+    `enrich` cross-check's question, and that one warns in both modes on purpose.
+    """
+    try:
+        result = enrich_clinical_assertions(
+            spec_dir, mode=_mode(strict), offline=offline, clinvar_cache=clinvar_cache,
+        )
+    except ClinicalAssertionError as exc:
+        typer.secho(f"ASSERTIONS FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped_no_snapshot:
+        typer.secho(
+            "skipped: no ClinVar snapshot reachable (provision one with `clinvar pull`)",
+            fg=typer.colors.YELLOW,
+        )
+        return
+    typer.secho(f"clinical assertions: {spec_dir / 'clinical_assertions.csv'}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"dataset: {result.dataset}  rows: {len(result.rows)}  alleles covered: {len(result.covered)}"
+    )
+    if result.missing:
+        typer.secho(f"  no ClinVar record: {result.missing}", fg=typer.colors.YELLOW)
+    if result.off_build:
+        typer.secho(
+            f"  not on {ASSERTION_GENOME_BUILD}, so never queried: {result.off_build}",
+            fg=typer.colors.YELLOW, err=True,
+        )
 
 
 @app.command("literature")

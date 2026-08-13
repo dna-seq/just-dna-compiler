@@ -16,6 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import authored_field_names, field_category, field_vocabularies
 from just_dna_format.binning import (
     ActivityPhenotypeRow,
@@ -24,6 +25,7 @@ from just_dna_format.binning import (
     MeasureBinRow,
     RepeatAlleleRow,
 )
+from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.manifest import (
     RECOMMENDED_COLORS,
     RECOMMENDED_ICONS,
@@ -90,7 +92,21 @@ _PGS_MODELS: dict[str, type[BaseModel]] = {"PgsRow": PgsRow}
 # are three orthogonal axes where `None` means unknown rather than false, which is not a guessable
 # shape. The consumer who reported it got there by reading `SourceRow.model_fields` — reading our
 # source to learn our schema, which is the thing this module exists to make unnecessary.
-_FACT_MODELS: dict[str, type[BaseModel]] = {"SourceRow": SourceRow}
+#
+# `GeneValidityRow`/`ClinicalAssertionRow` join it in 0.6 for a **different** reason, and the two
+# reasons should not be conflated. Nobody hand-writes either — they stay out of `draft.DRAFTABLE`
+# with the other machine-written sidecars — but each introduces a *new closed vocabulary*
+# (`gene_validity`, `inheritance_mode`), and the only guard that discovers an undeclared one does so
+# by behaviour while iterating this registry. A vocabulary the guard cannot see is precisely the S21
+# hole, so a model carrying a new one belongs here whoever writes its rows. `FrequencyRow`,
+# `GeneMetricsRow` and `LiteratureRow` are still outside and still carry enforced vocabularies of
+# their own — a real gap, and a wider change than this one, since adding them alters what every
+# existing consumer of `authoring_reference()` renders.
+_FACT_MODELS: dict[str, type[BaseModel]] = {
+    "SourceRow": SourceRow,
+    "GeneValidityRow": GeneValidityRow,
+    "ClinicalAssertionRow": ClinicalAssertionRow,
+}
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,

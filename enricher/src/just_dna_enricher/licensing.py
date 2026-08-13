@@ -169,6 +169,31 @@ CLINGEN_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# GenCC, read off `search.thegencc.org` on 2026-08-13: "The GenCC data are available free of
+# restriction under a CC0 1.0 Universal (CC0 1.0) Public Domain Dedication. The GenCC requests that you
+# give attribution to GenCC and the contributing sources whenever possible and appropriate."
+#
+# ClinGen's shape exactly, and the second half of that sentence is why `attribution` names the
+# contributing sources as well as GenCC: the file is an *aggregate* of nineteen submitters, so crediting
+# only the aggregator credits nobody who did the work. `share_alike` stays False because a request is
+# not a licence condition, and recording it as one would overstate the obligation.
+#
+# The diagnostic-use line from the same page rides in `notice` — the table exists to carry a use
+# restriction a consumer needs and no flag expresses, not only the prohibitions a gate reads.
+GENCC_TERMS = SourceTerms(
+    source="gencc",
+    license="CC0-1.0",
+    license_url="https://search.thegencc.org/",
+    attribution="The GenCC (https://thegencc.org) and its contributing submitters",
+    notice=(
+        "CC0 public-domain dedication; attribution to GenCC and the contributing sources requested "
+        "but not required. Not intended for direct diagnostic use or medical decision-making."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
 # ClinVar is NCBI public-domain: US-government work, no copyright asserted over the aggregate. It is
 # already consulted as a resolver link and for the `clin_sig` cross-check; a drafting provider *copies*
 # rows out of it, which is the point at which a module must be able to say where they came from. The
@@ -256,6 +281,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         CPIC_TERMS,
         PHARMVAR_TERMS,
         CLINGEN_TERMS,
+        GENCC_TERMS,
         CLINVAR_TERMS,
         ENSEMBL_TERMS,
         GNOMAD_TERMS,

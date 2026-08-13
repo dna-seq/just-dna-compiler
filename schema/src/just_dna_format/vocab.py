@@ -161,6 +161,78 @@ DOSAGE_SENSITIVITY_BY_CODE: dict[int, str] = {
     40: "dosage_sensitivity_unlikely",
 }
 
+# ── Gene–disease validity (0.6; the `gene_validity.csv` fact table, RM24) ───────────────────────
+# How strongly a curating body asserts that variation in a gene causes a disease. Closed vocabulary
+# (Principle 6), and **one set for every submitter**: ClinGen writes `Definitive`/`Disputed`, GenCC
+# writes `Definitive`/`Disputed Evidence`/`Supportive`, and a consumer filtering on one spelling would
+# silently miss the other's rows. The mapping happens at the enricher boundary, the way ClinGen's
+# dosage codes already do — builders store verbatim, readers map — so a mapping fix reaches a table
+# that was already written.
+#
+# Ordinal, unlike `VALID_DOSAGE_SENSITIVITY`: definitive > strong > moderate > limited is genuinely a
+# strength ladder in ClinGen's own SOP. `disputed`/`refuted`/`no_known_disease_relationship` are NOT
+# points on it — they are the opposite claim — which is why this is a set with an intended reading
+# rather than an integer column. `ORDERED_GENE_VALIDITY` below states the ladder explicitly for the
+# consumer who wants to sort, and deliberately holds only the members that are on it.
+#
+# `supportive` is GenCC-only (5,274 of 30,410 submissions on 2026-08-13, most of them Orphanet's): a
+# submitter asserting the association without grading it on ClinGen's ladder. `animal_model_only` is
+# ClinGen-only and appears in no row of the 2026-08-13 release — kept for the `withdrawn` reason, that
+# it is a classification the source's own SOP defines and a later release may emit, and Principle 3
+# would otherwise make its absence a one-way door.
+VALID_GENE_VALIDITY: frozenset[str] = frozenset(
+    {
+        "definitive",
+        "strong",
+        "moderate",
+        "limited",
+        "supportive",
+        "disputed",
+        "refuted",
+        "no_known_disease_relationship",
+        "animal_model_only",
+    }
+)
+
+#: The strength ladder, weakest first — the members of `VALID_GENE_VALIDITY` that are actually ordered.
+#:
+#: A separate tuple rather than an integer column for the ClinGen-dosage reason inverted: those codes
+#: look ordered and are not, so they had to be decoded; these are ordered, so the order is published
+#: rather than left for each consumer to hardcode. `supportive` is absent because it is an assertion
+#: made off the ladder, and the three negative verdicts are absent because they are a different claim
+#: — putting `refuted` at position zero would read as "the weakest evidence for", which inverts it.
+ORDERED_GENE_VALIDITY: tuple[str, ...] = (
+    "limited",
+    "moderate",
+    "strong",
+    "definitive",
+)
+
+#: How a gene–disease relationship is inherited, as the curating body states it. Closed (Principle 6).
+#:
+#: One set again, and it has to be: ClinGen writes two-letter codes (`AD`, `AR`, `XL`, `SD`, `MT`,
+#: `UD`) while GenCC writes HPO term labels (`Autosomal dominant`, `X-linked recessive`, …). The same
+#: fact, two spellings, and the column is part of the row's identity — 59 (gene, disease) pairs in the
+#: 2026-08-13 ClinGen release carry two rows differing only by mode of inheritance, so dropping it
+#: collapses real curations rather than duplicates.
+#:
+#: `undetermined` is a **stated** finding, not a missing cell: ClinGen's `UD` and GenCC's `Unknown`
+#: mean an expert panel looked and could not settle the mode. A source that has no concept of
+#: inheritance leaves the column empty instead, which is the ordinary null-is-not-a-value rule.
+VALID_INHERITANCE_MODE: frozenset[str] = frozenset(
+    {
+        "autosomal_dominant",
+        "autosomal_recessive",
+        "x_linked",
+        "x_linked_dominant",
+        "x_linked_recessive",
+        "y_linked",
+        "mitochondrial",
+        "semidominant",
+        "undetermined",
+    }
+)
+
 # PharmGKB/ClinPGx clinical-annotation phenotype categories. Closed vocabulary (Principle 6), and
 # multi-valued via `MULTI_SEP` — ClinPGx writes `Efficacy;Toxicity` for an annotation that is about
 # both, which is a real combination rather than a data error.
@@ -203,18 +275,32 @@ def validate_phenotype_categories(
 # ── Data-source licensing (0.5; the `sources.csv` fact table) ───────────────────────────────────
 # Which layer of a module a source contributed to. Closed vocabulary (Principle 6).
 #
-# The split is the whole point of tracking licences per (source, layer) rather than per source. The
-# first four are machine-produced fact sidecars carrying things a source *reports* — a coordinate, an
-# AC/AN, a PMID — which are not the expressive content a copyright licence covers, and which in the
-# coordinate case are identically available from Ensembl. `annotation` is the module's own authored
-# tables, where a curated annotation text or evidence level is *expressed* and a derivative work
-# genuinely exists.
+# The split is the whole point of tracking licences per (source, layer) rather than per source. All
+# but the last are machine-produced fact sidecars carrying things a source *reports* — a coordinate,
+# an AC/AN, a PMID, a curated verdict — which are not the expressive content a copyright licence
+# covers, and which in the coordinate case are identically available from Ensembl. `annotation` is the
+# module's own authored tables, where a curated annotation text or evidence level is *expressed* and a
+# derivative work genuinely exists.
 #
 # Only `annotation` taints a module. A module that used CPIC purely to look up a coordinate must not
 # be marked as carrying CPIC's restrictions, and a single `share_alike` boolean on the manifest would
 # render that case identically to one embedding ClinPGx annotation prose.
+#
+# `gene_validity` and `clinical_assertion` joined in 0.6 with the two derived tables they name (RM24,
+# RM25), and both are fact-class for the reason above rather than by analogy: a ClinGen gene–disease
+# verdict and a ClinVar review status are values those sources publish identically to everyone, the
+# same standing as a gnomAD frequency. Each is written by a pass, which is the half that matters —
+# `VALID_SOURCE_LAYERS` having members no file ever carried is the bug that rule exists to prevent.
 VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
-    {"resolution", "frequency", "gene_metrics", "literature", "annotation"}
+    {
+        "resolution",
+        "frequency",
+        "gene_metrics",
+        "literature",
+        "gene_validity",
+        "clinical_assertion",
+        "annotation",
+    }
 )
 
 # What the *acquirer* declared about their intended use when the data was fetched. A third orthogonal
