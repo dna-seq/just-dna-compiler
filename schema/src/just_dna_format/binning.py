@@ -487,7 +487,11 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
     * **RM56** — the same two fields travel with a confidence interval whose upper bound may be
       unbounded, so a measurement is an interval and can cross a threshold. Fires only where there is a
       threshold to cross: two or more resolved bins in one group. With a single bin there is nothing to
-      span, and saying so anyway would be a finding about a table that does not have the problem.
+      span, and saying so anyway would be a finding about a table that does not have the problem. The
+      count is of **bins**, and the message says only that — an earlier draft called them *adjacent*,
+      which is a property this function never computes and which `[0,0]` beside `[50,60]` falsifies.
+      Adjacency is also not what matters here: an interval crosses two bins whether or not there is a
+      hole between them, and where there is one the hole is `validate_bins`' finding, not this one.
 
     **Warnings in both modes, and deliberately never a `strict` error** — the `not_covered` /
     VRS-coverage class. No authored edit clears either: RM55 needs a schema column that does not exist
@@ -520,7 +524,7 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
                 f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what to "
                 f"do with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
                 f"bound means *unbounded*, so the measurement is an interval — and the widest group "
-                f"here states {widest} adjacent bins for it to cross. The consumer contract has three "
+                f"here states {widest} bins for it to cross. The consumer contract has three "
                 f"states (a bin matched, no bin matched, the measurement absent) and none of them is "
                 f"this one. Not implemented, and stated rather than left silent: until the policy "
                 f"vocabulary lands, a conforming consumer **withholds** — it does not pick among the "

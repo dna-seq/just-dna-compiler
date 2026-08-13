@@ -327,8 +327,8 @@ or repeat call arrives with a confidence interval, and a missing upper bound on 
 so the measurement is a range, and yours is a table of thresholds it can straddle. The format has no
 state for that yet: a consumer that reads an interval touching two or more of your bins must **withhold**,
 not pick one, and not fall back to your `unresolved` row (that row means *no measurement was available*,
-which is a different claim about the sample). The warning fires on any such table with two or more
-adjacent bins, so it is expected on every real one. It never fails a compile, including `--strict`.
+which is a different claim about the sample). The warning fires on any such table with two or more bins
+in one key group, so it is expected on every real one. It never fails a compile, including `--strict`.
 
 **`N row(s) write '.' in alts, which is VCF's MISSING marker, not an allele`**
 **Fix this one — leave the cell empty.** In a VCF, `.` in the ALT column means *there are no alternate

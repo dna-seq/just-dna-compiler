@@ -1152,10 +1152,18 @@ def _check_missing_allele_marker(
         ]
         if not offenders:
             continue
-        # The identity split needs a coordinate: an rsid short-circuits `derive_variant_key`, so both
-        # spellings of such a row key identically and only the cell is wrong.
-        split: list[tuple[Any, str | None]] = []
+        # The identity split needs a coordinate, and **a row with no identity at all is not a split**.
+        # Two shapes reach here without one and both must take the no-split branch. An rsid
+        # short-circuits `derive_variant_key`, so both spellings of such a row key identically. And a
+        # gene-only `heteroplasmy.csv` row — the pre-0.5 shape, still legal — has `variant_key is None`
+        # while `derive_variant_key(None, None, None, None)` returns the *string* `'None:None:None'`, so
+        # comparing the two always differs and the message read "e.g. None rather than None:None:None"
+        # about a row that names no variant. Guard on the identity, never on the comparison.
+        split: list[tuple[Any, str]] = []
         for row in offenders:
+            key = getattr(row, "variant_key", None)
+            if key is None:
+                continue
             without = derive_variant_key(
                 getattr(row, "rsid", None),
                 getattr(row, "chrom", None),
@@ -1163,8 +1171,8 @@ def _check_missing_allele_marker(
                 getattr(row, "ref", None),
                 build=genome_build,
             )
-            if getattr(row, "variant_key", None) != without:
-                split.append((row, without))
+            if key != without:
+                split.append((row, str(without)))
         if split:
             row, without = split[0]
             detail = (
@@ -1175,8 +1183,9 @@ def _check_missing_allele_marker(
             )
         else:
             detail = (
-                "these rows are rsid-keyed, so their identity is unaffected — the cell is simply "
-                "claiming an allele that does not exist"
+                "no row's identity is affected — an rsid-keyed row keys the same either way, and a "
+                "gene-keyed row names no variant at all — so the cell is simply claiming an allele "
+                "that does not exist"
             )
         warnings.append(
             f"{csv_name}: {len(offenders)} row(s) write '.' in alts, which {MISSING_ALLELE_PHRASE} — "
@@ -2763,13 +2772,21 @@ def compile_module(
     all_warnings.extend(
         w for w in _check_binning_grounding(kind_rows, studies) if w not in all_warnings
     )
+    # `kind_rows` is freshly loaded and never resolved, so re-running the binning check here produces
+    # the identical sentence and the message-dedup above does its job.
     all_warnings.extend(w for w in _check_measure_shape(kind_rows) if w not in all_warnings)
-    all_warnings.extend(
-        w
-        for w in _check_missing_allele_marker(variants, kind_rows, config.genome_build)
-        if w not in all_warnings
-    )
-    all_warnings.extend(w for w in _check_quality_inversion(variants) if w not in all_warnings)
+
+    # **The two variant-level checks of this round are NOT re-run here, and that is the fix rather than
+    # an omission.** Both read authored cells (`alts`, `requires_callable` + `quality_from`) that
+    # resolution never fills, so `validate_spec`'s pass — which runs before any expansion — already has
+    # the right answer, and it reaches this list through `all_warnings = list(validation.warnings)`
+    # above. Running them again on `variants` would count the *expanded* rows: a one-to-many rsid
+    # becomes N rows carrying one authored genotype, so the same finding is reported with a different
+    # count and different example keys, which the message-dedup cannot collapse because it dedups on
+    # the sentence. Probed: an rsid-only `requires_callable` row over a two-locus `resolution.csv`
+    # emitted "1 row(s) …" and "2 row(s) …" side by side, both into `manifest.compilation.warnings`.
+    # This is the mirror of the `_check_contig_ploidy` lesson — that warning had to *move* here because
+    # its input is filled by resolution; these two must stay behind it for exactly the same reason.
 
     # 0.5 derived-fact sidecars: materialize each present CSV, and cross-check it against what the
     # module actually contains. A row describing something the module never mentions is a warning, not

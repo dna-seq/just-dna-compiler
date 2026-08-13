@@ -196,6 +196,19 @@ def test_a_group_is_the_unit_a_measurement_could_span() -> None:
     ]
     assert len(measurement_shape_warnings(two_motifs)) == 1  # RM55 only: neither group has two bins
 
+    # The same property on the kind whose key is widest: `CopyNumberRow._KEY_FIELDS` carries the
+    # modifier, so a real SMN1 table stating one dosage per SMN2 copy number is three groups of one
+    # bin. A measurement is of SMN1 *in one modifier context*, so it can span nothing — and counting
+    # across the groups would report a span no single call could make.
+    smn_by_modifier = [
+        CopyNumberRow(
+            gene="SMN1", modifier_gene="SMN2", modifier_cn=n, measure_min=0, measure_max=0,
+            conclusion=f"SMA with SMN2={n}",
+        )
+        for n in (2, 3, 4)
+    ]
+    assert len(measurement_shape_warnings(smn_by_modifier)) == 1
+
 
 # ── RM58: `.` is VCF's MISSING marker, not an allele ───────────────────────────────────────────
 

@@ -225,7 +225,63 @@ def test_the_missing_marker_gets_its_own_clause_and_borrows_neither_other_one() 
         assert "ambiguity code" in together and "RM5" in together and "MISSING marker" in together
 
 
+def test_a_gene_only_heteroplasmy_row_is_not_reported_as_an_identity_split(
+    tmp_path: Path,
+) -> None:
+    """A row that names no variant cannot have two identities for one site — and said it did.
+
+    `HeteroplasmyRow.variant_key` is `None` for the pre-0.5 gene-keyed shape, which is still legal,
+    while `derive_variant_key(None, None, None, None)` returns the *string* `'None:None:None'`. The
+    first cut compared those two, so the branch that claims a split was taken for every such row and
+    the published warning read "e.g. None rather than None:None:None". Pinned on the real compile path
+    rather than on the helper, because the false sentence reached `manifest.compilation.warnings`.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML)
+    (spec / "heteroplasmy.csv").write_text(
+        "gene,reference_sequence,alts,measure_kind,measure_min,measure_max,conclusion,unresolved\n"
+        "MT-TL1,NC_012920.1,.,allele_fraction,0.0,0.5,below the MELAS threshold,false\n"
+        "MT-TL1,NC_012920.1,.,allele_fraction,0.5,1.0,above it,false\n"
+    )
+    warnings = _warnings(spec, tmp_path)
+    found = _matching(warnings, compiler_mod.MISSING_ALLELE_PHRASE)
+    assert len(found) == 1
+    assert "None" not in found[0], found[0]
+    assert "key differently" not in found[0], found[0]
+    assert "names no variant at all" in found[0]
+
+
 # ── validate/compile parity, and the dedup that makes it readable ──────────────────────────────
+
+
+def test_an_expanded_rsid_does_not_report_the_same_finding_with_two_counts(
+    tmp_path: Path,
+) -> None:
+    """The authored-cell checks must not be re-run on the post-expansion list.
+
+    A one-to-many rsid becomes N rows carrying the one authored genotype, so a check counting rows
+    reports "1 row(s)" from `validate_spec` (authored) and "2 row(s)" from a compile-side re-run — two
+    sentences the message-dedup cannot collapse, because it dedups on the sentence and both the count
+    and the example keys differ. Both then ship inside `manifest.compilation.warnings`, where a reader
+    has no way to tell which is the real count.
+
+    This is the `_check_contig_ploidy` lesson pointing the other way: that warning had to *move* to the
+    post-resolution pass because resolution fills its input, and these two must stay in front of it
+    because resolution fills neither `requires_callable` nor `quality_from`.
+    """
+    spec = _spec(tmp_path, _QUAL_FLOOR_ROW)
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        "rs113993960,rs113993960,7,117559590,ATCT,A,GRCh38,0,cache,resolved\n"
+        "rs113993960,rs113993960,7,117559592,TCTA,T,GRCh38,1,cache,resolved\n"
+    )
+    warnings = _warnings(spec, tmp_path)
+    found = _matching(warnings, compiler_mod.QUAL_INVERSION_PHRASE)
+    assert len(found) == 1, found
+    # And the count it reports is the authored one — one row was written, however many loci it
+    # resolved to. The finding is about the cell, and the author wrote the cell once.
+    assert found[0].startswith("variants.csv: 1 row(s)"), found[0]
 
 
 @pytest.mark.parametrize(
