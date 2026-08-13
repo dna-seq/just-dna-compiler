@@ -233,9 +233,12 @@ def is_unobservable_allele(value: str | None) -> bool:
     mistake worth diagnosing; `*` is a single character with no interior to get wrong, so there is no
     near-miss to be generous about and a looser test could only start claiming things that are not this.
 
-    Note what it is *not* asked about: `ref`. A reference allele is the sequence a record is anchored
-    to, and a `*` there would anchor nothing — the same argument that keeps a symbolic allele out of a
-    REF column.
+    It **is** asked about `ref`, and an earlier draft of this note claimed otherwise.
+    `hosting_verdict` builds its locus set as `{ref} | alts` and strips the whole set, so a `ref` of
+    `*` is discarded like any other member. That is not an endorsement of writing one — a reference
+    allele is the sequence a record is anchored to, and a `*` there anchors nothing — but the predicate
+    is a *test*, not a policy, and a locus left with nothing observable is reported as undecided rather
+    than treated as a contradiction.
     """
     return value is not None and value.strip() == UNOBSERVABLE_ALLELE
 

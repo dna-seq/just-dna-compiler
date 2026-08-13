@@ -301,15 +301,20 @@ def test_a_star_in_the_alt_list_is_inert_for_every_nucleotide_call() -> None:
 
 
 def test_every_undecided_cause_gets_its_own_reason() -> None:
-    """`None` has four causes; the warning used to assert one of them for all four.
+    """`None` has **five** causes; the warning used to assert one of them for all five.
 
     Each case below really returns `None` from the predicate — asserted, so the table cannot drift into
     describing shapes that are actually decided — and each must draw its own explanation. The all-`*`
-    row is the one that made this worth fixing: the old sentence told the reader to check the pair
+    rows are the ones that made this worth fixing: the old sentence told the reader to check the pair
     against a reference sequence, and no reference can say what a call did not observe.
+
+    The all-`*` **locus** row is the branch a first cut of this test missed while its docstring said
+    "four causes" — the predicate reaches it (`hosting_verdict('A/T', '*', '*')` is `None`), so an
+    uncovered branch here is exactly the silent inheritance the pairing exists to prevent.
     """
     cases = {
-        ("*/*", "A", "T"): "observed no allele",                    # RM59
+        ("*/*", "A", "T"): "observed no allele",                    # RM59, the call
+        ("A/T", "*", "*"): "records no allele",                     # RM59, the locus
         ("<DEL:1500>/A", "A", "AT"): "deliberately unspelled",      # RM5
         ("C/C", "AGAG", "AG"): "carries no flank",                  # homozygous, no frame
         # A 2 bp insertion of `CT` against the locus's 2 bp `AG` deletion: same event size, different
@@ -349,13 +354,17 @@ def test_both_spelling_builders_have_an_arm_for_every_reason() -> None:
             assert repr(allele) in rendered
 
 
-def test_a_star_in_the_alt_list_is_not_reported_as_a_grammar_gap(tmp_path: Path) -> None:
-    """The message repair that came with the reason class.
+def test_a_star_in_the_alt_list_never_excuses_a_wrong_genotype(tmp_path: Path) -> None:
+    """A `*` in the ALT list must not turn a real genotype error into "the genotype is not the problem".
 
-    A genotype the locus really cannot host produces the "genotype is not the problem" caveat, which
-    enumerates the locus's own odd alleles. `*` used to be filed there as a *grammar gap a future
-    release may widen* — false, permanently: there is no sequence for a grammar to hold. It is now
-    named for what it is, and the two readings are not allowed to share a sentence.
+    The spelling caveat exists to say *the locus is spelled oddly, so re-check the cell rather than the
+    call*. Since `hosting_verdict` strips `*` from both sides, a `*` can no longer contribute to the
+    `False` the caveat explains — so naming it there inverts the sentence exactly. `C/G` at
+    `ref=A alts="T,*"` is a genotype error and nothing else, and this used to answer *"the genotype is
+    not the problem: '*' is VCF's … marker — replace it with the alleles the locus actually has"*.
+
+    An earlier version of this test asserted that wording, i.e. it pinned the bug. Both halves are
+    checked now: the finding still fires (the row really is wrong) and the excuse is gone.
     """
     wrong_call = (
         f"rs281864530,11,5225649,A,{_ALTS},C/G,risk,"
@@ -364,10 +373,11 @@ def test_a_star_in_the_alt_list_is_not_reported_as_a_grammar_gap(tmp_path: Path)
     spec = _spec(tmp_path / "spec", wrong_call)
     report = validate_spec(spec, strict=False)
 
-    caveats = [w for w in report.warnings if "genotype is not the problem" in w]
-    assert caveats, report.warnings
-    # Keyed on the *notation* clause's own distinctive wording rather than on a phrase both clauses
-    # could contain — the two readings must not be merged, and asserting on a shared substring would
-    # not notice if they were.
-    assert all("repeat notation" not in c for c in caveats)
-    assert any("overlapping-deletion" in c for c in caveats)
+    findings = [w for w in report.warnings if "not among" in w]
+    assert findings, report.warnings
+    assert all("genotype is not the problem" not in w for w in findings)
+    assert all(UNOBSERVABLE_ALLELE not in w.split("locus")[0] for w in findings)
+
+    # The caveat still works for a locus that really is spelled oddly — narrowed, not disabled.
+    assert _compiler_clauses({"R": "ambiguity"})
+    assert "R" in (_compiler_clauses({"R": "ambiguity", UNOBSERVABLE_ALLELE: "unobservable"}))
