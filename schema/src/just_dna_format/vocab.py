@@ -559,10 +559,15 @@ def validate_allele(value: str | None, field_name: str = "allele") -> str | None
         return value
     if parse_symbolic_allele(value) is not None:
         return value
+    # The message names the length convention without claiming *this* validator enforces it — it does
+    # not, deliberately (see the docstring), and the compiler is what refuses a lengthless one. An
+    # author reading this is being rejected on the *type*, so telling them the full spelling here is
+    # what stops the second rejection one command later.
     raise ValueError(
-        f"{field_name} must be nucleotides (e.g. A, G, AC) or a symbolic/structural allele from "
-        f"{sorted(SYMBOLIC_ALLELE_TYPES)} carrying its length (e.g. <DEL:1500>, <CNV:TR:30>), "
-        f"got: {value!r}"
+        f"{field_name} must be nucleotides (e.g. A, G, AC) or a symbolic/structural allele whose "
+        f"first-level type is one of {sorted(SYMBOLIC_ALLELE_TYPES)} — the length belongs inside the "
+        f"token (<DEL:1500>, <CNV:TR:30>), and a compile refuses one that states none. "
+        f"Got: {value!r}"
     )
 
 

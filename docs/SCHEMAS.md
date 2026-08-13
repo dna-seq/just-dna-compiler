@@ -225,6 +225,12 @@ makes a usable rulebook. `alleles.symbolic_allele_defect` is the shared classifi
 `AuthoredModel.ALLELE_COLUMNS` — declared on each model beside `REQUIRED_ANY_OF` — is what tells the
 compiler which columns to read.
 
+`alleles.is_symbolic_allele` tests for the **opening** bracket alone, deliberately: requiring the
+closing one let `<DEL` — the likeliest typo of the lot — read as an ordinary allele string, so it
+slipped past the guard in `hosting_verdict` and reached character arithmetic over a token that spells
+no sequence. Nothing legal in an allele column begins with `<`, so the looser test costs nothing and
+buys a diagnosis where there would otherwise be a generic rejection.
+
 ## Row models — key fields
 
 Only the load-bearing fields are listed; read the model for the full set and validators. `?` = optional.

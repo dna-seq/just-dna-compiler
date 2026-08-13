@@ -261,9 +261,12 @@ def genotype_allele_ok(allele: str) -> bool:
 
 
 #: What `_validate_genotype` will accept, spelled once for the three messages that have to say it.
+#: Names the length convention without claiming this validator enforces it — it does not (a lengthless
+#: `<DEL>` loads and the compiler refuses it), and an author rejected on the *type* still needs the
+#: full spelling or they earn a second rejection one command later.
 _GENOTYPE_ALLELE_GRAMMAR: str = (
-    f"nucleotides, or a symbolic/structural allele from {sorted(SYMBOLIC_ALLELE_TYPES)} carrying "
-    f"its length (e.g. <DEL:1500>)"
+    f"nucleotides, or a symbolic/structural allele whose first-level type is one of "
+    f"{sorted(SYMBOLIC_ALLELE_TYPES)}, with its length inside the token (e.g. <DEL:1500>)"
 )
 
 

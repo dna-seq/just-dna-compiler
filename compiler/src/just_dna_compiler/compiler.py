@@ -29,6 +29,8 @@ from typing import Any, Union, get_args, get_origin
 import polars as pl
 import yaml
 from just_dna_format.alleles import (
+    RECOMMENDED_SYMBOLIC_SUBTYPES,
+    SYMBOLIC_ALLELE_TYPES,
     is_symbolic_allele,
     non_nucleotide_reason,
     symbolic_allele_defect,
@@ -1252,10 +1254,18 @@ _ALLELE_CELL_SEP: re.Pattern[str] = re.compile(r"[,/|]")
 
 @dataclass(frozen=True)
 class _SymbolicFinding:
-    """One unusable symbolic allele, located well enough for an author to go and fix it."""
+    """One unusable symbolic allele, located well enough for an author to go and fix it.
+
+    **Located by the row's own identity, not by its position in the file.** A row index looks more
+    precise and is not: `load_csv_rows` prints a *header-inclusive line number*, so a bare "row 2"
+    would be a third coordinate convention beside that and `hints.Finding.row` (0-based); and it is
+    computed over the rows that survived model validation, so any earlier load error silently shifts
+    it. Every other row-level finding in this module names `variant_key`, and so does this one.
+    """
 
     table: str
-    row: int  # 1-based data-row index, matching what `_load_csv_rows` reports
+    index: int  # position among the loaded rows — for stable ordering only, never printed
+    label: str  # the row's identity: variant_key, else haplotype_name
     column: str
     allele: str
     reason: str  # "no_length" | "unknown_type" | "reference_allele"
@@ -1274,10 +1284,10 @@ _SYMBOLIC_REASONS: dict[str, str] = {
     ),
     "unknown_type": (
         "an allele that is angle-bracketed but not one this format holds. The first level is the closed "
-        "five DEL/INS/DUP/INV/CNV (subtypes are free-form, e.g. <CNV:TR>, <DUP:TANDEM>); there is no "
-        "declaration mechanism for arbitrary names, deliberately. VCF's <*> is not one of them either "
-        "— it makes a claim about what could be *observed*, which is a different axis from what the "
-        "variant *is*"
+        f"five {'/'.join(sorted(SYMBOLIC_ALLELE_TYPES))} and subtypes are free-form — VCF recommends "
+        f"{', '.join(f'<{s}>' for s in RECOMMENDED_SYMBOLIC_SUBTYPES)} — but there is no declaration "
+        "mechanism for arbitrary names, deliberately. VCF's <*> is not one of them either: it makes a "
+        "claim about what could be *observed*, which is a different axis from what the variant *is*"
     ),
     "reference_allele": (
         "a symbolic allele in a reference-allele column. REF is always a sequence — the padding base "
@@ -1294,12 +1304,13 @@ def _symbolic_findings(rows_by_table: dict[str, list[Any]]) -> list[_SymbolicFin
     a list kept here: a compiler-side copy of a model's column names is the drift `SOURCES_FIELDNAMES`
     already demonstrated, and this check would go quietly blind the day a model gained a column.
 
-    Sorted by `(table, reason, row, column)` so the messages built from it are byte-stable — findings
+    Sorted by `(table, reason, index, column)` so the messages built from it are byte-stable — findings
     reach `manifest.compilation.warnings`, so their order is artifact-visible.
     """
     found: list[_SymbolicFinding] = []
     for table, rows in rows_by_table.items():
-        for index, row in enumerate(rows, start=1):
+        for index, row in enumerate(rows):
+            label = getattr(row, "variant_key", None) or getattr(row, "haplotype_name", None)
             for column in getattr(type(row), "ALLELE_COLUMNS", ()):
                 cell = getattr(row, column, None)
                 if not isinstance(cell, str):
@@ -1314,9 +1325,20 @@ def _symbolic_findings(rows_by_table: dict[str, list[Any]]) -> list[_SymbolicFin
                     )
                     if reason is not None:
                         found.append(
-                            _SymbolicFinding(table, index, column, allele, reason)
+                            _SymbolicFinding(
+                                table, index, str(label or f"the {_ordinal(index)} row"),
+                                column, allele, reason,
+                            )
                         )
-    return sorted(found, key=lambda f: (f.table, f.reason, f.row, f.column))
+    return sorted(found, key=lambda f: (f.table, f.reason, f.index, f.column))
+
+
+def _ordinal(index: int) -> str:
+    """`0` → `1st`. The last-resort label for a row carrying no identity of its own — no model in
+    `ALLELE_COLUMNS` is in that state today, and a bare integer would read as a file line number."""
+    n = index + 1
+    suffix = "th" if 11 <= n % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
 
 
 def _symbolic_allele_messages(findings: list[_SymbolicFinding]) -> list[str]:
@@ -1339,10 +1361,8 @@ def _symbolic_allele_messages(findings: list[_SymbolicFinding]) -> list[str]:
         # Rows, not findings. One row routinely carries the same unusable allele in three columns
         # (`alts`, `genotype`, `effect_allele`), and the sentence says "row(s)" — counting findings
         # there would report three rows dropped where one is.
-        affected = len({e.row for e in entries})
-        shown = ", ".join(
-            f"row {e.row} {e.column}={e.allele!r}" for e in entries[:3]
-        )
+        affected = len({e.index for e in entries})
+        shown = ", ".join(f"{e.label} {e.column}={e.allele!r}" for e in entries[:3])
         rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
         fate = (
             "Those row(s) are DROPPED from the compiled artifact — reverse will not re-emit them — "
@@ -1392,28 +1412,42 @@ def _check_symbolic_alleles(
         return errors, [], {}
     drops: dict[str, set[int]] = {}
     for finding in droppable:
-        drops.setdefault(finding.table, set()).add(finding.row)
+        drops.setdefault(finding.table, set()).add(finding.index)
+    errors.extend(_emptied_table_errors(rows_by_table, drops))
     return errors, _symbolic_allele_messages(droppable), drops
 
 
-def _apply_symbolic_drops(
-    rows: list[Any], drop_rows: set[int], table: str
-) -> tuple[list[Any], list[str]]:
-    """Remove the flagged rows, refusing to leave the table empty.
+def _emptied_table_errors(
+    rows_by_table: dict[str, list[Any]], drops: dict[str, set[int]]
+) -> list[str]:
+    """A table the drop would empty outright is an error in **both** modes.
 
-    Emptying a table is an error in **both** modes, and the rule is derived rather than invented:
-    `validate_spec` already refuses a directory where a present table has no rows, so a drop that
-    reaches zero would land the module in a state its own validator calls invalid — reported here,
-    where the reason is still legible, instead of as a mystery further down.
+    The drop exists so a module can lose one unusable rule and still say the rest; a table that loses
+    *every* row says nothing at all, and says it silently — the surviving artifact is a module that
+    annotates nothing, which is precisely the shape the DROPPED warning exists to keep an author from
+    believing they still have.
+
+    **Computed here rather than at the point of application, and that placement is the point.**
+    `_check_symbolic_alleles` runs in `validate_spec` as well as `compile_module`, so the refusal is
+    predicted by the pre-flight; the first cut refused inside the drop, which only `compile_module`
+    performs, and produced exactly the green-`validate`-then-failing-`compile` sequence the standing
+    parity rule exists to prevent. (An earlier version of this docstring justified the refusal as
+    "`validate_spec` already refuses a present-but-empty table". That is true of the `_TABLE_KINDS`
+    loop and **false of `variants.csv`**, which validates and compiles header-only — measured. The
+    refusal stands on its own reason, above.)
     """
-    kept = [row for index, row in enumerate(rows, start=1) if index not in drop_rows]
-    if kept or not rows:
-        return kept, []
-    return rows, [
-        f"{table}: every row was dropped for carrying an unusable symbolic allele, which would leave "
-        f"the table present and empty — a state this compiler refuses on its own account. Fix the "
-        f"alleles, or remove the table."
+    return [
+        f"{table}: every row would be dropped for carrying an unusable symbolic allele, leaving a "
+        f"table that states nothing — so the compile would quietly produce a module that annotates "
+        f"nothing at all. Refused in both modes. Give the alleles their lengths, or remove the table."
+        for table, rows in sorted(rows_by_table.items())
+        if rows and len(drops.get(table, ())) == len(rows)
     ]
+
+
+def _apply_symbolic_drops(rows: list[Any], drop_rows: set[int]) -> list[Any]:
+    """The surviving rows. Refusal is `_emptied_table_errors`' job — see there for why it is not here."""
+    return [row for index, row in enumerate(rows) if index not in drop_rows]
 
 
 def _check_p_value_num(
@@ -2325,22 +2359,7 @@ def validate_spec(
     if kind_row_counts:
         stats["table_rows"] = kind_row_counts
     if variants:
-        variant_keys_set = {v.variant_key for v in variants}
-        genes = sorted({v.gene for v in variants if v.gene})
-        categories = sorted({v.category for v in variants if v.category})
-        stats.update(
-            {
-                "variant_count": len(variant_keys_set),
-                "unique_rsids": len({v.rsid for v in variants if v.rsid is not None}),
-                "gene_count": len(genes),
-                "genes": genes,
-                "categories": categories,
-                # ClinVar/quality flag counts over variant rows (ROADMAP item 5).
-                "clinvar_count": sum(1 for v in variants if v.clinvar),
-                "pathogenic_count": sum(1 for v in variants if v.pathogenic),
-                "benign_count": sum(1 for v in variants if v.benign),
-            }
-        )
+        stats.update(variant_stats(variants))
 
     return ValidationResult(
         valid=len(all_errors) == 0,
@@ -2349,6 +2368,29 @@ def validate_spec(
         info=all_info,
         stats=stats,
     )
+
+
+def variant_stats(variants: list[VariantRow]) -> dict[str, Any]:
+    """The `variants.csv`-derived facets of `ValidationResult.stats` / `manifest.stats`.
+
+    Its own function because it now has **two** callers, and the second is why: `compile_module` may
+    discard a row for carrying an unusable symbolic allele (RM5), and the stats were computed by
+    `validate_spec` before that happened. `weights_rows` counts the parquet and so is post-drop, so a
+    published manifest claimed a `variant_count` one higher than the artifact contained — the RM44
+    class of defect exactly, a manifest number a catalog keys on and cannot check.
+    """
+    genes = sorted({v.gene for v in variants if v.gene})
+    return {
+        "variant_count": len({v.variant_key for v in variants}),
+        "unique_rsids": len({v.rsid for v in variants if v.rsid is not None}),
+        "gene_count": len(genes),
+        "genes": genes,
+        "categories": sorted({v.category for v in variants if v.category}),
+        # ClinVar/quality flag counts over variant rows (ROADMAP item 5).
+        "clinvar_count": sum(1 for v in variants if v.clinvar),
+        "pathogenic_count": sum(1 for v in variants if v.pathogenic),
+        "benign_count": sum(1 for v in variants if v.benign),
+    }
 
 
 #: The `Defaults` fields a `VariantRow` may also carry on the row, resolved before hashing (RM37).
@@ -2535,17 +2577,18 @@ def compile_module(
         {"variants.csv": variants, **kind_rows}, strict=strict
     )
     all_warnings.extend(w for w in symbolic_warnings if w not in all_warnings)
-    if symbolic_drops:
-        for table, drop_rows in symbolic_drops.items():
-            rows = variants if table == "variants.csv" else kind_rows[table]
-            kept, refusals = _apply_symbolic_drops(rows, drop_rows, table)
-            symbolic_errors.extend(refusals)
-            if table == "variants.csv":
-                variants = kept
-            else:
-                kind_rows[table] = kept
     if symbolic_errors:
         return CompilationResult(success=False, errors=symbolic_errors, warnings=all_warnings)
+    for table, drop_rows in symbolic_drops.items():
+        if table == "variants.csv":
+            variants = _apply_symbolic_drops(variants, drop_rows)
+            # Re-derive the variant facets over what survived. `validate_spec` computed them from the
+            # full set, and `weights_rows` counts the parquet, so leaving them would publish a
+            # `variant_count` higher than the artifact holds (the RM44 class: a manifest number a
+            # catalog keys on and cannot check).
+            validation.stats.update(variant_stats(variants))
+        else:
+            kind_rows[table] = _apply_symbolic_drops(kind_rows[table], drop_rows)
 
     # The source-independent resolution table (0.5), if authored/produced beside the spec. When
     # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and

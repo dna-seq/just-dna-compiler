@@ -71,9 +71,12 @@ SYMBOLIC_ALLELE_TYPES: frozenset[str] = frozenset({"DEL", "INS", "DUP", "INV", "
 #: tuple in the spec's own order so a message built from it is deterministic.
 RECOMMENDED_SYMBOLIC_SUBTYPES: tuple[str, ...] = ("CNV:TR", "DUP:TANDEM", "DEL:ME", "INS:ME")
 
-#: Anything angle-bracketed, whatever is inside it. Deliberately lenient: it is the *shape* test, so a
-#: `<FOO>` or a `<*>` can be told apart from a typo'd nucleotide string and diagnosed as what it is.
-_SYMBOLIC_SHAPE: re.Pattern[str] = re.compile(r"^<[^<>]*>$")
+#: Anything opening with `<`. Deliberately lenient: it is the *shape* test, so `<FOO>`, `<*>` and the
+#: unterminated `<DEL` can each be told apart from a typo'd nucleotide string and diagnosed as what
+#: they are. It was `^<[^<>]*>$` for one round, which let the likeliest typo of all — a missing closing
+#: bracket — past the guard `hosting_verdict` added for exactly this, back into arithmetic over a token
+#: that has no sequence. Nothing legal in an allele column begins with `<`.
+_SYMBOLIC_SHAPE: re.Pattern[str] = re.compile(r"^<")
 
 #: `<TYPE[:SUBTYPE…][:LENGTH]>`. A subtype must start with a letter and a length is all digits, so the
 #: trailing field is unambiguously one or the other — which is what lets the length ride inside the
@@ -118,11 +121,17 @@ class SymbolicAllele:
 
 
 def is_symbolic_allele(value: str | None) -> bool:
-    """Whether `value` is *shaped* like a symbolic allele — angle-bracketed, whatever is inside.
+    """Whether `value` is *shaped* like a symbolic allele — it opens with `<`, whatever follows.
 
     The lenient half of the pair. `parse_symbolic_allele` answers whether it is a **usable** one; this
-    answers whether the author was reaching for one at all, which is what a diagnosis needs: `<FOO>`
-    and `<*>` are not usable here and telling their author so beats a generic rejection.
+    answers whether the author was reaching for one at all, which is what a diagnosis needs: `<FOO>`,
+    `<*>` and the unterminated `<DEL` are none of them usable here, and telling their author which
+    beats a generic rejection.
+
+    Deliberately not "opens **and closes**": requiring the `>` let a missing closing bracket — the
+    likeliest typo there is — read as an ordinary allele string, so it slipped past the guard
+    `hosting_verdict` keeps for exactly this and reached arithmetic over characters that spell no
+    sequence. Nothing legal in an allele column begins with `<`, so the looser test costs nothing.
     """
     return value is not None and bool(_SYMBOLIC_SHAPE.match(value.strip()))
 
@@ -174,9 +183,9 @@ def symbolic_allele_defect(value: str | None) -> str | None:
     lumping two reasons under one message is a mistake this codebase has already made and unwound
     twice (`cpic.unusable_allele_reason`, `_spelling_clauses`):
 
-    * `"unknown_type"` — angle-bracketed but not one of the five first-level types, or not
-      parseable at all. `<FOO>`, `<DEL`, and VCF's own `<*>` are this: nothing names a structural
-      event the format can hold, so there is nothing to widen a length onto.
+    * `"unknown_type"` — it opens with `<` but is not one of the five first-level types, or does not
+      parse at all. `<FOO>`, the unterminated `<DEL`, and VCF's own `<*>` are this: none of them names
+      a structural event the format can hold, so there is nothing to hang a length on.
     * `"no_length"` — a real structural type carrying no usable length (absent, or `0`). Well-formed,
       and still an unusable *rule*: a `<DEL>` with no length cannot be sized, matched against a call,
       or told apart from any other deletion at the same position.

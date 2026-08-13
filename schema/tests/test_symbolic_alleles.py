@@ -83,7 +83,10 @@ def test_case_is_normalized_on_the_parse_and_preserved_on_the_cell() -> None:
         ("a zero length states no event either", "<DEL:0>", "no_length"),
         ("a name outside the five", "<FOO:10>", "unknown_type"),
         ("VCF's unspecified allele is not a structural type", "<*>", "unknown_type"),
-        ("an unterminated bracket is not even shaped like one", "<DEL", None),
+        # The likeliest symbolic typo there is, and it must not read as an ordinary allele string:
+        # `is_symbolic_allele` tests for the *opening* bracket alone, so this is diagnosed rather
+        # than handed to the character arithmetic `hosting_verdict`'s guard exists to prevent.
+        ("an unterminated bracket", "<DEL", "unknown_type"),
         ("a nucleotide string has no symbolic defect", "ACGT", None),
         ("nor does an ambiguity code", "Y", None),
         ("nor does a repeat notation", "AAAGGGGCG(2)", None),
@@ -95,9 +98,17 @@ def test_the_defect_matrix(label, allele, expected) -> None:
 
 def test_shaped_like_one_and_being_one_are_different_questions() -> None:
     """`<FOO>` is not a usable allele *and* is unmistakably an attempt at one, which is what lets the
-    compiler answer with a diagnosis instead of the generic rejection every unknown value gets."""
+    compiler answer with a diagnosis instead of the generic rejection every unknown value gets.
+
+    The shape test asks only for the **opening** bracket. Requiring the closing one let `<DEL` read as
+    an ordinary allele string, so it slipped past `hosting_verdict`'s guard into `parsimony_reduce`,
+    where a four-character token gets treated as a four-base sequence. Nothing legal in an allele
+    column begins with `<`, so the looser test costs nothing.
+    """
     assert is_symbolic_allele("<FOO>") and parse_symbolic_allele("<FOO>") is None
+    assert is_symbolic_allele("<DEL") and parse_symbolic_allele("<DEL") is None
     assert not is_symbolic_allele("DELTCT")
+    assert not is_symbolic_allele("ACGT")
 
 
 # ── the classification the two `_spelling_clauses` copies read ──────────────────────────────────

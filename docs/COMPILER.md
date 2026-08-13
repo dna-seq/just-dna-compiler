@@ -479,19 +479,32 @@ and this is the first check in the tier that **discards an authored row**.
 `pharm_variants.csv` — one self-contained rule per row — `best_effort` **drops the row with a warning
 that says so**, and `strict` refuses. On `haplotypes.csv` and `heteroplasmy.csv` it is fatal in *both*
 modes: those rows are parts of a composite, so dropping one silently redefines a haplotype or punches a
-hole in a bin tiling — not a smaller module but a different one. A drop that would empty a table
-outright is an error in both modes too, derived rather than invented: `validate_spec` already refuses a
-present-but-empty table.
+hole in a bin tiling — not a smaller module but a different one.
+
+A drop that would empty a table **outright** is an error in both modes as well, and on its own reason:
+the drop exists so a module can lose one unusable rule and still say the rest, while a table that loses
+every row says nothing at all and says it only in a warning. (Not, as a first cut claimed, because the
+compiler already refuses a present-but-empty table — that is true of the `_TABLE_KINDS` loop and
+**false of `variants.csv`**, which validates and compiles header-only. Measured, and pinned by a test.)
 
 **The warning must say DROPPED.** This does not break P7 — the round-trip fixed point is claimed under
 `strict`, where this case refuses — but `reverse` cannot re-emit a row that never reached the parquet,
 so a warning that merely *flagged* it would leave an author believing their module still carries it.
 
-Two mechanics worth copying. The check reads `AuthoredModel.ALLELE_COLUMNS`, declared on each model, so
-the compiler holds no second copy of a model's column names. And it runs in `validate_spec` too, by the
+Three mechanics worth copying. The check reads `AuthoredModel.ALLELE_COLUMNS`, declared on each model,
+so the compiler holds no second copy of a model's column names. It runs in `validate_spec` too, by the
 standing rule (pure computation over authored bytes, no `output_dir`) — with the identical message, both
 because the pre-flight must predict what the compile will do and because `compile_module`'s
-de-duplication is on the message.
+de-duplication is on the message; **every** refusal it can reach is computed in the shared check rather
+than at the point of application, so `validate` cannot go green on a module `compile` then rejects in
+the same mode. And `manifest.stats` is re-derived over the surviving rows: `weights_rows` counts the
+parquet, so leaving `variant_count` as `validate_spec` computed it would publish a count higher than the
+artifact holds — the RM44 class, a manifest number a catalog keys on and cannot check.
+
+Findings name a row by its **identity** (`variant_key`, else `haplotype_name`), never by a file
+position: `load_csv_rows` prints a header-inclusive line number and `hints.Finding.row` is a 0-based
+data index, so a third convention would be one too many — and an index computed over the rows that
+survived model validation shifts silently behind any earlier load error.
 
 One asymmetry to expect: `<FOO>` fails at *load* in `genotype` / `effect_allele` /
 `HaplotypeRow.allele`, which have a grammar, and reaches this check only through `ref`/`alts`, which

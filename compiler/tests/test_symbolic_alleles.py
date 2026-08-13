@@ -78,6 +78,24 @@ def test_best_effort_drops_the_lengthless_row_and_keeps_the_rest(tmp_path: Path)
     assert "rs2104016493" not in _weights_rsids(tmp_path / "out")
 
 
+def test_the_manifest_counts_what_survived_not_what_was_authored(tmp_path: Path) -> None:
+    """`variant_count` came from `validate_spec`, which runs *before* the drop, while `weights_rows`
+    counts the parquet — so a published manifest claimed a variant the artifact did not contain.
+
+    Exactly the RM44 class: a manifest number a catalog keys on and cannot check for itself. Asserted
+    as a relationship against the parquet rather than as a literal, so it stays true as the fixture
+    changes.
+    """
+    spec = _spec(tmp_path / "spec", _USABLE + _NO_LENGTH + _SPELLED)
+    result = compile_module(spec, tmp_path / "out")
+    stats = result.manifest.stats
+
+    assert result.success, result.errors
+    assert stats.variant_count == len(_weights_rsids(tmp_path / "out")) == stats.weights_rows
+    # The genes facet is re-derived too, not just the count.
+    assert stats.genes == sorted({"MSH2", "GLI2"})
+
+
 def test_the_warning_says_the_row_was_dropped(tmp_path: Path) -> None:
     """`reverse` cannot re-emit what is not in the parquet, so a warning that merely *flagged* the row
     would leave an author believing their module still carries it."""
@@ -87,7 +105,12 @@ def test_the_warning_says_the_row_was_dropped(tmp_path: Path) -> None:
     dropped = [w for w in result.warnings if "DROPPED" in w]
     assert len(dropped) == 1, result.warnings
     assert "no usable length" in dropped[0]
-    assert "row 2" in dropped[0]
+    # It names the row by its **identity**, not by a position in the file. A bare "row 2" would be a
+    # third coordinate convention beside `load_csv_rows`' header-inclusive line number and
+    # `hints.Finding.row`'s 0-based index — and it is computed over the rows that survived model
+    # validation, so any earlier load error shifts it silently.
+    assert "rs2104016493" in dropped[0]
+    assert "row 2" not in dropped[0]
     # And it reaches the manifest, which is the only thing a catalog reindexing a published module has.
     assert dropped[0] in result.manifest.compilation.warnings
 
@@ -104,13 +127,48 @@ def test_strict_refuses_and_writes_nothing(tmp_path: Path) -> None:
 
 
 def test_a_module_of_nothing_but_unusable_rows_refuses_in_both_modes(tmp_path: Path) -> None:
-    """Derived rather than invented: `validate_spec` already refuses a present-but-empty table, so a
-    drop that reaches zero would land the module in a state the compiler calls invalid anyway."""
-    spec = _spec(tmp_path / "spec", _NO_LENGTH)
-    result = compile_module(spec, tmp_path / "out")
+    """The drop lets a module lose one unusable rule and still say the rest; a table that loses every
+    row says nothing, silently. Refused in both modes.
 
-    assert not result.success
-    assert any("every row was dropped" in e for e in result.errors)
+    **And `validate` predicts it.** The first cut refused inside the drop, which only `compile_module`
+    performs, so a module whose sole row was a lengthless `<DEL>` validated green in `best_effort` and
+    then failed to compile in the *same* mode — the green-pre-flight-then-refusal sequence the standing
+    parity rule exists to prevent. Note the justification that had to go with it: "`validate_spec`
+    already refuses a present-but-empty table" is true of the table kinds and **false of
+    `variants.csv`**, which validates and compiles header-only (asserted below, so the correction
+    cannot quietly revert).
+    """
+    spec = _spec(tmp_path / "spec", _NO_LENGTH)
+
+    for strict in (False, True):
+        compiled = compile_module(spec, tmp_path / f"out_{strict}", strict=strict)
+        assert not compiled.success, strict
+    assert any("every row would be dropped" in e for e in compile_module(
+        spec, tmp_path / "out_again"
+    ).errors)
+    # The pre-flight reaches the same verdict, in the same mode.
+    assert not validate_spec(spec).valid
+    assert any("every row would be dropped" in e for e in validate_spec(spec).errors)
+
+
+def test_a_header_only_variants_csv_is_legal_which_is_why_the_refusal_needs_its_own_reason(
+    tmp_path: Path,
+) -> None:
+    """The measurement the repair above rests on, pinned so it cannot rot into a false justification.
+
+    A `variants.csv` with a header and no rows both validates and compiles — the "present but has no
+    rows" refusal lives in the `_TABLE_KINDS` loop and never covered the SNP core. So a drop that
+    empties `variants.csv` is not refused because the compiler already refuses that state; it is
+    refused because the artifact would annotate nothing while saying so only in a warning.
+    """
+    spec = tmp_path / "empty"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_SPEC_YAML)
+    (spec / "variants.csv").write_text(_VARIANTS_HEADER)
+    (spec / "studies.csv").write_text("rsid,pmid\nrs1667266283,16199547\n")
+
+    assert validate_spec(spec).valid
+    assert compile_module(spec, tmp_path / "out").success
 
 
 # ── validate must say what compile will do ───────────────────────────────────────────────────────
