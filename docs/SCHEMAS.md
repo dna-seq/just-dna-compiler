@@ -438,8 +438,9 @@ never a mismatch:
   conclusion; do not fall through to the reference one.
 
 The compiler applies the same reading internally, which is where the rule is enforceable rather than
-merely stated: `resolution.hosting_verdict` drops a `*` member before comparing a genotype to a locus,
-so `*` never reads as a contradiction, while the *rest* of the call is still judged (see
+merely stated: `resolution.hosting_verdict` drops a `*` member before comparing a genotype to a locus —
+on **both** sides, so a `*` in the record's own ALT list is ignored the same way — and the *rest* of the
+call is still judged, so `*` never reads as a contradiction and never masks one (see
 [COMPILER.md](COMPILER.md)). `*` is deliberately **not** a symbolic allele — those name a variant whose
 sequence is unspelled, and `*` names no variant at all — so none of RM5's machinery touches it, it
 carries no length, and it mints no VRS allele id.
