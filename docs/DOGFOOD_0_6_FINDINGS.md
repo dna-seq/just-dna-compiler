@@ -34,6 +34,38 @@ Module: `reference_examples/cyp2c9_warfarin_grch37/` (README carries the reprodu
 | **F10** | **A "no snapshot" test that only fails on a machine that has one.** `setenv("JUST_DNA_CLINPGX_CACHE", "")` is the *credential* idiom and is inverted for a cache path: empty is falsy, so the ladder falls through to the default dir — where `cache pull` puts a snapshot. Green on CI, red on a provisioned machine. | fix | medium |
 | **F11** | **`requires_callable` is `VariantRow`-only, so no PGx table can state CPIC's core assumption.** CPIC assumes an uncalled position is reference — literally `requires_callable=false` — and `haplotypes.csv`/`pharm_variants.csv`/`diplotypes.csv` have no such column. A star-allele module cannot record whether its call needed the defining positions to be callable. | **surface** (RM65-adjacent) | medium |
 
+---
+
+## D1 — `mt_common_deletion`
+
+Module: `reference_examples/mt_common_deletion/`. The mitochondrial 4,977 bp common deletion, spelled
+as RM5's `<DEL:4977>`, beside `m.8993T>G` (inside the deleted span) and `m.3243A>G`.
+
+**One root cause behind the first two: RM5 shipped the symbolic-allele grammar in 0.6 and the VRS
+tier was never told.** No reference example and no enricher test carried a symbolic allele before
+this module — the corpus-uniformity heuristic, paying off exactly as the plan predicted.
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **D1-1** | **`enrich` crashes on any module carrying a symbolic allele.** Unhandled `pydantic.ValidationError` out of `ga4gh.vrs`: `VrsMinter.mint` routes a non-substitution to `_mint_normalized`, which builds `models.LiteralSequenceExpression(sequence=alt.upper())` **outside** the `try` below it — whose comment reads *"A failure here is a live-service problem … never a reason to fail the enrichment."* Same shape as the `UnsupportedBuildError` defect recorded eight lines above it in the same function. | fix | **high** |
+| **D1-2** | **Offline, the same allele is misdiagnosed as an indel with a remedy that crashes.** `_vrs_coverage` reports *"an indel/MNV, which must be justified against the reference sequence — re-run without --offline to mint it"*. A symbolic allele names no sequence by construction, so no id is ever mintable — a permanent reason class, not an `--offline` limitation — and the suggested re-run is D1-1. | fix | **high** |
+| **D1-3** | **`_check_binning_grounding` exempts a variant-keyed bin in a module that has no `studies.csv`.** The function returns early unless there are **zero** study rows, then treats a bin as grounded because it names a variant "a study row can then name back" — the study row it has just established does not exist. A `heteroplasmy.csv` module stating four thresholds and citing nothing is green and silent; the same module on `repeat_alleles.csv` is warned. Reopens the S19 gap for the one binning kind a real MELAS/NARP module uses. | fix | medium |
+| **D1-4** | **`describe <kind>` omits `vocabulary_notes`.** It calls itself "the full machine description of one table kind" and prints `source_element`'s members without `ELEMENT_RULE_MEANINGS`, which reach only the whole-schema `reference`. The per-table command is the one an author authoring one table uses. | fix | low |
+
+### Checked and held (D1)
+
+RM5's four placement cells (accepted with a length; warned and **DROPPED** on `variants.csv` without
+one; **fatal in both modes** on `heteroplasmy.csv`, with the composite-tiling reason in-line);
+**RM60 did not blind RM48** — `chrM:16600` is still refused against MT's 16,569 bp, which was the
+seam the plan flagged as untested; RM58 keeps `.` apart from `<DEL>` *and* names the identity-split
+consequence; RM59's `*` and the ploidy check do not collide (`*/A` is two-allele notation whatever
+`*` denotes); RM53's collision warning on bare `AF` with the INFO-vs-FORMAT explanation, silent on
+`FORMAT/AF`; RM61 accepts `gnomAD.AF` and `INFO/1000G`; RM43's fill reaches `heteroplasmy.csv`;
+RM47's `pmid` works on a bin row. Round trip is a fixed point on `artifact.digest` and
+`content_signature` with the symbolic allele verbatim in both tables.
+
+---
+
 ### Checked and held (D2)
 
 - `licensing.csv` is the spelling both providers write into a fresh directory (RM51); the compile gate

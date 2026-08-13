@@ -1,0 +1,4 @@
+variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,authority,status,rsid_alternates,rsid_current,rsid_status,fetched_at
+MT:8470:N:<DEL:4977>,,MT,8470,N,<DEL:4977>,GRCh38,0,,,,authored,,resolved,,,,
+ga4gh:VA.-TA7Fnrg4Mk1tJ44nDV7nQIph9i3bWNM,rs199476133,MT,8993,T,G,GRCh38,0,ga4gh:VA.-TA7Fnrg4Mk1tJ44nDV7nQIph9i3bWNM,2.0,,clinvar,clinvar,resolved,,,,
+ga4gh:VA.J9tZBPJHObSDmLtUrywDERwHt2LXGIr-,rs199474657,MT,3243,A,G,GRCh38,0,ga4gh:VA.J9tZBPJHObSDmLtUrywDERwHt2LXGIr-,2.0,,clinvar,clinvar,resolved,,,,

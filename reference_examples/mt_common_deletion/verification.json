@@ -1,0 +1,50 @@
+{
+  "module_hash": "sha256:f07c9a19cad9cd02427720848066a6384adaaa36f3474e83d201cc614706e7dc",
+  "signature": "sha256:ab5d05702f421b8d11f6960116a1abc28d535979bc92c02aeb540ee1f1525790",
+  "difficulty": 20,
+  "nonce": 850590,
+  "producer": "just-dna-enricher 0.6.0",
+  "produced_at": "2026-08-13T23:30:28Z",
+  "records": [
+    {
+      "check": "clinical_significance",
+      "subjects": 2,
+      "findings": 0,
+      "skipped": null,
+      "detail": null,
+      "source": "clinvar",
+      "release": "clinvar_2026-06-27",
+      "checked_at": "2026-08-13T23:30:28Z"
+    },
+    {
+      "check": "genome_build_agreement",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "offline",
+      "detail": "the GRCh37 service is the only thing that can tell an old-assembly coordinate from a wrong ref, and there is no local GRCh37 data",
+      "source": "ensembl-grch37",
+      "release": null,
+      "checked_at": "2026-08-13T23:30:28Z"
+    },
+    {
+      "check": "reference_allele",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "offline",
+      "detail": "no sequence access this run, so no authored ref was compared",
+      "source": "seqrepo",
+      "release": null,
+      "checked_at": "2026-08-13T23:30:28Z"
+    },
+    {
+      "check": "rsid_currency",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "offline",
+      "detail": "dbSNP has no offline merge table, so currency cannot be established locally",
+      "source": "dbsnp",
+      "release": null,
+      "checked_at": "2026-08-13T23:30:28Z"
+    }
+  ]
+}

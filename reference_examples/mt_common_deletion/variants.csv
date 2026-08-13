@@ -1,0 +1,4 @@
+chrom,start,ref,alts,genotype,state,conclusion,gene,phenotype,category,clin_sig,requires_callable,callable_from
+chrM,8470,N,<DEL:4977>,<DEL:4977>,risk,"The 4,977 bp common deletion, at the 5' spelling of its 13 bp direct repeat. Reported at m.8470 and at m.8482 in the literature: the flanking repeat makes both spellings the same event.",MT-ATP8,Kearns-Sayre syndrome,metabolic,pathogenic,true,FORMAT/DP
+chrM,8993,T,G,G,risk,"m.8993T>G homoplasmic: NARP, or Leigh syndrome at high load. This base sits inside the deleted interval, so a joint call carrying both records `*` here.",MT-ATP6,NARP,neurological,pathogenic,true,FORMAT/DP
+chrM,3243,A,G,G,risk,"m.3243A>G homoplasmic: MELAS spectrum. Outside the deletion, and the module's control for it.",MT-TL1,MELAS,neurological,pathogenic,true,FORMAT/DP

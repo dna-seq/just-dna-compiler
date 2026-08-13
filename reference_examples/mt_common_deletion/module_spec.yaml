@@ -1,0 +1,14 @@
+schema_version: '1.0'
+module:
+  name: mt_common_deletion
+  title: The mitochondrial common deletion, and the spelling zoo around it
+  report_title: MT 4,977 bp common deletion
+  description: The 4,977 bp mtDNA common deletion beside two point variants inside its span, on the
+    one contig where a dropped row changes what the module says.
+  icon: heartbeat
+  icon_set: fomantic
+  color: '#767676'
+defaults:
+  curator: audit
+  method: literature-review
+genome_build: GRCh38
