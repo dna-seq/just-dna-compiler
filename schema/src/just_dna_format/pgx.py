@@ -105,8 +105,15 @@ class HaplotypeRow(AuthoredModel):
         "this convention and it is stored as-is; do not subtract one",
     )
     ref: str | None = Field(default=None, description="Reference allele (position-only)")
-    allele: str = Field(description="The defining (variant) allele on this haplotype, nucleotides")
+    allele: str = Field(
+        description=(
+            "The defining (variant) allele on this haplotype — bases, or a symbolic/structural "
+            "allele carrying its length (e.g. <DEL:1500> for a whole-gene deletion)"
+        )
+    )
     gene: str | None = Field(default=None, description="Gene symbol, e.g. CYP2D6")
+    #: `ref` (the locus) and `allele` (the defining variant). See `AuthoredModel.ALLELE_COLUMNS`.
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "allele")
 
     @field_validator("allele")
     @classmethod
@@ -321,8 +328,13 @@ class PharmVariantRow(AuthoredModel):
     gene: str | None = Field(default=None, description="Gene symbol, e.g. VKORC1")
     genotype: str | None = Field(
         default=None,
-        description="Genotype the response applies to, canonical sorted form, e.g. C/T",
+        description=(
+            "Genotype the response applies to, canonical sorted form, e.g. C/T. An allele is bases, "
+            "or a symbolic/structural allele carrying its length (<DEL:1500>/C)"
+        ),
     )
+    #: `ref` (the locus) and `genotype` (what the response applies to).
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "genotype")
     #: rsid, or a full coordinate. Mirrors `_validate_identification` below.
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
         frozenset({"rsid"}),

@@ -47,7 +47,7 @@ from typing import Any
 
 import duckdb
 import httpx
-from just_dna_format.alleles import non_nucleotide_reason
+from just_dna_format.alleles import non_nucleotide_reason, symbolic_allele_defect
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -78,14 +78,26 @@ def unusable_allele_reason(value: str) -> str | None:
     structural notation is a **grammar gap** (RM5) that a future release may widen to hold.
 
     * `"ambiguity"` — every character is a nucleotide or an IUPAC ambiguity code (`R` = A or G).
+    * `"symbolic"` — a symbolic/structural allele **that states no length**. RM5 made the well-formed
+      ones authorable, so `<DEL:1500>` is now a perfectly good `HaplotypeRow.allele` and this function
+      answers `None` for it; a lengthless `<DEL>` still cannot be used, because the compiler refuses one
+      on `haplotypes.csv` in both modes. CPIC publishes neither spelling today (its own are `DELTCT` and
+      `AAAGGGGCG(2)`, which are `"notation"`), so the arm is dead against the live source — it exists
+      because the classifier is shared, and because a caller that cannot explain a reason is a
+      `KeyError` waiting for the first source that does emit one.
     * `"notation"` — a deletion/insertion or repeat notation, not a nucleotide string at all.
 
-    The classification itself moved to `just_dna_format.alleles.non_nucleotide_reason` once the compiler
-    needed the same two-way split for a locus's own `ref`/`alts` (a `T>Y` locus can host no genotype, and
-    the generic "cannot host" message blamed the genotype). One definition, two callers, each keeping its
-    own wording — CPIC's is about a star allele's defining variant, the compiler's about a locus.
+    **A classification is not a verdict, and this function owes the verdict.** It delegates the
+    *classification* to `just_dna_format.alleles.non_nucleotide_reason` — one definition, two callers,
+    each keeping its own wording — but its own name asks whether the value can *become* a
+    `HaplotypeRow.allele`, and since RM5 the answer for a well-formed symbolic allele is yes. Returning
+    the bare classification made `pgx_draft` skip a defining variant the model would have accepted,
+    while the message beside it said the value belongs in `allele` as written.
     """
-    return non_nucleotide_reason(value)
+    reason = non_nucleotide_reason(value)
+    if reason != "symbolic":
+        return reason
+    return "symbolic" if symbolic_allele_defect(value) is not None else None
 
 
 #: What each `unusable_allele_reason` means, in the author's terms: what CPIC said, and what follows.
@@ -94,9 +106,16 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
         "an IUPAC ambiguity code rather than a definite nucleotide (`R` is A-or-G) — an uncertainty it "
         "recorded, and expanding it would invent defining variants it never stated"
     ),
+    "symbolic": (
+        "a symbolic/structural allele stating no length — the grammar holds these since RM5, but only "
+        "with one (`<DEL:1500>`); without it the rule cannot be sized or matched, and the compiler "
+        "refuses such a row on haplotypes.csv in both modes"
+    ),
     "notation": (
-        "a deletion/insertion or repeat notation rather than a nucleotide string — a grammar gap (RM5) "
-        "rather than an ambiguity, and a future release may widen to hold it"
+        "a deletion/insertion or repeat notation rather than a nucleotide string — a grammar gap "
+        "rather than an ambiguity. RM5 widened the grammar to hold VCF's five *symbolic* structural "
+        "alleles (`<DEL:1500>`), which is a different spelling from CPIC's `DELTCT`; holding this one "
+        "would still need a release"
     ),
 }
 

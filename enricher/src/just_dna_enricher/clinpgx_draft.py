@@ -24,7 +24,11 @@ share an `annotation_id` and key distinctly, which is correct: PharmGKB really i
 thing about three drugs.
 
 Skipped, with a warning rather than a coercion: haplotype-keyed genotypes (`*1`, `*1/*1`) belong on
-`DiplotypeRow`, and symbolic alleles (`del/del`) are RM5. Both are the policy `pgx_draft` already set.
+`DiplotypeRow`, and symbolic alleles (`del/del`) carry no length. Both are the policy `pgx_draft`
+already set. **The second reason changed in 0.6 and the distinction is worth keeping straight**: the
+grammar now holds `<DEL:1500>`, so the block is no longer "the format cannot spell it" but "ClinPGx
+does not publish the length, and a lengthless symbolic allele is a rule the compiler drops". A
+provider must not write rows the next command in the documented workflow discards.
 """
 
 import logging
@@ -43,6 +47,12 @@ logger = logging.getLogger(__name__)
 
 #: A diploid nucleotide call as ClinPGx writes it: two bases, unseparated (`CC`, `CT`).
 _TWO_BASE = re.compile(r"^[ACGT]{2}$")
+
+#: How ClinPGx spells a structural allele inside a genotype cell (`C/del`, `del/del`, `ins/ins`), and
+#: the format's own name for the same thing. **Normalising a source's dialect belongs here, at the
+#: boundary, not in the schema** — the `CC` → `C/C` rule one function down is the precedent, and a
+#: grammar that accepted every source's spelling would owe every consumer the same union.
+_CLINPGX_SYMBOLIC: dict[str, str] = {"del": "DEL", "ins": "INS", "dup": "DUP"}
 
 #: ClinPGx joins the drugs one annotation covers with `;`.
 _DRUG_SEP = ";"
@@ -78,6 +88,29 @@ def _authored_genotype(raw: str | None) -> str | None:
     return f"{first}/{second}"
 
 
+def _symbolic_types(raw: str | None) -> list[str]:
+    """The structural types a ClinPGx genotype cell names, e.g. `C/del` → `['DEL']`. Empty otherwise.
+
+    RM5 widened the grammar to hold `<DEL:1500>`, so the question this pass used to ask — *can the
+    format spell it?* — is answered, and the reason these rows are still skipped moved: ClinPGx
+    publishes no **length** for its `del`, and a lengthless symbolic allele is a rule the compiler
+    drops. Writing the row anyway would emit something a compile is guaranteed to discard, which is
+    worse than not writing it: a provider must not hand an author work the next command undoes.
+
+    So this recognizes the dialect in order to *report accurately*, and the value it would have
+    produced is deliberately not built. When a source arrives that does publish the length, this is
+    where the mapping already is.
+    """
+    if not raw:
+        return []
+    found = [
+        _CLINPGX_SYMBOLIC[token]
+        for token in (t.strip().lower() for t in raw.split("/"))
+        if token in _CLINPGX_SYMBOLIC
+    ]
+    return found
+
+
 def _rows_from_snapshot(
     records: Sequence[dict],
     *,
@@ -90,6 +123,7 @@ def _rows_from_snapshot(
     rows: list[PharmVariantRow] = []
     warnings: list[str] = []
     skipped_haplotype = skipped_symbolic = skipped_unidentified = 0
+    skipped_other = 0
 
     for record in records:
         rsid = (record.get("rsid") or "").strip()
@@ -101,8 +135,10 @@ def _rows_from_snapshot(
         if genotype is None:
             if raw_genotype.startswith("*"):
                 skipped_haplotype += 1
-            else:
+            elif _symbolic_types(raw_genotype):
                 skipped_symbolic += 1
+            else:
+                skipped_other += 1
             continue
         if min_evidence_level and not _meets_level(record.get("evidence_level"), min_evidence_level):
             continue
@@ -134,7 +170,14 @@ def _rows_from_snapshot(
         )
     for count, what in (
         (skipped_haplotype, "haplotype-keyed (a star allele belongs on diplotypes.csv)"),
-        (skipped_symbolic, "symbolic or non-nucleotide (RM5)"),
+        (
+            skipped_symbolic,
+            "naming a structural allele (del/ins/dup). The grammar holds these since RM5 — "
+            "<DEL:1500> — but only with a length, and ClinPGx publishes none, so a row written here "
+            "would state a rule nothing can apply and the compiler would drop it. Add the length by "
+            "hand if you know it",
+        ),
+        (skipped_other, "a genotype this format cannot spell (not two bases, not a star allele)"),
         (skipped_unidentified, "carrying no rsID, so nothing this format can key on"),
     ):
         if count:

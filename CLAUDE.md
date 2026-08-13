@@ -161,15 +161,45 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   `non_nucleotide_alleles` classify it, both "cannot host" sites name which, and
   `cpic.unusable_allele_reason` delegates to the same function rather than keeping its copy. Do **not**
   "fix" it by adding a nucleotide grammar to `alts`: **no `ref`/`alt`/`alts` column has one** (eleven
-  columns, six models; `validate_allele`'s only user is `HaplotypeRow.allele`), so a grammar rejects
-  `<DEL>` and `N` too — tightening the field **RM5** exists to widen; a module with `alts="Y"` compiles
-  today under `best_effort`, so refusing it breaks **P3**; and the only non-ACGT allele in real variant
-  records is `N`, already filtered by `clinvar_build` at the snapshot boundary. And do not "expand"
+  columns, six models), so a grammar rejects `N` too; a module with `alts="Y"` compiles today under
+  `best_effort`, so refusing it breaks **P3**; and the only non-ACGT allele in real variant records is
+  `N`, already filtered by `clinvar_build` at the snapshot boundary. And do not "expand"
   `Y`→`C,T`: probed across **4,439,382** ClinVar rows and all sixteen modules, `R/Y/S/W/K/M/B/D/H/V`
   appear in REF or ALT **zero** times — the compressed-ALT-set reading that argument rests on has no
-  instantiation. Full probe in ROADMAP's 0.6 idea-book. Keep the two reasons' **consequences** separate
-  (an uncertainty is permanent, a grammar gap is a release away); appending one to both branches is the
-  CPIC conflation, and it was reintroduced once already inside its own fix.
+  instantiation. Full probe in ROADMAP's 0.6 idea-book. Keep the reasons' **consequences** separate
+  (an uncertainty is permanent, a grammar gap is a release away, a symbolic allele is held and simply
+  not comparable); appending one to every branch is the CPIC conflation, reintroduced once already
+  inside its own fix. **`validate_allele` has TWO users, not one** — `HaplotypeRow.allele` and
+  `VariantRow.effect_allele`. This bullet and `alleles.py`'s docstring both said "exactly one,
+  `HaplotypeRow.allele`" from 0.5 until RM5, and the count is precisely what someone sizing a grammar
+  change reads; the shared diploid grammar `AuthoredModel._validate_genotype` is a third site again
+  (`VariantRow` required, `PharmVariantRow` optional). `docs/ROADMAP.md` and `docs/CHANGELOG.md` still
+  carry the old claim in their historical entries — leave those, they record what was believed then.
+- **A symbolic/structural allele is HELD by the grammar since 0.6, and its length rides in the token
+  (RM5).** `<DEL:1500>`, `<CNV:TR:30>` — VCF 4.4's closed five (`DEL/INS/DUP/INV/CNV`) at the first
+  level, open subtypes below it. Five things not to redo:
+  - **The length is in the token because SVLEN is `Number=A` — one value per ALT.** A scalar authored
+    column cannot describe `alts=<DEL:5>,<DUP:9>`, a parallel-array column is the desync shape
+    `vrs_id` needed two guards for, and `genotype`/`effect_allele`/`HaplotypeRow.allele` have no
+    row-level home for it at all. An authored column is also *full cost* under the 0.6 charter
+    amendment, on every table that can carry an allele.
+  - **The schema accepts a lengthless `<DEL>`; the compiler refuses it.** Forced, not chosen: a
+    model-level rejection is a load error, fatal in **both** modes, and the decided behaviour is
+    warn-and-drop under `best_effort`. Don't "tighten" it back into the models.
+  - **This is the first check that DISCARDS an authored row, so the warning says DROPPED.** It does not
+    break P7 (the fixed point is claimed under `strict`, which refuses here), but `reverse` cannot
+    re-emit what never reached the parquet. Droppable only where a row *is* a rule (`variants.csv`,
+    `pharm_variants.csv`); on `haplotypes.csv`/`heteroplasmy.csv` it is fatal in both modes, because
+    dropping a defining variant or a bin makes a quietly **different** module, not a smaller one.
+  - **`hosting_verdict` returns `None` for a symbolic allele — never `False`** — and the guard sits
+    directly under the raw-string match, because everything below it is arithmetic over characters a
+    symbolic token does not have. Two differing *stated* lengths are still undecided: symbolic notation
+    exists for imprecision, so a summary length is not an event size.
+  - **Rejected and staying rejected:** VCF's `##ALT=<ID=…>` declaration mechanism and arbitrary named
+    IDs (unasked extendability in the layer a human reads); a readable alias carrying its own sequence
+    (two spellings of one allele for comparison and identity to resolve). Consequently 5-HTTLPR is
+    authored as a plain **indel** (its sequence is known, so the standard says spell it) and CPIC's
+    IUPAC codes stay unexpressible. `<*>` is *not* one of the five — it is an observability claim.
 - **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**
   `_check_allele_membership` stayed compile-only through the pass that fixed `_verify_vrs_ids` and
   `_check_p_value_num`, because that pass asked *which tables does validate read* and this check reads
