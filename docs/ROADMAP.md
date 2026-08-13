@@ -12,6 +12,20 @@
 - **[USE_CASES.md](USE_CASES.md)** — where most `RMn` were derived (the *what-blocks?* lens);
   **[PROPOSAL_0_5.md](PROPOSAL_0_5.md)** — where their shape was argued.
 
+**Split on 2026-08-13, and it changes where to look.** This file is now the **line being built**; a
+deferral is filed against the release that will decide it:
+
+- **[PROPOSAL_0_6.md](PROPOSAL_0_6.md)** — **the authoritative entry for every active item below.**
+  Each was argued to a decision on 2026-08-13, with the facts probed, the repairs rejected and why, and
+  the consequences that follow without being chosen. **Where an entry below and the proposal disagree,
+  the entry below is stale** — several of these sections were written before the decision and describe
+  a shape that was rejected. The proposal also carries RM53–RM67, from
+  [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md), which are not repeated here.
+- **[ROADMAP_0_7.md](ROADMAP_0_7.md)** — RM16, RM23, RM28 and the deferred halves of RM55, RM56, RM65,
+  plus RM66 and RM67. RM10 closed there, folded into RM28.
+- **[ROADMAP_1_0.md](ROADMAP_1_0.md)** — RM15, RM52 and RM55's removal half, plus the upgrade ledger.
+  **The 1.0 cleanup tracker below did not move** and stays the home for the unnumbered major-only items.
+
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
@@ -152,97 +166,6 @@ repeat count; rejected by today's nucleotide grammar and a category error in `re
 the PGx passes skip rather than coerce. Also unblocks SV-scale variation and consuming symbolic
 VCF alleles (round-2 §1b/3c).
 
-## RM10 — Declarative inheritance-expectation field
-
-**Severity** low (on demand) · **Status** deferred, on demand only — **and the placement now decides the
-release** · **Owner** format (schema) · **Motivating case** trio / multi-sample panels
-
-An optional trio / de-novo / Mendelian-consistency assertion carried *as data* (the panel says
-what it expects; a consumer checks it). Only if a real module needs it.
-
-**Where it lands is a design question, not a version gate.** A column on an existing table, its own
-optional table, and `module_spec.yaml` metadata reaching only `manifest.json` are all minor-legal, so
-choose on orthogonality (P5) and on what a consumer would have to join, never on cost. Settle it before
-writing any of it — the item was parked while shapeless, and it is still shapeless.
-
-## RM15 — Build-agnostic identity & multi-build support (other-builds-support)
-
-**Severity** large · **Status** deferred to **1.0** — the build-naming half shipped as RM19, and the
-remaining half changes the *semantics* of `variant_key` and of every coordinate, which is the
-identity-change class a major exists for (not a digest question) · **Owner** format (schema + compiler) · **Motivating case** GRCh37 / T2T modules;
-cross-build annotatability
-
-Today a coordinate is *implicitly GRCh38* (legacy-from-implementation): `genome_build` is
-authored/manifest metadata, but every `chrom/start/ref`, the Ensembl resolver, and all coord-based
-reasoning silently assume GRCh38. Coordinates are **not absolute** — GRCh37 / GRCh38 / T2T-CHM13
-disagree, and the rsid↔coordinate mapping is **build-specific**: an rsid may resolve in one build
-and be un-annotatable (unplaced/absent) in another, and presence/absence combinations vary per
-build. This item makes the build a first-class axis — coordinates tagged by (or resolved per)
-build, a **build-aware resolver** (the injected reference declares its build; a module/reference
-build mismatch degrades to *unverified* rather than a false consistency error), and cross-build
-rsid annotatability recorded *as data*. **The "coordinate-first identity" parking is now RESOLVED,
-on its own stated condition.** This item parked option C because a bare coordinate "would bake
-GRCh38 into `variant_key`", and said it "becomes reconsiderable only once identity can name its
-build". A **GA4GH VRS allele id names its build**: the sequence is addressed by its refget
-accession — the digest of the reference sequence itself — so GRCh38 and GRCh37 mint distinct,
-correctly non-colliding ids. 0.5 therefore ships coordinate-first identity as the VA for a
-resolved substitution (see [SCHEMAS.md](SCHEMAS.md) § the identity switch). What remains of RM15
-here is the **multi-build** half: a second refget table beside `REFGET_GRCh38`, per-build
-coordinates, and cross-build annotatability. The GRCh38-only minting ships now — the same
-"GRCh38-now, multi-build-later" split this item already applies to one-to-many expansion.
-
-**What a non-GRCh38 module gets *today* is now pinned, and it was not before.** The 2026-08-06 audit
-found four separate paths quietly answering a GRCh38 question in a GRCh37 module's name — reverse
-relabelling the build, `enrich()` resolving against the wrong assembly, `VrsMinter` aborting on one,
-and the frequency pass querying gnomAD with an off-build coordinate. All four survived because **every
-reference example was GRCh38**, so "reads the build" and "writes `GRCh38`" were indistinguishable.
-`reference_examples/grch37_build/` closes that, and `test_reference_examples_roundtrip.py` asserts the
-corpus spans more than one build so it cannot reopen. This does not shrink RM15 — the remaining work is
-unchanged — but it does separate the two halves cleanly: **RM15 is about *supporting* another build;
-what shipped is only that the tools *decline* to answer for one rather than answering wrongly.**
-**Generalizes one-to-many rsid expansion to multi-build:** a no-coord rsid that maps to several
-loci is expanded to one row per locus (a paralog/SV signal a client can count — data-agnostic),
-and that ships **GRCh38-only now as compiler behavior** (pinned by `compiler_version`, not a
-schema break). What is build-specific is *which* loci and *how many*, so RM15 tags expanded
-coordinates by build and records cross-build annotatability; the GRCh38 expansion itself is not
-deferred. Blocked by nothing external (schema-shape + resolver decision) but large — touches
-identity, positions, the resolver, and `artifact.digest`. Interacts with RM5 (symbolic/structural
-alleles differ across assemblies) and the reserved `reference_db` axis.
-
-## RM16 — Authored PRS weights (a scoring file, not a manifest)
-
-**Severity** medium-large (on demand) · **Status** deferred — build against a real consumer ·
-**Owner** format (schema + compiler) · **Motivating case** authored-weight PRS modules
-
-0.4 shipped `pgs.csv` as a *manifest of PGS Catalog IDs* with the ancestry-validity fields — not
-authored per-variant weights (just-prs resolves a `PGSxxxxxx` id to a harmonized scoring file and
-scores each id itself, so inlined weights would be dead data; a PRS is a
-Z/percentile-in-reference, a shape the format does not bin). Deferred: a distinct, digest-bearing
-`effect_allele`+`effect_weight` scoring table for the case a module must ship weights the PGS
-Catalog does not host. Build only against a real consumer that combines authored weights into a
-score. See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) D1.
-
-## RM23 — Computational predictor scores as a table
-
-**Severity** medium · **Status** deferred on grain + acquisition, not on code · **Owner** format
-(schema + compiler) + enricher · **Motivating case** pathogenicity triage; splice-impact panels
-
-(`predictions.csv`) — the groundwork every predictor source needs, built **once**: one row per
-`(variant, predictor, score_kind)` with `score`, `dataset`, `source`, and an optional
-`transcript`. Long-form, not wide, is the load-bearing choice — SpliceAI is four deltas plus
-positions, CADD is one number, AlphaMissense is one plus a class, so wide columns would make every
-new predictor a schema bump while long form makes it *data*. A predictor score is the same class
-of object as an allele frequency or a LOEUF (a per-variant number from a named dataset, no
-measurement), so the 0.5 sidecar precedent covers it. Deferred on two unsettled questions, neither
-of which is code: the **grain** (per-transcript scores; how to name the four splice deltas without
-inventing a predictor-specific column set) and the **acquisition** — precomputed splice scores
-need the *masked vs raw* file sizes measured and the Broad lookup API's terms read, which is the
-same measure-first question that correctly parked the frequency snapshot. Licensing is already
-solved rather than blocking: SpliceAI/Pangolin, dbNSFP, AlphaMissense, REVEL, CADD and PrimateAI
-are all non-commercial or academic-only, and `sources.csv` + the compile gate already confine that
-to the modules that use them, while phyloP/phastCons/GERP (UCSC, free — and queryable per-range
-rather than a bulk download) keep a module sellable.
-
 ## RM24 — Gene–disease validity as a table
 
 **Severity** medium · **Status** deferred on the design, not the code · **Owner** format (schema +
@@ -279,80 +202,6 @@ a redistribution bar is not a *use*, so `declared_use` (`unstated`/`non-commerci
 is the wrong axis to resolve it against — a module may be built legitimately and still not be
 shippable, which is a different verdict from the ones the gate currently issues. Needs the third
 axis thought through before code.
-## RM28 — Meta-conclusions and injected cofactors
-
-**Severity** medium (after the corpus) · **Status** parked — and smaller than it was · **Owner**
-format (schema + compiler) · **Motivating case** combination annotations; disclosure policy
-
-**meta-conclusions and injected cofactors (starter shape recorded, deliberately unbuilt):**
-A module is rarely one axis, and what a curator wants is to pair them — a CVD module that also says
-something about aspirin or warfarin *given* what the rest of the module found. The format cannot
-state that today: every table keys on one subject and `conclusion` is prose about it alone.
-CONSTITUTION P1 already sanctions the mechanism (a non-Turing-complete boolean predicate, drafted
-since 0.1 and never wired because nothing demanded it). **The algebra is three-valued, not boolean** — true/false/**unknown**, Kleene operators, with
-`unknown` a first-class value. That is not new here, it is the rule this codebase already follows
-everywhere (`None` ≠ `False` in `SourceTerms`, `CrossrefClient.exists`, `quotes_found`, `--offline`
-reporting `unchecked`, `unresolved` for a missing measurement, `requires_callable` for an uncalled
-absence) finally stated as an algebra rather than as separate cases. It matters concretely: with
-Kleene `AND`, a conclusion gated on "ε4 present AND QUAL ≥ 60" is decidably **false** at ref/ref
-whatever the quality was, so a blanket withhold-on-any-unknown would be strictly worse than the
-tables it replaces. A predicate evaluating to `unknown` is withheld — never reported, never negated.
-The full design thread, the starter shape and what is deliberately left open are in
-[PROPOSAL_0_5.md § G3](PROPOSAL_0_5.md). In brief: a new
-**optional** table, a predicate that **never blocks** (an unresolvable reference warns), a grammar
-kept to the smallest thing that covers the motivating case — conjunction **plus one relational
-notion, in-cis/in-trans**, because the case that most justifies the table is compound
-heterozygosity, where the same two alleles mean *affected* in trans and *carrier* in cis and a
-pure conjunction cannot tell them apart (*the table is the safe commitment; the grammar is where
-drift happens*) — and **injected cofactors** — values the consumer supplies at query time that a module must
-never hold. Three classes so far, each with the same withhold-on-missing rule: **ancestry**
-(a panel-scale inference, not derivable from a curated module's own gnomAD frequencies —
-real models do not rely on single SNPs), **clinical context** (CPIC's populations), and
-**call quality** (a `QUAL`/`GQ` floor, the `source_field`/`callable_from` declarative-pointer
-idiom pointed at confidence — and distinct from the dropped `caller` names, which recorded
-measurement provenance rather than an annotation's own applicability). The first real evidence arrived with
-CPIC's clopidogrel populations, where `draft --population` makes an author bake in a choice that is
-only knowable at query time. **Feasibility probed 2026-08-03 and the result argues for keeping it parked:**
-`reference_examples/apoe_epsilon/` builds the highest-profile meta case — APOE, whose ε
-haplotypes are defined by two SNPs together and whose ε4 condition is P1's own example
-(`rs429358==C AND rs7412==C`) — with **bricks that shipped in 0.4 and no predicate at all**.
-`HaplotypeRow` is a junction table, so same-strand co-location is what it already expresses;
-`diplotypes.csv` carries the conclusion. What stays out of reach is narrower than it looked. **Rows are a disjunction and columns are a
-conjunction**, so the existing tables already span any finite boolean function over an enumerable
-set of genotypes — `OR` is two rows, `XOR` and bounded `NOT` are enumeration, and `haplotypes.csv`
-is same-strand `AND`. No operator is missing. What is missing is (a) **economy and intent** — "any
-two pathogenic variants in trans" over 300 of them is ~45,000 pairs, expressible but unwritable
-and unreadable — and (b) **open-world negation**, which no operator fixes: "no pathogenic variant
-in this gene" quantifies over a set the module does not close, and absence is only assertable where
-the region was callable (`requires_callable`). A negation feature ignoring that would manufacture
-reassurance, the worst failure mode this format has.
-
-**Probed again 2026-08-03, and the cis/trans motivation is now closed — as a check, not a table.**
-`reference_examples/hfe_compound_het/` builds the case that most justified the predicate grammar:
-HFE C282Y and H63D, where the same two heterozygous calls mean *compound heterozygote, at-risk* in
-trans and *carrier* in cis. It needs no new machinery either. A **diplotype is already a statement
-about two homologs** — `haplotypes.csv` says which alleles ride together on one chromosome and
-`diplotypes.csv` pairs two of them, which is what "in trans" means — so cis and trans are two rows,
-and the relational notion the proposal was going to add to the grammar is what a diplotype pair *is*.
-Between this and APOE, **both** halves of the phase argument are now answered by the existing tables.
-
-What building it *did* surface is narrower and real: nothing said the two rows are
-**indistinguishable without phase**. They present the identical unphased genotype with opposite
-conclusions, and nearly all consumer data is unphased. That is derivable from the two tables the
-compiler already holds, so it shipped as `_cross_validate_phase_ambiguity` — a warning, never a block.
-A `requires_phase` column was rejected: it would make an author restate what the data determines and
-would go stale the moment a haplotype is edited. It is closed-world by design (it compares stated rows,
-never omitted ones), which is why APOE — whose ε2/ε4 vs ε1/ε3 is the textbook collision — stays quiet:
-the module carries no ε1.
-
-**So what remains of RM28 is smaller again**, and is the same two items APOE named: pairing across
-*subjects* (no table keys on more than one), and **economy** — "any two pathogenic variants in trans"
-over 300 of them is ~45,000 pairs, expressible and unwritable — plus open-world negation, which is not
-an operator problem. RM29 removed two of the three cofactor classes into columns in the same round, so
-only ancestry stays genuinely injected. Still parked. It waits on a corpus to generalize from — roughly 70% built; nutrigenomics
-and supplements do not exist yet — because fixing a shape against four table kinds and then meeting
-the fifth is how a one-way door gets spent badly (P3/P5). It also blocks the "shy module" signal.
-
 ## RM43 — Resolution reaches the SNP core only, so a 0.4-led module is rsid-joinable and nothing more
 
 **Severity** high (the prerequisites, not the join) · **Status** open — **0.6**, gated on a design
@@ -677,62 +526,6 @@ Whichever wins lands **with** the requiredness demotion, not before it — decid
 while `StudyRow.pmid` is still mandatory answers a question no module can currently ask. Related:
 RM47 makes the same observation from the other side, that a new PMID site obliges the literature pass
 to learn it in the same release.
-
-## RM52 — 1.0 ships an upgrade procedure, or 1.0 does not ship
-
-**Severity** high — **release-blocking by charter**, not a nice-to-have · **Status** open — **1.0,
-mandatory**; the ledger accrues from now, one line per breaking item as it lands · **Owner** format +
-compiler + enricher (each writes its own items) · **Origin** the 0.6 charter amendment
-(CONSTITUTION § Amendments), which permits breakage at a major only when it arrives mitigated
-
-**The obligation.** A major carries the documented route from the previous line: per item, either the
-mechanical migration or an explicit *no action needed*. A removal whose upgrade path is left to the
-reader to work out is not ready to ship, however long it was deprecated first. This is now a principle,
-so 1.0 is blocked on it in the same way it is blocked on the round-trip tests.
-
-**It is not the CHANGELOG, and the difference is the audience.** The CHANGELOG answers *what changed*,
-newest first, for someone following the project. An upgrade procedure answers *what must I do*, for two
-audiences who break in different places and cannot use each other's instructions:
-
-- **A module author holding a 0.x spec.** What moved on the authored surface — the `sources.csv` →
-  `licensing.csv` rename (RM51), the `StudyRow.pmid` requiredness demotion, the `alt`/`ref` vocabulary
-  members dropped from the read set, whatever `state` and the `pathogenic`/`benign` booleans become.
-  Their remedy is an edit, a rename, or a tool run.
-- **A consumer holding a 0.x artifact.** A parquet filename, a manifest key, a `variant_key` semantics
-  change (RM15). No edit of theirs helps: they need to know what to re-read, what to re-key, and what
-  silently still works.
-
-**What "mechanical migration" can mean here, because the primitive already exists.** `reverse_module`
-rebuilds the authored spec from a compiled artifact, so for anything expressible in the DSL the upgrade
-is *reverse under the old compiler, recompile under the new one*, and the procedure's real job is to say
-**which items that covers and which it does not**. It does not cover an identity re-key: RM15 changes
-what `variant_key` means, and reverse faithfully reproduces the module while saying nothing about the
-joins a third party stored against the old keys. Naming that boundary is most of the value.
-
-**Three rules for how it gets written, all of which exist because the alternative has already failed
-here.** The upgrade line is written **when the item lands**, not when the release is assembled — the
-person removing the column knows the route and the person cutting the release six months later does
-not, which is the same argument that puts a reason beside every parked item rather than in a commit
-message. A **"no action needed" must be stated explicitly**, because silence is indistinguishable from
-an oversight — the same reason `clin_sig_not_checked` and `gene_loci_not_checked` exist. And the
-procedure's claims are **checkable, so check them**: "reverse and recompile" can be run across
-`reference_examples/` and asserted to reproduce, exactly as the round-trip tests already do; an unrun
-migration is prose, and prose that has never been executed is how a documented `start` convention
-shifted 3,038 variants.
-
-### The ledger
-
-One line per breaking item, written **when the item lands**. Deprecations count: the removal is the
-breaking half, and the line is owed by whoever created the obligation.
-
-| landed | item | what breaks at 1.0 | upgrade route |
-|---|---|---|---|
-| 0.6.0 | **RM51** — `sources.csv` deprecated in favour of `licensing.csv` | the old input filename stops being read | **Author:** `git mv sources.csv licensing.csv`. No content change, and no signature moves — verified across all eleven reference examples when four of them were renamed. **Consumer: no action needed** — `sources.parquet` and `manifest.sources` keep their names through the whole 0.x line and are untouched by this item. |
-
-Nothing else in 0.6.0 so far is breaking: `resolution_subjects` (RM44) is additive, `derived/` (RM49)
-is a *tolerated* extra location that removes none, and the vocabulary separator change widens what is
-accepted rather than narrowing it. Each of those is explicitly a **no action needed** row when the
-procedure is written.
 
 # Not format scope
 
