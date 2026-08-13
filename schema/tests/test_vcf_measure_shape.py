@@ -4,8 +4,9 @@ Each test states the finding it pins and, where the finding is that a check *can
 demonstrates the blind spot by running the real lookup rule rather than asserting a message.
 """
 
-import pytest
+import math
 
+import pytest
 from just_dna_format.alleles import (
     MISSING_ALLELE,
     non_nucleotide_alleles,
@@ -13,12 +14,12 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import (
+    _INTEGER_KINDS,
+    _VCF_MEASURE_FIELDS,
     VALID_MEASURE_KINDS,
     CopyNumberRow,
     HeteroplasmyRow,
     RepeatAlleleRow,
-    _INTEGER_KINDS,
-    _VCF_MEASURE_FIELDS,
     measurement_shape_warnings,
     validate_bins,
 )
@@ -94,8 +95,6 @@ def test_an_integer_tiling_silently_answers_nothing_for_a_fractional_measurement
     assert _selected(rows, fractional) is None
     # …while the neighbouring whole numbers on both sides are answered perfectly well, so this is not
     # a table that simply fails to cover its domain.
-    import math
-
     assert _selected(rows, math.floor(fractional)) is not None
     assert _selected(rows, math.ceil(fractional)) is not None
 

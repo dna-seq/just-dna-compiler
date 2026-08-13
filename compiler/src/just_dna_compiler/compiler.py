@@ -1046,7 +1046,13 @@ _INVERTING_QUALITY_FIELD = "QUAL"
 
 
 def _quality_fields(pointer: str | None) -> list[str]:
-    """The field tokens a `quality_from` / `callable_from` pointer names, namespace stripped."""
+    """The field tokens a pointer cell names, upper-cased and with any namespace stripped.
+
+    A pointer is `|`-alternated, so `DP|QUAL` names two fields and both must be looked at; and a
+    qualified spelling (`INFO/DP`) names the same field as its bare form, which is what the trailing
+    `rsplit` is for. Case is folded because this feeds a *warning* — being generous about the spelling
+    of the thing being warned about is the right direction to be wrong in.
+    """
     if not pointer:
         return []
     return [part.rsplit("/", 1)[-1].strip().upper() for part in pointer.split("|") if part.strip()]

@@ -517,9 +517,8 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
         widest = max(len(grp) for grp in of_kind.values())
         if widest >= 2:
             warnings.append(
-                f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what "
-                f"to do "
-                f"with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
+                f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what to "
+                f"do with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
                 f"bound means *unbounded*, so the measurement is an interval — and the widest group "
                 f"here states {widest} adjacent bins for it to cross. The consumer contract has three "
                 f"states (a bin matched, no bin matched, the measurement absent) and none of them is "

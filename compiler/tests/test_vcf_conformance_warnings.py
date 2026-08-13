@@ -7,12 +7,15 @@ that matter are therefore: it fires on a real module, it fires *once* on the com
 place a catalog reindexing from a published manifest can read it (RM44).
 """
 
+import json
 from pathlib import Path
 
-import json
 import pytest
 from just_dna_compiler import compiler as compiler_mod
+from just_dna_compiler.compiler import _spelling_clauses as compiler_clauses
 from just_dna_compiler.compiler import compile_module, validate_spec
+from just_dna_compiler.resolution import _spelling_clauses as resolution_clauses
+from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import (
     FRACTIONAL_MEASURE_PHRASE,
     SPANNING_MEASUREMENT_PHRASE,
@@ -189,8 +192,6 @@ def test_the_missing_marker_is_reported_with_the_two_keys_it_produces(tmp_path: 
     Both keys are computed by the compiler from the row itself, and the test recomputes the
     empty-cell one through the same public helper rather than hardcoding a string.
     """
-    from just_dna_format.base import derive_variant_key
-
     warnings = _warnings(_spec(tmp_path, _MISSING_MARKER_ROW), tmp_path)
     found = _matching(warnings, compiler_mod.MISSING_ALLELE_PHRASE)
     assert len(found) == 1
@@ -211,9 +212,6 @@ def test_the_missing_marker_gets_its_own_clause_and_borrows_neither_other_one() 
     knows would silently produce an empty clause — the failure mode this asserts against, on both
     copies, using the same real values.
     """
-    from just_dna_compiler.compiler import _spelling_clauses as compiler_clauses
-    from just_dna_compiler.resolution import _spelling_clauses as resolution_clauses
-
     for clauses in (compiler_clauses, resolution_clauses):
         only_missing = clauses({".": "missing"})
         assert only_missing.strip()
