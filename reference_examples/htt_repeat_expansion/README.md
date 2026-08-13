@@ -46,7 +46,20 @@ and the round trip was re-verified rather than assumed.
 `largest` rather than `largest_alt` is deliberate and the pair exists because of a trap: on a
 `Number=R` VCF field the reference is element zero, so "the larger of the two" has two answers. `REPCN`
 has no reference element — both values are the sample's own alleles, and the longer one may perfectly
-well be the reference-length one — so the rule that ranges over the whole list is the right one here.
+well be the reference-length one — so the rule that ranges over every value is the right one here.
+
+**"Element" does not mean "VCF `Number` slot", and `REPCN` is why.** ExpansionHunter reports both
+alleles in a *single* cell (`17/42`, half-repeats and all), rather than as two values of a
+multi-valued field. A selection rule defined strictly over `Number` would therefore have had nothing
+to say about the one case it was built for. So the rule names *one of the values the field carries for
+this record*, and how the caller encodes that multiplicity is the caller's business — the format holds
+no opinion on it, which is the same inject-only line that keeps every other source convention out of
+these tiers. The module states which value it means; the consumer knows how to get it.
+
+That is also why the compiler stays quiet here rather than prompting for the rule: `REPCN` is
+ExpansionHunter's key and not the spec's, so this tier is not entitled to assert its cardinality. The
+warning exists for the keys the spec *does* define — point this table at `FORMAT/AD` with no
+`source_element` and it fires.
 
 **The `unresolved` row is mandatory, and it is not the same as "normal".** A short-read caller that
 cannot span a long expansion returns no confident count, and the failure mode this row prevents is

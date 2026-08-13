@@ -1045,6 +1045,14 @@ def _check_vcf_pointers(
     withholds. It also answers `None` for a *bare* key whose two namespaces disagree (`CN` is `A`
     under INFO and `1` under FORMAT), which is exactly the case the collision half already names.
 
+    **The mirror case — an element rule on a field the spec calls single-valued — is deliberately
+    *not* reported.** It looks like the obvious second half of the cardinality check and it would fire
+    on the correct authoring of the flagship case: a caller that packs several values into one cell
+    declares that cell `Number=1, Type=String`, which is exactly what ExpansionHunter's `REPCN`
+    (`17/42`) is. Separating "one value" from "several values in one string" turns on `Type`, which
+    this tier does not model and which no `Number` can answer. Where it cannot decide, it withholds
+    rather than accusing a correct row.
+
     **The two halves quantify over different column sets, and that is not an oversight.** The
     namespace question belongs to every pointer column (`VCF_POINTER_FIELDS`) — the decision names
     `callable_from=DP` as the same error `source_field=AF` is, one column over. The cardinality

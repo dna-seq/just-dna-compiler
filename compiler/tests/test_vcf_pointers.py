@@ -55,10 +55,12 @@ def _copy_spec(source: Path, dest: Path) -> Path:
 
 
 def _rewrite(path: Path, **cells: str) -> None:
-    """Set `cells` on every data row of a CSV, dropping any column mapped to `None`."""
+    """Set `cells` on every data row of a CSV, adding a column the file lacks and dropping any column
+    mapped to `None`."""
     rows = list(csv.DictReader(io.StringIO(path.read_text(encoding="utf-8"))))
     assert rows, path
     fieldnames = [f for f in rows[0] if not (f in cells and cells[f] is None)]
+    fieldnames += [c for c, v in cells.items() if v is not None and c not in fieldnames]
     for row in rows:
         for column, value in cells.items():
             if value is not None:
@@ -295,16 +297,41 @@ def test_an_element_rule_with_nothing_to_qualify_is_refused() -> None:
     ).source_element is None
 
 
-def test_every_companion_in_the_map_is_actually_enforced() -> None:
-    """The relation the check reads and the vocabulary the validator enforces must not drift: a map
-    entry nothing validates would let a novel value through the surface that advertises the set."""
+def test_every_companion_in_the_map_is_a_real_column_beside_its_pointer() -> None:
+    """The relation `_check_vcf_pointers` reads must describe columns that exist: an element column
+    with no pointer beside it on the same model would make the pair rule unreachable, and a map entry
+    no model declares would make the cardinality half silently quantify over nothing.
+
+    Enforcement itself is checked by *behaviour* one test down and in
+    `test_reference.test_declared_closed_options_are_exactly_what_is_accepted`; asserting it against
+    `SHARED_VOCABULARIES` here would be circular, since that dict is built from this map."""
     for element_field, pointer_field in VCF_POINTER_COMPANIONS.items():
-        assert SHARED_VOCABULARIES[element_field] is VALID_ELEMENT_RULES
+        assert element_field in SHARED_VOCABULARIES
         owners = [m for m in _ALL_MODELS.values() if element_field in m.model_fields]
         assert owners, element_field
         for model in owners:
             assert pointer_field in model.model_fields, (model.__name__, pointer_field)
     assert "source_element" in MeasureBinRow.model_fields
+
+
+@pytest.mark.parametrize(
+    "model, valid",
+    [
+        (RepeatAlleleRow, {"gene": "HTT", "repeat_unit": "CAG", "measure_kind": "repeat_count",
+                           "measure_min": 40, "conclusion": "x"}),
+    ],
+)
+def test_every_companion_column_really_rejects_a_non_member(model, valid) -> None:
+    """The behavioural half: on every model that declares one, the vocabulary is *enforced*, not
+    merely advertised. A field marked closed that accepted anything is the `actionability` drift, and
+    it is the one thing a map-versus-map assertion cannot see."""
+    for element_field, pointer_field in VCF_POINTER_COMPANIONS.items():
+        if element_field not in model.model_fields:
+            continue
+        with pytest.raises(ValidationError, match=f"{element_field} must be one of"):
+            model(**valid, **{pointer_field: "FORMAT/AD", element_field: "no_such_rule"})
+        accepted = model(**valid, **{pointer_field: "FORMAT/AD", element_field: "largest"})
+        assert getattr(accepted, element_field) == "largest"
 
 
 # ── severity and mode ───────────────────────────────────────────────────────────────────────────
@@ -323,13 +350,34 @@ def test_both_findings_warn_in_strict_too_and_never_refuse(tmp_path: Path) -> No
 
 
 def test_compile_reports_it_once_not_twice(tmp_path: Path) -> None:
-    """`compile_module` runs `validate_spec` itself, so a check living in both places has to be
-    de-duplicated on the message the way `_check_contig_ploidy` is."""
+    """`compile_module` runs `validate_spec` itself and seeds its warnings from it, so this check
+    must not also re-run on the compile side."""
     spec = _copy_spec(_MT, tmp_path / "mt")
     _rewrite(spec / "variants.csv", callable_from="DP")
     result = compile_module(spec, tmp_path / "out")
     assert result.success, result.errors
     assert len(_pointer_findings(result.warnings)) == 1, result.warnings
+
+
+def test_the_count_is_authored_rows_even_when_the_rsids_expand(tmp_path: Path) -> None:
+    """The reason the compile side does **not** re-run it. By then `variants` is the post-expansion
+    list — one row per resolved locus — while `validate_spec` saw the authored rows, and both
+    messages embed a count. De-duplication keys on the message, so a re-run would publish two
+    contradictory numbers into `manifest.compilation.warnings`, which RM44 established is a surface
+    consumers parse. `pathogenic_clinvar` is rsID-authored with a real `resolution.csv`, so it
+    genuinely expands; `mt_heteroplasmy` is coordinate-authored and would never have shown it."""
+    spec = _copy_spec(_EXAMPLES / "pathogenic_clinvar", tmp_path / "clinvar")
+    _rewrite(spec / "variants.csv", callable_from="DP")
+    authored = len(list(csv.DictReader((spec / "variants.csv").open())))
+
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
+    findings = _pointer_findings(result.warnings)
+    assert len(findings) == 1, findings
+    assert f"variants.csv callable_from=DP ({authored} row(s))" in findings[0]
+    # The expansion really happens, or this test would pass vacuously.
+    assert result.manifest.stats.weights_rows > authored
+    assert findings == _pointer_findings(validate_spec(spec).warnings)
 
 
 def test_nothing_authored_means_nothing_reported() -> None:

@@ -335,7 +335,10 @@ class AuthoredModel(BaseModel):
     # `field_vocabularies` reports — so the set a tool offers an author is the same object the
     # validator rejects against, not a copy of it. A field named here must have an entry there, which
     # is why a future element-rule companion adds itself to `VCF_POINTER_COMPANIONS` *and* to this
-    # list; `test_vcf_pointers` fails on a map entry nothing enforces.
+    # list. Adding it to the map alone would mark the field with a `closed` vocabulary that nothing
+    # rejects against, and `test_reference.test_declared_closed_options_are_exactly_what_is_accepted`
+    # catches precisely that — it discovers enforcement by *behaviour*, so it cannot be satisfied by
+    # the declaration it is checking.
     @field_validator("direction", "clin_sig", "stat_significance", "evidence_level",
                      "source_element",
                      check_fields=False)

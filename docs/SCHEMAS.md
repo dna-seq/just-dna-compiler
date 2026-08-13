@@ -384,13 +384,21 @@ applied by the consumer. An **index** (`AD[1]`, `REPCN[max]`) was refused: it is
 expression grammar, which is what Principle 1 exists to keep out and the reason these pointers were a
 bare token to begin with. A named rule is data, it terminates, and it needs no evaluator.
 
+**"Element" is one of the values the field carries for a record, which is wider than a `Number` slot
+and deliberately so.** A caller may pack several values into a single cell — ExpansionHunter reports
+both repeat alleles in one `REPCN` cell as `17/42` — and a rule that only spoke about `Number` would
+have had nothing to say about the case it was built for. How multiplicity is encoded is the caller's
+business and this tier holds no opinion on it (P2); which of the values the annotation means is the
+module's, and that is all `source_element` states.
+
 The reference-inclusion trap is written into the vocabulary rather than left to a footnote. On a
 `Number=R` field the reference is element zero, so "the larger of the two" has two answers; every
 ranging rule therefore comes in a pair — the bare name counts the reference element, the `_alt` name
-does not — and on a field with no reference element the two coincide. Per-member prose lives in
-`vocab.ELEMENT_RULE_MEANINGS` and reaches an author through `authoring_reference()["vocabulary_notes"]`.
-`htt_repeat_expansion` now authors `FORMAT/REPCN` + `largest`, which is the clinical rule for a
-dominant repeat expansion: *the longer of the two alleles*.
+does not — and on a field with no reference element (including a packed cell of the sample's own
+alleles) the two coincide. Per-member prose lives in `vocab.ELEMENT_RULE_MEANINGS` and reaches an
+author through `authoring_reference()["vocabulary_notes"]`. `htt_repeat_expansion` now authors
+`FORMAT/REPCN` + `largest`, which is the clinical rule for a dominant repeat expansion: *the longer of
+the two alleles*, whichever of them happens to be reference-length.
 
 **`callable_from` and `quality_from` have no companion column, deliberately.** Both can name a
 multi-valued field (`FORMAT/AD`), and no module does; under the 0.6 charter amendment a `variants.csv`
@@ -404,10 +412,14 @@ does not have is a finding no edit could clear.
 **What the compiler declines to say.** `vocab.VCF_FIELD_NUMBER` transcribes the spec's own reserved-key
 tables and nothing else. A caller's private key — `REPCN` is ExpansionHunter's, not the spec's — has no
 cardinality this tier is entitled to assert, and a bare key whose two namespaces disagree (`CN`) has
-none either. Unknown withholds; asserting one would be a source convention wearing a fact (P2). One
-consequence worth naming: `FORMAT/AF` is emitted by every caller and reserved by none, so the
+none either. Unknown withholds; asserting one would be a source convention wearing a fact (P2). Two
+consequences worth naming. `FORMAT/AF` is emitted by every caller and reserved by none, so the
 heteroplasmy pointer earns no cardinality warning even though it really is `Number=A` in practice —
-which is why the reference example authors `annotated_alt` explicitly.
+which is why the reference example authors `annotated_alt` explicitly. And an element rule sitting on
+a field the spec calls **single**-valued is *not* warned about either, which looks like the mirror of
+the check and is not: a `Number=1 String` cell is exactly how a packed multi-value field is declared,
+so the flag would fire on the correct authoring of the flagship case. The distinction turns on `Type`,
+which this tier does not model, and where it cannot decide it withholds.
 
 ## Allele identity — the VRS allele id (0.5)
 

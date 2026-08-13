@@ -62,6 +62,13 @@ per allele, reference first, of which none is the answer. So the namespace goes 
 (`FORMAT/AF`, bare still legal and still meaning unqualified) and the element goes in `source_element`
 — a closed set of **named rules** rather than an index, because `AD[1]` is the first line of an
 expression grammar and Principle 1 refuses it.
+
+"Element" is one of the values the field carries for a record, which is wider than a `Number` slot on
+purpose: ExpansionHunter reports both repeat alleles in a single `REPCN` cell as `17/42`, and a rule
+that only spoke about `Number` would have nothing to say about the case it was built for
+(`reference_examples/htt_repeat_expansion`, where the clinical rule is *the larger of the two*). How a
+caller encodes multiplicity is the caller's business and this tier holds no opinion on it (Principle
+2); which value the annotation means is the module's, and that is all this column states.
 """
 
 import math
@@ -157,11 +164,15 @@ class MeasureBinRow(AuthoredModel):
     source_element: str | None = Field(
         default=None,
         description=(
-            "Which element of `source_field` this bin is measured against, when the field returns a "
-            "list (VCF Number=A/R/G/P/.) rather than one value: largest|largest_alt|smallest|"
-            "smallest_alt|sum|sum_alt|annotated_alt|reference. A named rule, never an index. On a "
-            "Number=R field the reference is element zero, which is why each ranging rule comes in a "
-            "pair — the bare name counts it, the _alt name does not. Leave empty for a scalar field."
+            "Which of `source_field`'s values this bin is measured against, when the field carries "
+            "more than one for a record: largest|largest_alt|smallest|smallest_alt|sum|sum_alt|"
+            "annotated_alt|reference. A named rule, never an index. 'More than one' covers both the "
+            "spec's multi-valued cardinalities (VCF Number=A/R/G/P/.) and a caller that packs several "
+            "into one cell — ExpansionHunter's REPCN reports both repeat alleles as 17/42 — since "
+            "the encoding is the caller's business and which value the annotation means is the "
+            "module's. On a Number=R field the reference is element zero, which is why each ranging "
+            "rule comes in a pair: the bare name counts it, the _alt name does not. Leave empty when "
+            "the field carries a single value."
         ),
     )
 
