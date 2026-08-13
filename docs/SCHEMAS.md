@@ -201,9 +201,10 @@ reason its `source` column is inside its fact set while everywhere else `source`
   means "no measurement at read time" and is designed to compile — two opposite lifecycles on one
   field would be the overloaded-axis anti-pattern (P5).
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
-  columns later (P5) — today `{reference_db, callable_from}`, each with a reason in
-  `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already rejects
-  any unknown column).
+  columns later (P5) — today `{reference_db, callable_element, quality_element}`, each with a reason
+  in `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already
+  rejects any unknown column). (`callable_from` was reserved for RM6 and is now **built**, so it left
+  the set: a reserved name is refused at author time, which would make the built column unwritable.)
 
 ## The allele grammar — bases, and the five structural types (RM5, 0.6)
 
@@ -272,9 +273,9 @@ Annotation: `weight?`, `negatives?`, `priority?`, `gene?`, `phenotype?`, `catego
 `effect_size?`, `effect_measure?`, `effect_allele?`, `flags?` (open list; reserved
 `conditional|phased|pleiotropic`), `trait_efo_id?`, `clin_sig?`. 0.4 axes: `requires_callable?`,
 `acmg_sf?`, `actionability?` (`ACTIONABILITY_SEED`). 0.5: `callable_from?` — the VCF field(s) a consumer
-establishes callability from (`DP`, `GQ`, `FT`, or `DP|GQ`), the RM6 pointer half of
-`requires_callable`; same bare-token grammar as `source_field`, validated on `AuthoredModel` since the
-two share it. 0.5 (RM29a): `quality_from?` + `min_quality?` — the call-confidence cofactor, a
+establishes callability from (`FORMAT/DP`, `FORMAT/GQ`, `FORMAT/FT`, or `FORMAT/DP|FORMAT/GQ`), the
+RM6 pointer half of `requires_callable`; same pointer grammar as `source_field`, validated on
+`AuthoredModel` since the two share it. 0.5 (RM29a): `quality_from?` + `min_quality?` — the call-confidence cofactor, a
 pointer at the VCF confidence field plus an **inclusive** floor below which the row's conclusion is
 withheld. **Both-or-neither** (a model validator): a bound with no field does not say what must clear
 it, and a field with no bound is no threshold at all, so either half alone reads as a gate that is not
@@ -331,7 +332,7 @@ hg19 coordinate, whose remedy is rsID recovery rather than a liftover.
 **Binning rows** (`binning.py`, all subclass `MeasureBinRow`). Shared: `measure_kind` (must match the
 row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` carries no bounds — the
 mandatory no-call sentinel), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
-and the `source_field?` VCF pointer. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
+and the `source_field?` VCF pointer plus its `source_element?` rule. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
 `CopyNumberRow`→`(gene, modifier_gene, modifier_cn)`; `RepeatAlleleRow`→`(gene, repeat_unit)`;
 `HeteroplasmyRow`→`(gene, reference_sequence, tissue, variant_key)` (rejects the legacy `NC_001807`
 mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping resolved ranges
@@ -426,7 +427,7 @@ of them measures anything:
 | Column | Says |
 |---|---|
 | `VariantRow.requires_callable` | the *absence* of this variant is the informative call, so a consumer without callability data withholds the conclusion rather than asserting the reference one |
-| `VariantRow.callable_from` | which VCF field(s) the proof of callability lives in (`DP`, `GQ`, `FT`, `DP\|GQ`) — a pointer, never an expression |
+| `VariantRow.callable_from` | which VCF field(s) the proof of callability lives in (`FORMAT/DP`, `FORMAT/GQ`, `FORMAT/FT`, `FORMAT/DP\|FORMAT/GQ`) — a pointer, never an expression |
 | `VariantRow.quality_from` + `min_quality` | the floor below which what *was* seen is not good enough to act on. A consumer that cannot read the field **withholds** — an unevaluable floor is unknown, never satisfied |
 | `MeasureBinRow.unresolved` | the mandatory no-call sentinel on every binning table: a missing measurement selects it and **never** the lowest or reference bin |
 
@@ -503,6 +504,78 @@ A module that genuinely needs cis/trans says so with `diplotypes.csv`, which nam
 beside a COSMIC id. `validate_rsid` accepts exactly one, which is right for the authored side — a row
 should name one variant — but it means a consumer joining on `ID` must split on `;` first. Joining the
 raw column matches nothing on any multi-id record.
+
+### The VCF pointer columns — namespace and cardinality (RM53/RM54/RM61, 0.6)
+
+Three authored columns point into a VCF: `MeasureBinRow.source_field`, `VariantRow.callable_from` and
+`VariantRow.quality_from`. Until 0.6 all three took a **bare token**, and a bare token does not
+identify a VCF field.
+
+**A VCF field is identified by its namespace.** INFO and FORMAT are two reserved-key tables that
+overlap deliberately, and they collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and — new in 4.4 — `CN`.
+`INFO/DP` is the cohort's combined depth and `FORMAT/DP` is this sample's; `INFO/AF` is the cohort
+allele frequency of an ALT and `FORMAT/AF` is this sample's fraction of it; `INFO/CN` is
+allele-specific copy number where `FORMAT/CN` is the sample's total, so the two differ by a factor of
+the ploidy. Where both readings are type-compatible — and for `DP`, `AF` and `CN` they are — nothing
+detects the confusion: the consumer reads a well-formed number of the wrong kind and bins it without
+error. Both shipped reference examples that used these columns were wrong this way, and
+`mt_heteroplasmy`'s `source_field=AF` would have reported a carrier as asymptomatic on the strength of
+how rare the variant is in a reference panel.
+
+So the pointer grammar now accepts the **qualified** form (`INFO/DP`, `FORMAT/REPCN`,
+`INFO/DP|FORMAT/DP`). A bare key is still legal and still means *unqualified* — widening only, so
+nothing published breaks — and the compiler **warns** whenever a bare key is one of the known
+collisions. Nothing is defaulted: reading `callable_from` as FORMAT and `source_field` as INFO would
+convert *unstated* into a *stated* answer, and it would have been wrong for `mt_heteroplasmy` on the
+very first module. The same release also widened the key charset to the spec's own
+(`^([A-Za-z_][0-9A-Za-z_.]*|1000G)$`), which the old grammar refused: a dot is legal inside a key and
+`1000G` is a key the spec reserves by name.
+
+**A VCF field is described by its cardinality.** `Number` says how many values come back and what each
+one is *of*: `A` is one per ALT, `R` one per allele **reference first**, `G` one per genotype, `P` one
+per GT allele, `.` unbounded. A pointer at `AD` therefore returns *n+1* integers of which none is the
+answer. `MeasureBinRow.source_element` (0.6) says which one, from a closed set of **named rules** —
+`largest`, `largest_alt`, `smallest`, `smallest_alt`, `sum`, `sum_alt`, `annotated_alt`, `reference` —
+applied by the consumer. An **index** (`AD[1]`, `REPCN[max]`) was refused: it is the first line of an
+expression grammar, which is what Principle 1 exists to keep out and the reason these pointers were a
+bare token to begin with. A named rule is data, it terminates, and it needs no evaluator.
+
+**"Element" is one of the values the field carries for a record, which is wider than a `Number` slot
+and deliberately so.** A caller may pack several values into a single cell — ExpansionHunter reports
+both repeat alleles in one `REPCN` cell as `17/42` — and a rule that only spoke about `Number` would
+have had nothing to say about the case it was built for. How multiplicity is encoded is the caller's
+business and this tier holds no opinion on it (P2); which of the values the annotation means is the
+module's, and that is all `source_element` states.
+
+The reference-inclusion trap is written into the vocabulary rather than left to a footnote. On a
+`Number=R` field the reference is element zero, so "the larger of the two" has two answers; every
+ranging rule therefore comes in a pair — the bare name counts the reference element, the `_alt` name
+does not — and on a field with no reference element (including a packed cell of the sample's own
+alleles) the two coincide. Per-member prose lives in `vocab.ELEMENT_RULE_MEANINGS` and reaches an
+author through `authoring_reference()["vocabulary_notes"]`. `htt_repeat_expansion` now authors
+`FORMAT/REPCN` + `largest`, which is the clinical rule for a dominant repeat expansion: *the longer of
+the two alleles*, whichever of them happens to be reference-length.
+
+**`callable_from` and `quality_from` have no companion column, deliberately.** Both can name a
+multi-valued field (`FORMAT/AD`), and no module does; under the 0.6 charter amendment a `variants.csv`
+column is the most expensive kind of addition this format makes, so the two names are **reserved**
+(`vocab.RESERVED_NAMES_0_4`) against a real case rather than built against a hypothetical one. Adding
+one later is additive and minor-legal, and everything that reads the relation
+(`vocab.VCF_POINTER_COMPANIONS`) is generic over it. The compiler's cardinality warning is scoped to
+pointers that *have* a companion for the same reason: telling an author to fill a column the schema
+does not have is a finding no edit could clear.
+
+**What the compiler declines to say.** `vocab.VCF_FIELD_NUMBER` transcribes the spec's own reserved-key
+tables and nothing else. A caller's private key — `REPCN` is ExpansionHunter's, not the spec's — has no
+cardinality this tier is entitled to assert, and a bare key whose two namespaces disagree (`CN`) has
+none either. Unknown withholds; asserting one would be a source convention wearing a fact (P2). Two
+consequences worth naming. `FORMAT/AF` is emitted by every caller and reserved by none, so the
+heteroplasmy pointer earns no cardinality warning even though it really is `Number=A` in practice —
+which is why the reference example authors `annotated_alt` explicitly. And an element rule sitting on
+a field the spec calls **single**-valued is *not* warned about either, which looks like the mirror of
+the check and is not: a `Number=1 String` cell is exactly how a packed multi-value field is declared,
+so the flag would fire on the correct authoring of the flagship case. The distinction turns on `Type`,
+which this tier does not model, and where it cannot decide it withholds.
 
 ## Allele identity — the VRS allele id (0.5)
 

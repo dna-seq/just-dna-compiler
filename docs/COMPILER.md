@@ -308,6 +308,38 @@ One finding from the same round is **not** a schema limit and is listed with the
 row inverts, because QUAL changes sign with the record (§1.6.1.6) and such a row is proved against the
 reference record. The compiler warns and deliberately does not refuse — the meaning depends on a record
 this tier will never see, and the same row read against a variant record is legitimate.
+### And a fourth — a pointer that does not identify a VCF field (RM53/RM54, 0.6)
+
+Same class as the three above: a limit of the schema, closed in 0.6, and worth keeping in the same
+place because the *check* that survives it is again a legibility warning rather than a verdict.
+
+Three authored columns point into a VCF (`source_field`, `callable_from`, `quality_from`) and all
+three took a bare token. A VCF field is identified by **namespace** — INFO and FORMAT are two
+reserved-key tables that collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and, since 4.4, `CN` — and
+described by **cardinality** (`Number`, which decides how many values come back and what each is *of*).
+Where both readings are type-compatible, and for `DP`, `AF` and `CN` they are, nothing detects the
+confusion: the consumer reads a well-formed number of the wrong kind and bins it without error. Both
+shipped reference examples that used these columns were wrong this way, under `--strict`, with every
+offline gate passing — the same failure geometry as the 3,038-row coordinate incident.
+
+The schema half is in [SCHEMAS.md](SCHEMAS.md): the pointer grammar accepts `INFO/DP`/`FORMAT/DP` (bare
+still legal, still meaning unqualified), the spec's own key charset is accepted (`1000G`, a dotted
+key — RM61), and `MeasureBinRow.source_element` names which element of a multi-valued field the bin is
+measured against, from a closed set of named rules rather than an index (P1 refuses `AD[1]`).
+
+`_check_vcf_pointers` is the compiler half, and it has two findings, both **warnings in both modes**:
+a bare key that is one of the known collisions, and a pointer at a spec-defined multi-valued field with
+no element rule. Neither escalates under `strict` — the grammar was widened rather than replaced, so
+refusing there would break P3, and `strict` means *reproducible artifact*, which an unqualified pointer
+is (P5). Both are aggregated by reason, since a panel pointing every bin at one field would otherwise
+print the same sentence hundreds of times.
+
+Two things it declines to say, both for the reason this section exists. Cardinality is read from a
+transcription of the spec's reserved-key tables and **nothing else** — `REPCN` is ExpansionHunter's
+key, not the spec's, so this tier is not entitled to assert its `Number`, and a bare `CN` disagrees
+across the two namespaces. Unknown withholds. And the cardinality finding is scoped to pointers that
+*have* a companion column: `callable_from`/`quality_from` did not get one in 0.6, and telling an author
+to fill a column the schema does not have would be a finding no edit could clear.
 
 ### Hints are not a fourth validation class
 
@@ -1039,7 +1071,7 @@ would break scripts for no gain.
 | **`literature.csv` path (0.5)** | ✅ `LiteratureRow`; citation cross-check + nonexistent-PMID warning; **provisional shape** | ✅ `literature.parquet` (in digest); `literature_signature`/`sources`/coverage counters → **manifest** | — | complete (injected; enricher produces it) |
 | CLI (0.4.1, extended 0.5) | ✅ Typer `validate`/`compile`/`signature`/`reverse`/**`verify`**/**`sign`**; `--strict`, `--strip-identity`/`--authority-key`, deprecated `--ensembl-cache`, `--resolution` | — | — | complete (compiler-only dep; tiers intact) |
 | **queryable p-value (0.5)** | ✅ `p_value_num` in (0, 1]; cross-checked against the verbatim `p_value` string (relative, 1%) | ✅ `studies.parquet`; **`neg_log10_p` derived on write**, absent from the reversed CSV | ✅ `-log10(p_value_num)` | complete |
-| **`callable_from` (0.5, RM6)** | ✅ bare VCF field-name token, `\|`-alternatable (shared `AuthoredModel` validator) | ✅ `weights.parquet` | — | complete (retired from the reserved namespace) |
+| **`callable_from` (0.5, RM6)** | ✅ VCF field-name pointer, namespace-qualifiable and `\|`-alternatable (shared `AuthoredModel` validator); bare colliding key → warning both modes (0.6) | ✅ `weights.parquet` | — | complete (retired from the reserved namespace) |
 | **`recommendation_strength` (0.5)** | ✅ closed CPIC vocabulary, distinct axis from `evidence_level` | ✅ `diplotypes.parquet` | — | complete |
 | **dosage sensitivity (0.5)** | ✅ `haploinsufficiency`/`triplosensitivity` against `VALID_DOSAGE_SENSITIVITY` | ✅ `gene_metrics.parquet` (in digest, fact-hashed) | — | complete (ClinGen route in the enricher) |
 | **`redistribution` (0.5)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete (recorded, **not** gated — RM27) |
@@ -1058,20 +1090,21 @@ would break scripts for no gain.
 
 | 0.4 kind (model) | Validated | Materialized (→ parquet, round-trip) | Status |
 |---|---|---|---|
-| binning primitive `MeasureBinRow` + `Activity/CopyNumber/RepeatAllele/Heteroplasmy` rows | ✅ shared vocab, inclusive `[min,max]`, mandatory `unresolved`, `extra=forbid`, `source_field` pointer, heteroplasmy `tissue` + legacy-ref guard | ✅ `*.parquet` via generic materializer | **materialized** |
+| binning primitive `MeasureBinRow` + `Activity/CopyNumber/RepeatAllele/Heteroplasmy` rows | ✅ shared vocab, inclusive `[min,max]`, mandatory `unresolved`, `extra=forbid`, `source_field` pointer + `source_element` rule (0.6), heteroplasmy `tissue` + legacy-ref guard | ✅ `*.parquet` via generic materializer | **materialized** |
 | table-level `validate_bins(rows)` | ✅ per `(key…, trait_efo_id)` group | overlap → error, gap → warning, >1 `unresolved`/group → error | **enforced** |
 | duplicate-row detection (diplotype pair, `pgs_id`, `(pharm variant, drug, genotype, category, annotation_id)`, allele-function allele, haplotype-defining variant) | ✅ per-kind natural key | error (0.4 analog of duplicate-(variant, genotype)) | **enforced** |
 | PGx `HaplotypeRow` / `AlleleFunctionRow` / `DiplotypeRow` (+ `drug`/`response`/`evidence_level`) | ✅ | ✅ | **materialized** |
 | PharmGKB `PharmVariantRow` (single-variant drug response, `evidence_level` 1A…4, per-genotype) | ✅ | ✅ | **materialized** |
 | **`sources.csv` licensing path (0.5)** | ✅ `SourceRow`; tri-state permissions; orphan/undeclared + declared-licence warnings (never escalate) | ✅ `sources.parquet` (in digest); `source_signature`/licences/attributions/per-layer facets/derived `commercial_use` → **manifest** | ✅ **refuses** (both modes) when annotation-layer terms forbid sale and no declaration is recorded | **complete** (injected; enricher produces it) |
 | `VariantRow` general axes: `requires_callable` / `acmg_sf` / `actionability` | ✅ (`actionability` vs `ACTIONABILITY_SEED`; `acmg_sf` vs the ACMG SF list in the **enricher**, 0.5) | ✅ into `weights.parquet` (tri-state bool round-trip) | **materialized** |
-| **RM29a call-confidence cofactor: `quality_from` + `min_quality` (0.5)** | ✅ shared pointer grammar (`source_field`/`callable_from`/`quality_from`, one validator); finite floor; **both-or-neither** model rule | ✅ `weights.parquet` (`Utf8` + `Float64`); absent floor is null, never `0.0` | **materialized** |
+| **RM29a call-confidence cofactor: `quality_from` + `min_quality` (0.5)** | ✅ shared pointer grammar (`source_field`/`callable_from`/`quality_from`, one validator, namespace-qualifiable since 0.6); finite floor; **both-or-neither** model rule | ✅ `weights.parquet` (`Utf8` + `Float64`); absent floor is null, never `0.0` | **materialized** |
 | **RM29b clinical cofactor: `DiplotypeRow.clinical_context` (0.5)** | ✅ whitespace-stripped, open (no vocabulary — guideline bodies scope differently) | ✅ generic table materializer, no compiler change | **in `_TABLE_DUPE_KEYS`** — disagreeing CPIC contexts coexist as distinct rows |
 | PGS `PgsRow` (declared interface; ancestry-validity fields) | ✅ `PGS<digits>`, ancestry/tier vocab, `match_rate_floor∈[0,1]` | ✅ | **materialized** |
-| reserved namespace (`reference_db` / `callable_from`) | ✅ specific diagnosis via `reject_reserved` on top of `extra=forbid` | — | reserved |
+| reserved namespace (`reference_db` / `callable_element` / `quality_element`) | ✅ specific diagnosis via `reject_reserved` on top of `extra=forbid` | — | reserved |
 | authoring reference + palette (`reference.authoring_reference()`/`json_schemas()`) | ✅ generated from live models (drift-proof) | n/a | **shipped** (RM8/RM9) |
 | frozen `variant_key` identity (`base.derive_variant_key`) | ✅ stamped once, never re-keyed by resolution (P7); excluded from `authoring_reference()` | ✅ `weights.parquet` (compiler-managed) | **shipped** |
 | rsid↔coord resolution: one-to-many expansion, deterministic order, inject-only consistency check | ✅ `ORDER BY`; disagreement → warning; non-GRCh38 skipped | ✅ N coord-keyed rows per one-to-many rsid; idempotent | **shipped** (the DuckDB engine now lives in `just-dna-enricher`; GRCh38-only; multi-build RM15) |
+| **VCF pointer namespace + cardinality (0.6, RM53/RM54/RM61)** | ✅ `INFO/`/`FORMAT/` qualifier and the spec's key charset accepted (widening only); `_check_vcf_pointers` warns in **both** modes on a bare colliding key and on a spec-multi-valued target with no element rule, aggregated by reason | ✅ `source_element` → the binning parquets via the generic materializer; round-trips through `reverse` unchanged | **shipped** (`source_element` on `MeasureBinRow`; `callable_element`/`quality_element` **reserved**, not built) |
 
 ## Upgrade derivation (`state`/booleans → 0.3 axes)
 

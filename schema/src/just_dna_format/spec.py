@@ -425,16 +425,23 @@ class VariantRow(AuthoredModel):
     callable_from: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field(s) a consumer establishes callability from (e.g. DP, "
-            "GQ, FT, or DP|GQ). A declarative pointer, never an expression: it names where the "
-            "evidence for 'this position was actually callable' lives, so a consumer can tell a "
-            "confirmed negative from an uncovered one instead of reading both as reference. "
+            "Optional VCF field(s) a consumer establishes callability from, best written with the "
+            "namespace (e.g. FORMAT/DP, FORMAT/GQ, FORMAT/FT, or FORMAT/DP|FORMAT/GQ). A declarative "
+            "pointer, never an expression: it names where the evidence for 'this position was "
+            "actually callable' lives, so a consumer can tell a confirmed negative from an uncovered "
+            "one instead of reading both as reference. A bare key means unqualified — and INFO/DP is "
+            "the cohort's combined depth, which says nothing about whether this sample was callable. "
             "Reference evidence usually arrives as a gVCF *block* (one record with END=), so a "
             "consumer finds it by interval containment rather than an equality join on position, "
-            "and the block's floor is MIN_DP — a DP of 25 averaged over 14 bases is compatible with "
-            "an uncovered base inside them."
+            "and the block's floor is FORMAT/MIN_DP — a DP of 25 averaged over 14 bases is "
+            "compatible with an uncovered base inside them."
         ),
     )
+    # There is no `callable_element` here, and the absence is a decision (RM54, 0.6). The binning
+    # tables' `source_field` got the element rule because that is where the defect had a real case;
+    # `callable_from` can name a multi-valued field (`FORMAT/AD`) and no module does, and under the
+    # 0.6 charter amendment a `variants.csv` column is the most expensive kind of addition this format
+    # makes. The name is held in `vocab.RESERVED_NAMES_0_4` so it survives the one-way door.
 
     # ── 0.5.1: RM29(a), the call-confidence cofactor. Two columns, not a predicate. ──
     #
@@ -451,15 +458,18 @@ class VariantRow(AuthoredModel):
     quality_from: str | None = Field(
         default=None,
         description=(
-            "Optional VCF FORMAT/INFO field the `min_quality` floor is stated against (e.g. GQ, "
-            "DP). Same bare-token pointer grammar as `source_field`/`callable_from`; a pointer, "
-            "never an expression. Prefer a per-sample confidence field: QUAL changes sign with the "
-            "record (VCF 1.6.1.6 — prob(no variant) on a variant record, prob(variant) where ALT is "
-            "'.'), so on a requires_callable row, whose evidence is the reference record, a high QUAL "
-            "says the position is probably variant and the floor demands the opposite of what the "
-            "row is about."
+            "Optional VCF field the `min_quality` floor is stated against, best written with the "
+            "namespace (e.g. FORMAT/GQ, QUAL, FORMAT/DP). Same pointer grammar as "
+            "`source_field`/`callable_from`; a pointer, never an expression. A bare key means "
+            "unqualified, and INFO/MQ is a Float where FORMAT/MQ is an Integer. Prefer a per-sample "
+            "confidence field: QUAL changes sign with the record (VCF 1.6.1.6 — prob(no variant) on "
+            "a variant record, prob(variant) where ALT is '.'), so on a requires_callable row, whose "
+            "evidence is the reference record, a high QUAL says the position is probably variant and "
+            "the floor demands the opposite of what the row is about."
         ),
     )
+    # No `quality_element` either, and for the same reason as `callable_element` above: `min_quality`
+    # is a scalar floor, so a multi-valued `quality_from` would need one — and nothing points at one.
     min_quality: float | None = Field(
         default=None,
         description=(

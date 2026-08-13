@@ -125,7 +125,18 @@ from just_dna_format.spec import (
     VariantRow,
     extract_pmids,
 )
-from just_dna_format.vocab import population_sort_key
+from just_dna_format.vocab import (
+    VALID_ELEMENT_RULES,
+    VCF_COLLIDING_KEYS,
+    VCF_COLLISION_REASONS,
+    VCF_NUMBER_MEANINGS,
+    VCF_POINTER_COMPANIONS,
+    VCF_POINTER_FIELDS,
+    is_multi_valued_number,
+    population_sort_key,
+    split_field_pointer,
+    vcf_field_number,
+)
 from just_dna_format.vrs import (
     UnsupportedBuildError,
     builds_containing_position,
@@ -1449,6 +1460,116 @@ def _check_missing_allele_marker(
             f"{csv_name}: {len(offenders)} row(s) write '.' in alts, which {MISSING_ALLELE_PHRASE} — "
             f"it states that the record has no alternate allele (VCF §1.6.1.5), so it is not the same "
             f"kind of thing as a symbolic allele like <DEL>. {detail}. Leave the cell empty instead."
+        )
+    return warnings
+
+
+def _check_vcf_pointers(
+    variants: list[VariantRow], rows_by_csv: dict[str, list[Any]]
+) -> list[str]:
+    """A VCF pointer that does not identify the field it points at (RM53), or that points at a list
+    without saying which element (RM54).
+
+    **A VCF field is not identified by its name.** It is identified by *namespace* — INFO and FORMAT
+    are two reserved-key tables that collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and, since 4.4,
+    `CN` — and described by *cardinality* (`Number`, which says how many values come back and what
+    each one is of). Both readings of a colliding key are usually type-compatible, so nothing detects
+    the confusion: a consumer reads a well-formed number of the wrong kind and bins it without error.
+    `reference_examples/mt_heteroplasmy` shipped `source_field=AF` meaning this person's heteroplasmy
+    fraction, where the spec's `AF` is the cohort frequency of the same ALT — one of those tells a
+    carrier they are asymptomatic on the strength of how rare the variant is in a reference panel.
+
+    **Two findings, both warnings in both modes.** The pointer grammar was widened rather than
+    replaced, so a bare key is still legal and still means *unqualified* (P3); escalating under
+    `strict` would refuse modules that compile today, and `strict` means *reproducible artifact*
+    anyway — an unqualified pointer reproduces perfectly, it is only ambiguous (P5). The remedy for
+    both is a one-cell authored edit, which is what separates them from the `not_covered` class.
+
+    **What it declines to say.** The cardinality half reads `vocab.VCF_FIELD_NUMBER`, a transcription
+    of the spec's own reserved-key tables, and answers `None` for anything not in them — a caller's
+    private key (`REPCN` is ExpansionHunter's, not the spec's) has no cardinality this tier is
+    entitled to assert, and asserting one would be a source convention wearing a fact (P2). Unknown
+    withholds. It also answers `None` for a *bare* key whose two namespaces disagree (`CN` is `A`
+    under INFO and `1` under FORMAT), which is exactly the case the collision half already names.
+
+    **The mirror case — an element rule on a field the spec calls single-valued — is deliberately
+    *not* reported.** It looks like the obvious second half of the cardinality check and it would fire
+    on the correct authoring of the flagship case: a caller that packs several values into one cell
+    declares that cell `Number=1, Type=String`, which is exactly what ExpansionHunter's `REPCN`
+    (`17/42`) is. Separating "one value" from "several values in one string" turns on `Type`, which
+    this tier does not model and which no `Number` can answer. Where it cannot decide, it withholds
+    rather than accusing a correct row.
+
+    **The two halves quantify over different column sets, and that is not an oversight.** The
+    namespace question belongs to every pointer column (`VCF_POINTER_FIELDS`) — the decision names
+    `callable_from=DP` as the same error `source_field=AF` is, one column over. The cardinality
+    question is only askable where a column exists to answer it, and 0.6 built one companion
+    (`VCF_POINTER_COMPANIONS`); telling an author to fill a column the schema does not have would be
+    a finding no edit could clear, which this codebase treats as a defect wherever else it appears.
+
+    Aggregated by reason rather than by row: a panel pointing every bin at one field would otherwise
+    print the same sentence hundreds of times, and two reasons under one message is the other half of
+    that mistake."""
+    tables: list[tuple[str, list[Any]]] = [("variants.csv", variants)]
+    tables.extend(
+        (csv_name, rows_by_csv.get(csv_name) or []) for csv_name, _model in _BINNING_TABLE_KINDS
+    )
+    # (csv, pointer column, bare key) -> rows, and (csv, element column, atom, Number) -> rows.
+    collisions: dict[tuple[str, str, str], int] = {}
+    unselected: dict[tuple[str, str, str, str], int] = {}
+    for csv_name, rows in tables:
+        for row in rows:
+            declared = type(row).model_fields
+            for pointer_field in VCF_POINTER_FIELDS:
+                if pointer_field not in declared:
+                    continue
+                pointer = getattr(row, pointer_field, None)
+                if not pointer:
+                    continue
+                companions = [
+                    element
+                    for element, target in VCF_POINTER_COMPANIONS.items()
+                    if target == pointer_field and element in declared
+                ]
+                selected = any(getattr(row, element, None) is not None for element in companions)
+                for namespace, key in split_field_pointer(pointer):
+                    if namespace is None and key in VCF_COLLIDING_KEYS:
+                        seat = (csv_name, pointer_field, key)
+                        collisions[seat] = collisions.get(seat, 0) + 1
+                    if selected or not companions:
+                        continue
+                    number = vcf_field_number(namespace, key)
+                    if is_multi_valued_number(number):
+                        atom = key if namespace is None else f"{namespace}/{key}"
+                        slot = (csv_name, companions[0], atom, number or "")
+                        unselected[slot] = unselected.get(slot, 0) + 1
+    warnings: list[str] = []
+    if collisions:
+        where = "; ".join(
+            f"{csv_name} {pointer_field}={key} ({n} row(s))"
+            for (csv_name, pointer_field, key), n in sorted(collisions.items())
+        )
+        keys = sorted({key for _csv, _field, key in collisions})
+        reasons = " ".join(f"{key}: {VCF_COLLISION_REASONS[key]}." for key in keys)
+        warnings.append(
+            f"{sum(collisions.values())} VCF pointer cell(s) name a key that INFO and FORMAT both "
+            f"define, so the pointer does not say which field it means: {where}. {reasons} Qualify "
+            f"the pointer — INFO/{keys[0]} or FORMAT/{keys[0]} — a bare key stays legal and keeps "
+            f"meaning unqualified, which is why this is a warning and not a refusal."
+        )
+    if unselected:
+        where = "; ".join(
+            f"{csv_name} {VCF_POINTER_COMPANIONS[element_field]}={atom} (Number={number}, "
+            f"{VCF_NUMBER_MEANINGS.get(number, 'a value list')}; {n} row(s), {element_field} empty)"
+            for (csv_name, element_field, atom, number), n in sorted(unselected.items())
+        )
+        warnings.append(
+            f"{sum(unselected.values())} VCF pointer cell(s) point at a field the spec defines as "
+            f"multi-valued and state no element rule, so the pointer names a list rather than a "
+            f"number: {where}. Set the companion column to one of "
+            f"{sorted(VALID_ELEMENT_RULES)} — on a Number=R field the reference is element zero, "
+            f"which is why each ranging rule comes in a pair (largest counts it, largest_alt does "
+            f"not)."
         )
     return warnings
 
@@ -2847,6 +2968,11 @@ def validate_spec(
         )
     )
 
+    # Same rule about where a check belongs: the VCF pointer columns are authored cells read against
+    # two spec-derived constants, with no resolution step and no `output_dir` in sight, so the
+    # pre-flight is exactly where an author should hear about them.
+    all_warnings.extend(_check_vcf_pointers(variants, loaded_kinds))
+
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
@@ -3430,17 +3556,27 @@ def compile_module(
     # the identical sentence and the message-dedup above does its job.
     all_warnings.extend(w for w in _check_measure_shape(kind_rows) if w not in all_warnings)
 
-    # **The two variant-level checks of this round are NOT re-run here, and that is the fix rather than
-    # an omission.** Both read authored cells (`alts`, `requires_callable` + `quality_from`) that
+    # **THREE checks of this round are deliberately NOT re-run here, and that is the fix rather than an
+    # omission.** `_check_missing_allele_marker`, `_check_quality_inversion` and `_check_vcf_pointers`
+    # all read authored cells (`alts`, `requires_callable` + `quality_from`, the pointer columns) that
     # resolution never fills, so `validate_spec`'s pass — which runs before any expansion — already has
     # the right answer, and it reaches this list through `all_warnings = list(validation.warnings)`
-    # above. Running them again on `variants` would count the *expanded* rows: a one-to-many rsid
-    # becomes N rows carrying one authored genotype, so the same finding is reported with a different
-    # count and different example keys, which the message-dedup cannot collapse because it dedups on
-    # the sentence. Probed: an rsid-only `requires_callable` row over a two-locus `resolution.csv`
-    # emitted "1 row(s) …" and "2 row(s) …" side by side, both into `manifest.compilation.warnings`.
-    # This is the mirror of the `_check_contig_ploidy` lesson — that warning had to *move* here because
-    # its input is filled by resolution; these two must stay behind it for exactly the same reason.
+    # above. Running any of them again on `variants` would count the *expanded* rows: by this point
+    # `variants` is `outcome.variants`, one row per resolved locus, so a one-to-many rsid becomes N rows
+    # carrying one authored genotype and the same finding is reported with a different count and
+    # different example keys. The de-duplication above keys on the **message**, so two sentences
+    # differing only in their count can never collapse, and both are published into
+    # `manifest.compilation.warnings` — a surface RM44 established that consumers parse. Measured twice,
+    # independently, on the way in: an rsid-only `requires_callable` row over a two-locus
+    # `resolution.csv` emitted "1 row(s) …" beside "2 row(s) …", and the pointer check emitted 328
+    # beside 337 on `pathogenic_clinvar`.
+    #
+    # Nothing is lost by staying behind resolution: all three are warning-only in both modes, so there
+    # is no severity for a re-run to recover — which is the whole reason the *mode-ladder* checks re-run
+    # at all. This is the mirror of the `_check_contig_ploidy` lesson rather than a contradiction of it:
+    # that warning had to **move** here because resolution fills its input; these three must stay behind
+    # it because resolution fills nothing they read. The rule that covers both: re-run a check after
+    # resolution exactly when resolution changes its input, and never when the message embeds a count.
 
     # 0.5 derived-fact sidecars: materialize each present CSV, and cross-check it against what the
     # module actually contains. A row describing something the module never mentions is a warning, not
