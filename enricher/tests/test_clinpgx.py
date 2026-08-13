@@ -273,13 +273,21 @@ def test_no_snapshot_records_the_skip_rather_than_a_clean_pass(
     assert record.skipped == "offline" and record.subjects == 0
 
 
-def test_a_module_with_no_pgx_table_is_nothing_to_check(tmp_path: Path, snapshot: Path) -> None:
+def test_a_module_with_no_pgx_table_attests_nothing_at_all(tmp_path: Path, snapshot: Path) -> None:
+    """Not applicable is not the same as applicable-and-skipped, and only the second is worth a record.
+
+    A module with no `pharm_variants.csv` has no PGx claim for this check to have an opinion about, so
+    recording "skipped" would answer a question nobody asked — and it would do it by mining a nonce and
+    creating a `verification.json` on a module that has nothing to do with ClinPGx. The skip vocabulary
+    is for a check that COULD have run on this module; `nothing_to_check` stays reachable for a table
+    that is present with no row in scope.
+    """
     spec = tmp_path / "bare"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML)
     enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
 
-    assert _records(spec)["pgx_evidence_level"].skipped == "nothing_to_check"
+    assert not (spec / VERIFICATION_JSON).exists()
 
 
 def test_two_passes_over_one_module_keep_both_records(snapshot: Path, tmp_path: Path) -> None:

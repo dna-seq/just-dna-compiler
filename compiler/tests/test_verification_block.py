@@ -274,3 +274,31 @@ def test_the_shipped_difficulty_compiles_too(tmp_path: Path, monkeypatch) -> Non
     doc = attest(_records(), module_binding(authored_input_entries(spec)), producer="test-suite 0")
     write_verification(doc, spec / VERIFICATION_JSON)
     assert _compile(spec, tmp_path / "out").manifest.verification is not None
+
+
+# ── review regression: an empty table is not a resolved one ─────────────────────────────────────
+
+
+def test_a_header_only_resolution_table_stamps_no_signature(tmp_path: Path) -> None:
+    """`resolution_signature is not None` must keep meaning "this module was resolved".
+
+    Stamping wherever the sidecar merely *exists* publishes the empty-set hash for a header-only file,
+    which is a signature naming a table that resolved nothing — and in the deprecated `ensembl_cache`
+    branch it is worse than cosmetic: an empty table is falsy, so the DuckDB path runs and the manifest
+    would name an injected table that shaped none of the bytes. That is the same false claim the
+    `--no-resolve` warning below it refuses to make.
+    """
+    spec = _module(tmp_path)
+    header = (spec / "resolution.csv").read_text().splitlines()[0]
+    (spec / "resolution.csv").write_text(header + "\n")
+
+    manifest = _compile(spec, tmp_path / "out").manifest
+    assert manifest.compilation.resolution_signature is None
+    assert manifest.compilation.resolution_sources == []
+
+
+def test_a_populated_table_still_stamps(tmp_path: Path) -> None:
+    """The other half, so the guard cannot be "fixed" by never stamping."""
+    spec = _module(tmp_path)
+    manifest = _compile(spec, tmp_path / "out").manifest
+    assert manifest.compilation.resolution_signature is not None

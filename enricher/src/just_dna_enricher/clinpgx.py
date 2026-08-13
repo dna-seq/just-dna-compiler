@@ -174,8 +174,14 @@ def enrich_clinpgx(
         result.warnings.append(
             "ClinPGx cross-check skipped: the module carries no pharm_variants.csv."
         )
+        # **Not attested, and this is the one skip that must not be.** The others say "this check
+        # applies to your module and did not run"; this one says the check does not apply at all, and
+        # a module with no PGx table has no claim for it to have an opinion about. Recording it would
+        # mine a nonce and create a `verification.json` on a module that never asked for one — a
+        # file-creating side effect on a path that otherwise does nothing. `nothing_to_check` stays
+        # reachable for a table that is present with no row in scope, which is a real answer.
         result.not_checked = "nothing_to_check"
-        return _attest(result, spec_dir, write=write)
+        return result
     authored, errors, _ = load_csv_rows(pharm_path, PharmVariantRow, "pharm_variants.csv")
     if errors:
         raise ClinPgxEnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")

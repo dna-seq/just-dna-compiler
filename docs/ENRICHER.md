@@ -62,12 +62,21 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   (`DEFAULT_DIAGNOSIS_LIMIT`), so on a panel authored wholesale on hg19 it asks about a sample;
   recording `total` there would claim rows it chose not to ask about. `sampled` is why the two can
   differ, and the record's `detail` says so when they do.
-- **Every early return records its skip, not just the successful path.** `enrich_clinpgx` is the worked
-  example: it returns early on no `pharm_variants.csv`, on a licensing refusal, and on no snapshot, and
-  all three go through one `_attest` helper. A pass that records its findings and stays silent about
-  not having run leaves the manifest unable to tell those apart, which is the defect the item exists to
-  close — the skip is the case it closes. The one exception is a `strict` refusal, which raises: no
-  artifact was produced, so there is nothing to attest a check against.
+- **A downstream check inherits the reason its upstream did not run.** The wrong-build pass reads the
+  ref-mismatch list, and `diagnose_wrong_build([])` answers `no_ref_mismatches` for an empty list
+  *whatever emptied it* — a ref check that ran clean, or one that never ran. Recording the first
+  unconditionally publishes "no authored ref disagreed with the reference" beside a `reference_allele`
+  record saying nothing was compared: one document contradicting itself, and the false half is the
+  answered-absence-versus-unasked-question collapse S20 exists to prevent.
+- **Every early return records its skip — as long as the check APPLIES.** `enrich_clinpgx` is the
+  worked example: a licensing refusal and a missing snapshot both go through one `_attest` helper,
+  because each says "this check applies to your module and did not run", and a pass that records its
+  findings while staying silent about not having run leaves the manifest unable to tell those apart.
+  Two paths deliberately attest nothing. A `strict` refusal raises, so no artifact was produced and
+  there is nothing to attest a check against. And a module carrying no `pharm_variants.csv` is not a
+  skip at all — the check does not apply, there is no claim to have an opinion about, and recording one
+  would mine a nonce and create a `verification.json` on a module that never asked for one.
+  `nothing_to_check` stays for a table that is present with no row in scope, which is a real answer.
 - **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
   four of its checks at the end of the run. A separate command writes its own; the merge is what keeps
   both in one document, replacing per check and never erasing a check this run did not put.

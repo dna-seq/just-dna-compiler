@@ -31,6 +31,7 @@ from just_dna_enricher.clinical import (
     audit_clin_sig,
     tautology_reason,
 )
+from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
@@ -48,11 +49,7 @@ from just_dna_enricher.licensing import (
     resolution_authority,
     sidecar_path,
 )
-from just_dna_enricher.locations import (
-    read_release,
-    resolve_clinvar_reference,
-    resolve_ensembl_reference,
-)
+from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
 from just_dna_enricher.resolver import lookup_loci
 from just_dna_enricher.sequences import (
     RefCheck,
@@ -1067,18 +1064,29 @@ def _verification_records(
     # because "no row was in scope" is exactly what that member means, and it is emphatically not a
     # finding of zero wrong builds.
     if build.not_checked is not None:
-        records.append(
-            skipped(
-                "genome_build_agreement",
-                "offline" if build.not_checked == "skipped_offline" else "nothing_to_check",
-                detail=(
-                    "no authored ref disagreed with the reference, so no row needed a build diagnosis"
-                    if build.not_checked == "no_ref_mismatches"
-                    else "the GRCh37 service is the only thing that can tell an old-assembly "
-                    "coordinate from a wrong ref, and there is no local GRCh37 data"
-                ),
-                source="ensembl-grch37",
+        # **`no_ref_mismatches` alone does not mean the refs agreed.** `diagnose_wrong_build([])`
+        # answers it for an empty list whatever emptied the list — a ref check that ran and found
+        # nothing, *or* one that never ran at all. Reading it as the first would publish "no authored
+        # ref disagreed with the reference" beside a `reference_allele` record saying nothing was
+        # compared: one document contradicting itself, with the false half being exactly the
+        # answered-absence-versus-unasked-question collapse S20 exists to prevent. So whatever stopped
+        # the ref check propagates here, and `nothing_to_check` is reachable only when it really ran.
+        if build.not_checked == "skipped_offline":
+            reason, detail = "offline", (
+                "the GRCh37 service is the only thing that can tell an old-assembly coordinate from "
+                "a wrong ref, and there is no local GRCh37 data"
             )
+        elif ref_check.not_checked is not None:
+            reason, detail = ref_check.not_checked, (
+                "the reference-allele check did not run, so there was no mismatched row to diagnose "
+                "— this says nothing about whether the coordinates are on the declared assembly"
+            )
+        else:
+            reason, detail = "nothing_to_check", (
+                "no authored ref disagreed with the reference, so no row needed a build diagnosis"
+            )
+        records.append(
+            skipped("genome_build_agreement", reason, detail=detail, source="ensembl-grch37")
         )
     else:
         records.append(
@@ -1155,15 +1163,14 @@ def _verification_records(
 def _clinvar_release(reference: Path | None) -> str | None:
     """The ClinVar release a snapshot states, or `None` when it states none.
 
-    `None` for absent, unreadable and unstated alike — `read_release` already collapses those three
-    into one honest answer, and a caller must not be able to mistake "this snapshot does not say" for
-    a release id.
+    Delegates to `clinvar.clinvar_dataset_label` rather than re-reading `clinvar_file_date`, because a
+    second spelling of one label is the drift that function's own docstring exists to prevent — and it
+    had already started: this hand-read dropped the `clinvar_` prefix, so `verification.checks[].release`
+    and `sources[].dataset` named the same snapshot two ways, and it dropped the digest fallback, so a
+    snapshot built from a VCF with no header date recorded "the source publishes none" when it could
+    name its release exactly. `None` stays the honest answer for a snapshot that genuinely cannot say.
     """
-    if reference is None:
-        return None
-    release = read_release(reference) or {}
-    stated = release.get("clinvar_file_date")
-    return str(stated) if stated else None
+    return clinvar_dataset_label(reference)
 
 
 def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:

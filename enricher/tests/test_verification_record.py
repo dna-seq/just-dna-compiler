@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import authored_input_entries, compile_module
+from just_dna_enricher.enrich import _verification_records
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON
@@ -147,7 +148,6 @@ def test_the_build_diagnosis_denominator_is_what_it_examined_not_what_existed() 
     about — the denominator has to be what was actually compared, and `sampled` is why the two differ
     at all.
     """
-    from just_dna_enricher.enrich import _verification_records
     from just_dna_enricher.grch37 import BuildDiagnosis, BuildDiagnosisResult
     from just_dna_enricher.sequences import RefCheck
 
@@ -156,24 +156,7 @@ def test_the_build_diagnosis_denominator_is_what_it_examined_not_what_existed() 
         reason="dbsnp_corroborated", rsids=["rs1800562"],
     )
     build = BuildDiagnosisResult(diagnoses=[diagnosis], examined=50, total=328)
-    records = {
-        r.check: r
-        for r in _verification_records(
-            offline=False,
-            verify_ref=True,
-            ref_check=RefCheck([], 12),
-            build=build,
-            verify_clinsig=False,
-            clin_sig_compared=None,
-            clin_sig_conflicts=[],
-            clin_sig_skip="not_requested",
-            clin_sig_detail=None,
-            clinvar_ref=None,
-            verify_rsids=False,
-            rsid_subjects=0,
-            stale_rsids=[],
-        )
-    }
+    records = _records_for(RefCheck([], 12), build)
     record = records["genome_build_agreement"]
     assert (record.subjects, record.findings) == (50, 1)
     assert record.skipped is None
@@ -186,28 +169,12 @@ def test_no_ref_mismatch_means_nothing_to_check_not_a_clean_build() -> None:
     Recording it as a run with zero findings would assert that every coordinate was checked against the
     other assembly, which is exactly the claim the pass declines to make.
     """
-    from just_dna_enricher.enrich import _verification_records
     from just_dna_enricher.grch37 import BuildDiagnosisResult
     from just_dna_enricher.sequences import RefCheck
 
-    records = {
-        r.check: r
-        for r in _verification_records(
-            offline=False,
-            verify_ref=True,
-            ref_check=RefCheck([], 12),
-            build=BuildDiagnosisResult(not_checked="no_ref_mismatches"),
-            verify_clinsig=False,
-            clin_sig_compared=None,
-            clin_sig_conflicts=[],
-            clin_sig_skip="not_requested",
-            clin_sig_detail=None,
-            clinvar_ref=None,
-            verify_rsids=False,
-            rsid_subjects=0,
-            stale_rsids=[],
-        )
-    }
+    records = _records_for(
+        RefCheck([], 12), BuildDiagnosisResult(not_checked="no_ref_mismatches")
+    )
     assert records["genome_build_agreement"].skipped == "nothing_to_check"
     # And the reference-allele check beside it DID run, over its own denominator.
     assert (records["reference_allele"].subjects, records["reference_allele"].findings) == (12, 0)
@@ -215,28 +182,105 @@ def test_no_ref_mismatch_means_nothing_to_check_not_a_clean_build() -> None:
 
 def test_offline_separates_the_two_reasons_a_build_check_can_be_absent() -> None:
     """`offline` is cleared by egress; `nothing_to_check` by nothing at all. Different remedies."""
-    from just_dna_enricher.enrich import _verification_records
     from just_dna_enricher.grch37 import BuildDiagnosisResult
     from just_dna_enricher.sequences import RefCheck
 
-    records = {
-        r.check: r
-        for r in _verification_records(
-            offline=True,
-            verify_ref=True,
-            ref_check=RefCheck([], 0, "offline"),
-            build=BuildDiagnosisResult(not_checked="skipped_offline"),
-            verify_clinsig=False,
-            clin_sig_compared=None,
-            clin_sig_conflicts=[],
-            clin_sig_skip="not_requested",
-            clin_sig_detail=None,
-            clinvar_ref=None,
-            verify_rsids=True,
-            rsid_subjects=0,
-            stale_rsids=[],
-        )
-    }
+    records = _records_for(
+        RefCheck([], 0, "offline"),
+        BuildDiagnosisResult(not_checked="skipped_offline"),
+        offline=True,
+        verify_rsids=True,
+    )
     assert records["genome_build_agreement"].skipped == "offline"
     assert records["reference_allele"].skipped == "offline"
     assert records["rsid_currency"].skipped == "offline"
+
+
+# ── review regressions ──────────────────────────────────────────────────────────────────────────
+
+
+def _records_for(ref_check, build, **over):
+    """Every record `enrich()` would write, keyed by check, with a neutral baseline for the rest."""
+    kwargs = {
+        "offline": False,
+        "verify_ref": True,
+        "ref_check": ref_check,
+        "build": build,
+        "verify_clinsig": False,
+        "clin_sig_compared": None,
+        "clin_sig_conflicts": [],
+        "clin_sig_skip": "not_requested",
+        "clin_sig_detail": None,
+        "clinvar_ref": None,
+        "verify_rsids": False,
+        "rsid_subjects": 0,
+        "stale_rsids": [],
+        **over,
+    }
+    return {r.check: r for r in _verification_records(**kwargs)}
+
+
+def test_a_build_record_never_claims_refs_agreed_when_no_ref_was_compared() -> None:
+    """Two records in one document must not contradict each other (S20's class).
+
+    `diagnose_wrong_build([])` answers `no_ref_mismatches` for an empty list whatever produced it — a
+    genuinely clean ref check, *or* a ref check that never ran. Reading that as "no authored ref
+    disagreed" turns an unasked question into a confident negative, which is precisely the fingerprint
+    S20 taught this tree not to publish. Whatever stopped the ref check has to reach the build record.
+    """
+    from just_dna_enricher.grch37 import BuildDiagnosisResult
+    from just_dna_enricher.sequences import RefCheck
+
+    for ref_check, verify_ref in (
+        (RefCheck([], 0, "unreachable"), True),
+        (RefCheck([], 0, "not_requested"), False),
+        (RefCheck([], 0, "offline"), True),
+    ):
+        records = _records_for(
+            ref_check,
+            BuildDiagnosisResult(not_checked="no_ref_mismatches"),
+            verify_ref=verify_ref,
+        )
+        build = records["genome_build_agreement"]
+        assert build.skipped == ref_check.not_checked, (
+            f"the build record must inherit the ref check's reason, got {build.skipped!r}"
+        )
+        assert "no authored ref disagreed" not in (build.detail or ""), (
+            "claims the refs agreed when none was compared"
+        )
+
+
+def test_nothing_to_check_still_reached_when_the_ref_check_really_ran_clean() -> None:
+    """The honest case must survive the fix: refs were compared and none disagreed."""
+    from just_dna_enricher.grch37 import BuildDiagnosisResult
+    from just_dna_enricher.sequences import RefCheck
+
+    records = _records_for(RefCheck([], 12), BuildDiagnosisResult(not_checked="no_ref_mismatches"))
+    build = records["genome_build_agreement"]
+    assert build.skipped == "nothing_to_check"
+    assert "no authored ref disagreed" in (build.detail or "")
+
+
+def test_the_clinvar_release_label_is_the_shared_one(tmp_path) -> None:
+    """One spelling of the release, or `manifest.verification` and `manifest.sources` disagree.
+
+    `clinvar_dataset_label` prefixes `clinvar_` and falls back to the source digest when the VCF header
+    stated no date; a hand-read `clinvar_file_date` does neither, so the same snapshot gets two names
+    and a snapshot that CAN state its release records `None`.
+    """
+    import json
+
+    from just_dna_enricher.clinvar import clinvar_dataset_label
+    from just_dna_enricher.enrich import _clinvar_release
+
+    dated = tmp_path / "dated"
+    dated.mkdir()
+    (dated / "release.json").write_text(json.dumps({"clinvar_file_date": "2026-06-27"}))
+    assert _clinvar_release(dated) == clinvar_dataset_label(dated)
+
+    # No file date, but the bytes it was built from name the release exactly.
+    digest_only = tmp_path / "digest_only"
+    digest_only.mkdir()
+    (digest_only / "release.json").write_text(json.dumps({"source_sha256": "a" * 64}))
+    assert _clinvar_release(digest_only) == clinvar_dataset_label(digest_only)
+    assert _clinvar_release(digest_only) is not None, "it can name its release; None hides that"

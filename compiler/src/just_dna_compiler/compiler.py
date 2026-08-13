@@ -3564,7 +3564,14 @@ def compile_module(
         # Still gated on `resolve_with_ensembl`: under `--no-resolve` the table is deliberately not
         # consulted (the warning above says so), and a signature naming a table that shaped nothing
         # would claim the artifact was built from it.
-        if resolve_with_ensembl:
+        #
+        # And gated on the table having ROWS, not merely existing. A header-only `resolution.csv`
+        # hashes to the empty-set digest, which is a perfectly valid signature of nothing — publishing
+        # it costs `resolution_signature is not None` its meaning ("this module was resolved"). The
+        # deprecated `ensembl_cache` branch makes it worse than cosmetic: an empty `resolution_table`
+        # is falsy there, so the DuckDB path runs and the manifest would name an injected table that
+        # shaped none of the bytes — the same false claim the `--no-resolve` warning refuses to make.
+        if resolve_with_ensembl and resolution_rows:
             resolution_sources = sorted({row.source for row in resolution_rows if row.source})
             resolution_sig = _resolution_signature(resolution_rows)
 
