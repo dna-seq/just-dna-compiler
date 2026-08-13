@@ -112,7 +112,12 @@ class HaplotypeRow(AuthoredModel):
         "one of them. It is here so `reverse_module` can rebuild `resolution.csv` from this parquet "
         "without dropping the allele list the injected table carried. Parquet-only; outside the key."
     )
-    allele: str = Field(description="The defining (variant) allele on this haplotype, nucleotides")
+    allele: str = Field(
+        description=(
+            "The defining (variant) allele on this haplotype — bases, or a symbolic/structural "
+            "allele carrying its length (e.g. <DEL:1500> for a whole-gene deletion)"
+        )
+    )
     gene: str | None = Field(default=None, description="Gene symbol, e.g. CYP2D6")
     variant_key: str | None = stamped_identity_field(
         "Frozen machine identity (rsid, else chrom:start:ref), stamped at load from the columns the "
@@ -127,6 +132,14 @@ class HaplotypeRow(AuthoredModel):
         "parquet while `reverse_module` re-emits the authored shape — which is what keeps "
         "`content_signature` stable across a round-trip. Compiler-managed."
     )
+    #: `ref` (the locus) and `allele` (the defining variant). See `AuthoredModel.ALLELE_COLUMNS`.
+    #:
+    #: **The compiler-filled `alts` above is deliberately NOT here**, on `ALLELE_COLUMNS`' own rule:
+    #: it excludes the fact sidecars because "a check that drops rows must never rewrite injected
+    #: facts", and this column *is* an injected fact — copied out of `resolution.csv` by RM43's fill.
+    #: It is also a no-op in practice, since the symbolic check runs before that fill, and stating the
+    #: reason is what keeps someone from "completing" the tuple later.
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "allele")
     #: A haplotype junction matches a variant at chrom:start:ref regardless of allele — the key the
     #: enricher has always derived for this table, kept byte-identical so nothing re-keys.
     _KEY_INCLUDES_ALTS: ClassVar[bool] = False
@@ -351,7 +364,10 @@ class PharmVariantRow(AuthoredModel):
     gene: str | None = Field(default=None, description="Gene symbol, e.g. VKORC1")
     genotype: str | None = Field(
         default=None,
-        description="Genotype the response applies to, canonical sorted form, e.g. C/T",
+        description=(
+            "Genotype the response applies to, canonical sorted form, e.g. C/T. An allele is bases, "
+            "or a symbolic/structural allele carrying its length (<DEL:1500>/C)"
+        ),
     )
     variant_key: str | None = stamped_identity_field(
         "Frozen machine identity (rsid, else chrom:start:ref), stamped at load from the columns the "
@@ -366,6 +382,9 @@ class PharmVariantRow(AuthoredModel):
         "the parquet while `reverse_module` re-emits the authored shape — which is what keeps "
         "`content_signature` stable across a round-trip. Compiler-managed."
     )
+    #: `ref` (the locus) and `genotype` (what the response applies to). The compiler-filled `alts`
+    #: stays out for the reason given on `HaplotypeRow.ALLELE_COLUMNS`: it is an injected fact.
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "genotype")
     #: The key omits `alts` — see `stamped_identity_field` on `alts` above, and `_collect_subjects`.
     _KEY_INCLUDES_ALTS: ClassVar[bool] = False
     #: rsid, or a full coordinate. Mirrors `_validate_identification` below.

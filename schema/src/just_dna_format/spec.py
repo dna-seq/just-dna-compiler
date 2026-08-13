@@ -266,8 +266,22 @@ class VariantRow(AuthoredModel):
             "every check and every minted identity reads this column as VCF POS"
         ),
     )
-    ref: str | None = Field(default=None, description="Reference allele")
-    alts: str | None = Field(default=None, description="Alt allele(s), comma-separated")
+    ref: str | None = Field(
+        default=None,
+        description=(
+            "Reference allele. Always spelled in bases — VCF's REF is a sequence, never symbolic; "
+            "a structural allele belongs in `alts`"
+        ),
+    )
+    alts: str | None = Field(
+        default=None,
+        description=(
+            "Alt allele(s), comma-separated. Bases, or a symbolic/structural allele carrying its "
+            "length (<DEL:1500>, <CNV:TR:30>); spell the bases out whenever the sequence is known"
+        ),
+    )
+    #: `ref`/`alts` (the locus), `genotype` and `effect_allele` (what the row's claim is about).
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "alts", "genotype", "effect_allele")
     variant_key: str | None = Field(
         default=None,
         json_schema_extra=COMPILER_MANAGED,
@@ -296,7 +310,12 @@ class VariantRow(AuthoredModel):
         frozenset({"chrom", "start"}),
     )
 
-    genotype: str = Field(description="Slash-separated sorted alleles, e.g. A/G")
+    genotype: str = Field(
+        description=(
+            "Slash-separated sorted alleles, e.g. A/G. An allele is bases, or a symbolic/structural "
+            "allele carrying its length — a heterozygous deletion sorts as <DEL:1500>/A"
+        )
+    )
     weight: float | None = Field(default=None, description="Score (positive=protective)")
     state: str = Field(
         json_schema_extra=vocabulary("state", VALID_STATES),
@@ -341,7 +360,10 @@ class VariantRow(AuthoredModel):
     )
     effect_allele: str | None = Field(
         default=None,
-        description="The allele that `direction`/`weight`/`effect_size` refer to (nucleotides).",
+        description=(
+            "The allele that `direction`/`weight`/`effect_size` refer to — bases, or a "
+            "symbolic/structural allele carrying its length (e.g. <DEL:1500>)."
+        ),
     )
     flags: list[str] | None = Field(
         default=None,

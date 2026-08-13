@@ -14,6 +14,13 @@ import math
 import re
 from collections.abc import Iterable
 
+# The symbolic/structural allele grammar (RM5). `alleles` is a stdlib-only leaf that imports nothing
+# from this package, so the dependency runs one way and no cycle is possible.
+from just_dna_format.alleles import (
+    SYMBOLIC_ALLELE_TYPES,
+    parse_symbolic_allele,
+)
+
 # ── Orthogonal axis vocabularies (the 0.3 split out of the overloaded `state`) ──────────────────
 # Effect direction — the clean phenotypic scalar. Orthogonal to `clin_sig` and `stat_significance`.
 VALID_DIRECTIONS: frozenset[str] = frozenset({"protective", "risk", "neutral", "unknown"})
@@ -536,10 +543,32 @@ def validate_trait_ids(value: str | None, field_name: str = "trait_efo_id") -> s
 
 
 def validate_allele(value: str | None, field_name: str = "allele") -> str | None:
-    """Validate an optional nucleotide string (`^[ACGT]+$`, case-insensitive)."""
-    if value is not None and not ALLELE_PATTERN.match(value):
-        raise ValueError(f"{field_name} must be nucleotides (e.g. A, G, AC), got: {value!r}")
-    return value
+    """Validate an optional allele: a nucleotide string (`^[ACGT]+$`, case-insensitive), or a
+    symbolic/structural allele carrying its length (`<DEL:1500>`, `<CNV:TR:30>`) since 0.6 (RM5).
+
+    **Two users, not one** — `HaplotypeRow.allele` and `VariantRow.effect_allele`. (`alleles.py` and
+    CLAUDE.md both said "exactly one" until RM5; the count is what an author of a grammar change reads
+    to size the blast radius.)
+
+    A *lengthless* symbolic allele passes here and is refused later, by the compiler. That split is
+    forced, not chosen: rejecting it at load makes the row fail to parse, which is fatal in **both**
+    modes, and the decided behaviour is a warning-and-drop under `best_effort`. So the schema says
+    what the DSL can spell and the compiler says what makes a usable rulebook.
+    """
+    if value is None or ALLELE_PATTERN.match(value):
+        return value
+    if parse_symbolic_allele(value) is not None:
+        return value
+    # The message names the length convention without claiming *this* validator enforces it — it does
+    # not, deliberately (see the docstring), and the compiler is what refuses a lengthless one. An
+    # author reading this is being rejected on the *type*, so telling them the full spelling here is
+    # what stops the second rejection one command later.
+    raise ValueError(
+        f"{field_name} must be nucleotides (e.g. A, G, AC) or a symbolic/structural allele whose "
+        f"first-level type is one of {sorted(SYMBOLIC_ALLELE_TYPES)} — the length belongs inside the "
+        f"token (<DEL:1500>, <CNV:TR:30>), and a compile refuses one that states none. "
+        f"Got: {value!r}"
+    )
 
 
 def validate_rsid(value: str | None) -> str | None:

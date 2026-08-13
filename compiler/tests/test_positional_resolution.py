@@ -18,7 +18,8 @@ break silently:
 * the fill refuses to pick among several loci, and refuses to complete a coordinate the row's own
   cells contradict;
 * `reverse` rebuilds `resolution.csv` from the positional parquets, weights winning any shared key;
-* a pre-0.6 parquet, which carries no `authored_ident`, reverses exactly as it used to.
+* a pre-0.6 parquet, which carries no `authored_ident`, reverses exactly as it used to;
+* the fill and RM5's symbolic-allele drop meet on the same three tables, in the right order.
 
 Expected values are computed from the fixtures at runtime.
 """
@@ -605,6 +606,112 @@ def test_the_fill_reports_the_three_outcomes_separately() -> None:
     # …and running it again changes nothing: the fill only ever writes into an empty cell.
     again = resolve_positional_rows(rows, table)
     assert (again.filled, again.unplaced_ambiguous, again.unplaced_absent) == (0, 1, 1)
+
+
+# ── where RM43 meets RM5 ─────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("model", "fields", "expected_authored"),
+    [
+        (
+            HaplotypeRow,
+            {"haplotype_name": "*5", "chrom": "22", "start": 42126499, "ref": "C",
+             "allele": "<DEL:1500>", "gene": "CYP2D6"},
+            ["chrom", "start", "ref"],
+        ),
+        (
+            PharmVariantRow,
+            {"chrom": "22", "start": 42126499, "ref": "C", "gene": "CYP2D6",
+             "genotype": "<DEL:1500>/C", "drug": "codeine", "conclusion": "c"},
+            ["chrom", "start", "ref"],
+        ),
+        (
+            HeteroplasmyRow,
+            {"gene": "MT-TL1", "chrom": "MT", "start": 3243, "ref": "A", "alts": "<DEL:20>",
+             "reference_sequence": "NC_012920.1", "measure_min": 0.0, "measure_max": 0.1,
+             "conclusion": "x"},
+            ["chrom", "start", "ref", "alts"],
+        ),
+    ],
+    ids=lambda v: v.__name__ if isinstance(v, type) else "",
+)
+def test_a_symbolic_allele_keys_by_coordinate_and_mints_no_va(
+    model: type, fields: dict, expected_authored: list[str]
+) -> None:
+    """A symbolic allele names a variant whose sequence is deliberately unspelled, so it falls through
+    to the coordinate key — a content-addressed VA is a digest *of* the sequence and there is none to
+    digest. Neither lane had a test for the two meeting, and the stamped columns are where they do.
+
+    `HeteroplasmyRow` is the case that could actually have gone wrong: it is the one positional model
+    whose key includes `alts`, so a `<DEL:20>` reaches `derive_variant_key`'s minting branch and has to
+    fall through it rather than produce an id for a sequence nobody stated.
+    """
+    row = model(**fields)
+    assert row.authored_ident == expected_authored
+    assert not str(row.variant_key).startswith("ga4gh:VA.")
+    assert row.variant_key == derive_variant_key(
+        None,
+        fields["chrom"],
+        fields["start"],
+        fields["ref"],
+        fields["alts"] if type(row)._KEY_INCLUDES_ALTS else None,
+    )
+
+
+def test_a_dropped_row_is_never_filled_and_never_counted(tmp_path: Path) -> None:
+    """RM5 drops a `pharm_variants.csv` row carrying a lengthless symbolic allele; RM43 fills
+    coordinates into the same table. The drop decides which rows exist, so it must land first — filling
+    a row about to be discarded is wasted at best, and counting it in the joinability line reports a
+    coordinate gap over a row the artifact does not contain.
+
+    Pinned on the observable consequence rather than on call order: the surviving row is placed, the
+    dropped one is absent from the parquet, and neither command claims anything unjoinable.
+    """
+    spec = _pharm_module(
+        tmp_path / "spec",
+        pharm=(
+            "rs4149056,,,,SLCO1B1,C/C,simvastatin,keeps\n"
+            "rs2306283,,,,SLCO1B1,<DEL>/C,simvastatin,dropped\n"
+        ),
+        resolution=(
+            "rs4149056,rs4149056,12,21178615,T,C,GRCh38,0,manual,resolved,\n"
+            "rs2306283,rs2306283,12,21176879,A,G,GRCh38,0,manual,resolved,\n"
+        ),
+    )
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
+    assert [w for w in result.warnings if "DROPPED" in w], "RM5 must say it dropped the row"
+
+    df = pl.read_parquet(tmp_path / "out" / "pharm_variants.parquet")
+    assert df["conclusion"].to_list() == ["keeps"], "the dropped row reaches no parquet"
+    assert (df["chrom"].to_list(), df["start"].to_list()) == (["12"], [21178615])
+
+    # Neither command reports a coordinate gap: the survivor is placed, and the dropped row is not a
+    # row the report may speak about at all.
+    assert not [w for w in result.warnings if "joins by rsID only" in w]
+    assert not [w for w in validate_spec(spec).warnings if "joins by rsID only" in w]
+
+
+def test_a_haplotype_row_is_refused_before_anything_is_filled(tmp_path: Path) -> None:
+    """On `haplotypes.csv` the symbolic finding is fatal in both modes — dropping a defining variant
+    makes a quietly *different* haplotype rather than a smaller module. The compile must refuse, and
+    refuse before writing, so the fill never runs on a module that has none."""
+    spec = tmp_path / "spec"
+    spec.mkdir(parents=True)
+    (spec / "module_spec.yaml").write_text(_YAML + "genome_build: GRCh38\n", encoding="utf-8")
+    (spec / "haplotypes.csv").write_text(
+        "haplotype_name,rsid,allele,gene\n*5,rs3892097,<DEL>,CYP2D6\n", encoding="utf-8"
+    )
+    (spec / "resolution.csv").write_text(
+        _RES_HEADER + "rs3892097,rs3892097,22,42128945,C,T,GRCh38,0,manual,resolved,\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+    result = compile_module(spec, out)
+    assert not result.success
+    assert any("fatal in both modes" in e for e in result.errors)
+    assert not out.exists(), "a refusal must leave no half-written artifact"
 
 
 # ── the set itself ───────────────────────────────────────────────────────────────────────────────

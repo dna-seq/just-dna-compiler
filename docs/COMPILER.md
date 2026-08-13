@@ -461,6 +461,55 @@ not part of the allele's name. Correct VRS semantics — but it drops a guarante
 bases used to be two keys and are now one. At most one can be right, so `_cross_validate_variants` now
 fails a compile where two positioned rows share a key and disagree on `ref`.
 
+### Symbolic alleles: the one check that discards an authored row (RM5, 0.6)
+
+The grammar holds `<DEL:1500>` / `<CNV:TR:30>` (see [SCHEMAS.md](SCHEMAS.md) § *The allele grammar*).
+What the **compiler** owns is the other half: a module is a declarative rulebook, and a rule nothing
+can apply is worse than an absent one. A `<DEL>` with no length cannot be sized, matched against a
+call, or told apart from any other deletion at that position, so `_check_symbolic_alleles` reports it —
+and this is the first check in the tier that **discards an authored row**.
+
+| Reason | What it is |
+|---|---|
+| `no_length` | a real structural type with no usable length: `<DEL>`, or `<DEL:0>` |
+| `unknown_type` | angle-bracketed but outside the closed five — `<FOO>`, and VCF's `<*>`, which makes an observability claim rather than naming a variant |
+| `reference_allele` | a symbolic allele in a `ref` column: REF is always a sequence, so a locus whose own reference is unspelled anchors nothing |
+
+**Severity depends on whether the row stands alone as a rule.** On `variants.csv` and
+`pharm_variants.csv` — one self-contained rule per row — `best_effort` **drops the row with a warning
+that says so**, and `strict` refuses. On `haplotypes.csv` and `heteroplasmy.csv` it is fatal in *both*
+modes: those rows are parts of a composite, so dropping one silently redefines a haplotype or punches a
+hole in a bin tiling — not a smaller module but a different one.
+
+A drop that would empty a table **outright** is an error in both modes as well, and on its own reason:
+the drop exists so a module can lose one unusable rule and still say the rest, while a table that loses
+every row says nothing at all and says it only in a warning. (Not, as a first cut claimed, because the
+compiler already refuses a present-but-empty table — that is true of the `_TABLE_KINDS` loop and
+**false of `variants.csv`**, which validates and compiles header-only. Measured, and pinned by a test.)
+
+**The warning must say DROPPED.** This does not break P7 — the round-trip fixed point is claimed under
+`strict`, where this case refuses — but `reverse` cannot re-emit a row that never reached the parquet,
+so a warning that merely *flagged* it would leave an author believing their module still carries it.
+
+Three mechanics worth copying. The check reads `AuthoredModel.ALLELE_COLUMNS`, declared on each model,
+so the compiler holds no second copy of a model's column names. It runs in `validate_spec` too, by the
+standing rule (pure computation over authored bytes, no `output_dir`) — with the identical message, both
+because the pre-flight must predict what the compile will do and because `compile_module`'s
+de-duplication is on the message; **every** refusal it can reach is computed in the shared check rather
+than at the point of application, so `validate` cannot go green on a module `compile` then rejects in
+the same mode. And `manifest.stats` is re-derived over the surviving rows: `weights_rows` counts the
+parquet, so leaving `variant_count` as `validate_spec` computed it would publish a count higher than the
+artifact holds — the RM44 class, a manifest number a catalog keys on and cannot check.
+
+Findings name a row by its **identity** (`variant_key`, else `haplotype_name`), never by a file
+position: `load_csv_rows` prints a header-inclusive line number and `hints.Finding.row` is a 0-based
+data index, so a third convention would be one too many — and an index computed over the rows that
+survived model validation shifts silently behind any earlier load error.
+
+One asymmetry to expect: `<FOO>` fails at *load* in `genotype` / `effect_allele` /
+`HaplotypeRow.allele`, which have a grammar, and reaches this check only through `ref`/`alts`, which
+deliberately have none.
+
 ### Resolution precedence (additive; Principle 3)
 
 Inside step 4, gated on `resolve_with_ensembl and variants`, with `resolution_mode = "strict" if strict
@@ -643,11 +692,19 @@ publishes the same event as `X:634690 AGAG>AG`.
 |---|---|---|
 | No `ref`/`alts` recorded | `True` | keeps the locus (lack of evidence never rejects) |
 | The raw allele strings match | `True` | keeps it — checked **first**, so normalization can only ever *add* acceptances |
+| Either side names a symbolic allele (RM5, 0.6) | `None` | keeps it, reports that it did not decide — no sequence, so no flank and nothing to compare |
 | The reduced allele sets match (`alleles.parsimony_reduce` strips the shared flank) | `True` | keeps it; this is what reconciles the two spellings |
 | The locus is a substitution or MNV and the alleles differ | `False` | drops it — no flank, so no spelling freedom; a strand-flipped genotype stays a hard finding |
 | The genotype names fewer than two distinct alleles at an indel locus | `None` | keeps it, reports that it did not decide (a homozygous call carries no frame) |
 | The event **sizes** differ | `False` | drops it — re-anchoring never changes how many bases an event adds or removes |
 | Same sizes, different content | `None` | keeps it, reports that it did not decide (a rotation inside a repeat, or two variants) |
+
+The symbolic row sits above the reductions on purpose. Below the raw comparison every remaining step is
+arithmetic over characters, and a `<DEL:1500>` has none to offer — `parsimony_reduce` would read it as a
+nine-character sequence and the event-size rule would then return a confident `False` computed from a
+token's bracket count. Two *stated* lengths that differ are undecided for the same reason in the other
+direction: symbolic notation exists **for** imprecision, so a summary length is not the kind of fact an
+event size is. Note that it only ever adds acceptances, so no already-compiled module moves.
 
 `None` is the residual only a reference sequence can settle, which this tier does not have (P2) — the
 enricher does, and reports it the same way. `genotype_fits` remains as the boolean face

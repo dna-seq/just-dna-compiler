@@ -16,6 +16,7 @@ from just_dna_enricher.clinpgx_draft import (
     _meets_level,
     _rows_from_snapshot,
     _split_drugs,
+    _symbolic_types,
     draft_pharm_variants,
 )
 from just_dna_format.pgx import PharmVariantRow
@@ -61,13 +62,29 @@ def test_one_annotation_naming_several_drugs_becomes_one_row_each() -> None:
     assert {r.annotation_id for r in rows} == {"1"}
 
 
-def test_what_the_grammar_cannot_hold_is_skipped_with_a_reason() -> None:
+def test_what_this_pass_cannot_write_is_skipped_with_a_reason() -> None:
     rows, warnings = _rows_from_snapshot(_RECORDS, genes=(), drugs=(), min_evidence_level=None)
     assert {r.rsid for r in rows} == {"rs6265"}
     joined = " ".join(warnings)
     assert "diplotypes.csv" in joined      # the star allele is routed, not dropped silently
-    assert "RM5" in joined                 # the symbolic allele is a known gap
+    assert "RM5" in joined                 # the symbolic allele has its own line
     assert "no rsID" in joined
+
+
+def test_the_symbolic_skip_names_the_length_and_not_the_grammar() -> None:
+    """**The reason moved in 0.6 and the old wording became false.** RM5 widened the grammar to hold
+    `<DEL:1500>`, so `del/del` is no longer something the format cannot spell — it is something
+    ClinPGx does not publish a *length* for, and a lengthless symbolic allele is a rule the compiler
+    drops. Writing the row anyway would hand the author work the next command in the documented
+    workflow undoes, which is why this pass still declines."""
+    _, warnings = _rows_from_snapshot(_RECORDS, genes=(), drugs=(), min_evidence_level=None)
+    symbolic = next(w for w in warnings if "structural allele" in w)
+    assert "length" in symbolic
+    assert _symbolic_types("del/del") == ["DEL", "DEL"]
+    assert _symbolic_types("C/del") == ["DEL"]
+    assert _symbolic_types("C/T") == []
+    # A cell that is neither a star allele nor a structural one is its own reason, not this one.
+    assert _symbolic_types("CAT") == []
 
 
 def test_the_evidence_floor_keeps_unknown_levels() -> None:
