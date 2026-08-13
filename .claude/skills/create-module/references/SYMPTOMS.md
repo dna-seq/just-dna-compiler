@@ -340,6 +340,12 @@ many you wrote or edited, and how many conflict. (A conflict is a warning in bot
 this is the one check that never fails a run, because a curator is allowed to disagree with a
 low-reviewed submission.) `--no-verify-clinsig` is the manual switch and reports `not_requested`.
 
+**`clin_sig cross-check not run: the ClinVar snapshot is present but not queryable`**
+The cache was found and could not be read — usually a file the current builder would not have written
+sitting in its `data/` directory, which puts two schemas under one query. Nothing was compared, and the
+run says so rather than reporting an empty conflict list that reads as a pass. Rebuild it
+(`just-dna-enricher clinvar build --download --out cv/`) or re-provision a clean cache.
+
 **`clin_sig cross-check not run: no ClinVar snapshot this run`**
 Different sentence, different meaning: nothing was compared because there was nothing to compare
 against. Provision a snapshot (`just-dna-enricher cache pull --only clinvar`) or pass

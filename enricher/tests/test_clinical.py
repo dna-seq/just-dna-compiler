@@ -374,9 +374,13 @@ def _fill_genotypes(spec: Path, snapshot: Path, genes: list[str]) -> None:
     The genotype is built from the record the row was drafted from — heterozygous, which is what a
     ClinVar allele on a diploid contig usually describes — so nothing here fabricates a locus.
     """
+    # Keyed on (rsid, clin_sig), not on the rsID alone: `rs334` names a pathogenic `T>A` *and* a
+    # likely-benign `T>G` at one locus, which is the hazard this whole check is built around. Keying
+    # on the rsID would hand a row the sibling allele's genotype and quietly change which variant it
+    # is about — and it would do so depending on row order, which is worse.
     alleles = {
-        record["rsid"]: (record["ref"], record["alt"])
-        for record in select_by_gene(snapshot, genes, min_review_stars=2)
+        (record["rsid"], record["clin_sig"]): (record["ref"], record["alt"])
+        for record in select_by_gene(snapshot, genes, min_review_stars=0)
         if record["rsid"]
     }
 
@@ -384,7 +388,7 @@ def _fill_genotypes(spec: Path, snapshot: Path, genes: list[str]) -> None:
         for row in rows:
             # Alphabetically sorted, which is what an unphased genotype must be — the model says so
             # and the loader refuses the other order, so build it the way the format spells it.
-            row["genotype"] = "/".join(sorted(alleles[row["rsid"]]))
+            row["genotype"] = "/".join(sorted(alleles[(row["rsid"], row["clin_sig"])]))
 
     _rewrite_variants(spec, decide)
 
@@ -416,6 +420,64 @@ def test_drafting_records_which_release_the_rows_were_copied_out_of(
     result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
     assert "drafted from" in (result.clin_sig_not_checked or "")
     assert result.clin_sig_audit is None  # best_effort does not pay for the per-row look-up
+
+
+def test_widening_from_a_newer_release_withdraws_the_label_rather_than_re_labelling(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """A second draft from a different snapshot leaves rows from two releases, and one column cannot
+    name both.
+
+    The merge that writes the licence row is never-clobber so a curator's terms survive a re-run, and
+    `dataset` inherited that the moment it became load-bearing — leaving the row asserting a release
+    half the rows did not come from, in the column `manifest.sources` publishes. Withdrawn, not
+    re-labelled: unknown is withheld, and an empty `dataset` skips nothing, so the check simply runs.
+    """
+    spec = _drafted_panel(tmp_path / "panel-widened", snapshot)
+    newer = tmp_path / "newer"
+    shutil.copytree(snapshot, newer)
+    release = _release(snapshot)
+    (newer / RELEASE_FILENAME).write_text(
+        json.dumps({**release, "clinvar_file_date": "2026-08-01"}), encoding="utf-8"
+    )
+    # A lower review floor, so the newer snapshot really does contribute rows the first draft left out.
+    second = draft_gene_panel(spec, ["HBB"], snapshot=newer, min_review_stars=1)
+    assert second.added_for("variants.csv") > 0, second.warnings
+
+    licence = spec / preferred_spelling(SOURCES_CSV)
+    recorded = [
+        row for row in csv.DictReader(io.StringIO(licence.read_text(encoding="utf-8")))
+        if row["source"] == "clinvar" and row["layer"] == "annotation"
+    ]
+    assert [row["dataset"] for row in recorded] == [""]
+    assert any(clinvar_dataset_label(snapshot) in w for w in second.warnings)
+    # The terms themselves are untouched — only the provenance cell was withdrawn.
+    assert recorded[0]["license"] == "public-domain"
+
+    # And the skip is gone with it, which is the conservative direction.
+    _fill_genotypes(spec, snapshot, ["HBB"])
+    result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    assert result.clin_sig_not_checked is None
+
+
+def test_a_re_draft_that_adds_nothing_leaves_the_label_alone(snapshot: Path, tmp_path: Path) -> None:
+    """The provenance is about the rows, so a run that added none has nothing to be honest about."""
+    spec = _drafted_panel(tmp_path / "panel-rerun", snapshot)
+    newer = tmp_path / "newer-rerun"
+    shutil.copytree(snapshot, newer)
+    (newer / RELEASE_FILENAME).write_text(
+        json.dumps({**_release(snapshot), "clinvar_file_date": "2026-08-01"}), encoding="utf-8"
+    )
+    again = draft_gene_panel(spec, ["HBB"], snapshot=newer, min_review_stars=2)
+    assert again.added_for("variants.csv") == 0
+
+    recorded = [
+        row for row in csv.DictReader(
+            io.StringIO((spec / preferred_spelling(SOURCES_CSV)).read_text(encoding="utf-8"))
+        )
+        if row["source"] == "clinvar" and row["layer"] == "annotation"
+    ]
+    assert [row["dataset"] for row in recorded] == [clinvar_dataset_label(snapshot)]
 
 
 def test_strict_looks_every_row_up_and_reports_the_split(snapshot: Path, tmp_path: Path) -> None:
@@ -492,6 +554,25 @@ def test_a_refinement_of_the_source_is_authored_rather_than_copied(
     audit = result.clin_sig_audit
     assert audit is not None and audit.conflicts == []
     assert (audit.authored, audit.copied) == (1, audit.compared - 1)
+
+
+def test_a_locus_wide_comparison_never_calls_a_value_copied(snapshot: Path) -> None:
+    """The ALT could not be pinned down, so a match may be the *sibling* allele's call.
+
+    `rs334`'s locus carries a pathogenic `T>A` and a likely-benign `T>G`, and a genotype naming both
+    alts leaves the check comparing against the whole locus. `pathogenic` matches a record there — but
+    saying "copied" would tell a reader no human wrote a cell a human may well have written. It lands
+    in `authored` instead, which understates rather than misattributes.
+    """
+    variant = _variant("pathogenic", "A/G")
+    audit = audit_clin_sig([variant], _resolution(variant), reference=snapshot)
+
+    assert audit is not None and audit.conflicts == []
+    assert (audit.copied, audit.authored) == (0, 1)
+    # Pin the contrast: the same call on the allele the row is actually about *is* a copy.
+    exact = _variant("pathogenic", "A/T")
+    exact_audit = audit_clin_sig([exact], _resolution(exact), reference=snapshot)
+    assert exact_audit is not None and (exact_audit.copied, exact_audit.authored) == (1, 0)
 
 
 def test_a_locus_clinvar_says_nothing_about_is_counted_not_folded_in(snapshot: Path) -> None:

@@ -442,6 +442,42 @@ def merge_sources_file(
     return merge_sources_csv(rows, path, existing)
 
 
+def withdraw_stale_dataset(
+    spec_dir: Path, source: str, layer: str, dataset: str | None, *, error: type[Exception]
+) -> str | None:
+    """Blank a recorded `dataset` that this run's rows did not come from. Returns what it withdrew.
+
+    The one place anything overwrites a cell `merge_sources_file` would have kept, and it is narrow on
+    purpose: `merge_sources_csv` is never-clobber so a curator's hand-written **terms** survive a
+    re-run, which is right, and `dataset` inherited that protection at the moment RM4 made it
+    load-bearing. A module drafted from one release and then widened from a newer one kept the older
+    label — a licence row asserting a release half its rows did not come from, in the column a
+    published `manifest.sources` carries and the clinical cross-check keys on.
+
+    It only ever **withdraws**, never re-labels, because the honest value for a module carrying rows
+    from two releases is not the newer label either — one column cannot name two releases, so the
+    answer is unknown and unknown is withheld (the house rule). That is also the safe direction for
+    everything downstream: an empty `dataset` skips nothing, so the cross-check simply runs.
+
+    `None` when there was nothing to withdraw — no row, or a row already naming this run's release.
+    The caller decides whether its rows even changed the module's provenance; a re-draft that added
+    nothing must not reach this at all.
+    """
+    path = sources_path(spec_dir, error=error)
+    if not path.exists():
+        return None
+    rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
+    if errors:
+        raise error(f"existing {path.name} is invalid: {errors[0]}")
+    recorded = next((r for r in rows if r.source == source and r.layer == layer), None)
+    if recorded is None or (recorded.dataset or None) == (dataset or None):
+        return None
+    withdrawn = recorded.dataset
+    recorded.dataset = None
+    write_sources_csv(rows, path)
+    return withdrawn
+
+
 def read_sources_file(spec_dir: Path) -> list[SourceRow]:
     """The module's licence rows as recorded, or `[]` when there are none that can be read.
 

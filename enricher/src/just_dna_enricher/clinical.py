@@ -176,8 +176,10 @@ class ClinSigAudit:
 
     Three disjoint outcomes, plus what could not be compared:
 
-    * **copied** — the snapshot records this very value here. Nothing was learned, and nothing could
-      have been: this is the tautology, now counted rather than assumed of the whole module.
+    * **copied** — the snapshot records this very value at this very allele. Nothing was learned, and
+      nothing could have been: this is the tautology, now counted rather than assumed of the whole
+      module. A row whose ALT could not be pinned down is never counted here, because a match against
+      the locus may be a sibling allele's call; it lands in `authored` instead.
     * **authored** — the snapshot records something else that does not oppose it (a confidence
       refinement, an undecided call, an orthogonal one). A human wrote or edited this cell.
     * **conflicts** — the camps oppose. Exactly `verify_clin_sig`'s finding, unchanged, and the whole
@@ -316,7 +318,13 @@ def audit_clin_sig(
         # is compared against" is a question about the *word*, not about the camps: `pathogenic` beside
         # `likely_pathogenic` agree and are not the same claim, and only one of them was copied. An
         # exact match also always agrees, so this never hides a conflict the old order would have found.
-        if any(record["clin_sig"] == authored for _t, record in candidates):
+        #
+        # Never in the locus-wide fallback: there `candidates` spans every ALT at the locus, so an exact
+        # match may be a *sibling* allele's call rather than this row's, and "copied" would then say a
+        # human did not write a cell a human wrote. Such a row falls through to the camp logic and lands
+        # in `authored`, which understates rather than misattributes — the safe direction, since the
+        # comparison really did run.
+        if not locus_wide and any(record["clin_sig"] == authored for _t, record in candidates):
             copied += 1
             continue
         if authored_camp in {"undecided", "orthogonal"}:

@@ -948,9 +948,21 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
     cheap skip **and names the hole**; `strict` runs `audit_clin_sig` and reports copied / authored /
     conflicting / no_record. Deciding per row in both modes *is* the look-up, which is what the skip
     exists to avoid.
-  - **The audit is kept only where drafting was established.** For a module that never claimed a draft,
-    a value equal to ClinVar's is merely *consistent* with it; calling it "copied" asserts a provenance
-    nobody established (the false-accusation rule that keeps the gene/locus check coarse).
+  - **The audit is kept only where drafting was established, and "copied" is allele-exact.** For a
+    module that never claimed a draft, a value equal to ClinVar's is merely *consistent* with it;
+    calling it "copied" asserts a provenance nobody established (the false-accusation rule that keeps
+    the gene/locus check coarse). Same reason nothing is counted copied in the **locus-wide fallback**,
+    where the candidates span every ALT and a match may be a sibling allele's call — such a row lands in
+    `authored`, which understates rather than misattributing.
+  - **A never-clobber merge turns a machine-stamped provenance cell into a stale claim, so it is
+    WITHDRAWN.** `merge_sources_csv` keeps an existing row so a curator's hand-written *terms* survive a
+    re-run, and `dataset` inherited that the moment RM4 made it load-bearing: widening a panel from a
+    newer snapshot left the row naming the older release, in the column `manifest.sources` publishes.
+    `licensing.withdraw_stale_dataset` blanks it — **never re-labels**, because a module carrying two
+    releases has no single release to name, so the answer is unknown and unknown is withheld — and only
+    when rows were actually added, since a re-draft that added none changed no provenance. Generalize
+    it: when you make an existing column load-bearing, re-ask whether the rule that writes it was
+    designed for the new job.
 - **`_cache_dir` loads the `.env` itself, and that one ordering fixed three reports (0.5.2).**
   `_resolve_parquet_cache` calls `load_env()` inside itself, but each `resolve_*_reference` passed
   `default_*_cache_dir()` as an *argument* — evaluated first — so with the base set only in `.env` the

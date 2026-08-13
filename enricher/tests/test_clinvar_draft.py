@@ -213,6 +213,32 @@ def test_offline_without_a_snapshot_refuses_and_says_how_to_get_one(monkeypatch)
         clinvar_draft._resolve_snapshot(None, offline=True, download=True)
 
 
+def test_the_refusal_names_the_switch_that_actually_stopped_it(monkeypatch) -> None:
+    """Both `--offline` and `--no-download` close this path, and the message used to name only the
+    first — so an author who passed the second was told to drop a flag they had not used, and after a
+    failed *provisioning attempt* (neither flag set) it named one nobody could drop."""
+    from just_dna_enricher import clinvar_draft
+    from just_dna_enricher.clinvar_draft import ClinVarDraftError
+
+    monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
+    monkeypatch.setattr(
+        clinvar_draft, "ensure_clinvar_snapshot",
+        lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("HF unreachable")),
+    )
+    with pytest.raises(ClinVarDraftError) as offline:
+        clinvar_draft._resolve_snapshot(None, offline=True, download=True)
+    with pytest.raises(ClinVarDraftError) as no_download:
+        clinvar_draft._resolve_snapshot(None, offline=False, download=False)
+    with pytest.raises(ClinVarDraftError) as tried_and_failed:
+        clinvar_draft._resolve_snapshot(None, offline=False, download=True)
+
+    assert "Drop --offline" in str(offline.value)
+    assert "Drop --no-download" in str(no_download.value)
+    # Nothing was blocking: the request was made and failed, so no flag is named and the reason is.
+    assert "Drop --" not in str(tried_and_failed.value)
+    assert "HF unreachable" in str(tried_and_failed.value)
+
+
 def test_a_failed_provisioning_refuses_with_the_reason_attached(monkeypatch) -> None:
     """HF has gone dark mid-demo; the refusal has to say that is what happened, not just "not found"."""
     from just_dna_enricher import clinvar_draft

@@ -999,6 +999,15 @@ recomputes that same label from the snapshot in hand and compares. **Both sides 
 so the writer and the reader cannot drift apart — and this drift would be silent, since a disagreement
 about the label does not fail, it just never matches.
 
+**Widening a panel from a newer snapshot withdraws the label rather than re-writing it.**
+`merge_sources_csv` is never-clobber so a curator's hand-written terms survive a re-run, and `dataset`
+inherited that protection the moment RM4 made it load-bearing — leaving the row naming the older
+release while half the rows came from a newer one, in the column `manifest.sources` publishes.
+`licensing.withdraw_stale_dataset` blanks it instead, and only when rows were actually added: a module
+carrying two releases has no single release to name, so the honest value is unknown, and an empty
+`dataset` skips nothing. The terms on the row are untouched. Re-labelling to the newer release was the
+other candidate and it is the same false claim pointing the other way.
+
 It keys on `dataset` rather than on the module's `panel:` block because the claim is *provenance* —
 these rows came from this snapshot — and the tool that copied them is the authority on it. Asking an
 author to maintain a declaration whose only reader is one skip is bureaucracy the enricher exists to
@@ -1025,6 +1034,14 @@ The audit is kept **only where drafting was established**: for a module that nev
 value equal to ClinVar's is merely *consistent* with it, and calling that "copied" would assert a
 provenance nobody established. Counts are per comparison — one per resolved locus a variant has —
 and variants with no resolved locus are `EnrichmentResult.unresolved`, not recounted here.
+
+**"Copied" is allele-exact, and in the locus-wide fallback nothing is counted as copied at all.** Where
+the ALT the annotation is about could not be pinned down, the candidates span every ALT at the locus, so
+an exact string match may be a *sibling* allele's call — and `rs334`'s locus, with a pathogenic `T>A`
+beside a likely-benign `T>G`, is exactly where that happens. Such a row falls through to the camp logic
+and lands in **authored**, which understates rather than misattributing: saying "copied" would tell a
+reader no human wrote a cell a human may well have written, on the one question this audit exists to
+answer.
 
 The skip carries its reason on `EnrichmentResult.clin_sig_not_checked`, because an empty
 `clin_sig_conflicts` says two opposite things on its own ("compared everything, nothing disagreed" and
