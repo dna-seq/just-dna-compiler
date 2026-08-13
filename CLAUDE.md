@@ -1240,6 +1240,21 @@ cycle* in `USE_CASES.md`.
   module adds its own focused table (`diplotypes.csv`, `pharm_variants.csv`, `pgs.csv`) rather than an
   empty `variants.csv` or a foreign domain's columns on every row. When human-legibility and
   machine-precision tension, the parquet absorbs the precision; the DSL keeps the human shape.
+- **That gate prices the AUTHORED layer, and only that one — a schema addition costs what its layer
+  costs (the 0.6 charter amendment).** A **parquet column** is approximately free: materialized,
+  derived, no human ever types one and no author can see one, so a stamped `COMPILER_MANAGED` column is
+  the cheapest thing this format can add. A **derived CSV** is half: machine-written, so nobody has to
+  learn its shape, but a human can still open one — and that should be discouraged rather than left
+  unmentioned. An **authored schema** is full cost, because the rare author writes it. So the bullet
+  above does not price a parquet column at all and prices a fact sidecar at half, which matters because
+  the "too many tables" instinct is right about some additions and wrong about others: a new derived
+  fact table is not the same kind of object as a new authored table, and treating them alike is what
+  made two obviously-worth-building items look like creep. The rule adds no permission — legality is
+  still Principles 3 and 8, decided first; it only says what a *legal* change costs, so a review weighs
+  it instead of reaching for file count. Its first live consequence is that `resolution.csv` is a
+  build-time derived artifact whose only consumers are the compiler and the enricher's update run, and
+  it gets **no parquet** deliberately (stated in SCHEMAS.md, because "publish it as a parquet" is the
+  first repair anyone proposes on finding a table with no coordinate).
 - Type hints mandatory; **pathlib** for paths; **absolute imports only**; **no inline imports** (a
   guarded module-level `try/except ImportError` for optional deps is the only exception).
 - **Avoid nested try/except** — it is a nightmare to read and debug, and usually just swallows the

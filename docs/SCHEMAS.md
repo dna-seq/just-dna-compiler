@@ -625,6 +625,16 @@ three letters.
 compiler consumes *instead of* querying any reference, so the compiler owns no Ensembl/DuckDB convention.
 Produced by [`just-dna-enricher`](ENRICHER.md); a human may hand-author or edit it.
 
+**It is a build-time artifact, and it gets no parquet — deliberately.** Every other table here is either
+authored input or a published fact table with a parquet beside it; this one is neither. Its only two
+consumers are the compiler, which reads it to resolve a key, and the enricher's own update run, which
+merges into it. Promoting it to a published table would make it a consumer contract it was never designed
+to be — its provenance columns are explicitly outside the fact set, `reverse_module` cannot reconstruct
+half of them, and a downstream reader keying on it would be reading the *lookup* rather than the *answer*,
+which is materialized into `weights.parquet` and the positional tables where it belongs. This is written
+down here because "publish it as a parquet" is the first repair anyone proposes on finding a table that
+does not carry a coordinate, and it is the wrong one.
+
 - **Join key:** `variant_key` (the frozen authored identity). **Facts** (feed `resolution_signature`):
   `rsid?`, `chrom?`, `start? (ge=0)`, `ref?`, `alts?`, `genome_build="GRCh38"` (the RM15 forward hook),
   `locus_index=0` (0 for 1:1; `0..N-1` for a one-to-many rsid expansion). **Provenance** (excluded from

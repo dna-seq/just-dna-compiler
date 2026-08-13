@@ -185,6 +185,32 @@ is precisely the shape the old wording forbade. The same amendment adds the obli
 carry its **upgrade procedure**: the charter has always permitted breakage at a major, and now requires
 it to arrive mitigated.
 
+**0.6 amendment — what a schema change costs, by layer.** Principles 3, 4 and 8 rule on whether a change
+is *legal*: additive is minor, removal and promotion-to-required and retyping are major. They say nothing
+about what a legal change *costs*, and the absence has been showing up as a recurring instinct that there
+are "too many tables" — an instinct that is correct about some additions and wrong about others, with no
+stated way to tell which. The cost of an addition depends on the layer it lands in:
+
+- **Parquet columns — approximately free.** Materialized and derived; no human ever types one, and an
+  author cannot see one. A stamped, compiler-managed column is the cheapest thing this format can add.
+- **Derived CSVs — half.** Machine-written, so no author has to learn the shape; but a human *can* still
+  open and edit one, and that should be discouraged rather than merely unmentioned.
+- **Authored schemas — full.** A human writes them. Every column is a burden on the rare author, and it
+  is that author the DSL exists for.
+
+Two consequences make the rule operative rather than decorative. First, the *one concern per table, do
+not burden the rare author* gate is a rule about the **authored** layer: it does not price a parquet
+column at all, and it prices a machine-written sidecar at half. A new derived fact table is not the same
+kind of object as a new authored table, and treating the two alike is what made obviously-worthwhile
+additions look like sprawl. Second, discouraging hand-editing of a derived file is a live design concern
+and not a style note — a derived table that is both machine-written and human-overridable can be edited
+into a state that is not merely stale but is a false claim, and that wants a mechanism rather than a
+convention.
+
+This amendment adds no permission and removes none: what is legal is unchanged, and every addition still
+answers to Principles 3 and 8 first. It states the price so that a design review can weigh a legal change
+instead of reaching for an unexamined instinct about file count.
+
 The same 0.5 amendment **removed `duckdb` from the compiler tier**, which is why Goal 2 now names
 polars/pyyaml/typer alone. Resolution moved from an in-compiler DuckDB query over an injected reference
 to the injected `resolution.csv` table, so the whole SQL/cache-location half went to the enricher and
