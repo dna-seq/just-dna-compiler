@@ -539,14 +539,19 @@ a row can change shape. Everything below follows from one rule:
 > started from — the same bytes, the same *authored* content, and the same resolved facts. Where it
 > cannot, `strict` refuses rather than emitting an artifact nobody can re-derive.
 
-### Scope: the SNP core, and everything that follows from that (0.5.3)
+### Scope: the SNP core plus the three positional tables (RM43, 0.6)
 
-**Resolution applies to `variants.csv` and to nothing else.** The 0.4 table families go through
-`_build_table`, which is `model_dump()` straight to parquet, so a `pharm_variants.csv` or
-`haplotypes.csv` row keeps exactly the coordinates its author typed — for an rsid-authored module,
-none. That is a deliberate boundary and it is not changing in 0.5.x, but three manifest fields are
-scoped to the SNP core in a way that reads as module-wide, and a consumer trusting them was the
-report that surfaced this (S9):
+**Resolution applies to `variants.csv` and to the three positional 0.4 kinds** —
+`pharm_variants.csv`, `haplotypes.csv`, `heteroplasmy.csv`, derived from the models rather than listed
+(a table is positional exactly when it declares both `chrom` and `start`). Until 0.6 it applied to
+`variants.csv` alone: every other table went through `_build_table`, which is the model straight to
+parquet, so a row kept exactly the coordinates its author typed — for an rsid-authored module, none —
+and a consumer matching a patient VCF by position matched nothing, silently, as an empty result rather
+than an error. That is now filled at compile time from the injected table; see *The positional fill*
+below for the four rules it follows and the three columns it needed.
+
+The rest of this section is the 0.5.3 report (S9) that surfaced it, kept because two of its three
+manifest observations still hold:
 
 - **`fully_resolved` is `all(...)` over `VariantRow`**, so it is **vacuously `true`** on a module with
   no `variants.csv`. Its own field comment gives the trust rule *"a consumer trusts a module when
@@ -554,16 +559,17 @@ report that surfaced this (S9):
   module, where it can be `true` while every row lacks a coordinate. **Since 0.6 the denominator is
   published beside it** (`resolution_subjects`, RM44), so the sufficient rule is
   `resolution_subjects > 0 and (resolution_mode == "strict" or fully_resolved)` and the vacuous case
-  is legible from the manifest alone. The counter makes the vacuity visible; it does not make the
-  tables joinable, which is still RM43.
+  is legible from the manifest alone. The counter makes the vacuity visible; RM43 makes the tables
+  joinable, but the flag still quantifies over `variants.csv` only.
 - **`resolution_mode` and the `--strict` unresolved gate are the same scope.** `strict` refuses on an
   unresolved `VariantRow`; it says nothing about a table row, which is why such a module compiles
-  under `--strict` with no coordinates at all.
+  under `--strict` even where the fill could not place a row. That is deliberate — see the warning's
+  severity below.
 - **`resolution_signature` / `resolution_sources` stay unset** for a module whose only subjects are
-  table rows, so its injected `resolution.csv` leaves no trace in the manifest. Stamping them is
-  blocked on reverse: `reverse_module` rebuilds `resolution.csv` from `weights.parquet` alone, so a
-  table-only module reverses to a spec without one and the fixed point would break. Tracked in RM43,
-  whose prerequisite stamped-identity column is 0.6 work under the amended Principle 3.
+  table rows, so its injected `resolution.csv` leaves no trace in the manifest. This was blocked on
+  reverse, which rebuilt `resolution.csv` from `weights.parquet` alone; RM43 removed that blocker (it
+  now rebuilds from the positional parquets too), and stamping the two fields is RM45's half of the
+  same round.
 
 **The warning's wording is a contract, because the manifest carries it and nothing else.**
 `compile_module` copies its warnings into `manifest.compilation.warnings`, which ships inside
@@ -576,24 +582,88 @@ the sentence freely; move that fragment deliberately.
 
 **RM44 shipped in 0.6 and it retires only half of this.** `resolution_subjects` gives a consumer a
 structured field for *"was the flag about anything"*, so the vacuity no longer needs the prose — but
-the *unjoinable-row count* is a different question and still has only the sentence. The fragment and
-its test therefore stay until RM43 supplies that count.
+the *unjoinable-row count* is a different question and still has only the sentence, since RM43 fills
+the rows rather than counting them into the manifest. The fragment and its test stay.
 
-What the compiler *does* do is **say so**. Every positional 0.4 table — `heteroplasmy.csv`,
-`haplotypes.csv`, `pharm_variants.csv`, derived from the models rather than listed — is checked for
-rows with no `chrom`+`start`, and the finding is one aggregated line per table carrying two counts:
-how many rows cannot be joined by position, and how many of those the injected `resolution.csv`
-**could** place. The second number is the actionable half — it separates "this module was never
-enriched" from "the coordinates exist and this tier does not apply them here". A half-coordinate
-(`start` with no `chrom`, the shape a CPIC-drafted `haplotypes.csv` carries) is counted apart, because
-it reads as a position and joins to nothing.
+**The joinability warning now reports the residue.** Every positional table is still checked for rows
+with no `chrom`+`start`, after the fill has run, and the finding is one aggregated line per table
+carrying how many rows cannot be joined by position plus *why*. Three readings: the injected table
+names the key at more than one locus (or at one the row's own allele contradicts), so the compiler
+leaves it rather than picking; nothing in the table names the key at all, which an enrich run fixes;
+or the fill **never ran** — `--no-resolve`, or a non-GRCh38 module — in which case the coordinates may
+be right there and untried. The third branch is why the check is *told* whether the join happened
+rather than inferring it: this sentence ships inside `manifest.compilation.warnings` beside
+`UNJOINABLE_PHRASE`, so asserting "the compiler looked and would not pick" about a lookup that never
+happened puts a fabricated diagnosis into a document a catalog reads. A half-coordinate (`start` with
+no `chrom`, the shape a CPIC-drafted `haplotypes.csv` carries) is counted apart, because it reads as a
+position and joins to nothing.
 
 It is a **warning in both modes and never a `strict` error**, for two independent reasons: rsid-only
 identity is legal by these models' own rule, so escalating would have the format tighten a field it
-deliberately left open; and the remedy is a compiler change (RM43), not an authored edit — the same
-class as VRS coverage and `not_covered`, where refusing makes a correct module uncompilable for
-something its author cannot fix. It runs in `validate` as well as `compile`, and is de-duplicated
-between them.
+deliberately left open; and what survives the fill is by construction something no authored edit to
+that table clears — the same class as VRS coverage and `not_covered`, where refusing makes a correct
+module uncompilable for something its author cannot fix. It runs in `validate` as well as `compile`,
+and is de-duplicated between them.
+
+### The positional fill (RM43, 0.6)
+
+`_apply_positional_resolution` joins the injected `resolution.csv` onto each positional table before
+`_build_table` materializes it, and runs in **both** `validate_spec` and `compile_module` — the
+joinability line is computed from these rows in both, so filling on one side only would leave the
+pre-flight naming a gap the compile had already closed. `validate_spec` therefore takes
+`resolve_with_ensembl` too, and `compile_module` passes its own value down: the flag is the master
+switch for resolution of every kind, so a pre-flight that ignored it would be the more *optimistic* of
+the two commands. The fill is skipped, with a warning, for a non-GRCh38 module, exactly as
+`resolve_from_table` is (RM15).
+
+Four rules, and the last two are what separate it from the naive repair:
+
+- **Fill only what the author left empty.** A cell the author wrote is never overwritten. That is the
+  inject-only doctrine (report, never repair), and it also makes the fill idempotent.
+- **Fill from exactly one locus, or from none.** One usable locus fills. Several are filtered by
+  `hosting_verdict` against whatever allele the row states — a `genotype` on a pharm row, the defining
+  `allele` on a haplotype junction, nothing at all on a heteroplasmy band. If that leaves one, it
+  fills; otherwise the row stays unplaced and the joinability line says so. There is deliberately **no
+  expansion**: multiplying a pharm annotation's `(variant_key, drug, genotype, …)` key across loci the
+  author never named is not the same operation as expanding a `variants.csv` row.
+- **A row whose own coordinate contradicts the table is left exactly as authored**, and the
+  disagreement is reported. Completing a half-coordinate from a locus whose `start` disagrees would
+  build a coordinate no source ever stated. The comparison runs even where there is nothing left to
+  fill — a fully-populated `heteroplasmy.csv` row can still contradict the table it is keyed into, and
+  the promise is that such a row is *reported*, which the SNP core gets from `_verify`. `alts` is
+  deliberately outside the comparison: a locus lists every ALT recorded there while a row names the
+  one it is about, so `A,G` against `G` is agreement, and whether the allele can sit there is
+  `hosting_verdict`'s three-valued question, already asked one step earlier.
+- **Rows are mutated in place and their identity is frozen first.** Each positional model stamps
+  `variant_key` and `authored_ident` at load, from the authored columns only, so filling cannot re-key
+  a row.
+
+**Three columns made it possible, all parquet-only.** `variant_key` (materialized so a consumer can
+join a PGx row to `weights.parquet` without re-implementing the precedence rule), `authored_ident`
+(which identity columns the author supplied — the same mechanism `VariantRow` has had since 0.5), and
+`alts` on `PharmVariantRow`/`HaplotypeRow`, filled as **data, not identity**: the key is still derived
+without it, so a pharm annotation keeps matching a variant at `chrom:start:ref` regardless of allele,
+and what the column buys is a direct VCF join. None of the three is authored, offered by a drafting
+template, or re-emitted by reverse; none is in `content_signature` (they are `exclude=True`, so a
+stamped value — a pure function of the authored cells — cannot move a *content* identity, and no
+already-published module's signature changes). `VariantRow`'s own two stamped fields *are* inside
+`content_signature`; that asymmetry is grandfathered rather than a precedent, since changing it in
+either direction moves published signatures.
+
+**Reverse rebuilds `resolution.csv` from the positional parquets, and that is forced rather than
+chosen.** Once a coordinate is filled, a reverse that dropped the lookup table would emit a spec whose
+recompile leaves those parquets unfilled — `compile → reverse → compile` would stop reproducing the
+artifact (Principle 7), and a PGx module carries no `weights.parquet` for the old writer to read at
+all. Weights are written first and own any shared key (`variants.csv` is the only table carrying
+`alts` as an *authored* fact), and the positional side contributes at most one row per key, or the
+next compile would read two rows as a one-to-many rsID. Provenance is discarded exactly as before
+(`source="reversed"`, `status="resolved"`, blank `fetched_at`). A module that resolved nothing anywhere
+and has no `weights.parquet` gets no file, rather than a header-only sidecar invented out of an
+absence.
+
+**`resolution.csv` still gets no parquet**, and that is the repair this item deliberately did not
+make: it is a build-time derived artifact whose consumers are the compiler and the enricher, and
+publishing it would turn it into a consumer contract it was never designed to be. See SCHEMAS.md.
 
 ### `resolve_from_table` (`compiler/resolution.py`)
 

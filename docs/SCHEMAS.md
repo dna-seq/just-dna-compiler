@@ -111,11 +111,11 @@ reason its `source` column is inside its fact set while everywhere else `source`
   hand-build the coord key. Position-level *matching* (studies, verify) calls it without `alts`.
 - **Frozen `variant_key`.** On `VariantRow` it is a **stored, compiler-managed** column, stamped once
   at load by `_freeze_identity` (authored values ignored) and never re-derived — so resolution can
-  fill a coord/rsid or expand a row without ever re-keying it (Principle 7). It is a derived read-only
-  *property* on `StudyRow`/`PharmVariantRow` (never resolved/expanded), and is excluded from the
-  authoring reference. Note the asymmetry that makes a name-based exclusion wrong: `FrequencyRow`
-  declares a `variant_key` that is genuinely **authored and required**, so what is compiler-managed is
-  the *field*, not the name.
+  fill a coord/rsid or expand a row without ever re-keying it (Principle 7). Since 0.6 the three
+  **positional** tables stamp it the same way (see below); it remains a derived read-only *property*
+  on `StudyRow`, which is never resolved or expanded. It is excluded from the authoring reference.
+  Note the asymmetry that makes a name-based exclusion wrong: `FrequencyRow` declares a `variant_key`
+  that is genuinely **authored and required**, so what is compiler-managed is the *field*, not the name.
 - **Frozen `authored_ident`.** Stamped by the same validator: which of `{rsid, chrom, start, ref, alts}`
   the author actually supplied. Also compiler-managed and materialized to `weights.parquet`, and it is
   what makes resolution *reversible* — `variant_key` answers "which variant is this", not "what did the
@@ -123,6 +123,36 @@ reason its `source` column is inside its fact set while everywhere else `source`
   from an authored coordinate. Without it reverse materialized resolved coordinates back into
   `variants.csv` and `content_signature` moved on every round-trip of an rsid-authored module. See
   [COMPILER.md § Resolution](COMPILER.md).
+- **Stamped identity on the positional tables (RM43, 0.6).** `PharmVariantRow`, `HaplotypeRow` and
+  `HeteroplasmyRow` — the three tables that declare both `chrom` and `start` — each stamp
+  `variant_key` **and** `authored_ident`, because the compiler now fills a resolved coordinate into
+  them and reverse has to re-emit the authored shape rather than the filled one. `PharmVariantRow` and
+  `HaplotypeRow` also gain a stamped **`alts`**, filled as *data, not identity*: the key is still
+  derived without it (a pharm annotation matches a variant at `chrom:start:ref` regardless of allele),
+  and what the column buys is a direct VCF join. `AuthoredModel._KEY_INCLUDES_ALTS` is the tri-state
+  that opts a model in and says whether its key carries `alts` — `None` for every model that stamps
+  nothing, `True` only for `HeteroplasmyRow`, whose key always did.
+
+  A **compiler-filled** identity column is refused rather than ignored (`base.reject_compiler_filled`,
+  the same `mode="before"`-diagnosis shape as `reject_misplaced`): writing `alts` on a
+  `pharm_variants.csv` row by analogy with `variants.csv` failed loudly before the column existed, and
+  a new column may not turn a loud failure into a quiet one — accepted silently, the value entered
+  `authored_ident` and then vanished on reverse, so the round trip stopped being a fixed point. The
+  guard is scoped to `IDENTITY_FIELDS`, which is what leaves `variant_key`/`authored_ident` accepted
+  and overwritten: those are *stamped*, so ignoring an authored value loses nothing, and `VariantRow`
+  has tolerated exactly that since 0.5 on the no-foot-gun rule.
+
+  Two mechanics to keep straight. The key is derived from the **authored subset**, so the fill can run
+  any number of times without re-keying a row; and `with_genome_build` re-derives it when the loader
+  injects the build, which is this tier's answer to the problem `_restamp_for_build` solves for
+  `VariantRow` one tier up (`VariantRow` keeps its own restamp, and stays out of the hook). These six
+  fields are declared `exclude=True`, so they are absent from `model_dump()` and therefore from
+  `content_signature` — a stamped value is a pure function of the authored cells, so it says nothing a
+  *content* identity does not already have, and including it would have moved the signature of every
+  already-published module carrying one of these tables. `VariantRow`'s two *are* in
+  `content_signature`; that is grandfathered, not a precedent, since changing it in either direction
+  moves published signatures. `_build_table` reads fields off the row rather than through
+  `model_dump()`, which is how the columns still reach parquet.
 - **Both carry the `COMPILER_MANAGED` marker (`base.py`), and every generator over the authored
   surface reads `base.authored_field_names(model)` rather than `model_fields`.** A generator that
   walks `model_fields` directly offers these two as columns an author writes, which is wrong twice
@@ -312,9 +342,11 @@ gene carries several pathogenic variants with different thresholds — MT-TL1 ha
 m.3271T>C, both causing MELAS — and keyed on the gene alone their bins collided and `validate_bins`
 **errored**, so the module could not compile. `trait_efo_id` is in the group key but could only have
 separated them by giving one disease two ontology ids. The row therefore carries optional
-`rsid`/`chrom`/`start`/`ref`/`alts` mirroring `PharmVariantRow`, entering the key through a derived
-`variant_key` property; optional means a single-variant table groups exactly as before (P3/P8), and
-`alts` is in the derivation because MT-ATP6 m.8993T>G and m.8993T>C are one base with two alleles.
+`rsid`/`chrom`/`start`/`ref`/`alts` mirroring `PharmVariantRow`, entering the key through `variant_key`;
+optional means a single-variant table groups exactly as before (P3/P8), and `alts` is in the derivation
+because MT-ATP6 m.8993T>G and m.8993T>C are one base with two alleles. (That `variant_key` was a
+*property* until 0.6, when RM43 made it a stamped field so the compiler could fill a resolved
+coordinate without re-keying the row; the value is unchanged.)
 
 **On a continuous kind two bins may share an endpoint, and the higher one owns it (RM35, 0.5).** The
 lookup rule a consumer implements once: *select the row with the greatest `measure_min ≤ x`* within the
@@ -336,6 +368,8 @@ structural allele — see *The allele grammar* above);
 `a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`, CPIC `recommendation_strength?`
 and `clinical_context?`); `PharmVariantRow` (`drug`+
 `conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`, `annotation_id?`).
+`HaplotypeRow` and `PharmVariantRow` also carry a **compiler-filled `alts`** since 0.6 — parquet-only,
+never authored, outside the key; see *Stamped identity on the positional tables* above.
 
 `PharmVariantRow.genotype` (0.5) carries the axis PharmGKB actually publishes on: a clinical
 annotation is stated **per genotype**, and the calls can be opposed (rs4149056/simvastatin reads
@@ -692,7 +726,8 @@ to be — its provenance columns are explicitly outside the fact set, `reverse_m
 half of them, and a downstream reader keying on it would be reading the *lookup* rather than the *answer*,
 which is materialized into `weights.parquet` and the positional tables where it belongs. This is written
 down here because "publish it as a parquet" is the first repair anyone proposes on finding a table that
-does not carry a coordinate, and it is the wrong one.
+does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right one, and it is what makes
+"materialized into the positional tables where it belongs" true rather than aspirational.
 
 - **Join key:** `variant_key` (the frozen authored identity). **Facts** (feed `resolution_signature`):
   `rsid?`, `chrom?`, `start? (ge=0)`, `ref?`, `alts?`, `genome_build="GRCh38"` (the RM15 forward hook),

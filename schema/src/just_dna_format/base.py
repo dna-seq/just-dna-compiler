@@ -30,11 +30,13 @@ from typing import Any, ClassVar, get_args
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     PrivateAttr,
     ValidationInfo,
     field_validator,
     model_validator,
 )
+from pydantic.fields import FieldInfo
 
 from just_dna_format.alleles import SYMBOLIC_ALLELE_TYPES, parse_symbolic_allele
 from just_dna_format.vocab import (
@@ -224,6 +226,120 @@ def derive_variant_key(
     return f"{base}:{alts_norm}" if alts_norm else base
 
 
+# ── Stamped positional identity (RM43) ──────────────────────────────────────────────────────────
+#: The identity columns a positional row may carry, in the order `authored_ident` records them.
+#: `VariantRow._freeze_identity` has used exactly this tuple since 0.5; naming it here is what lets
+#: the three 0.4-family positional models reuse the mechanism instead of growing three copies of it.
+IDENTITY_FIELDS: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
+
+
+def stamped_identity_field(description: str) -> Any:
+    """A `Field(...)` for a compiler-stamped identity column on a 0.4-family positional model.
+
+    Three properties, and the middle one is the non-obvious one:
+
+    * `COMPILER_MANAGED`, so `authored_field_names` drops it — no author is offered the column, no
+      drafted template writes it, and `reverse_module`'s generic `_write_table_csv` never re-emits it.
+    * **`exclude=True`, so it stays out of `model_dump()` and therefore out of `content_signature`.**
+      A stamped value is a pure function of the authored cells, so it adds nothing to a *content*
+      identity — and including it would move the signature of every already-published module carrying
+      one of these tables, which is the one thing a content-dedup key may not do. `_build_table` reads
+      the field off the model directly (not through `model_dump()`), so the column still reaches
+      parquet. `VariantRow.variant_key`/`authored_ident` are **not** excluded and are inside
+      `content_signature` today; that is a grandfathered inconsistency, not a precedent — un-excluding
+      them here, or excluding them there, moves published signatures either way, so the asymmetry is
+      carried until a major.
+    * a fresh `FieldInfo` per call, because pydantic binds one to the model that declares it.
+    """
+    return Field(
+        default=None,
+        exclude=True,
+        json_schema_extra=COMPILER_MANAGED,
+        description=description,
+    )
+
+
+def reject_compiler_filled(data: object, fields: dict[str, Any], *, what: str) -> None:
+    """Refuse an **identity** column this model has the compiler fill (RM43), with a diagnosis.
+
+    `alts` is the only such column today: authored and required on `variants.csv`, authored and
+    optional on `heteroplasmy.csv`, and **compiler-filled** on `pharm_variants.csv`/`haplotypes.csv`,
+    where a pharm annotation matches a variant at `chrom:start:ref` regardless of allele. Writing it
+    there by analogy with `variants.csv` is a plausible confusion rather than a typo, and before this
+    guard it was silently *accepted*: `extra="forbid"` cannot see it, the value entered
+    `authored_ident`, and `_write_table_csv` then dropped it — so `compile → reverse → compile` was
+    not a fixed point. It failed loudly before 0.6 added the column, so a bare accept is a regression
+    however sensible the input.
+
+    Scoped to `IDENTITY_FIELDS` deliberately, which is what leaves `variant_key`/`authored_ident`
+    accepted-and-overwritten: those two are *stamped* rather than filled, and `VariantRow` has
+    tolerated them since 0.5 on the "authored values ignored, no foot-gun" rule. Nothing is lost by
+    ignoring a stamped value; something is lost by ignoring a filled one.
+    """
+    if not isinstance(data, dict):
+        return
+    hits = sorted(
+        name
+        for name in data
+        if name in IDENTITY_FIELDS
+        and isinstance((field := fields.get(name)), FieldInfo)
+        and isinstance(field.json_schema_extra, dict)
+        and field.json_schema_extra.get("compiler_managed")
+    )
+    if not hits:
+        return
+    raise ValueError(
+        f"{what}: {', '.join(repr(h) for h in hits)} is filled by the compiler on this table, from "
+        f"the injected resolution.csv, and is not an authored column here — remove it. It IS authored "
+        f"on variants.csv and heteroplasmy.csv, which is the confusion this message exists for; here "
+        f"the row's identity is rsid, or chrom + start (+ ref), and the allele list is looked up."
+    )
+
+
+def authored_identity(row: "AuthoredModel") -> list[str]:
+    """Which of `IDENTITY_FIELDS` this row's model declares *and* the author actually filled."""
+    fields = type(row).model_fields
+    return [name for name in IDENTITY_FIELDS if name in fields and getattr(row, name) is not None]
+
+
+def stamp_identity(row: "AuthoredModel", *, keys_on_alts: bool, freeze_authored: bool) -> None:
+    """Stamp `variant_key` (and, at construction, `authored_ident`) onto a positional row.
+
+    The key is derived from the **authored subset only**, never from the row's current cells, which is
+    what makes it survive the compile-time coordinate fill: once `authored_ident` is frozen, filling
+    `chrom`/`start`/`ref`/`alts` cannot re-key the row however many times this runs. That is the same
+    guarantee `VariantRow` gets from `_freeze_identity` never re-running on `model_copy`, arrived at
+    from the other direction because these rows are filled **in place** rather than copied.
+
+    `freeze_authored` is `True` exactly once, at construction, and authored values are overwritten
+    rather than trusted — a CSV that carries a `variant_key`/`authored_ident` column of its own does
+    not get to declare its own identity (`VariantRow` calls that "no foot-gun"). `with_genome_build`
+    re-derives the *key* only, because the assembly changes what a coordinate means and cannot change
+    what the author wrote.
+    """
+    if freeze_authored:
+        row.authored_ident = authored_identity(row)
+    authored = set(row.authored_ident or ())
+
+    def cell(name: str) -> Any:
+        return getattr(row, name, None) if name in authored else None
+
+    # A row that names no variant at all keys as `None` — the pre-0.5 `heteroplasmy.csv` shape, where
+    # the bins are about a gene. The two PGx models forbid it by validator (rsid, or chrom+start), so
+    # for them this branch is unreachable and the key is always a string.
+    if cell("rsid") is None and cell("start") is None:
+        row.variant_key = None
+        return
+    row.variant_key = derive_variant_key(
+        cell("rsid"),
+        cell("chrom"),
+        cell("start"),
+        cell("ref"),
+        cell("alts") if keys_on_alts else None,
+        build=row.genome_build,
+    )
+
+
 def _mint_vrs_key(
     chrom: str | None, start: int | None, ref: str | None, alt: str, build: str
 ) -> str | None:
@@ -317,8 +433,19 @@ class AuthoredModel(BaseModel):
         Deliberately a method rather than a settable property: injecting the build is something a
         *loader* does once, at a known point, and making it look like an ordinary attribute assignment
         would invite it being done anywhere. `just_dna_compiler.compiler._load_csv_rows` is the caller.
+
+        A model that stamps an identity (`_KEY_INCLUDES_ALTS` set) re-derives its `variant_key` here,
+        which is this loader's answer to the problem `_restamp_for_build` solves for `VariantRow` one
+        tier up: a row is constructed from a CSV dict where `module_spec.yaml` is not in scope, so the
+        key it froze at construction took `derive_variant_key`'s GRCh38 default. Doing it at the point
+        the build arrives means a positional table needs no compiler-side correction pass at all.
+        `VariantRow` deliberately does not join in — it leaves `_KEY_INCLUDES_ALTS` unset and keeps its
+        existing restamp, which also emits the "keyed by coordinate instead" warning a GRCh37 module
+        must hear.
         """
         self._genome_build = genome_build
+        if type(self)._KEY_INCLUDES_ALTS is not None:
+            stamp_identity(self, keys_on_alts=self._KEY_INCLUDES_ALTS, freeze_authored=False)
         return self
 
     #: Alternative sets of columns, any ONE of which satisfies the row's identity requirement.
@@ -337,6 +464,20 @@ class AuthoredModel(BaseModel):
     #: same reason — generic code reading model-level structure without a name list.
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = ()
 
+    #: Does this model stamp a positional identity, and does its key include `alts`? (RM43)
+    #:
+    #: `None` — the default — means "this model stamps nothing", which is every model but the three
+    #: positional 0.4 kinds. `False`/`True` opt a model into `stamp_identity` and say whether `alts`
+    #: participates in the key: a pharm annotation or a haplotype junction matches a variant at
+    #: `chrom:start:ref` *regardless of allele* (so `False`, and `PharmVariantRow.alts` is filled as
+    #: data without touching identity), while `heteroplasmy.csv` keys **with** `alts` because its own
+    #: key always did and moving it would re-key every published mtDNA module.
+    #:
+    #: A tri-state `ClassVar` rather than two flags or a marker per field, for `MeasureBinRow`'s
+    #: reason: the fact is a property of the *model*, and "stamps nothing" has to be distinguishable
+    #: from "stamps a key without alts" — which a bool cannot do.
+    _KEY_INCLUDES_ALTS: ClassVar[bool | None] = None
+
     @model_validator(mode="before")
     @classmethod
     def _guard_raw_input(cls, data: object) -> object:
@@ -348,6 +489,9 @@ class AuthoredModel(BaseModel):
         # than a typo, so it gets its own diagnosis too — keyed on this model's own fields, so a model
         # that genuinely declares it is untouched (S17).
         reject_misplaced(data, cls.model_fields, what=f"{cls.__name__} row")
+        # An identity column this model has the *compiler* fill (RM43) reads as authorable, because it
+        # is genuinely authored on the tables next door. Same guard shape, same reason.
+        reject_compiler_filled(data, cls.model_fields, what=f"{cls.__name__} row")
         # A reserved name fails with a specific diagnosis; any other unknown/typo'd column falls
         # through to `extra="forbid"`'s generic message. See vocab.reject_reserved.
         return reject_reserved(data)
@@ -432,3 +576,16 @@ class AuthoredModel(BaseModel):
             f"genotype must be a single allele (hemizygous, e.g. A), two sorted slash-separated "
             f"alleles (A/G), or two pipe-separated phased alleles (A|G), got: {v!r}"
         )
+
+    @model_validator(mode="after")
+    def _freeze_stamped_identity(self) -> "AuthoredModel":
+        """Stamp the positional identity at construction, for the models that declare one (RM43).
+
+        A no-op for every model that leaves `_KEY_INCLUDES_ALTS` unset, which is all of them but the
+        three positional 0.4 kinds — and for `VariantRow`, which keeps its own `_freeze_identity`.
+        Like that one it runs at construction, so `model_copy` does not re-run it and the frozen key
+        survives whatever resolution fills in afterwards.
+        """
+        if type(self)._KEY_INCLUDES_ALTS is not None:
+            stamp_identity(self, keys_on_alts=self._KEY_INCLUDES_ALTS, freeze_authored=True)
+        return self

@@ -409,7 +409,11 @@ def _apply_normalizations(
     for column in header:
         if column not in model.model_fields:
             continue
-        value = dumped.get(column)
+        # `dumped` for the model's own field, else the attribute — a stamped positional column
+        # (`variant_key`/`authored_ident`/`alts`, RM43) is `exclude=True` and so absent from
+        # `model_dump()`, and falling back to `None` there would report the compiler as having
+        # *blanked* a cell the author wrote when what it did was overwrite it with the stamped value.
+        value = dumped[column] if column in dumped else getattr(instance, column, None)
         rendered = _list_cell(value) if column in list_fields else _scalar_cell(value)
         before = cells.get(column, "")
         if before.strip() == "" or rendered == before:
