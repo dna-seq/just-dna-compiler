@@ -308,7 +308,11 @@ def literature_(
         help="Also confirm the authored DOI resolves in Crossref (covers preprints/books).",
     ),
 ) -> None:
-    """Fill literature.csv from the citations in studies.csv (pass 4, online only)."""
+    """Fill literature.csv from a module's citations (pass 4, online only).
+
+    Two citation sites since 0.6: `studies.csv`, and a `pmid` on a binning row, which grounds the
+    threshold it sits on.
+    """
     try:
         result = enrich_literature(
             spec_dir, mode=_mode(strict), offline=offline, check_fulltext=check_fulltext,
@@ -331,6 +335,22 @@ def literature_(
         typer.secho(f"  Crossref has no record of: {result.doi_missing}", fg=typer.colors.RED, err=True)
     for conflict in result.doi_conflicts:
         typer.secho(f"  doi conflict: {conflict}", fg=typer.colors.RED, err=True)
+    # Printed for the same reason and in the same place: a cross-check that only ever speaks under
+    # `--strict` is invisible in the mode almost every author runs, and the two identifiers naming
+    # different articles is exactly the case the schema's PMC guard cannot see (RM50).
+    for conflict in result.pmcid_conflicts:
+        typer.secho(f"  pmcid conflict: {conflict}", fg=typer.colors.RED, err=True)
+    noncommercial = sorted(
+        {r.pmid for r in result.rows if r.commercial_use is False and (r.quotes_authored or 0) > 0}
+    )
+    if noncommercial:
+        # Yellow, not red, and never a non-zero exit: quoting for comment or research is often fine,
+        # and the format is not the tier that adjudicates copyright (the `clin_sig` precedent).
+        typer.secho(
+            f"  quoted under a non-commercial licence: {noncommercial} — the passage is publisher "
+            f"text in this module's annotation layer",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("pgx")

@@ -1019,8 +1019,14 @@ def load_binning_rows(spec_dir: Path) -> dict[str, list[MeasureBinRow]]:
     declared_build = config.genome_build if config else DEFAULT_GENOME_BUILD
     out: dict[str, list[MeasureBinRow]] = {}
     for csv_name, model in _BINNING_TABLE_KINDS:
-        path, _spelling_warnings, _spelling_errors = _locate_sidecar(spec_dir, csv_name)
-        if path is None:
+        # `spec_dir / csv_name`, never `_locate_sidecar`: that resolver is scoped to the
+        # machine-written sidecars, and an authored table has exactly one legal name in exactly one
+        # legal place (RM49/RM51). Both compile-side load loops read authored kinds this way, and a
+        # reader that resolved them differently would find a table the compiler does not — which for
+        # this function would mean the enricher writing `literature.csv` rows for citations
+        # `_cross_check_literature` then reports as orphans.
+        path = spec_dir / csv_name
+        if not path.is_file():
             continue
         rows, errors, _ = _load_csv_rows(path, model, csv_name, genome_build=declared_build)
         if errors:

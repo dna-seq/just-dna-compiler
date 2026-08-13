@@ -213,6 +213,21 @@ def test_a_module_whose_only_citations_are_bin_pointers_is_enriched(tmp_path: Pa
     assert result.rows[0].exists is True
 
 
+def test_an_invalid_binning_table_is_diagnosed_not_tracebacked(tmp_path: Path) -> None:
+    """The sibling `studies.csv` path reports `LiteratureEnrichmentError`; a bad bin row must too, or
+    a single mistyped cell produces a traceback out of the CLI."""
+    spec = _spec(
+        tmp_path / "s",
+        studies=f"rsid,pmid\nrs334,{_REAL}\n",
+        bins=(
+            "gene,repeat_unit,measure_kind,measure_min,measure_max,conclusion,unresolved,pmid\n"
+            "HTT,CAG,repeat_count,not-a-number,,fully penetrant,false,\n"
+        ),
+    )
+    with pytest.raises(LiteratureEnrichmentError, match="binning table is invalid"):
+        enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH))
+
+
 def test_a_module_citing_nothing_at_all_still_refuses(tmp_path: Path) -> None:
     """The relaxation is about *where* a citation may live, not about whether one is needed."""
     spec = _spec(

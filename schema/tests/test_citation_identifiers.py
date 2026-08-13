@@ -130,3 +130,20 @@ class TestASubjectlessCitationRow:
     def test_naming_a_variant_still_works_unchanged(self) -> None:
         assert StudyRow(rsid="rs1800562", pmid="8458085").variant_key == "rs1800562"
         assert StudyRow(chrom="4", pmid="8458085").variant_key == "4:None:None"
+
+    @pytest.mark.parametrize(
+        "partial", [{"start": 94781859}, {"ref": "G"}, {"start": 94781859, "ref": "G"}]
+    )
+    def test_half_a_coordinate_is_still_refused(self, partial: dict) -> None:
+        """The relaxation legalises an *empty* subject, never a partial one.
+
+        A blank `chrom` cell in the middle of a coordinate is the commonest CSV slip, and it is not a
+        subject-less citation: `variant_key` would answer `None` while `studies.parquet` still carried
+        the orphaned position, so the row would read as grounding the module while holding a
+        coordinate nothing can join."""
+        with pytest.raises(Exception, match="half-written coordinate"):
+            StudyRow(pmid="8458085", **partial)
+
+    def test_the_same_columns_beside_a_chrom_are_fine(self) -> None:
+        row = StudyRow(chrom="4", start=3074877, ref="C", pmid="8458085")
+        assert row.variant_key == "4:3074877:C"

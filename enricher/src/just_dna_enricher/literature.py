@@ -628,8 +628,14 @@ def enrich_literature(
             raise LiteratureEnrichmentError(f"studies.csv is invalid: {errors[0]}")
     # The bin pointers, through the compiler's own loader: importing its private binning-kind tuple or
     # keeping a second list of the four kinds here is the RM41 shape, and the copy goes stale on the
-    # fifth kind.
-    bin_pmids = binning_citations(load_binning_rows(spec_dir))
+    # fifth kind. Its `ValueError` is re-raised as this pass's own error so a bad binning row is
+    # diagnosed the way a bad `studies.csv` two lines above already is, rather than tracebacking out
+    # of the CLI.
+    try:
+        bin_rows = load_binning_rows(spec_dir)
+    except ValueError as exc:
+        raise LiteratureEnrichmentError(f"a binning table is invalid: {exc}") from exc
+    bin_pmids = binning_citations(bin_rows)
     if not studies and not bin_pmids:
         raise LiteratureEnrichmentError(
             f"no citations in {spec_dir} — the literature pass checks the citations a module makes, "

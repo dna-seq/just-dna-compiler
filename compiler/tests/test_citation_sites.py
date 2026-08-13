@@ -124,6 +124,25 @@ def test_load_binning_rows_reads_only_binning_kinds(tmp_path: Path) -> None:
     assert set(loaded) == {"repeat_alleles.csv"}
 
 
+def test_load_binning_rows_resolves_a_table_exactly_as_the_compiler_does(tmp_path: Path) -> None:
+    """An authored table has one legal name in one legal place, so this reader must agree with the
+    compile-side loops. Resolving it through the *sidecar* resolver instead would let the enricher
+    write `literature.csv` rows for citations the compiler never sees, which `_cross_check_literature`
+    then reports as orphans — the cross-check contradicting the pass that produced its input."""
+    spec = _spec_with_cited_bins(tmp_path)
+    split = spec / "derived"
+    split.mkdir()
+    (split / "repeat_alleles.csv").write_text(
+        (spec / "repeat_alleles.csv").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (spec / "repeat_alleles.csv").unlink()
+
+    assert load_binning_rows(spec) == {}
+    assert validate_spec(spec).warnings is not None
+    # And what the compiler sees is the same nothing: no binning table, hence no grounding finding.
+    assert not any("grounding evidence" in w for w in validate_spec(spec).warnings)
+
+
 # ── the same-release obligation: the compiler must read the new site ────────────────────────────
 
 

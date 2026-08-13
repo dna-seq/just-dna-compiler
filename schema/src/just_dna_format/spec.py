@@ -850,10 +850,27 @@ class StudyRow(AuthoredModel):
             raise ValueError(f"provenance_regex is not a valid regular expression: {exc}") from exc
         return v
 
-    # **No identification validator since 0.6 (RM47).** `StudyRow` used to demand an rsid or a bare
-    # `chrom`, which a citation grounding a *bin boundary* cannot supply: `repeat_alleles.csv` is keyed
-    # `(gene, repeat_unit)` and names no variant, so the rule pushed authors into writing a bare
-    # `chrom=4` for HTT — an assertion about a locus in a row that is about a threshold. A subject-less
-    # row grounds the module, or a specific bound via `MeasureBinRow.pmid`. The asymmetry with
-    # `VariantRow` (which still requires an identifier) is deliberate: an annotation with no subject
-    # annotates nothing, while a citation with no subject is a bibliography entry.
+    @model_validator(mode="after")
+    def _validate_study_identification(self) -> "StudyRow":
+        # **A row may name NO variant since 0.6 (RM47), but never half of one.** The old rule demanded
+        # an rsid or a bare `chrom`, which a citation grounding a *bin boundary* cannot supply:
+        # `repeat_alleles.csv` is keyed `(gene, repeat_unit)`, so the rule pushed authors into writing a
+        # bare `chrom=4` for HTT — an assertion about a locus in a row that is about a threshold. What
+        # the relaxation legalises is the empty subject, and only that. A row carrying `start`/`ref`
+        # with no `rsid` and no `chrom` is the commonest CSV slip (a blank cell in the middle of a
+        # coordinate) and it is not a subject-less citation: `variant_key` would answer `None` while
+        # `studies.parquet` still carried the orphaned position, so the row would read as grounding the
+        # module while holding a coordinate nothing can join. `VariantRow` refuses a partial coordinate
+        # for the same reason.
+        if self.rsid is None and self.chrom is None:
+            dangling = [
+                name for name, value in (("start", self.start), ("ref", self.ref))
+                if value is not None
+            ]
+            if dangling:
+                raise ValueError(
+                    f"a study row may name no variant at all — a citation can ground the module or a "
+                    f"binning bound — but {dangling} without rsid or chrom is a half-written "
+                    f"coordinate, not an absent one. Add chrom, or clear these columns."
+                )
+        return self
