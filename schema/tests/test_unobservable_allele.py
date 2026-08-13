@@ -119,10 +119,25 @@ def test_the_unobservable_allele_is_not_a_symbolic_allele() -> None:
 
 
 def test_is_unobservable_allele_claims_only_the_one_token() -> None:
-    """Exact, unlike `is_symbolic_allele`'s deliberate leniency — there is no near miss to be kind to."""
-    claimed = {a for a in (UNOBSERVABLE_ALLELE, f" {UNOBSERVABLE_ALLELE} ", "<*>", "**", "A*", "A", "")
-               if is_unobservable_allele(a)}
+    """Exact, unlike `is_symbolic_allele`'s deliberate leniency — there is no near miss to be kind to.
+
+    **`*1` is the near neighbour that is actually in the corpus**, and it is the reason the exactness is
+    load-bearing rather than tidy: `reference_examples/cyp2c19_star_alleles` is full of star-allele
+    *names* (`*1`, `*2`) in `haplotype_name` and `AlleleFunctionRow.allele`, where the character means
+    "PGx haplotype", a third role again — neither a sequence nor an observability claim. A prefix or
+    substring test here would claim every one of them.
+    """
+    probes = (
+        UNOBSERVABLE_ALLELE, f" {UNOBSERVABLE_ALLELE} ",   # the marker, bare and padded
+        "*1", "*2", "*17",                                  # PGx star-allele names, really in the corpus
+        "<*>", "**", "A*", "A", "",
+    )
+    claimed = {a for a in probes if is_unobservable_allele(a)}
     assert claimed == {UNOBSERVABLE_ALLELE, f" {UNOBSERVABLE_ALLELE} "}
+
+    # And the genotype grammar does not admit a star-allele name either: a diplotype is `DiplotypeRow`'s
+    # business, not a `variants.csv` genotype's.
+    assert not genotype_allele_ok("*1")
 
 
 def test_the_missing_marker_and_the_unobservable_marker_stay_distinct() -> None:
