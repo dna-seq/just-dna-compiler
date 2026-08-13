@@ -536,8 +536,18 @@ class AuthoredModel(BaseModel):
         # from the annotation, so the shared grammar only has to let a genuine absence through.
         if v is None:
             return v
-        # Phased (order-significant): pipe-separated, exactly two alleles, NOT sorted — phase encodes
-        # which allele sits on which homolog. ROADMAP 0.3 item 5b.
+        # Phased: pipe-separated, exactly two alleles, and NOT sorted — the authored order is preserved
+        # through compile → reverse → compile (P7 pins it, and that has not changed). ROADMAP 0.3 5b.
+        #
+        # What the order *means* is narrower than this comment used to claim (RM63). It said "phase
+        # encodes which allele sits on which homolog", and VCF defines allele order only **within a
+        # phase set**: §1.6.2 adds PSL precisely because with PS alone a genotype "isn't connected to
+        # any specific haplotype (i.e. first or second)". There is no global first homolog, and
+        # `variants.csv` carries no phase-set column — so an authored `A|G` and an authored `G|A` are
+        # distinguishable to us and indistinguishable to any consumer, and two rows both written `A|G`
+        # assert nothing about being in cis. Read a pipe here as **heterozygous, phase recorded but
+        # unaddressable**. The cis/trans case a module actually needs is carried by `DiplotypeRow` and
+        # the phase-ambiguity check, which is why this is an overclaiming comment rather than a defect.
         if "|" in v:
             parts = v.split("|")
             if len(parts) != 2:

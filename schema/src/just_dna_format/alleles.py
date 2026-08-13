@@ -202,12 +202,18 @@ def symbolic_allele_defect(value: str | None) -> str | None:
         return "no_length"
     return None
 
+#: VCF's MISSING marker (§1.6.1.5). In an ALT column it does not name an allele at all — it states that
+#: *there are no alternate alleles*, which is a monomorphic reference record, and §1.1's own worked
+#: example carries one. It is spelled out here because the difference between "an allele we cannot hold"
+#: and "no allele was asserted" is the whole of `non_nucleotide_reason`'s `"missing"` answer (RM58).
+MISSING_ALLELE: str = "."
+
 
 def non_nucleotide_reason(allele: str | None) -> str | None:
     """Why `allele` is not a nucleotide string, or `None` when it is one.
 
-    Three answers, never one, and conflating them is a mistake this codebase has already made once and
-    repaired (`cpic.unusable_allele_reason`, which now delegates here): calling a deletion notation an
+    Four answers, never fewer, and conflating any two is a mistake this codebase has already made twice
+    and repaired (`cpic.unusable_allele_reason`, which now delegates here): calling a deletion notation an
     "ambiguity code" is a false claim about the data and points an author at the wrong thing.
 
     * `"ambiguity"` — every character is a base or an IUPAC degenerate code. The value states an
@@ -221,12 +227,22 @@ def non_nucleotide_reason(allele: str | None) -> str | None:
       (`AAAGGGGCG(2)`), a deletion spelling like `DELTCT`, a typo, or an angle-bracketed name outside
       the closed five (`<FOO>`). A **grammar gap** rather than an uncertainty.
 
-    This used to answer `"notation"` for `<DEL>` too, and that stopped being true when RM5 shipped:
-    the reading it carried — *a grammar gap a future release may widen* — is now false for the five
-    structural types, and a message built from it sends an author to wait for a release that already
-    happened.
+    * `"missing"` — the bare `.`, VCF's MISSING marker. **Not an allele of any kind** (RM58), so it is
+      neither an uncertainty nor a grammar gap: there is nothing for a future release to widen to hold,
+      because the record is asserting that no alternate allele exists. Its consequence is different
+      again and is about *identity*: `derive_variant_key` folds the cell in as though it were an allele,
+      so a row writing `alts=.` and a row leaving the cell empty describe one site under two keys
+      (`1:1:A:.` and `1:1:A`) with different `content_signature`s and no dedup between them. The repair
+      is to leave the cell empty, and it is the only one of the four where an authored edit is both
+      available and unambiguous.
 
-    Note the third real shape this deliberately files under `"ambiguity"` rather than inventing a name
+    Two of these answers were split out of `"notation"` in the same release, from opposite directions,
+    and the pair is worth keeping in view: `"symbolic"` left because RM5 gave the five structural types
+    a home, so *a grammar gap a future release may widen* became false for them; `"missing"` left
+    because `.` was never a gap at all. Both were the same two-reasons-under-one-message conflation the
+    first bullets exist to keep apart — found twice, one release apart, in one function.
+
+    Note the fourth real shape this deliberately files under `"ambiguity"` rather than inventing a name
     for: `N` *inside* a longer allele (633 ClinVar records spell a known-length insertion whose interior
     is unknown, `TTTGG` + `NNNNNNNNNN` + `AAAA`). It is not a degenerate base standing alone, but it is
     the same statement — part of this sequence is unknown — and the consequence is identical: nothing may
@@ -235,6 +251,8 @@ def non_nucleotide_reason(allele: str | None) -> str | None:
     if allele is None:
         return None
     value = allele.strip().upper()
+    if value == MISSING_ALLELE:
+        return "missing"
     if not value or set(value) <= NUCLEOTIDES:
         return None
     if parse_symbolic_allele(value) is not None:

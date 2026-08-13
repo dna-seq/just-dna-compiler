@@ -309,6 +309,49 @@ An annotation-layer source forbids sale and the module records no declaration. D
 `--use non-commercial` so the terms are recorded, or drop the source. There is no compiler flag for this
 by design — a flag cannot survive `reverse`, so the third compile would refuse.
 
+**`copy_number bins are tiled as whole numbers, but the field a consumer reads the measurement from
+(CN) is not a whole number in VCF 4.4`** *(same for `repeat_count` and `RUC`)*
+**Not a defect in your module and nothing to fix by hand.** VCF 4.4 made both fields fractional — a copy
+number may be a segment mean, and a repeat count is typed as a decimal — while `copynumbers.csv` and
+`repeat_alleles.csv` still bin them as integers. The consequence to know about: a fractional measurement
+*between* two of your bins matches neither, and the coverage check cannot report that hole, because on
+an integer kind it only reports one wider than a whole number. So `[0,0] [1,1] [2,2] [3,∞)` is a legal
+and silent tiling that answers nothing for a measured 2.4. A caller that rounds will hit your bins; a
+segment-mean caller will fall between them. Author the bins you mean; the schema fix is a tracked
+upstream item (a decimal column beside the integer one), so do not distort your bounds to work around it
+— `[0, 0.999]` is arbitrary and leaves a hole nothing warns about.
+
+**`copy_number bins: one measurement can span several bins`** *(same for `repeat_count`)*
+**Also nothing to fix, and this one is a statement to a consumer rather than to you.** A real copy-number
+or repeat call arrives with a confidence interval, and a missing upper bound on it means *unbounded* —
+so the measurement is a range, and yours is a table of thresholds it can straddle. The format has no
+state for that yet: a consumer that reads an interval touching two or more of your bins must **withhold**,
+not pick one, and not fall back to your `unresolved` row (that row means *no measurement was available*,
+which is a different claim about the sample). The warning fires on any such table with two or more bins
+in one key group, so it is expected on every real one. It never fails a compile, including `--strict`.
+
+**`N row(s) write '.' in alts, which is VCF's MISSING marker, not an allele`**
+**Fix this one — leave the cell empty.** In a VCF, `.` in the ALT column means *there are no alternate
+alleles*, i.e. a plain reference record. Written into `alts` it is read as though it were an allele and
+folded into the row's identity, so your row becomes `6:26093141:G:.` where the same site with the cell
+left empty is `6:26093141:G` — two identities for one site, which dedup against nothing and hash
+differently. The message prints both keys so you can see the split. It is not the same thing as
+`<DEL>` or another symbolic allele, which names a real variant this format cannot yet spell; there is
+nothing here for a future release to hold. An rsID-keyed row is unaffected in identity (the message says
+so), but the cell is still claiming an allele that does not exist.
+
+**`N row(s) set requires_callable=true and state their min_quality floor against QUAL`**
+**Fix this one — use `GQ`, or the reference block's `MIN_DP`.** `QUAL` means opposite things on the two
+kinds of record: on a variant record it is confidence that the variant is real, and on a reference
+record it is confidence that the position *is* variant. A `requires_callable` row is exactly the one a
+consumer proves by reading the reference record, so a floor against `QUAL` there demands evidence
+*against* what the row asserts, and the higher you set it the more confidently wrong the answer. The
+combination is not refused, because the same row read against a variant record elsewhere in the same
+file is legitimate and the compiler never sees the file. While you are there: callability evidence is
+usually a *block* (one record spanning a range), so it is found by interval containment rather than by
+matching a position, and `DP` on a block is the average over it — `MIN_DP` is the floor, and the floor
+is what a callability threshold is about.
+
 ## Checks
 
 **`acmg_sf=false but <GENE> is on ACMG SF v3.3`**
