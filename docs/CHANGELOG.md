@@ -34,7 +34,82 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-12 (latest) — 0.6.0: the version bump, and the first three items of the line
+## 2026-08-13 (latest) — 0.6.0: the design round, built — eleven items, the VCF 4.4 cluster, and a charter amendment
+
+**The whole of [PROPOSAL_0_6.md](PROPOSAL_0_6.md)'s build list shipped**, in eleven parallel lanes
+over one day. The reasoning stays in the proposal; the outcomes and what probing changed are in
+[ROADMAP_HISTORY § 0.6.0](ROADMAP_HISTORY.md#060--the-design-round-built). This entry is the release
+view: what a consumer will notice.
+
+**A charter amendment landed first and alone, because four decisions turn on it.** The Constitution
+ruled on whether a change is *legal* and said nothing about what a legal change *costs*. It now does:
+a **parquet column is approximately free** (materialized, derived, no human types one), a **derived CSV
+is half** (machine-written, but a human can still edit it, and that should be discouraged), an
+**authored schema is full cost** (the rare author writes it). This grants nothing new — legality is
+still Principles 3 and 8, decided first — but it retires the instinct that there were "too many tables",
+which was right about some additions and wrong about others with no stated way to tell which. Its first
+consequence is written into SCHEMAS.md: `resolution.csv` is a build-time artifact with exactly two
+consumers and **gets no parquet, deliberately**.
+
+### What a module author will notice
+
+- **Coordinates now reach the pharmacogenomics tables** (RM43). A PGx module authored with rs-numbers
+  used to compile to parquets with every coordinate null, so a consumer matching a patient VCF by
+  position matched nothing — silently, as an empty result rather than an error.
+  `reference_examples/pgx_slco1b1_simvastatin` went from nine null rows to `12 / 21178615 / T / A,C`.
+- **Symbolic and structural alleles are authorable** (RM5): the five closed VCF types with the length
+  inside the token (`<DEL:1500>`, `<CNV:TR:30>`). A length-less one is dropped with a warning that says
+  *dropped*, and refused under `--strict`.
+- **`*` is writable** (RM59) — the allele that could not be observed, which any joint-called VCF emits
+  and which no row could previously carry.
+- **`chrM` validates** (RM60), folding to `MT`. The gate was stricter than the normalizer beside it.
+- **A bin can cite its own threshold** (RM47): `MeasureBinRow.pmid`. The bin row cites, the citation
+  table describes — and a `studies.csv` row may now name no variant at all.
+- **A VCF pointer can name its namespace** (RM53) — `INFO/DP` versus `FORMAT/DP` — and say which element
+  it means on a multi-valued field (RM54). Both are widenings; a bare key stays legal.
+- **Two new derived tables**: `gene_validity.csv` (RM24) and `clinical_assertions.csv` (RM25).
+- **A PMC id is refused by name** (RM50). `PMC 3110566` used to be *accepted* as PMID 3110566 — a real
+  id for an unrelated article — so a cell that compiled before may refuse now. That is the fix.
+- **The manifest can say what was checked** (RM45): a `verification` block, or nothing at all, which
+  reads correctly as *says nothing* rather than as a pass. Every field is marked untrusted.
+
+### Two behaviour changes worth reading before upgrading
+
+- **Two reference examples were re-authored because they were wrong**, and their `content_signature`
+  moved: `mt_heteroplasmy` wrote `source_field=AF` meaning this person's heteroplasmy fraction, while
+  the spec's `AF` is the *cohort* frequency of that ALT — both floats in `[0,1]`, both binning cleanly,
+  and one of them tells a carrier they are asymptomatic on the strength of how rare the variant is in a
+  reference panel. `htt_repeat_expansion` gained an element rule for the same class of reason.
+- **A wrong-build coordinate is now an error in both modes** (RM48): a position past its contig's end,
+  or a contig only the other assembly names. It is arithmetic rather than judgement, so it does not
+  follow the mode ladder. rs-number recovery against Ensembl's permanent GRCh37 service reports and
+  never fills.
+
+### Corpus effect, measured rather than assumed
+
+Across all eleven reference examples: `content_signature` moved on **two** (the two re-authored above),
+`artifact.digest` on **seven** (new optional and stamped columns — Principle 4 scopes byte
+reproducibility to a fixed `compiler_version`), `resolution_signature` was **gained** by the four
+table-only modules carrying a `resolution.csv` and no `variants.csv` — precisely the hole RM45 closed —
+and the source signature moved nowhere. Test suite **1535 → 2046**.
+
+### One pattern, found three times independently
+
+Three lanes shipped the same defect and each was caught by its own code review: a check re-run after
+resolution counts the **expanded** rows, so an rsID resolving to several loci reports one finding twice
+with different numbers; message-dedup keys on the sentence and cannot collapse them, and both reach
+`manifest.compilation.warnings`, which RM44 established is a surface consumers parse. Measured at
+"1 row(s)" beside "2 row(s)", and at 328 beside 337 on `pathogenic_clinvar`. The rule now in CLAUDE.md
+covers this and its opposite: **re-run a check after resolution exactly when resolution changes its
+input, and never when the message embeds a count.** `_check_contig_ploidy` is not a counterexample — it
+had to *move* behind resolution because resolution fills `chrom`.
+
+Also fixed, both pre-existing and both found by a lane reviewing someone else's shipped work:
+`reverse_module` re-emitted the deprecated `sources.csv` spelling, so a module and its own round-trip
+disagreed on a published manifest field; and the `derived/` near-miss guard caught nothing it claimed
+to, so authored tables placed under `derived/` compiled **green and empty, silently**.
+
+## 2026-08-12 — 0.6.0: the version bump, and the first three items of the line
 
 **All three packages move to 0.6.0 together** (`schema`/`compiler`/`enricher`), and the
 inter-package floors move with them. The two entries below dated 2026-08-12 — `manifest.readme` and

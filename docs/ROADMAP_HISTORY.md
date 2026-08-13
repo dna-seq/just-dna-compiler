@@ -1199,3 +1199,461 @@ kept their exact `artifact.digest`, `content_signature`, `resolution_signature` 
 across the rename — which is the measurement behind "the filename enters no identity", made rather
 than argued.
 
+
+
+# 0.6.0 — the design round, built
+
+**The whole of [PROPOSAL_0_6.md](PROPOSAL_0_6.md)'s decision list, implemented.** Sixteen items were
+argued to a decision on 2026-08-13 — each with the facts probed, the repairs rejected and why, and the
+consequences that follow without being chosen — and the eleven that build are below with their original
+entries intact. The proposal stays the reasoning document; these are the outcomes, and where the two
+disagree the note at the top of each section wins, because several of these entries were written before
+the decision and describe a shape that was rejected.
+
+**Landing them cost one charter amendment, which went first and alone.** The Constitution ruled on
+whether a change was *legal* and said nothing about what a legal change *cost*, and the absence kept
+surfacing as an instinct that there were "too many tables" — right about some additions, wrong about
+others, with no stated way to tell which. A schema addition now costs what its layer costs: a parquet
+column is approximately free, a derived CSV is half, an authored schema is full. Four of the decisions
+below turn on it, and two obviously-worth-building items (RM24, RM25) had looked like creep only because
+a machine-written sidecar was being priced as though a human had to learn it.
+
+**The VCF 4.4 cluster shipped with them.** RM53–RM65 came from [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md), a
+full read of the specification against the schema, and they are not repeated here as sections because
+the audit remains their evidence document. Their through-line is worth stating once: *the schema named
+a VCF field by a bare token, and a VCF field is not identified by its name* — it is identified by
+namespace (INFO and FORMAT collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and, new in 4.4, `CN`) and
+described by cardinality. Both readings of a colliding key are usually type-compatible, so nothing
+detects the confusion: a consumer reads a well-formed number of the wrong kind. Two shipped reference
+examples were wrong on exactly this and were re-authored, which is why `mt_heteroplasmy` and
+`htt_repeat_expansion` are the only two modules in the corpus whose `content_signature` moved across
+the whole batch.
+
+**What the batch cost the corpus, measured rather than assumed.** Across all eleven reference examples:
+`content_signature` moved on **two** (the two re-authored above), `artifact.digest` moved on **seven**
+(new optional and stamped columns — Principle 4 scopes byte-reproducibility to a fixed
+`compiler_version`), `resolution_signature` **gained** a value on the four table-only modules that
+carry a `resolution.csv` and no `variants.csv`, which is precisely the hole RM45 closed, and the source
+signature moved nowhere. The suite went from 1535 to 2046 tests.
+
+**One pattern showed up three times independently and is now a rule in CLAUDE.md.** Three separate
+lanes shipped the same defect and each was caught by its own code review: a check re-run after
+resolution counts the *expanded* rows, so an rsID that resolves to several loci produces the same
+finding twice with different numbers, message-dedup keys on the sentence and cannot collapse them, and
+both reach `manifest.compilation.warnings` — a published field contradicting itself. Measured at
+"1 row(s)" beside "2 row(s)", and at 328 beside 337 on `pathogenic_clinvar`. The rule covering it and
+its opposite: **re-run a check after resolution exactly when resolution changes its input, and never
+when the message embeds a count.**
+
+## RM4 — Native ClinVar gene-panel materialization
+
+✅ **Shipped in 0.6.** Compile-time materialization was dropped rather than built: the mechanism is enricher draft-scaffolding, which already shipped, and the author's no-op over the drafted subset is still an authorial act. `panel:` lost its last consumer and is deprecated (removal at 1.0, tracker line filed); `clinvar_draft` now stamps the ClinVar release into the licence row's `dataset`, and `clinical.tautology_reason` keys on that instead of the authored block — both sides calling one shared label function, because a writer and a reader disagreeing about it would not fail, they would silently never match. The hand-edit hole closed on a mode ladder (`strict` audits every row into copied / authored / conflicting / no_record; `best_effort` keeps the cheap skip plus a notice naming the hole). Two findings the round produced: `merge_sources_csv`'s never-clobber rule is right for terms and wrong for a machine-stamped release label, so the label is now *withdrawn* rather than re-labelled when a module spans two releases; and "copied" had to become allele-exact, since a locus-wide match can be a sibling allele's call (`rs334` carries pathogenic `T>A` beside likely-benign `T>G`). The unrelated surface bug shipped with it: `draft-panel` exposes `--download/--no-download`.
+
+**Severity** medium · **Status** deferred to 0.6+ — the injectable-reference half is unblocked ·
+**Owner** format (compiler) + consumer-provided reference · **Motivating case** gene-panel modules
+(cardio / cancer / pathogenic)
+
+Compile a `GenePanelSpec` (gene set + significance predicate) into `weights.parquet` at compile
+time, gated on a **content-pinned ClinVar reference mixin**. The 0.2 `GenePanelSpec` *interface*
+ships and is recorded verbatim; the app-level `gene_panel` adapter in just-dna-lite is the interim
+reference implementation. Blocked only by Constitution P2 (no network) — the reference must be
+*injected*, not fetched. **0.5 update:** the content-pinned reference now exists as an injectable
+artifact — `just-dna-enricher`'s ClinVar snapshot (`clinvar build` → `data/*.parquet` +
+`release.json` carrying `source_sha256`/`clinvar_file_date`, feeding
+`GenePanelSpec.reference`/`reference_sha256`). What stays parked is the *compile-time
+materialization* of a `GenePanelSpec` into `weights.parquet`; the injectable reference half is
+unblocked.
+
+## RM5 — Symbolic / structural alleles
+
+✅ **Shipped in 0.6.** The five closed VCF first-level types (`DEL`, `INS`, `DUP`, `INV`, `CNV`) with open subtypes, and nothing above them — the `##ALT` declaration mechanism stayed rejected as unasked extendability. **The one question the decision left open, where the length lives, resolved to *inside the token* (`<DEL:1500>`, `<CNV:TR:30>`) on evidence rather than taste**: VCF carries it as `SVLEN`, which is `Number=A`, so a scalar column cannot describe `alts=<DEL:5>,<DUP:9>` and a parallel array is the desync shape `vrs_id` needed two guards for; and three of the columns holding an allele have no row to hang a length on. A length-less symbolic allele is dropped with a warning saying **dropped** under `best_effort` and refused under `strict` — fatal in both modes on the composite tables, where dropping a row makes a quietly *different* module rather than a smaller one. 5-HTTLPR stays a plain indel and CPIC's IUPAC codes stay unexpressible, both deliberately. Carried the docstring fix: `validate_allele` has two users, not one.
+
+**Severity** medium · **Status** deferred to 0.6+ · **Owner** format (schema) · **Motivating
+case** 5-HTTLPR, SNP+SV modules, symbolic-VCF consume
+
+A representation beyond `^[ACGT]+$`: `<S>`/`<L>`, `<DEL>`/`<INS>`/`<DUP>`, `<STR n>`, and large
+indels. **Motivating cases: 5-HTTLPR** (a biallelic ~43 bp structural indel → Short/Long, *not* a
+repeat count; rejected by today's nucleotide grammar and a category error in `repeat_alleles.csv`)
+**and ClinPGx's `del`/`ins` genotypes** (177 rows in the release, e.g. `C/del`, `del/del`), which
+the PGx passes skip rather than coerce. Also unblocks SV-scale variation and consuming symbolic
+VCF alleles (round-2 §1b/3c).
+
+## RM24 — Gene–disease validity as a table
+
+✅ **Shipped in 0.6** as `gene_validity.csv`, a derived fact sidecar with its own signature, manifest block and non-tainting `gene_validity` source layer. **Probing corrected the stated grain twice**: mode of inheritance had to join the key (59 ClinGen gene/disease pairs carry two rows differing only there) and so did `submitter`, because GenCC is a nineteen-submitter aggregate whose *disagreement* is the data and collapsing it would publish one arbitrary verdict as consensus. **HPO ships no route**, a deviation argued in the PR: its licence URL 404s and OBO Foundry records no SPDX id, so its terms cannot be established, and an inject-only tier does not get to assume them.
+
+**Severity** medium · **Status** deferred on the design, not the code · **Owner** format (schema +
+compiler) + enricher · **Motivating case** gene-panel triage; lay-language disease naming
+
+(`gene_validity.csv`) — one row per `(gene, disease term, classification, source, dataset)`,
+serving **ClinGen** gene-disease validity, **GenCC** aggregate validity and **HPO** gene→phenotype
+from one shape. This is a *different grain* from `gene_metrics.csv` (gene × term, not gene), which
+is why it is a table rather than more columns; dosage sensitivity went the other way for the same
+reason. The cost is the design (getting one shape to fit three submitters' vocabularies), not the
+code. All three sources are free, so unlike RM23 this one leaves a module sellable — worth
+remembering if the marketplace ever sells modules, since every PGx upstream forbids it.
+
+## RM25 — ClinVar assertion tier as artifact data
+
+✅ **Shipped in 0.6** as `clinical_assertions.csv` — the clinical call, the review wording, the star rating and ClinVar's own VariationID, one row per allele × record. The deciding argument was the house one applied a fourth time: `draft_gene_panel` was already using the star rating as a filter and throwing it away, so every consumer would have recomputed it. A one-star single submission and a practice guideline are no longer flattened to the same `clin_sig`. The cross-check's severity stays parked, deliberately.
+
+**Severity** medium · **Status** deferred as a new table · **Owner** format (schema + compiler) +
+enricher · **Motivating case** authorship/assertion-aware scrutiny
+
+A facts sidecar carrying `clin_sig` + `review_status` + `review_stars` + `variation_id` per
+variant, so a consumer can route scrutiny by assertion tier at query time (a 1-star submitter and
+a practice guideline are not the same claim). Nothing is lost today: `clinical.ClinSigFinding`
+**already** reports both fields via its `confidence` property, so this is about persisting the
+tier, not discovering it. Deferred as a new table. **Do not confuse this with escalating the
+check's severity** — see *Parked in 0.5*.
+
+## RM27 — A redistribution compile gate
+
+✅ **Shipped in 0.6 as record-only, with a named enforcer.** The most-restrictive redistribution verdict is stamped into the manifest and **no gate exists in these four packages** — gating belongs at *publish*, which lives downstream, so the item ships with an explicit ask addressed to the registry in SCHEMAS.md rather than an implication. That is the whole difference from the status quo the item was filed about: a recorded right nobody is told to enforce, versus a recorded right with a named enforcer. `taints_redistribution` no longer describes the design as open.
+
+**Severity** low (after the design) · **Status** deferred — needs the third axis designed first ·
+**Owner** format (compiler) + enricher · **Motivating case** OMIM-/dbNSFP-class sources
+
+RM21's gate keys on `commercial_use` + `declared_use`; the 0.5 `redistribution` column is recorded
+but **not** gated. Deferred because it is a genuine design question rather than a missing branch:
+a redistribution bar is not a *use*, so `declared_use` (`unstated`/`non-commercial`/`commercial`)
+is the wrong axis to resolve it against — a module may be built legitimately and still not be
+shippable, which is a different verdict from the ones the gate currently issues. Needs the third
+axis thought through before code.
+## RM43 — Resolution reaches the SNP core only, so a 0.4-led module is rsid-joinable and nothing more
+
+✅ **Shipped in 0.6.** The injected `resolution.csv` is joined onto the three positional kinds before `_build_table` materializes them, in `validate_spec` as well as `compile_module`. Each model gained stamped, parquet-only `variant_key` and `authored_ident`, plus `alts` on `PharmVariantRow`/`HaplotypeRow` filled as **data, not identity** — the key is still derived without it, so the existing "matches at `chrom:start:ref` regardless of allele" contract is unchanged. The reported case closed: `pgx_slco1b1_simvastatin`'s nine rows went from every coordinate null to `12 / 21178615 / T / A,C`. `reverse` rebuilds the lookup table from the positional parquets as a second source, which P7 forces. No `resolution.parquet`. **One deviation worth keeping**: the stamped fields are `Field(exclude=True)`, because declaring them plainly moves `content_signature` on all five positional-table modules — `model_dump(exclude_none=True)` never omits a stamped field, since it is never `None`. That leaves `VariantRow`'s own two inconsistent with the three new ones, grandfathered and filed as a 1.0-cleanup candidate.
+
+**Severity** high (the prerequisites, not the join) · **Status** open — **0.6**, gated on a design
+round rather than on a version · **Owner** format (schema) + compiler · **Motivating case** an rsid-authored ClinPGx
+module: 1,482 rows, 147 variants, every coordinate null (S9 in
+[CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md))
+
+`compile_module` resolves `variants.csv`; every other table goes through `_build_table`, which is
+`model_dump()` → parquet. So a module led by `pharm_variants.csv` or `haplotypes.csv` keeps exactly the
+coordinates its author typed, which for an rsid-authored one is none — and a VCF is joined by position,
+so the table annotates nothing, silently, as an empty result rather than an error. Reproduced on this
+tree's own `reference_examples/pgx_slco1b1_simvastatin/`: 9 rows, all null, while the `resolution.csv`
+beside the spec resolves the rsID perfectly well. **0.5.3 made it legible** — the compiler now reports,
+per positional table, how many rows cannot be joined and how many of those the injected table could
+place — but the fix itself is here.
+
+**The obvious repair is illegal as stated, and that is the part worth recording.** "Join `resolution.csv`
+on `variant_key` and fill the empty cells" moves more than the digest the reporter expected: materializing
+the coordinate and running `compile → reverse → compile` moves **`content_signature`**
+(`sha256:8173dab7…` → `sha256:fb91ffa2…`), because `reverse_module` rebuilds the CSV from the parquet and
+a filled coordinate returns as an *authored* one. That is exactly what `VariantRow.authored_ident` exists
+to prevent, and no 0.4-family model has an equivalent. So the prerequisite is a stamped
+"which identity columns did the author supply" column per positional table — a **new column on an
+existing parquet** — which is **0.6 work** since the 2026-08-11 charter amendment, so the prerequisite
+is a design round rather than a major bump. What stays major-only is nothing here: the item is gated on
+doing the stamped-identity design first, not on a version.
+
+Three more constraints found with it, each of which shapes the design rather than merely costing:
+
+- **`PharmVariantRow` has no `alts` column at all.** A filled row can carry `chrom`/`start`/`ref` and no
+  allele, so a positional join lands on the locus and allele matching still goes through `genotype`.
+  Adding `alts` is a second new column, and it would make the key allele-specific — which
+  `_collect_subjects` deliberately avoids ("a pharm annotation matches a variant at `chrom:start:ref`
+  regardless of allele").
+- **`variant_key` is a *property* on these models**, so it is materialized in no PGx parquet. A consumer
+  cannot join a PGx row to `weights.parquet` on it either — which is a second, smaller instance of the
+  same complaint and probably wants solving in the same round.
+- **The manifest cannot say any of this.** `fully_resolved` is `all(...)` over `VariantRow`, so it is
+  vacuously `true` for a table-only module — against the trust rule its own field comment states — and
+  `resolution_signature`/`resolution_sources` stay unset, so the injected table leaves no trace.
+  Stamping the signature is itself blocked: `reverse_module` rebuilds `resolution.csv` from
+  `weights.parquet` alone, so a table-only module reverses to a spec without one and the round-trip
+  fixed point breaks. This half is the same shape as the registry's S8 (a manifest that cannot say a
+  check ran) and should be decided with it.
+
+## RM45 — the manifest is rich about resolution and silent about verification, so `unchecked` and `clean` are one state to a downloader
+
+✅ **Shipped in 0.6** as `verification.json` — a derived attestation the enricher writes and the compiler reads, stamping `manifest.verification` or dropping it with a warning when stale. Counts rather than booleans and **two fields rather than one union-typed slot**, so "ran against 0 rows" and "did not run" can never share a value; two closed vocabularies rather than free strings, which would have recreated RM44 one level down; bound to the authored bytes with a **~0.4 s median** proof-of-work, one per sidecar per run, found deterministically so the bytes reproduce. Every field is marked untrusted, in the descriptions *and* in SCHEMAS.md, because a forged pass is worse than silence. **A JSON document rather than a fifth fact CSV**: one attestation over many records is a service row in CSV, and it is the one derived artifact whose human-overridability must not be a feature — which is the mechanism the 0.6 charter amendment asks for. The vocabulary audit moved the set twice: `pgx_evidence_level` and `rsid_coordinate_agreement` were genuinely missing, while lane E's two new passes correctly get no member because they adjudicate nothing, and a test pins that exclusion by name. Wiring it up surfaced two pre-existing holes — the reference-allele and clinical checks each had an internal skip returning an empty list indistinguishable from a clean pass, which is S4's defect surviving inside S4's own machinery. `resolution_signature`/`resolution_sources` are now stamped for table-only modules too, unblocked by RM43.
+
+**Severity** medium (a per-version trust signal nobody can build, and no way to triage what was
+published unchecked) · **Status** open — **0.6** · **Owner** format (the manifest shape + vocabulary) +
+enricher (the only tier that holds the facts) + compiler (the stamp) · **Motivating case** a catalog
+that verifies a module's `clin_sig` on its own deployment has nowhere to record that it did (S8 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Confirmed structurally, which is the strongest form this claim can take.** `Compilation`'s twelve
+fields carry nothing about verification. `ResolutionRow`'s eighteen columns are all per-*row*
+(`status`, `rsid_status`, `rsid_current`). `EnrichmentResult` holds `clin_sig_not_checked`,
+`ref_mismatches`, `stale_rsids` and `vrs`, and dies when the run ends. So a module whose authored
+`clin_sig` was cross-checked against ClinVar and one where the check never ran ship **identical**
+manifests — not by oversight in some path, but because no field exists that could differ.
+
+**This is S4's own argument one level down.** 0.5.2 accepted that an empty `clin_sig_conflicts` meant
+both "compared everything, nothing disagreed" and "never compared", and fixed it — on
+`EnrichmentResult`. The layer that outlives the run inherited none of it, so the rule holds in process
+memory and nowhere else. The same applies to the reference-allele and rsID-currency passes.
+
+**Legality is not the obstacle, and it is cheaper than the usual case.** The manifest was never inside
+`artifact.digest`, and a new optional field is additive and minor-legal (P3, amended 2026-08-11) — so
+**0.6, not 1.0**. A manifest field that a *publishing authority* stamps rather than the compiler
+deriving is also already this schema's shape: `compiled_by`, `namespace`, `owner`, `published_at` and
+`canonical_id` are all that. And the reporter's field shape is right for our own stated reasons —
+counts rather than bools, and **two** fields rather than one map with a union-typed value, so "ran
+against 0 rows" and "did not run" can never occupy one slot. `vrs_alleles`/`vrs_alleles_identified` is
+the precedent; the ACMG pass's `checked: 0` is the other.
+
+**Four things the proposal leaves open, which is what makes this a design round and not a patch:**
+
+1. **The check name is a vocabulary, or this is RM44 again one level down.** A `dict[str, int]` keyed on
+   free strings lets the enricher write `clin_sig`, a registry write `clinsig`, and a consumer
+   substring-match the difference — an unversioned interface, the exact defect RM44 exists to remove.
+   The keys want `frozenset[str]` + a validator (P6), and because vocabulary members are permanent
+   within a major (P5) the set has to be audited once against the passes that would plausibly join it:
+   reference allele, rsID currency, ACMG SF, identifier/trait currency, quote-checking, dosage
+   sensitivity.
+2. **The skip *reason* must not be free prose either, for the same reason.** Backfill triage — the
+   reporter's own second use case — branches on *why* a pass did not run, so `dict[str, str]` of prose
+   relocates the substring matching rather than ending it. The reason wants a small closed vocabulary
+   (`tautological`, `no_reference`, `offline`, `not_applicable`) with the sentence *beside* it, not
+   instead of it: `clinical.tautology_reason` already writes a good sentence and it is worth keeping as
+   human detail rather than promoting to a machine key.
+3. **The seam has no channel, and that is the actual work.** `resolution.csv` is the enricher→compiler
+   contract and carries per-row facts only; "this pass did not run" is per-pass by nature and has no row
+   to attach to — the reporter identifies this precisely. Two routes, and choosing is the design. A new
+   sidecar the enricher writes and the compiler reads is consistent with every other injected table
+   (and would want its own fact-signature), and it gives the workspace a path it can test end to end.
+   An argument on `compile_module` is cheaper and is what the reporter proposes, but then the only
+   producer is the caller: the format would declare a field its own reference implementation never
+   fills, which is how `VALID_SOURCE_LAYERS` ended up with members no file carried.
+4. **The trust rule belongs in the schema's own docs, not in the reporter's caveat.** Their point that a
+   forged pass is *worse than silence* is right, and it already has a spelling here — `compiled_by`'s
+   description says "foreign values are untrusted". Whatever lands must say the same on each field and
+   in SCHEMAS.md, or the first consumer to read `checks_run` off an untrusted manifest believes it.
+
+**Recommended shape: option 2, a `Verification` block.** The reporter's own argument for it is the
+stronger one and it is the house pattern — `Frequency` earned a separate block because it has its own
+producer, its own release and its own fact-hash, and verification has all three. A `clin_sig` check is
+only as good as the snapshot it read, so the block wants that release id, and no existing block has a
+home for it; `locations.read_release` (0.5.2) is what makes "verified against ClinVar release X" a
+sentence this tier can complete at all. Absent on a module nothing verified, which reads correctly as
+*says nothing* rather than as a pass.
+
+**It does not subsume RM44.** S13 offered S8 as the superset and it is not one: `resolution_subjects` is
+the denominator of an existing flag about *resolution*, which is not a verification pass. Adopting that
+framing would park a one-line additive integer behind this whole round.
+
+## RM46 — a literature source's terms are per-article, so the enricher names a source it cannot record
+
+✅ **Shipped in 0.6** as per-article licence columns on the derived literature row, filled from the Europe PMC response the pass already makes and mapped at read time. No `PUBMED_TERMS` constant: a literature source's terms are per-article, and one `pubmed` row would be right for a module citing only ids and **wrong** for one carrying a quote lifted from a CC-BY-NC article — wrong in the dangerous direction, because that quote is publisher text in the module's own annotation layer. Quoting a restrictive article **warns and gates nothing**, on the clinical-cross-check precedent: arbitrating copyright is the same class of overreach as arbitrating a clinical dispute.
+
+**Severity** low as a symptom (a warning on every literature-enriched module), medium as a hole (a
+module quoting a CC-BY-NC article has no way to say so) · **Status** open — **0.6** · **Owner**
+enricher (`licensing` + `literature`) · **Motivating case** every literature-enriched module warns
+about a source the enricher itself introduced (S10 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Reproduced by reading the three pieces.** `enrich_literature` writes `source="pubmed"` into every
+`literature.csv` row. `TERMS_BY_SOURCE` has seven members and no `pubmed`, and `record_source_terms`
+deliberately *skips* a name it has no terms for ("inventing a row for the rest would be worse than the
+compiler's honest warning"). `_source_checks`'s under-declaration branch then names `pubmed` on every
+such module. So the tier introduces a source and declines to record it, and the finding lands on the
+author. Worth stating precisely, because it bounds the severity: `SourceRow.source` is free text, so an
+author *can* hand-write the row and clear the warning. This is not an unclearable finding — it is the
+enricher asking the author to write down something only the enricher knows.
+
+**The reporter is right that a `PUBMED_TERMS` constant would be the wrong fix, and this is the part
+worth keeping.** A literature source's terms are **per-article, not per-source**: PubMed's *metadata* is
+one thing, the *article* belongs to its publisher, and Europe PMC's OA subset spans CC-BY, CC-BY-NC and
+bronze. One `pubmed` row would be right for a module that cites only PMIDs and **wrong** for one
+carrying a `provenance_quote` lifted from a CC-BY-NC article — and wrong in the dangerous direction,
+because that quote is publisher text sitting in the module's own **annotation** layer, which is exactly
+where `taints_commercial_use` bites. A row that reads "pubmed, fine" would make such a module look
+cleared when it is not, which is worse than today's warning.
+
+**Two other obvious repairs, both wrong.** *Stop writing `source="pubmed"`* — no: `source` is how a
+consumer knows which upstream answered, and the existing reasoning for preferring PubMed over Europe PMC
+(which "cannot originate a row", since it silently omits ids it does not know) is sound. *Have the
+compiler exempt enricher-introduced sources* — no: the compiler would need to hold a list of which
+sources a pass introduces, which is a **source convention**, forbidden it since 0.5 (P2) and the exact
+mistake RM33 removed. The fix belongs to the tier that both names the source and owns the terms table.
+
+**The shape that matches the facts is the reporter's option 2, and it is the bigger one.** Per-article
+terms, either as an additive licence column on `LiteratureRow` (minor-legal) or as `sources.csv` rows
+keyed by DOI, plus one decision that is not the enricher's to make alone: whether quoting a CC-BY-NC
+article taints the module for sale. That is the *use*-versus-*distribution* axis **RM27** already parks,
+so the two want settling together. The tier is closer than it looks: `is_open_access` is already
+tri-state on the row, and the pass holds the licence at the moment it would need to record it (Europe
+PMC returns `isOpenAccess`; Unpaywall returns a licence id per DOI).
+
+**Interim step, if 0.6 slips:** the reporter's option 1 (a `literature`-layer `pubmed` row for the
+*metadata*, plus a documented rule that quoting requires a second `annotation`-layer row for the
+article) is defensible — but only if the row's terms are stated as the metadata's and the quoting
+obligation is written where an author reads it. Shipped as a bare terms constant it silences the warning
+and buys the false clearance above, so it is not a one-liner.
+
+## RM47 — a bin boundary is the most interpretive claim in the format and the only one with nowhere to cite
+
+✅ **Shipped in 0.6.** `MeasureBinRow.pmid` grounds the *boundary* — one optional column on the binning base reaching all four kinds — and `StudyRow`'s subject requirement relaxed so a citation row may name no variant, which only makes previously-*invalid* rows valid. The documented line is **the bin row cites, the citation table describes**, which is what stops `StudyRow`'s provenance column set migrating onto binning rows one column at a time. The same-release obligation was met rather than deferred: `_cross_check_literature` and the enricher's literature pass both read the new site, reached across the tier boundary through new **public** compiler symbols (`load_binning_rows`/`binning_citations`) rather than a private import or a second hand-kept kind list. `htt_repeat_expansion` stays deliberately uncited — the example exists to show the gap.
+
+**Severity** medium (no module is unauthorable, but the claim a reader would most want to check is the
+one the schema asks nothing about) · **Status** open — **0.6**, gated on a design round rather than on a
+version · **Owner** format (schema) + compiler + enricher (the literature pass) · **Motivating case** an
+HTT CAG module whose thresholds had nowhere to record their source (S19 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Reproduced on this tree's own reference example.** `reference_examples/htt_repeat_expansion` compiles
+green under `--strict` stating four Huntington thresholds — 26/27, 35/36, 39/40 — with no citation
+anywhere in the module, and until 0.5.4 nothing said a word. Its README even says *"a module making a
+novel claim should carry its evidence"*, which is advice the schema gave the author no way to take.
+`StudyRow` identifies its subject by `rsid` **or** `chrom`(+`start`), and a `repeat_alleles.csv` row is
+keyed `(gene, repeat_unit)`, so no study row can name one; `MeasureBinRow` has no `pmid`, `doi` or
+`evidence_level`. The requirement is enforced exactly where citations usually arrive for free — a
+ClinVar-drafted `variants.csv` — and absent where a human made the judgement.
+
+**One correction to the report, and it narrows the item.** The same does *not* hold for
+`heteroplasmy.csv`: it has carried optional `rsid`/`chrom`/`start`/`ref`/`alts` since 0.5.1, so a study
+row on the same variant identity points at it exactly, and `reference_examples/mt_heteroplasmy` already
+does this. What is genuinely unpointable is the three gene-keyed kinds — `repeat_alleles.csv`,
+`copynumbers.csv`, `activity_phenotype.csv` — plus a heteroplasmy row that names only a gene. A second
+correction in the other direction: `studies.csv` is *not rejected* in a variants-free module. It loads,
+validates and materializes `studies.parquet` today, so an author can ground the module as a whole right
+now — the row simply has to claim a variant identity the bin does not have (a bare `chrom=4` for HTT),
+and nothing ties it to a bound.
+
+**Shipped in 0.5.4 (the reporter's option 2), and it is the interim, not the answer.**
+`compiler._check_binning_grounding` warns in both modes when a binning table states thresholds and the
+module records no study rows at all, with the message split on whether the rows *could* be pointed at:
+the heteroplasmy shape gets a remedy ("fill the identity columns"), the gene-keyed shape gets the honest
+statement that no study row can name one of these bins. That turns silence into a visible decision and
+changes no schema.
+
+**Four candidate repairs, and none is a one-liner — which is why this is filed rather than fixed.**
+
+- **`pmid`/`doi` on `MeasureBinRow`.** The smallest schema move (a new optional column on the base
+  reaches all four kinds, minor-legal under P3) and the only one that grounds a *boundary*, which is what
+  was actually asked for. It is also the largest **wiring** move: `literature.csv`, `_cross_check_literature`
+  and the enricher's literature pass all read `StudyRow.pmid` and nothing else, so a bin-row PMID would
+  be a citation no existence check, no bibliographic check (S12) and no quote check ever reaches —
+  grounding that *looks* verified and is not, which is worse than the honest gap. And it starts the
+  drift: `studies.csv` carries population, `p_value_num`, `effect_size` and `provenance_quote`, so the
+  first author wanting a quote begins growing `StudyRow`'s column set onto a binning table.
+- **A generic `subject_key` on `StudyRow`.** Rejected on the binning tables' own stated rule —
+  *multicolumn keying, never a packed tuple*. `HTT|CAG` is a second spelling of an identity the columns
+  already spell, it can drift from them with nothing to catch it, and P5 gets a field carrying two axes.
+- **Key columns on `StudyRow` plus a new `REQUIRED_ANY_OF` alternative.** Legal — the columns are
+  optional, and widening an any-of only makes previously-*invalid* rows valid, so no published module
+  breaks. But it grounds at table granularity, not at the boundary: a `(gene, repeat_unit)` study row
+  still does not say why 36. Making it say so means putting `measure_min`/`measure_max` on the study row,
+  i.e. restating the bin inside its own evidence. It also quietly changes a contract consumers read —
+  every `studies.parquet` row today carries an rsid or a chrom.
+- **A `bin_evidence.csv` join table.** Keeps one-CSV-one-concern and grounds per bound, but the join key
+  *is* the bounds, and they are floats: re-authoring `40` as `40.0`, or moving a threshold, silently
+  orphans its evidence with no rule able to notice. A join key that is also the data is the shape to
+  avoid.
+
+**So the decision to make is which granularity the format promises** — module, table, or boundary — and
+every honest repair costs either a duplicated column set or a duplicated key. Settle that first; the
+column follows in an afternoon. Whichever wins, the literature pass and `_cross_check_literature` have to
+learn about the new PMID site in the same release, or the format ships evidence it does not check.
+
+## RM48 — an hg19 coordinate has no supported path into a GRCh38 module, and liftover is the wrong primitive
+
+✅ **Shipped in 0.6, and the roadmap's stated blocker was false.** Ensembl runs a permanent GRCh37 REST service serving both dbSNP variants and reference bases, and per-contig lengths for both builds are 25 numbers each — no chain file, no provisioned asset, no new licence, so the scope-back condition never triggered. rs-number recovery only, live-only, reporting and never filling. The offline half (a position past its contig's end, a contig only one build names) went into the **compiler**, in `validate_spec` and `compile_module`, as an **error in both modes** — it is provably wrong, the inconsistent-reference-allele class. The online build-guessing half stayed in the enricher. **The round's sharpest finding was about already-shipped code**: run on a real wrong-build scenario, the existing ±1 neighbour check reported "shifted 1 base to the right" for two rows whose true variants are 228 and 411 bases away — a neighbouring base equalling the authored `ref` is a one-in-four coincidence. The new diagnosis supersedes it, but only from its two strong evidence tiers, since a single-base GRCh37 match rests on the same coincidence.
+
+**Severity** low-medium (an authoring gap with a manual workaround, filed as a longshot by the
+reporter) · **Status** open — **0.6**, gated on choosing the primitive · **Owner** enricher (the
+recovery link + any provisioned asset) + format (`resolution.csv` provenance) · **Motivating case** an
+author curating from older literature with hg19 supplementary tables (S22 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md))
+
+**Not RM15, and the distinction is the useful part.** RM15 is about supporting another build *as the
+module's build* — it changes `variant_key` semantics and every coordinate, which is why it is 1.0. What
+is missing here is one-way and authoring-time: the module stays GRCh38, only the author's input is
+hg19. It re-keys nothing, needs no GRCh37 refget table, and changes no published identity, so filing it
+under RM15 would park an additive tool behind a major-version blocker for no structural reason.
+
+**The reporter argues against their own request, and the argument holds.** Trace when liftover is
+actually reachable. If the paper gives an rsID, liftover is unnecessary and worse: authoring the rsID
+*produces* the independent second value `resolution._verify` cross-examines. So liftover is only
+reachable when there is no rsID and only an hg19 coordinate — and in exactly that case the lifted
+coordinate becomes the row's sole identity, with nothing independent to check it against. A liftover
+tool is therefore a generator of unverifiable-by-construction identities, which is the hazard class
+behind the 3,038-variant off-by-one this tree already paid for. What the author wants is **rsID
+recovery**: given an hg19 `chrom:start:ref:alt`, return the rsID or say there is none, so they author
+an identity normal resolution can verify. Same input; it converts an unverifiable coordinate into a
+verifiable one using machinery the enricher already has.
+
+**Why it is not simply "do rsID recovery, then".** The recovery lookup is against a *build the enricher
+does not otherwise touch* — every link is gated on GRCh38 — so it needs either an hg19-keyed dbSNP
+surface or a chain file, and a chain file is a provisioned, pinned asset with its own licence and
+release, i.e. the whole snapshot apparatus for one authoring convenience. That is the design round, and
+it is what the version gate is on. Liftover survives only as the fallback for a locus with no rsID at
+all, where it must announce itself rather than emit a coordinate that looks authored.
+
+**One requirement whichever primitive wins, and it is already a shipped lesson.** The outcomes are
+**mapped**, **unmapped** and **ambiguous** (a coordinate lifting to several targets), and they must not
+collapse — `pyliftover` returns an empty list both for unmapped and for a missing chain file, which is
+byte-for-byte the fusing S20 fixed in this same resolution path on the same day. Whatever lands here
+returns three states, and the provenance goes in `resolution.csv`'s `source` column rather than being
+lost into an ordinary authored coordinate.
+
+## RM50 — PMID and PMCID are one id apart, and only one direction of the conversion exists
+
+✅ **Shipped in 0.6.** `extract_pmids` now declines a digit run whose context spells `PMC` in any spacing, and the refusal **names the id it saw** rather than the one it wanted. This closed a live hazard rather than a cosmetic one: `PMC3110566` never parsed, but **`PMC 3110566` did** — and those digits are a real PMID for an unrelated article, so the outcome turned on a space and the accepted spelling silently cited the wrong paper. A cell that compiled before may refuse now; that is the fix. The PMC id lives on the derived row only, and `hint citation --pmcid` is a **reporting** lookup that never fills `pmid`, because filling it would make the existence check compare a value against the registry that produced it. The authoring half stays 1.0 with the requiredness demotion, since a citation with no PubMed id cannot become legal while P8 holds.
+
+**Severity** medium (the accepted-but-wrong case is a silently misattributed citation — the S12 class)
+· **Status** open — the **diagnosis half is an enricher patch and does not wait**; the schema half is
+**0.6**, gated on a design round and on the requiredness demotion already queued for 1.0 · **Owner**
+enricher (the guard, the reverse lookup) + format (`extract_pmids`' grammar and its message) ·
+**Motivating case** raised while reading SCHEMAS.md's own account of the three reference tables
+(2026-08-12)
+
+**Three distinct confusions live under one heading, and only the middle one is already tracked.**
+
+**1. A PMCID written where a PMID goes is sometimes accepted, as a different paper.** `StudyRow.pmid`
+is free-form and validated through `spec.extract_pmids`, which is `\b(\d{1,8})\b`. Probed:
+`PMC3110566` → `[]` and `pmcid: PMC3110566` → `[]` (no word boundary between `C` and a digit), but
+`PMC 3110566` → `['3110566']`. The outcome turns on a space. When it is accepted the extracted number
+is a **real PMID for an unrelated article** — PMIDs are densely allocated, which is precisely the S12
+finding that made `pmid_exists` useless as a fabrication guard and put `title`/`journal`/`year`/
+`first_author` on `CitationHint`. The rejected half is barely better: the message says "must contain at
+least one PubMed ID" and never says the word PMCID, so it is a generic refusal where a specific one is
+a fix — the same shape as `MISPLACED_COLUMN_REASONS` and `reject_reserved` one level down.
+
+**2. A citation with no PMID at all** is *already tracked* and is not re-filed here: [§ 1.0 cleanup —
+`StudyRow.pmid` required + PMID-shaped](#studyrowpmid-required--pmid-shaped) queues the requiredness
+demotion to "≥1 of `{doi, pmid}`", and a PMC-only record (books, NIH reports, some datasets) is largely
+covered by it, since such a record normally carries a DOI. What that entry does not say is what
+`LiteratureRow` — keyed on `pmid`, digits-only, **required** — is supposed to do with such a row. That
+is the piece which has to be decided in the same release, and it is the reason this item exists beside
+the tracker entry rather than inside it.
+
+**3. Only one direction of PMID↔PMCID is resolved, and the recorded reason only covers that
+direction.** `literature._identifiers` reads `doi` and `pmc` out of the esummary `articleids` block, so
+PMID → PMCID arrives free, and `literature.py`'s own docstring records that the **PMC ID converter is
+deliberately unused** because of it (and separately that the converter is no existence oracle — its
+"invalid article id" is about PMC *membership*). Both statements are true, and neither is about
+**PMCID → PMID**, which is the direction the converter actually exists for. So a curator holding a PMC
+id has no route through any of the three packages to the `pmid` every table keys on. Do not close this
+by quoting the docstring back at it; it answers the other question.
+
+**What can ship without the design round** — enricher plus `extract_pmids`, no schema change, no
+verdict changed for anything else: refuse a digit run whose immediate context spells `PMC` in any
+spacing, and **name the id that was seen** rather than the one that was missing. And where the record
+does resolve, the pass already holds the PMCID from the same esummary response, so comparing it against
+the authored digits catches the accepted-with-a-space case for free. Both are diagnosis, never repair —
+nothing rewrites an authored cell.
+
+**What needs the design round:** whether a PMCID is an *identity a citation may be authored under*, or
+only a cross-reference the enricher fills. Three candidates, with their costs:
+
+- **An optional `StudyRow.pmcid`.** Additive and minor-legal, and it closes the authoring half — but it
+  leaves `LiteratureRow`'s key unanswered for a row carrying no PMID, and it puts a second id column on
+  a table whose `pmid` is already free-form and may hold several.
+- **Resolve every PMCID to a PMID at enrich time and store only PMIDs.** Smallest surface, and it
+  silently drops the records that have none: two ways of returning nothing rendered as one sentence,
+  which is S20 exactly.
+- **Re-key `LiteratureRow` on a general citation id.** The honest shape, and it changes what an existing
+  key *means*, so it is 1.0 and not this.
+
+Whichever wins lands **with** the requiredness demotion, not before it — deciding the sidecar's key
+while `StudyRow.pmid` is still mandatory answers a question no module can currently ask. Related:
+RM47 makes the same observation from the other side, that a new PMID site obliges the literature pass
+to learn it in the same release.
+

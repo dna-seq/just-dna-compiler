@@ -79,13 +79,22 @@ recomputed by every consumer, and a recomputation is a place to drift.*
 
 - **[RM51](ROADMAP_HISTORY.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)** — ✅ **shipped in 0.6.0**: accept `licensing.csv` as a second spelling of `sources.csv` in 0.6 (enricher writes it, compiler falls back to it), so the 1.0 rename only has to **remove** a spelling rather than add one. Minor-legal for a checked reason: the fact sidecars are **not** in `_INPUT_FILES`, so the filename enters no identity — `content_signature` is rows, `source_signature` is facts, `manifest.derived` is transport-only. What cannot come along is `sources.parquet` (inside `artifact.digest`, read by name) and the `manifest.sources` key — both removals, both major — so the 0.x tail reads `licensing.csv` → `sources.parquet` → `manifest.sources`, which is the cost. Both files present is RM49's collision (fact-hashed and human-overridable, so no merge and no newest-wins) — write to the file you read, error naming both; the two items shipped together for exactly that reason. The item estimated **five** enricher write sites and there were **nine**, so `record_source_terms`/`merge_sources_file` take the spec directory now and no pass names a spelling by hand. Old spelling deprecated in 0.6, removed at 1.0. · *also in* CHANGELOG, SCHEMAS, COMPILER, ENRICHER
 
-## 🔨 Decided and in the 0.6 batch
+## ✅ The 0.6 design round — decided, then built
 
-*All decided on 2026-08-13 in [PROPOSAL_0_6.md](PROPOSAL_0_6.md), which is the authoritative entry for
-each: the problem, the facts probed, the decision, **the repairs that were rejected and why**, and the
-consequences that follow without being chosen. ROADMAP.md's older wording for these items is stale where
-the two disagree. RM53–RM67 came from [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md), which stays the evidence
-document (spec quotations, `file:line`, probe transcripts).*
+*All decided on 2026-08-13 in [PROPOSAL_0_6.md](PROPOSAL_0_6.md) and **all built** in the batch that
+followed; the outcome of each, with what probing changed along the way, is in
+[ROADMAP_HISTORY § 0.6.0](ROADMAP_HISTORY.md#060--the-design-round-built). The proposal stays the
+authoritative record of the **reasoning**: the problem, the facts probed, the decision, **the repairs
+that were rejected and why**, and the consequences that follow without being chosen — which is the half
+worth not re-deriving. Where an entry below and the built result disagree, the history entry wins.
+RM53–RM67 came from [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md), which stays the evidence document (spec
+quotations, `file:line`, probe transcripts).*
+
+*Landed on the `0.6` branch in eleven parallel lanes plus a charter amendment that went first and alone
+(schema-change cost by layer: a parquet column is ~free, a derived CSV half, an authored schema full —
+four of the decisions turn on it). Corpus effect, measured: `content_signature` moved on **two** modules
+(both re-authored on purpose), `artifact.digest` on seven, `resolution_signature` was **gained** by the
+four table-only modules that never had one, and the source signature moved nowhere. Suite 1535 → 2046.*
 
 - **[RM4](PROPOSAL_0_6.md)** — gene-panel materialization. **Off the compiler**: the surface is enricher draft-scaffolding, and the author's no-op over the drafted subset is the authorial act. Takes the `panel:` block with it (deprecated, machine-recorded release replaces it) and re-keys the tautology check on a mode ladder. · *also in* ROADMAP_1_0, USE_CASES, ENRICHER
 - **[RM5](PROPOSAL_0_6.md)** — symbolic / structural alleles. **The five closed VCF first-level types and nothing beyond the standard** — no declaration mechanism, no named aliases. 5-HTTLPR is a plain indel; CPIC's IUPAC codes stay unexpressible, deliberately. · *also in* CLAUDE.md, USE_CASES, SCHEMAS, ENRICHER, REFERENCE_EXAMPLES
