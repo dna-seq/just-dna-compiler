@@ -450,7 +450,11 @@ def literature_(
         help="Also confirm the authored DOI resolves in Crossref (covers preprints/books).",
     ),
 ) -> None:
-    """Fill literature.csv from the citations in studies.csv (pass 4, online only)."""
+    """Fill literature.csv from a module's citations (pass 4, online only).
+
+    Two citation sites since 0.6: `studies.csv`, and a `pmid` on a binning row, which grounds the
+    threshold it sits on.
+    """
     try:
         result = enrich_literature(
             spec_dir, mode=_mode(strict), offline=offline, check_fulltext=check_fulltext,
@@ -473,6 +477,22 @@ def literature_(
         typer.secho(f"  Crossref has no record of: {result.doi_missing}", fg=typer.colors.RED, err=True)
     for conflict in result.doi_conflicts:
         typer.secho(f"  doi conflict: {conflict}", fg=typer.colors.RED, err=True)
+    # Printed for the same reason and in the same place: a cross-check that only ever speaks under
+    # `--strict` is invisible in the mode almost every author runs, and the two identifiers naming
+    # different articles is exactly the case the schema's PMC guard cannot see (RM50).
+    for conflict in result.pmcid_conflicts:
+        typer.secho(f"  pmcid conflict: {conflict}", fg=typer.colors.RED, err=True)
+    noncommercial = sorted(
+        {r.pmid for r in result.rows if r.commercial_use is False and (r.quotes_authored or 0) > 0}
+    )
+    if noncommercial:
+        # Yellow, not red, and never a non-zero exit: quoting for comment or research is often fine,
+        # and the format is not the tier that adjudicates copyright (the `clin_sig` precedent).
+        typer.secho(
+            f"  quoted under a non-commercial licence: {noncommercial} — the passage is publisher "
+            f"text in this module's annotation layer",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("pgx")
@@ -1535,6 +1555,9 @@ def hint_recover_(
 def hint_citation_(
     pmid: str | None = typer.Option(None, "--pmid", help="PubMed id to check."),
     doi: str | None = typer.Option(None, "--doi", help="DOI to check (the one you authored)."),
+    pmcid: str | None = typer.Option(
+        None, "--pmcid", help="PubMed Central id (PMC…) to resolve to the PubMed id tables key on."
+    ),
     offline: bool = typer.Option(False, "--offline", help="Skip the check and say so."),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
 ) -> None:
@@ -1548,11 +1571,16 @@ def hint_citation_(
     very likely to be a real record for a different article, and `pmid_exists` alone cannot catch a
     fabricated citation. The title, journal, year and first author come back in the same response and
     are printed for exactly that comparison (S12).
+
+    **`--pmcid` goes the other way.** `studies.csv` and a binning row's `pmid` both key on the PubMed
+    id, and a curator holding only a `PMC…` id had no route to it — the schema refused the cell and
+    named no remedy. This resolves it and then asks PubMed which paper that is. The id is **reported,
+    never written**: filling `pmid` from NCBI would make the existence check compare NCBI with itself.
     """
-    if pmid is None and doi is None:
-        typer.secho("give --pmid or --doi", fg=typer.colors.RED, err=True)
+    if pmid is None and doi is None and pmcid is None:
+        typer.secho("give --pmid, --doi or --pmcid", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    hint = lookup_citation(pmid=pmid, doi=doi, offline=offline)
+    hint = lookup_citation(pmid=pmid, doi=doi, pmcid=pmcid, offline=offline)
     if as_json:
         typer.echo(json.dumps({
             "pmid": hint.pmid,

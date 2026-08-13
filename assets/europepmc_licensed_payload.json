@@ -1,0 +1,27 @@
+{
+  "hitCount": 2,
+  "resultList": {
+    "result": [
+      {
+        "abstractText": "<h4>Background</h4>Despite proven benefits, the use of single-purpose mobile stroke units (MSUs) has raised concerns about their effective and cost-efficient integration into clinical practice, especially when considered for operation in nonurban areas. The MSU concept may benefit from opening the indication spectrum to include frequent stroke mimics and additional emergencies.<h4>Methods</h4>The current observational study evaluated benefits for the treatment and triage decision-making of use of an MSU with extended capabilities (Hybrid-MSU), also including radiography, ultrasonography, extended point-of-care laboratory, ECG, electroencephalography, and advanced medications. Apart from patients with a dispatch code for \"stroke\", the ambulance was also dispatched to those with codes for \"seizures\", \"falls with head trauma\", \"headache\", \"unconsciousness\", \"infection and pandemic\", \"chest pain\", and \"breathing problems\".<h4>Results</h4>For 250 patients treated by the Hybrid-MSU, but not for 250 conventionally treated patients, the prehospital diagnostic workup allowed, apart from treatment with stroke thrombolytics (n=15), prehospital administration of specific anticonvulsants (n=15), antibiotics (n=5), early secondary stroke prophylaxis with aspirin (n=49), and the Sepsis Six bundle (n=2). Prehospital diagnosis avoided 215 (86.0%) admissions to the emergency department, either by management at home (n=116, 46.4%) or by directly transferring patients to the required specialized wards (n=99, 39.6%).<h4>Conclusion</h4>The current study demonstrates the feasibility of the use of a Hybrid-MSU and indicates its potential benefits for prehospital treatment and triage decision-making. Opening the indication spectrum, together with an act-alone ability, could be a key in the future integration of MSUs into routine health care.",
+        "doi": "10.1161/svin.122.000482",
+        "inEPMC": "Y",
+        "isOpenAccess": "Y",
+        "license": "cc by-nc",
+        "pmcid": "PMC12778600",
+        "pmid": "41585745",
+        "title": "Hybrid-Mobile Stroke Unit: Opening the Indication Spectrum for Stroke Mimics and Beyond."
+      },
+      {
+        "abstractText": "The mitochondrial network is a major site of ATP production through the coupled integration of the electron transport chain (ETC) with oxidative phosphorylation. In melanoma arising from the V600E mutation in the kinase v-RAF murine sarcoma viral oncogene homolog B (BRAF<sup>V600E</sup>), oncogenic signaling enhances glucose-dependent metabolism while reducing mitochondrial ATP production. Likewise, when BRAF<sup>V600E</sup> is pharmacologically inhibited by targeted therapies (<i>e.g.</i> PLX-4032/vemurafenib), glucose metabolism is reduced, and cells increase mitochondrial ATP production to sustain survival. Therefore, collateral inhibition of oncogenic signaling and mitochondrial respiration may help enhance the therapeutic benefit of targeted therapies. Honokiol (HKL) is a well tolerated small molecule that disrupts mitochondrial function; however, its underlying mechanisms and potential utility with targeted anticancer therapies remain unknown. Using wild-type BRAF and BRAF<sup>V600E</sup> melanoma model systems, we demonstrate here that HKL administration rapidly reduces mitochondrial respiration by broadly inhibiting ETC complexes I, II, and V, resulting in decreased ATP levels. The subsequent energetic crisis induced two cellular responses involving cyclin-dependent kinases (CDKs). First, loss of CDK1-mediated phosphorylation of the mitochondrial division GTPase dynamin-related protein 1 promoted mitochondrial fusion, thus coupling mitochondrial energetic status and morphology. Second, HKL decreased CDK2 activity, leading to G<sub>1</sub> cell cycle arrest. Importantly, although pharmacological inhibition of oncogenic MAPK signaling increased ETC activity, co-treatment with HKL ablated this response and vastly enhanced the rate of apoptosis. Collectively, these findings integrate HKL action with mitochondrial respiration and shape and substantiate a pro-survival role of mitochondrial function in melanoma cells after oncogenic MAPK inhibition.",
+        "doi": "10.1074/jbc.m117.786442",
+        "inEPMC": "Y",
+        "isOpenAccess": "N",
+        "license": "cc by",
+        "pmcid": "PMC5512068",
+        "pmid": "28546431",
+        "title": "Disruption of mitochondrial electron transport chain function potentiates the pro-apoptotic effects of MAPK inhibition."
+      }
+    ]
+  }
+}

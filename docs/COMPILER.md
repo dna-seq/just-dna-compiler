@@ -245,28 +245,34 @@ The through-line: **what the compiler cannot validate, the format makes *legible
 produced a fact, from which release, under which policy, and hashes it so it cannot drift silently —
 then leaves the judgement to a consumer. That is the data-agnostic north star applied to trust.
 
-### One gap that is *not* inescapable — where a bin boundary came from (S19/RM47)
+### One gap that was *not* inescapable — where a bin boundary came from (S19/RM47, closed in 0.6)
 
-Everything above is a limit of the tier. This one is a limit of the **schema**, and it is listed here so
-it is not mistaken for the other kind. `studies.csv` is required iff `variants.csv` is present, so
-grounding is enforced exactly where citations usually arrive already attached (a ClinVar-drafted
-`variants.csv`) and absent where a human made the judgement: `reference_examples/htt_repeat_expansion`
-compiles green under `--strict` asserting where Huntington disease becomes fully penetrant, with no
-citation anywhere. A `StudyRow` names a variant — `rsid`, or `chrom`(+`start`) — and a
-`repeat_alleles.csv` row is keyed `(gene, repeat_unit)`, so nothing can point at it.
+Everything above is a limit of the tier. This one was a limit of the **schema**, and it is kept here
+because the distinction is the point: a tier limit is permanent, a schema limit is a release away.
 
-Two things bound it. `studies.csv` **is** accepted in a variants-free module, so an author can cite the
-literature today; the row just has to claim a variant identity the bin does not have, which grounds the
-module and not the bound. And `heteroplasmy.csv` is already fine — its optional `rsid`/`chrom`/`start`
-columns (0.5.1) give a row a variant identity a study row can name, which
-`reference_examples/mt_heteroplasmy` does.
+`studies.csv` is required iff `variants.csv` is present, so grounding was enforced exactly where
+citations usually arrive already attached (a ClinVar-drafted `variants.csv`) and absent where a human
+made the judgement: `reference_examples/htt_repeat_expansion` compiled green under `--strict` asserting
+where Huntington disease becomes fully penetrant, with no citation anywhere. A `StudyRow` named a
+variant — `rsid`, or a bare `chrom` — and a `repeat_alleles.csv` row is keyed `(gene, repeat_unit)`, so
+nothing could point at it.
 
-What the compiler does meanwhile is the standard move: make it legible.
-`_check_binning_grounding` warns in **both** modes when a binning table states thresholds and the module
-records no study rows at all, and the message splits on whether the rows *could* be pointed at — the
-heteroplasmy shape gets a remedy, the gene-keyed shape gets the honest statement that no study row can
-name one of these bins. Closing it in the schema is **RM47**, and it is a design round rather than a
-column: every candidate repair costs either a duplicated column set or a duplicated key.
+**0.6 closed it with a second citation site: `MeasureBinRow.pmid`**, one optional column on the binning
+base reaching all four kinds, plus a relaxation of `StudyRow`'s subject requirement so the paper behind
+a threshold can be described without inventing a variant for it. The rule for reading the pair is *the
+bin row cites, the citation table describes* — the pointer sits on the row that states the number, and
+everything about the paper stays in `studies.csv`. `heteroplasmy.csv` was never affected: its optional
+`rsid`/`chrom`/`start` columns (0.5.1) already gave a row a variant identity a study row can name,
+which `reference_examples/mt_heteroplasmy` does, and that remains an alternative route there.
+
+`_check_binning_grounding` still warns in **both** modes, now over the bins that carry neither a `pmid`
+nor a variant identity, in a module with no study rows at all — and the remedy it names is the same for
+every kind, since every kind can now cite its boundary. The same-release obligation was the reason the
+item was filed rather than fixed: `_cross_check_literature` reads the bin pointers alongside
+`studies.csv` (otherwise every threshold-grounding citation would read as a stale orphan), and so does
+the enricher's literature pass, so a bin-grounded citation is checked for existence and identifiers
+exactly like a study-grounded one. `reference_examples/htt_repeat_expansion` is deliberately left
+**uncited**: the example exists to show what the warning looks like.
 
 ### Three more schema limits, made legible the same way (0.6, the VCF 4.4 audit)
 

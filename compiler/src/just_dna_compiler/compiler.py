@@ -1260,22 +1260,20 @@ def _check_binning_grounding(
     README says "a module making a novel claim should carry its evidence" — advice the schema had no
     place to take.
 
-    **What it does not claim.** This reports an absence; it cannot report a *link*, because for three
-    of the four kinds there is nothing to link. `studies.csv` identifies its subject by rsid or by
-    `chrom`(+`start`), and an `activity_phenotype.csv` / `copynumbers.csv` / `repeat_alleles.csv` row
-    is keyed on `(gene, …)` — so a study row can be authored, and it grounds the module, but no rule
-    can tie it to a bound. Making that tie is a schema question with more than one defensible answer
-    (RM47), so what ships here is the visible decision the consumer asked for, not a half-chosen one.
+    **The remedy became sayable in 0.6 (RM47).** Until then this could report an absence and never a
+    *link*: `studies.csv` identified its subject by rsid or `chrom`, and an `activity_phenotype.csv` /
+    `copynumbers.csv` / `repeat_alleles.csv` row is keyed `(gene, …)`, so a study row grounded the
+    module and no rule could tie it to a bound. `MeasureBinRow.pmid` is now the tie — a pointer on the
+    row that states the threshold — and `StudyRow`'s subject requirement was relaxed in the same
+    release so the citation row describing that paper need not invent a variant to hang off. So the
+    message names one remedy for every kind, and the `heteroplasmy.csv`-only branch (whose rows can
+    also be pointed at by identity, which is what `reference_examples/mt_heteroplasmy` does) is now an
+    *additional* route rather than the only actionable one.
 
-    **`heteroplasmy.csv` is the exception and gets the actionable message.** It has carried optional
-    `rsid`/`chrom`/`start`/`ref`/`alts` since 0.5.1, so a row naming its variant *can* be pointed at by
-    a study row on the same identity — which is exactly what `reference_examples/mt_heteroplasmy` does.
-    The distinction is derived from the model (`variant_key` is `None` only when the row names no
-    variant), never from the table name.
-
-    Fires only when the module records **no** study rows at all. Once an author has written a
-    `studies.csv`, saying more would be nagging about a link the format cannot yet express — and on a
-    module carrying `variants.csv` the missing table is already a hard error, so this never doubles it.
+    **A bin that carries a `pmid` is grounded and is not counted**, derived from the row rather than
+    the table. Fires only when the module records **no** study rows at all *and* some bin cites
+    nothing: once an author has written a `studies.csv`, saying more would be nagging, and on a module
+    carrying `variants.csv` the missing table is already a hard error, so this never doubles it.
     A warning in both modes: the remedy is an authored edit, but `strict` means *reproducible
     artifact*, an unrelated axis (P5), and a module that cites nothing still reproduces exactly.
     """
@@ -1284,30 +1282,43 @@ def _check_binning_grounding(
     warnings: list[str] = []
     for csv_name, model in _BINNING_TABLE_KINDS:
         rows = [r for r in rows_by_csv.get(csv_name) or [] if not r.unresolved]
-        # `variant_key` is declared on `HeteroplasmyRow` alone among the binning kinds, and it is
-        # `None` there when the row names only a gene — so this one test separates "could be grounded
-        # and is not" from "cannot be grounded at all" without naming a table. Read off
-        # `model_fields`, not `hasattr`: it became a stamped field in 0.6 (RM43) and a field is not a
-        # class attribute, so the `hasattr` this used to ask silently answered `False` and every
-        # heteroplasmy module got the message written for a gene-keyed table.
-        ungrounded = [r for r in rows if getattr(r, "variant_key", None) is None]
+        # Two ways a bin can be grounded, both read off the row and never off the table name: its own
+        # `pmid` (RM47, every kind), or — for the one kind whose model carries a variant identity —
+        # naming the variant a study row can then name back.
+        ungrounded = [
+            r for r in rows if r.pmid is None and getattr(r, "variant_key", None) is None
+        ]
         if not ungrounded:
             continue
+        remedy = (
+            "cite the boundary itself: put the PubMed id on the bin row (`pmid`), and describe the "
+            "paper in a studies.csv row, which since 0.6 need not name a variant"
+        )
+        # Read off `model_fields`, **not `hasattr`**: `variant_key` became a *stamped field* in 0.6
+        # (RM43) and a field is not a class attribute, so `hasattr` silently answers `False` and every
+        # heteroplasmy module gets the message written for a gene-keyed table. Two lanes of this same
+        # release wrote these two lines — the `pmid` route and the `model_fields` repair — and the
+        # `hasattr` spelling arrived with the first because RM43 had not landed under it yet.
         if "variant_key" in model.model_fields:
-            remedy = (
-                "these rows name no variant (no rsid, no chrom+start), so nothing can point at them; "
-                "fill those columns and a studies.csv row on the same variant grounds each bin"
+            remedy += (
+                "; alternatively fill this kind's rsid/chrom+start, and a studies.csv row on the "
+                "same variant grounds each bin"
             )
         else:
+            # Deliberately does NOT restate the pre-RM47 claim that nothing can point at these bins.
+            # It was true and it is now retired: `pmid` on the bin is exactly the route that claim said
+            # did not exist, and repeating it would leave an author reading a finding no edit can clear
+            # — the defect this codebase treats as a defect everywhere else. Say which route applies to
+            # a gene-keyed kind, and say it in the affirmative.
             key = ", ".join(f for f in model._KEY_FIELDS if f != "variant_key")
-            remedy = (
-                f"studies.csv identifies its subject by rsid or chrom+start, which a ({key}) row does "
-                f"not have, so no study row can name one of these bins — a studies.csv grounds the "
-                f"module as a whole, which is the most this format states today"
+            remedy += (
+                f"; for a ({key}) row the bin's own pmid is the route, because studies.csv identifies "
+                f"its subject by rsid or chrom+start, so a study row grounds the module while the bin "
+                f"pointer grounds this threshold"
             )
         warnings.append(
             f"{csv_name}: {len(ungrounded)} of {len(rows)} bin(s) state a threshold and the module "
-            f"records no grounding evidence at all (no studies.csv rows). {remedy}."
+            f"records no grounding evidence at all (no studies.csv rows, no bin pmid). {remedy}."
         )
     return warnings
 
@@ -1595,6 +1606,58 @@ def _check_vcf_pointers(
             f"not)."
         )
     return warnings
+
+
+def load_binning_rows(spec_dir: Path) -> dict[str, list[MeasureBinRow]]:
+    """Every binning table present beside a spec, keyed by CSV name — the citations a module's
+    *thresholds* carry (`MeasureBinRow.pmid`, RM47).
+
+    Public because a second tier needs it: the enricher's literature pass has to check the bin
+    pointers alongside `studies.csv`, and its two alternatives were importing a private symbol or
+    hand-keeping a parallel list of the binning kinds — the RM40/RM41 shape exactly, and the list
+    would go stale on the fifth kind. Row errors are raised rather than returned: a caller wanting the
+    per-row diagnosis has `validate_spec`, and a pass reading citations out of a table it could not
+    parse would silently under-report.
+    """
+    spec_dir = Path(spec_dir)
+    config, _, _ = _load_yaml(spec_dir / "module_spec.yaml")
+    declared_build = config.genome_build if config else DEFAULT_GENOME_BUILD
+    out: dict[str, list[MeasureBinRow]] = {}
+    for csv_name, model in _BINNING_TABLE_KINDS:
+        # `spec_dir / csv_name`, never `_locate_sidecar`: that resolver is scoped to the
+        # machine-written sidecars, and an authored table has exactly one legal name in exactly one
+        # legal place (RM49/RM51). Both compile-side load loops read authored kinds this way, and a
+        # reader that resolved them differently would find a table the compiler does not — which for
+        # this function would mean the enricher writing `literature.csv` rows for citations
+        # `_cross_check_literature` then reports as orphans.
+        path = spec_dir / csv_name
+        if not path.is_file():
+            continue
+        rows, errors, _ = _load_csv_rows(path, model, csv_name, genome_build=declared_build)
+        if errors:
+            raise ValueError(f"{csv_name} is invalid: {errors[0]}")
+        out[csv_name] = rows
+    return out
+
+
+def binning_citations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
+    """Digit-only PMIDs the binning tables cite (`MeasureBinRow.pmid`), de-duplicated.
+
+    Takes the whole table-kind map a caller already holds and reads only the binning kinds out of it,
+    so a caller cannot accidentally hand over a `haplotypes.csv` (no `pmid` column) and get an
+    attribute error. The kind set is derived from the models, never hand-listed.
+
+    First-occurrence order rather than sorted, because it feeds emission order downstream (P7), and
+    normalization goes through `extract_pmids` so the bin pointer and `studies.csv` cannot drift into
+    two spellings of one citation.
+    """
+    seen: dict[str, None] = {}
+    for csv_name, _model in _BINNING_TABLE_KINDS:
+        for row in rows_by_csv.get(csv_name) or []:
+            if row.pmid:
+                for pmid in extract_pmids(row.pmid):
+                    seen.setdefault(pmid, None)
+    return list(seen)
 
 
 def _allowed_alleles(
@@ -2527,7 +2590,13 @@ def _cross_validate_studies(
     A study matches a variant on **any shared identifier** — same rsid or same `chrom:start:ref` —
     not on frozen-key equality. Keying strictly on `variant_key` would false-orphan a study that
     references a variant by a different (but co-identifying) handle than the one the variant froze its
-    key to (e.g. a coord-keyed variant referenced by rsid)."""
+    key to (e.g. a coord-keyed variant referenced by rsid).
+
+    **A row that names no variant is not an orphan** (RM47): since 0.6 a citation row may ground the
+    module or a binning bound rather than a locus, and a row referencing nothing cannot reference
+    something missing. Its dedup key is `(None, pmid)`, so two subject-less rows citing one paper are
+    still a duplicate — deliberately: they are the same claim written twice, and the whole point of
+    the relaxation is that one such row is enough."""
     warnings: list[str] = []
     variant_rsids = {v.rsid for v in variants if v.rsid is not None}
     variant_coords = {
@@ -2535,6 +2604,8 @@ def _cross_validate_studies(
     }
     orphans: list[str] = []
     for row in studies:
+        if row.variant_key is None:
+            continue
         by_rsid = row.rsid is not None and row.rsid in variant_rsids
         by_coord = (
             row.chrom is not None
@@ -2546,7 +2617,7 @@ def _cross_validate_studies(
         warnings.append(
             f"Studies reference variants not in variants.csv: {sorted(set(orphans))}"
         )
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str | None, str]] = set()
     for row in studies:
         key = (row.variant_key, row.pmid)
         if key in seen:
@@ -2846,6 +2917,8 @@ def validate_spec(
     # `ResolutionRow.genome_build` is a column, so a row states which frame its numbers are in and
     # that is the frame its coordinate has to be possible in (RM48).
     resolution_by_build: dict[str, list[ResolutionRow]] = {}
+    # Filled from `literature.csv` below; cross-checked once `studies.csv` is loaded further down.
+    literature_rows: list[LiteratureRow] = []
 
     # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
@@ -2891,6 +2964,13 @@ def validate_spec(
             # nothing else. It reports here too so an author sees the shortfall at pre-flight, where
             # the remedy (re-run the mint pass) is still cheap.
             all_warnings.extend(_vrs_coverage_warnings(injected_rows))
+        if model is LiteratureRow and not injected_errors:
+            # Stashed rather than checked here: the citation sites (`studies.csv`, and since 0.6 the
+            # binning tables' `pmid`) are loaded further down, so the cross-check runs once both are
+            # in hand. Parity by CHECK, not by table — this is pure computation over injected and
+            # authored bytes with no `output_dir`, so it belongs to the pre-flight, and it was
+            # compile-only for the same reason `_check_allele_membership` was: nobody asked.
+            literature_rows = injected_rows
         if model is SourceRow and not injected_errors:
             # The licence gate, run here for the same reason. It refuses in **both** modes and is pure
             # computation over injected bytes (the compiler holds no source→licence map, P2), so there
@@ -3022,6 +3102,9 @@ def validate_spec(
     # two spec-derived constants, with no resolution step and no `output_dir` in sight, so the
     # pre-flight is exactly where an author should hear about them.
     all_warnings.extend(_check_vcf_pointers(variants, loaded_kinds))
+
+    # The injected citation sidecar against BOTH citation sites, now that studies are loaded.
+    all_warnings.extend(_cross_check_literature(literature_rows, studies, loaded_kinds))
 
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
@@ -3648,7 +3731,12 @@ def compile_module(
         return [], warns
 
     def _literature_checks(rows: list) -> tuple[list[str], list[str]]:
-        return [], list(_cross_check_literature(rows, studies))
+        # De-duplicated on the message: `compile_module` runs `validate_spec`, which runs this same
+        # check, so a finding living in both places would otherwise print twice (the
+        # `_check_contig_ploidy` idiom).
+        return [], [
+            w for w in _cross_check_literature(rows, studies, kind_rows) if w not in all_warnings
+        ]
 
     def _gene_validity_checks(rows: list) -> tuple[list[str], list[str]]:
         return [], list(_cross_check_gene_validity(rows, variants))
@@ -3672,12 +3760,10 @@ def compile_module(
         # simply says nothing rather than saying the wrong thing.
         used = {r.authority for r in resolution_rows if r.authority}
         for model, parsed in fact_rows.items():
-            if model is SourceRow:
+            if model in (SourceRow, LiteratureRow):
                 continue
             used |= {getattr(r, "source", None) for r in parsed if getattr(r, "source", None)}
-        # `studies` is the module's own literature evidence, and it has no `source` column to join —
-        # so a literature-layer declaration beside it is uncorroborable rather than stale (S23).
-        warns = _source_checks(rows, {s for s in used if s}, literature_evidenced=bool(studies))
+        warns = _source_checks(rows, {s for s in used if s})
         warns.extend(_check_declared_license_agrees(rows, config.license if config else None))
         return [], warns
 
@@ -3913,9 +3999,12 @@ def _check_license_gate(rows: list[SourceRow]) -> list[str]:
     ]
 
 
-def _source_checks(
-    rows: list[SourceRow], used_sources: set[str], *, literature_evidenced: bool = False
-) -> list[str]:
+#: The `sources.csv` layers no fact table's `source` column can ever corroborate, so a declaration at
+#: one of them is uncorroborable rather than stale. See `_source_checks` for why each is here.
+_UNCORROBORABLE_LAYERS: frozenset[str] = frozenset({"annotation", "literature"})
+
+
+def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
     """Warning-only coherence for `sources.csv`. Never escalates under `strict`.
 
     Two findings, both mirroring the existing orphan-sidecar precedent (don't punish the author for
@@ -3938,21 +4027,37 @@ def _source_checks(
     `pgx_draft` both write exactly one such row, and it is the row that makes the licence gate work.
     Warning that the load-bearing row looks unused is the opposite of useful.
 
-    **`literature` joins that exemption whenever the module's literature evidence is `studies.csv`
-    (S23).** The same argument, reached by the same route: `studies.csv` is the hand-curated literature
-    table and carries no `source` column *by the design the annotation exemption cites*, so a module
-    citing a PMID through it can never corroborate the service the curator read the record through.
-    Only `literature.csv` — which the enricher writes, with a `source` column — can, and a module that
-    has none has nothing to join. The old behaviour inverted the incentive exactly where it matters
-    most: `vocab.MISPLACED_COLUMN_REASONS['source']` tells an author to declare a hand-read source by
-    adding a row to `sources.csv`, and doing so earned a warning that the row is unused, while deleting
-    it — and shipping with the provenance unrecorded — was silent. Compliance warned, omission quiet.
-    An over-declaration here is the cheap error; an author talked out of recording their terms is not.
+    **`literature` joins that exemption, and since 0.6 it joins it unconditionally (S23, then RM46).**
+    The same argument, reached by the same route: `studies.csv` is the hand-curated literature table
+    and carries no `source` column *by the design the annotation exemption cites*, so a module citing
+    a PMID through it can never corroborate the service the curator read the record through. That left
+    `literature.csv` — enricher-written, with a `source` column — as the only possible corroborator,
+    which is why the exemption used to be conditional on the module having no study rows.
+
+    RM46 removed that last joinable value, and the reason is the point rather than a simplification.
+    `literature.csv`'s `source` names the **bibliographic registry that answered** (`pubmed`), not a
+    licensed source, and the tier has no terms constant for it *because a literature source's terms
+    are per article, not per source*: PubMed's metadata is one thing and the publisher's article is
+    another, and Europe PMC's open subset spans CC-BY, CC-BY-NC and bronze. So the article's terms are
+    recorded on the literature row itself (`license`/`share_alike`/`commercial_use`/`redistribution`)
+    and its `source` is excluded from `used_sources` by the caller. A single `pubmed` row in
+    `sources.csv` would be wrong in the dangerous direction — right for a module citing only ids, and
+    a false all-clear for one carrying a `provenance_quote` lifted from a CC-BY-NC article. Nothing
+    can therefore corroborate a literature-layer declaration, `studies.csv` or no, so the conditional
+    could no longer distinguish anything.
+
+    Note which way the old behaviour pushed an author, because that is what makes the exemption worth
+    keeping: `vocab.MISPLACED_COLUMN_REASONS['source']` tells an author to declare a hand-read source
+    by adding a row to `sources.csv`, and doing so earned a warning that the row is unused, while
+    deleting it — and shipping with the provenance unrecorded — was silent. Compliance warned,
+    omission quiet. An over-declaration here is the cheap error; an author talked out of recording
+    their terms is not. `frequency` still warns, because `frequencies.csv` *is* machine-written with a
+    `source` column naming a licensed source, so a frequency declaration in a module with no
+    frequencies really is stale.
     """
     warnings: list[str] = []
     declared = {r.source for r in rows}
-    uncorroborable = {"annotation", "literature"} if literature_evidenced else {"annotation"}
-    corroborable = {r.source for r in rows if r.layer not in uncorroborable}
+    corroborable = {r.source for r in rows if r.layer not in _UNCORROBORABLE_LAYERS}
     orphans = sorted(corroborable - used_sources)
     if orphans:
         warnings.append(
@@ -4414,18 +4519,35 @@ def _cross_check_frequencies(
 
 
 def _cross_check_literature(
-    rows: list[LiteratureRow], studies: list[StudyRow]
+    rows: list[LiteratureRow],
+    studies: list[StudyRow],
+    bin_rows: dict[str, list[MeasureBinRow]] | None = None,
 ) -> list[str]:
-    """Two orphan directions, and one finding that is not an orphan at all.
+    """Two orphan directions, one finding that is not an orphan at all, and one licensing notice.
 
-    * a literature row for a PMID no study cites — the sidecar is stale or over-broad (warning, the
-      same reasoning as the frequency/gene-metrics orphan checks: an extra row is harmless);
+    * a literature row for a PMID **nothing in the module cites** — the sidecar is stale or over-broad
+      (warning, the same reasoning as the frequency/gene-metrics orphan checks: an extra row is
+      harmless);
     * a **nonexistent citation** (`exists is False`) — not an orphan but a defect in the module, and
-      the compiler can surface it offline because the enricher already recorded the verdict as a fact.
+      the compiler can surface it offline because the enricher already recorded the verdict as a fact;
+    * a **quote lifted from an article whose licence forbids commercial reuse** (RM46).
 
-    Matched on digit-only PMIDs, since `StudyRow.pmid` is free-form and may carry several ids or a
-    `[PMID: N]` wrapper — `extract_pmids` is the same normalizer the enricher pass uses, so the two
-    sides cannot drift apart.
+    **There are two citation sites since 0.6, and both count** (RM47). `studies.csv` was the only one
+    until binning rows gained a `pmid`, and reading only the first would have made every
+    threshold-grounding citation look like an orphan — shipping evidence the compiler then reported as
+    stale, which is worse than the honest gap the column replaced.
+
+    Matched on digit-only PMIDs, since both `StudyRow.pmid` and `MeasureBinRow.pmid` are free-form and
+    may carry several ids or a `[PMID: N]` wrapper — `extract_pmids` is the same normalizer the
+    enricher pass uses, so the sides cannot drift apart.
+
+    **The non-commercial notice warns in both modes and gates nothing.** It is the third such
+    exception, after the ClinVar `clin_sig` cross-check and `_check_declared_license_agrees`, and for
+    the same reason: refusing would make the format arbitrate a copyright question. What it can
+    honestly do is make the tension visible, because a `provenance_quote` is publisher text sitting in
+    the module's own *annotation* layer — precisely where the licence gate bites — while the article's
+    terms are recorded per article here and never as a `sources.csv` row. Grouped by licence rather
+    than one line per citation, since a panel cites in the hundreds.
     """
     if not rows:
         return []
@@ -4433,6 +4555,7 @@ def _cross_check_literature(
     cited: set[str] = set()
     for study in studies:
         cited.update(extract_pmids(study.pmid))
+    cited.update(binning_citations(bin_rows or {}))
 
     missing = sorted({r.pmid for r in rows if r.exists is False})
     if missing:
@@ -4448,7 +4571,44 @@ def _cross_check_literature(
                 f"literature.csv describes {len(orphans)} citation(s) no study in this module cites: "
                 f"{orphans}"
             )
+    findings.extend(_check_quoted_article_licenses(rows, studies))
     return findings
+
+
+def _check_quoted_article_licenses(
+    rows: list[LiteratureRow], studies: list[StudyRow]
+) -> list[str]:
+    """Quotes taken from articles whose licence forbids commercial reuse (RM46). Warning-only.
+
+    Keyed on the *quote*, not on the citation: naming a PMID costs nothing under any licence, while a
+    `provenance_quote` / `provenance_regex` copies the publisher's own words into `studies.csv`, which
+    is authored content the module ships. `commercial_use is False` is a recorded fact the enricher
+    read off the article's licence; `None` is unknown and withholds, as everywhere else.
+
+    Aggregated by licence string, one line per licence, because a repeated per-row warning buries
+    every other finding a compile produces (the lesson CPIC taught four times).
+    """
+    quoted = {
+        pmid
+        for study in studies
+        if study.provenance_quote or study.provenance_regex
+        for pmid in extract_pmids(study.pmid)
+    }
+    if not quoted:
+        return []
+    by_license: dict[str, list[str]] = {}
+    for row in rows:
+        if row.commercial_use is False and row.pmid in quoted:
+            by_license.setdefault(row.license or "an unnamed non-commercial licence", []).append(
+                row.pmid
+            )
+    return [
+        f"{len(pmids)} study quote(s) come from article(s) licensed {license_name!r}, which forbids "
+        f"commercial reuse: {sorted(pmids)}. Not adjudicated here — quoting for comment or research "
+        f"is often fine and the format is not the tier that decides — but the passage is publisher "
+        f"text in this module's annotation layer, so a commercial distribution has to answer for it"
+        for license_name, pmids in sorted(by_license.items())
+    ]
 
 
 def _check_ba1_lint(

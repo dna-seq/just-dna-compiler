@@ -44,19 +44,38 @@ concern, and a module includes **only** the CSVs it uses (RM2 — `variants.csv`
 SNP core is `variants.csv` + `studies.csv` (studies required *iff* variants present). Everything else
 is an optional table kind.
 
-**Where grounding evidence goes, and where it currently cannot go (S19/RM47).** `studies.csv` is the
-one grounding mechanism, and it identifies its subject the way a variant is identified — by `rsid`, or
-by `chrom`(+`start`). So it grounds `variants.csv` row by row, and it grounds any table whose rows carry
+**Where grounding evidence goes, and the line between the two citation sites (S19/RM47).**
+`studies.csv` identifies its subject the way a variant is identified — by `rsid`, or by
+`chrom`(+`start`) — so it grounds `variants.csv` row by row, and it grounds any table whose rows carry
 a variant identity: `pharm_variants.csv`, `haplotypes.csv`, and `heteroplasmy.csv` when its optional
 `rsid`/`chrom`/`start` columns are filled (`reference_examples/mt_heteroplasmy` is the worked case). It
 is **accepted in a module carrying no `variants.csv`** — it loads, validates and compiles to
-`studies.parquet` — so a binning or PGx module can cite its literature today. What it cannot yet do is
-name a *gene-keyed* row: a `repeat_alleles.csv` bin is keyed `(gene, repeat_unit)` and no study row can
-point at one, so a citation there grounds the module rather than the boundary. The compiler says so
-rather than staying silent — a binning table stating thresholds in a module with no study rows warns in
-both modes — and closing it properly is **RM47**. `sources.csv` does not substitute: it records a
-*dataset's* terms and attribution, which answers where a table came from, never why a bound is where it
-is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
+`studies.parquet` — so a binning or PGx module can cite its literature.
+
+What it could not do before 0.6 was name a *gene-keyed* row: a `repeat_alleles.csv` bin is keyed
+`(gene, repeat_unit)` and no study row could point at one, so a citation there grounded the module and
+never the boundary — which is the number a reader actually wants to check. **RM47 closed that with a
+second citation site and one rule for reading it: the bin row cites, the citation table describes.**
+
+- **`MeasureBinRow.pmid` is a pointer on the row that states the threshold** — one optional column on
+  the binning base, so it reaches all four kinds. Free-form like `StudyRow.pmid` and validated by the
+  same grammar.
+- **The citation table's subject requirement is relaxed**: a `studies.csv` row may now exist without
+  naming a variant, so the paper behind a threshold can be described honestly instead of an author
+  writing a bare `chrom=4` for HTT — an assertion about a locus the paper is not about. Widening an
+  either-or rule only makes previously-*invalid* rows valid, so no published module breaks.
+- **The bin carries the pointer and nothing else.** Population, `p_value_num`, `effect_size` and
+  `provenance_quote` stay on `StudyRow`. Copying them onto the bin one column at a time would restate
+  the bin inside its own evidence, which is what ruled out the alternative designs (a `bin_evidence.csv`
+  join table has to key on the thresholds, and they are floats — re-authoring `40` as `40.0` orphans
+  the evidence with nothing able to notice).
+
+The compiler still reports a threshold with no evidence at all — a binning table with no bin `pmid`
+in a module with no study rows warns in both modes — and both the enricher's literature pass and the
+compiler's literature cross-check read the new site, so a bin-grounded citation is checked for
+existence and identifiers exactly like a study-grounded one. `sources.csv` does not substitute for
+either: it records a *dataset's* terms and attribution, which answers where a table came from, never
+why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
 the six derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `gene_validity.csv` / `clinical_assertions.csv` / `sources.csv`, which are therefore absent from the
@@ -289,7 +308,9 @@ unphased `A/G` (must be sorted), or a single allele (hemizygous/homoplasmic). Re
 `effective_benign`, `needs_upgrade`, and a materializing `upgraded()`.
 
 **`StudyRow` → `studies.csv`.** Required `pmid` (must contain a PubMed token — kept verbatim). Optional
-`rsid`/`chrom`/`start`/`ref` (needs rsid or chrom), `population`, `p_value`, `conclusion`,
+`rsid`/`chrom`/`start`/`ref` — **all of them, since 0.6**: a citation row may name no variant at all
+and ground the module or a binning bound instead (RM47), in which case `variant_key` is `None` and the
+compiler's orphan check skips it. `population`, `p_value`, `conclusion`,
 `study_design`, `stat_significance`, `effect_size`, `effect_measure`, `trait_efo_id`, and the RM11/RM12
 provenance columns `doi?` (DOI grammar), `provenance_quote?`, `provenance_regex?` (must `re.compile` at
 author time — a declarative pattern grammar, Principle 1). 0.5 adds the **queryable p-value**:
@@ -333,7 +354,10 @@ hg19 coordinate, whose remedy is rsID recovery rather than a liftover.
 **Binning rows** (`binning.py`, all subclass `MeasureBinRow`). Shared: `measure_kind` (must match the
 row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` carries no bounds — the
 mandatory no-call sentinel), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
-and the `source_field?` VCF pointer plus its `source_element?` rule. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
+and the `source_field?` VCF pointer plus its `source_element?` rule, plus **`pmid?` — the boundary
+citation added in 0.6 (RM47)**, a free-form PubMed pointer under the same grammar as `StudyRow.pmid`.
+The bin row cites; the citation table describes, which is what keeps `StudyRow`'s provenance column set
+from migrating here one column at a time. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
 `CopyNumberRow`→`(gene, modifier_gene, modifier_cn)`; `RepeatAlleleRow`→`(gene, repeat_unit)`;
 `HeteroplasmyRow`→`(gene, reference_sequence, tissue, variant_key)` (rejects the legacy `NC_001807`
 mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping resolved ranges
@@ -705,19 +729,29 @@ by grain and by who writes them:
 
 | | grain | asks | written by |
 |---|---|---|---|
-| `studies.csv` | a variant + a claim | *why do I believe this row?* | the curator |
-| `literature.csv` | a `pmid` — an article | *does that citation check out?* | an enricher pass |
+| `studies.csv` | a variant, a binning bound, or the module + a claim | *why do I believe this row?* | the curator |
+| `literature.csv` | a `pmid` — an article | *does that citation check out, and on what terms?* | an enricher pass |
 | `sources.csv` / `licensing.csv` | a `(source, layer)` — a dataset | *where did the bytes come from, on what terms?* | a pass **or** the curator |
 
 They stack rather than overlap, and the reason they cannot merge is that **a paper is not a data
 source**. `studies.csv` is authored annotation and feeds `content_signature`; `literature.csv` is a
 verification record *over* those citations, and its facts are hashed separately so an embargo lifting
 or a re-run cannot move the module's content identity; `sources.csv` is one level up again, describing
-the *datasets* consulted — including PubMed and Europe PMC, the ones that answered `literature.csv`'s
-questions, which belong here at the `literature` layer (what their terms are is [RM46](ROADMAP.md), since
-a literature source's terms are per-article). That containment is why the compiler exempts the
-`literature` layer from its stale-source check whenever the module carries `studies.csv` rows: a
-`pubmed` row is corroborated by `literature.csv` and by nothing else. They are also consumed by
+the *datasets* consulted.
+
+**PubMed is deliberately not one of them (RM46).** The literature pass writes `source="pubmed"` into
+every row it produces, and there is no `pubmed` row in the licence table and will not be one: a
+literature source's terms are **per article, not per source**. PubMed's metadata is one thing; the
+article belongs to its publisher, and Europe PMC's open subset spans CC-BY, CC-BY-NC and bronze — so
+one `pubmed` row would be right for a module citing only ids and a false all-clear for one carrying a
+`provenance_quote` lifted from a CC-BY-NC article, since that quote is publisher text sitting in the
+module's own *annotation* layer. The terms therefore live on the literature row that names the article
+(`license`, `share_alike`, `commercial_use`, `redistribution`), and the compiler excludes
+`literature.csv`'s `source` from the values `sources.csv` has to account for. Quoting a non-commercial
+article **warns and never gates**, the same call as the ClinVar `clin_sig` cross-check: refusing would
+make the format arbitrate a copyright question. A consequence worth stating: nothing in any fact table
+can corroborate a `literature`-layer declaration any more, so that layer is unconditionally exempt from
+the stale-source check. They are also consumed by
 different things — the compile licence gate reads `sources.csv` and no other file — and each hashes its
 own fact set with its own exclusions, which one merged table could not do.
 
@@ -796,7 +830,8 @@ variant, and deliberately so: a DOI, a PMCID and "does PubMed have this record" 
 hundred with the same DOI repeated — the same argument that put gene constraint in its own table, and
 the one that keeps the file readable by the human the DSL exists for. Facts: `pmid`, `doi?`, `pmcid?`,
 `exists?`. Everything else is provenance or time-varying state: `doi_exists?`, `is_open_access?`,
-`quotes_authored?`, `quotes_found?`, `quote_source?`, `source?`, `status?`, `fetched_at?`.
+`license?`, `share_alike?`, `commercial_use?`, `redistribution?`, `quotes_authored?`, `quotes_found?`,
+`quote_source?`, `source?`, `status?`, `fetched_at?`.
 
 - **No `dataset` column**, unlike its two siblings. gnomAD ships numbered releases; PubMed and Europe
   PMC are continuously updated and publish no release identifier, so the column could only ever be null
@@ -804,6 +839,21 @@ the one that keeps the file readable by the human the DSL exists for. Facts: `pm
 - **`is_open_access` is outside the fact set** because an embargo lifting is the world changing, not the
   module. Inside it, a module's `literature_signature` would move with no authored edit anywhere —
   exactly the property that makes a fact-hash worth having.
+- **The four licence columns are outside it for the same reason (0.6, RM46).** A publisher
+  re-licensing an article, or Europe PMC learning terms it did not hold last month, changes the world
+  rather than the module. `license` is stored **verbatim** as the source spells it (Europe PMC writes
+  `cc by`, `cc by-nc`, `cc by-nc-nd`) and the three rights are derived from it at read time, so a
+  mapping correction reaches rows already written. They are **three orthogonal axes** and `None` is
+  never `False`: CC BY-NC forbids sale while expressly allowing sharing, and a licence the tier has not
+  read is undetermined rather than forbidding. The licence is **independent of `is_open_access`** and
+  must not be derived from it — PMID 28546431 comes back `isOpenAccess: N` with `license: cc by`,
+  because one describes Europe PMC's OA subset and the other describes the article.
+- **`pmcid` is the derived home for a PubMed Central id, and there is no authored one (RM50).**
+  `StudyRow.pmid` refuses a cell whose only identifier is a PMC id — in any spacing, naming the id it
+  saw, because `PMC 3110566` used to be read as PMID 3110566, a real record for an unrelated article.
+  A curator holding only a PMC id gets the PubMed one from `just-dna-enricher hint citation --pmcid`,
+  which **reports it and never writes it**: filling `pmid` from NCBI would make the existence check
+  compare NCBI with itself.
 - **`exists` is PubMed's answer and `doi_exists` is Crossref's, and they are different questions.**
   A paywall does not hide a record from PubMed — it hides the *fulltext* — so `exists` is answered for
   paywalled work. What PubMed cannot answer for is a citation it does not index at all: a preprint,

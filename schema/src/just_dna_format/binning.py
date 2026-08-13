@@ -87,6 +87,18 @@ A measurement that is *present but matches no bin* is a distinct third state ("n
 `unresolved`); `validate_bins` below rejects overlaps and flags coverage gaps so a table stays
 coherent (consumer round-2 C1).
 
+**`pmid` grounds the BOUNDARY, and the line is: the bin row cites, the citation table describes**
+(RM47, 0.6). A threshold is the most interpretive claim this format carries — where 36 rather than 35
+CAG becomes "reduced penetrance" is a clinical judgement drawn from a specific paper — and until 0.6
+nothing could point at one: `studies.csv` identifies its subject by rsid or `chrom`, while a
+`repeat_alleles.csv` row is keyed `(gene, repeat_unit)`. One optional column on this base reaches all
+four kinds and answers the question actually asked, which is *why 36* rather than *why this table*.
+It carries a **pointer only**. Everything about the paper — population, `p_value_num`, `effect_size`,
+`provenance_quote` — stays in `studies.csv`, whose subject requirement was relaxed in the same release
+so a citation row may exist without naming a variant. Copying that column set here one column at a
+time would restate the bin inside its own evidence, which is exactly what killed the alternative
+designs (a `bin_evidence.csv` join table keys on the thresholds, and they are floats).
+
 **`source_field` (round-2 3a) is a declarative *pointer*, not code.** It optionally names the VCF
 field the consumer extracts the measure from (`FORMAT/REPCN`, `FORMAT/AF`, `INFO/CN|FORMAT/DS`) —
 pure indirection/addressing, deliberately constrained to a field-name key (optionally namespace-
@@ -120,6 +132,7 @@ from typing import ClassVar
 from pydantic import Field, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
+from just_dna_format.spec import validate_pmid_cell
 from just_dna_format.vocab import check_vocab, validate_finite
 
 # Open, additive vocabulary of measured quantities (the `frozenset[str]` idiom, Principle 6). New
@@ -246,9 +259,24 @@ class MeasureBinRow(AuthoredModel):
         ),
     )
 
+    pmid: str | None = Field(
+        default=None,
+        description=(
+            "Optional PubMed id grounding THIS boundary — the literature the threshold is drawn "
+            "from. Free-form like `StudyRow.pmid` (`9545397`, `[PMID: 9545397]`, a `;`-joined list). "
+            "The bin row cites; studies.csv describes."
+        ),
+    )
+
     # `source_field`'s pointer grammar and `source_element`'s vocabulary are both validated on
     # `AuthoredModel` — they are shared with `VariantRow.callable_from`/`callable_element` and
     # `quality_from`/`quality_element`, and a validator used by more than one model lives on the base.
+
+    @field_validator("pmid")
+    @classmethod
+    def _validate_pmid(cls, v: str | None) -> str | None:
+        # Shared with `StudyRow.pmid` (see `spec.validate_pmid_cell`); optional here, required there.
+        return validate_pmid_cell(v, "pmid", required=False)
 
     @field_validator("measure_min", "measure_max")
     @classmethod

@@ -273,6 +273,61 @@ RESOLUTION_AUTHORITY_BY_LINK: dict[str, str] = {
     "gnomad": "gnomad",
 }
 
+@dataclass(frozen=True)
+class ArticleTerms:
+    """The three rights a cited **article** carries, read off its own licence (RM46).
+
+    A separate shape from `SourceTerms` because it answers a different question about a different
+    thing. `SourceTerms` describes a *service* and produces a `SourceRow`; this describes one paper
+    and lands on the `LiteratureRow` for it. There is deliberately **no `pubmed` entry in
+    `TERMS_BY_SOURCE`** and there will not be one: a literature source's terms are per article, not
+    per source — PubMed's metadata is one thing and the publisher's article is another, and Europe
+    PMC's open subset spans CC-BY, CC-BY-NC and bronze. One `pubmed` row would be right for a module
+    citing only ids and a false all-clear for one carrying a `provenance_quote` lifted from a
+    CC-BY-NC article, since that quote is publisher text in the module's own annotation layer.
+    """
+
+    share_alike: bool | None = None
+    commercial_use: bool | None = None
+    redistribution: bool | None = None
+
+
+#: Rights by the licence string Europe PMC actually publishes, probed 2026-08-13 over its core search
+#: result: the values are lowercase Creative Commons spellings (`cc by`, `cc by-nc`, `cc by-nc-nd`),
+#: and they are recorded **verbatim** on the row — this map is applied at read time so a correction
+#: here reaches rows already written, the same rule `cpic_build` follows.
+#:
+#: Total over what the CC family means and nothing else. `-nc` forbids sale; `-sa` is viral; every CC
+#: licence and CC0 permit redistribution, which is the axis `commercial_use` alone understates. An
+#: unrecognised or absent value maps to all-`None` — unknown, withheld, never `False`: "we could not
+#: establish the terms" is not a finding that they forbid anything (the house tri-state).
+ARTICLE_TERMS_BY_LICENSE: dict[str, ArticleTerms] = {
+    "cc0": ArticleTerms(share_alike=False, commercial_use=True, redistribution=True),
+    "cc by": ArticleTerms(share_alike=False, commercial_use=True, redistribution=True),
+    "cc by-sa": ArticleTerms(share_alike=True, commercial_use=True, redistribution=True),
+    "cc by-nd": ArticleTerms(share_alike=False, commercial_use=True, redistribution=True),
+    "cc by-nc": ArticleTerms(share_alike=False, commercial_use=False, redistribution=True),
+    "cc by-nc-sa": ArticleTerms(share_alike=True, commercial_use=False, redistribution=True),
+    "cc by-nc-nd": ArticleTerms(share_alike=False, commercial_use=False, redistribution=True),
+}
+
+
+def article_terms(license_name: str | None) -> ArticleTerms:
+    """The rights a licence string grants, or all-unknown when it names nothing this tier knows.
+
+    Case- and whitespace-insensitive, and tolerant of the `CC-BY-NC` spelling as well as Europe PMC's
+    own `cc by-nc`, because the same value reaches this function from a hand-edited sidecar. Nothing
+    is inferred from a substring: a licence this tier has not read is unknown, and an unknown right is
+    withheld rather than guessed in either direction.
+    """
+    if not license_name or not license_name.strip():
+        return ArticleTerms()
+    key = " ".join(license_name.strip().lower().replace("_", "-").split())
+    return ARTICLE_TERMS_BY_LICENSE.get(key) or ARTICLE_TERMS_BY_LICENSE.get(
+        key.replace("cc-", "cc ", 1), ArticleTerms()
+    )
+
+
 #: Every source whose terms this tier can state, by the identifier that joins `sources.csv.source`.
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
