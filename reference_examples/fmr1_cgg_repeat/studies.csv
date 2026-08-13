@@ -1,0 +1,3 @@
+pmid,conclusion
+23099194,"Monaghan 2013 (ACMG): technical standards for fragile X testing, which is where these four boundaries come from. This row names no variant — legal since 0.6 (RM47) — because the paper is about the thresholds, not about a locus a study row could point at."
+25326637,"Nolin 2015: AGG interruptions within the CGG tract change the expansion risk of a premutation allele. The module cannot express this: repeat_alleles.csv is keyed (gene, repeat_unit) and binds one count to one motif (RM66)."

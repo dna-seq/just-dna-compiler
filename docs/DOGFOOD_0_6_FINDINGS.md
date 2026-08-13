@@ -93,6 +93,34 @@ module** — filed as evidence, not as a defect.
 
 ---
 
+## D5 — `fmr1_cgg_repeat`
+
+Module: `reference_examples/fmr1_cgg_repeat/`. RM47's *fix* had no worked instance anywhere —
+`htt_repeat_expansion` stays deliberately uncited as the example of the gap — so this is it: four
+published FMR1 boundaries, each carrying its `pmid`, on chrX where a male sample is hemizygous.
+
+Both findings are in the **printed authoring contract**, which is the surface the 0-vs-1-based `start`
+docstring established is a contract and not commentary.
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **D5-1** | **`largest`'s meaning sentence assumes a ploidy the contig does not have.** `ELEMENT_RULE_MEANINGS['largest']` explains the rule as *"the longer of the sample's two alleles"* — a claim about a diploid record — and FMR1 in a male is the presentation the gene is known for. The rule itself is correct for one value; only the illustration is wrong, and it is the only member's sentence that reaches for one. | fix (wording) | medium |
+| **D5-2** | **RM63's correction is a code comment, and the pipe form is not in the printed contract at all.** `describe variants.csv` gives `genotype` as *"Slash-separated sorted alleles, e.g. A/G"* — no `A\|G`, no mention of phase — while the validator accepts it, its own error message lists it, and `phased` is materialized and round-tripped. RM63's corrected wording (*"heterozygous, phase recorded but unaddressable"*) sits above the validator in `base.py` and nothing prints it. | fix | medium |
+
+### Checked and held (D5)
+
+**RM47 holds in both directions and at both call sites**: bins carrying `pmid` silence
+`_check_binning_grounding`; a module whose *only* citation is a bin pointer still has that PMID
+fetched by `enrich literature`; the compiler does **not** report the resulting row as a stale orphan,
+while a genuinely uncited row still is. RM47's subject relaxation works — a `studies.csv` row naming
+no variant loads, validates and is skipped by the orphan half of `_cross_validate_studies`. RM55 fires
+on `repeat_count` naming **`RUC`** and VCF 4.4 §3 (not the `CN` reasoning), on bins that tile the
+integers cleanly and look fine — which is why it was made loud. RM56 fires once on the 10-wide
+intermediate zone, names `CIRUC`, says withhold. Round trip is a fixed point. **RM66's gating
+evidence** (AGG interruptions vs a `(gene, repeat_unit)` key) is now a corpus module.
+
+---
+
 ### Checked and held (D2)
 
 - `licensing.csv` is the spelling both providers write into a fresh directory (RM51); the compile gate

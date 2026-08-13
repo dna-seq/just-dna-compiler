@@ -1,0 +1,16 @@
+schema_version: '1.0'
+module:
+  name: fmr1_cgg_repeat
+  title: FMR1 CGG repeat — a threshold that cites the paper it came from
+  report_title: FMR1 CGG (fragile X)
+  description: The FMR1 CGG tract, binned, with every boundary carrying the PubMed id it was drawn
+    from. RM47 made a bin row citable in 0.6 and nothing in the corpus had done it — htt_repeat_expansion
+    stays deliberately uncited as the example of the gap this closes. On chrX, so a male sample is
+    hemizygous and the repeat field carries one value rather than two.
+  icon: dna
+  icon_set: fomantic
+  color: '#6435c9'
+defaults:
+  curator: audit
+  method: literature-review
+genome_build: GRCh38

@@ -1,0 +1,6 @@
+gene,repeat_unit,source_field,source_element,measure_kind,measure_min,measure_max,direction,clin_sig,phenotype,conclusion,pmid,unresolved
+FMR1,CGG,FORMAT/REPCN,largest,repeat_count,5,44,neutral,benign,Normal range,"Up to 44 CGG: normal and meiotically stable.",23099194,false
+FMR1,CGG,FORMAT/REPCN,largest,repeat_count,45,54,neutral,uncertain_significance,Intermediate (grey zone),"45 to 54 CGG: intermediate. The carrier is not at risk, but the allele may be unstable in transmission. This 10-wide zone is where a caller's confidence interval most often straddles a boundary.",23099194,false
+FMR1,CGG,FORMAT/REPCN,largest,repeat_count,55,200,risk,pathogenic,Premutation,"55 to 200 CGG: premutation. Risk of FXTAS and, in females, FXPOI; the allele may expand to a full mutation when maternally transmitted, and the expansion risk depends on the AGG interruption pattern this table cannot state.",23099194,false
+FMR1,CGG,FORMAT/REPCN,largest,repeat_count,201,2000,risk,pathogenic,Full mutation,"Above 200 CGG: full mutation. FMR1 is methylated and silenced; fragile X syndrome.",23099194,false
+FMR1,CGG,FORMAT/REPCN,largest,repeat_count,,,,,,"No CGG repeat count was supplied. Withhold: an unmeasured tract is not a normal one.",,true
