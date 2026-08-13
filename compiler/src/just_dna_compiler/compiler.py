@@ -879,39 +879,47 @@ def _apply_positional_resolution(
     rows_by_csv: dict[str, list[Any]],
     resolution_table: dict[str, list[ResolutionRow]],
     genome_build: str = DEFAULT_GENOME_BUILD,
-) -> list[str]:
+    *,
+    resolve: bool = True,
+) -> tuple[list[str], bool]:
     """Join the injected `resolution.csv` onto every positional 0.4-family table (RM43).
+
+    Returns `(warnings, applied)`. **`applied` is load-bearing, not bookkeeping**: it is what lets
+    `_check_positional_joinability` say *why* a row is still unplaced without asserting a reason the
+    join never reached. Every gate below turns it off, and each is a different situation — no table to
+    consult, no positional rows, a non-GRCh38 module, a caller that asked for no resolution — but they
+    share the one consequence that matters downstream, which is that nothing was looked up.
 
     The compiler-side half of `resolution.resolve_positional_rows` — it picks the tables, handles the
     build gate, and collapses the per-row findings into one line per table. Rows are filled **in
     place**, so a caller that holds the lists gets the resolved rows back; run it before `_build_table`
-    materializes them, and before `_check_positional_joinability`, which then reports only what is
-    genuinely still unjoinable.
+    materializes them, and before `_check_positional_joinability`.
 
     Runs in `validate_spec` as well as `compile_module`, and it must: the joinability warning is
     computed from these rows in both, so filling on one side only would leave the pre-flight reporting
     a gap the compile had already closed — and that sentence carries `UNJOINABLE_PHRASE`, which a
-    catalog reads as a trust signal (RM44). Pure computation over injected bytes with no `output_dir`,
-    which is this repo's standing test for what belongs in both.
+    catalog reads as a trust signal (RM44). `resolve` is threaded from `resolve_with_ensembl` for the
+    same reason: it is the master switch for resolution of every kind, so a pre-flight that ignored it
+    would be the more *optimistic* of the two commands, which is the disagreement direction this
+    repo's parity rule exists to prevent. Pure computation over injected bytes with no `output_dir`,
+    which is the standing test for what belongs in both.
 
     **Skipped, with a warning, for a non-GRCh38 module**, exactly as `resolve_from_table` skips: the
     identity minting behind these keys is GRCh38-only (RM15), so joining a table the compiler cannot
     re-derive a key for would place rows against loci it has no way to check.
     """
-    if not resolution_table:
-        return []
     positional = [
         (csv_name, rows_by_csv.get(csv_name) or []) for csv_name, _model in _POSITIONAL_TABLE_KINDS
     ]
-    if not any(rows for _csv_name, rows in positional):
-        return []
+    if not resolve or not resolution_table or not any(rows for _csv, rows in positional):
+        return [], False
     if genome_build != DEFAULT_GENOME_BUILD:
         return [
             f"Positional-table fill skipped: the compiler is GRCh38-bound and this module's "
             f"genome_build is {genome_build!r}, so the injected resolution table is not joined onto "
             f"{', '.join(name for name, rows in positional if rows)} (RM15). Those rows keep the "
             f"coordinates their author typed."
-        ]
+        ], False
     warnings: list[str] = []
     for csv_name, rows in positional:
         if not rows:
@@ -923,7 +931,7 @@ def _apply_positional_resolution(
                 f"table disagrees with, and are left exactly as authored — "
                 f"{_examples(report.contradicted)}"
             )
-    return warnings
+    return warnings, True
 
 
 #: **A downstream trust badge substring-matches this phrase, so it is a contract, not prose (S13).**
@@ -963,6 +971,8 @@ def _check_positional_joinability(
     rows_by_csv: dict[str, list[Any]],
     resolution_table: dict[str, list[ResolutionRow]],
     genome_build: str = DEFAULT_GENOME_BUILD,
+    *,
+    fill_applied: bool = True,
 ) -> list[str]:
     """Which 0.4-family rows a consumer cannot join to a VCF by position, and why the fill left them.
 
@@ -974,12 +984,18 @@ def _check_positional_joinability(
     places at more than one locus.
 
     Reported as **counts per table, never a line per row**, and the second half is the interesting
-    one — *why* a row is still unplaced. Two readings, and the author's next move differs:
+    one — *why* a row is still unplaced. Three readings, and the author's next move differs:
 
     * the table names the key at **several** loci (or at loci the row's own allele contradicts), so
       the compiler leaves it rather than picking one — the same refusal `resolve_from_table` makes,
       and not something an enrich re-run fixes;
-    * **nothing** in the table names the key at all, which an enrich run does fix.
+    * **nothing** in the table names the key at all, which an enrich run does fix;
+    * the fill **never ran** (`fill_applied=False` — `--no-resolve`, a non-GRCh38 module), in which
+      case the coordinates may well be right there and untried. That third branch is why the flag is a
+      parameter rather than something inferred from `placeable`: the reason sentence lands in
+      `manifest.compilation.warnings` beside `UNJOINABLE_PHRASE`, which is a published consumer
+      surface (RM44), and asserting "the compiler looked and would not pick" about a lookup that never
+      happened is a fabricated diagnosis in a document a catalog reads.
 
     A **partial** coordinate is counted apart because it is the more deceptive shape: `haplotypes.csv`
     drafted from CPIC carries a `start` with no `chrom` (CPIC publishes a position on
@@ -1007,13 +1023,19 @@ def _check_positional_joinability(
                 for r in resolution_table.get(_table_row_key(row, genome_build) or "", [])
             )
         ]
-        detail = (
-            f"resolution.csv names {len(placeable)} of them, but at more than one locus or at one "
-            f"the row's own allele contradicts, so the compiler leaves them unplaced rather than "
-            f"picking"
-            if placeable
-            else "no resolution.csv row places them — run `just-dna-enricher enrich` first"
-        )
+        if not placeable:
+            detail = "no resolution.csv row places them — run `just-dna-enricher enrich` first"
+        elif fill_applied:
+            detail = (
+                f"resolution.csv names {len(placeable)} of them, but at more than one locus or at "
+                f"one the row's own allele contradicts, so the compiler leaves them unplaced rather "
+                f"than picking"
+            )
+        else:
+            detail = (
+                f"resolution.csv names {len(placeable)} of them and was not consulted for this "
+                f"table — see the skip reported above"
+            )
         partial_note = (
             f" {len(partial)} carr{'ies' if len(partial) == 1 else 'y'} one half of a coordinate "
             f"(a start with no chrom, or the reverse), which reads as a position and is not one."
@@ -1940,6 +1962,7 @@ def validate_spec(
     authority_keys: Iterable[str] | None = None,
     *,
     strict: bool = False,
+    resolve_with_ensembl: bool = True,
 ) -> ValidationResult:
     """Validate a module spec directory without producing output.
 
@@ -1955,6 +1978,12 @@ def validate_spec(
     `compile --strict`, and a modeless `validate` is a pre-flight for the *other* compile. It changes
     severity only; it never adds or removes a finding, which is what keeps the two commands one
     contract rather than two.
+
+    `resolve_with_ensembl` mirrors it for the same reason and is passed through by `compile_module`.
+    The pre-flight applies the injected table to the positional 0.4 tables (RM43), and that decides
+    whether their rows are reported as unjoinable — so a `validate` that ignored the master resolution
+    switch would be *more optimistic* than the compile it precedes, which is the disagreement
+    direction the parity rule exists to prevent.
 
     Stats include `genes`/`categories` as lists (filtering None) plus `variant_count`,
     `gene_count`, `study_count`, and the ClinVar quality counts
@@ -2112,11 +2141,14 @@ def validate_spec(
     # matters — filling first is what makes the joinability line describe the residue rather than the
     # whole table, and running the fill on one side only would have the pre-flight name a gap the
     # compile has already closed.
-    all_warnings.extend(
-        _apply_positional_resolution(loaded_kinds, membership_table, declared_build)
+    fill_warnings, fill_applied = _apply_positional_resolution(
+        loaded_kinds, membership_table, declared_build, resolve=resolve_with_ensembl
     )
+    all_warnings.extend(fill_warnings)
     all_warnings.extend(
-        _check_positional_joinability(loaded_kinds, membership_table, declared_build)
+        _check_positional_joinability(
+            loaded_kinds, membership_table, declared_build, fill_applied=fill_applied
+        )
     )
 
     # Composition: a module must carry at least one recognized table kind.
@@ -2373,7 +2405,11 @@ def compile_module(
     spec_dir = Path(spec_dir)
     output_dir = Path(output_dir)
 
-    validation = validate_spec(spec_dir, authority_keys)
+    # `strict` is deliberately NOT passed (the pre-flight runs in best_effort whatever this compile's
+    # mode, which is why every mode-ladder check re-runs below); `resolve_with_ensembl` is, because it
+    # is not a severity — it decides whether the injected table is consulted at all, and a pre-flight
+    # answering that differently would seed `all_warnings` with a finding this compile contradicts.
+    validation = validate_spec(spec_dir, authority_keys, resolve_with_ensembl=resolve_with_ensembl)
     if not validation.valid:
         return CompilationResult(
             success=False, errors=validation.errors, warnings=validation.warnings
@@ -2655,14 +2691,10 @@ def compile_module(
         )
         kind_rows[csv_name] = rows
 
-    if resolve_with_ensembl:
-        all_warnings.extend(
-            w
-            for w in _apply_positional_resolution(
-                kind_rows, resolution_table, config.genome_build
-            )
-            if w not in all_warnings
-        )
+    fill_warnings, fill_applied = _apply_positional_resolution(
+        kind_rows, resolution_table, config.genome_build, resolve=resolve_with_ensembl
+    )
+    all_warnings.extend(w for w in fill_warnings if w not in all_warnings)
 
     for csv_name, parquet_name, model in _TABLE_KINDS:
         if csv_name not in kind_rows:
@@ -2675,7 +2707,10 @@ def compile_module(
     # de-duplicated on the message the way `_check_contig_ploidy` is: `compile_module` runs
     # `validate_spec` itself, so a check living in both places otherwise prints its sentence twice.
     all_warnings.extend(
-        w for w in _check_positional_joinability(kind_rows, resolution_table, config.genome_build)
+        w
+        for w in _check_positional_joinability(
+            kind_rows, resolution_table, config.genome_build, fill_applied=fill_applied
+        )
         if w not in all_warnings
     )
     all_warnings.extend(
@@ -3917,7 +3952,16 @@ def _write_resolution_csv(
             if chrom is None or start is None:
                 continue
             alts_cell = row.get("alts") or None
-            resolution_key = _resolution_key(row, chrom, start, alts_cell, genome_build)
+            # The **stored** key here, unlike the weights pass above, and the difference is not a
+            # shortcut. These tables are never expanded, so the stamped column already *is* the
+            # authored-subset key — and it is the only place the model's own alts policy lives:
+            # `PharmVariantRow`/`HaplotypeRow` key without `alts` while `HeteroplasmyRow` keys with
+            # it, which no recomputation here can know. Recomputing filed a coordinate-authored pharm
+            # fact under a `ga4gh:VA.…` the fill then never looked up, so the recompile left the row
+            # unfilled and `resolution_signature` moved. The fallback covers a pre-0.6 parquet.
+            resolution_key = row.get("variant_key") or _resolution_key(
+                row, chrom, start, alts_cell, genome_build
+            )
             if resolution_key in locus_counter:
                 continue
             locus_counter[resolution_key] = 1

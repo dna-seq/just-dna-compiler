@@ -294,8 +294,12 @@ def resolve_positional_rows(
             for name in ("rsid", "chrom", "start", "ref", "alts")
             if name in type(row).model_fields and getattr(row, name) is None
         ]
-        if not fillable:
-            continue
+        # Deliberately **not** short-circuited on `not fillable`. A fully-populated row has nothing to
+        # fill and can still contradict the table it is keyed into — reachable on `heteroplasmy.csv`,
+        # the one positional model whose whole identity set is authorable — and the promise this
+        # function makes is that such a disagreement is *reported*, never repaired. Skipping the
+        # lookup there would have let a mistyped `start` sit beside a disagreeing `resolution.csv` row
+        # in silence, which is the shape `resolve_from_table._verify` exists to catch on the SNP core.
         if not loci:
             if row.chrom is None or row.start is None:
                 report.unplaced_absent += 1
@@ -312,6 +316,8 @@ def resolve_positional_rows(
         conflict = _authored_conflict(row, locus)
         if conflict is not None:
             report.contradicted.append(conflict)
+            continue
+        if not fillable:
             continue
         for name in fillable:
             value = getattr(locus, name, None)
@@ -339,6 +345,12 @@ def _authored_conflict(row: object, locus: ResolutionRow) -> str | None:
     own value. A half-coordinate (`start` with no `chrom`, the shape CPIC drafting produces) is the
     case this exists for: completing it from a locus that puts the variant somewhere else would
     fabricate a coordinate.
+
+    **`alts` is left out of the comparison on purpose.** A locus legitimately lists every ALT recorded
+    there while a row names the one it is about — `A,G` against `G` is agreement, not contradiction —
+    so string equality would manufacture a finding about correct data. Whether the row's allele can
+    sit at the locus is a different question with its own three-valued predicate, and
+    `_hostable_loci`/`hosting_verdict` has already asked it by the time this runs.
     """
     for name in ("rsid", "chrom", "start", "ref"):
         authored = getattr(row, name, None)

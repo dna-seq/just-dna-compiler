@@ -34,12 +34,14 @@ from just_dna_compiler.compiler import (
     compile_module,
     content_signature,
     reverse_module,
+    validate_spec,
 )
 from just_dna_compiler.resolution import resolve_positional_rows
 from just_dna_format.base import authored_field_names, derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
+from pydantic import ValidationError
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _PGX = _EXAMPLES / "pgx_slco1b1_simvastatin"
@@ -138,6 +140,45 @@ def test_a_half_coordinate_is_completed_from_the_table(tmp_path: Path) -> None:
 
 
 # ── the stamped columns ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("model", [PharmVariantRow, HaplotypeRow], ids=lambda m: m.__name__)
+def test_a_compiler_filled_alts_is_refused_rather_than_silently_dropped(model: type) -> None:
+    """`alts` is authored on `variants.csv` and on `heteroplasmy.csv`, and compiler-filled here — so
+    writing it by analogy is a plausible confusion, and it used to fail loudly through
+    `extra="forbid"`. Adding the column silently *accepted* it: the value entered `authored_ident`,
+    `_write_table_csv` then dropped it, and the round trip stopped being a fixed point. A new column
+    may not turn a loud failure into a quiet one."""
+    fields = {"rsid": "rs4149056", "alts": "C"}
+    fields |= (
+        {"haplotype_name": "*5", "allele": "C"}
+        if model is HaplotypeRow
+        else {"gene": "SLCO1B1", "genotype": "C/C", "drug": "simvastatin", "conclusion": "c"}
+    )
+    with pytest.raises(ValidationError, match="filled by the compiler on this table"):
+        model(**fields)
+
+
+def test_a_row_that_genuinely_authors_alts_is_untouched() -> None:
+    """Keyed on the field's own marker, so the guard cannot reach a table where the column is real.
+    `heteroplasmy.csv` authors `alts` and it is part of that model's key."""
+    row = HeteroplasmyRow(
+        gene="MT-TL1", chrom="MT", start=3243, ref="A", alts="G",
+        reference_sequence="NC_012920.1", measure_min=0.0, measure_max=0.1, conclusion="x",
+    )
+    assert row.alts == "G" and "alts" in (row.authored_ident or [])
+
+
+def test_a_stamped_key_is_overwritten_rather_than_refused() -> None:
+    """The other half of the same rule, and the reason the guard is scoped to identity columns:
+    `variant_key`/`authored_ident` are *stamped*, so an authored value is ignored and nothing is lost
+    — `VariantRow` has tolerated exactly that since 0.5 on the no-foot-gun rule. A *filled* column is
+    different, because ignoring it silently discards data the author wrote."""
+    row = PharmVariantRow(
+        rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin", conclusion="c",
+        variant_key="not-this", authored_ident=["chrom"],
+    )
+    assert (row.variant_key, row.authored_ident) == ("rs4149056", ["rsid"])
 
 
 @pytest.mark.parametrize(
@@ -289,6 +330,53 @@ def test_an_authored_cell_the_table_contradicts_blocks_the_fill(tmp_path: Path) 
     assert strict.success, strict.errors
 
 
+def test_a_fully_placed_row_is_still_checked_against_the_table(tmp_path: Path) -> None:
+    """A row with nothing left to fill can still contradict the table it is keyed into, and the
+    promise is that such a disagreement is *reported*. Reachable on `heteroplasmy.csv`, the one
+    positional model whose whole identity set is authorable — a mistyped `start` beside a disagreeing
+    `resolution.csv` row would otherwise sit in silence, which is exactly what
+    `resolve_from_table._verify` exists to catch on the SNP core."""
+    rows = [
+        PharmVariantRow(
+            rsid="rs777", chrom="7", start=701, ref="C", gene="G", genotype="C/G", drug="d",
+            conclusion="c",
+        )
+    ]
+    report = resolve_positional_rows(
+        rows, {"rs777": [_resolution_row("rs777", "7", 700, "C", "G", 0)]}
+    )
+    assert report.filled == 0
+    assert len(report.contradicted) == 1
+    assert "start=701" in report.contradicted[0]
+    assert rows[0].start == 701, "reported, never repaired"
+
+
+def test_a_locus_listing_more_alts_than_the_row_names_is_not_a_contradiction(tmp_path: Path) -> None:
+    """A locus lists every ALT recorded there while a row names the one it is about, so `A,G` against
+    `G` is agreement. Comparing `alts` by string equality would manufacture a finding about correct
+    data; whether the allele can sit there is `hosting_verdict`'s three-valued question, already asked."""
+    rows = [
+        HeteroplasmyRow(
+            gene="MT-TL1", chrom="MT", start=3243, ref="A", alts="G",
+            reference_sequence="NC_012920.1", measure_min=0.0, measure_max=0.1, conclusion="x",
+        )
+    ]
+    key = rows[0].variant_key
+    assert key is not None
+    table = {
+        key: [
+            ResolutionRow(
+                variant_key=key, rsid="rs199474657", chrom="MT", start=3243, ref="A", alts="A,G",
+                genome_build="GRCh38", locus_index=0, source="manual", status="resolved",
+            )
+        ]
+    }
+    report = resolve_positional_rows(rows, table)
+    assert report.contradicted == []
+    assert rows[0].rsid == "rs199474657", "the one empty identity cell is filled"
+    assert rows[0].alts == "G", "and the authored allele is never overwritten"
+
+
 def test_a_non_grch38_module_is_skipped_and_says_so(tmp_path: Path) -> None:
     """`resolve_from_table` refuses a non-GRCh38 module outright (RM15) — the identity minting behind
     these keys is GRCh38-only — so joining the positional tables there would place rows against loci
@@ -308,7 +396,11 @@ def test_a_non_grch38_module_is_skipped_and_says_so(tmp_path: Path) -> None:
 
 def test_no_resolve_switches_the_positional_fill_off_too(tmp_path: Path) -> None:
     """The flag is the master switch for resolution of every kind, and it must stay one switch: a
-    caller who asked to consult nothing must not find one table quietly joined."""
+    caller who asked to consult nothing must not find one table quietly joined.
+
+    And the pre-flight must answer the same way. `validate_spec` takes the flag for exactly this: it
+    decides whether these rows read as unjoinable, so a `validate` that ignored it would be the more
+    *optimistic* of the two commands — the disagreement direction the parity rule exists to prevent."""
     spec = _pharm_module(
         tmp_path / "spec",
         pharm="rs4149056,,,,SLCO1B1,C/C,simvastatin,c\n",
@@ -316,6 +408,43 @@ def test_no_resolve_switches_the_positional_fill_off_too(tmp_path: Path) -> None
     )
     df = _compiled(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert df["chrom"].to_list() == [None]
+
+    unjoinable = [w for w in validate_spec(spec).warnings if "joins by rsID only" in w]
+    assert not unjoinable, "with resolution on, the row is placed and nothing is reported"
+    off = [
+        w
+        for w in validate_spec(spec, resolve_with_ensembl=False).warnings
+        if "joins by rsID only" in w
+    ]
+    assert len(off) == 1
+    result = compile_module(spec, tmp_path / "out2", resolve_with_ensembl=False)
+    assert off == [w for w in result.warnings if "joins by rsID only" in w]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "genome_build"),
+    [({"resolve_with_ensembl": False}, "GRCh38"), ({}, "GRCh37")],
+    ids=["no-resolve", "non-grch38"],
+)
+def test_an_unconsulted_table_is_never_reported_as_a_refusal_to_pick(
+    tmp_path: Path, kwargs: dict, genome_build: str
+) -> None:
+    """The reason sentence ships inside `manifest.compilation.warnings`, beside `UNJOINABLE_PHRASE`,
+    which is a published consumer surface (RM44) — so it may not assert "the compiler looked and would
+    not pick" about a lookup that never happened. Both gates that skip the fill must say so instead,
+    and this fixture has exactly one clean, non-contradicting locus, so the claim would be false."""
+    spec = _pharm_module(
+        tmp_path / "spec",
+        genome_build=genome_build,
+        pharm="rs4149056,,,,SLCO1B1,C/C,simvastatin,c\n",
+        resolution=f"rs4149056,rs4149056,12,21178615,T,C,{genome_build},0,manual,resolved,\n",
+    )
+    result = compile_module(spec, tmp_path / "out", **kwargs)
+    assert result.success, result.errors
+    finding = [w for w in result.manifest.compilation.warnings if "joins by rsID only" in w]
+    assert len(finding) == 1
+    assert "was not consulted for this table" in finding[0]
+    assert "leaves them unplaced rather than picking" not in finding[0]
 
 
 # ── reverse ──────────────────────────────────────────────────────────────────────────────────────
@@ -361,6 +490,38 @@ def test_reverse_rebuilds_the_lookup_table_for_a_table_only_module(tmp_path: Pat
     }
     assert facts == injected
     assert {r["source"] for r in _rows(rebuilt)} == {"reversed"}
+
+
+def test_the_rebuilt_table_is_filed_under_the_key_the_fill_looks_up(tmp_path: Path) -> None:
+    """The positional pass writes the parquet's **stored** `variant_key`, not a recomputation.
+
+    A coordinate-authored pharm row keys on `12:21178615:T` — its model omits `alts` from the key —
+    while recomputing from `authored_ident` sees an authored `alts` and mints a `ga4gh:VA.…` instead.
+    Two spellings of one key: the reverse filed the fact under an id the next fill never looks up, so
+    the recompile left the row unfilled. The alts policy lives on the model, and the stored column is
+    the only place it survives into the artifact.
+    """
+    spec = _pharm_module(
+        tmp_path / "spec",
+        pharm=",12,21178615,T,SLCO1B1,C/C,simvastatin,c\n",
+        resolution=(
+            f"{derive_variant_key(None, '12', 21178615, 'T')},rs4149056,12,21178615,T,C,"
+            f"GRCh38,0,manual,resolved,\n"
+        ),
+    )
+    out = tmp_path / "out"
+    assert compile_module(spec, out).success
+    before = pl.read_parquet(out / "pharm_variants.parquet")
+    reverse_module(out, tmp_path / "rev")
+
+    rebuilt = _rows(tmp_path / "rev" / "resolution.csv")
+    assert [r["variant_key"] for r in rebuilt] == before["variant_key"].to_list()
+
+    second = compile_module(tmp_path / "rev", tmp_path / "out2")
+    assert second.success, second.errors
+    after = pl.read_parquet(tmp_path / "out2" / "pharm_variants.parquet")
+    assert after["alts"].to_list() == before["alts"].to_list() == ["C"]
+    assert after["rsid"].to_list() == before["rsid"].to_list() == ["rs4149056"]
 
 
 def test_weights_own_a_key_the_positional_tables_also_name(tmp_path: Path) -> None:

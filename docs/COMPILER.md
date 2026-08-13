@@ -538,11 +538,16 @@ the rows rather than counting them into the manifest. The fragment and its test 
 
 **The joinability warning now reports the residue.** Every positional table is still checked for rows
 with no `chrom`+`start`, after the fill has run, and the finding is one aggregated line per table
-carrying how many rows cannot be joined by position plus *why* — the two readings being that the
-injected table names the key at more than one locus (or at one the row's own allele contradicts), so
-the compiler leaves it rather than picking; or that nothing in the table names the key at all, which
-an enrich run fixes. A half-coordinate (`start` with no `chrom`, the shape a CPIC-drafted
-`haplotypes.csv` carries) is counted apart, because it reads as a position and joins to nothing.
+carrying how many rows cannot be joined by position plus *why*. Three readings: the injected table
+names the key at more than one locus (or at one the row's own allele contradicts), so the compiler
+leaves it rather than picking; nothing in the table names the key at all, which an enrich run fixes;
+or the fill **never ran** — `--no-resolve`, or a non-GRCh38 module — in which case the coordinates may
+be right there and untried. The third branch is why the check is *told* whether the join happened
+rather than inferring it: this sentence ships inside `manifest.compilation.warnings` beside
+`UNJOINABLE_PHRASE`, so asserting "the compiler looked and would not pick" about a lookup that never
+happened puts a fabricated diagnosis into a document a catalog reads. A half-coordinate (`start` with
+no `chrom`, the shape a CPIC-drafted `haplotypes.csv` carries) is counted apart, because it reads as a
+position and joins to nothing.
 
 It is a **warning in both modes and never a `strict` error**, for two independent reasons: rsid-only
 identity is legal by these models' own rule, so escalating would have the format tighten a field it
@@ -556,8 +561,11 @@ and is de-duplicated between them.
 `_apply_positional_resolution` joins the injected `resolution.csv` onto each positional table before
 `_build_table` materializes it, and runs in **both** `validate_spec` and `compile_module` — the
 joinability line is computed from these rows in both, so filling on one side only would leave the
-pre-flight naming a gap the compile had already closed. It is skipped, with a warning, for a
-non-GRCh38 module, exactly as `resolve_from_table` is (RM15).
+pre-flight naming a gap the compile had already closed. `validate_spec` therefore takes
+`resolve_with_ensembl` too, and `compile_module` passes its own value down: the flag is the master
+switch for resolution of every kind, so a pre-flight that ignored it would be the more *optimistic* of
+the two commands. The fill is skipped, with a warning, for a non-GRCh38 module, exactly as
+`resolve_from_table` is (RM15).
 
 Four rules, and the last two are what separate it from the naive repair:
 
@@ -571,7 +579,12 @@ Four rules, and the last two are what separate it from the naive repair:
   author never named is not the same operation as expanding a `variants.csv` row.
 - **A row whose own coordinate contradicts the table is left exactly as authored**, and the
   disagreement is reported. Completing a half-coordinate from a locus whose `start` disagrees would
-  build a coordinate no source ever stated.
+  build a coordinate no source ever stated. The comparison runs even where there is nothing left to
+  fill — a fully-populated `heteroplasmy.csv` row can still contradict the table it is keyed into, and
+  the promise is that such a row is *reported*, which the SNP core gets from `_verify`. `alts` is
+  deliberately outside the comparison: a locus lists every ALT recorded there while a row names the
+  one it is about, so `A,G` against `G` is agreement, and whether the allele can sit there is
+  `hosting_verdict`'s three-valued question, already asked one step earlier.
 - **Rows are mutated in place and their identity is frozen first.** Each positional model stamps
   `variant_key` and `authored_ident` at load, from the authored columns only, so filling cannot re-key
   a row.

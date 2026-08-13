@@ -36,6 +36,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.fields import FieldInfo
 
 from just_dna_format.vocab import (
     ALLELE_PATTERN,
@@ -257,6 +258,43 @@ def stamped_identity_field(description: str) -> Any:
     )
 
 
+def reject_compiler_filled(data: object, fields: dict[str, Any], *, what: str) -> None:
+    """Refuse an **identity** column this model has the compiler fill (RM43), with a diagnosis.
+
+    `alts` is the only such column today: authored and required on `variants.csv`, authored and
+    optional on `heteroplasmy.csv`, and **compiler-filled** on `pharm_variants.csv`/`haplotypes.csv`,
+    where a pharm annotation matches a variant at `chrom:start:ref` regardless of allele. Writing it
+    there by analogy with `variants.csv` is a plausible confusion rather than a typo, and before this
+    guard it was silently *accepted*: `extra="forbid"` cannot see it, the value entered
+    `authored_ident`, and `_write_table_csv` then dropped it — so `compile → reverse → compile` was
+    not a fixed point. It failed loudly before 0.6 added the column, so a bare accept is a regression
+    however sensible the input.
+
+    Scoped to `IDENTITY_FIELDS` deliberately, which is what leaves `variant_key`/`authored_ident`
+    accepted-and-overwritten: those two are *stamped* rather than filled, and `VariantRow` has
+    tolerated them since 0.5 on the "authored values ignored, no foot-gun" rule. Nothing is lost by
+    ignoring a stamped value; something is lost by ignoring a filled one.
+    """
+    if not isinstance(data, dict):
+        return
+    hits = sorted(
+        name
+        for name in data
+        if name in IDENTITY_FIELDS
+        and isinstance((field := fields.get(name)), FieldInfo)
+        and isinstance(field.json_schema_extra, dict)
+        and field.json_schema_extra.get("compiler_managed")
+    )
+    if not hits:
+        return
+    raise ValueError(
+        f"{what}: {', '.join(repr(h) for h in hits)} is filled by the compiler on this table, from "
+        f"the injected resolution.csv, and is not an authored column here — remove it. It IS authored "
+        f"on variants.csv and heteroplasmy.csv, which is the confusion this message exists for; here "
+        f"the row's identity is rsid, or chrom + start (+ ref), and the allele list is looked up."
+    )
+
+
 def authored_identity(row: "AuthoredModel") -> list[str]:
     """Which of `IDENTITY_FIELDS` this row's model declares *and* the author actually filled."""
     fields = type(row).model_fields
@@ -411,6 +449,9 @@ class AuthoredModel(BaseModel):
         # than a typo, so it gets its own diagnosis too — keyed on this model's own fields, so a model
         # that genuinely declares it is untouched (S17).
         reject_misplaced(data, cls.model_fields, what=f"{cls.__name__} row")
+        # An identity column this model has the *compiler* fill (RM43) reads as authorable, because it
+        # is genuinely authored on the tables next door. Same guard shape, same reason.
+        reject_compiler_filled(data, cls.model_fields, what=f"{cls.__name__} row")
         # A reserved name fails with a specific diagnosis; any other unknown/typo'd column falls
         # through to `extra="forbid"`'s generic message. See vocab.reject_reserved.
         return reject_reserved(data)

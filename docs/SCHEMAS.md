@@ -133,6 +133,15 @@ reason its `source` column is inside its fact set while everywhere else `source`
   that opts a model in and says whether its key carries `alts` — `None` for every model that stamps
   nothing, `True` only for `HeteroplasmyRow`, whose key always did.
 
+  A **compiler-filled** identity column is refused rather than ignored (`base.reject_compiler_filled`,
+  the same `mode="before"`-diagnosis shape as `reject_misplaced`): writing `alts` on a
+  `pharm_variants.csv` row by analogy with `variants.csv` failed loudly before the column existed, and
+  a new column may not turn a loud failure into a quiet one — accepted silently, the value entered
+  `authored_ident` and then vanished on reverse, so the round trip stopped being a fixed point. The
+  guard is scoped to `IDENTITY_FIELDS`, which is what leaves `variant_key`/`authored_ident` accepted
+  and overwritten: those are *stamped*, so ignoring an authored value loses nothing, and `VariantRow`
+  has tolerated exactly that since 0.5 on the no-foot-gun rule.
+
   Two mechanics to keep straight. The key is derived from the **authored subset**, so the fill can run
   any number of times without re-keying a row; and `with_genome_build` re-derives it when the loader
   injects the build, which is this tier's answer to the problem `_restamp_for_build` solves for
