@@ -391,14 +391,28 @@ under either `sources.csv` (deprecated, warn-only, removed at 1.0) or `licensing
   table means a module can carry two copies with the ignored one invisible.
 - **`derived/` is tolerated, never canonical.** `reverse_module` emits a flat tree and the enricher
   creates one; a module is split only because somebody split it.
+- **`reverse_module` writes the sidecars through the same resolver, so a round trip migrates the
+  name.** It regenerates a spec directory rather than editing one, so on a fresh tree there is nothing
+  to follow and the rule yields the preferred spelling — a module carrying `sources.csv` reverses onto
+  `licensing.csv`, and a compile → reverse → compile no longer picks up a deprecation notice its first
+  compile did not have (`manifest.compilation.warnings` is published, so the two must agree).
+  Reversing *over* a directory that already carries a copy overwrites that copy instead of leaving a
+  second one beside it.
 - **Two copies of one table is an error naming both paths** — never a merge, never newest-wins. These
   tables are fact-hashed *and* human-overridable, so two copies are two legitimate claims and
   preferring one silently discards a curator's override. The enricher's rule is the other half:
   **write to the file you read**.
-- **The near-miss guard follows into `derived/`**, against the derived names alone. Tolerating a second
-  location without extending the guard would put a typo'd `derived/varaints.csv` exactly where the
-  check written to catch it cannot see — which is also why "search any subdirectory" was refused: one
-  fixed name is the only version the guard can follow.
+- **The guard follows into `derived/`, and it takes two tests there.** Tolerating a second location
+  without extending the guard would put a typo'd `derived/varaints.csv` exactly where the check written
+  to catch it cannot see — which is also why "search any subdirectory" was refused: one fixed name is
+  the only version the guard can follow. What is *legal* under `derived/` is the sidecars alone, but
+  that smaller set is the wrong thing to fuzzy-match against, and matching against it caught neither
+  case: at the 0.8 cutoff `variants.csv` is no near miss of any sidecar name, and neither is
+  `varaints.csv`. So an **authored table name under `derived/` is reported as misplaced** on an exact
+  match — those rows are read from nowhere, and a module that keeps another table compiles green
+  without them — while everything else there is fuzzy-matched against the full known set. The
+  acceptance set stays the smaller one, so a legal sidecar is never reported as a stray, and the mirror
+  case (a sidecar at the spec root) is legal and stays silent.
 
 Neither the name nor the location enters any identity: the fact sidecars are outside `_INPUT_FILES`
 (see the file sets below), so `artifact.digest`, `content_signature`, `resolution_signature` and

@@ -17,6 +17,7 @@ import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.integrity import frequency_signature, source_signature
+from just_dna_format.layout import preferred_spelling
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.vrs import derive_vrs_allele_id
@@ -1230,7 +1231,9 @@ def test_sources_roundtrip_is_lossless(tmp_path: Path) -> None:
     spec = _spec(tmp_path, sources=csv_text)
     first = compile_module(spec, tmp_path / "orig", resolve_with_ensembl=False)
     reverse_module(tmp_path / "orig", tmp_path / "reversed")
-    assert (tmp_path / "reversed" / "sources.csv").is_file()
+    # Reverse regenerates a spec, so it writes the *preferred* spelling — asked of `layout` rather
+    # than spelled out here, or this assertion pins whichever name happens to be current (RM51).
+    assert (tmp_path / "reversed" / preferred_spelling("sources.csv")).is_file()
     second = compile_module(tmp_path / "reversed", tmp_path / "recompiled",
                             resolve_with_ensembl=False)
     assert second.success, second.errors

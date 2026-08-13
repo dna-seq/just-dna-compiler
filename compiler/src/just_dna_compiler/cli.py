@@ -20,6 +20,7 @@ from pathlib import Path
 
 import typer
 from just_dna_format.integrity import IntegrityError, verify_manifest
+from just_dna_format.layout import SidecarCollision
 from just_dna_format.manifest import ModuleManifest, read_manifest, write_manifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
 from just_dna_format.reference import authoring_reference, json_schemas
@@ -377,19 +378,27 @@ def reverse(
     ),
 ) -> None:
     """Reverse a compiled parquet artifact back into the authored spec DSL (yaml + csv)."""
-    out = reverse_module(
-        parquet_dir,
-        output_dir,
-        module_name=module_name,
-        title=title,
-        description=description,
-        report_title=report_title,
-        icon=icon,
-        color=color,
-        version=version,
-        write_resolution=resolution,
-        genome_build=genome_build,
-    )
+    # An output directory already carrying two copies of one sidecar cannot be written to without
+    # choosing between them, and that choice is not this tool's to make. The exception says which
+    # files collide, so print it as the diagnosis it is rather than as a traceback; nothing was
+    # written when it is raised.
+    try:
+        out = reverse_module(
+            parquet_dir,
+            output_dir,
+            module_name=module_name,
+            title=title,
+            description=description,
+            report_title=report_title,
+            icon=icon,
+            color=color,
+            version=version,
+            write_resolution=resolution,
+            genome_build=genome_build,
+        )
+    except SidecarCollision as collision:
+        typer.secho(f"  error: {collision}", fg=typer.colors.RED)
+        raise typer.Exit(1) from collision
     typer.secho(f"reversed: {out}", fg=typer.colors.GREEN)
 
 

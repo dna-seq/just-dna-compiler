@@ -717,7 +717,15 @@ name is `licensing.csv`, and the rename splits.
 is deprecated (warn-only, read exactly as before) and is removed at 1.0 — the cadence the 0.6 charter
 amendment settled, and this is the case that prompted it. Write either; the compiler reads whichever
 the module carries and refuses if it carries both. Since 0.6 the file may also sit under a `derived/`
-subdirectory (RM49); see [COMPILER.md](COMPILER.md) for the layout rules.
+subdirectory (RM49); see [COMPILER.md](COMPILER.md) for the layout rules. `reverse_module` resolves
+the name through `layout` rather than joining one on: it regenerates a spec, so it emits the
+*preferred* spelling on a fresh tree, migrating a module off the old name across one round trip while
+moving none of its four identities. **`draft.append_rows` / `append_partial_rows` still join the name
+onto the spec directory**, so drafting a licence row onto a module carrying `licensing.csv` writes a
+second file at the root and the next compile refuses naming both. The repair is not a one-line
+substitution — `layout`'s resolver is name-agnostic, so applying it there would hand `variants.csv` a
+second home too, which is the asymmetry RM49 exists to protect. What it needs is a sidecar-name set
+`layout` owns and all four parties read.
 
 **The output half waits for the major.** `sources.parquet` is inside `artifact.digest` and consumers
 read it by name, and `manifest.sources` is a published key, so renaming either is a *removal*
