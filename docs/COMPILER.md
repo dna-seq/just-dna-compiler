@@ -236,6 +236,48 @@ heteroplasmy shape gets a remedy, the gene-keyed shape gets the honest statement
 name one of these bins. Closing it in the schema is **RM47**, and it is a design round rather than a
 column: every candidate repair costs either a duplicated column set or a duplicated key.
 
+### Three more schema limits, made legible the same way (0.6, the VCF 4.4 audit)
+
+Same class as the bin-boundary gap above — limits of the **schema**, not of the tier — and they are here
+for the same reason: so they are not mistaken for the other kind, and so the warning a reader meets on a
+real module has somewhere to point. All three warn in **both** modes and none changes a verdict.
+
+**The two integer measure kinds are not integral (RM55).** VCF 4.4 §7.2 redefined `CN` to support
+non-integer copy numbers and §3 types `RUC` as a `Float`, so the premise `repeat_count` and
+`copy_number` were placed in `binning._INTEGER_KINDS` on has been withdrawn for both. The consequence is
+RM35's unsatisfiable triangle re-instantiated on the kinds RM35 exempted, and worse: on an integer kind a
+hole of exactly one is not reported at all, so `[0,0] [1,1] [2,2] [3,∞)` is a legal, gapless, green
+tiling under `--strict` that answers nothing for a CN of 2.4. `binning.measurement_shape_warnings` says
+so once per table. The fix is a three-release route — 0.6 warns, 0.7 adds a parallel float column beside
+the integer one with the integer deprecated, 1.0 removes it — because the direct correction is a
+**retype** (`CopyNumberRow.modifier_cn: int` → float) plus a change to what already-published bin
+tilings mean, and retyping is major-only.
+
+**A measurement can span several bins (RM56).** The same two fields carry confidence intervals (`CIRUC`,
+`CICN`) whose missing bound means *unbounded*, so a real measurement is an interval; `htt_repeat_
+expansion` states three thresholds inside a 14-count window for one to cross, and the consumer contract
+has no state for it. 0.6 warns and states the placeholder — **withhold** — rather than leaving it
+silent. The policy vocabulary (withhold / worst bin / point estimate) and its grain wait for a real
+caller VCF. Widening the measurement itself into an interval is not on the table: that puts a
+measurement in the module, which the data-agnostic north star forbids.
+
+**`.` in an `alts` cell splits identity (RM58).** VCF's MISSING marker means *there are no alternate
+alleles*, and no `ref`/`alts` column has a nucleotide grammar (deliberately — adding one would tighten
+the field RM5 exists to widen), so the cell loads and `derive_variant_key` folds it in as though it named
+an allele: `1:1:A:.` where the same site with an empty cell is `1:1:A`, two `content_signature`s and no
+dedup between them. `alleles.non_nucleotide_reason` now answers a third reason, `"missing"`, distinct
+from `"ambiguity"` (a permanent uncertainty) and `"notation"` (a grammar gap a release may widen) — `.`
+is neither, and there is nothing to widen to hold it. A **diagnosis, not a grammar**: the value is still
+accepted, and the compiler warns per table with the two keys side by side. It is the only finding of the
+VCF round that reaches identity, and it reaches only the key *string* — `is_substitution` refuses a
+non-nucleotide alt, so no VA is minted and no content-addressed claim is false.
+
+One finding from the same round is **not** a schema limit and is listed with the pointer columns in
+[SCHEMAS.md](SCHEMAS.md) instead: a `min_quality` floor stated against `QUAL` on a `requires_callable`
+row inverts, because QUAL changes sign with the record (§1.6.1.6) and such a row is proved against the
+reference record. The compiler warns and deliberately does not refuse — the meaning depends on a record
+this tier will never see, and the same row read against a variant record is legitimate.
+
 ### Hints are not a fourth validation class
 
 `hints.py` computes nothing the compiler does not already compute — it reuses `validate_bins`,

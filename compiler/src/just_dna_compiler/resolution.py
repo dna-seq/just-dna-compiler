@@ -474,6 +474,7 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     """
     ambiguity = sorted(a for a, reason in offenders.items() if reason == "ambiguity")
     notation = sorted(a for a, reason in offenders.items() if reason == "notation")
+    missing = sorted(a for a, reason in offenders.items() if reason == "missing")
     parts: list[str] = []
     if ambiguity:
         parts.append(
@@ -485,6 +486,15 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
         parts.append(
             f"{', '.join(repr(a) for a in notation)} is not a nucleotide string at all (a symbolic or "
             f"structural allele) — a grammar gap (RM5) rather than a genotype error"
+        )
+    if missing:
+        # Third reason, third consequence (RM58). Unlike the other two this one is not a limit of the
+        # schema at all: `.` is VCF's MISSING marker, so the cell asserts that the record has no
+        # alternate allele. Nothing can be widened to hold it and nothing can match it.
+        parts.append(
+            f"{', '.join(repr(a) for a in missing)} is VCF's MISSING marker rather than an allele — it "
+            f"states that the record has no alternate allele, so no genotype can name it; leave the "
+            f"cell empty instead"
         )
     return "; and ".join(parts)
 

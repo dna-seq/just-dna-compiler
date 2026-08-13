@@ -348,6 +348,69 @@ The format carries no per-sample coverage and never will — the three-state cal
 standard VCF fields (`DP`/`GQ`/`FT`, or a gVCF reference block), which is why this is a contract on the
 consumer and a set of pointers in the module rather than a table.
 
+### Reading the VCF the pointers point at (0.6, from the VCF 4.4 audit)
+
+Four columns above name fields in a file this format never sees, so the rules for reading that file are
+part of the same contract. Each of these is a real way to get a well-formed number and a wrong answer,
+and none of them is detectable by any offline gate.
+
+**`QUAL` changes sign with the record, and `requires_callable` rows are read from the record where it
+is inverted (RM57).** §1.6.1.6 defines QUAL as `−10log10 prob(no variant)` when ALT is present and
+`−10log10 prob(variant)` when ALT is `.`. So a QUAL of 60 on a variant record means the variant is
+almost certainly real, while the same 60 on a monomorphic reference record means the position is almost
+certainly *variant* — the opposite of a clean reference call. A `requires_callable` row is exactly the
+one a consumer proves against the reference record, so `quality_from=QUAL, min_quality=30` there asks
+for evidence that the position *is* variant before concluding that it is not, and raising the floor
+makes the answer more confidently wrong. Prefer a per-sample confidence field (`GQ`). The compiler
+warns when it sees the combination and does not refuse it: whether QUAL is inverted depends on the
+record, which the compile path will never see, and the same row read against a variant record elsewhere
+in the file is legitimate.
+
+**Reference evidence is a block, so callability is interval containment and the depth field is
+`MIN_DP` (RM57).** A gVCF states reference confidence as one record spanning a range (`1 4370 . G <*>
+. . END=4383 GT:DP:GQ:MIN_DP:PL`, §5.5), not one record per base. A consumer joining `callable_from` on
+position equality will find nothing at most covered positions and read it as a no-call. And `DP` on such
+a record is the block *average*: a DP of 25 over 14 bases is compatible with an uncovered base inside
+them, which is precisely the case `requires_callable` exists to catch. `MIN_DP` is the block floor and
+is what a callability threshold should be stated against.
+
+**A measurement that spans several bins has no state, and the placeholder is to withhold (RM56).**
+`RUC` travels with `CIRUC` and `CN` with `CICN`, and a missing bound on either means *unbounded*
+(§3) — so a repeat or copy-number measurement is an interval, and `reference_examples/
+htt_repeat_expansion` has three thresholds inside a 14-count window for it to cross. The three states
+above do not cover it. Until a policy vocabulary lands (0.7, with the rest of the repeat work), a
+conforming consumer that reads an interval touching two or more bins **withholds**: it does not pick
+among them, and it does not fall back to `unresolved`, which claims that no measurement was available.
+The compiler warns on any such table.
+
+**Compare in float32, not float64 (RM62).** §1.3 makes every VCF `Float` a 32-bit IEEE-754 value, while
+every bound and floor here is a Python float64 parsed from the decimal the author typed. Widening a
+float32 is exact but not value-preserving against that decimal: a VCF `0.1` widens to
+`0.100000001490116…`, which is strictly **above** an authored `0.1`. For `measure_min` this is harmless
+— the value lands inside the bin, and the shared-endpoint rule already gives a boundary to the higher
+bin. For an **inclusive `measure_max`** it is not: any non-dyadic closed upper bound (`0.1`, `0.3`, the
+`mt_heteroplasmy` boundaries) can be missed by a value that reads as equal in the source file, and the
+same holds for `min_quality` against a float32 QUAL. The rule is to **narrow the authored bound to
+float32 before comparing** (`struct.unpack("f", struct.pack("f", bound))[0]`, or `numpy.float32`), not
+to add an epsilon — an epsilon is a guess about magnitude and this is an exactly-known representation.
+The schema keeps decimal bounds deliberately: the DSL exists for the human, and the parquet already
+carries the machine form.
+
+**A pipe in a `variants.csv` genotype means "heterozygous, phase recorded but unaddressable" (RM63).**
+VCF defines allele order only *within* a phase set — §1.6.2 adds PSL precisely because with PS a
+genotype "isn't connected to any specific haplotype (i.e. first or second)" — and there is no global
+first homolog. This format has no phase-set column, so an authored `A|G` and an authored `G|A` are
+distinguishable to the schema and indistinguishable to any consumer, and two rows both written `A|G`
+assert nothing about being in cis. The order is still preserved byte-for-byte through the round trip
+(Principle 7) and `flags: phased` still records that the call was phased; neither says which homolog.
+A module that genuinely needs cis/trans says so with `diplotypes.csv`, which names haplotypes.
+
+**The VCF `ID` column is a list, and `rsid` is one variant (RM64).** §1.6.1.3 defines ID as a
+"semicolon-separated list of unique identifiers", so a real record may carry `rs123;rs456`, or an rsID
+beside a COSMIC id. `validate_rsid` accepts exactly one, which is right for the authored side — a row
+should name one variant — but it means a consumer joining on `ID` must split on `;` first. Joining the
+raw column matches nothing on any multi-id record.
+
 ## Allele identity — the VRS allele id (0.5)
 
 `vrs.derive_vrs_allele_id(chrom, start, ref, alt, *, build="GRCh38") -> str | None` mints a GA4GH VRS

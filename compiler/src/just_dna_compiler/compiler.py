@@ -40,6 +40,7 @@ from just_dna_format.binning import (
     HeteroplasmyRow,
     MeasureBinRow,
     RepeatAlleleRow,
+    measurement_shape_warnings,
     validate_bins,
 )
 from just_dna_format.frequency import FrequencyRow
@@ -826,9 +827,22 @@ def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38
 
 #: The 0.4 table kinds that can name a locus, derived from the models rather than listed: a table is
 #: positional exactly when it declares both `chrom` and `start`. Today that is `heteroplasmy.csv`,
-#: `haplotypes.csv` and `pharm_variants.csv`; the rest are gene- or score-keyed and are not joinable by
-#: position at all, which is a property of what they describe rather than a gap. Hand-keeping this would
-#: be the `SOURCES_FIELDNAMES` mistake again — a list that silently loses a member.
+#: `haplotypes.csv` and `pharm_variants.csv`. Hand-keeping this would be the `SOURCES_FIELDNAMES`
+#: mistake again — a list that silently loses a member.
+#:
+#: **What the rest of the kinds are is two different things, and this comment used to call them one
+#: (RM65).** It read "the rest are gene- or score-keyed and are not joinable by position at all, which
+#: is a property of what they describe rather than a gap". True of `allele_function.csv` and `pgs.csv`,
+#: which describe an allele's function and a score — neither has a place on a contig. **False of
+#: `repeat_alleles.csv` and `copynumbers.csv`**, and the spec says so: VCF 4.4 §5.6 has POS and INFO
+#: SVLEN specify the genomic interval a copy number is defined over, and §5.7 says a `<CNV:TR>`
+#: record's POS and END *"should match the STR/VNTR reference catalog sizes for catalog-based
+#: callers"*. A tandem repeat and a copy-number segment are loci with coordinates, emitted at fixed
+#: published positions — so their non-joinability is a **gap in this schema**, not a property of the
+#: thing described, and a consumer holding an ExpansionHunter or `<CNV:TR>` VCF has to annotate a gene
+#: symbol for themselves to reach our HTT row. The columns that would close it wait for 0.7+, gated on
+#: a real repeat-caller sample; what is corrected here is the claim, because a claim the spec
+#: contradicts is a defect in its own right whatever release fixes the underlying gap.
 _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
     (csv_name, model)
     for csv_name, _parquet, model in _TABLE_KINDS
@@ -1006,6 +1020,166 @@ def _check_binning_grounding(
     return warnings
 
 
+def _check_measure_shape(rows_by_csv: dict[str, list[Any]]) -> list[str]:
+    """Per binning table: what its integer tiling cannot express about its source measurement.
+
+    A thin loop over `binning.measurement_shape_warnings`, which owns both findings (RM55, RM56) because
+    it owns `_INTEGER_KINDS` — the set whose premise VCF 4.4 withdrew. The kinds are derived from the
+    models via `_BINNING_TABLE_KINDS` for the same reason that tuple exists, so a sixth binning kind
+    cannot silently escape the check.
+    """
+    warnings: list[str] = []
+    for csv_name, _model in _BINNING_TABLE_KINDS:
+        rows = rows_by_csv.get(csv_name) or []
+        warnings.extend(f"{csv_name}: {w}" for w in measurement_shape_warnings(rows))
+    return warnings
+
+
+#: The fragment of the RM57 warning that names the finding, for the same reason the two phrases in
+#: `binning` are named: a manifest carries the prose and no field.
+QUAL_INVERSION_PHRASE = "QUAL means the opposite thing on the record this row is read from"
+
+#: The one VCF column whose Phred-scaled assertion changes sign with the record (§1.6.1.6). Matched on
+#: the bare token: a `quality_from` cell is `|`-alternated and may carry an `INFO/`-style namespace,
+#: neither of which changes which field is named.
+_INVERTING_QUALITY_FIELD = "QUAL"
+
+
+def _quality_fields(pointer: str | None) -> list[str]:
+    """The field tokens a `quality_from` / `callable_from` pointer names, namespace stripped."""
+    if not pointer:
+        return []
+    return [part.rsplit("/", 1)[-1].strip().upper() for part in pointer.split("|") if part.strip()]
+
+
+def _check_quality_inversion(variants: list[VariantRow]) -> list[str]:
+    """A `requires_callable` row whose quality floor is stated against `QUAL` (RM57).
+
+    §1.6.1.6 defines QUAL as *"−10log10 prob(variant)"* where ALT is `.` and *"−10log10 prob(no
+    variant)"* otherwise — **the sign of the assertion flips with the record**. A QUAL of 60 on a variant
+    record means the variant is almost certainly real; the same 60 on a monomorphic reference record
+    means the position is almost certainly *variant*, which is the opposite of a clean reference call.
+
+    `requires_callable` marks the rows where the *absence* of the variant is the informative call, and a
+    consumer evaluating one reads the reference record — a gVCF `<*>` block (§5.5) or a monomorphic
+    `ALT=.` record — which is exactly where QUAL is inverted. So `requires_callable=true,
+    quality_from=QUAL, min_quality=30` asks the consumer to require evidence that the position *is*
+    variant before asserting that it is not, and raising the floor makes the answer more confidently
+    wrong rather than safer. `min_quality` is monotone in one direction only, so nothing else catches it.
+
+    **A warning in both modes, and refusing the combination was considered and rejected.** A validator
+    here would encode one reading of a field whose meaning depends on a record this tier will never see,
+    and it would refuse the legitimate case — the same row read against a *variant* record elsewhere in
+    the same file, where the floor means what its author intended. Aggregated to one line with examples,
+    because a gene panel can carry hundreds of `requires_callable` rows and a line each would bury every
+    other finding the run produces.
+    """
+    offenders = [
+        v
+        for v in variants
+        if v.requires_callable is True
+        and _INVERTING_QUALITY_FIELD in _quality_fields(v.quality_from)
+    ]
+    if not offenders:
+        return []
+    shown = ", ".join(str(v.variant_key) for v in offenders[:3])
+    rest = f" (+{len(offenders) - 3} more)" if len(offenders) > 3 else ""
+    return [
+        f"variants.csv: {len(offenders)} row(s) set requires_callable=true and state their min_quality "
+        f"floor against QUAL. {QUAL_INVERSION_PHRASE}: VCF §1.6.1.6 makes QUAL -10log10 prob(no "
+        f"variant) on a variant record but -10log10 prob(variant) where ALT is '.', so on the reference "
+        f"record a consumer must read to prove this absence, a HIGH QUAL says the position is probably "
+        f"variant — and the higher the floor, the more confidently wrong the result. State the floor "
+        f"against a per-sample confidence field instead (GQ), or against the reference block's MIN_DP. "
+        f"e.g. {shown}{rest}."
+    ]
+
+
+#: The fragment of the RM58 warning that names the finding. Same reason as the phrases above.
+MISSING_ALLELE_PHRASE = "is VCF's MISSING marker, not an allele"
+
+#: Every authored table that declares an `alts` column, derived from the models rather than named: the
+#: SNP core plus whichever table kinds carry one. A name list here would lose a kind the way
+#: `SOURCES_FIELDNAMES` lost a column.
+_ALTS_BEARING_KINDS: tuple[str, ...] = tuple(
+    csv_name for csv_name, _parquet, model in _TABLE_KINDS if "alts" in model.model_fields
+)
+
+
+def _check_missing_allele_marker(
+    variants: list[VariantRow],
+    rows_by_csv: dict[str, list[Any]],
+    genome_build: str = DEFAULT_GENOME_BUILD,
+) -> list[str]:
+    """An `alts` cell spelling VCF's MISSING marker, which splits the row's identity (RM58).
+
+    `.` in ALT means *there are no alternate alleles* — a monomorphic reference record, which §1.1's own
+    first worked example carries. No `ref`/`alts` column has a nucleotide grammar (deliberately: adding
+    one would tighten the field RM5 exists to widen and would stop existing modules validating), so the
+    cell loads, and `derive_variant_key` then folds it in as though it named an allele. The result is
+    that a row writing `alts=.` and a row leaving the cell empty describe **one site under two keys** —
+    `1:1:A:.` and `1:1:A` — with different `content_signature`s and no dedup between them. That is the
+    only VCF-conformance finding in this batch that reaches identity, and until now nothing said a word
+    about it: `alleles.non_nucleotide_reason` filed `.` under `"notation"` beside `<DEL>`, and the sites
+    that consult it only run when a hosting verdict has already failed, which a monomorphic row never
+    reaches.
+
+    **A diagnosis, not a grammar** — the value is still accepted, exactly as `<DEL>` and `N` are. The
+    remedy is an authored edit and an unambiguous one (leave the cell empty), which is what separates
+    this from RM55/RM56 next door; it is still a warning in both modes, because `strict` means
+    *reproducible artifact* and a module spelling `.` reproduces perfectly. Reported per table with a
+    count and, where the split is real, the two keys side by side: on an rsid-authored row both keys are
+    the rsid, so the cell is wrong without the identity consequence following, and claiming otherwise
+    would be a false statement about that row.
+    """
+    warnings: list[str] = []
+    tables: list[tuple[str, list[Any]]] = [("variants.csv", list(variants))]
+    tables.extend((csv_name, rows_by_csv.get(csv_name) or []) for csv_name in _ALTS_BEARING_KINDS)
+    for csv_name, rows in tables:
+        offenders = [
+            row
+            for row in rows
+            if any(
+                non_nucleotide_reason(a) == "missing"
+                for a in (getattr(row, "alts", None) or "").split(",")
+            )
+        ]
+        if not offenders:
+            continue
+        # The identity split needs a coordinate: an rsid short-circuits `derive_variant_key`, so both
+        # spellings of such a row key identically and only the cell is wrong.
+        split: list[tuple[Any, str | None]] = []
+        for row in offenders:
+            without = derive_variant_key(
+                getattr(row, "rsid", None),
+                getattr(row, "chrom", None),
+                getattr(row, "start", None),
+                getattr(row, "ref", None),
+                build=genome_build,
+            )
+            if getattr(row, "variant_key", None) != without:
+                split.append((row, without))
+        if split:
+            row, without = split[0]
+            detail = (
+                f"{len(split)} of them key differently from the same row with an empty cell (e.g. "
+                f"{row.variant_key} rather than {without}), so this module and one authoring the same "
+                f"site with the cell left empty carry two identities for one site, and neither "
+                f"content_signature dedups against the other"
+            )
+        else:
+            detail = (
+                "these rows are rsid-keyed, so their identity is unaffected — the cell is simply "
+                "claiming an allele that does not exist"
+            )
+        warnings.append(
+            f"{csv_name}: {len(offenders)} row(s) write '.' in alts, which {MISSING_ALLELE_PHRASE} — "
+            f"it states that the record has no alternate allele (VCF §1.6.1.5), so it is not the same "
+            f"kind of thing as a symbolic allele like <DEL>. {detail}. Leave the cell empty instead."
+        )
+    return warnings
+
+
 def _allowed_alleles(
     variant: VariantRow, resolution_table: dict[str, list[ResolutionRow]]
 ) -> tuple[set[str] | None, str]:
@@ -1103,6 +1277,7 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     """
     ambiguity = [a for a, reason in offenders.items() if reason == "ambiguity"]
     notation = [a for a, reason in offenders.items() if reason == "notation"]
+    missing = [a for a, reason in offenders.items() if reason == "missing"]
     parts: list[str] = []
     if ambiguity:
         parts.append(
@@ -1115,6 +1290,15 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
             f"{', '.join(repr(a) for a in notation)} is not a nucleotide string at all (a symbolic or "
             f"structural allele) — a grammar gap (RM5) rather than a genotype error, and a future "
             f"release may widen to hold it"
+        )
+    if missing:
+        # Third reason, third consequence (RM58), and the one that must NOT borrow either sentence
+        # above: `.` is VCF's MISSING marker, so the locus is asserting that it has no alternate
+        # allele. That is not an uncertainty and not a grammar gap — there is nothing to widen.
+        parts.append(
+            f"{', '.join(repr(a) for a in missing)} is VCF's MISSING marker rather than an allele — the "
+            f"locus states that it has no alternate allele, so no genotype can match it; leave the cell "
+            f"empty instead"
         )
     return "; and ".join(parts)
 
@@ -2058,11 +2242,23 @@ def validate_spec(
     # the requirement above, so nothing used to report a module that grounds none of them. Pure
     # computation over authored bytes with no `output_dir`, so it belongs to the pre-flight.
     all_warnings.extend(_check_binning_grounding(loaded_kinds, studies))
+    # And the other defect those same tables carry: an integer tiling for a measurement VCF 4.4 makes
+    # fractional and interval-valued (RM55/RM56). Same rule for why it is here — pure computation over
+    # authored bytes, no `output_dir`.
+    all_warnings.extend(_check_measure_shape(loaded_kinds))
+    # `.` in an alts cell, on every table that has one (RM58). Also pure, also authored-only, and it
+    # reads `loaded_kinds` plus `variants` rather than a table name, so a future kind with an `alts`
+    # column joins the check by declaring the column.
+    all_warnings.extend(_check_missing_allele_marker(variants, loaded_kinds, declared_build))
 
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
         all_warnings.extend(cross_warnings)
+        # The quality floor that inverts on the record it is read from (RM57). Authored cells only —
+        # resolution fills neither `requires_callable` nor `quality_from` — so the pre-flight sees
+        # exactly what the compile will.
+        all_warnings.extend(_check_quality_inversion(variants))
         # Allele membership, which was compile-only and should never have been. It is pure computation
         # over authored rows plus the injected table, needs no `output_dir` — the standing rule for what
         # belongs here — and it is a **mode ladder**, so `validate --strict` reported `valid` for a
@@ -2561,6 +2757,13 @@ def compile_module(
     all_warnings.extend(
         w for w in _check_binning_grounding(kind_rows, studies) if w not in all_warnings
     )
+    all_warnings.extend(w for w in _check_measure_shape(kind_rows) if w not in all_warnings)
+    all_warnings.extend(
+        w
+        for w in _check_missing_allele_marker(variants, kind_rows, config.genome_build)
+        if w not in all_warnings
+    )
+    all_warnings.extend(w for w in _check_quality_inversion(variants) if w not in all_warnings)
 
     # 0.5 derived-fact sidecars: materialize each present CSV, and cross-check it against what the
     # module actually contains. A row describing something the module never mentions is a warning, not

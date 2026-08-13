@@ -47,6 +47,7 @@ from just_dna_format.vocab import (
     validate_finite,
 )
 from just_dna_format.vocab import MULTI_SEP as _MULTI_SEP
+from just_dna_format.vrs import normalize_chrom
 
 # The orthogonal-axis vocabularies and identifier grammars now live in `vocab` (shared across the
 # authored models). `VALID_DIRECTIONS`/`VALID_SIGNIFICANCE`/`VALID_CLIN_SIG` (and `ALLELE_PATTERN`)
@@ -255,7 +256,10 @@ class VariantRow(AuthoredModel):
     chrom: str | None = Field(
         default=None,
         json_schema_extra=vocabulary("chromosome", VALID_CHROMOSOMES),
-        description="Chromosome without 'chr' prefix",
+        description=(
+            "Chromosome. A 'chr'/'CHR' prefix is accepted and stripped, and the mitochondrion may be "
+            "written MT, chrMT, M or chrM — all fold to MT, which is what gets stored"
+        ),
     )
     start: int | None = Field(
         default=None,
@@ -399,7 +403,11 @@ class VariantRow(AuthoredModel):
             "Optional VCF FORMAT/INFO field(s) a consumer establishes callability from (e.g. DP, "
             "GQ, FT, or DP|GQ). A declarative pointer, never an expression: it names where the "
             "evidence for 'this position was actually callable' lives, so a consumer can tell a "
-            "confirmed negative from an uncovered one instead of reading both as reference."
+            "confirmed negative from an uncovered one instead of reading both as reference. "
+            "Reference evidence usually arrives as a gVCF *block* (one record with END=), so a "
+            "consumer finds it by interval containment rather than an equality join on position, "
+            "and the block's floor is MIN_DP — a DP of 25 averaged over 14 bases is compatible with "
+            "an uncovered base inside them."
         ),
     )
 
@@ -419,8 +427,12 @@ class VariantRow(AuthoredModel):
         default=None,
         description=(
             "Optional VCF FORMAT/INFO field the `min_quality` floor is stated against (e.g. GQ, "
-            "QUAL, DP). Same bare-token pointer grammar as `source_field`/`callable_from`; a pointer, "
-            "never an expression."
+            "DP). Same bare-token pointer grammar as `source_field`/`callable_from`; a pointer, "
+            "never an expression. Prefer a per-sample confidence field: QUAL changes sign with the "
+            "record (VCF 1.6.1.6 — prob(no variant) on a variant record, prob(variant) where ALT is "
+            "'.'), so on a requires_callable row, whose evidence is the reference record, a high QUAL "
+            "says the position is probably variant and the floor demands the opposite of what the "
+            "row is about."
         ),
     )
     min_quality: float | None = Field(
@@ -555,14 +567,33 @@ class VariantRow(AuthoredModel):
     @field_validator("chrom")
     @classmethod
     def _validate_chrom(cls, v: str | None) -> str | None:
-        if v is not None:
-            normalized = v.removeprefix("chr")
-            if normalized not in VALID_CHROMOSOMES:
-                raise ValueError(
-                    f"chrom must be one of 1-22, X, Y, MT (without 'chr' prefix), got: {v!r}"
-                )
-            return normalized
-        return v
+        """Fold the author's spelling to this format's member, or refuse (RM60).
+
+        **The gate and the normalizer disagreed, and the stricter one was the gate.** This did
+        `removeprefix("chr")` and then required membership, while `vrs.normalize_chrom` — in the same
+        package, and what every id-minting path already runs — also strips `CHR`/`Chr` and folds
+        `M`/`chrM` to `MT`. So `MT` and `chrMT` validated and `chrM`, `M` and `CHR7` did not, with a
+        message that lists `MT` and never mentions that `chrM` is the same contig. That matters because
+        real GRCh38 files split on exactly this: Ensembl-style writes `MT`, the hs38DH analysis set most
+        human pipelines actually align against writes `chrM`.
+
+        Routing the gate through the normalizer **widens only** (P3): every value that validated before
+        still validates and still normalizes to the same member, so no published module changes and no
+        stored key moves. Alt contigs, scaffolds, patches and decoys stay rejected, correctly and by
+        charter — `REFGET_GRCh38` is primary assembly only. Same class as the 0.6 `-`-for-`_` vocabulary
+        tolerance: what is stored is always the declared member, never the author's spelling, so nothing
+        downstream ever sees two spellings of one contig.
+        """
+        if v is None:
+            return v
+        normalized = normalize_chrom(v)
+        if normalized is None or normalized not in VALID_CHROMOSOMES:
+            raise ValueError(
+                f"chrom must be one of 1-22, X, Y, MT, got: {v!r}. A 'chr'/'CHR' prefix is accepted "
+                f"and stripped, and 'M'/'chrM' is accepted as a spelling of MT; an alt contig, "
+                f"scaffold, patch or decoy is not — this format keys on the primary assembly only"
+            )
+        return normalized
 
     # `genotype`'s grammar lives on `AuthoredModel` since 0.5 — `PharmVariantRow` declares the same
     # field, and a validator shared by two models belongs on the base (see base.py).
