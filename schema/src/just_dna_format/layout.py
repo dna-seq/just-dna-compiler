@@ -37,6 +37,15 @@ from pathlib import Path
 SOURCES_CSV: str = "sources.csv"
 LICENSING_CSV: str = "licensing.csv"
 
+#: The verification attestation (0.6, RM45) — the one machine-written sidecar that is not a table.
+#:
+#: It is named here for the reason everything else in this module is: four parties have to agree, and
+#: the enricher writing to a path the compiler does not read is the silent failure this module exists
+#: to prevent. It takes the same two locations as the tables (root or `derived/`) and has exactly one
+#: spelling, so it needs no entry in `SIDECAR_SPELLINGS` — `sidecar_spellings` answers `(name,)` for
+#: any name it does not know, which is the correct answer here rather than an omission.
+VERIFICATION_JSON: str = "verification.json"
+
 #: Accepted spellings per sidecar, **deprecated first and preferred last**. A sidecar absent from this
 #: map has exactly one spelling, which is its own name.
 SIDECAR_SPELLINGS: dict[str, tuple[str, ...]] = {

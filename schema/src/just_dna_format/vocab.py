@@ -616,6 +616,89 @@ VALID_RSID_STATUS: frozenset[str] = frozenset({"live", "merged", "absent", "with
 # body. Collapsing the two would let "not in the 200-word abstract" read as "not in the paper".
 VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
 
+# ── The verification attestation (0.6, RM45) ────────────────────────────────────────────────────
+# Which question a recorded check put. **Closed, and audited once here rather than grown ad hoc**: a
+# free-string key would recreate the failure RM44 documents one level down — the enricher writing one
+# spelling, a registry another, and a consumer substring-matching the difference — and a name is
+# permanent within a major (Principle 3), so the set is fixed now against everything that could
+# plausibly join it.
+#
+# The membership rule is one question: **does this compare something the module ASSERTS against what
+# a source says?** That is what a consumer means by "was anything verified", and it is what keeps the
+# axis single (P5). The set was audited against every pass in the tier — the table at the top of
+# ENRICHER.md plus the compiler's own cross-checks — rather than written from memory, and the audit
+# moved it twice, which is the argument for doing it once and completely:
+#
+# * `pgx_evidence_level` and `rsid_coordinate_agreement` were **missing**. Both are real
+#   authored-vs-source comparisons that ship today (`clinpgx.enrich_clinpgx` → `EvidenceConflict`,
+#   which is also the only enricher cross-check that raises under `strict`; and
+#   `resolver._check_rsid_coord_consistency`, which is the enricher's half of the pair the compiler's
+#   `resolution._verify` checks — one question, two tiers, so one name).
+# * `gene_disease_validity` has **no emitter yet** and is kept on the `withdrawn` precedent: a member
+#   exists for a case its emitter has not reached, and adding one later is legal while adding it *late*
+#   means the release that needs it has no name to write. Note precisely what this is *not* a member
+#   for — 0.6's `enrich_gene_validity` **records** ClinGen/GenCC verdicts into a derived table and
+#   compares nothing authored, so it does not emit this. The member is for a future pass that checks an
+#   authored gene/phenotype pair against those verdicts.
+# * `genome_build_agreement` gained its emitter in the same release: `grch37.diagnose_wrong_build`
+#   compares an authored coordinate against the other assembly, and the compiler's offline
+#   `_check_build_coordinates` asks the cheap half of the same question.
+#
+# It deliberately **excludes** the ClinVar assertion tier, whose own docstring says it "records what
+# ClinVar says and adjudicates nothing" — a member for it would let a manifest report a check where no
+# question was put, the exact confusion this block exists to end. `frequencies.csv`,
+# `gene_metrics.csv` and the article-licence columns are the same class and have no member either.
+VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
+    {
+        "reference_allele",           # authored `ref` vs the actual reference sequence
+        "rsid_currency",              # authored rsID vs dbSNP (live / merged / absent)
+        "clinical_significance",      # authored `clin_sig` vs ClinVar's own, allele-exactly
+        "acmg_secondary_findings",    # authored `acmg_sf` vs the published ACMG SF gene list
+        "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous symbols
+        "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement)
+        "gene_locus_agreement",       # the gene a row names vs the chromosome its variant sits on
+        "citation_existence",         # an authored `pmid`/`doi` vs PubMed and Crossref
+        "citation_identifier",        # an authored `doi` vs the registry's own for that PMID
+        "provenance_quote",           # `provenance_quote`/`provenance_regex` vs the retrieved text
+        "dosage_sensitivity",         # an authored dosage claim vs ClinGen's curation
+        "allele_function",            # authored `function_status` vs PharmVar and CPIC
+        "vrs_allele_id",              # a recorded `ga4gh:VA.…` vs the locally re-minted one
+        "pgx_evidence_level",         # authored `evidence_level` vs ClinPGx's own for that annotation
+        "rsid_coordinate_agreement",  # an authored rsID+coordinate PAIR vs what the reference says
+        "gene_disease_validity",      # an authored gene/phenotype pair vs ClinGen/GenCC/HPO
+        "genome_build_agreement",     # authored coordinates vs the declared assembly
+    }
+)
+
+# Why a check did not run. Closed for the same reason the names above are, and for one more: backfill
+# triage branches on *why*, so prose here would relocate the substring matching rather than end it.
+# The human sentence travels **beside** the key (`VerificationRecord.detail`), never instead of it —
+# `clinical.tautology_reason` already writes a good one and stays exactly as it is.
+#
+# `not_requested` and `offline` are different facts about the same absence and must not be merged: one
+# is a caller's choice, the other a capability the run did not have, and only the second is cleared by
+# re-running with egress. `tautology` is S4's case — a check whose inputs share a source cannot fail,
+# and reporting its zero is the misinformation the skip exists to prevent. `not_permitted` is
+# `licensing.check_declared_use`'s outcome and is deliberately its own member: a check skipped because
+# a source's terms bar the fetch is cleared by a *declaration*, not by egress or by a flag, so folding
+# it into `offline` would send a reader looking for a network problem that does not exist.
+#
+# The set is the union of how the passes already spell their own skips (`skipped_offline`,
+# `no_snapshot`, `unusable_snapshot`, `unchecked`, ClinPGx's licensing `skipped`), mapped onto one axis
+# — which is the whole point: those six spellings are what a consumer would otherwise have to learn.
+VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
+    {
+        "not_requested",   # the caller switched this check off
+        "offline",         # the check needs egress and the run had none
+        "no_reference",    # no snapshot / sequence / list was provisioned to compare against
+        "unreachable",     # the source was asked and never answered (a failed request, not a no)
+        "nothing_to_check",  # the module carries no row this check applies to
+        "tautology",       # the module was drafted from the very source the check reads (S4)
+        "unsupported",     # this tier cannot put the question for these rows (e.g. an unbuilt assembly)
+        "not_permitted",   # a source's terms bar the fetch under the declared use (`check_declared_use`)
+    }
+)
+
 # ── Ancestry groups for the frequency table (0.5) ───────────────────────────────────────────────
 # An OPEN, seeded vocabulary in the `RECOMMENDED_AUTHOR_KINDS` idiom — deliberately NOT a closed
 # `frozenset` + rejecting validator, even though Principle 6 makes closed the default. The reason is

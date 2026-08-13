@@ -19,9 +19,10 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` |
 | **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
-| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` (warning) |
+| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` (warning), and `resolver._check_rsid_coord_consistency` against the injected snapshot — one question, two tiers, so one attestation name |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
 | **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**) |
+| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
 | **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` |
@@ -36,6 +37,65 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
 | **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) |
+
+**Every check that runs records what it did — `verification.json` (RM45, 0.6).** Until 0.6 the table
+above described work whose result died with the process: a check's findings reached a log line and an
+`EnrichmentResult` field, and the compiled module could not say whether the check had been put at all.
+`just_dna_enricher.verification.record_verification` is the load-merge-write that closes that, in the
+same shape `licensing.record_source_terms` has and for the same reason — a count of call sites goes
+stale, one function does not. Four things to hold onto when wiring a new pass into it:
+
+- **A record carries two counts and a closed skip key.** `ran(check, subjects=…, findings=…)` when it
+  ran (`subjects=0` is a legitimate answer meaning nothing was in scope) and
+  `skipped(check, reason, detail=…)` when it did not. Both vocabularies are closed
+  (`VALID_VERIFICATION_CHECKS`, `VALID_VERIFICATION_SKIPS`); the human sentence rides in `detail`,
+  beside the machine key and never instead of it.
+- **The denominator comes from the check, never from the caller.** `verify_reference_alleles` returns
+  a `RefCheck` and `audit_clin_sig` a `ClinSigAudit` (or `None`), so the count travels with the finding
+  it belongs to: a count recomputed beside a check can disagree with it, and then the manifest's own
+  two halves disagree. `_verification_records` deliberately takes neither `variants` nor `rows` — a
+  function that cannot see the tables cannot be tempted to count them. Wiring this up surfaced a real
+  hole in two passes: each had an *internal* skip (no sequence access; a snapshot present but not
+  queryable) returning an empty list indistinguishable from a clean pass, which is S4's defect
+  surviving inside the machinery S4 built.
+- **The denominator is what was EXAMINED, not what existed.** The wrong-build pass is bounded
+  (`DEFAULT_DIAGNOSIS_LIMIT`), so on a panel authored wholesale on hg19 it asks about a sample;
+  recording `total` there would claim rows it chose not to ask about. `sampled` is why the two can
+  differ, and the record's `detail` says so when they do.
+- **A downstream check inherits the reason its upstream did not run.** The wrong-build pass reads the
+  ref-mismatch list, and `diagnose_wrong_build([])` answers `no_ref_mismatches` for an empty list
+  *whatever emptied it* — a ref check that ran clean, or one that never ran. Recording the first
+  unconditionally publishes "no authored ref disagreed with the reference" beside a `reference_allele`
+  record saying nothing was compared: one document contradicting itself, and the false half is the
+  answered-absence-versus-unasked-question collapse S20 exists to prevent.
+- **Every early return records its skip — as long as the check APPLIES.** `enrich_clinpgx` is the
+  worked example: a licensing refusal and a missing snapshot both go through one `_attest` helper,
+  because each says "this check applies to your module and did not run", and a pass that records its
+  findings while staying silent about not having run leaves the manifest unable to tell those apart.
+  Two paths deliberately attest nothing. A `strict` refusal raises, so no artifact was produced and
+  there is nothing to attest a check against. And a module carrying no `pharm_variants.csv` is not a
+  skip at all — the check does not apply, there is no claim to have an opinion about, and recording one
+  would mine a nonce and create a `verification.json` on a module that never asked for one.
+  `nothing_to_check` stays for a table that is present with no row in scope, which is a real answer.
+- **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
+  four of its checks at the end of the run. A separate command writes its own; the merge is what keeps
+  both in one document, replacing per check and never erasing a check this run did not put.
+- **The attestation is bound to the module's authored bytes.** Edit `variants.csv` afterwards and the
+  compiler drops the block with a warning — correctly, because the checks were put against rows that no
+  longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
+  read off each record's own `release`.
+
+**Which of these attest, and which are recording passes rather than checks.** `enrich()` attests four
+(reference allele, wrong build, clinical significance, rsID currency) and `enrich_clinpgx` attests its
+own; the rest report to their result object and are wired in as their commands grow the call. The line
+that decides whether a pass belongs in `VALID_VERIFICATION_CHECKS` at all is whether it compares
+something the module **asserts** — so `gene_validity.csv` and `clinical_assertions.csv`, which record
+what ClinGen and ClinVar say and adjudicate nothing, have no check name and must not gain one: a
+member for them would let a manifest report a check where no question was put. `frequencies.csv`,
+`gene_metrics.csv` and the per-article licence columns are the same class. The three rows in the table
+above that are recording rather than comparing — **Ambiguous back-fill**, **Article licence** and
+**Source coverage** — are kept here because a reader wants the whole surface in one place, and they are
+named as the exception rather than left to be inferred.
 
 **Two of these break the severity rule in opposite directions, and both are deliberate.** The
 allele-function check joins the clinical cross-check in warning under `strict` too: PharmVar and CPIC

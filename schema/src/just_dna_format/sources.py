@@ -221,10 +221,16 @@ def taints_redistribution(row: SourceRow) -> bool:
     `annotation`-layer source can taint (a coordinate looked up from a restricted service is still
     just a coordinate), and an *unknown* does not taint.
 
-    **Recorded and summarized in 0.5, but deliberately NOT gated at compile.** How a redistribution
-    bar should interact with `declared_use` is a real design question rather than a missing branch —
-    a distribution right is not a use, so the three-state `unstated|non-commercial|commercial` axis
-    does not answer it — and shipping a gate on an axis nothing yet sets would be guessing. See the
-    RM27 row in docs/ROADMAP.md.
+    **Recorded and summarized, and deliberately NOT gated in any of these packages. Settled in 0.6,
+    not still open (RM27).** The question was whether a redistribution bar should resolve against
+    `declared_use`, and the answer is that it cannot: a distribution right is not a *use*, so the
+    three-state `unstated|non_commercial|commercial` axis has nothing to say about it. Gating on the
+    **act** is right, and the act is a publish — which happens downstream, in a registry, not in a
+    compile. So the verdict is stamped into `manifest.sources.redistribution` and the enforcement is
+    asked for by name in docs/SCHEMAS.md, addressed to the registry, for 0.6 integration.
+
+    What is rejected and stays rejected is a second author declaration beside `declared_use`: it is
+    symmetric and tempting, and it asks an author at build time about something they may not know
+    until later.
     """
     return row.redistribution is False and row.layer == "annotation"

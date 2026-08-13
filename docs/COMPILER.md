@@ -386,12 +386,17 @@ compiles the same spec with and without two unknown files and compares digests. 
 **near miss**: an unknown `.csv` within one small edit of a table name (`varaints.csv`) warns, because
 "ignored" is the wrong answer for a typo — every row in that file is being silently dropped from a green
 compile. The check is edit-distance-keyed rather than "any unknown csv" on purpose, so it cannot undo the
-tolerance above.
+tolerance above. It reads `.json` as well as `.csv` since 0.6, which covers `verification.json` and
+retroactively covers `provenance.json` — that one had been in the known-name set since 0.4 with no
+suffix that could reach it, so a `provenence.json` was invisible to the very guard written for this.
+A registry's `published.json` is not within an edit of either and stays tolerated, which is the
+property the widening had to preserve.
 
 **Where the machine-written sidecars may live, and what they may be called (RM49/RM51, 0.6).**
-`resolution.csv` and the six fact tables are resolved through `just_dna_format.layout`, which accepts
-each of them at the spec root **or** under a `derived/` subdirectory, and accepts the licence table
-under either `sources.csv` (deprecated, warn-only, removed at 1.0) or `licensing.csv`. Four rules:
+`resolution.csv`, the six fact tables and `verification.json` are resolved through
+`just_dna_format.layout`, which accepts each of them at the spec root **or** under a `derived/`
+subdirectory, and accepts the licence table under either `sources.csv` (deprecated, warn-only, removed
+at 1.0) or `licensing.csv`. Four rules:
 
 - **Only the machine-written tables move.** `module_spec.yaml`, `variants.csv`, `studies.csv` and the
   table kinds have exactly one legal name in exactly one legal place. Two legal homes for an authored
@@ -434,7 +439,9 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
 1. **Validate** (`validate_spec`); fail early if invalid.
 2. **Load** `module_spec.yaml` (authority-key pre-strip), then `variants.csv` / `studies.csv` if present.
 3. **Load `resolution.csv`** if present → group rows by `variant_key` into a resolution table (a
-   row-parse error fails the compile), then **verify every stored `vrs_id`** (below).
+   row-parse error fails the compile), then **verify every stored `vrs_id`** (below), and stamp
+   `resolution_signature`/`resolution_sources` **here** — where the table was read, so a module with
+   no `variants.csv` records the identity of the table it carries rather than a null (0.6, RM45).
 4. **Resolve** (only if `resolve_with_ensembl and variants`) — the precedence block below.
 5. **Re-validate identity post-resolution** (`_cross_validate_variants`) — resolution can change identity
    (fill a coord, expand a one-to-many rsid), so a post-resolution duplicate/inconsistency fails the
@@ -455,10 +462,15 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
 9. **Collect** logs / `provenance.json` / logo / readme (a malformed one fails the compile, not
    raises). The readme is discovered from `manifest.README_CANDIDATES` and hashed into
    `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
-10. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, the
-    `frequency` / `gene_metrics` / `literature` blocks, and `derived[]` — byte hashes of the sidecar
-    CSVs *where they live beside the spec*, transport-only and never their identity) and write
-    `manifest.json`.
+10. **Read the verification attestation** (`verification.json`, RM45): recompute the binding over the
+    authored inputs, re-check the proof-of-work, and either carry the block into the manifest or
+    **warn and drop it**. A stale attestation never fails a compile — the goal is that it never
+    becomes a published claim, not that it be impossible to write while editing. Nothing here is
+    trusted; see SCHEMAS.md.
+11. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, the
+    `frequency` / `gene_metrics` / `literature` / `verification` blocks, and `derived[]` — byte hashes
+    of the sidecars *where they live beside the spec*, transport-only and never their identity) and
+    write `manifest.json`.
 
 ### The VRS verify pass (0.5)
 
@@ -990,7 +1002,10 @@ table kind, and one CSV per derived-fact sidecar whose parquet is present (`freq
   format's own default. See `reference_examples/grch37_build/`.
 - **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel` (**deprecated in 0.6,
   removed at 1.0 — RM4**; see below), `provenance`, `logo`,
-  `readme`. A
+  `readme`, and the **verification attestation** (RM45) — `verification.json` is not in the artifact,
+  so there is nothing for reverse to read and inventing one would mint a claim nobody put; a reversed
+  module carries no `manifest.verification`, which is the honest *says nothing*, and re-attesting
+  means re-running the checks. A
   consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). The test of
   whether something belongs on this list is whether losing it can change a parquet byte — which is why
   `genome_build` moved off it. `readme` joins `logo` here for the same reason and with the same
@@ -1138,7 +1153,8 @@ would break scripts for no gain.
 | **`callable_from` (0.5, RM6)** | ✅ VCF field-name pointer, namespace-qualifiable and `\|`-alternatable (shared `AuthoredModel` validator); bare colliding key → warning both modes (0.6) | ✅ `weights.parquet` | — | complete (retired from the reserved namespace) |
 | **`recommendation_strength` (0.5)** | ✅ closed CPIC vocabulary, distinct axis from `evidence_level` | ✅ `diplotypes.parquet` | — | complete |
 | **dosage sensitivity (0.5)** | ✅ `haploinsufficiency`/`triplosensitivity` against `VALID_DOSAGE_SENSITIVITY` | ✅ `gene_metrics.parquet` (in digest, fact-hashed) | — | complete (ClinGen route in the enricher) |
-| **`redistribution` (0.5)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete (recorded, **not** gated — RM27) |
+| **`redistribution` (0.5, settled 0.6)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete — **recorded here, enforced downstream** (RM27; the ask is in SCHEMAS.md) |
+| **verification attestation (0.6, RM45)** | ✅ binding recomputed from the authored inputs, proof-of-work re-checked; stale ⇒ warn + drop, never fatal | ✅ `manifest.verification` (out of `artifact.digest`); nothing reaches a parquet | — (the enricher puts the checks) | complete (`verification.json`; nothing in the block is trusted) |
 | **drafting (0.5)** | ✅ appended rows are validated rows; keys reuse `_TABLE_DUPE_KEYS` | — (writes authored CSVs, not parquet) | ✅ append / already-present / differs report | complete (`draft.append_rows`, `blank_template`); `DRAFTABLE` covers the SNP core, the table kinds and `sources.csv` (0.5.4) |
 | **templating (0.5)** | ✅ a stub carries `TEMPLATE_PLACEHOLDER`, which no mode compiles | — (writes authored CSVs, not parquet) | ✅ created / kept-untouched plan | complete (`draft.stub_template`, `scaffold.scaffold_module`) |
 | **hints (0.5)** | ✅ per-cell validation, bin coverage, duplicate keys — all offline | — (writes nothing at all) | ✅ alterations + findings + options | complete (`hints.inspect_rows`, `hints.describe_table`) |

@@ -33,6 +33,7 @@ from just_dna_format.manifest import (
     Contribution,
     Display,
     GenePanelSpec,
+    VerificationRecord,
 )
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.pgs import (
@@ -104,10 +105,18 @@ _PGS_MODELS: dict[str, type[BaseModel]] = {"PgsRow": PgsRow}
 # `GeneMetricsRow` and `LiteratureRow` are still outside and still carry enforced vocabularies of
 # their own — a real gap, and a wider change than this one, since adding them alters what every
 # existing consumer of `authoring_reference()` renders.
+#
+# `VerificationRecord` (RM45) is here on exactly that second argument — it carries `verification_check`
+# and `verification_skip`, two closed vocabularies whose whole purpose is to be the machine keys a
+# consumer reads instead of prose, so a guard that could not see them would be the S21 hole again. One
+# thing it does NOT share with the other two: a human must never write one at all. An attestation a
+# human assembled is the forgery the binding hash exists to catch, so `authoring_reference()`
+# describing its shape is a description of what a consumer will read, never an invitation to author it.
 _FACT_MODELS: dict[str, type[BaseModel]] = {
     "SourceRow": SourceRow,
     "GeneValidityRow": GeneValidityRow,
     "ClinicalAssertionRow": ClinicalAssertionRow,
+    "VerificationRecord": VerificationRecord,
 }
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {

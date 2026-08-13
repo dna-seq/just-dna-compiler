@@ -60,6 +60,7 @@ from just_dna_format.identity import is_valid_version
 from just_dna_format.layout import (
     DERIVED_SUBDIR,
     SOURCES_CSV,
+    VERIFICATION_JSON,
     SidecarCollision,
     deprecation_notice,
     resolve_sidecar,
@@ -116,6 +117,7 @@ from just_dna_format.manifest import (
     ProvenanceDoc,
     Sources,
     Stats,
+    Verification,
     read_manifest,
     write_manifest,
 )
@@ -129,6 +131,12 @@ from just_dna_format.pgx import (
 )
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
+from just_dna_format.verification import (
+    attestation_failure,
+    module_binding,
+    read_verification,
+    verification_block,
+)
 from just_dna_format.spec import (
     RESERVED_FLAGS,
     Defaults,
@@ -294,7 +302,34 @@ _PROVENANCE_FILE: str = "provenance.json"
 # is the FACT hash beside it, which is the whole reason they are excluded from `_INPUT_FILES`; a
 # consumer that reads this one as identity will see a reverse→recompile cycle as tampering, which is
 # exactly the mistake the fact hashes exist to prevent.
-_DERIVED_FILES: tuple[str, ...] = ("resolution.csv", *(csv for csv, _, _ in _FACT_TABLES))
+#
+# `verification.json` (RM45) joins the two explicit entries for the same transport reason and is not a
+# fact table: it is the attestation document, so it has no parquet, no `_FACT_TABLES` row, and nothing
+# in `artifact.digest`. Listing it here is what makes a registry re-splitting a downloaded tree carry
+# it back beside the spec — without which the attestation would survive publication and not survive a
+# download, which is the silent-layout failure `layout` exists to prevent.
+_DERIVED_FILES: tuple[str, ...] = (
+    "resolution.csv",
+    VERIFICATION_JSON,
+    *(csv for csv, _, _ in _FACT_TABLES),
+)
+
+
+def authored_input_entries(spec_dir: Path) -> list[FileEntry]:
+    """The authored files a module is made of, hashed — `manifest.inputs`, and the verification binding.
+
+    Public because **two tiers must agree on it byte for byte** (the RM41 lesson): the compiler hashes
+    these into `manifest.inputs`, and the enricher hashes the identical set into the attestation's
+    `module_hash` so a later compile can tell whether the spec has been edited since the checks ran. A
+    private symbol here would leave the enricher choosing between reaching into a private name and
+    re-implementing the list, and a re-implementation is a place for the two to drift — at which point
+    every attestation this workspace writes reads as stale to its own compiler.
+
+    **Authored files only**, which is the boundary `just_dna_format.verification` argues at length:
+    the derived sidecars carry per-run noise (`fetched_at`) that would invalidate an attestation on a
+    re-enrichment that changed nothing anyone claimed.
+    """
+    return file_entries(Path(spec_dir), list(_INPUT_FILES))
 
 
 def _locate_sidecar(spec_dir: Path, csv_name: str) -> tuple[Path | None, list[str], list[str]]:
@@ -2715,13 +2750,21 @@ def _validate_table_kind(
 # listed, so a new table kind cannot be missed here. Used only to recognise a *near miss* — a spec
 # directory may carry anything else it likes (see `_check_misspelled_tables`).
 _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
-    {"module_spec.yaml", "variants.csv", "studies.csv", _PROVENANCE_FILE}
+    {"module_spec.yaml", "variants.csv", "studies.csv", _PROVENANCE_FILE, VERIFICATION_JSON}
     | set(_TABLE_KIND_CSVS)
     # Every accepted spelling, not just the one the registries name — a sidecar the compiler happily
     # reads under an alias must not also be reported as a near-miss stray file in the same run (RM51).
     | {name for csv, _, _ in _FACT_TABLES for name in sidecar_spellings(csv)}
     | set(sidecar_spellings("resolution.csv"))
 )
+
+
+#: Extensions the near-miss guard inspects **at the spec root**. `.json` joined `.csv` when
+#: `verification.json` landed (RM45); `derived/` deliberately stays `.csv`-only, and the reason the two
+#: differ is argued at the loop in `_check_misspelled_tables`. The guard's precision comes from the
+#: near-miss cutoff rather than from the extension, which is what lets it warn about a typo without
+#: warning about the curation notes beside it.
+_ROOT_NEAR_MISS_SUFFIXES: frozenset[str] = frozenset({".csv", ".json"})
 
 
 def _check_misspelled_tables(spec_dir: Path) -> list[str]:
@@ -2771,17 +2814,32 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
     # misplaced. Derived by subtraction rather than listed — a new table kind joins it for free.
     authored_names = _KNOWN_SPEC_FILES - derived_names
     warnings: list[str] = []
-    for directory, legal in ((spec_dir, _KNOWN_SPEC_FILES), (spec_dir / DERIVED_SUBDIR, derived_names)):
+    # The suffix set is **per directory**, and the asymmetry is the point rather than an oversight.
+    #
+    # Under `derived/`, both branches below are about a **table** whose rows are being dropped, so both
+    # stay behind the `.csv` filter. `derived/provenance.json` and `derived/module_spec.yaml` are
+    # therefore ordinary tolerated strays: neither has rows to lose, a misplaced `module_spec.yaml`
+    # cannot hide (the root one is required and its absence is an error), and `provenance.json` is
+    # exactly the machine-written document a registry splitting a tree might reasonably put there.
+    # Widening *that* branch would actively misreport it — `provenance.json` is in the authored set by
+    # subtraction, so it would be named as an authored table in the wrong place, which it is not.
+    #
+    # At the **root** the near-miss branch reads `.json` too (RM45). What is lost there is not rows but
+    # a whole document: a typo'd `verifcation.json` silently is not an attestation, so the module reads
+    # as *nothing verified* while its author believes the checks are recorded — the same silent-success
+    # shape, one file kind over. It retroactively covers `provenance.json`, which had been in the
+    # known-name set since 0.4 with no suffix that could reach it. Neither `published.json` nor any
+    # other registry receipt is within one edit of a known name, which is the property that keeps the
+    # tolerance beside it intact (measured, not assumed).
+    scans = (
+        (spec_dir, _KNOWN_SPEC_FILES, _ROOT_NEAR_MISS_SUFFIXES),
+        (spec_dir / DERIVED_SUBDIR, derived_names, frozenset({".csv"})),
+    )
+    for directory, legal, suffixes in scans:
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):
-            # Both branches below are about a **table** whose rows are being dropped, so both stay
-            # behind the `.csv` filter. `derived/provenance.json` and `derived/module_spec.yaml` are
-            # therefore ordinary tolerated strays: neither has rows to lose, a misplaced
-            # `module_spec.yaml` cannot hide (the root one is required and its absence is an error),
-            # and `provenance.json` is exactly the machine-written document a registry splitting a
-            # tree might reasonably put there.
-            if not path.is_file() or path.name in legal or path.suffix != ".csv":
+            if not path.is_file() or path.name in legal or path.suffix not in suffixes:
                 continue
             shown = path.relative_to(spec_dir)
             if path.name in authored_names:
@@ -3013,6 +3071,16 @@ def validate_spec(
             # `compile_module`. It is also the refusal most expensive to discover late: a module drafted
             # entirely from a no-sale source compiles right up to the gate.
             all_errors.extend(_check_license_gate(injected_rows))
+
+    # The verification attestation (RM45). Read here as well as in `compile_module` under the standing
+    # rule — pure computation over injected bytes with no `output_dir` belongs in the pre-flight too —
+    # and the two runs are safe to double precisely because this check is **not** a mode ladder and
+    # its input does not differ between them: the binding is over the authored files, which no compile
+    # step touches, so both passes reach the identical sentence and the dedup on the message below
+    # collapses them. The block itself is discarded here; only the staleness warning is wanted, at the
+    # point where an author can still re-run the checks before publishing.
+    _, verification_warnings = _verification_block(spec_dir)
+    all_warnings.extend(w for w in verification_warnings if w not in all_warnings)
 
     # The positional fill (RM43), and then the report of what it could not place. Both run here for
     # the same reason: pure computation over authored + injected bytes with no `output_dir`. The order
@@ -3435,6 +3503,8 @@ def compile_module(
     # (Principle 2). An injected `ensembl_cache` (the DuckDB path) is the superseded fallback (P3).
     resolution_rows: list[ResolutionRow] = []
     resolution_table: dict[str, list[ResolutionRow]] = {}
+    resolution_sources: list[str] = []
+    resolution_sig: str | None = None
     # 0/0 for a module with no resolution table: no allele identities were attempted, which is a
     # different statement from "none were achieved" and is what the manifest should carry.
     vrs_alleles = vrs_identified = 0
@@ -3468,6 +3538,42 @@ def compile_module(
             w for w in _vrs_coverage_warnings(resolution_rows) if w not in all_warnings
         )
         vrs_alleles, vrs_identified, _gaps = _vrs_coverage(resolution_rows)
+        # The table's identity is stamped **here**, where the table was read, rather than inside the
+        # `variants`-gated resolution block below — which is where it used to sit, and which meant a
+        # module with no `variants.csv` published `resolution_signature: null` while carrying a
+        # perfectly good `resolution.csv` beside its spec. Four of the eleven reference examples are
+        # exactly that shape, so a consumer holding a PGx manifest could not tell a module resolved
+        # from one that never was, on the one field that answers it.
+        #
+        # It was gated that way for a real reason that RM43 removed: until 0.6 `reverse_module` rebuilt
+        # this table from `weights.parquet` alone, so a table-only module round-tripped to a spec with
+        # no `resolution.csv` and stamping the signature would have published an identity the next
+        # compile could not reproduce (P7). Reverse now rebuilds it from the positional parquets too.
+        #
+        # **The residual, measured rather than assumed.** The signature reproduces exactly when the
+        # artifact consumed the whole table — all eleven reference examples, and every clean row of
+        # `test_resolution_matrix.py`. It does **not** reproduce when the table says more than the
+        # module uses: a row about a variant the module does not carry, an unplaced one-to-many, a
+        # coordinate the author overrode. Reverse rebuilds the table from the artifact, so a fact the
+        # artifact never held has nowhere to come back from — the same structural reason
+        # `rsid_alternates` is unrecoverable. That is **not new and not positional**: a plain SNP
+        # module with one unused injected row has always behaved this way, and it is pinned in the
+        # matrix now (`Case.table_says_more`) because stamping here is what first made it visible.
+        # `artifact.digest` is reproducible throughout, which is why `strict` has nothing to refuse.
+        #
+        # Still gated on `resolve_with_ensembl`: under `--no-resolve` the table is deliberately not
+        # consulted (the warning above says so), and a signature naming a table that shaped nothing
+        # would claim the artifact was built from it.
+        #
+        # And gated on the table having ROWS, not merely existing. A header-only `resolution.csv`
+        # hashes to the empty-set digest, which is a perfectly valid signature of nothing — publishing
+        # it costs `resolution_signature is not None` its meaning ("this module was resolved"). The
+        # deprecated `ensembl_cache` branch makes it worse than cosmetic: an empty `resolution_table`
+        # is falsy there, so the DuckDB path runs and the manifest would name an injected table that
+        # shaped none of the bytes — the same false claim the `--no-resolve` warning refuses to make.
+        if resolve_with_ensembl and resolution_rows:
+            resolution_sources = sorted({row.source for row in resolution_rows if row.source})
+            resolution_sig = _resolution_signature(resolution_rows)
 
     # Do the alleles the module *states* exist at the loci it points at? Runs here, on the AUTHORED
     # rows, because resolution may expand one rsid into several loci that share this genotype — after
@@ -3490,8 +3596,6 @@ def compile_module(
         return CompilationResult(success=False, errors=p_value_errors, warnings=all_warnings)
 
     resolution_mode: str | None = None
-    resolution_sources: list[str] = []
-    resolution_sig: str | None = None
     # The flag reads as "do not use Ensembl", and since 0.5 made the compiler inject-only that is
     # exactly what a consumer migrating to `resolution.csv` expects it to mean. It is actually the
     # master switch for resolution *of any kind*, so turning it off with a complete, correct table
@@ -3531,10 +3635,10 @@ def compile_module(
                     errors=[f"resolution: {e}" for e in outcome.errors],
                     warnings=all_warnings + resolve_warnings,
                 )
-            resolution_sources = sorted(
-                {row.source for row in resolution_rows if row.source}
-            )
-            resolution_sig = _resolution_signature(resolution_rows)
+            # `resolution_sources` / `resolution_sig` are stamped where the table is READ, several
+            # blocks up — not here. This branch is about applying the table to `variants.csv`, and
+            # tying the table's identity to that application is what left every table-only module
+            # unstamped.
         elif ensembl_cache is not None:
             # DEPRECATED (removed at 1.0): the in-compiler DuckDB-reference path. Resolution now belongs
             # to the source-independent `resolution.csv` (produce it with `just-dna-enricher enrich`); the
@@ -3866,6 +3970,12 @@ def compile_module(
         readme = _collect_readme(spec_dir, output_dir, readme_file)
     except ValueError as exc:
         return CompilationResult(success=False, errors=[str(exc)], warnings=all_warnings)
+    # The attestation, re-read here because the block is what gets stamped (`validate_spec` ran the
+    # same call for its warning and threw the block away). De-duplicated on the message for the
+    # standard reason: the pre-flight already emitted the identical sentence.
+    verification, verification_warnings = _verification_block(spec_dir)
+    all_warnings.extend(w for w in verification_warnings if w not in all_warnings)
+
     # Content identity over the RAW authored data (re-read from disk, so pre-resolution and
     # reference-independent — the in-scope `variants` here are already resolved). Out of
     # `artifact.digest`; lets a registry dedup across recompile/metadata-strip.
@@ -3896,6 +4006,7 @@ def compile_module(
         clinical_assertions=_clinical_assertions_block(clinical_assertion_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),
+        verification=verification,
     )
     write_manifest(manifest, output_dir / "manifest.json")
 
@@ -4174,6 +4285,60 @@ def _sources_block(rows: list[SourceRow]) -> Sources | None:
     )
 
 
+def _verification_block(spec_dir: Path) -> tuple[Verification | None, list[str]]:
+    """The manifest's `verification` block, or `None` plus the reason it is not being published (RM45).
+
+    Returns `(block, warnings)` and **never errors**. Three outcomes, and the middle one is the whole
+    point of the item:
+
+    * no `verification.json` → `(None, [])`. Nothing was attested and nothing is said, silently: an
+      unverified module is the ordinary case and warning about it would fire on every module in this
+      repository.
+    * an attestation that no longer matches these bytes, or one that cannot be read → `(None, [why])`.
+      **Warn and drop.** Making a mismatch fatal was considered — a record asserting a check over
+      bytes that are not these bytes is arguably the inconsistent-reference-allele class — and
+      rejected: the goal is that a stale record never becomes a *published claim*, not that it be
+      impossible to write, and dropping the block achieves that without stopping an author mid-edit.
+      The manifest then carries no verification, which reads correctly as *says nothing* rather than
+      as a pass.
+    * an attestation that holds → `(block, [])`.
+
+    The binding is recomputed from `authored_input_entries`, the same function that fills
+    `manifest.inputs`, so "the spec was edited" and "the inputs listing changed" are one fact rather
+    than two that can disagree.
+    """
+    path, spelling_warnings, spelling_errors = _locate_sidecar(spec_dir, VERIFICATION_JSON)
+    # A collision (root *and* `derived/`) is reported rather than raised, and it lands as a warning
+    # here where the same collision on a fact table is an error, because the outcome is already the
+    # weaker one: two attestations are two claims, neither may be preferred, so nothing is published.
+    if spelling_errors:
+        return None, spelling_errors + spelling_warnings
+    if path is None:
+        return None, list(spelling_warnings)
+    shown = path.relative_to(spec_dir)
+    try:
+        doc = read_verification(path)
+    except (OSError, ValueError) as exc:
+        return None, [
+            *spelling_warnings,
+            f"{shown} could not be read as a verification attestation ({exc}); this compile records "
+            f"no verification. Re-run the checks (just-dna-enricher) to rewrite it.",
+        ]
+    failure = attestation_failure(doc, _module_binding(spec_dir))
+    if failure is not None:
+        return None, [
+            *spelling_warnings,
+            f"{shown} is stale: {failure}. The manifest records no verification for this compile, "
+            f"which says nothing rather than claiming a pass. Re-run the checks to attest these bytes.",
+        ]
+    return verification_block(doc), list(spelling_warnings)
+
+
+def _module_binding(spec_dir: Path) -> str:
+    """The hash an attestation beside `spec_dir` must be bound to."""
+    return module_binding(authored_input_entries(spec_dir))
+
+
 def _literature_block(rows: list[LiteratureRow]) -> Literature | None:
     """The manifest's `literature` summary, or `None` when the module carries no citation sidecar.
 
@@ -4225,6 +4390,7 @@ def _build_manifest(
     clinical_assertions: ClinicalAssertions | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
+    verification: Verification | None = None,
 ) -> ModuleManifest:
     """Assemble the manifest from the spec, validation stats, and hashed input/output/log files."""
     module = config.module
@@ -4280,6 +4446,7 @@ def _build_manifest(
         clinical_assertions=clinical_assertions,
         literature=literature,
         sources=sources,
+        verification=verification,
         # Author-declared and registry-overridable, the same advisory pattern as module.version.
         license=config.license,
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),

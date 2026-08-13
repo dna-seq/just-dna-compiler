@@ -15,6 +15,9 @@ import pytest
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
 from just_dna_enricher.clinpgx_build import build_snapshot, read_created_date, read_license
 from just_dna_enricher.licensing import LicenseRefusal
+from just_dna_format import verification as verification_module
+from just_dna_format.layout import VERIFICATION_JSON
+from just_dna_format.verification import read_verification
 
 _LICENSE = (
     "This work is licensed under the Creative Commons Attribution-ShareAlike 4.0 International "
@@ -181,3 +184,137 @@ def test_declared_use_gate_applies_offline_too(snapshot: Path, tmp_path: Path) -
         _spec(tmp_path, _FAITHFUL, "unstated"), snapshot=snapshot
     )  # unstated
     assert result.rows == [] and result.warnings
+
+
+# ── what the pass records about itself (RM45) ───────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _cheap_proof_of_work(monkeypatch):
+    """8 bits instead of 20: these cases are about what is recorded, not about the work."""
+    monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", 8)
+
+
+def _records(spec_dir: Path) -> dict:
+    return {r.check: r for r in read_verification(spec_dir / VERIFICATION_JSON).records}
+
+
+def test_a_run_that_compared_levels_records_what_it_compared(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """The denominator comes from the pass, so the manifest cannot claim more than was looked up."""
+    spec = _spec(tmp_path, _FAITHFUL)
+    result = enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
+
+    record = _records(spec)["pgx_evidence_level"]
+    assert record.skipped is None
+    assert record.subjects == result.compared > 0
+    assert record.findings == len(result.conflicts) == 0
+    assert record.source == "clinpgx" and record.release == result.dataset
+
+
+def test_a_stale_level_is_recorded_as_a_finding(snapshot: Path, tmp_path: Path) -> None:
+    stale = _FAITHFUL.replace("Toxicity,655384011,1A", "Toxicity,655384011,4")
+    spec = _spec(tmp_path, stale)
+    enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
+
+    record = _records(spec)["pgx_evidence_level"]
+    assert (record.subjects, record.findings) == (3, 1)
+
+
+def test_an_ambiguous_row_counts_as_compared_and_not_as_a_finding(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """It WAS looked up; the answer was "cannot tell". That is a comparison, not an absence of one.
+
+    Recording it as unexamined would understate the denominator and make the pass look like it skipped
+    a row it actually paid for.
+    """
+    vague = (
+        "rsid,gene,genotype,drug,evidence_level,conclusion\n"
+        "rs4149056,SLCO1B1,C/C,simvastatin,1A,c\n"
+    )
+    spec = _spec(tmp_path, vague)
+    enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
+
+    record = _records(spec)["pgx_evidence_level"]
+    assert (record.subjects, record.findings, record.skipped) == (1, 0, None)
+
+
+def test_a_licensing_skip_is_not_spelled_offline(snapshot: Path, tmp_path: Path) -> None:
+    """`not_permitted` is cleared by a declaration, so calling it `offline` misdirects the reader."""
+    spec = _spec(tmp_path, _FAITHFUL, "unstated")
+    enrich_clinpgx(spec, snapshot=snapshot)  # declared_use defaults to unstated
+
+    record = _records(spec)["pgx_evidence_level"]
+    assert record.skipped == "not_permitted"
+    assert record.subjects == 0 and record.detail
+
+
+def test_no_snapshot_records_the_skip_rather_than_a_clean_pass(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The case the whole item is about: nothing ran, and the record has to say so.
+
+    Without a record here the module is indistinguishable from one whose levels were all confirmed —
+    `result.conflicts` is `[]` either way, which is the first assertion below.
+
+    Reached with no cache and `offline` rather than by passing a bad `snapshot=`: an explicit path is
+    the inject-only escape hatch and is never second-guessed, so a missing one raises instead of
+    skipping. The env var is neutralized with `""` and not deleted, for the reason the suite's
+    credential rule gives — `load_dotenv(override=False)` would restore a deleted key from `.env`.
+    """
+    monkeypatch.setenv("JUST_DNA_CLINPGX_CACHE", "")
+    spec = _spec(tmp_path, _FAITHFUL)
+    result = enrich_clinpgx(spec, declared_use="non_commercial", offline=True)
+    assert result.conflicts == []  # the misleading half, on its own
+
+    record = _records(spec)["pgx_evidence_level"]
+    assert record.skipped == "offline" and record.subjects == 0
+
+
+def test_a_module_with_no_pgx_table_attests_nothing_at_all(tmp_path: Path, snapshot: Path) -> None:
+    """Not applicable is not the same as applicable-and-skipped, and only the second is worth a record.
+
+    A module with no `pharm_variants.csv` has no PGx claim for this check to have an opinion about, so
+    recording "skipped" would answer a question nobody asked — and it would do it by mining a nonce and
+    creating a `verification.json` on a module that has nothing to do with ClinPGx. The skip vocabulary
+    is for a check that COULD have run on this module; `nothing_to_check` stays reachable for a table
+    that is present with no row in scope.
+    """
+    spec = tmp_path / "bare"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML)
+    enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
+
+    assert not (spec / VERIFICATION_JSON).exists()
+
+
+def test_two_passes_over_one_module_keep_both_records(snapshot: Path, tmp_path: Path) -> None:
+    """The merge is what makes several commands share one attestation.
+
+    A second command must not erase the first's answer — a run that did not put a question has said
+    nothing about it, and dropping the earlier record would turn that into "never asked".
+    """
+    from just_dna_enricher.verification import ran, record_verification
+
+    spec = _spec(tmp_path, _FAITHFUL)
+    enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
+    record_verification(
+        [ran("rsid_currency", subjects=4, findings=0, source="dbsnp")],
+        spec,
+        error=ClinPgxEnrichmentError,
+    )
+
+    records = _records(spec)
+    assert set(records) == {"pgx_evidence_level", "rsid_currency"}
+    assert records["pgx_evidence_level"].subjects == 3
+
+
+def test_the_strict_refusal_attests_nothing(snapshot: Path, tmp_path: Path) -> None:
+    """A raised pass produced no artifact, so there is nothing to record a check against."""
+    stale = _FAITHFUL.replace("Toxicity,655384011,1A", "Toxicity,655384011,4")
+    spec = _spec(tmp_path, stale)
+    with pytest.raises(ClinPgxEnrichmentError):
+        enrich_clinpgx(spec, snapshot=snapshot, mode="strict", declared_use="non_commercial")
+    assert not (spec / VERIFICATION_JSON).exists()
