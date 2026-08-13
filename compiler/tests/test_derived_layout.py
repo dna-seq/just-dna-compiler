@@ -23,7 +23,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import compile_module, validate_spec
+from just_dna_compiler.compiler import _TABLE_KIND_CSVS, compile_module, validate_spec
 from just_dna_format.layout import (
     DERIVED_SUBDIR,
     SidecarCollision,
@@ -45,6 +45,24 @@ def _flat(tmp_path: Path, name: str = "flat") -> Path:
             shutil.copytree(candidate, spec_dir)
             return spec_dir
     pytest.skip("no reference example carries both variants.csv and resolution.csv")
+
+
+def _multi_table(tmp_path: Path, name: str = "multi") -> Path:
+    """A real module carrying `variants.csv` **and** another authored table kind.
+
+    The distinction matters: with `variants.csv` moved away, a variants-only module is refused for
+    carrying no table at all, which hides whether the guard said anything. A module that keeps a
+    second table compiles green with its variants silently gone, which is the case worth a warning.
+    The table-kind names come from the compiler's own registry so a new kind widens this by itself.
+    """
+    for candidate in sorted(_EXAMPLES.iterdir()):
+        if not (candidate / "variants.csv").is_file():
+            continue
+        if any((candidate / kind).is_file() for kind in _TABLE_KIND_CSVS):
+            spec_dir = tmp_path / name
+            shutil.copytree(candidate, spec_dir)
+            return spec_dir
+    pytest.skip("no reference example carries variants.csv beside another table kind")
 
 
 def _split(spec_dir: Path) -> Path:
@@ -144,12 +162,16 @@ def test_a_pass_writes_beside_the_copy_it_read(tmp_path: Path) -> None:
 
 
 def test_an_authored_table_does_not_get_a_second_home(tmp_path: Path) -> None:
-    """`variants.csv` under `derived/` is not read — and the module is refused, not silently thinned.
+    """`variants.csv` under `derived/` is not read, and the module must be told so.
 
     The asymmetry is deliberate. Two legal homes for an authored table means a module can carry two
-    copies with the ignored one invisible, which is the silent-success shape. Demonstrated on the
-    behaviour rather than asserted: move the only authored table and the compile must not succeed with
-    a quietly empty module.
+    copies with the ignored one invisible, which is the silent-success shape.
+
+    This used to assert only that the compile fails — which it does on *this* fixture, and for the
+    wrong reason: the module then carries no recognised table at all, so the refusal comes from a
+    check that has never heard of `derived/`. The guard itself was silent, as the next test shows on
+    a module that keeps another table. The refusal is still worth pinning; what is added here is that
+    the file is named either way.
     """
     spec_dir = _flat(tmp_path)
     derived = spec_dir / DERIVED_SUBDIR
@@ -158,6 +180,69 @@ def test_an_authored_table_does_not_get_a_second_home(tmp_path: Path) -> None:
 
     result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
     assert not result.success, "an authored table in derived/ must not read as a module without one"
+    assert any(
+        f"{DERIVED_SUBDIR}/variants.csv" in w for w in result.warnings
+    ), result.warnings
+
+
+def test_a_misplaced_authored_table_is_named_on_a_module_that_still_compiles(
+    tmp_path: Path,
+) -> None:
+    """The silent-success case the guard exists for, and the one the fuzzy test cannot reach.
+
+    A module that keeps another table compiles **green** with its variants dropped — measured here,
+    not assumed: the compile succeeds and the artifact carries zero variant rows. `difflib` at the
+    0.8 cutoff returns nothing for `variants.csv` against the sidecar names, so matching within
+    `derived/`'s own smaller set could never have caught this; an authored name there is an *exact*
+    match against the wrong name set, which is the sharper test.
+    """
+    spec_dir = _multi_table(tmp_path)
+    derived = spec_dir / DERIVED_SUBDIR
+    derived.mkdir(exist_ok=True)
+    (spec_dir / "variants.csv").rename(derived / "variants.csv")
+
+    out = tmp_path / "out"
+    result = compile_module(spec_dir, out, resolve_with_ensembl=True)
+
+    assert result.success, result.errors
+    assert result.stats["weights_rows"] == 0, "the premise: those rows really are being dropped"
+    assert result.stats["table_rows"], "and the module still compiles because another table survived"
+    assert any(
+        f"{DERIVED_SUBDIR}/variants.csv" in w and "silently ignored" in w for w in result.warnings
+    ), result.warnings
+
+
+def test_a_typo_of_an_authored_name_in_the_subdirectory_is_caught(tmp_path: Path) -> None:
+    """`derived/varaints.csv` — the file the RM49 comment claimed was covered, and was not.
+
+    Matched against `derived/`'s own names it is no near miss of anything (measured: `[]` at the 0.8
+    cutoff), so the fuzzy test there has to run against the *full* known set. The acceptance set stays
+    the smaller one, which is what keeps a legal sidecar from being reported as a stray.
+    """
+    spec_dir = _split(_flat(tmp_path))
+    (spec_dir / DERIVED_SUBDIR / "varaints.csv").write_text("rsid,genotype\n")
+
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+    assert any(
+        "varaints.csv" in w and "one small edit" in w and "variants.csv" in w
+        for w in result.warnings
+    ), result.warnings
+
+
+def test_a_derived_sidecar_at_the_spec_root_is_not_flagged(tmp_path: Path) -> None:
+    """The mirror case: both locations are legal, so the flat layout must stay silent.
+
+    A fix for the misplaced-table direction that also fired on every unsplit module would report the
+    layout every reference example and every `reverse_module` output uses.
+    """
+    spec_dir = _flat(tmp_path)
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+
+    assert result.success, result.errors
+    assert not any(
+        "one small edit" in w or "authored table sitting" in w for w in result.warnings
+    ), result.warnings
 
 
 def test_the_near_miss_guard_follows_into_the_subdirectory(tmp_path: Path) -> None:

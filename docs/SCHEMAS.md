@@ -488,7 +488,10 @@ name is `licensing.csv`, and the rename splits.
 is deprecated (warn-only, read exactly as before) and is removed at 1.0 — the cadence the 0.6 charter
 amendment settled, and this is the case that prompted it. Write either; the compiler reads whichever
 the module carries and refuses if it carries both. Since 0.6 the file may also sit under a `derived/`
-subdirectory (RM49); see [COMPILER.md](COMPILER.md) for the layout rules.
+subdirectory (RM49); see [COMPILER.md](COMPILER.md) for the layout rules. Every writer resolves the
+name through `layout` rather than joining one on — including `reverse_module`, which regenerates a
+spec and so emits the *preferred* spelling on a fresh tree, migrating a module from the old name
+across one round trip while moving none of its four identities.
 
 **The output half waits for the major.** `sources.parquet` is inside `artifact.digest` and consumers
 read it by name, and `manifest.sources` is a published key, so renaming either is a *removal*

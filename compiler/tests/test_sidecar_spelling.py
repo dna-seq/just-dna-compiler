@@ -16,9 +16,10 @@ import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import compile_module, validate_spec
+from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
 from just_dna_compiler.draft import DRAFTABLE, blank_template
 from just_dna_format.layout import (
+    DERIVED_SUBDIR,
     LICENSING_CSV,
     SOURCES_CSV,
     SidecarCollision,
@@ -192,6 +193,89 @@ def test_the_near_miss_guard_does_not_flag_the_new_name(tmp_path: Path) -> None:
     result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
     assert result.success, result.errors
     assert not any(LICENSING_CSV in w and "one small edit" in w for w in result.warnings)
+
+
+# ── reverse ────────────────────────────────────────────────────────────────────────────────────
+
+
+def test_reverse_emits_the_preferred_spelling(tmp_path: Path) -> None:
+    """`reverse` regenerates a spec, so the spelling it writes is the one 1.0 will keep.
+
+    It used to join `_FACT_TABLES`' name on by hand, and that tuple names the licence table by its
+    *deprecated* spelling because the parquet and the manifest key keep it — so a module compiled
+    clean, reversed, and recompiled deprecation-warned on the second pass. `manifest.compilation.
+    warnings` is a published field a catalog reindexes from (RM44), so the module and its own round
+    trip disagreed about it.
+    """
+    spec_dir = _with_sources(tmp_path, LICENSING_CSV)
+    out = tmp_path / "out"
+    _compile(spec_dir, out)
+
+    reversed_spec = tmp_path / "reversed"
+    reverse_module(out, reversed_spec)
+
+    assert (reversed_spec / LICENSING_CSV).is_file()
+    assert not (reversed_spec / SOURCES_CSV).exists()
+
+    again = compile_module(reversed_spec, tmp_path / "out_again", resolve_with_ensembl=True)
+    assert again.success, again.errors
+    assert not any("deprecated spelling" in w for w in again.warnings), again.warnings
+
+
+def test_the_round_trip_moves_no_identity_when_the_name_changes(tmp_path: Path) -> None:
+    """A module on the old name reverses onto the new one, and every signature is unchanged.
+
+    This is what makes the previous test a fix rather than a trade: the fact sidecars are outside
+    `_INPUT_FILES` and hashed by their facts, so the filename enters nothing a consumer keys on.
+    Measured across all four — the artifact digest, the authored content signature, the resolution
+    signature and the whole `manifest.sources` block — rather than argued from that.
+    """
+    spec_dir = _with_sources(tmp_path, SOURCES_CSV)
+    out = tmp_path / "out"
+    before = _compile(spec_dir, out)
+
+    reversed_spec = tmp_path / "reversed"
+    reverse_module(out, reversed_spec)
+    assert (reversed_spec / LICENSING_CSV).is_file(), "reverse migrates the name"
+    after = _compile(reversed_spec, tmp_path / "out_again")
+
+    assert before["artifact"]["digest"] == after["artifact"]["digest"]
+    assert before["content_signature"] == after["content_signature"]
+    assert before["sources"] == after["sources"]
+    assert before["compilation"]["resolution_signature"] == after["compilation"]["resolution_signature"]
+
+
+@pytest.mark.parametrize("subdir", ["", DERIVED_SUBDIR])
+def test_reverse_writes_to_the_copy_the_output_directory_already_has(
+    tmp_path: Path, subdir: str
+) -> None:
+    """Write to the file you read, in `reverse` too — or it leaves the collision behind it.
+
+    Reversing over a tree that already carries the deprecated name (or a `derived/` split) and always
+    creating the preferred one at the root would produce two copies of one hand-editable table, which
+    the next compile refuses naming both. Following the existing copy is the same rule every other
+    writer obeys; a *fresh* directory has nothing to follow, which is why the test above sees the
+    preferred spelling instead.
+    """
+    spec_dir = _with_sources(tmp_path, LICENSING_CSV)
+    out = tmp_path / "out"
+    _compile(spec_dir, out)
+
+    reversed_spec = tmp_path / "reversed"
+    stale = reversed_spec / subdir / SOURCES_CSV
+    stale.parent.mkdir(parents=True)
+    stale.write_text("source,layer\n")
+
+    reverse_module(out, reversed_spec)
+
+    present = sorted(
+        path.relative_to(reversed_spec).as_posix()
+        for path in reversed_spec.rglob("*")
+        if path.name in (SOURCES_CSV, LICENSING_CSV)
+    )
+    assert present == [stale.relative_to(reversed_spec).as_posix()]
+    assert resolve_sidecar(reversed_spec, SOURCES_CSV) == stale
+    assert stale.read_text() != "source,layer\n", "the stale placeholder must have been rewritten"
 
 
 # ── drafting ───────────────────────────────────────────────────────────────────────────────────

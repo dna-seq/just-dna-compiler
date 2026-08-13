@@ -53,6 +53,7 @@ from just_dna_format.layout import (
     resolve_sidecar,
     sidecar_relative_names,
     sidecar_spellings,
+    sidecar_write_path,
 )
 from just_dna_format.integrity import (
     build_artifact,
@@ -1805,28 +1806,51 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
     high-precision or it undoes the tolerance. `difflib` at a 0.8 cutoff catches a transposition, a
     doubled or dropped letter, and a singular/plural slip, and stays quiet on an unrelated name.
 
-    **`derived/` is scanned too, and against its own smaller name set (RM49).** Tolerating a second
+    **`derived/` is scanned too, and it takes TWO tests rather than one (RM49).** Tolerating a second
     input location without teaching this check about it would put a typo'd `derived/varaints.csv`
     exactly where the guard cannot see it — re-opening the hole S16 closed, as the price of a
     convenience. That is also the argument against "search any subdirectory": one fixed name is the
-    only version where the guard can follow. The name set there is the *derived* files alone, because
-    an authored table has no business in that directory, so `derived/variants.csv` is itself the
-    near miss worth reporting rather than a file to accept."""
+    only version where the guard can follow.
+
+    What is *legal* there is the derived files alone, but that smaller set is the wrong thing to
+    fuzzy-match against, and matching against it was measured to catch neither case: at a 0.8 cutoff
+    `variants.csv`, `studies.csv` and `repeat_alleles.csv` are **no** near miss of any sidecar name,
+    and neither is `varaints.csv` — the very file this check exists for. So the two mistakes are
+    separated. An **authored table name under `derived/` is an exact match against the wrong name
+    set**, which is a sharper test than any fuzzy one and is reported as a misplaced table: those rows
+    are read from nowhere, and a module that keeps another table at the root compiles green without
+    them. Anything else there is fuzzy-matched against the **full** known set, so a typo'd authored
+    name lands too. The mirror case stays silent by construction — a derived sidecar at the spec root
+    is a legal place for it, so the root's own legal set already accepts it."""
     if not spec_dir.is_dir():
         return []
     derived_names = frozenset(
         name for csv in _DERIVED_FILES for name in sidecar_spellings(csv)
     )
+    # The authored DSL: one legal name in one legal place, so any of these under `derived/` is
+    # misplaced. Derived by subtraction rather than listed — a new table kind joins it for free.
+    authored_names = _KNOWN_SPEC_FILES - derived_names
     warnings: list[str] = []
-    for directory, known in ((spec_dir, _KNOWN_SPEC_FILES), (spec_dir / DERIVED_SUBDIR, derived_names)):
+    for directory, legal in ((spec_dir, _KNOWN_SPEC_FILES), (spec_dir / DERIVED_SUBDIR, derived_names)):
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir()):
-            if not path.is_file() or path.name in known or path.suffix != ".csv":
+            if not path.is_file() or path.name in legal:
                 continue
-            close = difflib.get_close_matches(path.name, sorted(known), n=1, cutoff=0.8)
+            shown = path.relative_to(spec_dir)
+            if path.name in authored_names:
+                warnings.append(
+                    f"{shown} is an authored table sitting in {DERIVED_SUBDIR}/, which holds only the "
+                    f"machine-written sidecars — every row in it is being silently ignored. Move it to "
+                    f"the spec root. Only resolution.csv and the fact tables have a second legal home."
+                )
+                continue
+            if path.suffix != ".csv":
+                continue
+            close = difflib.get_close_matches(
+                path.name, sorted(_KNOWN_SPEC_FILES), n=1, cutoff=0.8
+            )
             if close:
-                shown = path.relative_to(spec_dir)
                 warnings.append(
                     f"{shown} is not a table this compiler reads, and it is one small edit from "
                     f"{close[0]!r} — if that is a typo, every row in it is being silently ignored. "
@@ -3588,7 +3612,15 @@ def reverse_module(
     the artifact — so `reverse → compile` reproduces the identical `artifact.digest` with **no network
     and no Ensembl reference** (Principle 7 hardened from reference-dependent to self-contained). A
     coord-keyed row's resolved rsid, dropped from `variants.csv`, is carried here and restored on
-    recompile via `resolution.resolve_from_table`."""
+    recompile via `resolution.resolve_from_table`.
+
+    The authored tables are written under their one legal name at the root. The machine-written
+    sidecars go through `layout.sidecar_write_path`, so a fresh tree gets the **preferred** spelling
+    (`licensing.csv`, not the deprecated `sources.csv` `_FACT_TABLES` still names for its parquet) and
+    an output directory that already carries a copy has that copy overwritten rather than joined by a
+    second one. Reversing into a directory that already holds two copies of one sidecar raises
+    `layout.SidecarCollision`: which of two hand-editable claims to overwrite is not something this
+    function may decide silently."""
     parquet_dir = Path(parquet_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -3669,7 +3701,9 @@ def reverse_module(
         )
         if write_resolution:
             _write_resolution_csv(
-                weights_df, output_dir / "resolution.csv", genome_build=genome_build
+                weights_df,
+                sidecar_write_path(output_dir, "resolution.csv"),
+                genome_build=genome_build,
             )
     studies_path = parquet_dir / "studies.parquet"
     if studies_path.exists():
@@ -3686,10 +3720,23 @@ def reverse_module(
     # `allele_frequency` (derived on write, absent from `FrequencyRow`'s fields) falls away by
     # construction rather than by a special case — re-deriving it on the next compile reproduces the
     # identical parquet.
+    #
+    # The filename goes through `sidecar_write_path`, not `output_dir / csv_name`: `_FACT_TABLES`
+    # names the licence table by its *deprecated* spelling (the parquet and the manifest key keep it,
+    # since only a major may rename those), so joining that name on by hand emitted `sources.csv` and
+    # made `compile → reverse → compile` deprecation-warn on a module whose own compile is silent —
+    # and `manifest.compilation.warnings` is a published field (RM44), so the module and its own round
+    # trip disagreed on it. This is the same "write to the file you read" rule every other writer
+    # follows rather than an exception to it: reverse builds a spec tree from an artifact, so on a
+    # fresh directory there is nothing to follow and the rule yields the preferred spelling, while
+    # reversing over a tree that already carries the old name (or a `derived/` split) overwrites that
+    # copy instead of leaving a second one behind — which is the collision the rule exists to prevent.
     for csv_name, parquet_name, model in _FACT_TABLES:
         fact_path = parquet_dir / parquet_name
         if fact_path.is_file():
-            _write_table_csv(pl.read_parquet(fact_path), model, output_dir / csv_name)
+            _write_table_csv(
+                pl.read_parquet(fact_path), model, sidecar_write_path(output_dir, csv_name)
+            )
 
     return output_dir
 

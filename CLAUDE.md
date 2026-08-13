@@ -496,6 +496,16 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
     current spelling onto a module carrying the old one — or the root onto a split module — leaves two
     copies, which is the refusal below, arrived at by following the documented workflow rather than by
     misuse. This is the load-bearing half; tolerating a location on *input* alone breaks on first use.
+    **The rule was stated and then not carried through to the writers** — `reverse_module` joined
+    `_FACT_TABLES`' name on by hand, and that tuple carries the *deprecated* spelling because the
+    parquet keeps it, so `compile → reverse → compile` emitted `sources.csv` and the recompile
+    deprecation-warned on a module whose own compile was silent. `manifest.compilation.warnings` is a
+    published field (RM44), so a module and its own round trip disagreed on it. Reverse is not an
+    exception to the rule, it is the fresh-directory case *of* it: there is nothing to follow, so
+    `sidecar_write_path` yields the preferred spelling and a round trip migrates the name — measured
+    byte-identical on `artifact.digest`, `content_signature`, `resolution_signature` and
+    `manifest.sources` across all eleven reference examples, because the licence table is fact-hashed.
+    When a rule like this lands, grep every writer: `draft.append_rows` is the same join.
   - **Both present is an ERROR naming both paths.** No merge, no newest-wins: these tables are
     fact-hashed *and* human-overridable, so two copies are two legitimate claims and preferring one
     discards a curator's override.
@@ -503,7 +513,18 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
     place; two legal homes for an authored table means a module can carry two with the ignored copy
     invisible. And **`_check_misspelled_tables` had to learn `derived/`** — tolerating a location
     without extending the guard puts a typo'd `derived/varaints.csv` exactly where the check written to
-    catch it cannot see. That is also why "search any subdirectory" was refused.
+    catch it cannot see. That is also why "search any subdirectory" was refused. **It takes TWO tests
+    there, and the first attempt had neither**: fuzzy-matching against `derived/`'s own smaller name set
+    returns `[]` at the 0.8 cutoff for `variants.csv`, `studies.csv`, `diplotypes.csv` *and*
+    `varaints.csv`, so a module with its `variants.csv` under `derived/` compiled **green with zero
+    warnings and zero variant rows** while another table kept it legal — the S16 silent-success shape,
+    re-opened as the price of the convenience. An authored name there is an **exact match against the
+    wrong name set**, which is sharper than any fuzzy test and is reported as *misplaced*; everything
+    else is fuzzy-matched against the **full** known set. The *acceptance* set stays the smaller one,
+    which is what keeps unknown files tolerated and keeps the mirror case (a sidecar at the spec root,
+    legal) silent. The old test passed only because its fixture was variants-only, so the module was
+    refused for carrying no table at all and the guard's silence was invisible — when a guard's test
+    kills the module by another route, it is testing the other route.
   - **The outputs did not move**: still `sources.parquet`, still `manifest.sources`, both major-only
     renames. The 0.x tail reads `licensing.csv` → `sources.parquet` → `manifest.sources`, knowingly.
     Neither the name nor the location enters any identity — measured on all eleven reference examples.
