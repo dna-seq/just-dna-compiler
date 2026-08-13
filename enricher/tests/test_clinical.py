@@ -61,7 +61,7 @@ def _resolution(variant: VariantRow, alts: str = "A,G") -> list[ResolutionRow]:
 def test_an_opposed_call_on_the_pathogenic_allele_is_reported(snapshot: Path) -> None:
     """Authoring `benign` for `T>A`, which ClinVar calls pathogenic with two stars."""
     variant = _variant("benign", "A/T")
-    conflicts = verify_clin_sig([variant], _resolution(variant), reference=snapshot)
+    conflicts = verify_clin_sig([variant], _resolution(variant), reference=snapshot).conflicts
 
     assert len(conflicts) == 1
     conflict = conflicts[0]
@@ -81,13 +81,13 @@ def test_the_same_call_on_the_benign_allele_is_not_reported(snapshot: Path) -> N
     manufacture a conflict here out of ClinVar agreeing with itself.
     """
     variant = _variant("benign", "G/T")
-    assert verify_clin_sig([variant], _resolution(variant), reference=snapshot) == []
+    assert verify_clin_sig([variant], _resolution(variant), reference=snapshot).conflicts == []
 
 
 def test_likely_pathogenic_does_not_conflict_with_pathogenic(snapshot: Path) -> None:
     """A difference of confidence inside one conclusion is not a disagreement worth a warning."""
     variant = _variant("likely_pathogenic", "A/T")
-    assert verify_clin_sig([variant], _resolution(variant), reference=snapshot) == []
+    assert verify_clin_sig([variant], _resolution(variant), reference=snapshot).conflicts == []
 
 
 def test_clinvar_having_no_opinion_is_not_a_conflict(snapshot: Path) -> None:
@@ -101,7 +101,7 @@ def test_clinvar_having_no_opinion_is_not_a_conflict(snapshot: Path) -> None:
     )
     rows = [ResolutionRow(variant_key=variant.variant_key, chrom="1", start=66926, ref="AG",
                           alts="A", source="clinvar", status="resolved")]
-    assert verify_clin_sig([variant], rows, reference=snapshot) == []
+    assert verify_clin_sig([variant], rows, reference=snapshot).conflicts == []
 
 
 def test_a_module_making_no_clinical_claim_is_not_compared(snapshot: Path) -> None:
@@ -109,14 +109,14 @@ def test_a_module_making_no_clinical_claim_is_not_compared(snapshot: Path) -> No
         chrom=_CHROM, start=_START, ref=_REF, alts="A", genotype="A/T",
         state="risk", conclusion="c",
     )
-    assert verify_clin_sig([variant], _resolution(variant, alts="A"), reference=snapshot) == []
+    assert verify_clin_sig([variant], _resolution(variant, alts="A"), reference=snapshot).conflicts == []
 
 
 def test_effect_allele_overrides_the_genotype_derivation(snapshot: Path) -> None:
     """When the author states which allele the annotation is about, that is the one compared."""
     # Genotype names both alts, so the derivation alone could not choose; effect_allele decides.
     variant = _variant("benign", "A/G", effect_allele="A")
-    conflicts = verify_clin_sig([variant], _resolution(variant), reference=snapshot)
+    conflicts = verify_clin_sig([variant], _resolution(variant), reference=snapshot).conflicts
     assert [c.alt for c in conflicts] == ["A"]
     assert conflicts[0].clinvar == "pathogenic"
 
@@ -129,7 +129,7 @@ def test_an_ambiguous_genotype_falls_back_to_the_whole_locus(snapshot: Path) -> 
     pathogenic record is also present.
     """
     variant = _variant("benign", "A/G")
-    assert verify_clin_sig([variant], _resolution(variant), reference=snapshot) == []
+    assert verify_clin_sig([variant], _resolution(variant), reference=snapshot).conflicts == []
 
 
 def test_the_locus_fallback_still_reports_a_wholly_unsupported_call(snapshot: Path) -> None:
@@ -144,7 +144,7 @@ def test_the_locus_fallback_still_reports_a_wholly_unsupported_call(snapshot: Pa
     )
     rows = [ResolutionRow(variant_key=variant.variant_key, chrom="1", start=943234, ref="A",
                           alts="G,C", source="clinvar", status="resolved")]
-    conflicts = verify_clin_sig([variant], rows, reference=snapshot)
+    conflicts = verify_clin_sig([variant], rows, reference=snapshot).conflicts
     assert len(conflicts) == 1
     assert (conflicts[0].authored, conflicts[0].clinvar) == ("pathogenic", "likely_benign")
     assert conflicts[0].opposed is True
@@ -186,7 +186,7 @@ def test_strict_does_not_escalate_a_clinical_disagreement(
 def test_the_check_is_skipped_when_no_snapshot_is_provisioned(tmp_path: Path) -> None:
     """A check that could not run is not a check that passed; it returns nothing and says so."""
     variant = _variant("benign", "A/T")
-    assert verify_clin_sig([variant], _resolution(variant), reference=None) == []
+    assert verify_clin_sig([variant], _resolution(variant), reference=None).conflicts == []
 
 
 # ── S4: a module drafted from this very snapshot cannot fail this check ─────────────────────────
@@ -305,4 +305,4 @@ def test_an_unusable_snapshot_degrades_instead_of_raising(tmp_path: Path) -> Non
         broken / "chr.parquet"
     )
     variant = _variant("benign", "A/T")
-    assert verify_clin_sig([variant], _resolution(variant), reference=tmp_path / "broken") == []
+    assert verify_clin_sig([variant], _resolution(variant), reference=tmp_path / "broken").conflicts == []

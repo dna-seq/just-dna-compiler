@@ -34,6 +34,32 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
 | **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) |
 
+**Every check that runs records what it did — `verification.json` (RM45, 0.6).** Until 0.6 the table
+above described work whose result died with the process: a check's findings reached a log line and an
+`EnrichmentResult` field, and the compiled module could not say whether the check had been put at all.
+`just_dna_enricher.verification.record_verification` is the load-merge-write that closes that, in the
+same shape `licensing.record_source_terms` has and for the same reason — a count of call sites goes
+stale, one function does not. Four things to hold onto when wiring a new pass into it:
+
+- **A record carries two counts and a closed skip key.** `ran(check, subjects=…, findings=…)` when it
+  ran (`subjects=0` is a legitimate answer meaning nothing was in scope) and
+  `skipped(check, reason, detail=…)` when it did not. Both vocabularies are closed
+  (`VALID_VERIFICATION_CHECKS`, `VALID_VERIFICATION_SKIPS`); the human sentence rides in `detail`,
+  beside the machine key and never instead of it.
+- **The denominator comes from the check, never from the caller.** This is why
+  `verify_reference_alleles` and `verify_clin_sig` return `RefCheck`/`ClinSigCheck` rather than bare
+  finding lists: a count recomputed beside a check can disagree with it. Both also surfaced a real
+  hole doing so — each had an *internal* skip (no sequence access; a snapshot present but not
+  queryable) that returned an empty list indistinguishable from a clean pass, which is S4's defect
+  surviving inside the machinery S4 built.
+- **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
+  three of its checks at the end of the run. A separate command writes its own; the merge is what keeps
+  both in one document, replacing per check and never erasing a check this run did not put.
+- **The attestation is bound to the module's authored bytes.** Edit `variants.csv` afterwards and the
+  compiler drops the block with a warning — correctly, because the checks were put against rows that no
+  longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
+  read off each record's own `release`.
+
 **Two of these break the severity rule in opposite directions, and both are deliberate.** The
 allele-function check joins the clinical cross-check in warning under `strict` too: PharmVar and CPIC
 are different expert panels — one assigns a molecular function, the other a clinical one — and they

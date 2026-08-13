@@ -18,27 +18,38 @@ from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_
 from just_dna_compiler.resolution import hosting_verdict
 from just_dna_format.base import derive_variant_key
 from just_dna_format.binning import HeteroplasmyRow
-from just_dna_format.manifest import GenePanelSpec
+from just_dna_format.manifest import GenePanelSpec, VerificationRecord
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
-from just_dna_enricher.clinical import ClinSigConflict, tautology_reason, verify_clin_sig
+from just_dna_enricher.clinical import (
+    ClinSigCheck,
+    ClinSigConflict,
+    tautology_reason,
+    verify_clin_sig,
+)
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.identifiers import RsidStatus, check_rsids
 from just_dna_enricher.licensing import record_source_terms, resolution_authority, sidecar_path
-from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
+from just_dna_enricher.locations import (
+    read_release,
+    resolve_clinvar_reference,
+    resolve_ensembl_reference,
+)
 from just_dna_enricher.resolver import lookup_loci
 from just_dna_enricher.sequences import (
+    RefCheck,
     RefMismatch,
     SequenceProxy,
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
+from just_dna_enricher.verification import ran, record_verification, skipped
 from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger(__name__)
@@ -731,9 +742,12 @@ def enrich(
             logger.warning("VRS coverage — %s", line)
 
     # Validation pass: does the authored data agree with the genome? (Reported, never repaired.)
-    ref_mismatches = (
-        verify_reference_alleles(out, sequences=sequences, offline=offline) if verify_ref else []
+    ref_check = (
+        verify_reference_alleles(out, sequences=sequences, offline=offline)
+        if verify_ref
+        else RefCheck([], 0, "not_requested")
     )
+    ref_mismatches = ref_check.mismatches
     for line in summarize_ref_mismatches(ref_mismatches):
         logger.warning("Reference-allele mismatch — %s", line)
 
@@ -745,18 +759,28 @@ def enrich(
     # snapshot would be compared against its own source, and reporting "0 conflicts" for a structurally
     # guaranteed result looks like evidence without being any (S4). The skip states its reason rather
     # than quietly returning the same empty list a real pass returns.
-    clin_sig_conflicts: list[ClinSigConflict] = []
+    clin_sig_check = ClinSigCheck([], 0, "not_requested")
     clin_sig_not_checked: str | None = None
+    tautology: str | None = None
     if not verify_clinsig:
         clin_sig_not_checked = "not_requested"
     elif clinvar_ref is None:
         clin_sig_not_checked = "no_snapshot"
+        clin_sig_check = ClinSigCheck([], 0, "no_reference")
     else:
-        clin_sig_not_checked = tautology_reason(spec_panel(spec_dir), clinvar_ref)
-        if clin_sig_not_checked is None:
-            clin_sig_conflicts = verify_clin_sig(variants, out, reference=clinvar_ref)
+        tautology = tautology_reason(spec_panel(spec_dir), clinvar_ref)
+        clin_sig_not_checked = tautology
+        if tautology is None:
+            clin_sig_check = verify_clin_sig(variants, out, reference=clinvar_ref)
+            # The check's own internal skip reaches the result now. A snapshot that is present but
+            # will not answer used to leave this `None` — the run stating a cross-check it never
+            # completed, which is the S4 defect surviving inside the machinery S4 built.
+            if clin_sig_check.not_checked is not None:
+                clin_sig_not_checked = "no_snapshot"
         else:
-            logger.info("ClinVar clin_sig cross-check not run: %s.", clin_sig_not_checked)
+            clin_sig_check = ClinSigCheck([], 0, "tautology")
+            logger.info("ClinVar clin_sig cross-check not run: %s.", tautology)
+    clin_sig_conflicts = clin_sig_check.conflicts
     for conflict in clin_sig_conflicts:
         logger.warning("ClinVar clin_sig %s — %s",
                        "conflict" if conflict.opposed else "difference", conflict)
@@ -766,8 +790,11 @@ def enrich(
     # STAMPED onto the rows' provenance columns and reported; the authored label is never replaced,
     # because doing so would migrate `variant_key` by network lookup. See `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = []
+    rsid_subjects = 0
     if verify_rsids and not offline:
-        statuses = check_rsids(sorted({r.rsid for r in out if r.rsid}))
+        asked = sorted({r.rsid for r in out if r.rsid})
+        rsid_subjects = len(asked)
+        statuses = check_rsids(asked)
         by_rsid = {s.rsid: s for s in statuses}
         for row in out:
             status = by_rsid.get(row.rsid or "")
@@ -853,6 +880,26 @@ def enrich(
 
     if write:
         _write_resolution_csv(out, resolution_path)
+        # The attestation (RM45), written once for the whole run — the proof-of-work binds the
+        # document, so recording per check would pay it three times for one guarantee. It goes after
+        # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
+        # over the **authored** files, which none of these writes touch.
+        record_verification(
+            _verification_records(
+                offline=offline,
+                verify_ref=verify_ref,
+                ref_check=ref_check,
+                verify_clinsig=verify_clinsig,
+                clin_sig_check=clin_sig_check,
+                tautology=tautology,
+                clinvar_ref=clinvar_ref,
+                verify_rsids=verify_rsids,
+                rsid_subjects=rsid_subjects,
+                stale_rsids=stale_rsids,
+            ),
+            spec_dir,
+            error=EnrichmentError,
+        )
         # `enrich()` was the only pass that consulted sources and recorded none — the reason
         # `VALID_SOURCE_LAYERS` reserves a `"resolution"` member nothing ever wrote. Keyed on the
         # authority rather than the link, so the row joins `sources.csv` (RM33).
@@ -863,6 +910,126 @@ def enrich(
             error=EnrichmentError,
         )
     return result
+
+
+def _verification_records(
+    *,
+    offline: bool,
+    verify_ref: bool,
+    ref_check: RefCheck,
+    verify_clinsig: bool,
+    clin_sig_check: ClinSigCheck,
+    tautology: str | None,
+    clinvar_ref: Path | None,
+    verify_rsids: bool,
+    rsid_subjects: int,
+    stale_rsids: list[RsidStatus],
+) -> list[VerificationRecord]:
+    """The three checks this pass puts, as records `verification.json` can carry (RM45).
+
+    Every count comes from the check that produced it — never re-derived here. That is the whole
+    reason `verify_reference_alleles` and `verify_clin_sig` now return what they compared: a
+    denominator recomputed beside a check is a denominator that can disagree with it, and a manifest
+    field whose two halves disagree is worse than no field.
+
+    `not_requested` is recorded rather than omitted, and the difference matters: an omitted check is
+    one nobody has said anything about, while a recorded `not_requested` says this run deliberately
+    did not put it. Only the first is what a re-run with the flag on would fill in.
+    """
+    records: list[VerificationRecord] = []
+
+    # Reference allele. The reason comes off the check, which is the only thing that knows whether the
+    # sequence service answered — `offline` is the caller's request, not the outcome.
+    if not verify_ref:
+        records.append(skipped("reference_allele", "not_requested"))
+    elif ref_check.not_checked is not None:
+        records.append(
+            skipped(
+                "reference_allele",
+                ref_check.not_checked,
+                detail="no sequence access this run, so no authored ref was compared",
+                source="seqrepo",
+            )
+        )
+    else:
+        records.append(
+            ran(
+                "reference_allele",
+                subjects=ref_check.subjects,
+                findings=len(ref_check.mismatches),
+                source="seqrepo",
+                detail="; ".join(summarize_ref_mismatches(ref_check.mismatches)) or None,
+            )
+        )
+
+    # Clinical significance. `release` is the snapshot's own `release.json` answer, which is what a
+    # consumer needs to know *which* ClinVar the calls were weighed against — the same reason a
+    # frequency row carries its `dataset`. `None` when the snapshot cannot state one, never a guess.
+    clinvar_release = _clinvar_release(clinvar_ref)
+    if not verify_clinsig:
+        records.append(skipped("clinical_significance", "not_requested", source="clinvar"))
+    elif clin_sig_check.not_checked is not None:
+        records.append(
+            skipped(
+                "clinical_significance",
+                clin_sig_check.not_checked,
+                # The tautology sentence beside the machine key, never instead of it: `tautology_reason`
+                # writes the good one and this is where it survives the run.
+                detail=tautology,
+                source="clinvar",
+            )
+        )
+    else:
+        records.append(
+            ran(
+                "clinical_significance",
+                subjects=clin_sig_check.subjects,
+                findings=len(clin_sig_check.conflicts),
+                source="clinvar",
+                release=clinvar_release,
+            )
+        )
+
+    # rsID currency. dbSNP publishes a build number per record rather than a release for the service,
+    # so there is nothing true to put in `release` — the same call `LiteratureRow` made about `dataset`.
+    if not verify_rsids:
+        records.append(skipped("rsid_currency", "not_requested", source="dbsnp"))
+    elif offline:
+        records.append(
+            skipped(
+                "rsid_currency",
+                "offline",
+                detail="dbSNP has no offline merge table, so currency cannot be established locally",
+                source="dbsnp",
+            )
+        )
+    else:
+        records.append(
+            ran(
+                "rsid_currency",
+                subjects=rsid_subjects,
+                findings=len(stale_rsids),
+                source="dbsnp",
+            )
+        )
+    # Deliberately takes neither `variants` nor `rows`: nothing here may count anything itself, and a
+    # function that cannot see the tables cannot be tempted to. The denominators come in already
+    # computed, from the checks that computed them.
+    return records
+
+
+def _clinvar_release(reference: Path | None) -> str | None:
+    """The ClinVar release a snapshot states, or `None` when it states none.
+
+    `None` for absent, unreadable and unstated alike — `read_release` already collapses those three
+    into one honest answer, and a caller must not be able to mistake "this snapshot does not say" for
+    a release id.
+    """
+    if reference is None:
+        return None
+    release = read_release(reference) or {}
+    stated = release.get("clinvar_file_date")
+    return str(stated) if stated else None
 
 
 def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:

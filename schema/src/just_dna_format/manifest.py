@@ -15,7 +15,7 @@ extends it) can share one definition without pulling heavy transitive dependenci
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from just_dna_format.base import vocabulary
 from just_dna_format.identity import (
@@ -26,6 +26,8 @@ from just_dna_format.identity import (
 from just_dna_format.vocab import (
     RECOMMENDED_AUTHOR_KINDS,
     VALID_AUTHOR_ROLES,
+    VALID_VERIFICATION_CHECKS,
+    VALID_VERIFICATION_SKIPS,
     check_vocab,
 )
 
@@ -511,6 +513,260 @@ class Provenance(BaseModel):
     sha256: str | None = Field(default=None, description="sha256: of the provenance document")
 
 
+#: The untrusted-value warning every verification field repeats. `compiled_by`'s description has said
+#: it since the beginning for one field; here it has to be said on every one, because a *forged pass is
+#: worse than silence* — a consumer that reads "the clinical calls were cross-checked" off a manifest
+#: it did not produce, and believes it, is worse off than one that reads nothing at all. Neither the
+#: binding hash nor the proof-of-work below changes that: they defend against a **stale** record on an
+#: honestly-produced module, which is the accidental case, and nothing here is built to resist a
+#: deliberate one.
+UNTRUSTED_NOTE: str = (
+    "Foreign values are untrusted: this records what a producer SAYS it checked, and only a "
+    "consumer holding the module's own bytes can confirm it."
+)
+
+
+class VerificationRecord(BaseModel):
+    """One check, and what putting it produced — the row grain of `verification.json` (RM45).
+
+    A module whose clinical-significance calls were cross-checked against ClinVar and one where that
+    check never ran used to ship **identical** manifests: not through an oversight in some path, but
+    because no field existed that could differ. This is the record that can.
+
+    **Two counts, never a boolean, and never one union-typed slot.** `subjects` is what the check was
+    evaluated over and `findings` is what it turned up, so *ran against nothing* (`subjects=0`,
+    `skipped=None`) and *did not run* (`skipped` set) can never occupy the same value.
+    `vrs_alleles`/`vrs_alleles_identified` is the precedent and the argument is the same one: an
+    unstated denominator is the defect, because coverage of an unknown fraction is not something
+    anything can key on.
+
+    **`skipped` is a closed vocabulary with the sentence beside it, not instead of it.** Backfill
+    triage branches on *why* a pass did not run, so prose in that slot would relocate the substring
+    matching RM44 documents rather than end it. `detail` is where the good sentence goes —
+    `clinical.tautology_reason` already writes one, and it stays exactly as it is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    check: str = Field(
+        json_schema_extra=vocabulary("verification_check", VALID_VERIFICATION_CHECKS),
+        description=f"Which question was put (VALID_VERIFICATION_CHECKS). {UNTRUSTED_NOTE}",
+    )
+    subjects: int = Field(
+        default=0,
+        description=(
+            "Rows the check was evaluated over — the denominator. 0 with no `skipped` means the "
+            f"check ran and had nothing in scope, which is not the same as not running. {UNTRUSTED_NOTE}"
+        ),
+    )
+    findings: int = Field(
+        default=0,
+        description=f"Of those, how many disagreed with the source. {UNTRUSTED_NOTE}",
+    )
+    skipped: str | None = Field(
+        default=None,
+        json_schema_extra=vocabulary("verification_skip", VALID_VERIFICATION_SKIPS),
+        description=(
+            "Why the check did not run (VALID_VERIFICATION_SKIPS), or null when it did. "
+            f"{UNTRUSTED_NOTE}"
+        ),
+    )
+    detail: str | None = Field(
+        default=None,
+        description=(
+            "The human sentence beside the machine key — the reason in full, or a note about what "
+            f"was compared. Outside the fact set, so rewording it moves no signature. {UNTRUSTED_NOTE}"
+        ),
+    )
+    source: str | None = Field(
+        default=None,
+        description=(
+            "Which source answered, joining to the `source` column the licensing table keys on "
+            f"(e.g. 'clinvar', 'hgnc', 'pubmed'). Null when the check needed none. {UNTRUSTED_NOTE}"
+        ),
+    )
+    release: str | None = Field(
+        default=None,
+        description=(
+            "Which release of that source it was checked against, as the source states it (a "
+            "snapshot's `release.json`, a list version). Null when the source publishes none — "
+            f"PubMed is continuously updated and has nothing true to put here. {UNTRUSTED_NOTE}"
+        ),
+    )
+    checked_at: str | None = Field(
+        default=None,
+        description=(
+            "ISO-8601 UTC timestamp of the run that put this check. Producer noise, so it is outside "
+            f"the fact set. {UNTRUSTED_NOTE}"
+        ),
+    )
+
+    @field_validator("check")
+    @classmethod
+    def _check_name(cls, v: str) -> str:
+        checked = check_vocab(v, VALID_VERIFICATION_CHECKS, "check")
+        if checked is None:
+            raise ValueError("check is required")
+        return checked
+
+    @field_validator("skipped")
+    @classmethod
+    def _check_skip(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_VERIFICATION_SKIPS, "skipped")
+
+    @field_validator("subjects", "findings")
+    @classmethod
+    def _check_counts(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("a count must not be negative")
+        return v
+
+    @model_validator(mode="after")
+    def _check_consistent(self) -> "VerificationRecord":
+        # A record that says both "this did not run" and "it looked at 12 rows" contradicts itself,
+        # which is the class the compiler treats as fatal wherever else it appears (an id recorded
+        # against no coordinate, two rows disagreeing about `ref`). Refusing at load keeps the two
+        # fields' meanings from blurring into "how far did it get".
+        if self.skipped is not None and (self.subjects or self.findings):
+            raise ValueError(
+                f"check {self.check!r} is recorded as skipped ({self.skipped!r}) and also as having "
+                f"looked at {self.subjects} row(s) with {self.findings} finding(s) — a skipped check "
+                f"has no subjects. Record the skip, or record the counts, not both."
+            )
+        if self.findings > self.subjects:
+            raise ValueError(
+                f"check {self.check!r} reports {self.findings} finding(s) out of {self.subjects} "
+                f"subject(s); a finding is one of the rows the check was evaluated over."
+            )
+        return self
+
+
+class VerificationDoc(BaseModel):
+    """The full `verification.json` beside the spec: an attestation over a list of check records.
+
+    **Why this is a document and not a fifth fact CSV.** The object has two levels — one attestation
+    covering many records — and a CSV can express that only by carrying a non-data service row (the
+    shape RM36 rejected on `genome_build`, for exactly the reason it applies here: a data table would
+    hold a row that is not data) or by repeating the attestation on every row, where two rows can then
+    disagree about a per-run fact. `provenance.json` is the standing precedent for the shape that
+    fits: a JSON document beside the spec, read and hashed by the compiler, summarized into a manifest
+    block.
+
+    There is a second reason, and the charter names it. The 0.6 amendment observes that a derived
+    table which is **both machine-written and human-overridable** can be edited into a state that is
+    not merely stale but is a false claim, and that this "wants a mechanism rather than a convention".
+    Every CSV sidecar is overridable on purpose — a curator correcting a row the enricher wrote is the
+    designed path. An attestation is the one derived thing where that must not silently pass, so it is
+    deliberately not in the family whose overridability is a feature.
+
+    **The mechanism, and its exact modesty.** `module_hash` binds the record to the authored bytes it
+    was computed over, and `nonce` is a proof-of-work over that binding plus the records' own
+    signature. Both exist to stop an **accidental** forgery — an attestation left behind by an edit,
+    or copied between modules — and nothing here is built as though the library were hack-resistant,
+    because it is not and does not claim to be. A reader who wants a guarantee wants
+    `manifest.signature`, which is a real one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    module_hash: str = Field(
+        description=(
+            "The authored bytes this attestation was computed over "
+            "(`verification.module_binding`). The compiler recomputes it and drops the whole block "
+            "when it no longer matches."
+        )
+    )
+    signature: str = Field(
+        description="Fact-hash of `records` (`verification.verification_signature`)"
+    )
+    difficulty: int = Field(
+        description=(
+            "Leading zero bits the proof-of-work meets. Recorded rather than assumed so a document "
+            "written under one difficulty is still checkable after the constant moves; a reader "
+            "requires at least its own minimum."
+        )
+    )
+    nonce: int = Field(
+        description=(
+            "The SMALLEST nonce counting up from zero that meets `difficulty`. Smallest, never a "
+            "random search: a random one would give the file different bytes on every run for the "
+            "same content, which is the determinism the round-trip tests pin everywhere else."
+        )
+    )
+    producer: str | None = Field(
+        default=None,
+        description=f"Tool and version that put the checks, e.g. 'just-dna-enricher 0.6.0'. {UNTRUSTED_NOTE}",
+    )
+    produced_at: str | None = Field(
+        default=None, description="ISO-8601 UTC timestamp of the run that wrote this document"
+    )
+    records: list[VerificationRecord] = Field(
+        default_factory=list, description="One record per check, at most one per check name"
+    )
+
+    @model_validator(mode="after")
+    def _check_unique(self) -> "VerificationDoc":
+        names = [r.check for r in self.records]
+        duplicated = sorted({name for name in names if names.count(name) > 1})
+        if duplicated:
+            raise ValueError(
+                f"verification records must be one per check; {duplicated} appear more than once. "
+                f"A second record for one check is a re-run, and a re-run replaces rather than "
+                f"accumulates — merge before writing."
+            )
+        return self
+
+
+class Verification(BaseModel):
+    """What a module can say about whether anything it asserts was ever CHECKED (RM45).
+
+    **Absent on a module nothing verified, and absent on one whose attestation no longer matches its
+    bytes.** Both read correctly as *says nothing*, which is the only safe default: a block that
+    survived an edit would say a check passed over rows it never saw.
+
+    On `Frequency`'s precedent — a separate block rather than fields on `Compilation`, because this
+    has its own producer, its own releases and its own fact-hash. It departs from that sibling in one
+    way, deliberately: `Frequency` carries derived facets (`sources`, `datasets`, `populations`)
+    because its rows stay in the sidecar and never reach the manifest, while these records are few and
+    are embedded whole, so a union list here would restate what is already two lines below it. Keep
+    the parts, compute the convenience.
+
+    **Nothing in this block is trusted.** Every field repeats it, because the first consumer to read a
+    pass off an untrusted manifest will otherwise believe it, and a forged pass is worse than silence.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description=(
+            "Fact-hash of the check records (`verification.verification_signature`); out of "
+            f"artifact.digest. {UNTRUSTED_NOTE}"
+        ),
+    )
+    module_hash: str | None = Field(
+        default=None,
+        description=(
+            "The authored bytes the checks were put against. The compiler confirmed this matched the "
+            "spec it compiled — that is what presence of this block means, and it is the whole of "
+            f"what it means. {UNTRUSTED_NOTE}"
+        ),
+    )
+    producer: str | None = Field(
+        default=None,
+        description=f"Tool and version that put the checks. {UNTRUSTED_NOTE}",
+    )
+    produced_at: str | None = Field(
+        default=None,
+        description=f"ISO-8601 UTC timestamp of the verifying run. {UNTRUSTED_NOTE}",
+    )
+    checks: list[VerificationRecord] = Field(
+        default_factory=list,
+        description=(
+            "One record per check put, carrying its counts, its skip reason, and the source release "
+            f"it was checked against. {UNTRUSTED_NOTE}"
+        ),
+    )
+
+
 class Contribution(BaseModel):
     """One authorship contribution to *this version* of a module (RM14; docs/USE_CASES.md §5a).
 
@@ -661,6 +917,17 @@ class ModuleManifest(BaseModel):
             "one place a consumer can read what terms a compiled module was built under — which "
             "attributions must be reproduced, whether a ShareAlike obligation attaches, and whether "
             "the module may be sold — without re-deriving any of it from source names."
+        ),
+    )
+    verification: Verification | None = Field(
+        default=None,
+        description=(
+            "What was CHECKED, when the module carries an attestation that still matches its own "
+            "authored bytes (RM45). Absent on a module nothing verified AND on one whose attestation "
+            "went stale — both mean *says nothing*, which is the reading a consumer must land on. "
+            "Out of `artifact.digest` and out of `content_signature`: evidence about a compile is not "
+            "the authored data, so re-running a check must not mint a new content identity. Nothing "
+            "in it is trusted; see the block's own field descriptions."
         ),
     )
     inputs: list[FileEntry] = Field(default_factory=list)

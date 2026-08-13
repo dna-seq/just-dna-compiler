@@ -31,6 +31,7 @@ from just_dna_format.manifest import (
     Contribution,
     Display,
     GenePanelSpec,
+    VerificationRecord,
 )
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.pgs import (
@@ -90,7 +91,18 @@ _PGS_MODELS: dict[str, type[BaseModel]] = {"PgsRow": PgsRow}
 # are three orthogonal axes where `None` means unknown rather than false, which is not a guessable
 # shape. The consumer who reported it got there by reading `SourceRow.model_fields` — reading our
 # source to learn our schema, which is the thing this module exists to make unnecessary.
-_FACT_MODELS: dict[str, type[BaseModel]] = {"SourceRow": SourceRow}
+#
+# `VerificationRecord` is listed for a **different** reason and the difference matters: a human must
+# never hand-write one (an attestation a human assembled is the forgery the binding hash exists to
+# catch, so `authoring_reference` describing its shape is a description, not an invitation). It is
+# here because the guard that discovers vocabulary enforcement *by behaviour* is only as complete as
+# this registry — S21's whole lesson — and this model carries two closed vocabularies a consumer
+# genuinely has to be able to read, `verification_check` and `verification_skip`, which are the
+# machine keys RM45 exists to publish instead of prose.
+_FACT_MODELS: dict[str, type[BaseModel]] = {
+    "SourceRow": SourceRow,
+    "VerificationRecord": VerificationRecord,
+}
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,

@@ -700,8 +700,31 @@ three letters.
   and expressly allows sharing; an academic-use-only source (OMIM, dbNSFP) permits neither, and a
   module embedding one cannot be published at all, free or not. Recording the second as merely
   non-commercial understates it. Summarized module-wide on the same most-restrictive-wins ladder
-  (`sources.taints_redistribution`) but **not gated at compile** — how a distribution bar interacts
-  with `declared_use` is a design question, since a distribution right is not a use (RM27).
+  (`sources.taints_redistribution`) and, since RM27 settled in 0.6, **recorded and never gated here**
+  — see the ask below.
+
+### The redistribution verdict is recorded here and enforced downstream — an ask, addressed (RM27)
+
+`manifest.sources.redistribution` is the module-wide answer to *may this module be passed on at all*:
+`false` when an `annotation`-layer source forbids it, `null` when any source's terms could not be
+established, `true` only when every one of them is known and permits it. `null` is undetermined and
+**never** a permission. `nonredistributable_layers` names which layers carry the bar, the same way
+`noncommercial_layers` pairs with `commercial_use`.
+
+**None of these four packages gates on it, and none of them will.** The compile gate reads
+`commercial_use` and nothing else, deliberately: a *distribution right is not a use*, so
+`declared_use` (`unstated` / `non_commercial` / `commercial`) cannot express the verdict, and asking
+the author a second build-time question about an act that has not happened yet is the wrong shape —
+the answer is a property of the publish, not of the build. Gating on the act is right; the act is
+downstream.
+
+> **To the registry, concretely: enforce `manifest.sources.redistribution` at publish, at 0.6
+> integration.** A module whose verdict is `false` must not be served to third parties, and one whose
+> verdict is `null` must not be treated as clear — undetermined terms have not been shown to permit
+> anything. The verdict is in the manifest already, computed by `_sources_block` on the same
+> most-restrictive-wins ladder the sale verdict uses, so the enforcement is a read rather than a
+> derivation, and no re-derivation from source names is needed or wanted. Publishing a verdict nobody
+> is told to act on is the status quo RM27 was filed about; this paragraph is the difference.
 - **`layer` decides what taints.** Only `annotation` — the module's own authored tables, where curated
   prose is embedded — carries a derivative-work obligation. A source consulted purely for a coordinate
   contributed a fact that Ensembl reports identically, so it is recorded without marking the module.
@@ -711,6 +734,67 @@ three letters.
   downloaded where a source ships one, and pins it with `license_sha256`. A source→licence map in the
   compiler would be an un-injected reference (Principle 2) and would go stale — both halves of one did,
   inside a single release.
+
+## The verification attestation (0.6) — `verification.json`
+
+A downloaded manifest is detailed about how rs-numbers were *resolved* and, until 0.6, silent about
+whether any claim was ever *checked*. A module whose clinical calls were cross-checked against ClinVar
+and one where the check never ran shipped **identical** manifests — not through an oversight in some
+path, but because no field existed that could differ. `verification.json` is the field, one layer down
+from the fix 0.5.2 made on `EnrichmentResult` (S4: an empty conflict list says both "compared
+everything" and "never compared"). The layer that outlives the run had inherited none of it.
+
+**Shape.** `manifest.VerificationDoc` — an attestation over `VerificationRecord`s, one per check:
+`check` (`VALID_VERIFICATION_CHECKS`), `subjects`, `findings`, `skipped?`
+(`VALID_VERIFICATION_SKIPS`), `detail?`, `source?`, `release?`, `checked_at?`. Facts:
+`check`/`subjects`/`findings`/`skipped`/`source`/`release`; prose and the timestamp are out, as
+everywhere else. The compiler confirms it and stamps `manifest.verification`.
+
+- **A JSON document, not a fifth fact CSV, and the reason is structural.** The object has two levels —
+  one attestation over many records — and a CSV expresses that only with a non-data service row (the
+  shape RM36 rejected) or by repeating the attestation on every row, where two rows can then disagree
+  about a per-run fact. `provenance.json` is the precedent for exactly this shape. It also keeps the
+  attestation out of the family whose **human-overridability is a designed feature**: a curator
+  editing `frequencies.csv` is doing the intended thing, while editing an attestation is writing a
+  claim nobody put — the case the 0.6 charter amendment says "wants a mechanism rather than a
+  convention".
+- **Two counts, never a boolean.** `subjects=0` with no `skipped` means the check ran and had nothing
+  in scope; a `skipped` key means it did not run. Those are different statements and cannot share a
+  value. `vrs_alleles`/`vrs_alleles_identified` is the precedent.
+- **Both vocabularies are closed, and fixed for the major.** Free-string check names would recreate
+  RM44 one level down — one spelling from the enricher, another from a registry, a substring match
+  from a consumer. Skip reasons are closed for a second reason: backfill triage branches on *why*, so
+  prose there relocates the substring matching rather than ending it. The human sentence rides in
+  `detail`, **beside** the key.
+- **The binding covers the AUTHORED bytes only** (`compiler.authored_input_entries` — `module_spec.yaml`,
+  `variants.csv`, `studies.csv`, the table kinds). Every check compares something a human wrote, so
+  those are what the claim is about; the derived sidecars carry a `fetched_at` per row and binding to
+  them would perish the attestation on a re-enrichment that changed nothing anyone claimed. The cost is
+  real and stated rather than hidden: re-running the enricher against a fresher ClinVar leaves the
+  attestation matching, so read **currency off each record's `release`**, never off the binding.
+- **The proof-of-work is one per document per run, ~0.7s at 20 bits, and the nonce is the smallest one
+  counting up from zero.** Smallest, never random: a random nonce gives the file different bytes every
+  run for the same content. Per row or per check it would turn a ClinVar-scale build into days.
+- **A stale or non-matching attestation warns and the block is DROPPED**; the compile succeeds and the
+  manifest says nothing, which is the correct reading. Making a mismatch fatal was considered and
+  rejected: the goal is that a stale record never becomes a published *claim*, not that it be
+  impossible to write while editing.
+- **`reverse_module` does not re-emit it**, and must not. Reverse rebuilds a spec from the artifact,
+  where the document is not — the same structural reason `rsid_alternates` is unrecoverable. A
+  reversed module carries no block, which is the honest *says nothing*; re-attesting means re-running
+  the checks.
+
+**Nothing in `manifest.verification` is trusted, and the block's every field description says so.**
+`compiled_by` has carried that warning for one field since the beginning; here it has to be on all of
+them. A **forged pass is worse than silence** — a consumer that reads "the clinical calls were
+cross-checked" off a manifest it did not produce, and believes it, is worse off than one that reads
+nothing at all. The binding hash and the proof-of-work do not change this: they defend against a
+**stale** record on an honestly-produced module, which is the accidental case, and nothing here is
+built to resist a deliberate one. A holder of the module's own bytes can confirm the block by
+recomputing `module_binding(authored_input_entries(spec_dir))` and comparing it with
+`verification.module_hash`; a holder of only the manifest cannot, and should treat the block as a
+claim by whoever `producer` names. The real guarantee in this format is `manifest.signature`, a
+detached Ed25519 signature over `artifact.digest` made by a party the client pins.
 
 ## The resolution table (0.5, **provisional**)
 
@@ -844,8 +928,8 @@ consumer it is for.
 `manifest.py` holds the `manifest.json` contract. `ModuleManifest` is the root: `manifest_version` /
 `schema_version` (both `"1.0"`), `identity`, `display`, `genome_build`, curator/method/license/owner,
 `authors` + `authorship` (`Contribution`: `who`/`role`/`kind`), timestamps, `stats`, `compilation`,
-`inputs`, `content_signature?`, `artifact`, `logs`, `derived`, `provenance?`, `panel?`, `logo?`,
-`readme?`, `signature?`, and
+`inputs`, `content_signature?`, `artifact`, `logs`, `derived`, `provenance?`, `verification?`,
+`panel?`, `logo?`, `readme?`, `signature?`, and
 one block per derived-fact sidecar the module carries — `frequency?`, `gene_metrics?`, `literature?`,
 `sources?`. Each carries `signature` / `sources` / `row_count` plus whatever its own table makes
 answerable: `datasets` on the two that have releases to name (gnomAD ships numbered ones; PubMed and

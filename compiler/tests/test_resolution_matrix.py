@@ -58,7 +58,9 @@ class Case:
     label: str
     variants: str
     resolution: str
-    #: True when compile -> reverse -> compile must reproduce all three signatures.
+    #: True when compile -> reverse -> compile must reproduce all three signatures — except on a
+    #: `table_says_more` case, where `resolution_signature` is expected to move and the other two
+    #: still may not.
     stable: bool
     #: True when `strict` must refuse. The contract: `not stable` implies this.
     strict_refuses: bool
@@ -67,6 +69,23 @@ class Case:
     #: mishap grid applies to them — and a table-only module (`variants=""`) is the shape that
     #: motivated the item, since it carries no `weights.parquet` for reverse to rebuild from.
     pharm: str = ""
+    #: The injected table carries a fact this module never uses, so `resolution_signature` cannot
+    #: survive the round trip — and no strict refusal follows, because nothing about the module is
+    #: wrong.
+    #:
+    #: This is a THIRD axis beside authored-shape and mishap, and it was invisible until 0.6 stamped
+    #: the signature for table-only modules: the grid had no case where the table says more than the
+    #: module consumes. It is **not** a positional phenomenon, which the first entry below pins on a
+    #: plain SNP module — `reverse_module` rebuilds the table from the artifact, so a row about a
+    #: variant the module does not contain has nowhere to come from, exactly as `rsid_alternates` has
+    #: nowhere to come from. Facts the artifact holds survive; facts it never held do not.
+    #:
+    #: Distinct from `stable=False`, and the distinction is the whole reason for a separate flag: an
+    #: unstable case is one where the module's own resolution could not be reproduced, and `strict`
+    #: must refuse it. Here the artifact is byte-identical on recompile (pinned separately by
+    #: `test_artifact_digest_never_moves`) and only the provenance record of the injected table
+    #: differs, so a refusal would be refusing a module for something its own bytes do not say.
+    table_says_more: bool = False
 
 
 CASES: list[Case] = [
@@ -159,6 +178,17 @@ CASES: list[Case] = [
          + _row("rs999", "rs999", 6, 600, "C", "G", 1),
          stable=False, strict_refuses=True),
 
+    # ── the table says more than the module uses: the injected row has nowhere to come back from ──
+    # Pinned on the SNP core, where it originates and where it has always been true, rather than only
+    # on the positional cases below where 0.6 first made it visible. `strict` accepts this module and
+    # `artifact.digest` is reproducible; what cannot be reproduced is a row about a variant this
+    # module does not contain, because reverse rebuilds the table from the artifact and the artifact
+    # never held it.
+    Case("the table carries a row about a variant the module does not have",
+         "rs777,,,,,C/G,risk,c\n",
+         _row("rs777", "rs777", 7, 700, "C", "G") + _row("rs111", "rs111", 8, 800, "A", "T"),
+         stable=True, strict_refuses=False, table_says_more=True),
+
     # ── the positional 0.4 kinds (RM43). Same grid, no `variants.csv`: the module the item is about
     #    carries no `weights.parquet` at all, so reverse has to rebuild `resolution.csv` from the
     #    positional parquet or the recompile silently loses every coordinate. ────────────────────
@@ -168,7 +198,7 @@ CASES: list[Case] = [
          pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
     Case("table-only, rsid-authored pharm row, nothing in the table",
          "", _row("rs111", "rs111", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False,
+         stable=True, strict_refuses=False, table_says_more=True,
          pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
     Case("table-only, coordinate-authored pharm row, rsid resolved",
          "", _row(_KEY_COORD_ONLY, "rs777", 7, 700, "C", "G"),
@@ -178,11 +208,11 @@ CASES: list[Case] = [
          "",
          _row("rs999", "rs999", 5, 500, "C", "G", 0)
          + _row("rs999", "rs999", 6, 600, "C", "G", 1),
-         stable=True, strict_refuses=False,
+         stable=True, strict_refuses=False, table_says_more=True,
          pharm="rs999,,,,SLCO1B1,C/G,simvastatin,c\n"),
     Case("table-only, half coordinate the table contradicts: left exactly as authored",
          "", _row("rs777", "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False,
+         stable=True, strict_refuses=False, table_says_more=True,
          pharm="rs777,,999,,SLCO1B1,C/G,simvastatin,c\n"),
     Case("pharm row beside the SNP core on one key: weights own the fact",
          "rs777,,,,,C/G,risk,c\n", _row("rs777", "rs777", 7, 700, "C", "G"),
@@ -228,7 +258,15 @@ def test_resolution_round_trip_contract(case: Case) -> None:
 
     names = ("artifact.digest", "content_signature", "resolution_signature")
     moved = [n for n, a, b in zip(names, before, after, strict=True) if a != b]
-    if case.stable:
+    if case.table_says_more:
+        # The EXACT mover set, not "something may move": the exemption is only ever about the
+        # injected table's own provenance hash, so a digest or content-signature movement on one of
+        # these still fails here rather than hiding behind the flag.
+        assert moved == ["resolution_signature"], (
+            f"{case.label}: only resolution_signature may move when the table says more than the "
+            f"module uses, but {moved} moved"
+        )
+    elif case.stable:
         assert not moved, f"{case.label}: expected a fixed point, but {moved} moved"
     else:
         assert moved, f"{case.label}: declared unstable but nothing moved — update the contract"

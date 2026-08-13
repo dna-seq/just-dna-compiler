@@ -195,29 +195,52 @@ def summarize_ref_mismatches(mismatches: Sequence[RefMismatch], *, examples: int
     return lines
 
 
+@dataclass(frozen=True)
+class RefCheck:
+    """What the reference-allele check did, not just what it found (RM45).
+
+    The mismatches alone answer one of the two questions a reader has, and the run used to discard the
+    other: this function returns `[]` for *no row disagreed*, for *there was no sequence access*, and
+    for *every row was a symbolic allele nothing could be compared*, and those are three different
+    statements about a module. `subjects` is what was actually read and compared, and `not_checked`
+    carries a `VALID_VERIFICATION_SKIPS` key when the whole pass could not run. Same shape, same
+    argument, as `EnrichmentResult.clin_sig_not_checked` — extended here because `verification.json`
+    publishes it, and publishing an empty finding list with no denominator is what RM45 exists to stop.
+    """
+
+    mismatches: list[RefMismatch]
+    subjects: int = 0
+    not_checked: str | None = None
+
+
 def verify_reference_alleles(
     rows: list[ResolutionRow],
     *,
     sequences: SequenceProxy | None = None,
     offline: bool = False,
-) -> list[RefMismatch]:
+) -> RefCheck:
     """Compare each row's authored `ref` against the reference sequence. Returns the disagreements.
 
-    Skipped silently (empty list) when there is no sequence access — offline, or an unreachable
-    service. A check that cannot run is not a check that passed, but it is also not a failure: the rest
-    of the enrichment is unaffected, and the run logs that it was skipped.
+    Skipped (an empty `RefCheck` carrying its reason) when there is no sequence access — offline, or
+    an unreachable service. A check that cannot run is not a check that passed, but it is also not a
+    failure: the rest of the enrichment is unaffected, and the run says it was skipped.
 
     Rows without a coordinate, and rows whose `ref` is not plain ACGT (a symbolic or structural allele,
     RM5), are not checked — there is nothing to compare, and inventing a verdict would be worse than
-    abstaining. Reads are deduplicated through `SequenceProxy`'s cache, so a module asking about one
-    locus repeatedly costs one round trip.
+    abstaining. Nor is a row whose read came back empty: the service answered nothing about that
+    locus, so it is outside `subjects` rather than inside it with a clean bill. Reads are deduplicated
+    through `SequenceProxy`'s cache, so a module asking about one locus repeatedly costs one round trip.
     """
     sequences = sequences or SequenceProxy(offline=offline)
     if sequences.proxy() is None:
         logger.info("Reference-allele check skipped: no sequence access this run.")
-        return []
+        # `offline` is a choice and `unreachable` is a failure, and only the second is worth a re-run.
+        # Read off the proxy rather than the argument, so an injected offline proxy is described by
+        # what it is instead of by what this call happened to be passed.
+        return RefCheck([], 0, "offline" if (sequences.offline or offline) else "unreachable")
 
     mismatches: list[RefMismatch] = []
+    subjects = 0
     for row in rows:
         if row.chrom is None or row.start is None or not row.ref:
             continue
@@ -231,7 +254,10 @@ def verify_reference_alleles(
         if accession is None:
             continue
         actual, shift = _read_with_neighbours(sequences, accession, row.start, len(claimed), claimed)
-        if actual is None or actual == claimed:
+        if actual is None:
+            continue
+        subjects += 1
+        if actual == claimed:
             continue
         mismatches.append(
             RefMismatch(
@@ -239,7 +265,7 @@ def verify_reference_alleles(
                 claimed=claimed, actual=actual, genome_build=row.genome_build, shift=shift,
             )
         )
-    return mismatches
+    return RefCheck(mismatches, subjects)
 
 
 def _read_with_neighbours(

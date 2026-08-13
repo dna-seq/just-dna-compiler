@@ -93,7 +93,7 @@ def _row(ref: str, **kw) -> ResolutionRow:
 
 def test_agreeing_ref_produces_no_finding() -> None:
     proxy = _FakeProxy()
-    assert verify_reference_alleles([_row(_TRUE_REF)], sequences=proxy) == []
+    assert verify_reference_alleles([_row(_TRUE_REF)], sequences=proxy).mismatches == []
 
 
 def test_wrong_ref_base_is_reported_even_though_the_id_is_unaffected() -> None:
@@ -103,7 +103,7 @@ def test_wrong_ref_base_is_reported_even_though_the_id_is_unaffected() -> None:
     this row and the finding is genuinely about the `ref` cell.
     """
     proxy = _FakeProxy()
-    (finding,) = verify_reference_alleles([_row("G")], sequences=proxy)
+    (finding,) = verify_reference_alleles([_row("G")], sequences=proxy).mismatches
     assert (finding.claimed, finding.actual) == ("G", _TRUE_REF)
     assert finding.shift is None
     assert not finding.distorts_the_allele_id
@@ -137,7 +137,7 @@ def test_a_shifted_coordinate_is_diagnosed_as_a_coordinate_problem(
     allele id is still the true allele at this position" — true of the position recorded, and
     worthless when the position is the thing that is wrong.
     """
-    (finding,) = verify_reference_alleles([_row(ref, start=start)], sequences=_FakeProxy())
+    (finding,) = verify_reference_alleles([_row(ref, start=start)], sequences=_FakeProxy()).mismatches
     assert finding.shift == shift
     # A shifted row mints an id at the wrong place, whatever the claimed length.
     assert finding.distorts_the_allele_id
@@ -155,7 +155,7 @@ def test_an_ambiguous_neighbour_claims_no_shift() -> None:
     Two candidate directions is an unknown, and the house rule is to withhold rather than pick one:
     the finding falls back to reporting the disagreement without asserting a cause.
     """
-    (finding,) = verify_reference_alleles([_row("C")], sequences=_FakeProxy())
+    (finding,) = verify_reference_alleles([_row("C")], sequences=_FakeProxy()).mismatches
     assert finding.shift is None
     assert "off by" not in str(finding)
 
@@ -163,7 +163,7 @@ def test_an_ambiguous_neighbour_claims_no_shift() -> None:
 def test_findings_are_grouped_by_cause_not_listed_per_row() -> None:
     """One systematic mistake is one line. See `summarize_ref_mismatches`."""
     shifted = [_row("A", start=5227003, variant_key=f"k{i}") for i in range(40)]
-    findings = verify_reference_alleles(shifted + [_row("G")], sequences=_FakeProxy())
+    findings = verify_reference_alleles(shifted + [_row("G")], sequences=_FakeProxy()).mismatches
     assert len(findings) == 41
 
     lines = summarize_ref_mismatches(findings)
@@ -180,7 +180,7 @@ def test_multi_base_ref_claim_is_flagged_as_the_worse_case() -> None:
     lengths — what separates them is whether the claim is a single base.
     """
     proxy = _FakeProxy()
-    (finding,) = verify_reference_alleles([_row("TA", alts="T")], sequences=proxy)
+    (finding,) = verify_reference_alleles([_row("TA", alts="T")], sequences=proxy).mismatches
     assert finding.distorts_the_allele_id
     assert "DIFFERENT allele" in str(finding)
 
@@ -208,12 +208,12 @@ def test_findings_are_reported_never_repaired() -> None:
 )
 def test_unverifiable_rows_abstain_rather_than_guess(row: ResolutionRow, why: str) -> None:
     proxy = _FakeProxy()
-    assert verify_reference_alleles([row], sequences=proxy) == [], why
+    assert verify_reference_alleles([row], sequences=proxy).mismatches == [], why
 
 
 def test_offline_skips_the_check_without_failing() -> None:
     # A check that cannot run is not a check that passed — but it must not break the enrichment.
-    assert verify_reference_alleles([_row("C")], offline=True) == []
+    assert verify_reference_alleles([_row("C")], offline=True).mismatches == []
     assert SequenceProxy(offline=True).subsequence(_CHR11, 0, 1) is None
 
 
@@ -301,6 +301,6 @@ def test_against_the_real_reference_sequence() -> None:
     if not os.getenv("JUST_DNA_NETWORK_TESTS"):
         pytest.skip("reads the live sequence service — set JUST_DNA_NETWORK_TESTS=1 to run")
 
-    assert verify_reference_alleles([_row(_TRUE_REF)]) == []
-    (finding,) = verify_reference_alleles([_row("C")])
+    assert verify_reference_alleles([_row(_TRUE_REF)]).mismatches == []
+    (finding,) = verify_reference_alleles([_row("C")]).mismatches
     assert finding.actual == _TRUE_REF

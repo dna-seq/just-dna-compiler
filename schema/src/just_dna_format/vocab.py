@@ -287,6 +287,67 @@ VALID_RSID_STATUS: frozenset[str] = frozenset({"live", "merged", "absent", "with
 # body. Collapsing the two would let "not in the 200-word abstract" read as "not in the paper".
 VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
 
+# ── The verification attestation (0.6, RM45) ────────────────────────────────────────────────────
+# Which question a recorded check put. **Closed, and audited once here rather than grown ad hoc**: a
+# free-string key would recreate the failure RM44 documents one level down — the enricher writing one
+# spelling, a registry another, and a consumer substring-matching the difference — and a name is
+# permanent within a major (Principle 3), so the set is fixed now against everything that could
+# plausibly join it.
+#
+# The membership rule is one question: **does this compare something the module ASSERTS against what
+# a source says?** That is what a consumer means by "was anything verified", and it is what keeps the
+# axis single (P5). It admits two members nothing in this workspace emits yet, on the `withdrawn`
+# precedent — a member exists for a case its emitter has not reached, and adding one later is legal
+# but adding it *late* means the release that needs it has no name to write:
+#
+# * `gene_disease_validity` — an authored gene/phenotype pair against ClinGen/GenCC/HPO validity.
+# * `genome_build_agreement` — authored coordinates against the assembly the module declares.
+#
+# And it deliberately **excludes** the ClinVar assertion tier, which lands the same release as a
+# derived table. That pass records a source's review status; it compares nothing the author wrote, so
+# a member for it would let a manifest say a check ran where none was put — the exact confusion this
+# block exists to end. `frequencies.csv` is the same class and has no member either.
+VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
+    {
+        "reference_allele",           # authored `ref` vs the actual reference sequence
+        "rsid_currency",              # authored rsID vs dbSNP (live / merged / absent)
+        "clinical_significance",      # authored `clin_sig` vs ClinVar's own, allele-exactly
+        "acmg_secondary_findings",    # authored `acmg_sf` vs the published ACMG SF gene list
+        "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous symbols
+        "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement)
+        "gene_locus_agreement",       # the gene a row names vs the chromosome its variant sits on
+        "citation_existence",         # an authored `pmid`/`doi` vs PubMed and Crossref
+        "citation_identifier",        # an authored `doi` vs the registry's own for that PMID
+        "provenance_quote",           # `provenance_quote`/`provenance_regex` vs the retrieved text
+        "dosage_sensitivity",         # an authored dosage claim vs ClinGen's curation
+        "allele_function",            # authored `function_status` vs PharmVar and CPIC
+        "vrs_allele_id",              # a recorded `ga4gh:VA.…` vs the locally re-minted one
+        "gene_disease_validity",      # an authored gene/phenotype pair vs ClinGen/GenCC/HPO
+        "genome_build_agreement",     # authored coordinates vs the declared assembly
+    }
+)
+
+# Why a check did not run. Closed for the same reason the names above are, and for one more: backfill
+# triage branches on *why*, so prose here would relocate the substring matching rather than end it.
+# The human sentence travels **beside** the key (`VerificationRecord.detail`), never instead of it —
+# `clinical.tautology_reason` already writes a good one and stays exactly as it is.
+#
+# `not_requested` and `offline` are different facts about the same absence and must not be merged: one
+# is a caller's choice, the other a capability the run did not have, and only the second is cleared by
+# re-running with egress. `tautology` is S4's case — a check whose inputs share a source cannot fail,
+# and reporting its zero is the misinformation the skip exists to prevent.
+VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
+    {
+        "not_requested",   # the caller switched this check off
+        "offline",         # the check needs egress and the run had none
+        "no_reference",    # no snapshot / sequence / list was provisioned to compare against
+        "unreachable",     # the source was asked and never answered (a failed request, not a no)
+        "nothing_to_check",  # the module carries no row this check applies to
+        "tautology",       # the module was drafted from the very source the check reads (S4)
+        "unsupported",     # this tier cannot put the question for these rows (e.g. an unbuilt assembly)
+    }
+)
+
 # ── Ancestry groups for the frequency table (0.5) ───────────────────────────────────────────────
 # An OPEN, seeded vocabulary in the `RECOMMENDED_AUTHOR_KINDS` idiom — deliberately NOT a closed
 # `frozenset` + rejecting validator, even though Principle 6 makes closed the default. The reason is

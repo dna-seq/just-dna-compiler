@@ -1,0 +1,136 @@
+"""The enricher's half of RM45: passes record what they checked, and the record survives the next run.
+
+The merge is what makes several commands share one document — `enrich` writes three checks, a later
+`check-identifiers` writes its own, and neither may erase the other's. That is the same load-merge-write
+discipline `licensing.record_source_terms` has, for the same reason: a count of call sites goes stale,
+one function does not.
+"""
+
+import shutil
+from pathlib import Path
+
+import pytest
+from just_dna_compiler.compiler import authored_input_entries, compile_module
+from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
+from just_dna_format import verification as verification_module
+from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON
+from just_dna_format.verification import (
+    attestation_failure,
+    module_binding,
+    read_verification,
+)
+
+_EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
+_EASY = 8
+
+
+class _Boom(Exception):
+    """The caller's own error type, which is what `record_verification` must raise."""
+
+
+@pytest.fixture(autouse=True)
+def _cheap_proof_of_work(monkeypatch):
+    monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", _EASY)
+
+
+def _module(tmp_path: Path, name: str = "hfe_hemochromatosis") -> Path:
+    spec = tmp_path / name
+    shutil.copytree(_EXAMPLES / name, spec)
+    return spec
+
+
+def test_a_run_with_no_checks_writes_nothing(tmp_path: Path) -> None:
+    """An empty attestation would assert that a module was checked and nothing was found."""
+    spec = _module(tmp_path)
+    assert record_verification([], spec, error=_Boom) is None
+    assert not (spec / VERIFICATION_JSON).exists()
+
+
+def test_the_document_is_bound_to_the_module_as_it_stands(tmp_path: Path) -> None:
+    spec = _module(tmp_path)
+    doc = record_verification([ran("rsid_currency", subjects=12, findings=0)], spec, error=_Boom)
+    assert doc is not None
+    assert doc.module_hash == module_binding(authored_input_entries(spec))
+    assert doc.producer == producer_label()
+    assert read_verification(spec / VERIFICATION_JSON) == doc
+
+
+def test_a_second_pass_adds_its_check_without_erasing_the_first(tmp_path: Path) -> None:
+    """Two commands, one document. The first run's answer is not 'never asked' after the second."""
+    spec = _module(tmp_path)
+    record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
+    record_verification(
+        [skipped("gene_symbol_currency", "offline", detail="HGNC needs egress")], spec, error=_Boom
+    )
+
+    by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    assert set(by_check) == {"rsid_currency", "gene_symbol_currency"}
+    assert by_check["rsid_currency"].findings == 1
+    assert by_check["gene_symbol_currency"].skipped == "offline"
+
+
+def test_re_running_one_check_replaces_its_own_record(tmp_path: Path) -> None:
+    spec = _module(tmp_path)
+    record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
+    record_verification([ran("rsid_currency", subjects=12, findings=0)], spec, error=_Boom)
+
+    records = read_verification(spec / VERIFICATION_JSON).records
+    assert len(records) == 1 and records[0].findings == 0
+
+
+def test_the_pass_writes_to_the_file_it_reads(tmp_path: Path) -> None:
+    """A split module must not gain a second copy at the root — that is the refusal, self-inflicted."""
+    spec = _module(tmp_path)
+    (spec / DERIVED_SUBDIR).mkdir()
+    record_verification([ran("rsid_currency", subjects=1, findings=0)], spec, error=_Boom)
+    shutil.move(spec / VERIFICATION_JSON, spec / DERIVED_SUBDIR / VERIFICATION_JSON)
+
+    record_verification([ran("rsid_currency", subjects=2, findings=0)], spec, error=_Boom)
+    assert not (spec / VERIFICATION_JSON).exists()
+    assert read_verification(spec / DERIVED_SUBDIR / VERIFICATION_JSON).records[0].subjects == 2
+
+
+def test_two_copies_raise_the_callers_own_error(tmp_path: Path) -> None:
+    spec = _module(tmp_path)
+    (spec / DERIVED_SUBDIR).mkdir()
+    record_verification([ran("rsid_currency", subjects=1, findings=0)], spec, error=_Boom)
+    shutil.copy(spec / VERIFICATION_JSON, spec / DERIVED_SUBDIR / VERIFICATION_JSON)
+
+    with pytest.raises(_Boom, match="two places"):
+        record_verification([ran("rsid_currency", subjects=2, findings=0)], spec, error=_Boom)
+
+
+def test_an_unreadable_document_is_replaced_rather_than_fatal(tmp_path: Path) -> None:
+    """A pass that could not re-attest without a manual delete would be worse than a lost record."""
+    spec = _module(tmp_path)
+    (spec / VERIFICATION_JSON).write_text("not json at all")
+    doc = record_verification([ran("rsid_currency", subjects=3, findings=0)], spec, error=_Boom)
+    assert doc is not None and [r.check for r in doc.records] == ["rsid_currency"]
+
+
+def test_the_record_written_is_the_one_the_compiler_accepts(tmp_path: Path) -> None:
+    """The end-to-end seam, inside this workspace: enricher writes, compiler stamps."""
+    spec = _module(tmp_path)
+    record_verification(
+        [ran("clinical_significance", subjects=7, findings=1, source="clinvar", release="2026-06-27")],
+        spec,
+        error=_Boom,
+    )
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
+    block = result.manifest.verification
+    assert block is not None
+    assert [(r.check, r.subjects, r.findings, r.release) for r in block.checks] == [
+        ("clinical_significance", 7, 1, "2026-06-27")
+    ]
+
+
+def test_editing_the_module_after_recording_invalidates_the_record(tmp_path: Path) -> None:
+    """Same fact from this side: the binding is over the authored bytes, so an edit perishes it."""
+    spec = _module(tmp_path)
+    doc = record_verification([ran("rsid_currency", subjects=1, findings=0)], spec, error=_Boom)
+    assert doc is not None
+    assert attestation_failure(doc, module_binding(authored_input_entries(spec))) is None
+
+    (spec / "variants.csv").write_text((spec / "variants.csv").read_text() + "\n")
+    assert attestation_failure(doc, module_binding(authored_input_entries(spec))) is not None

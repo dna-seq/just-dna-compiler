@@ -163,16 +163,37 @@ def _bare_digest(value: str | None) -> str:
     return (value or "").strip().removeprefix("sha256:")
 
 
+@dataclass(frozen=True)
+class ClinSigCheck:
+    """What the clinical cross-check did, not just what it found (RM45).
+
+    `conflicts` alone is the same two-readings-one-value problem S4 fixed one layer up: an empty list
+    means *nothing disagreed*, *no snapshot was provisioned*, *no authored call had a resolved locus*,
+    and *the snapshot was present but would not answer*. `subjects` is the number of authored clinical
+    claims actually compared, and `not_checked` carries a `VALID_VERIFICATION_SKIPS` key for the whole
+    pass.
+
+    The present-but-unqueryable branch is why this is a dataclass rather than a count bolted on beside
+    the call: it is an internal degradation the caller could not see, so it used to leave
+    `EnrichmentResult.clin_sig_not_checked` at `None` — the run reporting a clean cross-check it never
+    completed, which is exactly the misinformation the other three skips were given reasons to avoid.
+    """
+
+    conflicts: list[ClinSigConflict]
+    subjects: int = 0
+    not_checked: str | None = None
+
+
 def verify_clin_sig(
     variants: list[VariantRow],
     resolution_rows: list[ResolutionRow],
     *,
     reference: Path | None,
-) -> list[ClinSigConflict]:
+) -> ClinSigCheck:
     """Compare each authored `clin_sig` against the ClinVar snapshot. Returns the disagreements.
 
-    Skipped (empty list, with a log line) when no snapshot is provisioned — a check that could not run
-    is not a check that passed, and the run says so rather than implying success.
+    Skipped (an empty `ClinSigCheck` carrying its reason) when no snapshot is provisioned — a check
+    that could not run is not a check that passed, and the run says so rather than implying success.
 
     Matching is on `(chrom, start, ref, alt)`, never on rsID, for the reason `lookup_clin_sig`
     documents. When the alt the annotation refers to cannot be determined, the comparison falls back to
@@ -185,7 +206,7 @@ def verify_clin_sig(
     """
     if reference is None:
         logger.info("ClinVar clin_sig cross-check skipped: no snapshot provisioned this run.")
-        return []
+        return ClinSigCheck([], 0, "no_reference")
 
     resolved: dict[str, list[ResolutionRow]] = {}
     for row in resolution_rows:
@@ -216,7 +237,9 @@ def verify_clin_sig(
                 plan.append((variant, authored, targets, chosen is None))
 
     if not wanted:
-        return []
+        # The check RAN and had nothing in scope, which is not a skip: the module authored no clinical
+        # call that resolved to a locus. `subjects=0` with no reason is precisely that statement.
+        return ClinSigCheck([], 0)
     try:
         records = lookup_clin_sig(reference, wanted)
     except Exception as exc:
@@ -226,7 +249,7 @@ def verify_clin_sig(
             "ClinVar reference at %s is present but not queryable (%s); the clin_sig cross-check is "
             "skipped this run. Rebuild it with `just-dna-enricher clinvar build`.", reference, exc,
         )
-        return []
+        return ClinSigCheck([], 0, "no_reference")
 
     conflicts: list[ClinSigConflict] = []
     for variant, authored, targets, locus_wide in plan:
@@ -273,4 +296,7 @@ def verify_clin_sig(
                 "%s: compared against the whole locus (the annotation's ALT could not be determined "
                 "from genotype %s)", variant.variant_key, variant.genotype,
             )
-    return conflicts
+    # The denominator is DISTINCT variants planned, not plan entries: a one-to-many rsID contributes
+    # one entry per locus and the module made one clinical claim. Counting entries would report more
+    # claims than the module holds.
+    return ClinSigCheck(conflicts, len({v.variant_key for v, _a, _t, _l in plan}))
