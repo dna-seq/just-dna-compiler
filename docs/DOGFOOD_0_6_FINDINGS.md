@@ -121,6 +121,38 @@ evidence** (AGG interruptions vs a `(gene, repeat_unit)` key) is now a corpus mo
 
 ---
 
+## D4 — `hboc_palb2`
+
+Module: `reference_examples/hboc_palb2/`. PALB2 at ClinVar's 3-star floor, run through every derived
+producer in the documented order. Five of the plan's eleven zero-rows close here: the corpus had no
+`verification.json`, no `gene_validity.csv`, no `clinical_assertions.csv`, no `frequencies.csv` and
+no `gene_metrics.csv`.
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **D4-1** | **Five of seven checking passes attest nothing; 12 of 17 `VALID_VERIFICATION_CHECKS` members are emitted by nothing.** `record_verification` has exactly two callers — `enrich()` and `enrich_clinpgx()`. `literature`, `gene-validity`, `check-identifiers`, `check-acmg`, `dosage`, `pgx` and `vrs mint` each perform a check the vocabulary names, report it to stdout, and let the record die with the process — the sentence RM45's own docstring opens with as the thing it exists to fix. And it is a **claim**: that docstring states *"A separate command (`check-identifiers`, `literature`) writes once of its own, and the merge below is what keeps the two runs' records in one document"*. `merge_records` is built and tested for a document no two commands produce. Unreachable members: `acmg_secondary_findings`, `allele_function`, `citation_existence`, `citation_identifier`, `dosage_sensitivity`, `gene_disease_validity`, `gene_locus_agreement`, `gene_symbol_currency`, `provenance_quote`, `rsid_coordinate_agreement`, `trait_currency`, `vrs_allele_id`. | fix | **high** |
+| **D4-2** | **`hint` reports every template stub twice** — once from its own per-column check, once from the model's `mode="before"` validator. A freshly drafted 109-row panel yields 219 findings for 109 defects. The CPIC aggregation lesson arriving through a different door: two layers reporting one cell rather than a loop over a source table. | fix | low |
+| **D4-3** | **The alleles needed to replace a `genotype` stub are only in `draft-panel`'s stdout.** A drafted row is rsID-only (identity whole or not at all), so the file does not state `ref`/`alts`; the pair is emitted once per row as a warning. The author's next action is an edit to a file that does not contain the information. Tolerable at 16 rows, not at the 761 the same command drafts for PALB2 at the 2-star floor. | **surface** (writing it into the row would fill an identity column a drafting provider must fill whole or not at all) | medium |
+
+### Checked and held (D4)
+
+**RM4's tautology skip on the module it was designed for** — skipped with the release named, the hole
+named in the same sentence, and recorded as `skipped: tautology` rather than as a silent pass.
+**RM31's hosting verdict on real disagreeing data** (`rs180177102` is `CA>C` in ClinVar and `CAA>C` in
+Ensembl; the locus is dropped with the event-size reason). **RM45's staleness** — one edited authored
+byte drops the block with both hashes named and the manifest *"says nothing rather than claiming a
+pass"*. **RM45's determinism** — a no-op re-enrich reproduces `module_hash`, `signature`, `nonce` and
+`difficulty` byte for byte; only the timestamps move. Every derived block reaches the manifest. The
+one-to-many expansion carries its count; the MNV's `vrs_id` is reported *unverifiable* (a warning in
+both modes — the tier's-limit half of the three-outcome rule). Round trip is a fixed point on all
+three signatures.
+
+**Not run:** RM4's `withdraw_stale_dataset` needs two ClinVar releases and one snapshot is
+provisioned. Building a second from the same VCF under a different label would fabricate the
+provenance the mechanism exists to protect.
+
+---
+
 ### Checked and held (D2)
 
 - `licensing.csv` is the spelling both providers write into a fresh directory (RM51); the compile gate

@@ -1,0 +1,11 @@
+pmid,doi,pmcid,exists,is_open_access,license,share_alike,commercial_use,redistribution,quotes_authored,quotes_found,quote_source,doi_exists,source,status,fetched_at
+17200668,10.1038/ng1959,PMC2871593,true,false,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+17200671,10.1038/ng1947,,true,false,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+17200672,10.1038/ng1942,,true,false,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+17576681,10.1093/nar/gkm402,PMC1934990,true,true,cc by-nc,false,false,true,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+18302019,10.1007/s10549-008-9945-0,,true,false,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+19264984,10.1126/science.1171202,PMC2684332,true,false,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+21285249,10.1158/0008-5472.CAN-10-3958,PMC3059378,true,false,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+21365267,10.1007/s10689-011-9426-1,PMC3836668,true,false,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+25741868,10.1038/gim.2015.30,PMC4544753,true,true,,,,,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z
+26467025,10.1002/humu.22918,PMC4737317,true,true,cc by-nc-nd,false,false,true,0,,,true,pubmed,resolved,2026-08-13T23:43:48Z

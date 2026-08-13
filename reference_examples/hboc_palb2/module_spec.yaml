@@ -1,0 +1,16 @@
+schema_version: '1.0'
+module:
+  name: hboc_palb2
+  title: PALB2 — the expert-reviewed subset, through every derived producer
+  report_title: PALB2 (hereditary breast cancer)
+  description: PALB2's ClinVar 3-star (expert-panel reviewed) pathogenic and likely-pathogenic
+    variants, drafted and then run through every derived producer this workspace has. The corpus
+    carried no module with a verification attestation, no gene_validity.csv, no
+    clinical_assertions.csv, no frequencies.csv and no gene_metrics.csv — this one has all five.
+  icon: ribbon
+  icon_set: fomantic
+  color: '#e03997'
+defaults:
+  curator: audit
+  method: expert-panel
+genome_build: GRCh38

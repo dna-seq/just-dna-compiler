@@ -1,0 +1,50 @@
+{
+  "module_hash": "sha256:8d6243e126cf9fb38caf6fafdd8dfbd4bf52b66b08d41010cb3986e8b4d1bea6",
+  "signature": "sha256:9bd2f9c5d56fafa42ef4b0b6ca444c55cc844f6ea2dda6def95a6d7e5c83b998",
+  "difficulty": 20,
+  "nonce": 2856880,
+  "producer": "just-dna-enricher 0.6.0",
+  "produced_at": "2026-08-13T23:45:01Z",
+  "records": [
+    {
+      "check": "clinical_significance",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "tautology",
+      "detail": "this module's licence row records that its ClinVar annotations were drafted from clinvar_2026-06-27, the very snapshot this check reads, so every authored clin_sig is a copy of the value it would be compared against. Two things that leaves unseen: a cell edited by hand since the draft, and rows added from another release. Re-run with --strict to look every row up and report which values are still copies, which a human wrote, and which conflict",
+      "source": "clinvar",
+      "release": null,
+      "checked_at": "2026-08-13T23:45:01Z"
+    },
+    {
+      "check": "genome_build_agreement",
+      "subjects": 0,
+      "findings": 0,
+      "skipped": "nothing_to_check",
+      "detail": "no authored ref disagreed with the reference, so no row needed a build diagnosis",
+      "source": "ensembl-grch37",
+      "release": null,
+      "checked_at": "2026-08-13T23:45:01Z"
+    },
+    {
+      "check": "reference_allele",
+      "subjects": 18,
+      "findings": 0,
+      "skipped": null,
+      "detail": null,
+      "source": "seqrepo",
+      "release": null,
+      "checked_at": "2026-08-13T23:45:01Z"
+    },
+    {
+      "check": "rsid_currency",
+      "subjects": 16,
+      "findings": 0,
+      "skipped": null,
+      "detail": null,
+      "source": "dbsnp",
+      "release": null,
+      "checked_at": "2026-08-13T23:45:01Z"
+    }
+  ]
+}
