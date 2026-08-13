@@ -40,13 +40,27 @@ def _specs() -> list[Path]:
     return found
 
 
-def _signatures(result) -> tuple[str, str, str | None]:
+def _signatures(result) -> tuple[str, str]:
+    """The two that must hold from the very first lap. `resolution_signature` is handled apart."""
     manifest = result.manifest
-    return (
-        manifest.artifact.digest,
-        manifest.content_signature,
-        getattr(manifest, "resolution_signature", None),
-    )
+    return (manifest.artifact.digest, manifest.content_signature)
+
+
+def _resolution_signature(result) -> str | None:
+    """**On `manifest.compilation`, not on the manifest root — and that is why this is a function.**
+
+    This sweep used to read it as `getattr(manifest, "resolution_signature", None)`, and the manifest
+    has no such attribute: the field lives inside the `compilation` block beside `resolution_mode`
+    and `fully_resolved`. So the third element of every comparison was `None` on both sides, for
+    every example, for the whole of 0.6 — the docstring above devotes a bullet to why this signature
+    matters and nothing ever compared one.
+
+    A defaulted `getattr` on a name that does not exist is indistinguishable from a name whose value
+    is legitimately `None`, which is exactly the case this sweep has to be able to see (a module
+    carrying no `resolution.csv` has no signature). Reading the attribute directly is what makes a
+    rename fail here instead of quietly disabling the check.
+    """
+    return result.manifest.compilation.resolution_signature
 
 
 @pytest.mark.parametrize("spec", _specs(), ids=lambda p: p.name)
@@ -71,6 +85,29 @@ def test_reference_example_round_trips_to_a_fixed_point(spec: Path, tmp_path: Pa
     third = compile_module(tmp_path / "rev2", tmp_path / "a3")
     assert third.success, third.errors
     assert _signatures(second) == _signatures(third)
+    assert _resolution_signature(second) == _resolution_signature(third)
+
+    # `resolution_signature` on the FIRST lap is the one with a documented exception, and once the
+    # comparison above was actually made the corpus turned out to hold three shapes, not one:
+    #
+    #   * unchanged — the ordinary case, ten of twelve examples;
+    #   * `None` → a value — a module carrying no `resolution.csv` at all. Reverse always writes the
+    #     table, rebuilt from the parquets, so the spec it produces carries facts the authored one
+    #     left implicit. Nothing is lost and lap two is stable (`grch37_build`, `mt_heteroplasmy`);
+    #   * a value → a *different* value — a loss, and the only module that does it is the one that
+    #     cannot avoid it. `cyp2c9_warfarin_grch37` declares GRCh37, so `_apply_positional_resolution`
+    #     skips the fill (RM15), so its `pharm_variants.csv` coordinates never reach a parquet, so
+    #     reverse has nothing to rebuild the injected rows from.
+    #
+    # The exemption is derived from the declared build rather than kept as a list of module names:
+    # a hand-kept exemption is the thing that goes stale, and the *reason* this module loses rows is
+    # precisely that the compiler is GRCh38-bound. On the default build a changed non-null signature
+    # is a real regression and still fails here.
+    before, after = _resolution_signature(first), _resolution_signature(second)
+    if before is not None and first.manifest.genome_build == "GRCh38":
+        assert before == after, (
+            "reverse lost injected resolution facts on a module the fill was applied to"
+        )
 
 
 @pytest.mark.parametrize("spec", _specs(), ids=lambda p: p.name)

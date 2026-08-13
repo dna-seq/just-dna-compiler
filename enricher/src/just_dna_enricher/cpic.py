@@ -416,6 +416,22 @@ class CpicClient:
             )
         return sorted(out, key=lambda r: (r.population, r.phenotype))
 
+    def knows_drug(self, drug: str) -> bool | None:
+        """Does CPIC list this drug at all — asked only to explain an empty `recommendations`.
+
+        Live, this is answerable: CPIC's `drug` table is the registry of every drug it names, so an
+        empty answer really is "no such drug" (a typo) and a non-empty one really is "CPIC knows it
+        and simply has no phenotype-keyed recommendation for the gene you asked about". Those are
+        different situations for an author and the drafter used to report them with one sentence —
+        `--drug warfarin` and `--drug notarealdrugxyz` produced byte-identical output, though CPIC's
+        warfarin guideline is real and is merely not shaped as a per-phenotype recommendation.
+
+        Separate call rather than folded into `recommendations`, because it is only ever needed to
+        explain a *negative*: the ordinary path already knows the drug exists, and paying a second
+        request on every successful draft to answer a question nobody asked is the wrong trade.
+        """
+        return bool(self._get("drug", {"select": "name", "name": f"eq.{drug.strip().lower()}"}))
+
     def defining_variants(self, gene: str) -> tuple[list[CpicDefiningVariant], list[str]]:
         """Star-allele defining variants for one gene, plus warnings for what could not be used.
 
@@ -608,6 +624,21 @@ class CpicSnapshotClient:
         ]
         # Same deterministic order the live client emits (Principle 7).
         return sorted(out, key=lambda r: (r.population, r.phenotype))
+
+    def knows_drug(self, drug: str) -> bool | None:
+        """**`None` — the snapshot cannot answer this, and saying `False` would be a false negative.**
+
+        The live client reads CPIC's `drug` table, which lists every drug CPIC names. The snapshot
+        carries `recommendations.parquet` and nothing else, so the only drug names in it are the ones
+        that *have* a recommendation — which makes "absent from this file" and "absent from CPIC"
+        exactly the two things the caller is trying to tell apart. Answering `False` here would turn
+        a limitation of the snapshot into an assertion about the source, which is the shape S20 exists
+        to prevent, so it withholds and the caller's message says which file it read.
+
+        Building the drug table into the snapshot is the fix if this ever needs a definite answer; it
+        is not worth a column today, since the only consumer is one warning's wording.
+        """
+        return None
 
     def defining_variants(self, gene: str) -> tuple[list[CpicDefiningVariant], list[str]]:
         """Star-allele defining variants, with the same aggregated unusable-allele warnings.

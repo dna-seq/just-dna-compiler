@@ -1,0 +1,17 @@
+schema_version: '1.0'
+module:
+  title: CYP2C9 and warfarin (GRCh37)
+  description: >-
+    CPIC's CYP2C9 star alleles and its warfarin prescribing recommendations, authored on
+    GRCh37 — a PGx module with two positional table kinds, no variants.csv, and a build
+    the compiler does not resolve. The corpus had one instantiation of the 0.6 positional
+    fill (nine rows, GRCh38, rsID-only), so every axis here is the one that was uniform.
+  report_title: CYP2C9 / warfarin (GRCh37)
+  icon: pills
+  icon_set: fomantic
+  color: '#a333c8'
+  name: cyp2c9_warfarin_grch37
+defaults:
+  curator: audit
+  method: expert-panel
+genome_build: GRCh37

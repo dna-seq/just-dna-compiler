@@ -190,3 +190,37 @@ def test_the_unjoinable_phrase_survives_into_the_manifest(tmp_path: Path) -> Non
     filled = _pharm_spec(tmp_path / "filled", coordinates=False, resolution=True)
     filled_result = compile_module(filled, tmp_path / "out-filled")
     assert not [w for w in filled_result.manifest.compilation.warnings if UNJOINABLE_PHRASE in w]
+
+
+def test_a_skipped_fill_is_reported_even_when_nothing_was_placeable(tmp_path: Path) -> None:
+    """The branch order, which used to make the third reading unreachable on its own modules (D2).
+
+    `fill_applied=False` sat in an `elif` behind `if not placeable`, and on a non-GRCh38 module those
+    two conditions coincide: the enricher declines to resolve off GRCh38, so `resolution.csv` holds
+    only the coordinates the author typed, so nothing places the rsid-only rows. The author was told
+    *"no resolution.csv row places them — run `just-dna-enricher enrich` first"* one line below a
+    warning saying the fill was skipped **because** their module is GRCh37 — advising a command they
+    had just run and which can never place those rows on that build.
+
+    So the fill's own status is now tested first. A remedy that cannot work is worse than no remedy.
+    """
+    spec = _pharm_spec(tmp_path / "g37", coordinates=False, resolution=True)
+    (spec / "module_spec.yaml").write_text(_YAML + "genome_build: GRCh37\n", encoding="utf-8")
+    # The injected row is on the module's own build, so it is a legitimate table — it simply is not
+    # consulted, because the compiler is GRCh38-bound (RM15).
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
+        "rs4149056,rs4149056,12,21284127,T,C,GRCh37,0,manual,resolved,\n",
+        encoding="utf-8",
+    )
+    finding = _finding(validate_spec(spec).warnings, "pharm_variants.csv")
+    assert finding is not None
+    assert "was not consulted for this table" in finding
+    assert "just-dna-enricher enrich" not in finding
+
+
+def test_the_ordinary_no_table_case_still_recommends_enrich(tmp_path: Path) -> None:
+    """The reorder must not swallow the case where re-running enrich genuinely is the fix."""
+    spec = _pharm_spec(tmp_path / "bare38", coordinates=False, resolution=False)
+    finding = _finding(validate_spec(spec).warnings, "pharm_variants.csv")
+    assert finding is not None and "just-dna-enricher enrich" in finding

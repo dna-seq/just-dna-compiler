@@ -5,7 +5,7 @@ provider builds real rows and hands them to `draft.append_rows` unchanged. Nothi
 nothing is invented. Where `pgx_draft` had to skip what CPIC's grammar could not express, the work
 here is almost entirely re-spelling.
 
-**What it fills, and what it deliberately does not.** It fills `rsid`, `genotype`, `drug`,
+**What it fills, and what it deliberately does not.** It fills `rsid`, `gene`, `genotype`, `drug`,
 `phenotype_category`, `annotation_id`, `evidence_level` and a transcribed `conclusion`. It does
 **not** fill `chrom`/`start`/`ref`: the snapshot carries no coordinate, and even if it did, a
 coordinate authored here would be compared by `resolution._verify` against the table that supplied
@@ -120,15 +120,20 @@ def _rows_from_snapshot(
 ) -> tuple[list[PharmVariantRow], list[str]]:
     """Snapshot records → `PharmVariantRow`s, reporting everything the grammar cannot hold."""
     wanted_drugs = {d.strip().lower() for d in drugs if d.strip()}
+    wanted_genes = {g.strip().upper() for g in genes if g.strip()}
     rows: list[PharmVariantRow] = []
     warnings: list[str] = []
     skipped_haplotype = skipped_symbolic = skipped_unidentified = 0
-    skipped_other = 0
+    skipped_other = skipped_gene = 0
 
     for record in records:
         rsid = (record.get("rsid") or "").strip()
         if not rsid:
             skipped_unidentified += 1
+            continue
+        gene = (record.get("gene") or "").strip() or None
+        if wanted_genes and (gene or "").upper() not in wanted_genes:
+            skipped_gene += 1
             continue
         raw_genotype = (record.get("genotype") or "").strip()
         genotype = _authored_genotype(raw_genotype)
@@ -150,25 +155,42 @@ def _rows_from_snapshot(
             rows.append(
                 PharmVariantRow(
                     rsid=rsid,
+                    gene=gene,
                     genotype=genotype,
                     drug=drug,
                     phenotype_category=category,
                     annotation_id=annotation_id,
                     evidence_level=(record.get("evidence_level") or None),
-                    # A transcription of the published parts, not an interpretation — the same shape
-                    # `pgx_draft` uses. The human owns what the module actually claims.
+                    # **The source's own sentence, verbatim** — which is what "a transcription of the
+                    # published parts" was always supposed to mean. It used to synthesize
+                    # `"ClinPGx 655385012: C/C and warfarin — dosage"`, a restatement of the row's own
+                    # key: every word of it is already in the other columns, so the one column whose
+                    # job is to say what the module *claims* said nothing, and no gate anywhere
+                    # notices a conclusion that is content-free. `annotation_text` is populated on
+                    # 16,087 of 16,087 snapshot rows, is written by our own builder, and was read by
+                    # nothing.
+                    #
+                    # Verbatim rather than summarized, deliberately: the moment this rewords the
+                    # sentence it is an interpretation, and the human — who owns what the module
+                    # claims — can no longer see what the source actually said. Editing it is the
+                    # author's job and the drafter appends rather than mutates, so their edit stands.
+                    #
+                    # No new licence exposure: the row already carries ClinPGx's `annotation_id` and
+                    # the provider writes the `clinpgx` **annotation**-layer licence row beside it, so
+                    # the CC BY-SA no-sale terms already gate this module (`declared_use`).
                     conclusion=(
-                        f"ClinPGx {annotation_id or '(no id)'}: {genotype} and {drug}"
+                        (record.get("annotation_text") or "").strip()
+                        or f"ClinPGx {annotation_id or '(no id)'}: {genotype} and {drug}"
                         f"{f' — {category}' if category else ''}"
                     ),
                 )
             )
-    if genes:
-        warnings.append(
-            "--gene was given but the ClinPGx annotation snapshot carries no gene column; the "
-            "filter was not applied. Filter by --drug, or narrow the file afterwards."
-        )
     for count, what in (
+        (
+            skipped_gene,
+            "naming a gene outside --gene (the snapshot's `gene` column is populated on ~95% of "
+            "rows; a row that names none is filtered out by any --gene)",
+        ),
         (skipped_haplotype, "haplotype-keyed (a star allele belongs on diplotypes.csv)"),
         (
             skipped_symbolic,

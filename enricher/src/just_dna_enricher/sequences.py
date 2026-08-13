@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 
 from ga4gh.vrs.dataproxy import create_dataproxy
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vrs import UnsupportedBuildError, refget_accession
+from just_dna_format.vrs import UnsupportedBuildError, refget_accession, refget_supports_build
 
 logger = logging.getLogger(__name__)
 
@@ -230,8 +230,31 @@ def verify_reference_alleles(
     abstaining. Nor is a row whose read came back empty: the service answered nothing about that
     locus, so it is outside `subjects` rather than inside it with a clean bill. Reads are deduplicated
     through `SequenceProxy`'s cache, so a module asking about one locus repeatedly costs one round trip.
+
+    **A build with no refget table stops the whole pass, and says `unsupported`.** Every row of a
+    `genome_build: GRCh37` module raises `UnsupportedBuildError` at `refget_accession`, and that used
+    to be caught per row and `continue`d — a skip indistinguishable from "this row had no coordinate",
+    leaving `not_checked` at `None` and the pass reporting as having *run* over zero subjects. The
+    attestation then published `reference_allele: subjects 0, findings 0, skipped null` for a module
+    nothing was compared on, and `genome_build_agreement` took its clean branch and stated *"no
+    authored ref disagreed with the reference"* about a comparison that never happened — the exact
+    self-contradiction `_verification_records` guards two of the three routes to. This is the third
+    route, and `VALID_VERIFICATION_SKIPS` already named it: `unsupported`, "this tier cannot put the
+    question for these rows (e.g. an unbuilt assembly)", which until now nothing emitted.
+
+    Decided from the module's build rather than by counting per-row failures, because the two are
+    different situations: an **off-assembly contig** on GRCh38 (`refget_accession` returns `None`) is
+    one row this tier has no sequence for and belongs outside `subjects` exactly as it is today, while
+    an unbuilt *assembly* means the question cannot be put for any row in the module.
     """
     sequences = sequences or SequenceProxy(offline=offline)
+    builds = {row.genome_build for row in rows if row.genome_build}
+    if builds and all(not refget_supports_build(build) for build in builds):
+        logger.info(
+            "Reference-allele check skipped: no refget table for build(s) %s.",
+            ", ".join(sorted(builds)),
+        )
+        return RefCheck([], 0, "unsupported")
     if sequences.proxy() is None:
         logger.info("Reference-allele check skipped: no sequence access this run.")
         # `offline` is a choice and `unreachable` is a failure, and only the second is worth a re-run.

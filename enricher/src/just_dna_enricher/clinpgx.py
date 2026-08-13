@@ -115,10 +115,21 @@ def _normalize_category(value: str | None) -> str | None:
 def load_snapshot(reference: Path) -> tuple[list[dict], dict]:
     """Read the snapshot parquet + its `release.json`. Returns `(rows, release)`.
 
-    Read with **duckdb**, not polars, and that matters: polars is a `[dev]` dependency here (only the
-    builder needs it) while duckdb is core, so reading with polars would make this runtime pass
-    unusable on a plain `pip install just-dna-enricher`. `clinvar.py` reads its snapshot the same way
-    for the same reason.
+    Read with **duckdb**, not polars: the convention is builder in polars, runtime pass in duckdb,
+    which is what keeps the enricher's declared runtime dependency set honest about what it actually
+    needs. (Not because polars would be *missing* — the compiler requires it unconditionally and the
+    enricher requires the compiler, so it is installed either way. That justification was checked in
+    the 0.5 audit and is false; the convention stands on its own.) `clinvar.py` reads its snapshot the
+    same way.
+
+    **The column list is the file's, not a subset chosen here.** It was hand-written and omitted
+    `gene` and `annotation_text`, both of which `clinpgx_build` writes for every record — and the
+    omission then travelled outward as a claim about the *source*: `clinpgx_draft` refused `--gene`
+    saying "the ClinPGx annotation snapshot carries no gene column" (it does, on 15,331 of 16,087
+    rows) and synthesized a `conclusion` restating the row's own key while the published sentence sat
+    unread in `annotation_text` (16,087 of 16,087). A hand-kept projection is the same shape as a
+    hand-kept column list anywhere else in this workspace, with the extra cost that what it drops is
+    invisible to every reader downstream, who sees only a dict that does not have the key.
     """
     reference = Path(reference)
     parquet = reference / SNAPSHOT_DATA_DIRNAME / "annotations.parquet"
@@ -130,10 +141,7 @@ def load_snapshot(reference: Path) -> tuple[list[dict], dict]:
     pattern = str(parquet).replace("'", "''")
     con = duckdb.connect(":memory:")
     try:
-        cursor = con.execute(
-            f"SELECT annotation_id, rsid, genotype, evidence_level, phenotype_category, drugs "
-            f"FROM read_parquet('{pattern}')"
-        )
+        cursor = con.execute(f"SELECT * FROM read_parquet('{pattern}')")
         columns = [d[0] for d in cursor.description]
         return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()], release
     finally:

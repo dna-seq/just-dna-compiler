@@ -362,6 +362,25 @@ def refget_accession(chrom: str | None, build: str = "GRCh38") -> str | None:
     return REFGET_GRCh38.get(normalize_chrom(chrom) or "")
 
 
+def refget_supports_build(build: str | None) -> bool:
+    """Is there a refget table for this assembly at all — the question `refget_accession` raises on.
+
+    Separate from `refget_accession` because the two answer different things and only one of them is
+    a per-contig question. `refget_accession(chrom, build)` has three outcomes — an accession, `None`
+    for a contig outside the table, and `UnsupportedBuildError` for an assembly with no table — and a
+    caller that wants the third has to raise and catch an exception to ask a yes/no question. Worse,
+    the two negatives then arrive at the same `except`/`is None` and get treated alike, which is how
+    `sequences.verify_reference_alleles` came to swallow a whole GRCh37 module row by row and report
+    the pass as having run: an unbuilt assembly is a statement about the module, an unmapped contig is
+    a statement about one row.
+
+    Kept beside the table rather than in the enricher, for the reason `PAR_GRCh38` is here: which
+    assemblies have a refget table is a property of this tier's constants, and a copy elsewhere is a
+    second list to keep in step when RM15 adds the second table.
+    """
+    return build in (None, "") or build == "GRCh38"
+
+
 def sequence_location_digest(
     chrom: str | None, start: int, end: int, *, build: str = "GRCh38"
 ) -> str | None:

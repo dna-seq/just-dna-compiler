@@ -1,0 +1,3 @@
+haplotype_name,rsid,chrom,start,allele,gene
+*2,rs1799853,10,96702047,T,CYP2C9
+*3,rs1057910,10,96741053,C,CYP2C9

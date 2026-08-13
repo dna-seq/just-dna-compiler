@@ -261,10 +261,23 @@ def test_no_snapshot_records_the_skip_rather_than_a_clean_pass(
 
     Reached with no cache and `offline` rather than by passing a bad `snapshot=`: an explicit path is
     the inject-only escape hatch and is never second-guessed, so a missing one raises instead of
-    skipping. The env var is neutralized with `""` and not deleted, for the reason the suite's
-    credential rule gives — `load_dotenv(override=False)` would restore a deleted key from `.env`.
+    skipping.
+
+    **The env var is pointed at an empty directory, NOT set to `""` — the credential idiom is
+    inverted here and copying it silently disables this test.** For a credential, empty means absent:
+    every reader does `api_key or os.environ.get(...)`, so `""` reads as "no key". For a *cache path*
+    the ladder is `explicit → $env_var → the default dir`, and `os.getenv` returning `""` is falsy, so
+    an empty value does not mean "no snapshot" — it means **"fall through to
+    `~/.cache/just-dna-pipelines/clinpgx`"**, which is precisely where `just-dna-enricher cache pull`
+    puts one. This test therefore passed on CI and failed on any machine that had followed the
+    provisioning instructions: `enrich_clinpgx` found the real snapshot, ran the check over three
+    subjects, and recorded no skip at all. Same failure shape as the `PHARMVAR_API_KEY` rule and the
+    same wrong way round — green where nothing is configured, red where everything is.
+
+    `offline=True` is not the lever either, and correctly so: reading a local parquet is not egress
+    (RM38), so an offline run still consults a provisioned snapshot.
     """
-    monkeypatch.setenv("JUST_DNA_CLINPGX_CACHE", "")
+    monkeypatch.setenv("JUST_DNA_CLINPGX_CACHE", str(tmp_path / "no-snapshot-here"))
     spec = _spec(tmp_path, _FAITHFUL)
     result = enrich_clinpgx(spec, declared_use="non_commercial", offline=True)
     assert result.conflicts == []  # the misleading half, on its own

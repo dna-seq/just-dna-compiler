@@ -1,0 +1,4 @@
+gene,allele,activity_value,function_status
+CYP2C9,*1,1,normal_function
+CYP2C9,*2,0.5,decreased_function
+CYP2C9,*3,0,no_function

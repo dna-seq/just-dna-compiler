@@ -1,0 +1,6 @@
+variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,vrs_id,vrs_spec,caid,source,authority,status,rsid_alternates,rsid_current,rsid_status,fetched_at
+rs1057910,rs1057910,10,96741053,,,GRCh37,0,,,,authored,,resolved,,,live,
+rs12777823,rs12777823,10,96405502,G,A,GRCh37,0,,,,manual,,resolved,,,live,
+rs1799853,rs1799853,10,96702047,,,GRCh37,0,,,,authored,,resolved,,,live,
+rs2108622,rs2108622,19,15990431,C,T,GRCh37,0,,,,manual,,resolved,,,live,
+rs9923231,rs9923231,16,31107689,C,T,GRCh37,0,,,,manual,,resolved,,,live,

@@ -302,3 +302,37 @@ def test_a_populated_table_still_stamps(tmp_path: Path) -> None:
     spec = _module(tmp_path)
     manifest = _compile(spec, tmp_path / "out").manifest
     assert manifest.compilation.resolution_signature is not None
+
+
+def test_reverse_says_the_attestation_cannot_be_carried(tmp_path: Path, caplog) -> None:
+    """A round trip drops `manifest.verification`, and the silence about it was the defect (D2).
+
+    `verification.json` records checks the *enricher* put against sources the compiler does not
+    reach, and it is bound by hash to the authored bytes, so `reverse_module` has nothing to rebuild
+    one from and must not invent one. That part is right. What was wrong is that a module and its own
+    round trip then disagreed about a **published** field with nothing edited —
+    `manifest.compilation.warnings` is a surface consumers parse (RM44), and `manifest.verification`
+    is read the same way — and no output anywhere said the record had been dropped. Losing what was
+    checked is acceptable; losing it invisibly is the S16 silent-success shape.
+    """
+    spec = _module(tmp_path)
+    _attest(spec)
+    first = _compile(spec, tmp_path / "a1")
+    assert first.manifest.verification is not None
+
+    with caplog.at_level("WARNING", logger="just_dna_compiler.compiler"):
+        reverse_module(tmp_path / "a1", tmp_path / "rev")
+    assert any("verification attestation" in record.message for record in caplog.records)
+
+    # And the loss the warning is about is real, so the test cannot pass by the warning alone.
+    assert not (tmp_path / "rev" / VERIFICATION_JSON).exists()
+    assert _compile(tmp_path / "rev", tmp_path / "a2").manifest.verification is None
+
+
+def test_reverse_is_quiet_for_a_module_that_was_never_attested(tmp_path: Path, caplog) -> None:
+    """Nothing was lost, so there is nothing to say — the other half of the guard."""
+    spec = _module(tmp_path)
+    _compile(spec, tmp_path / "a1")
+    with caplog.at_level("WARNING", logger="just_dna_compiler.compiler"):
+        reverse_module(tmp_path / "a1", tmp_path / "rev")
+    assert not [r for r in caplog.records if "verification attestation" in r.message]

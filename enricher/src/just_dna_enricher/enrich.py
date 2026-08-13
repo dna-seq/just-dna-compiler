@@ -303,6 +303,42 @@ def spec_genome_build(spec_dir: Path) -> str:
     return config.genome_build
 
 
+def source_build_mismatch(spec_dir: Path, source: str, source_build: str = "GRCh38") -> str | None:
+    """A warning when a drafting provider is about to write `source_build` coordinates into a module
+    that declares a different one — or `None` when the builds agree.
+
+    **The gap this closes is that `spec_genome_build` had exactly one caller.** It was written for the
+    bug where "the guard existed; the value never arrived", and then `draft`, `draft-panel` and
+    `draft-clinpgx` all shipped without asking it. Every source these providers read serves GRCh38 —
+    CPIC's `allele_definitions`, the ClinVar snapshot, the ClinPGx annotations — so drafting into a
+    `genome_build: GRCh37` module writes `10,94942290` for `rs1799853`, whose GRCh37 position is
+    `96702047`, and nothing anywhere says a word. The compiler cannot catch it: a coordinate is legal
+    on either build, it is simply a different place. The whole point of `reference_examples/grch37_build`
+    is that this family of defect is *silent by construction*, and this is its ninth instance.
+
+    **Reported, not repaired, and not refused.** The provider still writes the row: refusing would
+    make the three drafting commands unusable on a non-GRCh38 module rather than merely
+    unhelpful, and stripping the coordinate to leave an rsid-only row is a *different* row than the
+    author asked for — both are design decisions with real trade-offs, and the enricher's standing
+    rule is that a pass which finds a disagreement says so and changes nothing. Which of the two the
+    providers should eventually do is filed rather than decided here.
+
+    Returns `None` for the agreeing case, which is nearly every call — the house tri-state applies to
+    the *answer*, and "the builds agree" is not a finding.
+    """
+    declared = spec_genome_build(spec_dir)
+    if declared == source_build:
+        return None
+    return (
+        f"{source} publishes {source_build} coordinates and this module declares "
+        f"genome_build={declared!r}: every chrom/start drafted below names a {source_build} position, "
+        f"recorded as though it were {declared}. Nothing downstream can detect this — a coordinate is "
+        f"valid on either assembly, it is simply a different base — so either re-declare the module as "
+        f"{source_build}, or delete the drafted coordinates and keep the rsIDs, which name a variant "
+        f"without naming an assembly (`just-dna-enricher hint recover` converts in that direction)."
+    )
+
+
 @dataclass
 class EnrichmentResult:
     rows: list[ResolutionRow]
@@ -467,10 +503,18 @@ def enrich(
 
     if genome_build != genome_build.strip() or genome_build != "GRCh38":
         logger.warning(
-            "Enrichment is GRCh38-bound; the module declares genome_build=%r, so no lookup runs and no "
-            "lookup result is recorded (RM15). Every link below is gated on GRCh38 — resolving against "
-            "Ensembl and stamping the answer under %r would record a coordinate from a different "
-            "assembly as this module's own. Authored coordinates are still transcribed verbatim.",
+            # Scoped to *coordinate* resolution, because that is all it was ever true of. The
+            # unqualified "no lookup runs" reads as a promise about the whole run, and the same run
+            # asks dbSNP whether each authored rsID is current — legitimately, since an rsID names a
+            # variant without naming an assembly, so its currency is a build-free question. A module
+            # that authors rsIDs therefore got a banner saying nothing was looked up beside a
+            # `verification.json` recording an rsID check over real subjects.
+            "Coordinate resolution is GRCh38-bound; the module declares genome_build=%r, so no "
+            "position is looked up and no lookup result is recorded (RM15). Every resolver link "
+            "below is gated on GRCh38 — resolving against Ensembl and stamping the answer under %r "
+            "would record a coordinate from a different assembly as this module's own. Authored "
+            "coordinates are still transcribed verbatim, and build-free checks (rsID currency) still "
+            "run.",
             genome_build, genome_build,
         )
 
@@ -1034,11 +1078,19 @@ def _verification_records(
     if not verify_ref:
         records.append(skipped("reference_allele", "not_requested"))
     elif ref_check.not_checked is not None:
+        # The detail follows the reason rather than assuming one: `unsupported` is not a sequence
+        # failure at all — the service was fine and the *assembly* has no refget table, so saying
+        # "no sequence access" would send an author looking for a network problem they do not have.
         records.append(
             skipped(
                 "reference_allele",
                 ref_check.not_checked,
-                detail="no sequence access this run, so no authored ref was compared",
+                detail=(
+                    "this tier has a refget table for GRCh38 only, so an authored ref on another "
+                    "assembly has nothing to be compared against (RM15)"
+                    if ref_check.not_checked == "unsupported"
+                    else "no sequence access this run, so no authored ref was compared"
+                ),
                 source="seqrepo",
             )
         )
@@ -1071,7 +1123,20 @@ def _verification_records(
         # compared: one document contradicting itself, with the false half being exactly the
         # answered-absence-versus-unasked-question collapse S20 exists to prevent. So whatever stopped
         # the ref check propagates here, and `nothing_to_check` is reachable only when it really ran.
-        if build.not_checked == "skipped_offline":
+        # **A permanent limit outranks a transient one, so `unsupported` is tested first.** Offline,
+        # a `genome_build: GRCh37` module satisfies both branches — the GRCh37 service was not asked
+        # *and* the ref check could not run on an assembly with no refget table — and reporting
+        # `offline` there says a re-run with a network would answer it. It would not: the ref check
+        # produces no mismatched rows on that build whatever the connectivity, so this pass has no
+        # subjects either way. Same ordering rule RM48 applies to its own two readings — the one that
+        # does not rest on a transient condition supersedes.
+        if ref_check.not_checked == "unsupported":
+            reason, detail = "unsupported", (
+                "the reference-allele check cannot run on this module's assembly, so no row was ever "
+                "a candidate for a build diagnosis — this is not a connectivity problem and a re-run "
+                "online reports the same thing"
+            )
+        elif build.not_checked == "skipped_offline":
             reason, detail = "offline", (
                 "the GRCh37 service is the only thing that can tell an old-assembly coordinate from "
                 "a wrong ref, and there is no local GRCh37 data"

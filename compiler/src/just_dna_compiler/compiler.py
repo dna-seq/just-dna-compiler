@@ -14,6 +14,7 @@ The DSL/manifest schema comes from `just-dna-format`; this package is the transf
 
 import csv
 import difflib
+import logging
 import math
 import re
 import shutil
@@ -175,6 +176,13 @@ from just_dna_compiler.resolution import (
     resolve_from_table,
     resolve_positional_rows,
 )
+
+# `validate_spec`/`compile_module` return their findings on a result object, which is the right shape
+# for anything a caller must act on. `reverse_module` returns a bare `Path` and has none, so the one
+# thing it needs to say — that an attestation is being dropped — goes here (CLAUDE.md: stdlib
+# `logging`, never `print`). Unconfigured, this still reaches stderr through logging's last-resort
+# handler, so a CLI that sets nothing up does not swallow it.
+logger = logging.getLogger(__name__)
 
 # Genotype allele separators: `/` (unphased), `|` (phased). See ROADMAP 0.3 item 5b. Splitting on
 # both yields the allele list; this function discards the `|` vs `/` distinction. Phase itself is
@@ -1244,18 +1252,34 @@ def _check_positional_joinability(
                 for r in resolution_table.get(_table_row_key(row, genome_build) or "", [])
             )
         ]
-        if not placeable:
+        # **`fill_applied` is tested FIRST, and the order is the whole point.** It used to sit in the
+        # `elif`, behind `if not placeable`, which made the third reading unreachable on exactly the
+        # modules it describes: when the fill never runs, `resolution.csv` is whatever the enricher
+        # left, and on a non-GRCh38 module the enricher declines to resolve, so it holds only the
+        # coordinates the author typed — meaning `placeable` is empty for precisely the rsid-only
+        # rows, and the author was told "no resolution.csv row places them — run enrich first" one
+        # line below a warning explaining that the fill was skipped because their module is GRCh37.
+        # They had just run enrich, and on that build it can never place those rows. A remedy that
+        # cannot work is worse than no remedy: it sends an author to re-run a command whose own
+        # output already told them why it would not help.
+        # `fill_applied` is False for four different situations and only some of them are "the table
+        # was not consulted": no table at all, no positional rows, a non-GRCh38 module, and
+        # `--no-resolve`. So it is conjoined with *a table being present* — with none, "run enrich"
+        # is exactly the right advice and the branch below keeps it.
+        if not fill_applied and resolution_table:
+            named = (
+                f"resolution.csv names {len(placeable)} of them and was"
+                if placeable
+                else "the resolution table was"
+            )
+            detail = f"{named} not consulted for this table — see the skip reported above"
+        elif not placeable:
             detail = "no resolution.csv row places them — run `just-dna-enricher enrich` first"
-        elif fill_applied:
+        else:
             detail = (
                 f"resolution.csv names {len(placeable)} of them, but at more than one locus or at "
                 f"one the row's own allele contradicts, so the compiler leaves them unplaced rather "
                 f"than picking"
-            )
-        else:
-            detail = (
-                f"resolution.csv names {len(placeable)} of them and was not consulted for this "
-                f"table — see the skip reported above"
             )
         partial_note = (
             f" {len(partial)} carr{'ies' if len(partial) == 1 else 'y'} one half of a coordinate "
@@ -5116,6 +5140,22 @@ def _genome_build_from_artifact(parquet_dir: Path) -> str | None:
         return None
 
 
+def _artifact_records_verification(parquet_dir: Path) -> bool:
+    """Did this artifact's manifest carry a verification block — i.e. is reverse about to drop one?
+
+    Tolerant in the same way and for the same reason as the build recovery above: an unreadable
+    manifest is a provenance failure, and a provenance failure must not stop a reverse. A `False`
+    here only ever costs the warning.
+    """
+    path = parquet_dir / "manifest.json"
+    if not path.is_file():
+        return False
+    try:
+        return read_manifest(path).verification is not None
+    except (OSError, ValueError):
+        return False
+
+
 def reverse_module(
     parquet_dir: Path,
     output_dir: Path,
@@ -5186,6 +5226,24 @@ def reverse_module(
         module_name = _module_name_from_parquets(parquet_dir) or parquet_dir.name
     if genome_build is None:
         genome_build = _genome_build_from_artifact(parquet_dir) or "GRCh38"
+
+    # **The attestation cannot be carried, and the silence about that was the defect (RM45).**
+    # `verification.json` records checks the *enricher* put against sources this tier cannot reach,
+    # and it is bound to the authored bytes by a hash — so reverse has nothing to rebuild it from and
+    # must not invent one. What it can do is say so: without this line a module round-trips into a
+    # spec that recompiles to a manifest with no `verification` block at all, and
+    # `manifest.compilation.warnings` — a surface consumers parse (RM44) — differs between a module
+    # and its own round trip with nothing edited. Losing a record of what was checked is acceptable;
+    # losing it invisibly is the S16 silent-success shape.
+    if _artifact_records_verification(parquet_dir):
+        logger.warning(
+            "The source artifact carries a verification attestation (RM45) and the reversed spec "
+            "will not: the checks were put by the enricher, against sources this tier does not "
+            "reach, and the record is bound to authored bytes reverse is re-emitting. Re-run the "
+            "enricher on %s to re-attest; recompiling as-is produces a manifest with no "
+            "`verification` block.",
+            output_dir,
+        )
 
     default_curator = "unknown"
     default_method = "unknown"

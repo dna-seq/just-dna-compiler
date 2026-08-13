@@ -1,0 +1,52 @@
+# Dogfooding the 0.6 batch — findings
+
+The bug list produced by running [DOGFOOD_0_6.md](DOGFOOD_0_6.md). One row per finding, each
+reproduced against the shipped CLIs before it was written down. **Fixing is a separate round** —
+this file is the ledger, not the work.
+
+Severity is about what a consumer or author gets wrong because of it, not about how hard it is to
+fix. `class` is the standing fix-vs-surface split: **fix** = a false claim, a misdiagnosis, an
+unaggregated wall, a guard that is never reached; **surface** = the obvious repair is itself a design
+decision, and the entry says why each candidate repair is wrong.
+
+> **Already repaired in the working tree (D2 round, before the split was called).** F1–F7 and F9, F10
+> below were fixed and pinned with regression tests in the same session that found them. They are
+> listed here anyway, because the ledger has to be complete and because the fixes are unstaged and
+> may be reviewed or dropped as a unit. Everything from D1 onward is **filed, not fixed**.
+
+---
+
+## D2 — `cyp2c9_warfarin_grch37`
+
+Module: `reference_examples/cyp2c9_warfarin_grch37/` (README carries the reproductions).
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **F1** | **Every drafting provider ignores the module's declared build.** `draft`, `draft-panel`, `draft-clinpgx` all take a `spec_dir` and none reads `genome_build`. `enrich.spec_genome_build` — written for exactly this defect one release earlier — had **one caller**. CPIC/ClinVar/ClinPGx all serve GRCh38, so drafting into a `genome_build: GRCh37` module writes `10,94942290` for `rs1799853` (GRCh37: `96702047`) in silence. Two of the three write coordinates and can do harm; `draft-clinpgx` writes none. Hid because `test_pgx_draft.py`'s fixture declares `GRCh38` — the only drafting test that mentions a build. | fix (warn) + **surface** (refuse vs strip-to-rsid is a design decision) | high |
+| **F2** | **`clinpgx_draft` says the snapshot has no `gene` column.** It has one, populated on 15,331 of 16,087 rows, written *and re-read* by our own builder. `--gene` was refused with a false reason and `PharmVariantRow.gene` left empty. Root cause: `load_snapshot`'s hand-written `SELECT` listed six of eleven columns. | fix | medium |
+| **F3** | **`annotation_text` is written for 16,087 of 16,087 rows and read by nothing.** `conclusion` — the one column whose job is to say what the module claims — was synthesized as `"ClinPGx 655385012: C/C and warfarin — dosage"`, a restatement of the row's own key. Nothing flags a content-free conclusion. | fix | high |
+| **F4** | **The attestation records a check it could not run as having run clean.** On a GRCh37 module `verify_reference_alleles` caught `UnsupportedBuildError` per row and `continue`d, so `not_checked` stayed `None` and `verification.json` published `reference_allele: subjects 0, findings 0, skipped null` — and `genome_build_agreement: nothing_to_check` with the detail *"no authored ref disagreed with the reference"*, asserting a comparison that never happened. `VALID_VERIFICATION_SKIPS.unsupported`, whose comment names this case, was **emitted by nothing and asserted by no test**. Reproduced on `reference_examples/grch37_build`. | fix | high |
+| **F5** | **`draft --drug X` cannot tell a typo from a real drug CPIC scores differently.** `warfarin` and `notarealdrugxyz` produced byte-identical output. CPIC's warfarin guideline is real; it is a multi-gene dosing algorithm and so has no phenotype-keyed recommendation row. | fix | low |
+| **F6** | **The joinability warning recommended a re-run that cannot help.** `fill_applied=False` sat behind `if not placeable`, and on a non-GRCh38 module those coincide — so the author was told *"run `just-dna-enricher enrich` first"* one line below the warning explaining the fill was skipped **because** their module is GRCh37. | fix | medium |
+| **F7** | **`compile → reverse → compile` drops `manifest.verification` in silence.** Reverse cannot re-attest and must not invent one — but nothing said the block was going, and a module and its own round trip then disagree on a published field with nothing edited (the RM44 class). | fix (say so) | medium |
+| **F8** | **`resolution_signature` is not a round-trip invariant when the fill is skipped.** Injected rows for positional-table keys never reach a parquet on a non-GRCh38 module, so reverse cannot rebuild them. Forced by the RM15 skip: materializing them would mean joining a table across builds. | **surface** | low |
+| **F9** | **The corpus round-trip sweep never compared `resolution_signature`.** `getattr(manifest, "resolution_signature", None)` — the field is on `manifest.compilation`. `None == None` for all eleven examples for the whole of 0.6, while the docstring explains why the signature is checked. `grch37_build`'s README asserts a fixed point on it that nothing verified (and which is a `None → value` materialization, not equality). | fix | high |
+| **F10** | **A "no snapshot" test that only fails on a machine that has one.** `setenv("JUST_DNA_CLINPGX_CACHE", "")` is the *credential* idiom and is inverted for a cache path: empty is falsy, so the ladder falls through to the default dir — where `cache pull` puts a snapshot. Green on CI, red on a provisioned machine. | fix | medium |
+| **F11** | **`requires_callable` is `VariantRow`-only, so no PGx table can state CPIC's core assumption.** CPIC assumes an uncalled position is reference — literally `requires_callable=false` — and `haplotypes.csv`/`pharm_variants.csv`/`diplotypes.csv` have no such column. A star-allele module cannot record whether its call needed the defining positions to be callable. | **surface** (RM65-adjacent) | medium |
+
+### Checked and held (D2)
+
+- `licensing.csv` is the spelling both providers write into a fresh directory (RM51); the compile gate
+  refuses with `declared_use` blanked, naming both sources (RM27).
+- RM5's two unusable-allele kinds stayed apart after the grammar widened — CPIC's `*36=S` is reported
+  as an IUPAC ambiguity, `*6=DELA` as a grammar gap, with the message saying in-line that RM5's
+  `<DEL:1500>` is a different spelling from `DELTCT`.
+- RM44's denominator works: `fully_resolved: true` over **zero** variant rows, with
+  `resolution_subjects: 0` published beside it, so the documented trust rule withholds the badge.
+- The count rule holds for the joinability warning — emitted once per command, in `validate` and
+  `compile` alike.
+- RM48 fires correctly and supersedes the ±1 shift reading, naming `rs1799853` from
+  `10:96702047`. Its **limit** is now measured rather than asserted: of two GRCh37 rows declared as
+  GRCh38, one was caught and the other minted a VRS id and recorded `resolved`, because GRCh38 carries
+  the authored `ref` at that position too. That is the documented ~3-in-4 sensitivity, and it means
+  *"the compiler catches wrong-build coordinates"* is not a reading anyone should take.

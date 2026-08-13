@@ -1636,7 +1636,7 @@ def draft_clinpgx_(
         help="Built ClinPGx snapshot (see `clinpgx build`). Inject-only; nothing is downloaded.",
     ),
     drug: list[str] = typer.Option([], "--drug", help="Only annotations naming this drug (repeatable)."),
-    gene: list[str] = typer.Option([], "--gene", help="Reserved; the annotation snapshot has no gene column."),
+    gene: list[str] = typer.Option([], "--gene", help="Only annotations naming this gene (repeatable)."),
     min_evidence_level: str | None = typer.Option(
         None, "--min-evidence-level", help="Keep annotations at least this strong: 1A|1B|2A|2B|3|4."
     ),

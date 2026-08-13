@@ -47,6 +47,7 @@ from pydantic import ValidationError
 
 from just_dna_enricher.clinvar import citations_for, clinvar_dataset_label, select_by_gene
 from just_dna_enricher.download import ensure_clinvar_snapshot
+from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     check_declared_use,
@@ -64,6 +65,11 @@ class ClinVarDraftError(RuntimeError):
 
 #: The clinical calls a risk panel is usually drawn from. Overridable; not a judgement baked in.
 DEFAULT_CLIN_SIG: frozenset[str] = frozenset({"pathogenic", "likely_pathogenic"})
+
+#: The assembly the snapshot's coordinates are on. `clinvar_build` reads NCBI's `vcf_GRCh38/` file, so
+#: this is a property of what we build rather than a guess — named for the same reason
+#: `gnomad.FREQUENCY_GENOME_BUILD` is, since every build confusion in this package began as a literal.
+CLINVAR_GENOME_BUILD = "GRCh38"
 
 #: `clin_sig` → the required `state`. A **fold of the source's own call**, not an interpretation:
 #: `state` is the legacy axis every row must carry, and `direction`/`clin_sig` are the orthogonal
@@ -452,6 +458,12 @@ def draft_gene_panel(
         reference, list(genes), clin_sig=clin_sig, min_review_stars=min_review_stars
     )
     warnings: list[str] = list(provisioning_warnings)
+    # The snapshot is built from NCBI's `vcf_GRCh38/clinvar.vcf.gz`, and `_row_cells` writes the full
+    # coordinate for any record this pass cannot key by rsID — so a module on another build is about
+    # to record GRCh38 positions under its own declaration. See `enrich.source_build_mismatch`.
+    build_warning = source_build_mismatch(spec_dir, "the ClinVar snapshot", CLINVAR_GENOME_BUILD)
+    if build_warning:
+        warnings.append(build_warning)
     partials: list[PartialRow] = []
     unkeyable = 0
     ambiguous = multi_allelic_rsids(records)

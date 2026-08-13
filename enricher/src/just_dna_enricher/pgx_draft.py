@@ -41,8 +41,15 @@ from just_dna_enricher.cpic import (
     CpicRecommendation,
     CpicSnapshotClient,
 )
+from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, merge_sources_file
 from just_dna_enricher.locations import resolve_cpic_reference
+
+#: The assembly CPIC's `sequence_location.position` is on — probed, not assumed: `rs1799853` is
+#: `10:94942290` there, which is its GRCh38 position (GRCh37 is `10:96702047`). Named for the reason
+#: `gnomad.FREQUENCY_GENOME_BUILD` and `pharmvar.PHARMVAR_GENOME_BUILD` are: this is the fourth build
+#: confusion in this package and every one of them was a literal assumption at a call site.
+CPIC_GENOME_BUILD = "GRCh38"
 
 logger = logging.getLogger(__name__)
 
@@ -302,11 +309,20 @@ def draft_gene(
         diplotypes = cpic.diplotypes_for_gene(gene)
         defining, defining_warnings = cpic.defining_variants(gene)
         by_drug = {drug: cpic.recommendations(gene, drug) for drug in drugs}
+        # Asked here, inside the `try`, because the client is closed in the `finally` below — and
+        # asked only for the drugs that came back empty, since that is the only case whose message
+        # needs it. See `CpicClient.knows_drug`.
+        drug_known = {drug: cpic.knows_drug(drug) for drug, found in by_drug.items() if not found}
     finally:
         if owned:
             cpic.close()
 
     warnings = list(defining_warnings)
+    # CPIC's `sequence_location` is GRCh38 and `haplotypes.csv` gets a `chrom`/`start` from it, so a
+    # module declaring another build is about to record a position from the wrong assembly.
+    build_warning = source_build_mismatch(spec_dir, "CPIC", CPIC_GENOME_BUILD)
+    if build_warning:
+        warnings.append(f"{gene}: {build_warning}")
     selected = _selected_alleles(alleles, [a.allele for a in published], gene)
     if selected is not None:
         # Filtered once, here, so the three tables and the drug rows all see the same set — the drug rows
@@ -405,7 +421,36 @@ def draft_gene(
     # this drug". Different questions, and `_TABLE_DUPE_KEYS` keys on `drug`, so both coexist.
     for drug, recommendations in by_drug.items():
         if not recommendations:
-            warnings.append(f"{gene}: CPIC has no recommendations for {drug!r} — nothing drafted.")
+            # Three outcomes, not one sentence. "CPIC has no recommendations for X" was emitted
+            # identically for a typo and for a real drug CPIC scores in a shape this table does not
+            # hold — warfarin being exactly that: the guideline exists, it is a dosing algorithm over
+            # several genes rather than a per-phenotype recommendation, so nothing lands here and the
+            # author was told CPIC has nothing. Same distinction the rsID vocabulary makes between a
+            # mistyped id and a real one the source records differently.
+            known = drug_known.get(drug)
+            if known is False:
+                detail = (
+                    "CPIC does not list that drug at all — check the spelling (CPIC uses lowercase "
+                    "generic names)"
+                )
+            elif known is None:
+                # Deliberately does NOT say "re-run without --offline": the route is snapshot-first,
+                # so a provisioned cache is used whether or not --offline was passed, and advising a
+                # flag that changes nothing is the same defect as the joinability warning telling a
+                # GRCh37 author to re-run enrich.
+                detail = (
+                    "the CPIC snapshot's recommendation table has no row for it. That table only "
+                    "names drugs that already have a phenotype-keyed recommendation, so this does "
+                    "not establish whether CPIC knows the drug at all. Only the live API can answer "
+                    "that, and it is consulted only when no snapshot is present"
+                )
+            else:
+                detail = (
+                    "CPIC lists the drug but records no single-gene, phenotype-keyed recommendation "
+                    "for it — a guideline shaped as a dosing algorithm over several genes (warfarin) "
+                    "has no row here"
+                )
+            warnings.append(f"{gene}: nothing drafted for {drug!r} — {detail}.")
             continue
         drug_rows, drug_warnings = _recommendation_rows(
             diplotypes, recommendations, population=population
