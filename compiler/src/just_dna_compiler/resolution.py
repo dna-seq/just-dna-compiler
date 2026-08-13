@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from just_dna_format.alleles import (
     is_symbolic_allele,
+    is_unobservable_allele,
     non_nucleotide_alleles,
     parsimony_reduce,
 )
@@ -287,28 +288,46 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
 
     1. **No `ref`/`alts` recorded → `True`.** Nothing is known about the locus's alleles and rejecting
        for lack of evidence is worse than accepting. Unchanged.
-    2. **The raw strings match → `True`.** Checked *before* any normalization so this function can only
+    2. **A `*` in the *genotype* abstains, and the rest of the call is still judged (RM59).** `*` says
+       *this sample's allele could not be observed here*; it names no allele, so a locus cannot fail to
+       offer it and cannot contradict it. Without this the widening that made `*/G` authorable would be
+       self-defeating: Ensembl never spells `*` in an ALT list, so an rsid-authored `*/G` resolved
+       against a `G>A` locus fell through to step 6 and came back a confident **`False`** — the locus
+       dropped from the expansion, the row unresolved, and `strict` refusing over a finding no authored
+       edit could clear. Dropping the member rather than the whole verdict is what keeps the
+       *observable* half sharp: `*/T` at a `G>A` locus is still `False`, because the `T` really is a
+       contradiction. A call naming nothing observable (`*/*`) is `None` — nothing was seen, so nothing
+       is decidable.
+
+       Only the **called** side abstains. A `*` in `ref`/`alts` is reachable today (those columns have
+       no grammar) and is a record of what the caller emitted, so excluding it there would change a
+       verdict some existing module may already depend on — this arm is a widening precisely because
+       nothing could put a `*` into a genotype before RM59.
+    3. **The raw strings match → `True`.** Checked *before* any normalization so this function can only
        ever gain acceptances: whatever passed before still passes, byte for byte, which is what keeps the
-       expansion (and every module's digest) stable except where a genuine reconciliation happens.
-    3. **Either side names a symbolic allele → `None`.** A `<DEL:1500>` has no sequence, so it has no
+       expansion (and every module's digest) stable except where a genuine reconciliation happens. (Step
+       2 sits above it and costs it nothing — removing a member only ever makes this test succeed more
+       often, and nothing reachable before RM59 carried one.)
+    4. **Either side names a symbolic allele → `None`.** A `<DEL:1500>` has no sequence, so it has no
        flank for `parsimony_reduce` and nothing to compare character by character — and a symbolic
        allele exists *because* the exact sequence is not known, so even two stated lengths that differ
        are summary information rather than grounds for a contradiction. Undecided, never "no match"
        (RM5). Below the raw comparison, so `<DEL:1500>` against a locus spelling `<DEL:1500>` still
        matches exactly.
-    4. **The reduced allele sets match → `True`.** `alleles.parsimony_reduce` strips the flank each
+    5. **The reduced allele sets match → `True`.** `alleles.parsimony_reduce` strips the flank each
        collection shares, leaving the event; ClinVar's `C/CAG` and Ensembl's `AGAG>AG` both reduce to
        `{'', 'AG'}`, the SHOX 2 bp deletion that used to resolve to `not_found`.
-    5. **The locus is a substitution or MNV → `False`.** No flank, so no spelling freedom: an `A/G`
+    6. **The locus is a substitution or MNV → `False`.** No flank, so no spelling freedom: an `A/G`
        genotype at a `C>T` locus is a real contradiction, and must stay one (a strand flip is exactly
        what that check catches).
-    6. **The genotype names fewer than two distinct alleles → `None`.** A homozygous `C/C` carries no
+    7. **The genotype names fewer than two distinct alleles → `None`.** A homozygous `C/C` carries no
        frame — one string has nothing to be relative to — so against an indel locus there is genuinely
-       nothing to compare. Reported as undecided, never as a contradiction.
-    7. **An event length the locus does not offer → `False`.** The confident negative:
+       nothing to compare. Reported as undecided, never as a contradiction. A `*/C` reaches this too
+       once the `*` has abstained, and for the same reason: one string has nothing to be relative to.
+    8. **An event length the locus does not offer → `False`.** The confident negative:
        left-alignment moves an indel, it never changes how many bases the event adds or removes, so a
        1 bp insertion cannot be a 2 bp deletion however it is spelled.
-    8. **Otherwise → `None`.** Same lengths, different content: one variant rotated inside a repeat, or
+    9. **Otherwise → `None`.** Same lengths, different content: one variant rotated inside a repeat, or
        two different variants, and only the reference sequence can say which. The enricher can settle
        it (seqrepo); the compiler holds no reference by charter (P2), so it withholds.
 
@@ -320,13 +339,33 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
         return True
     locus = {ref.strip().upper()} | {a.strip().upper() for a in alts.split(",") if a.strip()}
     called = {a.upper() for a in _GENOTYPE_SEP.split(genotype) if a}
+
+    # RM59, and kept visibly separate from the RM5 guard below it because they are separate axes: this
+    # one drops a *member* that makes no claim, that one withholds the whole *verdict* because a claim
+    # cannot be compared. `*` is not an allele — it reports that the sample's allele could not be
+    # observed here — so it is neither offered by a locus nor contradicted by one, and every step from
+    # here on is a comparison of characters it has none of. Removing it leaves the observable half of
+    # the call to be judged normally; removing it and finding nothing left means nothing was seen.
+    #
+    # **Above the raw comparison, not below it**, which is the opposite of where the RM5 guard sits and
+    # is forced rather than chosen: the whole point is that the *rest* of the call must still be matched
+    # against the locus, and `*/G` at a `G>A` locus is exactly the case — `{'*','G'}` is not a subset,
+    # so below the comparison it fell through to the substitution arm and came back a confident `False`.
+    # It costs the stability property nothing: dropping a member can only ever make the subset test
+    # succeed more often, and no genotype reachable before RM59 could carry one, so every existing
+    # module compares byte for byte the way it did.
+    observable = {a for a in called if not is_unobservable_allele(a)}
+    if not observable:
+        return None
+    called = observable
+
     if called <= locus:
         return True
 
     # RM5. A symbolic allele names a variant whose sequence is deliberately unspelled, so from here on
     # every step is a comparison of *characters* and there are none to compare: `parsimony_reduce`
     # would treat `<DEL:1500>` as a nine-character sequence, `_indel_shaped` would read its bracket
-    # count as an event length, and step 7 would then return a confident `False` on arithmetic over a
+    # count as an event length, and step 8 would then return a confident `False` on arithmetic over a
     # token. Undecided is the honest answer, and it only ever *adds* acceptances (`genotype_fits`
     # keeps an undecided locus), so no expansion and no digest moves for a module spelling in bases.
     if any(is_symbolic_allele(a) for a in locus | called):

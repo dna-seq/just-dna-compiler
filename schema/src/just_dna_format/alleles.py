@@ -203,10 +203,47 @@ def symbolic_allele_defect(value: str | None) -> str | None:
     return None
 
 
+# ── The allele that could not be observed (0.6, RM59) ──────────────────────────────────────────
+#
+# VCF 4.4 §1.6.1.5: an ALT allele may be *"the '*' symbol (allele missing due to overlapping
+# deletion)"*. It is what any modern joint-called VCF puts at a site some deletion called elsewhere
+# overlaps, so `ALT=A,*` with `GT=0/2` is **ordinary consumer data** rather than an exotic spelling.
+#
+# **This is not RM5's axis, and `*` must never be routed through the symbolic-allele machinery above.**
+# The separation is the whole content of the item, and the file already states half of it: `<*>` is
+# kept out of `SYMBOLIC_ALLELE_TYPES` for exactly this reason. Every symbolic allele names a *variant*
+# whose sequence the grammar cannot spell — `<DEL:1500>` has an event, a place and a length. `*` names
+# no variant at all: it says *this sample's allele could not be seen here*, which is an
+# **observability** claim, and observability is the callability axis (`VariantRow.requires_callable` /
+# `callable_from`). Two axes under one syntax is the overloaded-field anti-pattern P5 exists to stop,
+# and the consequences differ concretely: an unusable symbolic allele is a grammar gap a release can
+# widen, while `*` is a permanent statement about the *sample* that no release will turn into a
+# sequence. So it gets its own predicate, its own reason class, and no length.
+
+#: VCF's "allele missing due to overlapping deletion". Named rather than spelled inline because three
+#: tiers compare against it and a bare `"*"` in a condition reads like a wildcard or a typo.
+UNOBSERVABLE_ALLELE: str = "*"
+
+
+def is_unobservable_allele(value: str | None) -> bool:
+    """Whether `value` is VCF's `*` — *this sample's allele could not be observed at this position*.
+
+    Deliberately an exact match on the one token, with none of `is_symbolic_allele`'s leniency. That
+    function is loose (anything opening with `<`) because a malformed symbolic allele is a real authoring
+    mistake worth diagnosing; `*` is a single character with no interior to get wrong, so there is no
+    near-miss to be generous about and a looser test could only start claiming things that are not this.
+
+    Note what it is *not* asked about: `ref`. A reference allele is the sequence a record is anchored
+    to, and a `*` there would anchor nothing — the same argument that keeps a symbolic allele out of a
+    REF column.
+    """
+    return value is not None and value.strip() == UNOBSERVABLE_ALLELE
+
+
 def non_nucleotide_reason(allele: str | None) -> str | None:
     """Why `allele` is not a nucleotide string, or `None` when it is one.
 
-    Three answers, never one, and conflating them is a mistake this codebase has already made once and
+    Four answers, never one, and conflating them is a mistake this codebase has already made once and
     repaired (`cpic.unusable_allele_reason`, which now delegates here): calling a deletion notation an
     "ambiguity code" is a false claim about the data and points an author at the wrong thing.
 
@@ -217,14 +254,20 @@ def non_nucleotide_reason(allele: str | None) -> str | None:
       the grammar holds since 0.6. Not a nucleotide string, and not a defect either: it names a real
       variant whose sequence is deliberately unspelled, so nothing can be compared against it
       character by character and every comparison against a spelled allele is *undecided*.
-    * `"notation"` — not a nucleotide string and not a symbolic allele either: a repeat notation
-      (`AAAGGGGCG(2)`), a deletion spelling like `DELTCT`, a typo, or an angle-bracketed name outside
-      the closed five (`<FOO>`). A **grammar gap** rather than an uncertainty.
+    * `"unobservable"` — VCF's `*` (RM59). Not a defect and not a gap: it is a well-formed statement
+      that *this sample's allele could not be observed here*, so it names no sequence to compare and
+      never will. Kept apart from `"notation"` because the two carry opposite consequences — a grammar
+      gap is a release away, and this one is permanent by construction.
+    * `"notation"` — not a nucleotide string, not a symbolic allele and not `*` either: a repeat
+      notation (`AAAGGGGCG(2)`), a deletion spelling like `DELTCT`, a typo, or an angle-bracketed name
+      outside the closed five (`<FOO>`). A **grammar gap** rather than an uncertainty.
 
     This used to answer `"notation"` for `<DEL>` too, and that stopped being true when RM5 shipped:
     the reading it carried — *a grammar gap a future release may widen* — is now false for the five
     structural types, and a message built from it sends an author to wait for a release that already
-    happened.
+    happened. `*` is the same shape of correction one axis over: it read as `"notation"` until RM59,
+    which told an author of a perfectly ordinary joint-called site to wait for a grammar that can never
+    arrive, because there is no sequence for a grammar to hold.
 
     Note the third real shape this deliberately files under `"ambiguity"` rather than inventing a name
     for: `N` *inside* a longer allele (633 ClinVar records spell a known-length insertion whose interior
@@ -239,6 +282,8 @@ def non_nucleotide_reason(allele: str | None) -> str | None:
         return None
     if parse_symbolic_allele(value) is not None:
         return "symbolic"
+    if is_unobservable_allele(value):
+        return "unobservable"
     return "ambiguity" if set(value) <= (NUCLEOTIDES | IUPAC_AMBIGUITY_CODES) else "notation"
 
 

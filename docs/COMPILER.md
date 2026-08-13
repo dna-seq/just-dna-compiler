@@ -621,6 +621,7 @@ publishes the same event as `X:634690 AGAG>AG`.
 | Situation | Verdict | What the compile does |
 |---|---|---|
 | No `ref`/`alts` recorded | `True` | keeps the locus (lack of evidence never rejects) |
+| A `*` among the **genotype's** alleles (RM59, 0.6) | — | the member is dropped and the rest of the call is judged normally; all-`*` is `None` |
 | The raw allele strings match | `True` | keeps it — checked **first**, so normalization can only ever *add* acceptances |
 | Either side names a symbolic allele (RM5, 0.6) | `None` | keeps it, reports that it did not decide — no sequence, so no flank and nothing to compare |
 | The reduced allele sets match (`alleles.parsimony_reduce` strips the shared flank) | `True` | keeps it; this is what reconciles the two spellings |
@@ -628,6 +629,19 @@ publishes the same event as `X:634690 AGAG>AG`.
 | The genotype names fewer than two distinct alleles at an indel locus | `None` | keeps it, reports that it did not decide (a homozygous call carries no frame) |
 | The event **sizes** differ | `False` | drops it — re-anchoring never changes how many bases an event adds or removes |
 | Same sizes, different content | `None` | keeps it, reports that it did not decide (a rotation inside a repeat, or two variants) |
+
+**The `*` row sits above the raw comparison, and the symbolic row below it — the two are on different
+axes and the placements are not interchangeable.** A symbolic allele makes a claim that cannot be
+*compared*, so the whole verdict withholds; `*` makes no claim at all, so only the member goes and the
+observable half must still be matched. That is why it has to run before the subset test rather than
+after: `{'*','T'}` is not a subset of a real `A>T` locus, so below the comparison it fell through to the
+substitution row and returned a confident `False` — dropping the locus and leaving the row unresolved,
+which would have made a `*` authorable and uncompilable in the same release, refusing under `strict`
+for a reason no authored edit could clear. No source spells `*` in an ALT list, so this is the ordinary
+path rather than a corner. `*/T` at an `A>T` locus is `True`; `*/G` there is still `False`, because the
+`G` is a real contradiction and abstention drops a member, never a verdict; `*/*` is `None`. It costs
+the stability property nothing — dropping a member only ever makes the subset test succeed more often,
+and nothing could put a `*` into a genotype before RM59, so every compiled module compares as it did.
 
 The symbolic row sits above the reductions on purpose. Below the raw comparison every remaining step is
 arithmetic over characters, and a `<DEL:1500>` has none to offer — `parsimony_reduce` would read it as a

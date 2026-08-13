@@ -36,7 +36,12 @@ from pydantic import (
     model_validator,
 )
 
-from just_dna_format.alleles import SYMBOLIC_ALLELE_TYPES, parse_symbolic_allele
+from just_dna_format.alleles import (
+    SYMBOLIC_ALLELE_TYPES,
+    UNOBSERVABLE_ALLELE,
+    is_unobservable_allele,
+    parse_symbolic_allele,
+)
 from just_dna_format.vocab import (
     ALLELE_PATTERN,
     VALID_CLIN_SIG,
@@ -246,7 +251,7 @@ DEFAULT_GENOME_BUILD: str = "GRCh38"
 
 
 def genotype_allele_ok(allele: str) -> bool:
-    """Whether one member of a genotype is spellable: a nucleotide string, or a symbolic allele.
+    """Whether one member of a genotype is spellable: a nucleotide string, a symbolic allele, or `*`.
 
     The single place `_validate_genotype` decides what an allele *is*, so the three arms of the
     grammar (phased pair, hemizygous single, unphased pair) cannot drift apart — they did not, but
@@ -256,17 +261,40 @@ def genotype_allele_ok(allele: str) -> bool:
     deletion), because that is exactly the call a consumer reading a structural VCF has in hand.
     A *lengthless* one passes here and is refused by the compiler; see `vocab.validate_allele` for
     why the split is forced rather than chosen.
+
+    **`*` joined beside them in 0.6 (RM59), and the two arms are deliberately not one arm.** They are
+    checked by different predicates against different modules of meaning, and the separation is the
+    item rather than an implementation detail: `parse_symbolic_allele` answers *which variant is this,
+    unspelled*, and `is_unobservable_allele` answers *whether this sample's allele could be seen at
+    all* — the callability axis `requires_callable` already owns (P5). Folding `*` into
+    `SYMBOLIC_ALLELE_TYPES` would give one syntax two meanings and hand `*` a length, an event and a
+    place it does not have. See `alleles`' RM59 section for the full argument.
+
+    Why the genotype column and not the allele columns: `vocab.validate_allele` (`HaplotypeRow.allele`,
+    `VariantRow.effect_allele`) still refuses `*`, and must. Those columns name the allele a *rule* is
+    about, and a rule about an allele nobody observed states nothing. A genotype is the one place the
+    observation itself is written down, which is why it is the one place `*` belongs.
     """
-    return bool(ALLELE_PATTERN.match(allele)) or parse_symbolic_allele(allele) is not None
+    return (
+        bool(ALLELE_PATTERN.match(allele))
+        or parse_symbolic_allele(allele) is not None
+        or is_unobservable_allele(allele)
+    )
 
 
 #: What `_validate_genotype` will accept, spelled once for the three messages that have to say it.
 #: Names the length convention without claiming this validator enforces it — it does not (a lengthless
 #: `<DEL>` loads and the compiler refuses it), and an author rejected on the *type* still needs the
 #: full spelling or they earn a second rejection one command later.
+#:
+#: `*` is named with its meaning rather than as a bare token: an author who has just been rejected is
+#: reading this to learn the grammar, and `*` is the one member whose spelling gives away nothing about
+#: when to reach for it.
 _GENOTYPE_ALLELE_GRAMMAR: str = (
-    f"nucleotides, or a symbolic/structural allele whose first-level type is one of "
-    f"{sorted(SYMBOLIC_ALLELE_TYPES)}, with its length inside the token (e.g. <DEL:1500>)"
+    f"nucleotides, {UNOBSERVABLE_ALLELE!r} (VCF's allele-missing-due-to-overlapping-deletion, for a "
+    f"position this sample's call could not observe), or a symbolic/structural allele whose "
+    f"first-level type is one of {sorted(SYMBOLIC_ALLELE_TYPES)}, with its length inside the token "
+    f"(e.g. <DEL:1500>)"
 )
 
 

@@ -1105,9 +1105,15 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     The consequence sentence belongs *inside* the branch it is true of. The first cut appended "an
     ambiguity code is an uncertainty and is never expanded…" to every finding, so a `<DEL>` locus was
     told about ambiguity codes — the identical conflation `cpic.unusable_allele_reason` was repaired to
-    stop making, reintroduced in the message that repair paid for. Three reasons, three consequences:
-    an uncertainty is permanent, a symbolic allele is held by the grammar and simply not comparable
-    here, and a grammar gap is what is left.
+    stop making, reintroduced in the message that repair paid for. Four reasons, four consequences: an
+    uncertainty is permanent, a symbolic allele is held by the grammar and simply not comparable here,
+    a `*` is a fact about the sample's *coverage* and not about the variant at all, and a grammar gap is
+    what is left.
+
+    The fourth arm arrived with RM59 for the same reason the third did: `*` used to answer `"notation"`,
+    so a locus whose ALT list carries one — which is what a joint-called VCF writes, and `alts` has no
+    grammar to stop it — was told it had hit a gap a future release may widen. Nothing can widen to hold
+    `*`, because there is no sequence there to hold.
 
     The `"notation"` clause used to say a `<DEL>` is "a grammar gap (RM5) … a future release may widen
     to hold it". RM5 shipped in 0.6, so that reading became false for the five structural types, and
@@ -1116,6 +1122,7 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     """
     ambiguity = [a for a, reason in offenders.items() if reason == "ambiguity"]
     symbolic = [a for a, reason in offenders.items() if reason == "symbolic"]
+    unobservable = [a for a, reason in offenders.items() if reason == "unobservable"]
     notation = [a for a, reason in offenders.items() if reason == "notation"]
     parts: list[str] = []
     if ambiguity:
@@ -1129,6 +1136,13 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
             f"{', '.join(repr(a) for a in symbolic)} is a symbolic/structural allele, which the grammar "
             f"holds (RM5) — it names a variant whose sequence is deliberately unspelled, so comparing it "
             f"against a spelled allele is undecided rather than a mismatch"
+        )
+    if unobservable:
+        parts.append(
+            f"{', '.join(repr(a) for a in unobservable)} is VCF's allele-missing-due-to-overlapping-"
+            f"deletion marker (RM59) — it records that a call could not observe this position, so it "
+            f"names no allele for anything to match, and it is a fact about a sample rather than a "
+            f"grammar gap a release could close"
         )
     if notation:
         parts.append(
