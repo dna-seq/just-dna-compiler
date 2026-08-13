@@ -1,0 +1,4 @@
+chrom,start,ref,alts,genotype,state,conclusion,gene,phenotype,category,clin_sig
+22,42126400,N,<DUP:16000>,<DUP:16000>,risk,"A whole-gene CYP2D6 duplication, sized. The length rides in the token because VCF's SVLEN is Number=A and a scalar authored column cannot describe two differently-sized ALTs.",CYP2D6,Ultrarapid metabolism,pharmacogenomic,drug_response
+22,42126499,N,<CNV:TR:30>,<CNV:TR:30>,risk,"A tandem-repeat copy-number allele: RM5's open subtype below the closed five.",CYP2D6,Ultrarapid metabolism,pharmacogenomic,drug_response
+22,42127941,C,T,*/T,risk,"CYP2D6*4's splice variant on one haplotype, with the other overlapped by the *5 whole-gene deletion. This is the natural `*`: the caller could not observe the second allele because a deletion took it.",CYP2D6,Reduced metabolism,pharmacogenomic,drug_response

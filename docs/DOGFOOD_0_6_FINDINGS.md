@@ -66,6 +66,33 @@ RM47's `pmid` works on a bin row. Round trip is a fixed point on `artifact.diges
 
 ---
 
+## D3 — `cyp2d6_structural`
+
+Module: `reference_examples/cyp2d6_structural/`. `copynumbers.csv` + `activity_phenotype.csv` — the
+two binning kinds the corpus had **zero** instances of — with CPIC's own activity-score bins, probed
+out of the published snapshot rather than recalled.
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **D3-1** | **The lengthless-symbolic-allele message names `<DEL>` whatever was authored.** `alts=<DUP:TANDEM>` is correctly refused, with the sentence *"A `<DEL>` that does not say how long it is …"* beside an example clause naming the real cell. The two halves of one message disagree about what is being discussed. | fix | low |
+| **D3-2** | **RM67's refusal does not make the documented divergence findable.** A polyploid genotype on a duplicated CYP2D6 — the spec's own polyploid example — is refused with a bare restatement of the grammar. VCF permits higher ploidy and this format deliberately does not; nothing in the message says so, so it reads as a syntax error. Every other deliberate refusal here names its own limit in-line (RM5's "a release away", the ploidy check's contigs, the VRS warnings' RM15). | fix (message) | medium |
+
+### Checked and held (D3)
+
+RM55 fires on `copy_number`, once, naming the field, citing §7.2/§5.6, giving the concrete `2.4`
+failure, saying the gap check cannot see sub-integer holes, and pointing at 0.7/1.0 without implying
+author error. RM56 fires once for the table, says **withhold**, and says withholding is not the
+`unresolved` row. **`activity_phenotype` escapes RM35's unsatisfiable triangle for a reason, not by
+luck**: no gap warning (scores are quantized on a 0.25 grid, so CPIC's holes at 1.0→1.25 and
+2.25→2.5 are real), and a shared endpoint at 2.25 *is* an overlap error. RM53's `CN` collision warns
+with the ploidy-factor consequence and `FORMAT/CN` is silent. RM54's `largest`/`largest_alt` both
+accepted on one field. RM5's `<CNV:TR:30>` and `<DUP:16000>` accepted. RM59's natural `*/T` silent on
+an autosome. The integer coverage-gap check still reports a real hole (10.0, 21.0), so RM55's claim
+is about sub-integer holes and not a disabled check. **RM65/RM66's gating evidence is now a corpus
+module** — filed as evidence, not as a defect.
+
+---
+
 ### Checked and held (D2)
 
 - `licensing.csv` is the spelling both providers write into a fresh directory (RM51); the compile gate

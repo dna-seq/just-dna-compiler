@@ -1,0 +1,15 @@
+schema_version: '1.0'
+module:
+  name: cyp2d6_structural
+  title: CYP2D6 structural variation and the activity score
+  report_title: CYP2D6 copy number / activity score
+  description: The two binning kinds no module in this corpus had ever carried — copy number and the
+    activity score — on the gene that motivated both. CYP2D6 is deleted, duplicated and multiplied in
+    the population, and CPIC's phenotype call is a function of a score summed over the two haplotypes.
+  icon: pills
+  icon_set: fomantic
+  color: '#2185d0'
+defaults:
+  curator: audit
+  method: expert-panel
+genome_build: GRCh38

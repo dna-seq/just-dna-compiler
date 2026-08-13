@@ -1,0 +1,6 @@
+gene,measure_kind,measure_min,measure_max,direction,phenotype,conclusion,source_field,source_element,pmid,unresolved
+CYP2D6,copy_number,0,0,risk,no gene copies,"Zero CYP2D6 copies (*5/*5): nothing to metabolise with, whatever the star alleles say.",FORMAT/CN,largest,26479518,false
+CYP2D6,copy_number,1,1,risk,one gene copy,"One copy: a whole-gene deletion on one haplotype.",FORMAT/CN,largest,26479518,false
+CYP2D6,copy_number,2,2,neutral,two gene copies,"The usual diploid copy number.",FORMAT/CN,largest,26479518,false
+CYP2D6,copy_number,3,10,risk,gene duplication,"Three or more copies. The activity contributed depends on which allele was duplicated, which is why copy number alone does not give a phenotype.",FORMAT/CN,largest,26479518,false
+CYP2D6,copy_number,,,,,"No copy number was called. Withhold: an uncalled copy number is not two.",FORMAT/CN,largest,,true

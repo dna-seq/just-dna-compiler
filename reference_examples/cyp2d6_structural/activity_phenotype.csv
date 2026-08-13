@@ -1,0 +1,6 @@
+gene,measure_kind,measure_min,measure_max,direction,phenotype,conclusion,source_field,source_element,pmid,unresolved
+CYP2D6,activity_score,0.0,0.0,risk,Poor Metabolizer,"Activity score 0: no functional CYP2D6 remains. CPIC's own boundary.",,,26479518,false
+CYP2D6,activity_score,0.25,1.0,risk,Intermediate Metabolizer,"Activity score 0.25 to 1.0. The gap to the next bin is real: scores are summed from per-allele values on a 0.25 grid, so 1.1 is not a measurement this gene produces.",,,26479518,false
+CYP2D6,activity_score,1.25,2.25,neutral,Normal Metabolizer,"Activity score 1.25 to 2.25.",,,26479518,false
+CYP2D6,activity_score,2.5,6.0,risk,Ultrarapid Metabolizer,"Activity score 2.5 and above. CPIC publishes open-ended scores here as inequality strings (>=3.0), which the numeric bounds cannot hold — 6.0 is the highest score its own diplotype table states.",,,26479518,false
+CYP2D6,activity_score,,,,,"No activity score was supplied. Withhold: an absent score is not a zero, and Poor Metabolizer is not the default.",,,,true
