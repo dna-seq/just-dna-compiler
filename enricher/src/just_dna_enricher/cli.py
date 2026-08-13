@@ -343,7 +343,13 @@ def gene_validity_(
             fg=typer.colors.YELLOW,
         )
         return
-    typer.secho(f"gene validity: {spec_dir / 'gene_validity.csv'}", fg=typer.colors.GREEN)
+    # The path the pass actually wrote, not `spec_dir / <name>` — a module keeping its sidecars under
+    # `derived/` (RM49) is written there, and printing a guess sends the author to a file that is not
+    # the one that changed.
+    typer.secho(
+        f"gene validity: {sidecar_path(spec_dir, 'gene_validity.csv', error=GeneValidityError)}",
+        fg=typer.colors.GREEN,
+    )
     typer.echo(
         f"dataset: {result.dataset}  rows: {len(result.rows)}  genes curated: {len(result.covered)}"
     )
@@ -392,7 +398,11 @@ def assertions_(
             fg=typer.colors.YELLOW,
         )
         return
-    typer.secho(f"clinical assertions: {spec_dir / 'clinical_assertions.csv'}", fg=typer.colors.GREEN)
+    typer.secho(
+        "clinical assertions: "
+        f"{sidecar_path(spec_dir, 'clinical_assertions.csv', error=ClinicalAssertionError)}",
+        fg=typer.colors.GREEN,
+    )
     typer.echo(
         f"dataset: {result.dataset}  rows: {len(result.rows)}  alleles covered: {len(result.covered)}"
     )

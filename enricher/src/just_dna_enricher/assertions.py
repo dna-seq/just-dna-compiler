@@ -37,6 +37,7 @@ from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import derive_variant_key
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
+from pydantic import ValidationError
 
 from just_dna_enricher.clinvar import lookup_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot
@@ -229,37 +230,59 @@ def enrich_clinical_assertions(
                                        off_build=sorted(set(off_build)))
 
     dataset = snapshot_dataset(reference)
-    # Only ask about what no existing row already covers — a re-run after adding two variants costs
-    # one query over two alleles, not a refetch of a table that is already right.
-    covered_keys = {row.variant_key for row in existing_rows}
-    wanted = [a for a in alleles if a[0] not in covered_keys]
+    # **Every in-scope allele is asked about on every run, and that is a deliberate departure from
+    # `enrich_frequencies`.** That pass skips an allele any existing row covers because gnomAD costs a
+    # slot of a 10-per-minute budget; this one reads a local parquet, where the same skip protects
+    # nothing and costs correctness. ClinVar *grows*: skipping on `variant_key` meant a newly-published
+    # record could never reach an allele the table already mentioned, and a `not_found` row — an
+    # absence recorded before the first submission — became a permanent pin. Dedup happens per record
+    # instead, on the `(variant_key, variation_id)` grain this table is documented to have.
+    wanted = list(alleles)
+
+    def _unusable(reason: object) -> ClinicalAssertionResult:
+        """Degrade rather than sink the run, keeping any existing table as the pin.
+
+        The rule the resolver link and the cross-check already follow for a located-but-unusable
+        snapshot. **Two causes reach it, and they are the same cause**: a query that fails, and a
+        record whose values this reader cannot load. Treating the second as a crash and the first as a
+        skip would be an arbitrary split — both mean *this snapshot is not one this reader can use* —
+        and the second is not hypothetical: the published ClinVar repo still carries a pre-split
+        `clinvar.parquet` whose columns are raw VCF INFO fields, so a reader that ever globbed it
+        would see ClinVar's own `Pathogenic/Likely_pathogenic` where the vocabulary is expected.
+        """
+        logger.warning(
+            "ClinVar reference at %s is present but not usable (%s); the clinical-assertion pass "
+            "is skipped this run. Rebuild it with `just-dna-enricher clinvar build`.", reference, reason,
+        )
+        kept = sorted(existing_rows, key=_sort_key)
+        if write and existing_rows:
+            _write_assertions_csv(kept, assertions_path)
+        return ClinicalAssertionResult(rows=kept, mode=mode, skipped_no_snapshot=True,
+                                       off_build=sorted(set(off_build)))
+
     try:
         records = lookup_clin_sig(reference, [(c, s, r, a) for _k, _rs, c, s, r, a in wanted])
     except Exception as exc:
-        # The same degradation the resolver link and the cross-check use: a located-but-unusable
-        # snapshot must not sink a run the rest of the chain can still complete.
-        logger.warning(
-            "ClinVar reference at %s is present but not queryable (%s); the clinical-assertion pass "
-            "is skipped this run. Rebuild it with `just-dna-enricher clinvar build`.", reference, exc,
-        )
-        out = sorted(existing_rows, key=_sort_key)
-        if write and existing_rows:
-            _write_assertions_csv(out, assertions_path)
-        return ClinicalAssertionResult(rows=out, mode=mode, skipped_no_snapshot=True,
-                                       off_build=sorted(set(off_build)))
+        return _unusable(exc)
 
     fetched_at = now_utc_iso()
     seen = {(row.variant_key, row.variation_id) for row in existing_rows}
     out: list[ClinicalAssertionRow] = list(existing_rows)
     covered: list[str] = []
     missing: list[str] = []
+    #: Alleles whose recorded absence this run has answered — see the withdrawal below.
+    answered: set[str] = set()
     for key, rsid, chrom, start, ref, alt in wanted:
         found = records.get((chrom, start, ref, alt), [])
         if not found:
             missing.append(key)
             # A `not_found` row is a FACT — the archive was consulted and has no record for this
             # allele — and is materially different from an allele that was never queried, which has
-            # no row at all.
+            # no row at all. Carried under `(key, None)` so re-running against the same snapshot
+            # re-states the absence rather than appending a second copy of it.
+            if (key, None) in seen:
+                continue
+            seen.add((key, None))
             out.append(
                 ClinicalAssertionRow(
                     variant_key=key, rsid=rsid, chrom=chrom, start=start, ref=ref, alt=alt,
@@ -269,29 +292,46 @@ def enrich_clinical_assertions(
             )
             continue
         covered.append(key)
+        answered.add(key)
         for record in found:
             variation_id = _text(record.get("variation_id"))
             if (key, variation_id) in seen:
                 continue
             seen.add((key, variation_id))
-            out.append(
-                ClinicalAssertionRow(
-                    variant_key=key,
-                    rsid=rsid,
-                    chrom=chrom, start=start, ref=ref, alt=alt,
-                    genome_build=ASSERTION_GENOME_BUILD,
-                    clin_sig=_text(record.get("clin_sig")),
-                    clin_sig_raw=_text(record.get("clin_sig_raw")),
-                    review_status=_text(record.get("review_status")),
-                    review_stars=record.get("review_stars"),
-                    condition=_text(record.get("condition")),
-                    variation_id=variation_id,
-                    dataset=dataset,
-                    source=CLINVAR_SOURCE,
-                    status="resolved",
-                    fetched_at=fetched_at,
+            # A record this reader cannot load is the snapshot being unusable, not this row being
+            # interesting — same verdict as a failed query, reached above. Caught narrowly
+            # (`ValidationError`, not `Exception`) so a genuine bug in the lines below still surfaces
+            # as a bug instead of being reported as somebody else's bad parquet.
+            try:
+                out.append(
+                    ClinicalAssertionRow(
+                        variant_key=key,
+                        rsid=rsid,
+                        chrom=chrom, start=start, ref=ref, alt=alt,
+                        genome_build=ASSERTION_GENOME_BUILD,
+                        clin_sig=_text(record.get("clin_sig")),
+                        clin_sig_raw=_text(record.get("clin_sig_raw")),
+                        review_status=_text(record.get("review_status")),
+                        review_stars=record.get("review_stars"),
+                        condition=_text(record.get("condition")),
+                        variation_id=variation_id,
+                        dataset=dataset,
+                        source=CLINVAR_SOURCE,
+                        status="resolved",
+                        fetched_at=fetched_at,
+                    )
                 )
-            )
+            except ValidationError as exc:
+                return _unusable(f"record {variation_id} at {chrom}:{start} — {exc}")
+
+    # **A recorded absence the archive has since answered is withdrawn, not left beside the answer.**
+    # This is the one place the pass removes a row it wrote earlier, and the narrowness is the point:
+    # `not_found` is this pass's own bookkeeping — "the archive was consulted and has none" — and it
+    # stops being true the moment a record exists. Keeping both would make the table assert an absence
+    # and a presence for one allele, which is worse than either. Nothing else is touched: a `resolved`
+    # row, and any row a curator wrote about an allele the archive still lacks, both survive untouched.
+    if answered:
+        out = [r for r in out if not (r.status == "not_found" and r.variant_key in answered)]
 
     out.sort(key=_sort_key)
     result = ClinicalAssertionResult(

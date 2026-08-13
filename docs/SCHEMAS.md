@@ -586,10 +586,10 @@ the one that keeps the file readable by the human the DSL exists for. Facts: `pm
 `gene_metrics.csv` cannot answer: constraint says how intolerant of variation a gene looks and dosage
 sensitivity says whether losing a copy causes disease, while this says whether variation in *this*
 gene causes *this* disease and how sure a curating body is. Facts: `gene`, `gene_id?` (`HGNC:…`),
-`disease_id?` (a CURIE, stored verbatim), `disease_label?`, `moi?` (`VALID_INHERITANCE_MODE`),
+`disease_id?` (a CURIE, stored verbatim), `moi?` (`VALID_INHERITANCE_MODE`),
 `classification?` (`VALID_GENE_VALIDITY`), `classification_raw?`, `classification_date?`, `submitter?`,
-`assertion_id?`, `dataset`. Outside the fact set: `report_url?` plus the usual `source?`/`status?`/
-`fetched_at?`.
+`assertion_id?`, `dataset`. Outside the fact set: `disease_label?` and `report_url?` plus the usual
+`source?`/`status?`/`fetched_at?`.
 
 - **A table, not columns on `gene_metrics.csv`, because the grain is `gene × disease × inheritance
   mode`.** Dosage sensitivity went the other way in 0.5 for exactly that reason — a haploinsufficiency
@@ -616,12 +616,18 @@ gene causes *this* disease and how sure a curating body is. Facts: `gene`, `gene
 - **An empty `classification` is an ungraded assertion, not a negative verdict.** A submitter may state
   an association without grading it; that is this codebase's ordinary "withhold when unknown", and it
   is materially different from `no_known_disease_relationship`, which is a graded verdict against.
+- **A column that *locates or describes* an assertion is not the assertion**, which is why
+  `disease_label` sits outside the fact hash beside `report_url`. It is the ontology's current wording
+  for a term the CURIE already names, and it churns on its own: one real export carries
+  **MONDO:0017146** under two labels at once — `"sickle cell disease and related diseases"` from
+  ClinGen and `"obsolete sickle cell disease and related diseases"` from GenCC. Inside the fact set,
+  two submitters recording the same disease would hash differently on label vintage alone.
 
 **`ClinicalAssertionRow` — one row per (allele, archive record) (0.6, RM25).** What a clinical archive
-says about an allele **and how much review sits behind it**. Facts: `variant_key`, `rsid?`,
+says about an allele **and how much review sits behind it**. Facts: `variant_key`,
 `chrom?`/`start?`/`ref?`/`alt?` (one alt, like `FrequencyRow`), `genome_build`, `clin_sig?`
 (`VALID_CLIN_SIG`), `clin_sig_raw?`, `review_status?`, `review_stars?` (0–4), `condition?`,
-`variation_id?`, `dataset`. Provenance (excluded): `source?`, `status?`, `fetched_at?`.
+`variation_id?`, `dataset`. Excluded: `rsid?` (see below) and `source?`, `status?`, `fetched_at?`.
 
 - **The number this workspace was computing and discarding.** `clinical.ClinSigFinding.confidence`
   rendered the star rating into a warning string and `draft_gene_panel` used it as a filter (default 2
@@ -643,6 +649,12 @@ says about an allele **and how much review sits behind it**. Facts: `variant_key
 - **One row per record, not per variant**, because the archive genuinely holds several records for one
   allele under different conditions — `clinvar.lookup_clin_sig` returns a list and orders it
   best-reviewed first. Collapsing them would pick a condition on the author's behalf.
+- **`rsid` is outside the fact set, and the `FrequencyRow` precedent deliberately does not transfer.**
+  There the rsID arrives in gnomAD's own payload, so it is part of what the source said. Here the
+  lookup is allele-exact on `(chrom, start, ref, alt)` and returns no rsID at all — the column is
+  filled from the module's own `resolution.csv`. Inside the hash it would make two modules holding the
+  *same ClinVar records* hash differently according to whether their resolver attached an rsID, which
+  is precisely the producer-dependence a fact hash exists to exclude.
 - **`genome_build` is load-bearing here.** The archive's lookup key is `(chrom, start, ref, alt)` and
   carries no assembly, so a coordinate from another build is a well-formed query returning a different
   variant's clinical call. The pass skips such rows rather than asking (the fourth build confusion in

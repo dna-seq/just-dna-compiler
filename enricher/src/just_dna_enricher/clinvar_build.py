@@ -177,8 +177,8 @@ def review_stars(revstat: str | None) -> int | None:
     `None` and `0` are different answers and the distinction is the whole point of the table this now
     feeds: `0` is the *rating* ClinVar gives a submission with no assertion criteria, while `None`
     means the record states no review status for anything to be rated. An **unrecognized** wording is
-    also `None`, not `0` — a wording this release does not model is an unknown, and filing it under the
-    weakest rating would state the strongest available claim about a record nobody read.
+    also `None`, not `0` — a wording this release does not model is an unknown, and answering `0` would
+    record a definite rating where none was read. Withhold rather than guess, as everywhere else.
     """
     text = (revstat or "").strip()
     if not text:

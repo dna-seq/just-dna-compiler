@@ -39,13 +39,19 @@ from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import VALID_CLIN_SIG, VALID_RESOLUTION_STATUS, check_vocab
 
 # Fact columns feeding `integrity.clinical_assertion_signature` — everything but the provenance
-# columns (`source`/`status`/`fetched_at`), so a hand-curated and a ClinVar-filled table carrying the
-# same assertions hash equal.
+# columns (`source`/`status`/`fetched_at`) and `rsid`, so a hand-curated and a ClinVar-filled table
+# carrying the same assertions hash equal.
 #
-# `rsid` is inside, matching `FREQUENCY_FACT_FIELDS`: it names which variant the row is about rather
-# than who answered. `dataset` is inside for the reason it is everywhere else — a 2026-06 ClinVar
-# release and a 2026-08 one are different facts, and a re-review is exactly the change this table
-# exists to make visible.
+# **`rsid` is OUTSIDE, and the `FREQUENCY_FACT_FIELDS` precedent deliberately does not transfer.**
+# There the rsID arrives in gnomAD's own payload, so it is part of what the source said. Here the
+# archive lookup is allele-exact on `(chrom, start, ref, alt)` and returns no rsID at all — the column
+# is filled from the module's own `resolution.csv`. Inside the fact set it would make two modules
+# holding *the same ClinVar records* hash differently according to whether their resolver happened to
+# attach an rsID, which is precisely the producer-dependence this tuple exists to exclude. The
+# coordinate already names the allele; the rsID is a convenience for the human reading the table.
+#
+# `dataset` is inside for the reason it is everywhere else — a 2026-06 ClinVar release and a 2026-08
+# one are different facts, and a re-review is exactly the change this table exists to make visible.
 #
 # `review_status` and `review_stars` are BOTH inside although one determines the other. That is not a
 # duplicated fact hiding in the hash: the mapping is a ClinVar convention this tier does not hold, so
@@ -53,7 +59,6 @@ from just_dna_format.vocab import VALID_CLIN_SIG, VALID_RESOLUTION_STATUS, check
 # rightly — hash differently from one where they agree.
 CLINICAL_ASSERTION_FACT_FIELDS: tuple[str, ...] = (
     "variant_key",
-    "rsid",
     "chrom",
     "start",
     "ref",

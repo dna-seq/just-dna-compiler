@@ -46,23 +46,28 @@ from just_dna_format.vocab import (
 )
 
 # Fact columns feeding `integrity.gene_validity_signature` — everything but the provenance columns
-# (`source`/`status`/`fetched_at`) and `report_url`, so a hand-curated and a ClinGen-filled table
-# carrying the same verdicts hash equal (the producer-independence every fact table buys).
+# (`source`/`status`/`fetched_at`) and the two *descriptive* ones, so a hand-curated and a
+# ClinGen-filled table carrying the same verdicts hash equal (the producer-independence every fact
+# table buys).
 #
 # `dataset` is INSIDE, for the reason it is in every sibling: a 2024 curation and its 2026 revision
 # are different facts about the world, and a table that swapped releases must hash differently.
 # `submitter` is INSIDE because on GenCC it is half the row's identity — "Ambry says Limited" and
 # "ClinGen says Definitive" are two claims, not one claim recorded twice.
 #
-# `report_url` is OUTSIDE, and it is the only judgement call here. It locates the curation rather than
-# stating it, and it moves when a site reorganizes without any verdict changing — the same reason
-# `license_url` is not what `source_signature` keys on. `assertion_id` carries the stable identity
-# instead, and it is inside.
+# **`report_url` and `disease_label` are OUTSIDE, on one rule: a column that *locates or describes*
+# the assertion is not the assertion.** `report_url` moves when a site reorganizes; `disease_label` is
+# the ontology's current wording for a term the CURIE already names, and it churns independently of
+# anything a curator did. That is not hypothetical — one real export carries **MONDO:0017146** under
+# two labels at once, `"sickle cell disease and related diseases"` from ClinGen and
+# `"obsolete sickle cell disease and related diseases"` from GenCC. Inside the fact set, two
+# submitters recording the same disease would hash differently on label vintage alone, and a MONDO
+# relabel would move the signature of assertions nobody touched. `disease_id` is the identity and
+# `assertion_id` the stable per-curation one; both are inside.
 GENE_VALIDITY_FACT_FIELDS: tuple[str, ...] = (
     "gene",
     "gene_id",
     "disease_id",
-    "disease_label",
     "moi",
     "classification",
     "classification_raw",
@@ -109,7 +114,9 @@ class GeneValidityRow(BaseModel):
         default=None,
         description=(
             "The term's human-readable name as the source publishes it, so the table is legible "
-            "without resolving the CURIE. Descriptive, and never the join key."
+            "without resolving the CURIE. Descriptive, never the join key, and deliberately OUTSIDE "
+            "the fact hash: one real export carries MONDO:0017146 under two labels at once, so a "
+            "label says when it was read rather than what was asserted."
         ),
     )
 

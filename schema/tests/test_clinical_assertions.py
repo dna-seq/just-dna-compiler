@@ -71,10 +71,30 @@ def test_the_review_tier_moves_the_hash_although_the_call_is_identical() -> None
     assert clinical_assertion_signature([single]) != clinical_assertion_signature([guideline])
 
 
-def test_the_fact_set_is_exactly_the_model_minus_provenance() -> None:
+def test_the_fact_set_is_exactly_the_model_minus_provenance_and_the_rsid() -> None:
     """Derived from `model_fields`, so a new column has to be placed in or out on purpose."""
-    excluded = {"source", "status", "fetched_at"}
+    excluded = {"rsid", "source", "status", "fetched_at"}
     assert set(CLINICAL_ASSERTION_FACT_FIELDS) == set(ClinicalAssertionRow.model_fields) - excluded
+
+
+def test_the_rsid_does_not_move_the_hash_because_it_is_not_the_archives() -> None:
+    """The tuple's stated property, proved on the column most likely to break it.
+
+    The archive lookup is allele-exact on `(chrom, start, ref, alt)` and returns no rsID at all — the
+    column is filled from the module's own `resolution.csv`. Inside the fact set it would make two
+    modules holding *the same ClinVar records* hash differently according to whether their resolver
+    happened to attach an rsID, which is exactly the producer-dependence this hash exists to exclude.
+
+    `FREQUENCY_FACT_FIELDS` keeps `rsid` and is right to: there it arrives in gnomAD's own payload, so
+    it is part of what the source said. The precedent does not transfer, and this pins that it did not.
+    """
+    resolved = _row(rsid="rs334")
+    unresolved = _row(rsid=None)
+    assert clinical_assertion_signature([resolved]) == clinical_assertion_signature([unresolved])
+    # ...while the allele the row is actually keyed on still moves it (`alt` defaults to G here).
+    assert clinical_assertion_signature([resolved]) != clinical_assertion_signature(
+        [_row(alt="T")]
+    )
 
 
 def test_provenance_is_outside_the_hash_and_the_record_is_inside() -> None:

@@ -45,9 +45,9 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.gene_validity import GeneValidityRow
-from just_dna_format.normalize import now_utc_iso
+from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
 
-from just_dna_enricher.gene_metrics import module_genes
+from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_genes
 from just_dna_enricher.licensing import CLINGEN_TERMS, GENCC_TERMS, record_source_terms, sidecar_path
 
 logger = logging.getLogger(__name__)
@@ -162,9 +162,14 @@ class GeneValidityResult:
     missing: list[str] = field(default_factory=list)
     dataset: str = ""
     source: str = ""
-    #: Wordings the maps above did not know, de-duplicated. Reported rather than logged per row: at
-    #: 30,410 GenCC submissions an unknown classification would otherwise print thousands of lines
-    #: saying one thing, which is the aggregation rule this tier has needed four times already.
+    #: Cell values this release could not interpret, de-duplicated and prefixed by their column —
+    #: a classification or inheritance wording the maps do not know, or a curation date that is not a
+    #: readable timestamp. Reported rather than logged per row: at 30,410 GenCC submissions one
+    #: unknown wording would otherwise print thousands of lines saying one thing, which is the
+    #: aggregation rule this tier has needed four times already.
+    #:
+    #: Every one of them costs a **cell**, never a row and never the pass: the assertion is kept with
+    #: that column empty, which is this codebase's answer to an unknown everywhere else.
     unmapped: list[str] = field(default_factory=list)
     #: The pass did not run because the deployment is offline and neither submitter has a snapshot.
     skipped_offline: bool = False
@@ -183,6 +188,30 @@ def map_classification(wording: str | None, *, unmapped: set[str] | None = None)
     if mapped is None and unmapped is not None:
         unmapped.add(f"classification={wording!r}")
     return mapped
+
+
+def read_curation_date(raw: str | None, *, unmapped: set[str] | None = None) -> str | None:
+    """A submitter's curation date → the canonical UTC spelling, or `None` when it cannot be read.
+
+    The two submitters spell one instant two ways — ClinGen `2024-03-14T16:00:00.000Z`, GenCC
+    `2018-03-30 13:31:56` — which `normalize_utc_timestamp` reconciles, and which is why the column is
+    canonicalized rather than stored verbatim: two spellings in a fact column hash as two facts.
+
+    It is applied **here** rather than left to the model's validator because the validator *raises*,
+    and this column is one cell of one row of an export with 30,000 of them from nineteen independent
+    submitters. One unreadable date would otherwise cost the whole pass, with a bare pydantic
+    traceback. A date that cannot be read is an unknown: withhold the cell, keep the assertion, and
+    report the value once — exactly what an unrecognised classification wording already does.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        return normalize_utc_timestamp(text)
+    except ValueError:
+        if unmapped is not None:
+            unmapped.add(f"classification_date={raw!r}")
+        return None
 
 
 def map_inheritance(wording: str | None, *, unmapped: set[str] | None = None) -> str | None:
@@ -247,7 +276,9 @@ def parse_clingen_validity(
                 moi=map_inheritance(record.get("MOI"), unmapped=unmapped),
                 classification=map_classification(record.get("CLASSIFICATION"), unmapped=unmapped),
                 classification_raw=record.get("CLASSIFICATION") or None,
-                classification_date=record.get("CLASSIFICATION DATE") or None,
+                classification_date=read_curation_date(
+                    record.get("CLASSIFICATION DATE"), unmapped=unmapped
+                ),
                 # The curating panel, not "ClinGen": a module reading this column wants to know which
                 # expert panel ruled, and every row here would otherwise say the same word.
                 submitter=record.get("GCEP") or None,
@@ -312,7 +343,9 @@ def parse_gencc(
                     record.get("classification_title"), unmapped=unmapped
                 ),
                 classification_raw=(record.get("classification_title") or "").strip() or None,
-                classification_date=(record.get("submitted_as_date") or "").strip() or None,
+                classification_date=read_curation_date(
+                    record.get("submitted_as_date"), unmapped=unmapped
+                ),
                 submitter=(record.get("submitter_title") or "").strip() or None,
                 assertion_id=(record.get("uuid") or "").strip() or None,
                 report_url=(record.get("submitted_as_public_report_url") or "").strip() or None,
@@ -351,8 +384,9 @@ def enrich_gene_validity(
 
     Existing rows are authoritative and merged, never clobbered — the standing rule for every pass,
     and the standing consequence with it: to regenerate after a machinery change, delete the file
-    first. The merge key is `(gene, disease_id, moi, submitter, dataset)`, which is the source's own
-    grain rather than a convenience: ClinGen carries 59 (gene, disease) pairs whose two rows differ
+    first. Two rows are the same row when `_merge_key` says so: the source's own `assertion_id` where
+    it publishes one, else `(gene, disease_id, moi, submitter, dataset)` — the source's own grain
+    rather than a convenience, because ClinGen carries 59 (gene, disease) pairs whose two rows differ
     only by mode of inheritance, and GenCC carries the same pair from several submitters at different
     strengths.
 
@@ -410,7 +444,7 @@ def enrich_gene_validity(
     out: list[GeneValidityRow] = list(existing_rows)
     covered: list[str] = []
     missing: list[str] = []
-    for gene in module_genes(spec_dir):
+    for gene in _module_genes(spec_dir):
         found = by_gene.get(gene, [])
         if not found:
             missing.append(gene)
@@ -446,8 +480,9 @@ def enrich_gene_validity(
         # otherwise print thousands of copies of the same finding. Grouped by the *value* that was not
         # recognised, which is the thing a reader has to act on.
         logger.warning(
-            "%d submitter wording(s) are not in this release's vocabulary mapping and were left "
-            "unset (the verbatim value is kept in classification_raw): %s",
+            "%d submitter value(s) could not be interpreted by this release and were left unset — "
+            "the assertion is kept, only the cell is empty (a classification's verbatim wording also "
+            "survives in classification_raw): %s",
             len(unmapped), sorted(unmapped),
         )
     result = GeneValidityResult(
@@ -477,6 +512,22 @@ def enrich_gene_validity(
             error=GeneValidityError,
         )
     return result
+
+
+def _module_genes(spec_dir: Path) -> list[str]:
+    """The module's gene symbols, failing as *this* pass rather than as the one it borrows from.
+
+    `gene_metrics.module_genes` is the right function — the gene set is "what `variants.csv` says this
+    module is about", and a second copy would be a second answer — but it reports an invalid
+    `variants.csv` as a `GeneMetricsEnrichmentError`, which no caller of this pass is catching. The CLI
+    command then printed a pydantic traceback where a diagnosis belongs, on the commonest authoring
+    mistake there is. Same re-raise `licensing.sidecar_path` performs for `SidecarCollision`, and for
+    the same reason: a pass must fail as itself.
+    """
+    try:
+        return module_genes(spec_dir)
+    except GeneMetricsEnrichmentError as exc:
+        raise GeneValidityError(str(exc)) from exc
 
 
 def _merge_key(row: GeneValidityRow) -> tuple:

@@ -90,10 +90,30 @@ def test_the_two_curation_date_spellings_canonicalize_to_one_fact() -> None:
     assert gene_validity_signature([clingen_spelling]) == gene_validity_signature([gencc_spelling])
 
 
-def test_the_fact_set_is_exactly_the_model_minus_provenance_and_the_report_link() -> None:
+def test_the_fact_set_is_exactly_the_model_minus_provenance_and_the_descriptive_columns() -> None:
     """Derived from `model_fields`, so a new column has to be placed in or out on purpose."""
-    excluded = {"report_url", "source", "status", "fetched_at"}
+    excluded = {"report_url", "disease_label", "source", "status", "fetched_at"}
     assert set(GENE_VALIDITY_FACT_FIELDS) == set(GeneValidityRow.model_fields) - excluded
+
+
+def test_a_relabelled_disease_term_does_not_move_the_hash() -> None:
+    """A column that *describes* the assertion is not the assertion — the `report_url` rule again.
+
+    The values here are real and come from one export: MONDO:0017146 is published by ClinGen as
+    "sickle cell disease and related diseases" and by GenCC as "obsolete sickle cell disease and
+    related diseases", at the same moment. Inside the fact set, two submitters recording the same
+    disease would hash differently on label vintage alone, and a MONDO relabel would move the
+    signature of assertions nobody touched.
+    """
+    clingen_wording = _row(disease_id="MONDO:0017146",
+                           disease_label="sickle cell disease and related diseases")
+    gencc_wording = _row(disease_id="MONDO:0017146",
+                         disease_label="obsolete sickle cell disease and related diseases")
+    assert gene_validity_signature([clingen_wording]) == gene_validity_signature([gencc_wording])
+    # ...while the CURIE that *identifies* the disease still moves it.
+    assert gene_validity_signature([clingen_wording]) != gene_validity_signature(
+        [_row(disease_id="MONDO:0011382")]
+    )
 
 
 def test_provenance_is_outside_the_hash_and_the_assertion_is_inside() -> None:

@@ -298,6 +298,46 @@ def test_strict_reports_the_uncurated_genes(tmp_path: Path) -> None:
         enrich_gene_validity(spec, mode="strict", export_text=_CLINGEN_CSV)
 
 
+def test_one_unreadable_curation_date_costs_that_cell_and_not_the_export(tmp_path: Path) -> None:
+    """A 30,000-row, nineteen-submitter export must not be lost to one malformed cell.
+
+    `classification_date` runs through `normalize_utc_timestamp`, which raises on anything
+    `fromisoformat` cannot read — so an unguarded row build turned one bad date anywhere in the file
+    into a bare pydantic `ValidationError`, the same traceback class as the `module_genes` bug. A date
+    that cannot be read is an *unknown*: withhold the cell, keep the assertion, and report the value
+    once — the rule an unrecognised classification wording already follows.
+
+    Watched failing before the fix: `ValidationError: not an ISO-8601 timestamp: 'March 2018'`.
+    """
+    spec = _spec(tmp_path, ["RYR1", "HBB"])
+    broken = _GENCC_CSV.replace("2018-03-30 13:31:56", "March 2018")
+    result = enrich_gene_validity(spec, source="gencc", export_text=broken)
+
+    assert {r.gene for r in result.rows} == {"RYR1", "HBB"}          # nothing was lost
+    ambry = next(r for r in result.rows if r.submitter == "Ambry Genetics")
+    assert ambry.classification_date is None                          # only the cell was withheld
+    assert ambry.classification == "definitive"                       # the assertion survived
+    assert any("March 2018" in note for note in result.unmapped)      # and it was reported, once
+    # A readable date on another row is unaffected.
+    labcorp = next(r for r in result.rows if r.submitter == "Labcorp Genetics")
+    assert labcorp.classification_date == "2021-05-02T09:00:00Z"
+
+
+def test_a_broken_variants_csv_fails_as_this_pass_and_not_as_a_borrowed_one(tmp_path: Path) -> None:
+    """The gene set comes from `gene_metrics.module_genes`, which raises *its* error type.
+
+    Nothing up this pass's stack catches that, so the CLI printed a pydantic traceback on the
+    commonest authoring mistake there is. Demonstrated on the real path rather than asserted: an
+    invalid `state` cell, which is exactly what an author typos.
+    """
+    spec = _spec(tmp_path, ["RYR1"])
+    (spec / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion,gene\nrs1,A/G,NOT_A_STATE,c,RYR1\n", encoding="utf-8"
+    )
+    with pytest.raises(GeneValidityError, match="variants.csv is invalid"):
+        enrich_gene_validity(spec, export_text=_CLINGEN_CSV)
+
+
 def test_an_unknown_submitter_refuses_and_names_the_ones_it_has(tmp_path: Path) -> None:
     """HPO is the case this message is really about — a shape that fits, over a link this tier may
     not take the data from."""

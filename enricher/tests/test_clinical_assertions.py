@@ -68,11 +68,20 @@ _RECORDS = [
 ]
 
 
-def _snapshot(tmp_path: Path, *, release: str | None = "2026-06-27") -> Path:
-    """A ClinVar snapshot in the real on-disk layout: `data/*.parquet` plus a `release.json`."""
+def _snapshot(
+    tmp_path: Path, *, release: str | None = "2026-06-27", records: list[dict] | None = None
+) -> Path:
+    """A ClinVar snapshot in the real on-disk layout: `data/*.parquet` plus a `release.json`.
+
+    `records=[]` builds an *empty* archive — the state before a variant has been submitted, which is
+    what makes "ClinVar grows" testable rather than asserted. The schema is taken from `_RECORDS` so
+    an empty snapshot is still queryable rather than a differently-shaped file.
+    """
     root = tmp_path / "clinvar"
     (root / "data").mkdir(parents=True)
-    pl.DataFrame(_RECORDS).write_parquet(root / "data" / "chr.parquet")
+    rows = _RECORDS if records is None else records
+    frame = pl.DataFrame(rows) if rows else pl.DataFrame(_RECORDS).clear()
+    frame.write_parquet(root / "data" / "chr.parquet")
     if release is not None:
         (root / "release.json").write_text(
             f'{{"clinvar_file_date": "{release}", "record_count": {len(_RECORDS)}}}',
@@ -243,6 +252,105 @@ def test_the_emitted_order_is_deterministic_and_independent_of_the_resolution_or
     assert [(r.chrom, r.start, r.variation_id) for r in a.rows] == [
         ("11", 5227002, "15333"), ("19", 38449938, "133"), ("19", 38449938, "134"),
     ]
+
+
+def test_a_newly_published_record_reaches_an_allele_that_already_has_a_row(tmp_path: Path) -> None:
+    """The merge grain is `(variant_key, variation_id)`, and it has to actually run.
+
+    ClinVar grows: a re-run against a newer snapshot must be able to add a record for an allele the
+    table already mentions. Skipping on `variant_key` alone made that impossible, and made a
+    `not_found` row a **permanent pin** — an allele recorded as absent before its first submission
+    could never gain one. Local parquet has no request budget to protect, so the coarse skip
+    `enrich_frequencies` needs against a 10-per-minute API buys nothing here.
+
+    Watched failing before the fix: the second run added no row, and the `not_found` row survived.
+    """
+    spec = _spec(tmp_path)
+    first = enrich_clinical_assertions(spec, clinvar_cache=_snapshot(tmp_path, records=[]))
+    assert [r.status for r in first.rows] == ["not_found", "not_found"]
+
+    # ...ClinVar publishes the HBB record — and only that one, so the RYR1 allele stays genuinely
+    # absent and the two outcomes are distinguishable in the same run.
+    second = enrich_clinical_assertions(
+        spec, clinvar_cache=_snapshot(tmp_path / "newer", records=[_RECORDS[2]])
+    )
+    hbb = [r for r in second.rows if r.variant_key == _SICKLE_KEY]
+    assert {(r.status, r.variation_id) for r in hbb} == {("resolved", "15333")}, (
+        "the newly-published record must replace the recorded absence, not sit beside it"
+    )
+    # The RYR1 allele ClinVar still lacks keeps its absence, and neither row is duplicated.
+    assert [r.status for r in second.rows if r.variant_key == _RYR1_KEY] == ["not_found"]
+
+
+def test_a_rerun_against_the_same_snapshot_adds_nothing(tmp_path: Path) -> None:
+    """The other half of re-running: idempotent, so the merge cannot grow a table by re-reading it."""
+    spec = _spec(tmp_path)
+    snapshot = _snapshot(tmp_path)
+    first = enrich_clinical_assertions(spec, clinvar_cache=snapshot)
+    second = enrich_clinical_assertions(spec, clinvar_cache=snapshot)
+    assert [(r.variant_key, r.variation_id, r.status) for r in first.rows] == [
+        (r.variant_key, r.variation_id, r.status) for r in second.rows
+    ]
+
+
+def test_a_record_this_reader_cannot_load_degrades_like_an_unqueryable_snapshot(
+    tmp_path: Path,
+) -> None:
+    """A value outside the vocabulary is the snapshot being unusable, not a crash.
+
+    Not hypothetical: the published ClinVar repo still carries a pre-split `clinvar.parquet` whose
+    columns are the raw VCF INFO fields, so a reader that ever globbed it would meet ClinVar's own
+    `Pathogenic/Likely_pathogenic` where the module vocabulary is expected. Demonstrated on the real
+    path — before this was handled, the pass exited with a bare pydantic `ValidationError` traceback.
+
+    A failed *query* already degrades two lines above; treating an unloadable *record* as a crash
+    would be an arbitrary split between two forms of one cause.
+    """
+    root = tmp_path / "badsnap"
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame([{**_RECORDS[2], "clin_sig": "Pathogenic/Likely_pathogenic"}]).write_parquet(
+        root / "data" / "chr.parquet"
+    )
+    (root / "release.json").write_text('{"clinvar_file_date": "2026-06-27"}', encoding="utf-8")
+
+    spec = _spec(tmp_path)
+    result = enrich_clinical_assertions(spec, clinvar_cache=root, offline=True)
+    assert result.skipped_no_snapshot and result.rows == []
+    assert not (spec / "clinical_assertions.csv").exists()
+
+
+def test_a_split_module_is_written_and_reported_under_derived(tmp_path: Path) -> None:
+    """Both halves: the pass writes where the compiler reads, and the CLI names the file it wrote.
+
+    A module may keep its machine-written sidecars under `derived/` (RM49). The pass has always
+    resolved that correctly — it goes through `licensing.sidecar_path` — but the command printed a
+    guessed `spec_dir / '<name>.csv'`, sending an author to a file that had not changed. Run through
+    the real Typer app rather than by inspecting the string, so the message is checked where a reader
+    meets it.
+
+    The module is given an existing `derived/clinical_assertions.csv`, because that is the case the
+    rule is about: **write to the file you read**. A module carrying none gets a flat file, since
+    `derived/` is tolerated rather than canonical — a re-run must not create a second copy beside the
+    one that is already there.
+    """
+    from just_dna_enricher.cli import app
+    from typer.testing import CliRunner
+
+    spec = _spec(tmp_path)
+    derived = spec / "derived"
+    derived.mkdir()
+    (spec / "resolution.csv").rename(derived / "resolution.csv")
+    (derived / "clinical_assertions.csv").write_text(
+        ",".join(ClinicalAssertionRow.model_fields) + "\n", encoding="utf-8"
+    )
+
+    result = CliRunner().invoke(
+        app, ["assertions", str(spec), "--offline", "--clinvar-cache", str(_snapshot(tmp_path))]
+    )
+    assert result.exit_code == 0, result.output
+    assert (derived / "clinical_assertions.csv").exists()
+    assert not (spec / "clinical_assertions.csv").exists()
+    assert str(derived / "clinical_assertions.csv") in result.output
 
 
 def test_no_snapshot_is_a_no_op_with_a_warning_not_a_failure(tmp_path: Path) -> None:

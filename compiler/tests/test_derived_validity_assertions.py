@@ -279,6 +279,11 @@ def test_the_licence_row_for_a_new_layer_is_not_reported_as_an_orphan(tmp_path: 
     that store to decide which declared sources a table used. A fact table registered *after*
     `sources.csv` would be invisible to it, and every module carrying one would be told its own
     licence row is stale.
+
+    Demonstrated on the broken ordering rather than assumed: moving `sources.csv` ahead of the two new
+    entries makes this fail with
+    `sources.csv declares 2 source(s) no table in this module uses: ['clingen', 'clinvar']` —
+    the module's own licence rows, reported as stale.
     """
     spec = _spec(tmp_path, validity=True, assertions=True)
     # The current spelling (RM51), so this test does not also carry a deprecation notice it is not about.
