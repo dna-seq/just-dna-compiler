@@ -19,9 +19,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from pydantic import BaseModel
 
+from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS
 from just_dna_format.base import DEFAULT_GENOME_BUILD
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
+from just_dna_format.gene_validity import GENE_VALIDITY_FACT_FIELDS
 from just_dna_format.literature import LITERATURE_FACT_FIELDS
 from just_dna_format.manifest import (
     MARKETPLACE_COMPILED_BY,
@@ -241,6 +243,38 @@ def literature_signature(rows: Sequence[BaseModel]) -> str:
     with no authored edit anywhere.
     """
     return fact_signature(rows, LITERATURE_FACT_FIELDS)
+
+
+def gene_validity_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `gene_validity.csv` (`gene_validity.GENE_VALIDITY_FACT_FIELDS`), 0.6 / RM24.
+
+    Wider than its siblings, because the row's *identity* is wide: a gene–disease assertion is scoped
+    by mode of inheritance and, on an aggregate like GenCC, by who made it.
+
+    Two non-provenance columns are excluded, on one rule — **a column that locates or describes an
+    assertion is not the assertion**. `report_url` locates the curation and moves when a site
+    reorganizes; `disease_label` is the ontology's wording for a term `disease_id` already names, and
+    it churns on its own (one real export carries MONDO:0017146 under two labels at once). The stable
+    identities — `disease_id` and `assertion_id` — are inside.
+    """
+    return fact_signature(rows, GENE_VALIDITY_FACT_FIELDS)
+
+
+def clinical_assertion_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `clinical_assertions.csv` (`assertions.CLINICAL_ASSERTION_FACT_FIELDS`), RM25.
+
+    `review_status` and `review_stars` are both inside it although one determines the other. The
+    mapping between them is a ClinVar convention that Principle 2 keeps out of this tier, so from
+    here they are two independent inputs — and a table whose stars disagreed with its own prose
+    should hash differently from one where they agree.
+
+    `rsid` is **outside**, unlike `FREQUENCY_FACT_FIELDS`, and the difference is where the value comes
+    from: gnomAD reports an rsID in its own payload, while the ClinVar lookup is allele-exact and
+    returns none, so this column is filled from the module's own `resolution.csv`. Inside the hash it
+    would make two modules holding the same archive records hash differently on whether their resolver
+    attached an rsID — the producer-dependence a fact hash exists to exclude.
+    """
+    return fact_signature(rows, CLINICAL_ASSERTION_FACT_FIELDS)
 
 
 def source_signature(rows: Sequence[BaseModel]) -> str:

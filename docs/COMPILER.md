@@ -76,8 +76,9 @@ still ships your off-by-one; a linker proves every symbol resolves and says noth
 functions do. The same boundary applies here, and it is worth stating plainly rather than leaving a
 reader to infer that "it compiled" means "it is right".
 
-There is also a **trust boundary**. `resolution.csv`, `frequencies.csv` and `gene_metrics.csv` are
-consumed as fact. The compiler can re-derive the parts that are *self-verifying* and cross-examine the
+There is also a **trust boundary**. `resolution.csv` and the derived-fact sidecars — `frequencies.csv`,
+`gene_metrics.csv`, `literature.csv`, `gene_validity.csv`, `clinical_assertions.csv` — are consumed as
+fact. The compiler can re-derive the parts that are *self-verifying* and cross-examine the
 parts that are *redundant*, but everything sourced — which coordinate, which rsID, which allele
 frequency — is taken on trust from whoever produced it. That trust is the price of Principle 2: a tier
 that never fetches cannot independently confirm a fetched fact.
@@ -382,7 +383,7 @@ compile. The check is edit-distance-keyed rather than "any unknown csv" on purpo
 tolerance above.
 
 **Where the machine-written sidecars may live, and what they may be called (RM49/RM51, 0.6).**
-`resolution.csv` and the four fact tables are resolved through `just_dna_format.layout`, which accepts
+`resolution.csv` and the six fact tables are resolved through `just_dna_format.layout`, which accepts
 each of them at the spec root **or** under a `derived/` subdirectory, and accepts the licence table
 under either `sources.csv` (deprecated, warn-only, removed at 1.0) or `licensing.csv`. Four rules:
 
@@ -438,8 +439,9 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
 7. **Strict gate** — if `strict` and any variant still lacks `(chrom, start)`, fail **before any parquet
    is written** (refuse a non-reproducible partial artifact).
 8. **Write parquets** — SNP core (`weights`/`annotations`/`studies.parquet`, only when the relevant rows
-   exist) + one parquet per present table kind + the 0.5 derived-fact sidecars
-   (`frequencies.parquet`, `gene_metrics.parquet`, `literature.parquet`) when their CSVs are present,
+   exist) + one parquet per present table kind + the derived-fact sidecars
+   (`frequencies.parquet`, `gene_metrics.parquet`, `literature.parquet`, and since 0.6
+   `gene_validity.parquet`, `clinical_assertions.parquet`) when their CSVs are present,
    each cross-checked
    against what the module actually contains (a frequency coordinate no variant sits at, or a gene the
    module never mentions, is a **warning** — an over-broad sidecar is harmless, and failing the compile
@@ -907,7 +909,8 @@ resolves from a table that no longer says what it said.
 `reverse_module` reads the **parquet artifact only** (never `manifest.json`) and emits into `output_dir`:
 `module_spec.yaml` (always), `variants.csv` + `resolution.csv` (when `weights.parquet` exists;
 `resolution.csv` gated on `write_resolution=True`), `studies.csv` (when present), one CSV per present
-table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are present.
+table kind, and one CSV per derived-fact sidecar whose parquet is present (`frequencies.csv`,
+`gene_metrics.csv`, `literature.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `sources.csv`).
 
 - **Preserved (round-trip-critical, Principle 7):** every authored `VariantRow`/`StudyRow`/table value;
   genotype phase (the `phased` bit re-emits `A|G` vs sorted `A/G`); tri-state bools; `priority` verbatim;
@@ -961,9 +964,10 @@ table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are p
   `studies.csv` + the 9 table-kind CSVs — the authored surface, and the reason only the *other* files
   gained a second legal name and location in 0.6. **`resolution.csv` is deliberately NOT here** (nor in
   `_OUTPUT_FILES`) — it is a multi-producer artifact hashed only by the normalized `resolution_signature`
-  (a raw-bytes hash would be unstable across enricher/human/reverse producers). `frequencies.csv` and
-  `gene_metrics.csv` and `literature.csv` are out for exactly the same reason, hashed by `frequency_signature` /
-  `gene_metrics_signature`. `provenance.json` is likewise out of the digest.
+  (a raw-bytes hash would be unstable across enricher/human/reverse producers). `frequencies.csv`,
+  `gene_metrics.csv`, `literature.csv` and the 0.6 pair `gene_validity.csv` / `clinical_assertions.csv`
+  are out for exactly the same reason, each hashed by its own `*_signature`. `provenance.json` is
+  likewise out of the digest.
 - **The derived-fact sidecars are deliberately NOT `_TABLE_KINDS`.** Those are authored DSL tables with
   `AuthoredModel` semantics, the reserved-namespace guard, duplicate-key checks and raw-byte input
   hashing. A machine-produced reference-fact table is a third category — injected, fact-hashed,
@@ -1083,6 +1087,8 @@ would break scripts for no gain.
 | **`frequencies.csv` path (0.5)** | ✅ `FrequencyRow`; coordinate cross-check → warning; **provisional shape** | ✅ `frequencies.parquet` (in `artifact.digest`); `frequency_signature`/`sources`/`datasets`/`populations` → **manifest** (out of digest) | ✅ `allele_frequency` = AC/AN materialized as `Float64` (never stored in the CSV) | complete (injected; enricher produces it) |
 | **`gene_metrics.csv` path (0.5)** | ✅ `GeneMetricsRow`; gene cross-check → warning; **provisional shape** | ✅ `gene_metrics.parquet` (in digest); `gene_metrics_signature`/`genes`/`datasets` → **manifest** | — | complete (injected; offline-capable upstream) |
 | **`literature.csv` path (0.5)** | ✅ `LiteratureRow`; citation cross-check + nonexistent-PMID warning; **provisional shape** | ✅ `literature.parquet` (in digest); `literature_signature`/`sources`/coverage counters → **manifest** | — | complete (injected; enricher produces it) |
+| **`gene_validity.csv` path (0.6, RM24)** | ✅ `GeneValidityRow`; gene cross-check → warning; **provisional shape** | ✅ `gene_validity.parquet` (in digest); `gene_validity_signature`/`genes`/`diseases`/`classifications`/`submitters`/`datasets` → **manifest** | — | complete (injected; ClinGen + GenCC routes in the enricher) |
+| **`clinical_assertions.csv` path (0.6, RM25)** | ✅ `ClinicalAssertionRow`; coordinate cross-check → warning; **provisional shape**. Records the archive's call and review tier; it does **not** adjudicate against the author's `clin_sig` — that stays the enricher's warn-in-both-modes cross-check | ✅ `clinical_assertions.parquet` (in digest); `clinical_assertion_signature`/`clin_sigs`/star range/`unrated_count`/`not_found_count` → **manifest** | — | complete (injected; offline-capable upstream from the ClinVar snapshot) |
 | CLI (0.4.1, extended 0.5) | ✅ Typer `validate`/`compile`/`signature`/`reverse`/**`verify`**/**`sign`**; `--strict`, `--strip-identity`/`--authority-key`, deprecated `--ensembl-cache`, `--resolution` | — | — | complete (compiler-only dep; tiers intact) |
 | **queryable p-value (0.5)** | ✅ `p_value_num` in (0, 1]; cross-checked against the verbatim `p_value` string (relative, 1%) | ✅ `studies.parquet`; **`neg_log10_p` derived on write**, absent from the reversed CSV | ✅ `-log10(p_value_num)` | complete |
 | **`callable_from` (0.5, RM6)** | ✅ VCF field-name pointer, namespace-qualifiable and `\|`-alternatable (shared `AuthoredModel` validator); bare colliding key → warning both modes (0.6) | ✅ `weights.parquet` | — | complete (retired from the reserved namespace) |

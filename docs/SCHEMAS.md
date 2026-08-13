@@ -58,11 +58,12 @@ both modes — and closing it properly is **RM47**. `sources.csv` does not subst
 *dataset's* terms and attribution, which answers where a table came from, never why a bound is where it
 is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the four derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
-`sources.csv`, which are therefore absent from the table below.
+the six derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+`gene_validity.csv` / `clinical_assertions.csv` / `sources.csv`, which are therefore absent from the
+table below.
 
-**`sources.csv` is the one of those four a human is expected to write, and 0.5.4 stopped pretending
-otherwise (S21).** The other three are produced by an enricher pass, so an author never starts one by
+**`sources.csv` is the one of those six a human is expected to write, and 0.5.4 stopped pretending
+otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
 hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
 anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
 (`vocab.MISPLACED_COLUMN_REASONS['source']` says exactly that), and the compile licence gate reads this
@@ -674,18 +675,29 @@ Position-level **matching** helpers (studies, the reverse pos→rsid lookup, hap
 `derive_variant_key` **without** `alts` and therefore never mint a VA — a study matches its variant at
 `chrom:start:ref` regardless of allele. Mixing those up would orphan every study.
 
-## The derived-fact tables (0.5, **provisional**)
+## The derived-fact tables (0.5–0.6, **provisional**)
 
-Four siblings of `resolution.csv` at four different grains — `frequency.FrequencyRow` →
+Six siblings of `resolution.csv` at six different grains — `frequency.FrequencyRow` →
 `frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**,
-`literature.LiteratureRow` → `literature.csv` per **citation**, and `sources.SourceRow` →
-`sources.csv` per **(data source, layer)**. All are reference facts rather than annotation:
-injected, hashed by facts, and compiled into their own optional parquets. All are
-standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow` is.
+`literature.LiteratureRow` → `literature.csv` per **citation**, `gene_validity.GeneValidityRow` →
+`gene_validity.csv` per **(gene, disease, inheritance mode, submitter)** (0.6, RM24),
+`assertions.ClinicalAssertionRow` → `clinical_assertions.csv` per **(allele, archive record)**
+(0.6, RM25), and `sources.SourceRow` → `sources.csv` per **(data source, layer)**. All are reference
+facts rather than annotation: injected, hashed by facts, and compiled into their own optional
+parquets. All are standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow`
+is.
 
-Three of the four are machine-produced and human-*overridable*; `sources.csv` is machine-produced and
+Five of the six are machine-produced and human-*overridable*; `sources.csv` is machine-produced and
 human-**authored**, because a source a curator read by hand has no pass to write its row (see above).
-That is why it is the only one of the four with a `draft`/`template` route and a natural key.
+That is why it is the only one with a `draft`/`template` route and a natural key.
+
+**Why six tables is not sprawl, stated once because the instinct recurs.** The 0.6 charter amendment
+prices a schema addition by the layer it lands in: a parquet column is approximately free, a *derived*
+CSV is half, and an **authored** schema is full cost. The "one CSV, one concern, do not burden the
+rare author" gate is a rule about the authored layer — nobody hand-writes `gene_validity.csv`, so its
+column count costs the rare author nothing. What a derived table still costs is the half a human pays
+when they open one, which is why each of these documents its grain in its own module docstring and why
+none of them may be hand-edited into a claim its source never made.
 
 **Three tables sound like they are about the same thing, and they are three different levels.** The
 names do not separate them — `studies`, `literature`, `sources` all read as "references" — so read them
@@ -806,6 +818,84 @@ the one that keeps the file readable by the human the DSL exists for. Facts: `pm
   single flag would have to lie about one of them. `quotes_found` is **null when no fulltext could be
   retrieved** and `0` when a fulltext was read and the quote was not in it — a distinction the manifest
   block preserves, because collapsing it would report an unread paper as a wrong citation.
+
+**`GeneValidityRow` — one row per curated gene–disease assertion (0.6, RM24).** The question
+`gene_metrics.csv` cannot answer: constraint says how intolerant of variation a gene looks and dosage
+sensitivity says whether losing a copy causes disease, while this says whether variation in *this*
+gene causes *this* disease and how sure a curating body is. Facts: `gene`, `gene_id?` (`HGNC:…`),
+`disease_id?` (a CURIE, stored verbatim), `moi?` (`VALID_INHERITANCE_MODE`),
+`classification?` (`VALID_GENE_VALIDITY`), `classification_raw?`, `classification_date?`, `submitter?`,
+`assertion_id?`, `dataset`. Outside the fact set: `disease_label?` and `report_url?` plus the usual
+`source?`/`status?`/`fetched_at?`.
+
+- **A table, not columns on `gene_metrics.csv`, because the grain is `gene × disease × inheritance
+  mode`.** Dosage sensitivity went the other way in 0.5 for exactly that reason — a haploinsufficiency
+  rating is one value per gene — while *RYR1* carries a definitive assertion for malignant hyperthermia
+  and a separate one for a congenital myopathy, and neither is a property of the gene alone.
+- **`moi` is part of the KEY, established by probe rather than assumed.** 59 (gene, disease) pairs in
+  ClinGen's 2026-08-13 release carry two rows differing only by mode of inheritance; keying without it
+  keeps one and leaves the module claiming the survivor covers both. `(gene, disease, moi)` has zero
+  collisions in that release.
+- **`submitter` is in the key too, because GenCC is an aggregate.** Nineteen submitters, and one
+  gene–disease pair routinely carries several at different strengths — the disagreement is the data.
+  Reducing it to one row is the bare-triple mistake `PharmVariantRow` already paid for once.
+- **Both vocabularies are mapped at the enricher boundary, never stored verbatim.** ClinGen writes
+  `Disputed` where GenCC writes `Disputed Evidence`, and `AD` where GenCC writes `Autosomal dominant`;
+  a consumer filtering on one spelling would silently miss the other's rows. The submitter's wording
+  survives in `classification_raw`, so the mapping stays auditable — the `clin_sig`/`clin_sig_raw`
+  shape, and the builders-store-verbatim/readers-map rule the dosage codes already follow.
+- **`VALID_GENE_VALIDITY` is a set with a published ladder beside it, not an integer column.**
+  `vocab.ORDERED_GENE_VALIDITY` names the four members that really are ordered (limited → definitive);
+  `disputed`, `refuted` and `no_known_disease_relationship` are the *opposite* claim rather than points
+  on the ladder, and `supportive` is an assertion made off it. This is the ClinGen-dosage argument
+  inverted: those codes looked ordered and were not, so they were decoded; these are ordered, so the
+  order is published rather than left for each consumer to hardcode.
+- **An empty `classification` is an ungraded assertion, not a negative verdict.** A submitter may state
+  an association without grading it; that is this codebase's ordinary "withhold when unknown", and it
+  is materially different from `no_known_disease_relationship`, which is a graded verdict against.
+- **A column that *locates or describes* an assertion is not the assertion**, which is why
+  `disease_label` sits outside the fact hash beside `report_url`. It is the ontology's current wording
+  for a term the CURIE already names, and it churns on its own: one real export carries
+  **MONDO:0017146** under two labels at once — `"sickle cell disease and related diseases"` from
+  ClinGen and `"obsolete sickle cell disease and related diseases"` from GenCC. Inside the fact set,
+  two submitters recording the same disease would hash differently on label vintage alone.
+
+**`ClinicalAssertionRow` — one row per (allele, archive record) (0.6, RM25).** What a clinical archive
+says about an allele **and how much review sits behind it**. Facts: `variant_key`,
+`chrom?`/`start?`/`ref?`/`alt?` (one alt, like `FrequencyRow`), `genome_build`, `clin_sig?`
+(`VALID_CLIN_SIG`), `clin_sig_raw?`, `review_status?`, `review_stars?` (0–4), `condition?`,
+`variation_id?`, `dataset`. Excluded: `rsid?` (see below) and `source?`, `status?`, `fetched_at?`.
+
+- **The number this workspace was computing and discarding.** `clinical.ClinSigFinding.confidence`
+  rendered the star rating into a warning string and `draft_gene_panel` used it as a filter (default 2
+  — multiple submitters, no conflicts); neither kept it, so a compiled module flattened a one-star
+  single submission and a practice guideline to the same `clin_sig`. A number recomputed by every
+  consumer is a place to drift, which is the RM40/RM41 argument applied a fourth time.
+- **It records; it does not adjudicate.** Whether the module's own `clin_sig` agrees with the archive's
+  is `enricher.clinical.verify_clin_sig`'s question, and that check warns in **both** modes on purpose,
+  because failing would make the format arbitrate a clinical dispute. Nothing here escalates it; the
+  compiler's own check over this table is a position-orphan check and nothing more.
+- **`review_stars` is a stored column and not a derived property**, which inverts the house pattern for
+  a convenience number (`allele_frequency`, `neg_log10_p`). The derivation — CLNREVSTAT prose to a
+  0-to-4 rating — is a **ClinVar convention**, and Principle 2 keeps source conventions out of this
+  tier entirely. The enricher owns the mapping (`clinvar_build.review_stars`); the schema holds only
+  the bound.
+- **Null stars and zero stars are different answers.** `0` is the rating ClinVar gives a submission
+  with no assertion criteria; `None` means the record states no review status for anything to be rated.
+  Collapsing the second into the first reports an unread record as the weakest evidence available.
+- **One row per record, not per variant**, because the archive genuinely holds several records for one
+  allele under different conditions — `clinvar.lookup_clin_sig` returns a list and orders it
+  best-reviewed first. Collapsing them would pick a condition on the author's behalf.
+- **`rsid` is outside the fact set, and the `FrequencyRow` precedent deliberately does not transfer.**
+  There the rsID arrives in gnomAD's own payload, so it is part of what the source said. Here the
+  lookup is allele-exact on `(chrom, start, ref, alt)` and returns no rsID at all — the column is
+  filled from the module's own `resolution.csv`. Inside the hash it would make two modules holding the
+  *same ClinVar records* hash differently according to whether their resolver attached an rsID, which
+  is precisely the producer-dependence a fact hash exists to exclude.
+- **`genome_build` is load-bearing here.** The archive's lookup key is `(chrom, start, ref, alt)` and
+  carries no assembly, so a coordinate from another build is a well-formed query returning a different
+  variant's clinical call. The pass skips such rows rather than asking (the fourth build confusion in
+  this codebase; `assertions.ASSERTION_GENOME_BUILD` is the named constant).
 
 **Ancestry groups** (`vocab.RECOMMENDED_ANCESTRY_GROUPS`) are an **open, seeded** vocabulary in the
 `RECOMMENDED_AUTHOR_KINDS` idiom rather than a closed `frozenset` — deliberately, even though Principle 6
@@ -936,9 +1026,11 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
 
 ## Identity & integrity
 
-Seven SHA-256 hashes (`sha256:` hex prefix), each a different job — see [COMPILER.md](COMPILER.md) and
+Nine SHA-256 hashes (`sha256:` hex prefix), each a different job — see [COMPILER.md](COMPILER.md) and
 the CONSTITUTION for how they compose. (Two are structural, `artifact_digest` and `content_signature`;
-the other five are the one-per-injected-table family below.)
+the other seven are the one-per-injected-table family below — it was five until 0.6 added the two
+derived tables, and the count is stated here rather than in prose precisely so it cannot go stale
+silently.)
 
 | Hash (`integrity.py`) | Over | Order | Reference-dependent | Purpose |
 |---|---|---|---|---|
@@ -948,9 +1040,11 @@ the other five are the one-per-injected-table family below.)
 | `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
 | `gene_metrics_signature(rows)` | gene-constraint **facts** (`GENE_METRICS_FACT_FIELDS`) | order-independent | n/a | pins the gene-constraint table |
 | `literature_signature(rows)` | citation **facts** (`LITERATURE_FACT_FIELDS`) | order-independent | n/a | pins which articles the module cites |
+| `gene_validity_signature(rows)` | gene–disease **facts** (`GENE_VALIDITY_FACT_FIELDS`) | order-independent | n/a | pins which curated assertions the module carries, at which strength |
+| `clinical_assertion_signature(rows)` | archive-record **facts** (`CLINICAL_ASSERTION_FACT_FIELDS`) | order-independent | n/a | pins the clinical calls **and the review behind them** |
 | `source_signature(rows)` | licensing **facts** (`SOURCE_FACT_FIELDS`) | order-independent | n/a | pins what the module was built from, and on what terms |
 
-The last five share one body, `fact_signature(rows, fact_fields)` — every injected table under one
+The last seven share one body, `fact_signature(rows, fact_fields)` — every injected table under one
 hashing discipline, so the rule cannot drift between them as more sidecars land. What differs is only
 each table's fact set, and the exclusions are where the thinking is: provenance is always out, and so is
 any column describing the *outside world's* current state rather than the module's content
@@ -990,13 +1084,22 @@ consumer it is for.
 `authors` + `authorship` (`Contribution`: `who`/`role`/`kind`), timestamps, `stats`, `compilation`,
 `inputs`, `content_signature?`, `artifact`, `logs`, `derived`, `provenance?`, `panel?`, `logo?`,
 `readme?`, `signature?`, and
-one block per derived-fact sidecar the module carries — `frequency?`, `gene_metrics?`, `literature?`,
-`sources?`. Each carries `signature` / `sources` / `row_count` plus whatever its own table makes
-answerable: `datasets` on the two that have releases to name (gnomAD ships numbered ones; PubMed and
-the licence table do not), `populations`/`variant_count` on `frequency`, `genes` on `gene_metrics`,
-the quote and open-access counters on `literature`, and the licence roll-up on `sources`
-(`licenses`, `attributions`, the per-layer facets and the derived `commercial_use` /
-`redistribution`). All four are out of `artifact.digest`.
+one block per derived-fact sidecar the module carries — `frequency?`, `gene_metrics?`,
+`gene_validity?`, `clinical_assertions?`, `literature?`, `sources?`. Each carries `signature` /
+`sources` / `row_count` plus whatever its own table makes answerable: `datasets` on the four that
+have releases to name (gnomAD, ClinGen/GenCC and ClinVar all ship them; PubMed and the licence table
+do not), `populations`/`variant_count` on `frequency`, `genes` on `gene_metrics`,
+`genes`/`diseases`/`classifications`/`submitters` on `gene_validity`, the star range plus
+`unrated_count`/`not_found_count` on `clinical_assertions`, the quote and open-access counters on
+`literature`, and the licence roll-up on `sources` (`licenses`, `attributions`, the per-layer facets
+and the derived `commercial_use` / `redistribution`). All six are out of `artifact.digest`.
+
+`ClinicalAssertions` publishes `min_review_stars` / `max_review_stars` as **two counts and not an
+average**, for the reason `vrs_alleles` sits beside `vrs_alleles_identified`: an average is a number
+describing no record, while the pair tells a catalog that a module is mixing a practice guideline with
+a single submitter. Both are `None` — never `0` — when no record states a review status at all, and
+`unrated_count` publishes the size of that gap, because a range over an unstated fraction is not
+something anything can filter on.
 
 The 0.5 additions on **`Compilation`** are two groups, and they answer different questions.
 Resolution *policy and outcome*: `resolution_mode?` (`strict`/`best_effort`), `fully_resolved`

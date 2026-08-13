@@ -102,6 +102,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `identifiers` | rsID / trait-CURIE / gene-symbol currency (dbSNP, OLS4, HGNC) | `httpx`, `tenacity` |
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
+| `gene_validity` | RM24: curated gene–disease assertions → `gene_validity.csv` (ClinGen expert panels, GenCC's aggregate; both CC0) | `httpx`, format |
+| `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
@@ -125,7 +127,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar` build+publish, `vrs mint` | `typer` |
+| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar` build+publish, `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
 
@@ -161,6 +163,8 @@ really sleeping.
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
 | **ClinGen** dosage TSV | `clingen` | n/a (one file) | single download, then local parse | none |
+| **ClinGen** gene-validity CSV | `gene_validity` | n/a (one file, ~1 MB) | single download, then local parse | none |
+| **GenCC** submissions CSV | `gene_validity` | n/a (one file, ~28 MB) | single download, then local parse; the client's timeout is 180 s because one response *is* the whole export | none |
 | **ACMG SF list** | `acmg` | n/a | one HTML GET (~75 KB) or a local `--sf-list` workbook | none |
 | **Hugging Face Hub** | `download` (snapshots), `upload` (modules / references) | **5-minute fixed windows**, three buckets — see below | **no custom gate**; `huggingface_hub` handles 429 via `RateLimit` / `RateLimit-Policy` headers (smart retry in 1.2+) | `HF_TOKEN` / `hf auth login` — anonymous shares a per-IP pool; a free token is the usual fix |
 
@@ -1127,6 +1131,117 @@ passed that was never put. Its values are `not_requested` (the author's own `--n
 than an audit of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
 typed the `clin_sig`, nothing changes — that is the case this check exists for.
 
+## Gene–disease validity (`gene_validity.py`, online only) — RM24
+
+`enrich_gene_validity(spec_dir, *, source, mode, offline, write, export_text, url)` takes the `gene`
+column of `variants.csv` and writes `gene_validity.csv`: one row per **(gene, disease, mode of
+inheritance, submitter)**. `just-dna-enricher gene-validity spec/ [--source clingen|gencc]`.
+
+The question `gene_metrics.csv` cannot answer. Constraint says how intolerant of variation a gene
+*looks* in a population sample; ClinGen's dosage rating says whether losing a copy causes disease;
+neither says whether variation in *this* gene causes *this* disease, which is the claim a clinical
+module most often rests on without recording anywhere.
+
+**Two submitters, and they are different kinds of thing.** ClinGen publishes expert-panel curations —
+one assertion per (gene, disease, MOI), each from a named Gene Curation Expert Panel working to a
+numbered SOP. GenCC publishes an *aggregate* of nineteen submitters, ClinGen among them, plus
+Orphanet, PanelApp and several laboratories; the same gene–disease pair routinely carries several
+submitters at different strengths, and that disagreement is the data.
+
+**Three things established by reading the real files** (2026-08-13 downloads: ClinGen 3,659 rows,
+GenCC 30,410), each of which decided part of the shape:
+
+- **Mode of inheritance is part of the key.** 59 (gene, disease) pairs in ClinGen carry two rows
+  differing only there. `(gene, disease, moi)` has zero collisions; `(gene, disease)` silently keeps
+  one curation and drops the other.
+- **`submitter` is in the key too**, or GenCC collapses to one arbitrary opinion per pair — the
+  bare-triple mistake the ClinPGx cross-check paid for once already.
+- **The two vocabularies disagree in spelling and agree in meaning**, so both are mapped onto
+  `vocab.VALID_GENE_VALIDITY` / `VALID_INHERITANCE_MODE` at this boundary: `Disputed` and
+  `Disputed Evidence` are one member, `AD` and `Autosomal dominant` are one member. A consumer
+  filtering on one spelling would silently miss the other's rows. The submitter's wording survives in
+  `classification_raw`, so the mapping stays auditable, and a wording this release does not model is
+  left unset with **one aggregated warning** naming the distinct values — never one line per row.
+
+**A gene the submitter has not curated gets no row**, and is reported in `missing`. That is
+`clingen.py`'s rule and its reason: a curating body's silence means nobody has assessed the gene yet,
+which is not a fact about the gene, so a `not_found` row would state one. (The ClinVar pass below goes
+the other way, because ClinVar covers the genome — "asked and absent" really is a fact there.)
+
+**`--offline` is a no-op with a warning** (`skipped_offline`), never a failure: neither submitter ships
+a snapshot, and both files are small enough to fetch whole. An injected `export_text=` still wins,
+because handing over bytes you already hold is not egress.
+
+**Both sources are CC0**, so a module using this table stays sellable — `GENCC_TERMS` joins
+`CLINGEN_TERMS` in `licensing.TERMS_BY_SOURCE`, and the pass records its `SourceRow` at the new
+`gene_validity` layer. GenCC's attribution names *the contributing sources* as well as GenCC, because
+crediting only the aggregator credits nobody who did the work.
+
+> **HPO ships no route, and both reasons came from probing rather than from taste.** Its release
+> declares `terms:license https://hpo.jax.org/app/license`; that URL answers **HTTP 404** with a
+> JavaScript shell, and OBO Foundry records the licence as a bare label `hpo` with no SPDX id — so the
+> terms cannot be established from any machine-readable source, and an unestablished permission is not
+> a permission (the PharmVar rule). Recording it with `commercial_use=None` would flip every carrying
+> module's manifest verdict to *undetermined*, which contradicts the sellability this table was
+> designed to keep. Separately, the file the item named — `genes_to_phenotype.txt` — is gene × HP
+> feature × frequency, a different grain from this table entirely; `genes_to_disease.txt` fits
+> structurally, but its `association_type` (MENDELIAN / POLYGENIC / UNKNOWN, 8,288 of 15,944 rows
+> UNKNOWN) is a **mechanism class, not an evidence grade**, and putting it in `classification` would
+> overload the axis (P5). The row shape holds an HPO row perfectly well; what is missing is a link this
+> tier may take the data over.
+
+## Clinical assertions (`assertions.py`, offline capable) — RM25
+
+`enrich_clinical_assertions(spec_dir, *, mode, offline, clinvar_cache, download, write)` reads
+`resolution.csv` and the ClinVar snapshot and writes `clinical_assertions.csv`: one row per **(allele,
+archive record)** carrying the clinical call, ClinVar's own review wording, the 0-to-4 star rating and
+the VariationID. `just-dna-enricher assertions spec/`.
+
+**The number this workspace was already computing and discarding.**
+`clinical.ClinSigFinding.confidence` rendered the star rating into a warning string and kept nothing;
+`clinvar_draft.draft_gene_panel` used it as a *filter* (default 2 — multiple submitters, no conflicts)
+and kept nothing. So a compiled module flattened a one-star single submission and a practice guideline
+to the same `clin_sig`, and every consumer that wanted the difference re-derived it. A number
+recomputed downstream is a place to drift (RM40/RM41, a fourth time).
+
+**It records; it does not adjudicate.** `clinical.verify_clin_sig` — comparing the *author's*
+`clin_sig` against ClinVar's — is untouched, and still warns in **both** modes on purpose, because
+failing would make the format arbitrate a clinical dispute. Escalating that check stays parked
+deliberately, and nothing in this pass moves it.
+
+Four mechanics worth keeping straight:
+
+- **Structured like `enrich_frequencies`, because the input is the same.** It consumes `resolution.csv`
+  rather than `variants.csv`: a clinical record is per *allele at a coordinate*, and the resolution
+  table is where an rsID has already become `chrom-pos-ref-alt`. That also sidesteps the
+  multi-allelic-rsID problem — one rsID at one locus legitimately carries a pathogenic, a benign and an
+  uncertain allele (`rs33922842` in HBB), so looking clinical significance up by rsID would
+  manufacture disagreements out of ClinVar agreeing with itself.
+- **Snapshot-first and fully offline-capable**, unlike the frequency pass: ClinVar ships as a snapshot,
+  so with one provisioned this pass never touches the network. With none found and not `offline` it
+  calls `download.ensure_clinvar_snapshot` — the `enrich()` shape, `--offline` as the only switch — and
+  with none reachable at all it is a **no-op with a warning** (`skipped_no_snapshot`), leaving any
+  existing table as the pin.
+- **`dataset` is the snapshot's own release**, read from `release.json` (the RM38 rule): a consumer
+  must be able to tell a pinned file from whatever happened to be current, and a re-review is only
+  visible against a stated release. A snapshot that cannot state one gets `clinvar_unknown` rather than
+  a fabricated date.
+- **A coordinate on another build is never queried.** ClinVar's lookup key is `(chrom, start, ref,
+  alt)` and carries no assembly, so a GRCh37 coordinate is a well-formed query returning a *different
+  variant's* clinical call under this module's key — the same failure the frequency pass had against
+  gnomAD. Such rows are reported in `off_build`, kept apart from `missing` because nobody asked about
+  them, and are **outside the `strict` gate**: a coordinate on another assembly is reproducibly out of
+  this snapshot's reach, so refusing would make a GRCh37 module uncompilable for a reason no authored
+  edit could fix.
+
+`clinvar_build.review_stars` is the one place the CLNREVSTAT-to-rating convention lives, and it became
+public and **tri-state** in 0.6: `None` for a record that states no review status *and* for a wording
+this release does not model, `0` for ClinVar's own "no assertion criteria provided". It used to answer
+`0` to all three, which files an unread record under the weakest rating available — a claim nobody
+made. That is also why `ClinicalAssertionRow` stores the rating as a column instead of deriving it
+from the prose beside it: the derivation is a **ClinVar convention**, and Principle 2 keeps source
+conventions out of the schema tier entirely.
+
 ## The literature pack (`literature.py`, online only)
 
 Pass 4: `studies.csv` in, `literature.csv` out. Three questions of decreasing coverage — does the
@@ -1812,6 +1927,10 @@ just-dna-enricher literature spec/                 # pass 4: write spec/literatu
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC) + gene/chromosome agreement
 just-dna-enricher dosage spec/ --offline           # no-op with a warning (ClinGen has no snapshot)
+just-dna-enricher gene-validity spec/              # RM24: ClinGen expert-panel gene-disease assertions
+just-dna-enricher gene-validity spec/ --source gencc  # …or GenCC's aggregate of nineteen submitters
+just-dna-enricher assertions spec/                 # RM25: ClinVar's call + review tier per allele
+just-dna-enricher assertions spec/ --offline       # snapshot only; no snapshot → no-op with a warning
 
 # Caches — provision once, then every gated pass runs with zero egress. See "The caches".
 just-dna-enricher cache status                     # what is present, where, which release

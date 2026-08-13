@@ -316,3 +316,71 @@ def test_both_spellings_are_draftable_onto_the_same_model() -> None:
     assert DRAFTABLE[SOURCES_CSV] is SourceRow
     assert DRAFTABLE[LICENSING_CSV] is SourceRow
     assert blank_template(LICENSING_CSV) == blank_template(SOURCES_CSV)
+
+
+def test_drafting_writes_the_spelling_the_module_already_carries(tmp_path: Path) -> None:
+    """Two accepted spellings made the *writer* able to create the collision the reader refuses.
+
+    `DRAFTABLE` takes both names as keys, so a caller may legitimately ask for `licensing.csv` on a
+    module that carries `sources.csv` — and the literal `spec_dir / csv_name` join then left two
+    files behind, which `compile_module` refuses by design. That is the collision arrived at by
+    following the documented surface rather than by misusing it, which is exactly the failure
+    `layout.sidecar_write_path` exists to prevent. **Write to the file you read.**
+
+    Watched failing before the fix: the append created a second file and the recompile refused with
+    "…are the same table in two places".
+    """
+    from just_dna_compiler.draft import append_rows
+
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / SOURCES_CSV).write_text(
+        "source,layer,license,license_url,license_sha256,attribution,notice,share_alike,"
+        "commercial_use,redistribution,declared_use,dataset,fetched_at\n"
+        "ensembl,resolution,Apache-2.0,,,Ensembl,,false,true,true,unstated,,\n",
+        encoding="utf-8",
+    )
+    append_rows(spec, LICENSING_CSV, [SourceRow(source="clinvar", layer="clinical_assertion")])
+
+    assert not (spec / LICENSING_CSV).exists(), "a second copy of the same table was created"
+    assert {r["source"] for r in _rows(spec / SOURCES_CSV)} == {"ensembl", "clinvar"}
+
+
+def test_drafting_honours_the_name_asked_for_when_the_module_carries_neither(tmp_path: Path) -> None:
+    """The other half, and the reason the fix is narrower than `sidecar_write_path`.
+
+    Here the filename is the caller's own argument, not a fixed name a pass writes under, so an absent
+    file is created as asked. Redirecting `draft sources.csv` to `licensing.csv` would answer a
+    different question than the one put — only the two-copies collision is repaired.
+    """
+    from just_dna_compiler.draft import append_rows
+
+    for name in (SOURCES_CSV, LICENSING_CSV):
+        spec = tmp_path / f"spec_{name}"
+        spec.mkdir()
+        append_rows(spec, name, [SourceRow(source="clinvar", layer="annotation")])
+        assert (spec / name).exists()
+        assert len(list(spec.glob("*.csv"))) == 1
+
+
+def test_drafting_onto_a_module_that_already_carries_both_refuses(tmp_path: Path) -> None:
+    """Appending to an already-broken module would make a third claim about one table."""
+    from just_dna_compiler.draft import DraftError, append_rows
+
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    header = (
+        "source,layer,license,license_url,license_sha256,attribution,notice,share_alike,"
+        "commercial_use,redistribution,declared_use,dataset,fetched_at\n"
+    )
+    (spec / SOURCES_CSV).write_text(header, encoding="utf-8")
+    (spec / LICENSING_CSV).write_text(header, encoding="utf-8")
+    with pytest.raises(DraftError, match="same table in two places"):
+        append_rows(spec, LICENSING_CSV, [SourceRow(source="clinvar", layer="annotation")])
+
+
+def _rows(path: Path) -> list[dict]:
+    import csv
+
+    with path.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))

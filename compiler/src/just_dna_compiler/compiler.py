@@ -35,6 +35,7 @@ from just_dna_format.alleles import (
     non_nucleotide_reason,
     symbolic_allele_defect,
 )
+from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import (
     DEFAULT_GENOME_BUILD,
     IDENTITY_FIELDS,
@@ -53,6 +54,7 @@ from just_dna_format.binning import (
 )
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.layout import (
     DERIVED_SUBDIR,
@@ -77,7 +79,13 @@ from just_dna_format.integrity import (
     frequency_signature as _frequency_signature,
 )
 from just_dna_format.integrity import (
+    clinical_assertion_signature as _clinical_assertion_signature,
+)
+from just_dna_format.integrity import (
     gene_metrics_signature as _gene_metrics_signature,
+)
+from just_dna_format.integrity import (
+    gene_validity_signature as _gene_validity_signature,
 )
 from just_dna_format.integrity import (
     literature_signature as _literature_signature,
@@ -93,11 +101,13 @@ from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
     README_EXTENSIONS,
+    ClinicalAssertions,
     Compilation,
     Display,
     FileEntry,
     Frequency,
     GeneMetrics,
+    GeneValidity,
     Identity,
     Literature,
     ModuleManifest,
@@ -242,6 +252,10 @@ _OUTPUT_FILES: tuple[str, ...] = (
     "frequencies.parquet",
     "gene_metrics.parquet",
     "literature.parquet",
+    # The 0.6 pair (RM24/RM25), on the same terms as the four above. This tuple is hand-listed where
+    # `_DERIVED_FILES` is derived, so a new fact table has to be added here and only here.
+    "gene_validity.parquet",
+    "clinical_assertions.parquet",
     "sources.parquet",
 )
 
@@ -250,10 +264,18 @@ _OUTPUT_FILES: tuple[str, ...] = (
 # reserved-namespace guard, duplicate-key checks and raw-byte input hashing. A machine-produced
 # reference-fact table is a third category — injected, fact-hashed, human-overridable — and folding it
 # into the table kinds would blur exactly the line the 0.5 rework drew.
+#
+# **`sources.csv` stays last, and that is load-bearing.** The compile loop stores each model's parsed
+# rows into `fact_rows` *before* calling that model's check, and `_sources_checks` reads `fact_rows`
+# to decide which declared sources a table actually used. A new fact table added after it would have
+# its `source` column invisible to that check, so every module carrying one would be told its own
+# licence row is an orphan. Add before `sources.csv`, never after.
 _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("frequencies.csv", "frequencies.parquet", FrequencyRow),
     ("gene_metrics.csv", "gene_metrics.parquet", GeneMetricsRow),
     ("literature.csv", "literature.parquet", LiteratureRow),
+    ("gene_validity.csv", "gene_validity.parquet", GeneValidityRow),
+    ("clinical_assertions.csv", "clinical_assertions.parquet", ClinicalAssertionRow),
     ("sources.csv", "sources.parquet", SourceRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
@@ -3628,6 +3650,12 @@ def compile_module(
     def _literature_checks(rows: list) -> tuple[list[str], list[str]]:
         return [], list(_cross_check_literature(rows, studies))
 
+    def _gene_validity_checks(rows: list) -> tuple[list[str], list[str]]:
+        return [], list(_cross_check_gene_validity(rows, variants))
+
+    def _clinical_assertion_checks(rows: list) -> tuple[list[str], list[str]]:
+        return [], list(_cross_check_clinical_assertions(rows, variants))
+
     def _sources_checks(rows: list) -> tuple[list[str], list[str]]:
         # `sources.csv` is last in `_FACT_TABLES`, so the other sidecars are already parsed into
         # `fact_rows` and their `source` values can be cross-checked here. Warnings only — the gate
@@ -3657,6 +3685,13 @@ def compile_module(
         FrequencyRow: (_frequency_checks, lambda rows: _build_frequencies(rows, module_name)),
         GeneMetricsRow: (_gene_metrics_checks, lambda rows: _build_table(rows, GeneMetricsRow, module_name)),
         LiteratureRow: (_literature_checks, lambda rows: _build_table(rows, LiteratureRow, module_name)),
+        GeneValidityRow: (
+            _gene_validity_checks, lambda rows: _build_table(rows, GeneValidityRow, module_name),
+        ),
+        ClinicalAssertionRow: (
+            _clinical_assertion_checks,
+            lambda rows: _build_table(rows, ClinicalAssertionRow, module_name),
+        ),
         SourceRow: (_sources_checks, lambda rows: _build_table(rows, SourceRow, module_name)),
     }
 
@@ -3689,6 +3724,8 @@ def compile_module(
     frequency_rows: list[FrequencyRow] = fact_rows.get(FrequencyRow, [])
     gene_metrics_rows: list[GeneMetricsRow] = fact_rows.get(GeneMetricsRow, [])
     literature_rows: list[LiteratureRow] = fact_rows.get(LiteratureRow, [])
+    gene_validity_rows: list[GeneValidityRow] = fact_rows.get(GeneValidityRow, [])
+    clinical_assertion_rows: list[ClinicalAssertionRow] = fact_rows.get(ClinicalAssertionRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
 
     logs = _collect_logs(spec_dir, output_dir, log_files)
@@ -3734,6 +3771,8 @@ def compile_module(
         resolution_sources=resolution_sources,
         frequency=_frequency_block(frequency_rows),
         gene_metrics=_gene_metrics_block(gene_metrics_rows),
+        gene_validity=_gene_validity_block(gene_validity_rows),
+        clinical_assertions=_clinical_assertions_block(clinical_assertion_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),
     )
@@ -3786,6 +3825,55 @@ def _gene_metrics_block(rows: list[GeneMetricsRow]) -> GeneMetrics | None:
         datasets=sorted({r.dataset for r in rows if r.dataset}),
         row_count=len(rows),
         genes=sorted({r.gene for r in rows}),
+    )
+
+
+def _gene_validity_block(rows: list[GeneValidityRow]) -> GeneValidity | None:
+    """The manifest's `gene_validity` summary, or `None` when the module carries no such sidecar.
+
+    Every facet is a sorted set, including `classifications` — the strength ladder is published once,
+    as `vocab.ORDERED_GENE_VALIDITY`, so this block does not encode a second copy of it that could
+    drift. `diseases` is here because indexing a module by condition is the reason a catalog would
+    read this block instead of the parquet.
+    """
+    if not rows:
+        return None
+    return GeneValidity(
+        signature=_gene_validity_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        genes=sorted({r.gene for r in rows}),
+        diseases=sorted({r.disease_id for r in rows if r.disease_id}),
+        classifications=sorted({r.classification for r in rows if r.classification}),
+        submitters=sorted({r.submitter for r in rows if r.submitter}),
+    )
+
+
+def _clinical_assertions_block(rows: list[ClinicalAssertionRow]) -> ClinicalAssertions | None:
+    """The manifest's `clinical_assertions` summary, or `None` when the module carries no such sidecar.
+
+    The star range is `min`/`max` over the rows that state one, and `None` when none does — never a
+    zero. That is the same rule `Literature.quotes_found` follows and it matters more here: 0 is a real
+    rating ("no assertion criteria provided"), so collapsing "nothing was rated" into it would report
+    the module's evidence as the worst kind available rather than as unstated. `unrated_count` carries
+    the size of that gap, because a range over an unstated fraction is not something a catalog can
+    filter on.
+    """
+    if not rows:
+        return None
+    rated = [r.review_stars for r in rows if r.review_stars is not None]
+    return ClinicalAssertions(
+        signature=_clinical_assertion_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        variant_count=len({r.variant_key for r in rows}),
+        clin_sigs=sorted({r.clin_sig for r in rows if r.clin_sig}),
+        min_review_stars=min(rated) if rated else None,
+        max_review_stars=max(rated) if rated else None,
+        unrated_count=sum(1 for r in rows if r.review_stars is None),
+        not_found_count=sum(1 for r in rows if r.status == "not_found"),
     )
 
 
@@ -3993,6 +4081,8 @@ def _build_manifest(
     vrs_alleles_identified: int = 0,
     frequency: Frequency | None = None,
     gene_metrics: GeneMetrics | None = None,
+    gene_validity: GeneValidity | None = None,
+    clinical_assertions: ClinicalAssertions | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
 ) -> ModuleManifest:
@@ -4046,6 +4136,8 @@ def _build_manifest(
         ),
         frequency=frequency,
         gene_metrics=gene_metrics,
+        gene_validity=gene_validity,
+        clinical_assertions=clinical_assertions,
         literature=literature,
         sources=sources,
         # Author-declared and registry-overridable, the same advisory pattern as module.version.
@@ -4446,6 +4538,68 @@ def _cross_check_gene_metrics(
         return []
     return [
         f"gene_metrics.csv names {len(orphans)} gene(s) this module never mentions: {orphans}"
+    ]
+
+
+def _cross_check_gene_validity(
+    rows: list[GeneValidityRow], variants: list[VariantRow]
+) -> list[str]:
+    """Warn when a gene-validity row names a gene the module never mentions (RM24).
+
+    The gene-metrics orphan check with one table swapped, deliberately: the two sidecars answer
+    different questions about the same key, so an over-broad table fails the same way and a reader
+    should see the same sentence. Warning-only for the same reason — an extra row is harmless, and the
+    compiler cannot tell a stale row from a curator's deliberate context.
+    """
+    if not variants:
+        return []
+    genes = {v.gene for v in variants if v.gene}
+    if not genes:
+        return []
+    orphans = sorted({r.gene for r in rows if r.gene not in genes})
+    if not orphans:
+        return []
+    return [
+        f"gene_validity.csv names {len(orphans)} gene(s) this module never mentions: {orphans}"
+    ]
+
+
+def _cross_check_clinical_assertions(
+    rows: list[ClinicalAssertionRow], variants: list[VariantRow]
+) -> list[str]:
+    """Warn when a clinical-assertion row describes a coordinate no variant in the module sits at.
+
+    Matched at *position* level (`chrom:start:ref`, no alt), exactly as `_cross_check_frequencies`
+    does and for its reason: the sidecar is per-allele while a module row may be position-only or
+    multi-allelic, so comparing `variant_key` for equality would false-alarm on rows that are about
+    the same locus.
+
+    **It does not compare the calls.** Whether the module's own `clin_sig` agrees with the archive's
+    is `enricher.clinical.verify_clin_sig`'s question, it needs a reference the compiler is barred
+    from holding, and it warns in both modes on purpose because failing would make the format
+    arbitrate a clinical dispute. Recording the archive's side in a table does not move that line, and
+    a coherence check here must not quietly become the escalation that was parked.
+    """
+    if not variants:
+        return []
+    positions = {
+        derive_variant_key(None, v.chrom, v.start, v.ref) for v in variants if v.chrom is not None
+    }
+    if not positions:
+        return []
+    orphans = sorted(
+        {
+            f"{r.chrom}:{r.start}:{r.ref}"
+            for r in rows
+            if r.chrom is not None
+            and derive_variant_key(None, r.chrom, r.start, r.ref) not in positions
+        }
+    )
+    if not orphans:
+        return []
+    return [
+        f"clinical_assertions.csv describes {len(orphans)} coordinate(s) no variant in this module "
+        f"sits at: {orphans}"
     ]
 
 
