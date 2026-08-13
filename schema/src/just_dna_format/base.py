@@ -36,6 +36,7 @@ from pydantic import (
     model_validator,
 )
 
+from just_dna_format.alleles import SYMBOLIC_ALLELE_TYPES, parse_symbolic_allele
 from just_dna_format.vocab import (
     ALLELE_PATTERN,
     VALID_CLIN_SIG,
@@ -244,10 +245,46 @@ def _mint_vrs_key(
 DEFAULT_GENOME_BUILD: str = "GRCh38"
 
 
+def genotype_allele_ok(allele: str) -> bool:
+    """Whether one member of a genotype is spellable: a nucleotide string, or a symbolic allele.
+
+    The single place `_validate_genotype` decides what an allele *is*, so the three arms of the
+    grammar (phased pair, hemizygous single, unphased pair) cannot drift apart — they did not, but
+    the check was written out three times and a widening had to be applied three times with it.
+
+    Symbolic alleles joined in 0.6 (RM5): a genotype may name one (`<DEL:1500>/A` — a heterozygous
+    deletion), because that is exactly the call a consumer reading a structural VCF has in hand.
+    A *lengthless* one passes here and is refused by the compiler; see `vocab.validate_allele` for
+    why the split is forced rather than chosen.
+    """
+    return bool(ALLELE_PATTERN.match(allele)) or parse_symbolic_allele(allele) is not None
+
+
+#: What `_validate_genotype` will accept, spelled once for the three messages that have to say it.
+_GENOTYPE_ALLELE_GRAMMAR: str = (
+    f"nucleotides, or a symbolic/structural allele from {sorted(SYMBOLIC_ALLELE_TYPES)} carrying "
+    f"its length (e.g. <DEL:1500>)"
+)
+
+
 class AuthoredModel(BaseModel):
     """Base for authored-DSL rows: reserved-namespace guard + shared-vocabulary field validators."""
 
     model_config = ConfigDict(extra="forbid")
+
+    #: Which of this model's columns hold an **allele sequence**, declared on the model itself (RM5).
+    #:
+    #: The compiler's symbolic-allele check reads it, and it is a `ClassVar` beside `REQUIRED_ANY_OF`
+    #: for the same reason that one is: the fact belongs to the model, and a list kept in the compiler
+    #: would be a second copy of a model's column names — the drift `SOURCES_FIELDNAMES` already
+    #: demonstrated. Empty here, so a model that carries no allele is silent by default rather than by
+    #: omission.
+    #:
+    #: **Sequence columns only.** `AlleleFunctionRow.allele` is a star-allele *name* (`*4`), not a
+    #: sequence, and stays out — as does every column that merely *points at* a variant
+    #: (`StudyRow.ref`) and every fact sidecar (`FrequencyRow`, `ResolutionRow`): a fact table is
+    #: injected rather than authored, and a check that drops rows must never rewrite injected facts.
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ()
 
     #: The module's declared assembly, **injected by the loader, never authored**.
     #:
@@ -361,22 +398,26 @@ class AuthoredModel(BaseModel):
                     f"phased genotype must be two pipe-separated alleles (e.g. A|G), got: {v!r}"
                 )
             for allele in parts:
-                if not ALLELE_PATTERN.match(allele):
+                if not genotype_allele_ok(allele):
                     raise ValueError(
-                        f"genotype alleles must be nucleotides, got: {allele!r} in {v!r}"
+                        f"genotype alleles must be {_GENOTYPE_ALLELE_GRAMMAR}, got: "
+                        f"{allele!r} in {v!r}"
                     )
             return v
         parts = v.split("/")
         if len(parts) == 1:
             # Hemizygous single allele (non-PAR X/Y in males; homoplasmic MT). ROADMAP 0.3 item 5b.
-            if not ALLELE_PATTERN.match(parts[0]):
-                raise ValueError(f"genotype allele must be nucleotides, got: {v!r}")
+            if not genotype_allele_ok(parts[0]):
+                raise ValueError(
+                    f"genotype allele must be {_GENOTYPE_ALLELE_GRAMMAR}, got: {v!r}"
+                )
             return v
         if len(parts) == 2:
             for allele in parts:
-                if not ALLELE_PATTERN.match(allele):
+                if not genotype_allele_ok(allele):
                     raise ValueError(
-                        f"genotype alleles must be nucleotides, got: {allele!r} in {v!r}"
+                        f"genotype alleles must be {_GENOTYPE_ALLELE_GRAMMAR}, got: "
+                        f"{allele!r} in {v!r}"
                     )
             if parts != sorted(parts):
                 raise ValueError(

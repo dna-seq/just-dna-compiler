@@ -175,6 +175,56 @@ reason its `source` column is inside its fact set while everywhere else `source`
   `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already rejects
   any unknown column).
 
+## The allele grammar — bases, and the five structural types (RM5, 0.6)
+
+An allele is a nucleotide string, or a **symbolic/structural allele carrying its length**:
+`<DEL:1500>`, `<CNV:TR:30>`, `<DUP:TANDEM:120>`. The first level is VCF 4.4's **closed five** —
+`DEL`, `INS`, `DUP`, `INV`, `CNV` (`alleles.SYMBOLIC_ALLELE_TYPES`); subtypes are colon-separated and
+**open**, because the standard leaves them to the implementation
+(`alleles.RECOMMENDED_SYMBOLIC_SUBTYPES` seeds the four it recommends).
+
+**Spelling the bases out stays the default**, and that is the standard's own instruction: *"when the
+exact sequence is known, the variant can be represented as a non-symbolic ALT allele"*. So 5-HTTLPR —
+a ~43 bp indel whose sequence is known — is authored as a plain indel, not as a named `<S>`/`<L>`
+pair. Symbolic notation is for imprecision.
+
+**The length rides inside the token, not in a column beside it.** VCF carries it as `INFO/SVLEN`,
+which this DSL has no equivalent of, so the choice was a new authored column or the allele string.
+The column loses three ways: SVLEN is `Number=A` — *one value per ALT* — so a scalar column cannot
+describe `alts=<DEL:5>,<DUP:9>` and a parallel-array column is the desync shape `ResolutionRow.vrs_id`
+needed two guards for; `genotype` names two alleles at once and `HaplotypeRow.allele` /
+`VariantRow.effect_allele` are single cells on rows about something else, so three of the columns that
+hold an allele have no row-level home for it at all; and an authored column is **full cost** under the
+0.6 charter amendment, on every table that can carry an allele, forever.
+
+**Where the grammar bites — three sites.** `vocab.validate_allele` (two users:
+`HaplotypeRow.allele` and `VariantRow.effect_allele`) and the shared diploid grammar
+`AuthoredModel._validate_genotype` (`VariantRow`, required; `PharmVariantRow`, optional), whose
+per-allele decision is the one helper `base.genotype_allele_ok`. `ref`/`alt`/`alts` still have **no**
+grammar — eleven columns across six models — and adding one stays refused: it would reject `N`, which
+is real, and break P3 for a module that already carries an odd cell.
+
+**What is deliberately not here.** No `##ALT=<ID=…,Description="…">` declaration mechanism and no
+arbitrary named IDs: it is what VCF offers and it is unasked extendability in the one layer a human
+reads, so it stays gated behind a real consumer report. No readable alias carrying its own sequence
+either — it would create two spellings of one allele that the comparison and identity paths would both
+have to resolve. CPIC's IUPAC codes (`R`) and its `DELTCT`/`AAAGGGGCG(2)` notations stay unexpressible;
+they are not VCF symbolic alleles. And `<*>` is **not** one of the five — it makes an *observability*
+claim rather than naming a variant, which is a different axis.
+
+**Two consequences that follow rather than being chosen.** A symbolic allele mints no
+content-addressed identity — a VRS allele id is a digest of a sequence, and there is none — so it
+falls through to the coordinate key exactly as an indel does. And comparing it against a spelled
+allele is **undecided**, never "no match": it has no flank for `alleles.parsimony_reduce`, so
+`hosting_verdict` returns `None` (see [COMPILER.md](COMPILER.md)).
+
+**A lengthless `<DEL>` loads and the compiler refuses it**, which is forced rather than chosen: a
+model-level rejection is a load error, fatal in *both* modes, while the decided behaviour is
+warn-and-drop under `best_effort`. The schema says what the DSL can spell; the compiler says what
+makes a usable rulebook. `alleles.symbolic_allele_defect` is the shared classifier, and
+`AuthoredModel.ALLELE_COLUMNS` — declared on each model beside `REQUIRED_ANY_OF` — is what tells the
+compiler which columns to read.
+
 ## Row models — key fields
 
 Only the load-bearing fields are listed; read the model for the full set and validators. `?` = optional.
@@ -273,7 +323,8 @@ Discrete kinds are unchanged — `repeat_count`/`copy_number` tile cleanly under
 is where the convention came from, so for them a shared endpoint is still a real overlap and an error.
 Two bins sharing a *lower* bound refuse on any kind: the tie-break has nothing to order.
 
-**PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction, nucleotide allele);
+**PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction; the allele is bases or a symbolic
+structural allele — see *The allele grammar* above);
 `AlleleFunctionRow` (`gene`+star `allele` verbatim identity, `function_status` in `VALID_FUNCTION_STATUS`,
 `activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
 `a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`, CPIC `recommendation_strength?`
@@ -285,8 +336,10 @@ annotation is stated **per genotype**, and the calls can be opposed (rs4149056/s
 "decreased" for CC and CT, "increased" for TT). It is therefore in the dedup key
 `(variant_key, drug, genotype)` — without it the real corpus was rejected as duplicate rows. The
 grammar is the shared `AuthoredModel` one, so a genotype means the same thing here as on a
-`VariantRow`; a haplotype-keyed annotation (`*1`) belongs on `DiplotypeRow` instead, and a symbolic
-allele (`del/del`) stays RM5 rather than widening the nucleotide grammar.
+`VariantRow`; a haplotype-keyed annotation (`*1`) belongs on `DiplotypeRow` instead. A structural
+allele (`del/del`) is now spellable — RM5 shipped in 0.6 — but ClinPGx publishes no **length** for it,
+and a lengthless symbolic allele is a rule the compiler drops, so `clinpgx_draft` still declines to
+write those rows and now says which of the two reasons it is.
 
 `DiplotypeRow.clinical_context` (0.5, RM29b) is the same shape of fix one table over: CPIC scopes a
 gene/drug recommendation to a **setting**, and the settings disagree. Clopidogrel carries three

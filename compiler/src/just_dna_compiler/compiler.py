@@ -21,13 +21,18 @@ import types
 import warnings
 from collections import defaultdict
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Union, get_args, get_origin
 
 import polars as pl
 import yaml
-from just_dna_format.alleles import non_nucleotide_reason
+from just_dna_format.alleles import (
+    is_symbolic_allele,
+    non_nucleotide_reason,
+    symbolic_allele_defect,
+)
 from just_dna_format.base import (
     DEFAULT_GENOME_BUILD,
     AuthoredModel,
@@ -1098,10 +1103,17 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     The consequence sentence belongs *inside* the branch it is true of. The first cut appended "an
     ambiguity code is an uncertainty and is never expanded…" to every finding, so a `<DEL>` locus was
     told about ambiguity codes — the identical conflation `cpic.unusable_allele_reason` was repaired to
-    stop making, reintroduced in the message that repair paid for. Two reasons, two consequences: an
-    uncertainty is permanent, a grammar gap is a release away.
+    stop making, reintroduced in the message that repair paid for. Three reasons, three consequences:
+    an uncertainty is permanent, a symbolic allele is held by the grammar and simply not comparable
+    here, and a grammar gap is what is left.
+
+    The `"notation"` clause used to say a `<DEL>` is "a grammar gap (RM5) … a future release may widen
+    to hold it". RM5 shipped in 0.6, so that reading became false for the five structural types, and
+    `alleles.non_nucleotide_reason` now separates them — which is why this clause list grew a third arm
+    rather than reworded the second.
     """
     ambiguity = [a for a, reason in offenders.items() if reason == "ambiguity"]
+    symbolic = [a for a, reason in offenders.items() if reason == "symbolic"]
     notation = [a for a, reason in offenders.items() if reason == "notation"]
     parts: list[str] = []
     if ambiguity:
@@ -1110,11 +1122,17 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
             f"nucleotide (`Y` is C-or-T) — an uncertainty, so it is never expanded into the alleles it "
             f"could stand for and can match no genotype"
         )
+    if symbolic:
+        parts.append(
+            f"{', '.join(repr(a) for a in symbolic)} is a symbolic/structural allele, which the grammar "
+            f"holds (RM5) — it names a variant whose sequence is deliberately unspelled, so comparing it "
+            f"against a spelled allele is undecided rather than a mismatch"
+        )
     if notation:
         parts.append(
-            f"{', '.join(repr(a) for a in notation)} is not a nucleotide string at all (a symbolic or "
-            f"structural allele) — a grammar gap (RM5) rather than a genotype error, and a future "
-            f"release may widen to hold it"
+            f"{', '.join(repr(a) for a in notation)} is neither a nucleotide string nor a symbolic "
+            f"allele the format holds (a repeat notation like `AAAGGGGCG(2)`, a deletion spelling like "
+            f"`DELTCT`, or a typo) — a grammar gap rather than a genotype error"
         )
     return "; and ".join(parts)
 
@@ -1207,6 +1225,195 @@ def _check_allele_membership(
             continue
         (errors if strict else warnings_out).extend(findings)
     return errors, warnings_out
+
+
+# ── Symbolic / structural alleles (RM5) ─────────────────────────────────────────────────────────
+#
+# Which authored tables the symbolic-allele check may **drop a row from**, and which it must refuse on
+# instead. The line is whether a row stands alone as a rule.
+#
+# `variants.csv` and `pharm_variants.csv` are one self-contained rule per row: dropping one removes a
+# claim and removes nothing else, which is exactly the decided `best_effort` behaviour — a module is a
+# declarative rulebook, and an unusable rule is worse than an absent one.
+#
+# `haplotypes.csv` and `heteroplasmy.csv` rows are *parts of a composite*. Dropping a haplotype's
+# defining variant silently redefines the haplotype — the module would go on naming `*5` while
+# describing something else — and dropping a bin punches a hole in a tiling `_validate_table_kind`
+# just checked. Neither is a smaller module; both are a **different** one, asserted quietly. So the
+# finding is fatal in both modes there, and the message says why the `best_effort` escape is not on
+# offer. It is clearable by an authored edit (state the length), which is what separates it from the
+# findings P5 keeps out of `strict`.
+_SYMBOLIC_DROPPABLE_TABLES: frozenset[str] = frozenset({"variants.csv", "pharm_variants.csv"})
+
+#: Splits a cell into the alleles it names: `/` and `|` for a genotype, `,` for a multi-allelic `alts`.
+#: One splitter for every allele column — no allele column uses these characters within a token.
+_ALLELE_CELL_SEP: re.Pattern[str] = re.compile(r"[,/|]")
+
+
+@dataclass(frozen=True)
+class _SymbolicFinding:
+    """One unusable symbolic allele, located well enough for an author to go and fix it."""
+
+    table: str
+    row: int  # 1-based data-row index, matching what `_load_csv_rows` reports
+    column: str
+    allele: str
+    reason: str  # "no_length" | "unknown_type" | "reference_allele"
+
+
+#: Reason → (what is wrong, what to do). Written out rather than composed, because the three are
+#: different findings with different fixes and running them together is the conflation this codebase
+#: has unwound twice (`cpic.unusable_allele_reason`, `_spelling_clauses`).
+_SYMBOLIC_REASONS: dict[str, str] = {
+    "no_length": (
+        "a symbolic allele with no usable length. A <DEL> that does not say how long it is cannot be "
+        "sized, matched against a call, or told apart from any other deletion at the same position, so "
+        "the rule states nothing a consumer can apply. Spell the length into the allele — <DEL:1500>, "
+        "<CNV:TR:30> — or, when the sequence is actually known, spell the bases out instead (VCF 4.4 "
+        "says to: symbolic notation is for imprecision)"
+    ),
+    "unknown_type": (
+        "an allele that is angle-bracketed but not one this format holds. The first level is the closed "
+        "five DEL/INS/DUP/INV/CNV (subtypes are free-form, e.g. <CNV:TR>, <DUP:TANDEM>); there is no "
+        "declaration mechanism for arbitrary names, deliberately. VCF's <*> is not one of them either "
+        "— it makes a claim about what could be *observed*, which is a different axis from what the "
+        "variant *is*"
+    ),
+    "reference_allele": (
+        "a symbolic allele in a reference-allele column. REF is always a sequence — the padding base "
+        "and whatever follows it — and a structural allele names an ALT; a locus whose own reference "
+        "is unspelled anchors nothing"
+    ),
+}
+
+
+def _symbolic_findings(rows_by_table: dict[str, list[Any]]) -> list[_SymbolicFinding]:
+    """Every unusable symbolic allele in the authored rows, in a deterministic order.
+
+    Which columns hold an allele comes from the **model** (`AuthoredModel.ALLELE_COLUMNS`), never from
+    a list kept here: a compiler-side copy of a model's column names is the drift `SOURCES_FIELDNAMES`
+    already demonstrated, and this check would go quietly blind the day a model gained a column.
+
+    Sorted by `(table, reason, row, column)` so the messages built from it are byte-stable — findings
+    reach `manifest.compilation.warnings`, so their order is artifact-visible.
+    """
+    found: list[_SymbolicFinding] = []
+    for table, rows in rows_by_table.items():
+        for index, row in enumerate(rows, start=1):
+            for column in getattr(type(row), "ALLELE_COLUMNS", ()):
+                cell = getattr(row, column, None)
+                if not isinstance(cell, str):
+                    continue
+                for token in _ALLELE_CELL_SEP.split(cell):
+                    allele = token.strip()
+                    if not is_symbolic_allele(allele):
+                        continue
+                    reason = (
+                        "reference_allele" if column == "ref"
+                        else symbolic_allele_defect(allele)
+                    )
+                    if reason is not None:
+                        found.append(
+                            _SymbolicFinding(table, index, column, allele, reason)
+                        )
+    return sorted(found, key=lambda f: (f.table, f.reason, f.row, f.column))
+
+
+def _symbolic_allele_messages(findings: list[_SymbolicFinding]) -> list[str]:
+    """One aggregated line per (table, reason) — never one per row.
+
+    A structural panel drafted from a caller's VCF hits this per locus, and a line each buries every
+    other finding in the run. The grouping is by **reason** rather than by row for the other half of
+    the same rule: two reasons under one message is the mistake that took four rounds to stop making
+    in the CPIC provider.
+
+    The wording is identical in `validate_spec` and `compile_module` on purpose. `compile_module` runs
+    `validate_spec` first, in `best_effort` whatever its own mode, so a check living in both places
+    emits its sentence twice and the compile side de-duplicates **on the message**.
+    """
+    messages: list[str] = []
+    grouped: dict[tuple[str, str], list[_SymbolicFinding]] = {}
+    for finding in findings:  # already sorted, so insertion order is deterministic
+        grouped.setdefault((finding.table, finding.reason), []).append(finding)
+    for (table, reason), entries in grouped.items():
+        # Rows, not findings. One row routinely carries the same unusable allele in three columns
+        # (`alts`, `genotype`, `effect_allele`), and the sentence says "row(s)" — counting findings
+        # there would report three rows dropped where one is.
+        affected = len({e.row for e in entries})
+        shown = ", ".join(
+            f"row {e.row} {e.column}={e.allele!r}" for e in entries[:3]
+        )
+        rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
+        fate = (
+            "Those row(s) are DROPPED from the compiled artifact — reverse will not re-emit them — "
+            "and --strict refuses instead."
+            if table in _SYMBOLIC_DROPPABLE_TABLES
+            else (
+                f"This is fatal in both modes: a {table} row is part of a composite (a haplotype's "
+                f"definition, a bin tiling), so dropping it would not make a smaller module but a "
+                f"quietly different one."
+            )
+        )
+        messages.append(
+            f"{table}: {affected} row(s) carry {_SYMBOLIC_REASONS[reason]}. {fate} "
+            f"e.g. {shown}{rest}."
+        )
+    return messages
+
+
+def _check_symbolic_alleles(
+    rows_by_table: dict[str, list[Any]], *, strict: bool
+) -> tuple[list[str], list[str], dict[str, set[int]]]:
+    """`(errors, warnings, rows to drop per table)` for unusable symbolic alleles (RM5).
+
+    **The schema accepts what this refuses, and that split is forced rather than chosen.** A model-level
+    rejection surfaces through `load_csv_rows` as a load error, which is fatal in *both* modes; the
+    decided behaviour is warn-and-drop under `best_effort`. So the grammar says what the DSL can spell
+    (`vocab.validate_allele`, `AuthoredModel._validate_genotype`) and this says what makes a usable
+    rulebook. Do not "tighten" it back into the models.
+
+    One asymmetry worth expecting: `<FOO>` fails at *load* in `genotype`/`effect_allele`/
+    `HaplotypeRow.allele`, because those columns have a grammar, and reaches this check only through
+    `ref`/`alts`, which deliberately have none (adding one would reject `N` and break P3). Same
+    diagnosis either way; different point of arrival.
+
+    Pure computation over authored bytes with no `output_dir`, so by the standing rule it runs in
+    `validate_spec` too — where nothing is dropped and the message is a prediction of what a compile
+    will do.
+    """
+    findings = _symbolic_findings(rows_by_table)
+    if not findings:
+        return [], [], {}
+    fatal = [f for f in findings if f.table not in _SYMBOLIC_DROPPABLE_TABLES]
+    droppable = [f for f in findings if f.table in _SYMBOLIC_DROPPABLE_TABLES]
+    errors = _symbolic_allele_messages(fatal)
+    if strict:
+        errors.extend(_symbolic_allele_messages(droppable))
+        return errors, [], {}
+    drops: dict[str, set[int]] = {}
+    for finding in droppable:
+        drops.setdefault(finding.table, set()).add(finding.row)
+    return errors, _symbolic_allele_messages(droppable), drops
+
+
+def _apply_symbolic_drops(
+    rows: list[Any], drop_rows: set[int], table: str
+) -> tuple[list[Any], list[str]]:
+    """Remove the flagged rows, refusing to leave the table empty.
+
+    Emptying a table is an error in **both** modes, and the rule is derived rather than invented:
+    `validate_spec` already refuses a directory where a present table has no rows, so a drop that
+    reaches zero would land the module in a state its own validator calls invalid — reported here,
+    where the reason is still legible, instead of as a mystery further down.
+    """
+    kept = [row for index, row in enumerate(rows, start=1) if index not in drop_rows]
+    if kept or not rows:
+        return kept, []
+    return rows, [
+        f"{table}: every row was dropped for carrying an unusable symbolic allele, which would leave "
+        f"the table present and empty — a state this compiler refuses on its own account. Fix the "
+        f"alleles, or remove the table."
+    ]
 
 
 def _check_p_value_num(
@@ -2059,6 +2266,16 @@ def validate_spec(
     # computation over authored bytes with no `output_dir`, so it belongs to the pre-flight.
     all_warnings.extend(_check_binning_grounding(loaded_kinds, studies))
 
+    # Symbolic/structural alleles the module cannot actually apply (RM5). Pure computation over
+    # authored bytes and a **mode ladder** on the droppable tables, so it belongs here by the standing
+    # rule — the same one `_check_allele_membership` was moved here under. Nothing is dropped in this
+    # command; the message states what a compile will do, which is what a pre-flight is for.
+    symbolic_errors, symbolic_warnings, _ = _check_symbolic_alleles(
+        {"variants.csv": variants, **loaded_kinds}, strict=strict
+    )
+    all_errors.extend(symbolic_errors)
+    all_warnings.extend(symbolic_warnings)
+
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
@@ -2295,8 +2512,40 @@ def compile_module(
         studies, _, _ = _load_csv_rows(
             spec_dir / "studies.csv", StudyRow, "studies.csv", genome_build=config.genome_build
         )
+    # The 0.4 table kinds, loaded here rather than at materialization time. Two reasons, and the
+    # second is the load-bearing one: the symbolic-allele check below has to reach them, and a check
+    # that can refuse must do so **before** `output_dir.mkdir()` — the placement the licence gate
+    # already has, for the same reason. (It also removes a second load of every table kind.)
+    kind_rows: dict[str, list[Any]] = {}
+    for csv_name, _parquet_name, model in _TABLE_KINDS:
+        if (spec_dir / csv_name).exists():
+            kind_rows[csv_name], _, _ = _load_csv_rows(
+                spec_dir / csv_name, model, csv_name, genome_build=config.genome_build
+            )
 
     all_warnings = list(validation.warnings)
+
+    # Symbolic/structural alleles the module cannot apply (RM5). Runs before anything is written, and
+    # before resolution, because it decides which rows exist: under `best_effort` a row stating an
+    # unusable rule is **dropped** (the warning says so — `reverse` will not re-emit it), under
+    # `strict` the compile refuses. Re-run here rather than trusted from `validate_spec`, which ran in
+    # `best_effort` whatever this compile's mode; the warnings it already produced are de-duplicated
+    # on the message, the way ploidy's and allele-membership's are.
+    symbolic_errors, symbolic_warnings, symbolic_drops = _check_symbolic_alleles(
+        {"variants.csv": variants, **kind_rows}, strict=strict
+    )
+    all_warnings.extend(w for w in symbolic_warnings if w not in all_warnings)
+    if symbolic_drops:
+        for table, drop_rows in symbolic_drops.items():
+            rows = variants if table == "variants.csv" else kind_rows[table]
+            kept, refusals = _apply_symbolic_drops(rows, drop_rows, table)
+            symbolic_errors.extend(refusals)
+            if table == "variants.csv":
+                variants = kept
+            else:
+                kind_rows[table] = kept
+    if symbolic_errors:
+        return CompilationResult(success=False, errors=symbolic_errors, warnings=all_warnings)
 
     # The source-independent resolution table (0.5), if authored/produced beside the spec. When
     # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and
@@ -2536,17 +2785,14 @@ def compile_module(
     if studies_df is not None:
         studies_df.write_parquet(output_dir / "studies.parquet", compression=compression)
 
-    # 0.4 table kinds (RM1): materialize each present CSV via the generic materializer.
+    # 0.4 table kinds (RM1): materialize each present CSV via the generic materializer. The rows were
+    # loaded above, before `mkdir`, so the symbolic-allele check could refuse without leaving a
+    # half-written directory behind — and so a row it dropped is absent from the parquet here.
     table_rows: dict[str, int] = {}
-    kind_rows: dict[str, list[Any]] = {}
     for csv_name, parquet_name, model in _TABLE_KINDS:
-        kind_path = spec_dir / csv_name
-        if not kind_path.exists():
+        rows = kind_rows.get(csv_name)
+        if rows is None:
             continue
-        rows, _, _ = _load_csv_rows(
-            kind_path, model, csv_name, genome_build=config.genome_build
-        )
-        kind_rows[csv_name] = rows
         table_df = _build_table(rows, model, module_name)
         table_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = table_df.height

@@ -321,6 +321,8 @@ class HeteroplasmyRow(MeasureBinRow):
     )
     ref: str | None = Field(default=None, description="Reference allele, e.g. A")
     alts: str | None = Field(default=None, description="Alternate allele(s), e.g. G")
+    #: The locus these bins are about. See `AuthoredModel.ALLELE_COLUMNS`.
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "alts")
     reference_sequence: str = Field(
         description="MT reference accession, part of the key, e.g. NC_012920.1 (rCRS)"
     )

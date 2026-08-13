@@ -17,7 +17,11 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from just_dna_format.alleles import non_nucleotide_alleles, parsimony_reduce
+from just_dna_format.alleles import (
+    is_symbolic_allele,
+    non_nucleotide_alleles,
+    parsimony_reduce,
+)
 from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
@@ -286,19 +290,25 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
     2. **The raw strings match → `True`.** Checked *before* any normalization so this function can only
        ever gain acceptances: whatever passed before still passes, byte for byte, which is what keeps the
        expansion (and every module's digest) stable except where a genuine reconciliation happens.
-    3. **The reduced allele sets match → `True`.** `alleles.parsimony_reduce` strips the flank each
+    3. **Either side names a symbolic allele → `None`.** A `<DEL:1500>` has no sequence, so it has no
+       flank for `parsimony_reduce` and nothing to compare character by character — and a symbolic
+       allele exists *because* the exact sequence is not known, so even two stated lengths that differ
+       are summary information rather than grounds for a contradiction. Undecided, never "no match"
+       (RM5). Below the raw comparison, so `<DEL:1500>` against a locus spelling `<DEL:1500>` still
+       matches exactly.
+    4. **The reduced allele sets match → `True`.** `alleles.parsimony_reduce` strips the flank each
        collection shares, leaving the event; ClinVar's `C/CAG` and Ensembl's `AGAG>AG` both reduce to
        `{'', 'AG'}`, the SHOX 2 bp deletion that used to resolve to `not_found`.
-    4. **The locus is a substitution or MNV → `False`.** No flank, so no spelling freedom: an `A/G`
+    5. **The locus is a substitution or MNV → `False`.** No flank, so no spelling freedom: an `A/G`
        genotype at a `C>T` locus is a real contradiction, and must stay one (a strand flip is exactly
        what that check catches).
-    5. **The genotype names fewer than two distinct alleles → `None`.** A homozygous `C/C` carries no
+    6. **The genotype names fewer than two distinct alleles → `None`.** A homozygous `C/C` carries no
        frame — one string has nothing to be relative to — so against an indel locus there is genuinely
        nothing to compare. Reported as undecided, never as a contradiction.
-    6. **An event length the locus does not offer → `False`.** The confident negative:
+    7. **An event length the locus does not offer → `False`.** The confident negative:
        left-alignment moves an indel, it never changes how many bases the event adds or removes, so a
        1 bp insertion cannot be a 2 bp deletion however it is spelled.
-    7. **Otherwise → `None`.** Same lengths, different content: one variant rotated inside a repeat, or
+    8. **Otherwise → `None`.** Same lengths, different content: one variant rotated inside a repeat, or
        two different variants, and only the reference sequence can say which. The enricher can settle
        it (seqrepo); the compiler holds no reference by charter (P2), so it withholds.
 
@@ -312,6 +322,15 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
     called = {a.upper() for a in _GENOTYPE_SEP.split(genotype) if a}
     if called <= locus:
         return True
+
+    # RM5. A symbolic allele names a variant whose sequence is deliberately unspelled, so from here on
+    # every step is a comparison of *characters* and there are none to compare: `parsimony_reduce`
+    # would treat `<DEL:1500>` as a nine-character sequence, `_indel_shaped` would read its bracket
+    # count as an event length, and step 7 would then return a confident `False` on arithmetic over a
+    # token. Undecided is the honest answer, and it only ever *adds* acceptances (`genotype_fits`
+    # keeps an undecided locus), so no expansion and no digest moves for a module spelling in bases.
+    if any(is_symbolic_allele(a) for a in locus | called):
+        return None
 
     called_events = parsimony_reduce(called)
     locus_events = parsimony_reduce(locus)
@@ -450,10 +469,11 @@ def spelling_caveat(ref: str | None, alts: str | None) -> str:
     nucleotide alphabet, not between the genotype and the variant. Reporting the generic message there
     sends the author to re-examine a genotype that was correct all along.
 
-    Two reasons, kept apart, because what the author does next differs: an ambiguity code is an
+    Three reasons, kept apart, because what the author does next differs: an ambiguity code is an
     uncertainty that can never be expanded into definite alleles (expanding `N` to `A,C,G,T` asserts four
-    alleles nobody stated), while a symbolic or structural notation is a grammar gap (RM5) a release may
-    widen. Neither is repaired here — this tier reports.
+    alleles nobody stated), a well-formed symbolic allele is *held* by the grammar since RM5 and so is
+    never a spelling defect at all, and everything else non-nucleotide is a grammar gap. None is
+    repaired here — this tier reports.
     """
     offenders = non_nucleotide_alleles(ref, alts)
     if not offenders:
@@ -473,6 +493,7 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
     the *classification*, and that is `alleles.non_nucleotide_reason`, imported by both.
     """
     ambiguity = sorted(a for a, reason in offenders.items() if reason == "ambiguity")
+    symbolic = sorted(a for a, reason in offenders.items() if reason == "symbolic")
     notation = sorted(a for a, reason in offenders.items() if reason == "notation")
     parts: list[str] = []
     if ambiguity:
@@ -481,10 +502,17 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
             f"definite nucleotide (`Y` is C-or-T) — an uncertainty, so it is never expanded into the "
             f"alleles it could stand for and can match no genotype"
         )
+    if symbolic:
+        parts.append(
+            f"{', '.join(repr(a) for a in symbolic)} is a symbolic/structural allele, which the "
+            f"grammar holds (RM5) — it names a variant whose sequence is deliberately unspelled, so "
+            f"comparing it against a spelled allele is undecided rather than a mismatch"
+        )
     if notation:
         parts.append(
-            f"{', '.join(repr(a) for a in notation)} is not a nucleotide string at all (a symbolic or "
-            f"structural allele) — a grammar gap (RM5) rather than a genotype error"
+            f"{', '.join(repr(a) for a in notation)} is neither a nucleotide string nor a symbolic "
+            f"allele the format holds (a repeat notation like `AAAGGGGCG(2)`, a deletion spelling "
+            f"like `DELTCT`, or a typo) — a grammar gap rather than a genotype error"
         )
     return "; and ".join(parts)
 

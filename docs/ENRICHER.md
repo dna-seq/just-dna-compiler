@@ -1591,7 +1591,9 @@ separate step.
   findings.** IUPAC ambiguity codes (`R` at CYP2C19 `*2`, `Y` at `*4`) are an *uncertainty CPIC
   recorded* — expanding `R` would invent two defining variants where CPIC recorded one — and will never
   be expressible. Deletion/insertion and repeat notations (`DELTCT`, `AAAGGGGCG(2)`, `GGA(1)`, 23 of them
-  in CYP2D6) are a **grammar gap** (RM5) a release could widen to cover. Both are skipped, never coerced;
+  in CYP2D6) are a **grammar gap** a release could widen to cover — and note that RM5 was *not* it:
+  0.6 widened the grammar to hold VCF's five **symbolic** structural alleles (`<DEL:1500>`), which is a
+  different spelling from CPIC's `DELTCT`. Both are skipped, never coerced;
   `cpic.unusable_allele_reason` names which, and they are reported as two aggregated lines with counts.
   Calling the second kind an ambiguity code — which the message did until a real CYP2D6 draft — is a false
   claim that points an author at the wrong fix.
@@ -1659,6 +1661,16 @@ that two expert panels disagree.
 
 The declared-use gate still applies even though nothing is fetched: the terms were accepted when the
 snapshot was *built*, and using it is the same act.
+
+**`del/del` is skipped for a different reason since 0.6, and the old one became false.** `clinpgx_draft`
+used to report ClinPGx's structural genotypes as something the format could not spell. RM5 widened the
+grammar — `<DEL:1500>` is authorable now — so the block moved: ClinPGx publishes no **length**, and a
+lengthless symbolic allele is a rule the compiler drops. The pass therefore still declines to write
+those rows, because a provider must not hand an author work the next command in the documented workflow
+undoes, and the warning now names the length rather than the grammar. `_CLINPGX_SYMBOLIC` maps the
+source's dialect (`del` → `DEL`) and lives **here, at the boundary**, not in the schema — the `CC` →
+`C/C` rule beside it is the precedent, and a grammar that accepted every source's spelling would owe
+every consumer the union of them.
 
 ## CLI
 

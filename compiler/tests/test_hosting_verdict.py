@@ -50,6 +50,15 @@ _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
         # …but at a substitution locus a single allele is still decidable, because there is no
         # spelling freedom to appeal to.
         ("homozygous genotype at a substitution locus", "G/G", "C", "T", False),
+        # RM5. A symbolic allele names a variant whose sequence is deliberately unspelled, so every
+        # step below the raw comparison is arithmetic over a token. Undecided, never "no match".
+        ("symbolic genotype at a spelled locus", "<DEL:926>/G", "G", "A", None),
+        ("spelled genotype at a symbolic locus", "A/G", "G", "<DEL:926>", None),
+        # Two stated lengths that differ are still undecided: symbolic notation exists *for*
+        # imprecision, so a summary length is not the confident-negative that an event size is.
+        ("two symbolic alleles of different stated length", "<DEL:5>/G", "G", "<DEL:7>", None),
+        # …and the raw comparison still runs first, so an exact match is still an exact match.
+        ("the same symbolic allele on both sides", "<DEL:926>/G", "G", "<DEL:926>", True),
     ],
 )
 def test_the_verdict_matrix(label, genotype, ref, alts, expected) -> None:

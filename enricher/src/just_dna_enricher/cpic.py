@@ -78,6 +78,10 @@ def unusable_allele_reason(value: str) -> str | None:
     structural notation is a **grammar gap** (RM5) that a future release may widen to hold.
 
     * `"ambiguity"` — every character is a nucleotide or an IUPAC ambiguity code (`R` = A or G).
+    * `"symbolic"` — a well-formed symbolic/structural allele the grammar holds since RM5. CPIC does
+      not publish these (its own spellings are `DELTCT` and `AAAGGGGCG(2)`, which are `"notation"`),
+      so nothing here emits it today — it is carried because the classifier is shared and a reason a
+      caller cannot explain is a `KeyError` waiting for the first source that does.
     * `"notation"` — a deletion/insertion or repeat notation, not a nucleotide string at all.
 
     The classification itself moved to `just_dna_format.alleles.non_nucleotide_reason` once the compiler
@@ -94,9 +98,15 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
         "an IUPAC ambiguity code rather than a definite nucleotide (`R` is A-or-G) — an uncertainty it "
         "recorded, and expanding it would invent defining variants it never stated"
     ),
+    "symbolic": (
+        "a symbolic/structural allele — the grammar holds these since RM5, so this is a routing "
+        "problem rather than a grammar gap: the value belongs in `allele` as written"
+    ),
     "notation": (
-        "a deletion/insertion or repeat notation rather than a nucleotide string — a grammar gap (RM5) "
-        "rather than an ambiguity, and a future release may widen to hold it"
+        "a deletion/insertion or repeat notation rather than a nucleotide string — a grammar gap "
+        "rather than an ambiguity. RM5 widened the grammar to hold VCF's five *symbolic* structural "
+        "alleles (`<DEL:1500>`), which is a different spelling from CPIC's `DELTCT`; holding this one "
+        "would still need a release"
     ),
 }
 
