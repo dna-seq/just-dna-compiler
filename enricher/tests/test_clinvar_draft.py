@@ -462,3 +462,47 @@ def test_the_two_citation_shortfalls_are_reported_apart(tmp_path: Path) -> None:
     unusable = [w for w in result.warnings if "is not a\nPMID" in w or "is not a PMID" in w]
     assert len(capped) == 1
     assert not unusable, "MTHFR has no malformed citation; the sentence must not appear anyway"
+
+
+# ── the API and the CLI describe the same command (RM4) ──────────────────────────────────────────
+
+
+#: The two parameters the CLI spells differently, because a repeatable flag reads as the singular and
+#: `--use` is the word the licence gate uses. Written out rather than inferred: a rename on either
+#: side should fail this test and be looked at, which is the whole point of checking parity at all.
+_CLI_SPELLINGS = {"genes": "gene", "declared_use": "use"}
+
+
+def test_every_draft_panel_parameter_is_reachable_from_the_command_line() -> None:
+    """`download` was a parameter of `draft_gene_panel` that `draft-panel` never exposed, so a
+    documented behaviour ("provision the published snapshot when there is no local one") could be
+    turned off from Python and not from the tool. Checked as a set rather than for that one flag:
+    the next parameter added without a flag is the same defect, and this is what notices it.
+    """
+    import inspect
+
+    from just_dna_enricher.cli import draft_panel_
+
+    api = {
+        _CLI_SPELLINGS.get(name, name)
+        for name in inspect.signature(draft_gene_panel).parameters
+    }
+    assert api <= set(inspect.signature(draft_panel_).parameters)
+
+
+def test_no_download_refuses_instead_of_provisioning(monkeypatch, tmp_path: Path) -> None:
+    """The flag reaching the resolver through the command rather than around it."""
+    from just_dna_enricher import clinvar_draft
+    from just_dna_enricher.cli import app
+    from typer.testing import CliRunner
+
+    monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
+    monkeypatch.setattr(
+        clinvar_draft, "ensure_clinvar_snapshot",
+        lambda *_a, **_k: pytest.fail("--no-download provisioned a snapshot"),
+    )
+    result = CliRunner().invoke(
+        app, ["draft-panel", str(tmp_path), "--gene", "HBB", "--no-download"]
+    )
+    assert result.exit_code == 1
+    assert "no ClinVar snapshot found" in result.output

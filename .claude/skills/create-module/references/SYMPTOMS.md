@@ -327,14 +327,18 @@ also works `--offline`.
 **A note saying a gene is listed and `acmg_sf` is blank**
 Informational, never a defect, and `--strict` does not escalate it. Blank is a legitimate answer.
 
-**`clin_sig cross-check not run: this module declares it was drafted from the very snapshot the check
-reads`**
-Working as intended, and more honest than the alternative. Your `panel:` block pins the release the
-rows were drafted from, and it is the release the check would compare them against — so every value
-would be matched with its own source and the answer would be zero conflicts whatever the data said. A
-guaranteed zero looks like evidence without being any. The moment a human edits those calls, drop or
-change the pin and the check runs again. `--no-verify-clinsig` is the manual switch and reports
-`not_requested`.
+**`clin_sig cross-check not run: this module's licence row records that its ClinVar annotations were
+drafted from …`**
+Working as intended, and more honest than the alternative. Drafting recorded the release your rows were
+copied out of, and it is the release the check would compare them against — so every value would be
+matched with its own source and the answer would be zero conflicts whatever the data said. A guaranteed
+zero looks like evidence without being any.
+
+It is a statement about the module, so it cannot see a call **you** edited afterwards. Re-run with
+`--strict`, which does not skip: it looks every value up and reports how many are still copies, how
+many you wrote or edited, and how many conflict. (A conflict is a warning in both modes either way —
+this is the one check that never fails a run, because a curator is allowed to disagree with a
+low-reviewed submission.) `--no-verify-clinsig` is the manual switch and reports `not_requested`.
 
 **`clin_sig cross-check not run: no ClinVar snapshot this run`**
 Different sentence, different meaning: nothing was compared because there was nothing to compare

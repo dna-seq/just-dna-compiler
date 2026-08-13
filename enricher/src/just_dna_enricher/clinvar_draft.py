@@ -45,7 +45,7 @@ from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from pydantic import ValidationError
 
-from just_dna_enricher.clinvar import citations_for, select_by_gene
+from just_dna_enricher.clinvar import citations_for, clinvar_dataset_label, select_by_gene
 from just_dna_enricher.download import ensure_clinvar_snapshot
 from just_dna_enricher.licensing import CLINVAR_TERMS, check_declared_use, merge_sources_file
 from just_dna_enricher.locations import resolve_clinvar_reference
@@ -571,11 +571,25 @@ def draft_gene_panel(
             f"direction the submitters did not. So `state` is yours to decide too, per row. "
             f"Affected: {shown}."
         )
+    # WHICH release the rows were copied out of, in the column that exists to say so (RM4). The draft
+    # was machined, so the marker is machined too: `clinical.tautology_reason` reads this back and can
+    # then skip a check that a drafted module makes structurally unfailable, without the author having
+    # to maintain a `panel:` block by hand for the sole benefit of one check. A snapshot that cannot
+    # state its release leaves the cell empty rather than carrying a guess — and says so, because the
+    # consequence is invisible otherwise.
+    dataset = clinvar_dataset_label(reference)
+    if dataset is None:
+        warnings.append(
+            "this snapshot does not say which ClinVar release it carries (no readable release.json), "
+            "so the licence row records no dataset and nothing downstream can tell that these rows "
+            "were copied out of it. Rebuild it with `just-dna-enricher clinvar build` to restore the "
+            "provenance."
+        )
     if not dry_run:
         # A source that rows were copied out of must be recorded, permissive terms or not: the compile
-        # gate and `manifest.sources` read sources.csv and nothing else.
+        # gate and `manifest.sources` read the licence table and nothing else.
         merge_sources_file(
-            [CLINVAR_TERMS.row("annotation", declared_use=declared_use)],
+            [CLINVAR_TERMS.row("annotation", declared_use=declared_use, dataset=dataset)],
             spec_dir,
             error=ClinVarDraftError,
         )

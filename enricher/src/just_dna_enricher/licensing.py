@@ -440,3 +440,29 @@ def merge_sources_file(
             raise error(f"existing {path.name} is invalid: {errors[0]}")
         existing = parsed
     return merge_sources_csv(rows, path, existing)
+
+
+def read_sources_file(spec_dir: Path) -> list[SourceRow]:
+    """The module's licence rows as recorded, or `[]` when there are none that can be read.
+
+    The gentle counterpart to the strict load inside `merge_sources_file`, for a *reader* whose only
+    power is to let a check be skipped — `clinical.tautology_reason`, which asks whether the licence
+    row says these annotation rows were drafted from the snapshot the check is about to read (RM4).
+
+    Gentle deliberately, and in the same direction the rest of this codebase withholds: a table that
+    could not be read has established nothing, so `[]` leaves every check running. A pass that
+    *writes* must still fail loudly on an unreadable table — merging into one that did not load would
+    drop rows already recorded — and `merge_sources_file` does.
+    """
+    try:
+        path = sidecar_write_path(spec_dir, SOURCES_CSV)
+    except SidecarCollision as exc:
+        logger.warning("Cannot read this module's licence table (%s); treating it as unrecorded.", exc)
+        return []
+    if not path.exists():
+        return []
+    rows, errors, _ = load_csv_rows(path, SourceRow, path.name)
+    if errors:
+        logger.warning("%s is invalid (%s); treating it as unrecorded.", path.name, errors[0])
+        return []
+    return rows

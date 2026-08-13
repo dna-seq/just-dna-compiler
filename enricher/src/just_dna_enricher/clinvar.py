@@ -23,7 +23,7 @@ from pathlib import Path
 
 import duckdb
 
-from just_dna_enricher.locations import CITATIONS_DIRNAME
+from just_dna_enricher.locations import CITATIONS_DIRNAME, read_release
 from just_dna_enricher.resolver import _lookup_rsid_candidates, probe_table
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,40 @@ logger = logging.getLogger(__name__)
 
 class ClinVarReferenceError(FileNotFoundError):
     """Raised when a provided ClinVar reference has no usable parquet files."""
+
+
+#: Prefix of the `SourceRow.dataset` label a ClinVar-drafted module carries, matching the existing
+#: spelling of that column (`clinpgx_2026-07-05`).
+CLINVAR_DATASET_PREFIX = "clinvar_"
+
+
+def clinvar_dataset_label(reference: Path | None) -> str | None:
+    """Which ClinVar release a snapshot carries, as a `SourceRow.dataset` value (RM4).
+
+    **One function, called by both sides.** `clinvar_draft` writes this label onto the licence row it
+    records for the rows it copied out, and `clinical.tautology_reason` recomputes it from whatever
+    snapshot the check is about to read and compares. Shared rather than mirrored for the reason
+    `hosting_verdict` is shared: two spellings of one convention drift, and this drift would be
+    silent — a writer and a reader disagreeing about the label do not fail, they simply never match,
+    and a check quietly stops being skippable.
+
+    `clinvar_file_date` first, because that is what `dataset` is for ("which release the data came
+    from"). A snapshot built from a VCF whose header stated no file date still has the digest of the
+    bytes it was built from, which names the release exactly, so that is the fallback rather than a
+    gap. `None` when the snapshot cannot state its release at all — an unreadable or absent
+    `release.json` is an unknown, and an unknown is withheld rather than written as a label something
+    could match.
+    """
+    if reference is None:
+        return None
+    release = read_release(Path(reference))
+    if not release:
+        return None
+    file_date = str(release.get("clinvar_file_date") or "").strip()
+    if file_date:
+        return f"{CLINVAR_DATASET_PREFIX}{file_date}"
+    digest = str(release.get("source_sha256") or "").strip().removeprefix("sha256:")
+    return f"{CLINVAR_DATASET_PREFIX}sha256:{digest}" if digest else None
 
 
 def _connect(reference: Path) -> duckdb.DuckDBPyConnection:

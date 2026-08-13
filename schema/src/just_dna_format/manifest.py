@@ -449,10 +449,19 @@ class GenePanelSpec(BaseModel):
     """Declares a module derived from a *gene set + significance predicate* over a reference,
     rather than an enumerated variant table (SPEC ROADMAP item 7).
 
+    **Deprecated in 0.6, removed at 1.0 (RM4).** Compile-time materialization was dropped rather than
+    built: the compiler must not create rows no curator wrote, and expanding a declaration at compile
+    would make a module's content depend on an external file while leaving `reverse` to choose between
+    re-emitting the declaration (rows lost) and the rows (declaration lost) — neither a fixed point.
+    The want is served by enricher draft-scaffolding, where the rows are authored bytes before the
+    compiler sees them and the author's no-op over the drafted subset is still an authorial act. The
+    block's one remaining machine reader — the enricher's ClinVar `clin_sig` cross-check, deciding
+    whether a drafted module is being compared against its own source — now reads the licence row's
+    `dataset` column instead, which the drafting pass writes itself.
+
     This is the authored *interface* only: the compiler records it verbatim but does not
     materialize it (an app-level adapter enumerates the matching variants into `variants.csv`
-    today). Native compile-time materialization is a follow-up gated on a working ClinVar
-    reference mixin. Optional and backwards-compatible — absent on ordinary variant modules.
+    today). Optional and backwards-compatible — absent on ordinary variant modules.
 
     `extra="forbid"` so a typo in the authored `panel:` block is caught, not silently dropped.
     """

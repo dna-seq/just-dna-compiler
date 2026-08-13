@@ -1881,6 +1881,21 @@ def validate_spec(
             f"dropped injected authority keys from module: block (registry-stamped, not authored): "
             f"{dropped_authority}"
         )
+    # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
+    # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
+    # cadence is deprecate in a minor, remove at the next major, and the deprecation is *actionable*
+    # here because the thing that replaced it needs nothing from the author: the enricher records the
+    # drafted-from release into the licence row's `dataset` column itself.
+    if config is not None and config.panel is not None:
+        all_warnings.append(
+            "module_spec.yaml declares a `panel:` block. It is deprecated in 0.6 and removed at 1.0: "
+            "the compiler never materialized rows from it, and the one thing that did read it — the "
+            "enricher's ClinVar clin_sig cross-check, deciding whether a drafted module is being "
+            "compared against its own source — now reads the `dataset` column of the module's "
+            "licence row, which `just-dna-enricher draft-panel` writes itself. Delete the block; the "
+            "rows it describes are the authored variants.csv rows, and nothing else is lost."
+        )
+
     # `module.version` is advisory (the registry stamps the canonical Identity.version) and is COERCED
     # to SemVer by `ModuleInfo` since 0.5 (RM17). Report the rewrite rather than performing it here:
     # the model already did it, and `version_coerced_from` is how it says so. A clean

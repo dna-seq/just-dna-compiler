@@ -695,7 +695,8 @@ table kind, and `frequencies.csv` / `gene_metrics.csv` when their parquets are p
   base the module never named. `_genome_build_from_artifact` reads it; `genome_build=` (CLI
   `--genome-build`) overrides; a bare parquet directory with no manifest falls back to `GRCh38`, the
   format's own default. See `reference_examples/grch37_build/`.
-- **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel`, `provenance`, `logo`,
+- **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel` (**deprecated in 0.6,
+  removed at 1.0 — RM4**; see below), `provenance`, `logo`,
   `readme`. A
   consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). The test of
   whether something belongs on this list is whether losing it can change a parquet byte — which is why
@@ -929,6 +930,30 @@ a patch: the objection is that filling a blank asserts what no curator wrote, no
    wins. `authorship`/`panel`/`provenance`/`logo` genuinely are not restored and genuinely cannot move a
    parquet byte. What *is* round-trip-critical — every authored value, including a poly-effect variant's
    per-effect `gene`/`phenotype`/`category` — is restored.
+5. **Gene-panel materialization, and now the `panel:` block itself (RM4).** Compiling a
+   `GenePanelSpec` into `weights.parquet` is not deferred any more, it is **dropped**. The compiler
+   must not create rows no curator wrote — the same objection that bars filling `direction` from
+   `state`, and it does not depend on the digest. Expansion at compile would also make a module's
+   content depend on an external file, and leave `reverse` choosing between re-emitting the
+   declaration (rows lost) and the rows (declaration lost); neither is a fixed point (P7). The want is
+   served instead by **enricher draft-scaffolding**, which already ships: `draft-panel` writes the
+   rows, and the author's no-op over the drafted subset is still an authorial act. The rows are
+   authored bytes before the compiler ever sees them.
+
+   With that decided, `panel:` had no reader left — its last one was the enricher's ClinVar
+   `clin_sig` cross-check, which now reads the drafted-from release out of the licence row's `dataset`
+   column, written by the drafting pass. So it is **deprecated in 0.6 and removed at 1.0**, with
+   `validate_spec` emitting the warning (and `compile_module` carrying it into
+   `manifest.compilation.warnings`, once — compile seeds its warnings from validate's). The block
+   still loads, still reaches `manifest.panel`, and still changes nothing else, which is what makes the
+   deprecation warn-only and the cadence legal.
+
+   **Deleting it moves no identity**, measured rather than argued: `reference_examples/apoe_epsilon`
+   with a `panel:` block appended compiles to the same `artifact.digest` and the same
+   `content_signature` as without it. *Auto-removing it on reverse* was considered and refused for the
+   opposite reason — reverse writes `module_spec.yaml`, so dropping the block there would change that
+   file's bytes and break the round-trip fixed point for any module carrying it. A warning the author
+   acts on is the route.
 
 ## Consequences worth knowing
 
