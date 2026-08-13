@@ -5,6 +5,7 @@ __pycache__/
 .python-version
 .idea
 .cursor
+.claude/worktrees
 
 # C extensions
 *.so
