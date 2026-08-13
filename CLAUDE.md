@@ -1153,10 +1153,98 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   name. One comment was load-bearing and false — `validate_spec`'s exemption was justified as "the 0.4
   tables carry their own evidence (e.g. `evidence_level`)", true of two of the nine kinds; the real
   reason is that for a gene-keyed table the requirement would be **unsatisfiable** rather than merely
-  unmet. Closing it is **RM47** (0.6), a design round: every candidate repair costs either a duplicated
-  column set (`pmid` on `MeasureBinRow` drags `studies.csv`'s provenance columns along) or a duplicated
-  key (`bin_evidence.csv` joins on floats that orphan silently when a bound is re-authored). Don't
-  file it again, and keep the HTT thresholds uncited — the example exists to show the gap.
+  unmet.
+- **RM47 SHIPPED in 0.6 — the bin row cites, the citation table describes.** That sentence is the whole
+  design and it is what stops `StudyRow`'s column set (population, `p_value_num`, `effect_size`,
+  `provenance_quote`) migrating onto binning rows one column at a time. Two additive halves:
+  `MeasureBinRow.pmid`, one optional column on the base reaching all four kinds; and `StudyRow`'s
+  subject requirement **relaxed to nothing** (`REQUIRED_ANY_OF = ()`), so the paper behind a threshold
+  is described without inventing a bare `chrom=4` for HTT — widening an either-or rule only makes
+  previously-*invalid* rows valid, so no published module breaks. Six things not to redo:
+  - **`StudyRow.variant_key` is `str | None` now.** `derive_variant_key(None, None, None, None)`
+    returns the string `"None:None:None"`, which looks like an identity and names nothing; the property
+    short-circuits instead, and the orphan half of `_cross_validate_studies` skips such a row (it
+    references nothing, so it cannot reference something missing). The dedup key `(None, pmid)` still
+    catches two subject-less rows citing one paper, deliberately.
+  - **The same-release obligation was the reason the item was filed, and it is two call sites.**
+    `_cross_check_literature` reads bin pointers alongside `studies.csv` — blind to them, every
+    threshold-grounding citation reads as a stale orphan — and so does `enrich_literature`. Shipping
+    the column without both would be evidence the format never checks, which is worse than the gap.
+  - **The enricher reaches the bins through PUBLIC compiler symbols**, `load_binning_rows` /
+    `binning_citations`. Importing `_BINNING_TABLE_KINDS` or keeping a second list of the four kinds in
+    the enricher is the RM40/RM41 shape, and the copy goes stale on the fifth kind.
+  - **Grounding is counted per ROW, off the row.** `_check_binning_grounding` subtracts bins carrying a
+    `pmid` and bins carrying a variant identity; the gate ("no study rows at all") is unchanged, so a
+    module with a `studies.csv` is not newly nagged.
+  - **The rejected repairs, so they are not re-proposed:** a packed `subject_key` on `StudyRow`
+    (multicolumn keying, never a tuple — and it can drift from the columns it restates); key columns on
+    `StudyRow` *instead of* a bin pointer (grounds at *table* granularity, so it still cannot say why
+    36 — only the subject-relaxation half was adopted); and `bin_evidence.csv` (its join key **is the
+    thresholds, and they are floats**, so re-authoring `40` as `40.0` orphans the evidence silently).
+  - **`reference_examples/htt_repeat_expansion` stays uncited.** The example exists to show what the
+    warning looks like, and grounding it would move its signatures for nothing.
+- **A literature source's terms are PER ARTICLE, and that is why there is no `pubmed` row (RM46,
+  0.6).** `enrich_literature` writes `source="pubmed"` into every row, `TERMS_BY_SOURCE` has no entry
+  for it, and `_source_checks` therefore named `pubmed` as undeclared on every literature-enriched
+  module — the tier introducing a source, declining to record it, and landing the finding on the
+  author. The fix is **four columns on the derived literature row** (`license`, `share_alike`,
+  `commercial_use`, `redistribution`), half cost, filled from the Europe PMC response the pass already
+  makes. Five things to keep straight:
+  - **A `PUBMED_TERMS` constant is wrong in the dangerous direction.** PubMed's *metadata* is one
+    thing; the *article* belongs to its publisher, and Europe PMC's open subset spans CC-BY, CC-BY-NC
+    and bronze. One "pubmed, fine" row would clear a module carrying a `provenance_quote` lifted from a
+    CC-BY-NC article — publisher text in the module's own **annotation** layer, exactly where
+    `taints_commercial_use` bites.
+  - **`license` is stored VERBATIM** (`cc by`, `cc by-nc`, `cc by-nc-nd` — probed over 100 records) and
+    `licensing.article_terms` maps it to rights at **read** time, so a mapping fix reaches rows already
+    written (the `cpic_build` rule). Unknown → all three `None`, never `False`.
+  - **The licence is INDEPENDENT of `is_open_access`.** PMID 28546431 is `isOpenAccess: N` with
+    `license: cc by`: the flag describes Europe PMC's OA subset, the licence describes the article.
+    Do not derive one from the other.
+  - **All four are OUTSIDE `LITERATURE_FACT_FIELDS`**, beside `is_open_access` and for its reason: a
+    publisher re-licensing an article changes the world, not the module, and in the fact set it would
+    move `literature_signature` with no authored edit anywhere.
+  - **Quoting a non-commercial article WARNS in both modes and gates nothing** — the third such
+    exception after the ClinVar `clin_sig` cross-check and `_check_declared_license_agrees`, same
+    reason: arbitrating copyright is the same class of overreach as arbitrating a clinical dispute.
+    Keyed on the *quote*, not the citation (naming an id costs nothing under any licence), and
+    aggregated by licence. The compiler reads the recorded fact, so it still owns no source convention
+    — the rejected alternative was a compiler-side list of enricher-introduced sources, which is a
+    source convention (P2) and the exact mistake RM33 removed. Consequence: nothing can corroborate a
+    `literature`-layer `sources.csv` row any more, so that layer is **unconditionally** exempt from the
+    orphan check (S23's conditional could no longer distinguish anything). `frequency` still warns.
+- **PubMed and PubMed Central ids are one letter apart, and the outcome turned on a space (RM50,
+  0.6).** `PMID_PATTERN` is `\b(\d{1,8})\b`, so `PMC3110566` → `[]` (no word boundary between `C` and a
+  digit) but **`PMC 3110566` → `['3110566']`** — a real PMID for an unrelated article, since PMIDs are
+  densely allocated (the S12 class). One spelling was refused with a message that never said "PMCID";
+  the other was accepted as a confident citation of the wrong paper. Four parts, all diagnosis:
+  - **`spec.PMCID_PATTERN` / `extract_pmcids`** name the PMC context in any spacing (`PMC3110566`,
+    `PMC 3110566`, `PMC-3110566`, `pmcid: 3110566`), `extract_pmids` declines the digits inside one,
+    and `validate_pmid_cell` — shared by `StudyRow.pmid` and `MeasureBinRow.pmid` — **names the id it
+    saw**. Narrow by construction: `21551363; PMC3110566` still yields the real PMID and is accepted,
+    so only a cell whose sole numeric content is a PMC id refuses.
+  - **`literature._pmcid_conflicts`** catches what the schema cannot see (`21551363 (PMC3110567)` has a
+    real PubMed id, so nothing refuses it) — the `_doi_conflicts` shape, free from the `articleids`
+    block, `strict` refusing.
+  - **PMCID → PMID is a REPORTING lookup** (`hint citation --pmcid`, `PmcIdConverterClient`): the id
+    comes back as an advisory with `refusal="redundancy_bearing"`, because filling `pmid` from NCBI
+    would make `LiteratureRow.exists` compare NCBI with itself. `pmid` is registered in
+    `hints.REDUNDANCY_BEARING` and `lookup._REFUSAL_BY_COLUMN` for exactly that. **Four converter
+    outcomes, spelled four ways** — resolved / in-PMC-with-no-pmid / not-in-PMC / never-answered — since
+    collapsing the last two renders a failed request as a definite negative (S20). And it then asks
+    PubMed *which paper that is*: a converter handing back a number and stopping is S12 one registry
+    over. Endpoint: `pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/` (the long-published
+    `www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/` 301-redirects to it), `pmid` arrives as a JSON number.
+  - **No authored `pmcid` column, and no re-key of `LiteratureRow`.** The citation id is *required*
+    today and P8 bars demoting a required field within a major, so a citation with no PubMed id cannot
+    become legal in 0.6 whatever column is added — the authoring half is 1.0. An optional authored
+    `pmcid` is full cost for content the enricher fills free and still does not help that row.
+- **The enricher's `literature.csv` writer is derived from the model.** `_FIELDNAMES` was a hand-kept
+  literal and `_write_literature_csv` a per-column dict — the `SOURCES_FIELDNAMES` shape, which lost
+  `redistribution` from every `sources.csv` ever written. `LiteratureRow` has no compiler-stamped
+  fields, so `list(LiteratureRow.model_fields)` is exactly right, and the renderer is generic.
+  Corollary the docs now state: **merge-not-clobber means a re-run does not back-fill** the new licence
+  columns onto rows written before 0.6 — delete the sidecar to re-derive.
 - **A shared bin endpoint is a BOUNDARY on a dense measure, and the higher bin owns it** — the lookup
   rule is *the row with the greatest `measure_min ≤ x`* (`binning._DENSE_KINDS`: `allele_fraction`,
   `prs_percentile`). So the overlap test is `lo < prev_hi` there and stays `lo <= prev_hi` on

@@ -56,10 +56,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import binning_citations, load_binning_rows, load_csv_rows
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.spec import DOI_PATTERN, StudyRow, extract_pmids
+from just_dna_format.spec import DOI_PATTERN, StudyRow, extract_pmcids, extract_pmids
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -67,17 +67,24 @@ from tenacity import (
 )
 
 from just_dna_enricher.eutils import EutilsClient, is_missing
+from just_dna_enricher.licensing import article_terms
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_EUROPEPMC_BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"
 DEFAULT_CROSSREF_BASE = "https://api.crossref.org"
+#: The current address of NCBI's PMC ID converter. The long-published
+#: `www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/` 301-redirects here (probed 2026-08-13); named rather
+#: than relied on as a redirect so a client that follows none still lands in the right place.
+DEFAULT_PMC_IDCONV_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
 
-_FIELDNAMES = [
-    "pmid", "doi", "pmcid", "exists", "doi_exists", "is_open_access",
-    "quotes_authored", "quotes_found", "quote_source", "source", "status", "fetched_at",
-]
+#: Derived from the model, never hand-kept. `SOURCES_FIELDNAMES` was a literal and quietly omitted
+#: `redistribution`, so every `sources.csv` ever written recorded *unknown* for an axis the constants
+#: state — the same shape this list had, and the same bug it would have grown on the RM46 columns.
+#: `LiteratureRow` carries no compiler-stamped fields, so `model_fields` is exactly the authored
+#: surface here (the `SourceRow` precedent).
+_FIELDNAMES: list[str] = list(LiteratureRow.model_fields)
 
 #: Seconds a single `provenance_regex` match may run before it is recorded as unchecked.
 DEFAULT_REGEX_TIMEOUT = 5.0
@@ -106,10 +113,33 @@ class DoiConflict:
 
 
 @dataclass
+class PmcidConflict:
+    """An authored PMC id that disagrees with the one PubMed reports for the same PMID (RM50).
+
+    The `DoiConflict` shape, for the other cross-registry identifier. It costs no request — the PMC id
+    is already in the `esummary` `articleids` block that answered existence — and it catches the case
+    the schema guard cannot see: a cell like `21551363 (PMC3110567)` carries a real PubMed id, so
+    nothing refuses it, while the two halves name different articles.
+    """
+
+    pmid: str
+    authored: str
+    registry: str
+
+    def __str__(self) -> str:
+        return (
+            f"PMID {self.pmid}: authored {self.authored} disagrees with the PMC id PubMed reports "
+            f"for it, {self.registry} — reported, never rewritten; the two identifiers name "
+            f"different articles and only the author knows which one the claim rests on"
+        )
+
+
+@dataclass
 class LiteratureResult:
     rows: list[LiteratureRow]
     missing: list[str] = field(default_factory=list)          # PMIDs PubMed has no record of
     doi_conflicts: list[DoiConflict] = field(default_factory=list)
+    pmcid_conflicts: list[PmcidConflict] = field(default_factory=list)
     quotes_authored: int = 0
     quotes_found: int = 0
     quotes_unchecked: int = 0                                  # no retrievable fulltext
@@ -197,7 +227,7 @@ class EuropePmcClient:
         return response
 
     def lookup(self, pmids: list[str]) -> dict[str, dict]:
-        """`pmid -> {pmcid, doi, is_open_access, abstract}` for the ids Europe PMC knows.
+        """`pmid -> {pmcid, doi, is_open_access, license, abstract}` for the ids Europe PMC knows.
 
         Ids it does not know are simply **absent from the result**, with no error marker — which is why
         this is not an existence check. A caller must read a miss here as "not retrievable", never as
@@ -207,6 +237,13 @@ class EuropePmcClient:
         more than it looks: probed across a mix of non-open-access papers, four of five carried one
         (only a 1994 non-research document did not). It is the difference between checking a quote for
         the open-access minority and checking it for nearly everything.
+
+        **So does the article's `license`** (RM46), which is why per-article terms cost no extra
+        request. Probed 2026-08-13 over 100 records: the values are lowercase CC spellings — `cc by`
+        (64), `cc by-nc` (28), `cc by-nc-nd` (8). It is **independent of `isOpenAccess`** and must not
+        be derived from it: PMID 28546431 comes back `isOpenAccess: N` with `license: cc by`, since
+        the flag describes Europe PMC's OA subset while the licence describes the article. Stored
+        verbatim; `licensing.article_terms` maps it to rights at read time.
         """
         out: dict[str, dict] = {}
         for batch in batched(dedupe(pmids), self.batch_size):
@@ -226,6 +263,9 @@ class EuropePmcClient:
                     # `inEPMC` is NOT a fulltext signal: a record can be in Europe PMC with
                     # `isOpenAccess=N`, and `fullTextXML` then answers 404. Probed on PMID 23788249.
                     "in_epmc": str(record.get("inEPMC") or "").upper() == "Y",
+                    # Verbatim, and `None` when the field is absent — an article whose terms Europe
+                    # PMC does not state is unknown, not unlicensed.
+                    "license": (record.get("license") or None),
                     "abstract": record.get("abstractText"),
                 }
         return out
@@ -329,6 +369,116 @@ class CrossrefClient:
         return True
 
 
+@dataclass(frozen=True)
+class PmcIdRecord:
+    """One answer from the PMC id converter. `in_pmc=False` is PMC saying it has no such record;
+    an id the request never reached is absent from the result entirely, never one of these."""
+
+    pmcid: str
+    pmid: str | None = None
+    in_pmc: bool = True
+    error: str | None = None
+
+
+@dataclass
+class PmcIdConverterClient:
+    """PMCID → PMID, for a curator holding the wrong half of the pair (RM50).
+
+    **It reports; it never fills.** The PMID it returns is handed back as an advisory the author types
+    themselves, because filling `StudyRow.pmid` from NCBI would make `literature.exists` compare NCBI
+    against NCBI — the `hints.REDUNDANCY_BEARING` rule, already argued for `doi` (Crossref is asked
+    about the *authored* DOI, since a derived one exists by construction).
+
+    **Why this exists although the pass docstring says the converter is unused.** That statement is
+    true of the direction the pass needs — PMID → PMCID arrives free in the `esummary` `articleids`
+    block, so calling the converter for it would be a third request for data already in hand, and it
+    answers a *different* question (asked about a paywalled PMID it replies "Identifier not found in
+    PMC", which is about PMC membership rather than existence). None of that says anything about
+    **PMCID → PMID**, which is the direction the converter is actually for and the one a curator has
+    no other route to.
+
+    Probed 2026-08-13: the `www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/` path 301-redirects to the
+    address below, an absent id comes back as a record with `status: "error"` and
+    `errmsg: "Identifier not found in PMC"`, and `pmid` arrives as a JSON **number**.
+    """
+
+    base_url: str = DEFAULT_PMC_IDCONV_URL
+    batch_size: int = 200
+    min_request_interval: float = 0.5
+    timeout: float = 30.0
+    contact_email: str | None = None
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
+
+    def __post_init__(self) -> None:
+        if self.gate is None:
+            self.gate = PacingGate(self.min_request_interval)
+        if self.contact_email is None:
+            self.contact_email = os.environ.get("JUST_DNA_CONTACT_EMAIL") or None
+
+    def _http(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout, follow_redirects=True)
+        return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> "PmcIdConverterClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    @retry(
+        stop=attempt_floor(3),
+        wait=wait_exponential_jitter(initial=1.0, max=10.0),
+        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        reraise=True,
+    )
+    def _get(self, params: dict) -> httpx.Response:
+        assert self.gate is not None
+        self.gate.wait()
+        response = self._http().get(self.base_url, params=params)
+        response.raise_for_status()
+        return response
+
+    def resolve(self, pmcids: list[str]) -> dict[str, PmcIdRecord]:
+        """`PMCID -> PmcIdRecord` for every id the converter answered about.
+
+        **Four outcomes, and none of them is spelled the same way as another.** An id it resolved
+        carries a `pmid`; an id it knows with no PubMed id carries `in_pmc=True, pmid=None` (a real
+        answer — some PMC records genuinely have none); an id it has no record of carries
+        `in_pmc=False` with the service's own `errmsg`; and an id the request never reached is simply
+        **absent from the result**. A caller must not read a missing key as "does not exist" — that
+        conflation is exactly what S20 was about, one service over.
+        """
+        out: dict[str, PmcIdRecord] = {}
+        for batch in batched(dedupe(pmcids), self.batch_size):
+            params = {"ids": ",".join(batch), "format": "json", "tool": "just-dna-enricher"}
+            if self.contact_email:
+                params["email"] = self.contact_email
+            try:
+                payload = self._get(params).json()
+            except httpx.HTTPError as exc:
+                logger.warning("PMC id converter could not be asked for %s (%s)", batch, exc)
+                continue
+            for record in payload.get("records") or []:
+                requested = str(record.get("requested-id") or record.get("pmcid") or "")
+                if not requested:
+                    continue
+                pmid = record.get("pmid")
+                out[requested] = PmcIdRecord(
+                    pmcid=requested,
+                    pmid=str(pmid) if pmid is not None else None,
+                    in_pmc=record.get("status") != "error",
+                    error=record.get("errmsg"),
+                )
+        return out
+
+
 def extract_text(xml: str) -> str | None:
     """JATS XML → one normalized string, or `None` if it does not parse.
 
@@ -414,16 +564,26 @@ def regex_matches(
 # ── the pass ────────────────────────────────────────────────────────────────────────────────────
 
 
-def _citations(studies: list[StudyRow]) -> dict[str, list[StudyRow]]:
+def _citations(
+    studies: list[StudyRow], bin_pmids: list[str] | None = None
+) -> dict[str, list[StudyRow]]:
     """`pmid -> [study rows citing it]`, in first-occurrence order (deterministic emission, P7).
 
     One study row can carry several PMIDs (`pmid` is free-form and may hold a `;`-joined list), so this
     is a genuine fan-out rather than a re-keying.
+
+    **There are two citation sites since 0.6** (RM47): `studies.csv`, and a `pmid` on a binning row,
+    which grounds the *boundary* it sits on. A bin-only citation maps to an **empty** study list — it
+    is a real citation to check for existence and identifiers, and it carries no quote or authored DOI
+    because a bin row has neither column, so every per-study loop downstream simply finds nothing to
+    do. Studies go in first so a paper cited both ways keeps its study rows.
     """
     out: dict[str, list[StudyRow]] = {}
     for study in studies:
         for pmid in extract_pmids(study.pmid):
             out.setdefault(pmid, []).append(study)
+    for pmid in bin_pmids or []:
+        out.setdefault(pmid, [])
     return out
 
 
@@ -440,11 +600,18 @@ def enrich_literature(
     europepmc: EuropePmcClient | None = None,
     crossref: CrossrefClient | None = None,
 ) -> LiteratureResult:
-    """Fill `literature.csv` from the citations in `studies.csv`.
+    """Fill `literature.csv` from the citations a module makes.
+
+    **Two citation sites since 0.6** (RM47): `studies.csv`, and `MeasureBinRow.pmid` on a binning
+    table, which grounds the threshold it sits on. A module whose only citations are bin pointers is
+    enriched exactly like one with a `studies.csv` — reading only the first would leave every
+    threshold-grounding citation unchecked, which is worse than the honest gap the column replaced.
 
     Existing rows are authoritative and merged, never clobbered — the same rule `enrich()` applies to
     `resolution.csv`, with the same consequence: to regenerate after a machinery change you must delete
-    the file first.
+    the file first. **That includes the licence columns** (RM46): rows written before 0.6 carry no
+    `license`, and re-running will not back-fill them, because merge-not-clobber cannot tell an
+    absent value from a curator's deliberate blank. Delete the sidecar to re-derive.
 
     `--offline` makes this a no-op with a warning. There is no offline literature snapshot and there
     will not be one; once `literature.csv` is written it *is* the pin, and later compiles read it
@@ -454,14 +621,20 @@ def enrich_literature(
     studies_path = spec_dir / "studies.csv"
     output_path = spec_dir / "literature.csv"
 
-    if not studies_path.exists():
+    studies: list[StudyRow] = []
+    if studies_path.exists():
+        studies, errors, _ = load_csv_rows(studies_path, StudyRow, "studies.csv")
+        if errors:
+            raise LiteratureEnrichmentError(f"studies.csv is invalid: {errors[0]}")
+    # The bin pointers, through the compiler's own loader: importing its private binning-kind tuple or
+    # keeping a second list of the four kinds here is the RM41 shape, and the copy goes stale on the
+    # fifth kind.
+    bin_pmids = binning_citations(load_binning_rows(spec_dir))
+    if not studies and not bin_pmids:
         raise LiteratureEnrichmentError(
-            f"no studies.csv in {spec_dir} — the literature pass checks the citations a module makes, "
-            f"so there is nothing to do without one."
+            f"no citations in {spec_dir} — the literature pass checks the citations a module makes, "
+            f"and this one has neither studies.csv rows nor a `pmid` on any binning row."
         )
-    studies, errors, _ = load_csv_rows(studies_path, StudyRow, "studies.csv")
-    if errors:
-        raise LiteratureEnrichmentError(f"studies.csv is invalid: {errors[0]}")
 
     existing: dict[str, LiteratureRow] = {}
     if output_path.exists():
@@ -471,7 +644,7 @@ def enrich_literature(
         for row in rows:
             existing[row.pmid] = row
 
-    citations = _citations(studies)
+    citations = _citations(studies, bin_pmids)
     authored_total = sum(
         1 for rows in citations.values() for s in rows if s.provenance_quote or s.provenance_regex
     )
@@ -518,12 +691,18 @@ def enrich_literature(
                 doi = ids.get("doi") or epmc_record.get("doi")
                 pmcid = ids.get("pmcid") or epmc_record.get("pmcid")
                 is_open = epmc_record.get("is_open_access") if epmc_record else None
+                # Verbatim from Europe PMC; rights derived at read time so a mapping correction
+                # reaches rows already written (`licensing.article_terms`).
+                license_name = epmc_record.get("license") if epmc_record else None
+                terms = article_terms(license_name)
 
                 if not exists:
                     result.missing.append(pmid)
 
                 for conflict in _doi_conflicts(pmid, citations[pmid], doi):
                     result.doi_conflicts.append(conflict)
+                for conflict in _pmcid_conflicts(pmid, citations[pmid], pmcid):
+                    result.pmcid_conflicts.append(conflict)
 
                 # Crossref checks the **authored** DOI in preference to the derived one. Checking the
                 # registry's own DOI would be circular — it exists by construction, since the registry
@@ -570,6 +749,10 @@ def enrich_literature(
                     LiteratureRow(
                         pmid=pmid, doi=doi, pmcid=pmcid, exists=exists,
                         is_open_access=is_open,
+                        license=license_name,
+                        share_alike=terms.share_alike,
+                        commercial_use=terms.commercial_use,
+                        redistribution=terms.redistribution,
                         quotes_authored=len(quotes),
                         quotes_found=found,
                         quote_source=quote_source,
@@ -614,6 +797,12 @@ def enrich_literature(
             f"strict literature enrichment: {len(result.doi_conflicts)} authored DOI(s) disagree with "
             f"the registry: {[str(c) for c in result.doi_conflicts]}. One of the two identifiers "
             f"points at the wrong paper."
+        )
+    if mode == "strict" and result.pmcid_conflicts:
+        raise LiteratureEnrichmentError(
+            f"strict literature enrichment: {len(result.pmcid_conflicts)} authored PMC id(s) disagree "
+            f"with PubMed's for the same record: {[str(c) for c in result.pmcid_conflicts]}. One of "
+            f"the two identifiers points at the wrong paper."
         )
     if write:
         _write_literature_csv(result.rows, output_path)
@@ -691,6 +880,34 @@ def _doi_conflicts(
     return conflicts
 
 
+def _pmcid_conflicts(
+    pmid: str, studies: list[StudyRow], registry_pmcid: str | None
+) -> list[PmcidConflict]:
+    """Authored PMC ids that disagree with PubMed's for the same record (RM50).
+
+    Read out of the **authored `pmid` cell**, which is free-form: a curator who writes
+    `21551363 (PMC3110566)` has recorded two identifiers, and `extract_pmcids` is the same normalizer
+    the schema's refusal uses, so the two cannot drift into different ideas of what spells a PMC id.
+    De-duplicated and order-stable, like `_doi_conflicts`.
+
+    Nothing is claimed when PubMed reports no PMC id: a paywalled article legitimately has none, and
+    "the registry did not say" is not a contradiction (the same tri-state `_doi_conflicts` applies to
+    an absent registry DOI).
+    """
+    if not registry_pmcid:
+        return []
+    expected = registry_pmcid.strip().upper()
+    conflicts: list[PmcidConflict] = []
+    for authored in dedupe(
+        authored_pmcid for study in studies for authored_pmcid in extract_pmcids(study.pmid)
+    ):
+        if authored != expected:
+            conflicts.append(
+                PmcidConflict(pmid=pmid, authored=authored, registry=expected)
+            )
+    return conflicts
+
+
 def _doi_token(raw: str) -> str | None:
     """The bare `10.x/y` token inside a free-form DOI cell, lowercased (DOIs are case-insensitive)."""
     match = DOI_PATTERN.search(raw)
@@ -712,31 +929,23 @@ def _study_quote_found(study: StudyRow, fulltext: str, *, regex_timeout: float) 
 
 
 def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
-    """Fixed column order, canonical cells, byte-stable across runs."""
+    """Model column order, canonical cells, byte-stable across runs.
+
+    Generic over the fields rather than a per-column dict literal, for the reason `_FIELDNAMES` gives:
+    a hand-kept renderer is the same thing as a hand-kept column list, one edit later.
+    """
     with open(output_path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:
-            writer.writerow(
-                {
-                    "pmid": row.pmid,
-                    "doi": row.doi or "",
-                    "pmcid": row.pmcid or "",
-                    "exists": _bool_cell(row.exists),
-                    "doi_exists": _bool_cell(row.doi_exists),
-                    "is_open_access": _bool_cell(row.is_open_access),
-                    "quotes_authored": row.quotes_authored if row.quotes_authored is not None else "",
-                    "quotes_found": row.quotes_found if row.quotes_found is not None else "",
-                    "quote_source": row.quote_source or "",
-                    "source": row.source or "",
-                    "status": row.status or "",
-                    "fetched_at": row.fetched_at or "",
-                }
-            )
+            writer.writerow({name: _cell(getattr(row, name)) for name in _FIELDNAMES})
 
 
-def _bool_cell(value: bool | None) -> str:
-    """`true`/`false`/empty — matching the compiler's `_scalar_cell`, so reverse and this agree."""
+def _cell(value: object) -> str:
+    """`true`/`false`/empty for a tri-state, the value otherwise — matching the compiler's
+    `_scalar_cell`, so reverse and this agree."""
     if value is None:
         return ""
-    return "true" if value else "false"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)

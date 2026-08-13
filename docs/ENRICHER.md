@@ -23,6 +23,8 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**) |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
+| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` |
+| **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` |
 | **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) |
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
@@ -97,7 +99,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
 | `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe` | stdlib |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
-| `literature` | pass 4: `studies.csv` → `literature.csv` (PubMed + Europe PMC), fulltext quote match | `httpx`, `tenacity` |
+| `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
 | `identifiers` | rsID / trait-CURIE / gene-symbol currency (dbSNP, OLS4, HGNC) | `httpx`, `tenacity` |
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
@@ -152,7 +154,8 @@ really sleeping.
 | **NCBI E-utilities** | `eutils` → literature + rsID currency | **3 req/s** without a key; **10 req/s** with `NCBI_API_KEY` | `1/3 s` or `1/10 s` from whether the key is present; esummary batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set; key optional |
 | **PharmVar** | `pharmvar` / `pgx` | **2 req/s** (OpenAPI “Limitations”) | `PHARMVAR_MIN_INTERVAL=0.5` | `Api-Key` header from `PHARMVAR_API_KEY` (personal; never written to a module) |
 | **Crossref** | `literature.CrossrefClient` (DOI existence) | **polite pool**: 10 req/s single-DOI (5 public); concurrency 3 polite / 1 public (Crossref docs, Dec 2025 revision) | `min_request_interval=0.1` (10/s — polite single-DOI ceiling) | User-Agent `just-dna-enricher (mailto:…)` when `JUST_DNA_CONTACT_EMAIL` is set → polite pool; omitted rather than invented |
-| **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
+| **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts + per-article licence) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
+| **PMC ID converter** | `literature.PmcIdConverterClient` (PMCID → PMID, reporting only) | no published figure; the service documents a **200-id** batch ceiling | `min_request_interval=0.5` (2/s), batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set |
 | **OLS4 + HGNC** | `identifiers.OntologyClient` | neither publishes a documented limit | `min_request_interval=0.2` (courtesy — GET-per-id, unbatched) | `Accept: application/json` |
 | **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — live path is the last link after cache/snapshot, so volume stays low; tenacity on transport only | none |
 | **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
@@ -1003,9 +1006,45 @@ passed that was never put. Its values are `not_requested` (the author's own `--n
 
 ## The literature pack (`literature.py`, online only)
 
-Pass 4: `studies.csv` in, `literature.csv` out. Three questions of decreasing coverage — does the
+Pass 4: a module's citations in, `literature.csv` out. Three questions of decreasing coverage — does the
 citation exist (PubMed `esummary`), do the identifiers agree (DOI/PMCID arrive in the same response),
-and does the quoted passage appear in the article (Europe PMC fulltext, open-access subset only).
+and does the quoted passage appear in the article (Europe PMC fulltext, open-access subset only) — plus
+the article's own **licence**, which arrives in the same Europe PMC response.
+
+**There are two citation sites since 0.6, and this pass reads both (RM47).** `studies.csv`, and a
+`pmid` on a binning row, which grounds the *threshold* it sits on. A module whose only citations are
+bin pointers is enriched exactly like one with a `studies.csv`; a module with neither is refused, since
+the relaxation is about *where* a citation may live and not about whether one is needed. The bin
+pointers are read through `just_dna_compiler.load_binning_rows` / `binning_citations` — public for the
+RM41 reason, because the alternatives were importing a private symbol or hand-keeping a second list of
+the binning kinds here, and that list goes stale on the fifth kind. A bin-only citation contributes no
+quote and no authored DOI (a binning row has neither column), so it reads as *nothing to check* rather
+than as an unretrievable fulltext.
+
+**The article's licence is recorded per article, and there is no `pubmed` row in the licence table
+(RM46).** The pass writes `source="pubmed"` into every row it produces and `TERMS_BY_SOURCE` has no
+entry for it — deliberately, and permanently: a literature source's terms are **per article, not per
+source**. PubMed's metadata is one thing; the article belongs to its publisher, and Europe PMC's open
+subset spans CC-BY, CC-BY-NC and bronze, so one `pubmed` row would be right for a module citing only
+ids and a false all-clear for one carrying a `provenance_quote` lifted from a CC-BY-NC article — wrong
+in the dangerous direction, since that quote is publisher text in the module's own *annotation* layer.
+Four mechanics:
+
+- **`license` is stored verbatim** as Europe PMC spells it (`cc by`, `cc by-nc`, `cc by-nc-nd` — probed
+  over 100 records on 2026-08-13), and `licensing.article_terms` maps it to the three rights at **read**
+  time, so a mapping correction reaches rows already written. Same rule as `cpic_build`.
+- **The licence is independent of `is_open_access`** and is not derived from it: PMID 28546431 comes
+  back `isOpenAccess: N` with `license: cc by`, because the flag describes Europe PMC's OA subset while
+  the licence describes the article.
+- **Three orthogonal axes, and `None` is never `False`.** CC BY-NC forbids sale and expressly allows
+  sharing, which is why `redistribution` is its own column; a licence this tier has not read leaves all
+  three null rather than guessing in either direction.
+- **Quoting a non-commercial article warns and never gates.** The compiler reports it (reading the
+  recorded fact, so it still owns no source convention), in both modes, aggregated by licence. It is
+  the same call as the ClinVar `clin_sig` cross-check: refusing would make the format arbitrate a
+  copyright question. And note the merge rule's consequence — rows written before 0.6 carry no
+  `license`, and a re-run will not back-fill them, because merge-not-clobber cannot tell an absent
+  value from a curator's deliberate blank. Delete `literature.csv` to re-derive.
 
 **Coverage is partial by nature, and reporting it as a fraction is part of the check.** A pass that said
 "0 quotes found" for an article it could not read would be describing its own reach as a defect in the
@@ -1047,17 +1086,46 @@ things close most of that gap:
 **Google Scholar is not an option** and it is worth saying so rather than leaving it as an open idea:
 it publishes no API, and automated querying violates its terms and is blocked in practice.
 
-Three services, not the three the plan budgeted for — the plan's third was the ID converter, and both
-corrections below came from probing:
+Both corrections below came from probing:
 
-- **The PMC ID converter is not used.** `esummary` already returns `doi` and `pmc` in `articleids`, and
-  Europe PMC's `search` returns them too, so the converter is a third request for data already in hand.
-  Worse, it answers a *different question*: for PMID 12345678 — a real, indexed PubMed record — it
-  replies `status: error, "Identifier not found in PMC"`. Wired in as an existence check it would report
-  every paywalled article as a broken citation.
+- **The PMC ID converter is not used *by this pass*, and the reason is directional.** `esummary` already
+  returns `doi` and `pmc` in `articleids`, and Europe PMC's `search` returns them too, so calling the
+  converter for **PMID → PMCID** is a third request for data already in hand. Worse, it answers a
+  *different question*: for PMID 12345678 — a real, indexed PubMed record — it replies
+  `status: error, "Identifier not found in PMC"`. Wired in as an existence check it would report every
+  paywalled article as a broken citation. None of that says anything about **PMCID → PMID**, which is
+  the direction the converter exists for and the one a curator has no other route to — see the PMC id
+  section below.
 - **Europe PMC is not an existence oracle.** Asked about three ids where one does not exist, it returns
   two results and silently omits the third — no error, no marker. PubMed decides existence; Europe PMC
   decides retrievability.
+
+**PubMed and PubMed Central ids are one letter apart, and the outcome used to turn on a space (RM50).**
+`StudyRow.pmid` is free-form and validated through `spec.extract_pmids`, whose pattern is `\b(\d{1,8})\b`
+— so `PMC3110566` came back empty (no word boundary between `C` and a digit) while **`PMC 3110566` came
+back `['3110566']`**, and 3110566 is a real PMID for an unrelated article, because PubMed ids are
+densely allocated. One spelling of one mistake was refused with a message that never said "PMCID"; the
+other was accepted as a confident citation of the wrong paper. Three things ship for it, all of them
+diagnosis and none of them repair:
+
+- **The schema refuses a digit run whose immediate context spells `PMC` in any spacing**
+  (`spec.PMCID_PATTERN`, `spec.extract_pmcids`) and the message **names the id it saw** rather than the
+  one it wanted. Narrow by construction: a cell carrying both (`21551363; PMC3110566`) still yields the
+  real PMID and is accepted, so only a cell whose sole numeric content is a PMC id refuses — and that
+  cell previously resolved to another article entirely.
+- **`literature._pmcid_conflicts`** catches what the schema cannot see: a cell like
+  `21551363 (PMC3110567)` carries a real PubMed id, so nothing refuses it, while the two halves name
+  different articles. It costs no request — the PMC id is already in the `esummary` `articleids` block
+  — and it is the `_doi_conflicts` shape, including `strict` refusing.
+- **`lookup_citation(pmcid=…)` / `hint citation --pmcid`** resolves the other direction through NCBI's
+  converter and then asks PubMed *which paper that is*, because a converter that hands back a number and
+  stops is the same existence-is-not-identity failure one registry over. The resolved id comes back as
+  an **advisory** (`applied=False`, `refusal="redundancy_bearing"`): filling `pmid` from NCBI would make
+  `LiteratureRow.exists` compare NCBI with itself, which is the argument already made for `doi`. Four
+  outcomes, spelled four ways — resolved, in PMC with no PubMed id, not in PMC, and never answered —
+  because collapsing the last two would render a failed request as a definite negative (S20). The
+  address is `pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/`; the long-published
+  `www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/` 301-redirects to it.
 
 **On evaluating `provenance_regex` here.** The charter requires a linear-time/ReDoS-safe engine, written
 when the match was specified as consumer-side. Here the pattern comes from the module being enriched and
@@ -1670,7 +1738,8 @@ just-dna-enricher enrich spec/ --no-verify-ref     # skip the reference-allele c
 just-dna-enricher enrich spec/ --no-verify-clinsig # skip the ClinVar clin_sig cross-check
 just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdrawal check
 just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseudoautosomal locus
-just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only)
+just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only);
+                                                   #   reads studies.csv AND any binning row's pmid
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC) + gene/chromosome agreement
 just-dna-enricher dosage spec/ --offline           # no-op with a warning (ClinGen has no snapshot)
@@ -1708,6 +1777,7 @@ just-dna-enricher hint variant --rsid rs334 --ambiguity      # warn when the ans
 just-dna-enricher hint variant --rsid rs1801133 --frequencies  # + gnomAD populations (paced ~6s)
 just-dna-enricher hint variant --rsid rs1801133 --offline --json
 just-dna-enricher hint citation --pmid 9545397               # which paper it is + the DOI/PMC id it carries (--json)
+just-dna-enricher hint citation --pmcid PMC3110566           # the PubMed id for a PMC id — reported, never written
 just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent
 just-dna-enricher hint gene MTHFR                            # approved | retired | unknown
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)

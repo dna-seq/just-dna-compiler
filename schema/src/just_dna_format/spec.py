@@ -70,6 +70,14 @@ RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
 # (`[PMID: 9545397]`), or as a `;`-joined list (`PMID 17478681; PMID: 30278588`). We accept any
 # string that carries at least one PMID token and keep it verbatim (ROADMAP item 6 / Obs #4).
 PMID_PATTERN: re.Pattern[str] = re.compile(r"\b(\d{1,8})\b")
+# PubMed and PubMed Central number articles independently, and their identifiers are one letter apart
+# (RM50). `PMC3110566` never parsed as a PMID (there is no word boundary between `C` and a digit), but
+# **`PMC 3110566` did** — and 3110566 is a real PMID for an unrelated article, because PMIDs are
+# densely allocated. So the outcome turned on a space and the accepted spelling silently cited the
+# wrong paper. This pattern names the PMC context in **any** spacing (`PMC3110566`, `PMC 3110566`,
+# `PMC-3110566`, `pmcid: 3110566`), so `extract_pmids` can decline the digits inside it and the
+# refusal can say which id it saw rather than which one it wanted.
+PMCID_PATTERN: re.Pattern[str] = re.compile(r"PMC(?:ID)?\s*[:\-]?\s*(\d{1,9})", re.IGNORECASE)
 # A DOI is `10.<registrant>/<suffix>` (Crockford/Handle grammar). Real sources present it bare
 # (`10.1234/abc.def`) or wrapped in a URL (`https://doi.org/10.1234/abc`); we accept any string that
 # carries one DOI token and keep it verbatim, mirroring the PMID contract. Wider than a PMID: it also
@@ -77,15 +85,80 @@ PMID_PATTERN: re.Pattern[str] = re.compile(r"\b(\d{1,8})\b")
 DOI_PATTERN: re.Pattern[str] = re.compile(r"10\.\d{4,9}/\S+")
 
 
+def extract_pmcids(raw: str) -> list[str]:
+    """Pull PubMed **Central** ids out of a free-form reference string, canonicalized to `PMC…`.
+
+    In order, de-duplicated, and tolerant of the spacings a hand-written cell produces (`PMC3110566`,
+    `PMC 3110566`, `pmcid: 3110566`). This exists so a refusal can name the identifier the author
+    actually wrote — a generic "must contain at least one PubMed ID" is a dead end where a specific
+    "that is a PMCID" is a fix — and so the enricher can cross-check an authored PMC id against the
+    one PubMed reports for the same record.
+    """
+    seen: dict[str, None] = {}
+    for match in PMCID_PATTERN.finditer(raw):
+        seen.setdefault(f"PMC{match.group(1)}", None)
+    return list(seen)
+
+
 def extract_pmids(raw: str) -> list[str]:
     """Pull digit-only PMIDs out of a free-form reference string, in order, de-duplicated.
 
     Handles bare digits, the bracketed/prefixed `[PMID: N]` / `PMID N` forms, and `;`-joined
-    lists. Returns an empty list when the string carries no PMID token (e.g. a dbSNP URL)."""
+    lists. Returns an empty list when the string carries no PMID token (e.g. a dbSNP URL).
+
+    **A digit run whose immediate context spells `PMC` is not a PMID and is skipped** (RM50). It is a
+    different registry's number for (usually) a different article, so reading it as a PubMed id is a
+    confident citation of the wrong paper. A cell carrying both — `21551363; PMC3110566` — still
+    yields the real PMID; only a cell whose sole numeric content is a PMC id comes back empty, which
+    is what lets `validate_pmid_cell` name it.
+    """
+    excluded = [match.span(1) for match in PMCID_PATTERN.finditer(raw)]
     seen: dict[str, None] = {}
     for match in PMID_PATTERN.finditer(raw):
+        start = match.start(1)
+        if any(lo <= start < hi for lo, hi in excluded):
+            continue
         seen.setdefault(match.group(1), None)
     return list(seen)
+
+
+def validate_pmid_cell(value: str | None, field: str, *, required: bool) -> str | None:
+    """The shared grammar for a free-form citation pointer, kept verbatim on success.
+
+    Two models carry one, so the rule lives here rather than being copied: `StudyRow.pmid` (required —
+    grounding evidence is mandatory for a variant) and `MeasureBinRow.pmid` (optional — RM47's bin
+    pointer, which grounds a *boundary*). `required` is the only difference; the diagnosis is not.
+
+    The PMCID branch is the whole point of separating this out (RM50). Before it, a cell reading
+    `PMC 3110566` was accepted as PMID 3110566 and a cell reading `PMC3110566` was refused with a
+    message that never used the word PMCID — the same mistake, diagnosed two different unhelpful ways.
+    Now both are refused and the message names the id that was seen. **It never repairs**: converting a
+    PMC id to a PMID needs the registry, which this tier does not have and would not use if it did
+    (`just-dna-enricher hint citation --pmcid` is the reporting route).
+    """
+    if value is None:
+        if required:
+            raise ValueError(f"{field} must not be empty")
+        return None
+    value = str(value).strip()
+    if not value:
+        if required:
+            raise ValueError(f"{field} must not be empty")
+        return None
+    if extract_pmids(value):
+        return value  # kept verbatim; use extract_pmids(value) to recover digit-only ids
+    pmcids = extract_pmcids(value)
+    if pmcids:
+        raise ValueError(
+            f"{field} names PubMed Central id(s) {pmcids} and no PubMed ID. PMC and PubMed number "
+            f"articles independently, so a PMC id's digits are a different article's PMID — reading "
+            f"them as one would cite the wrong paper. Look the PMID up (e.g. "
+            f"`just-dna-enricher hint citation --pmcid {pmcids[0]}`) and write that, got: {value!r}"
+        )
+    raise ValueError(
+        f"{field} must contain at least one PubMed ID (bare digits, or a bracketed/prefixed "
+        f"form like '[PMID: 9545397]'), got: {value!r}"
+    )
 
 
 class ModuleInfo(Display):
@@ -642,11 +715,14 @@ class StudyRow(AuthoredModel):
         description="1-based position, VCF POS convention (position-only variants) — do not subtract one",
     )
     ref: str | None = Field(default=None, description="Reference allele (position-only variants)")
-    #: rsid, or a bare chrom (no `start` — see `_validate_study_identification`).
-    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
-        frozenset({"rsid"}),
-        frozenset({"chrom"}),
-    )
+    #: **Empty since 0.6 (RM47): a study row need not name a variant at all.** It used to be
+    #: `({rsid}, {chrom})` — rsid, or a bare `chrom` with no `start`. The rule was unsatisfiable for
+    #: exactly the modules that most needed a citation: a `repeat_alleles.csv`/`copynumbers.csv`/
+    #: `activity_phenotype.csv` row is keyed `(gene, …)` and names no variant, so an author grounding
+    #: a threshold had to invent one — writing a bare `chrom=4` for HTT, which asserts a locus the
+    #: paper is not about. Widening an either-or rule only makes previously-*invalid* rows valid, so
+    #: no published module breaks (P3/P8: nothing became required and nothing was retyped).
+    REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = ()
 
     pmid: str = Field(description="PubMed ID or reference — free-form, must be non-empty")
     population: str | None = Field(default=None, description="Study population")
@@ -711,9 +787,19 @@ class StudyRow(AuthoredModel):
     )
 
     @property
-    def variant_key(self) -> str:
-        """Stable key matching VariantRow.variant_key. StudyRow is never resolved/expanded, so its
-        key stays a derived property (no freezing needed)."""
+    def variant_key(self) -> str | None:
+        """Stable key matching VariantRow.variant_key, or `None` when the row names no variant.
+
+        StudyRow is never resolved/expanded, so its key stays a derived property (no freezing needed).
+
+        `None` is the 0.6 shape (RM47): a citation row may now describe the module or a gene-keyed
+        binning table rather than a variant, and `derive_variant_key(None, None, None, None)` would
+        otherwise hand back the string `"None:None:None"` — a key that looks like an identity and
+        names nothing. Same reasoning as `HeteroplasmyRow.variant_key`, and the reason the orphan half
+        of the compiler's study cross-check skips these rows: a row that names no variant cannot
+        reference one that is missing."""
+        if self.rsid is None and self.chrom is None:
+            return None
         return derive_variant_key(self.rsid, self.chrom, self.start, self.ref)
 
     @property
@@ -733,15 +819,11 @@ class StudyRow(AuthoredModel):
     @field_validator("pmid")
     @classmethod
     def _validate_pmid(cls, v: str) -> str:
-        v = str(v).strip()
-        if not v:
-            raise ValueError("pmid must not be empty")
-        if not extract_pmids(v):
-            raise ValueError(
-                f"pmid must contain at least one PubMed ID (bare digits, or a bracketed/prefixed "
-                f"form like '[PMID: 9545397]'), got: {v!r}"
-            )
-        return v  # kept verbatim; use extract_pmids(pmid) to recover digit-only ids
+        # Shared with `MeasureBinRow.pmid` — see `validate_pmid_cell`. Required here: grounding
+        # evidence is mandatory for a variant annotation.
+        checked = validate_pmid_cell(v, "pmid", required=True)
+        assert checked is not None
+        return checked
 
     @field_validator("doi")
     @classmethod
@@ -768,13 +850,10 @@ class StudyRow(AuthoredModel):
             raise ValueError(f"provenance_regex is not a valid regular expression: {exc}") from exc
         return v
 
-    @model_validator(mode="after")
-    def _validate_study_identification(self) -> "StudyRow":
-        # NOTE the asymmetry with `VariantRow`: this rule accepts a bare `chrom`, no `start`. The
-        # message below says "chrom + start" and the code does not require `start` — declared as
-        # written, not as worded, because `REQUIRED_ANY_OF` must describe what actually validates.
-        if self.rsid is None and self.chrom is None:
-            raise ValueError(
-                "At least one identifier is required: provide rsid or position (chrom + start)"
-            )
-        return self
+    # **No identification validator since 0.6 (RM47).** `StudyRow` used to demand an rsid or a bare
+    # `chrom`, which a citation grounding a *bin boundary* cannot supply: `repeat_alleles.csv` is keyed
+    # `(gene, repeat_unit)` and names no variant, so the rule pushed authors into writing a bare
+    # `chrom=4` for HTT — an assertion about a locus in a row that is about a threshold. A subject-less
+    # row grounds the module, or a specific bound via `MeasureBinRow.pmid`. The asymmetry with
+    # `VariantRow` (which still requires an identifier) is deliberate: an annotation with no subject
+    # annotates nothing, while a citation with no subject is a bibliography entry.

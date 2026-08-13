@@ -1354,6 +1354,9 @@ def hint_variant_(
 def hint_citation_(
     pmid: str | None = typer.Option(None, "--pmid", help="PubMed id to check."),
     doi: str | None = typer.Option(None, "--doi", help="DOI to check (the one you authored)."),
+    pmcid: str | None = typer.Option(
+        None, "--pmcid", help="PubMed Central id (PMC…) to resolve to the PubMed id tables key on."
+    ),
     offline: bool = typer.Option(False, "--offline", help="Skip the check and say so."),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
 ) -> None:
@@ -1367,11 +1370,16 @@ def hint_citation_(
     very likely to be a real record for a different article, and `pmid_exists` alone cannot catch a
     fabricated citation. The title, journal, year and first author come back in the same response and
     are printed for exactly that comparison (S12).
+
+    **`--pmcid` goes the other way.** `studies.csv` and a binning row's `pmid` both key on the PubMed
+    id, and a curator holding only a `PMC…` id had no route to it — the schema refused the cell and
+    named no remedy. This resolves it and then asks PubMed which paper that is. The id is **reported,
+    never written**: filling `pmid` from NCBI would make the existence check compare NCBI with itself.
     """
-    if pmid is None and doi is None:
-        typer.secho("give --pmid or --doi", fg=typer.colors.RED, err=True)
+    if pmid is None and doi is None and pmcid is None:
+        typer.secho("give --pmid, --doi or --pmcid", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
-    hint = lookup_citation(pmid=pmid, doi=doi, offline=offline)
+    hint = lookup_citation(pmid=pmid, doi=doi, pmcid=pmcid, offline=offline)
     if as_json:
         typer.echo(json.dumps({
             "pmid": hint.pmid,

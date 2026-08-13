@@ -19,6 +19,18 @@ count is a different fact from a v2.1.1 count. PubMed and Europe PMC publish no 
 all — they are continuously updated — so the column could only ever be null or a fabricated label.
 `fetched_at` is this table's currency marker instead.
 
+**The article's licence lives here, per article, and there is deliberately no `pubmed` row in the
+licence table** (0.6, RM46). The pass that writes this file introduces `pubmed` as a source and the
+tier has no terms constant for it — because a literature source's terms are *per article, not per
+source*. PubMed's metadata is one thing; the article belongs to its publisher, and Europe PMC's open
+subset spans CC-BY, CC-BY-NC and bronze. A single `sources.csv` row reading "pubmed, fine" would be
+right for a module citing only ids and **wrong** for one carrying a `provenance_quote` lifted from a
+CC-BY-NC article — wrong in the dangerous direction, since that quote is publisher text in the
+module's own *annotation* layer, which is exactly where the compile gate bites. So the terms are
+recorded on the row that names the article, and the compiler reads them from here rather than joining
+`sources.csv`. Quoting a non-commercial article **warns and never gates**: the format arbitrating
+copyright is the same class of overreach as it arbitrating a clinical dispute.
+
 *Quote checking is two counts, not one boolean.* A quote is authored per *study row*, while this table's
 grain is the citation, and two study rows may cite one paper with different quotes. A single
 `quote_found` flag would therefore have to lie about one of them. Integers round-trip through CSV
@@ -39,6 +51,11 @@ from just_dna_format.vocab import VALID_QUOTE_SOURCE, VALID_RESOLUTION_STATUS, c
 # `is_open_access` is **out** — an embargo lifting is the outside world changing, not the module. In
 # the fact set it would move the signature with no authored edit anywhere, which is exactly the
 # property that makes a fact-hash worth having.
+#
+# `license` / `share_alike` / `commercial_use` / `redistribution` are **out for the same reason**
+# (0.6, RM46): a publisher re-licensing an article, or Europe PMC learning terms it did not hold last
+# month, changes the world rather than the module. They sit beside `is_open_access`, not beside the
+# identifiers.
 #
 # `quotes_authored` / `quotes_found` are **out** for two reasons: the first is derivable from
 # `studies.csv` (so storing it as a fact duplicates one fact in two files), and the second depends on
@@ -98,6 +115,36 @@ class LiteratureRow(BaseModel):
         description=(
             "Whether Europe PMC reports retrievable open-access fulltext. Outside the fact set: "
             "embargoes lift, so this describes the world's state rather than the module's."
+        ),
+    )
+    license: str | None = Field(
+        default=None,
+        description=(
+            "The article's own licence, verbatim as the source spells it (Europe PMC writes `cc by`, "
+            "`cc by-nc`, `cc by-nc-nd`, `cc0`). Per ARTICLE, never per source: PubMed's metadata and "
+            "the publisher's text are different property, and the open subset spans all of those."
+        ),
+    )
+    share_alike: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the article's licence is viral (the `-SA` family). Null when the terms could "
+            "not be established — never false, which would state that they permit something."
+        ),
+    )
+    commercial_use: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the article's licence permits commercial reuse (`-NC` makes it false). This is "
+            "what a module quoting the article in `provenance_quote` has to answer for, since that "
+            "quote is publisher text sitting in the module's own annotation layer."
+        ),
+    )
+    redistribution: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the article's licence permits passing the text on. A third axis, not a reading "
+            "of the other two: CC BY-NC forbids sale and allows sharing."
         ),
     )
     quotes_authored: int | None = Field(

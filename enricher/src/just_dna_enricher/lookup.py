@@ -48,6 +48,7 @@ from just_dna_enricher.identifiers import (
 from just_dna_enricher.literature import (
     CrossrefClient,
     EuropePmcClient,
+    PmcIdConverterClient,
     _identifiers,
     bibliographic,
 )
@@ -71,6 +72,7 @@ _REFUSAL_BY_COLUMN: dict[str, str] = {
     "alts": "redundancy_bearing",
     "clin_sig": "redundancy_bearing",
     "doi": "redundancy_bearing",
+    "pmid": "redundancy_bearing",
     "trait_efo_id": "intent_bearing",
     "gene": "intent_bearing",
 }
@@ -88,12 +90,14 @@ class LookupClients:
     eutils: EutilsClient | None = None
     europepmc: EuropePmcClient | None = None
     crossref: CrossrefClient | None = None
+    pmc_idconv: PmcIdConverterClient | None = None
     ontology: OntologyClient | None = None
     ensembl: EnsemblResolver | None = None
 
     def close(self) -> None:
         for client in (
-            self.gnomad, self.eutils, self.europepmc, self.crossref, self.ontology, self.ensembl,
+            self.gnomad, self.eutils, self.europepmc, self.crossref, self.pmc_idconv,
+            self.ontology, self.ensembl,
         ):
             closer = getattr(client, "close", None)
             if closer is not None:
@@ -475,6 +479,7 @@ def lookup_citation(
     *,
     pmid: str | None = None,
     doi: str | None = None,
+    pmcid: str | None = None,
     offline: bool = False,
     clients: LookupClients | None = None,
 ) -> CitationHint:
@@ -482,16 +487,32 @@ def lookup_citation(
 
     A paywall hides the *fulltext*, never the PubMed record, so existence is answerable for
     paywalled work. Crossref covers what PubMed does not index at all (preprints, books, datasets).
+
+    **`pmcid=` is the reverse direction, and it reports rather than fills** (RM50). PubMed and PubMed
+    Central number articles independently, `StudyRow.pmid` requires the PubMed one, and a curator
+    holding only a PMC id previously had no route to it — the schema refused the cell and named no
+    remedy. The resolved PMID comes back as an **advisory** (`applied=False`) the author types
+    themselves: writing it into `pmid` would make `literature.exists` compare NCBI against NCBI, the
+    same argument that keeps `doi` unfilled. When both are given, the PMC id is additionally checked
+    against the PMID's own record, which is where a mismatched pair shows up.
     """
     hint = CitationHint(pmid=pmid, doi=doi)
+    if pmcid:
+        hint.pmcid = pmcid.strip().upper()
     if offline:
         hint.findings.append(
             Finding(None, None, "info", "offline: citation existence was not checked")
         )
         return hint
     clients = clients or LookupClients()
-    if pmid:
-        _check_pmid(hint, pmid, clients)
+    resolved_pmid: str | None = None
+    if pmcid:
+        resolved_pmid = _check_pmcid(hint, hint.pmcid or pmcid, clients, authored_pmid=pmid)
+    # The resolved id is then put to PubMed, so the answer names the *paper* rather than only a
+    # number: a converter reply a curator cannot check against the article they meant is exactly the
+    # existence-is-not-identity failure (S12). The authored `pmid` still wins when there is one.
+    if pmid or resolved_pmid:
+        _check_pmid(hint, pmid or resolved_pmid or "", clients)
     if doi:
         # The **authored** DOI, never a derived one: a DOI the registry just handed over exists by
         # construction, so checking it would answer a question nobody asked.
@@ -529,7 +550,22 @@ def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:
         return
     identifiers = _identifiers(record)
     hint.registry_doi = identifiers.get("doi")
-    hint.pmcid = identifiers.get("pmcid")
+    registry_pmcid = identifiers.get("pmcid")
+    # An authored PMC id is compared, never overwritten (RM50). A caller who supplied both has two
+    # identifiers in mind and the disagreement is the finding; silently replacing one with the other
+    # would answer a question nobody asked and hide the one that matters.
+    if hint.pmcid and registry_pmcid and hint.pmcid != registry_pmcid.strip().upper():
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "warning",
+                f"PMID {pmid} is {registry_pmcid} in PMC, not {hint.pmcid} — the two identifiers "
+                f"name different articles",
+            )
+        )
+    elif registry_pmcid:
+        hint.pmcid = registry_pmcid
     # Which paper this actually is, from the response that just answered existence (S12). Reported as
     # an `info` finding as well as on the fields, because the caller most likely to have recalled a
     # PMID from memory is the one reading prose rather than JSON.
@@ -563,6 +599,85 @@ def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:
                 "the registry with itself",
             )
         )
+
+
+def _check_pmcid(
+    hint: CitationHint, pmcid: str, clients: LookupClients, *, authored_pmid: str | None
+) -> str | None:
+    """PMCID → PMID through NCBI's id converter (RM50). Reports; never fills.
+
+    Returns the resolved PMID so the caller can go on to ask PubMed *which paper that is* — a
+    converter that hands back a number and stops is the same existence-is-not-identity failure S12
+    was about, one registry over.
+
+    Three outcomes, as everywhere. A resolved id becomes an **advisory** the author types themselves
+    (the `registry_doi` idiom), unless they already supplied a `pmid`, in which case the two are
+    compared and a disagreement is the finding. An id PMC answers about with no PubMed id is a real
+    negative and is said as one. An id the request never reached leaves everything `None`, because
+    "could not ask" and "PMC has no such record" are different claims.
+    """
+    converter = clients.pmc_idconv or PmcIdConverterClient()
+    try:
+        resolved = converter.resolve([pmcid])
+    except Exception as exc:
+        hint.findings.append(
+            Finding(None, "pmid", "info", f"the PMC id converter could not be asked: {exc}")
+        )
+        return None
+    finally:
+        if clients.pmc_idconv is None:
+            converter.close()
+    record = resolved.get(pmcid)
+    if record is None:
+        hint.findings.append(
+            Finding(None, "pmid", "info", f"the PMC id converter did not answer about {pmcid}")
+        )
+        return None
+    if not record.in_pmc:
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "warning",
+                f"PMC has no record of {pmcid}"
+                + (f" ({record.error})" if record.error else ""),
+            )
+        )
+        return None
+    pmid = record.pmid
+    if pmid is None:
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "warning",
+                f"{pmcid} is in PMC but carries no PubMed id, so there is no `pmid` to write for it. "
+                f"Cite it by `doi` instead, which studies.csv also accepts",
+            )
+        )
+        return None
+    if authored_pmid and authored_pmid.strip() != pmid:
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "warning",
+                f"{pmcid} is PMID {pmid}, not the {authored_pmid} written beside it — the two "
+                f"identifiers name different articles",
+            )
+        )
+        return None
+    hint.alterations.append(
+        _advisory(
+            "pmid",
+            pmid,
+            "pmc-idconv",
+            f"the PubMed id for {pmcid}. Not written, because the citation check compares the pmid "
+            f"you wrote against PubMed's record — filling it from NCBI would compare NCBI with "
+            f"itself",
+        )
+    )
+    return pmid
 
 
 def _check_availability(hint: CitationHint, pmid: str, clients: LookupClients) -> None:

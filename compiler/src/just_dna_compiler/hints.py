@@ -85,6 +85,11 @@ REDUNDANCY_BEARING: dict[str, str] = {
     "ref": "enricher.sequences.verify_reference_alleles (authored ref vs the genome)",
     "alts": "compiler allele-membership check; alts is a resolution fact in artifact.digest",
     "doi": "enricher.literature._doi_conflicts (authored doi vs the registry's)",
+    # The other citation identifier, registered when the PMCID → PMID lookup landed (RM50). Same
+    # argument as `doi`, one registry over: `literature.exists` asks PubMed whether the **authored**
+    # pmid resolves, so filling it from NCBI's id converter would compare NCBI with itself. The
+    # converter therefore reports the id as an advisory and never writes it.
+    "pmid": "enricher.literature (authored pmid vs PubMed's record: LiteratureRow.exists)",
     "clin_sig": "enricher.clinical.verify_clin_sig (authored call vs ClinVar's)",
     "function_status": "enricher.pgx.enrich_pgx (authored function vs PharmVar and CPIC)",
     "evidence_level": "enricher.clinpgx (authored level vs the ClinPGx snapshot)",
