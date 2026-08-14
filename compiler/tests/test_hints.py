@@ -246,6 +246,11 @@ def test_field_options_match_the_models_markers(kind: str) -> None:
     assert {o.column: o.options for o in field_options(kind)} == {
         c: m["options"] for c, m in expected.items()
     }
+    # …including the per-member prose a member name cannot carry: a picker offering `largest` beside
+    # `largest_alt` is exactly where "which one counts the reference element" has to be answerable.
+    assert {o.column: o.notes for o in field_options(kind)} == {
+        c: (dict(m["notes"]) if m.get("notes") else None) for c, m in expected.items()
+    }
 
 
 def test_every_alteration_kind_is_a_declared_member() -> None:
