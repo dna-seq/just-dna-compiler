@@ -34,7 +34,64 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-13 (latest) — 0.6.0: the design round, built — eleven items, the VCF 4.4 cluster, and a charter amendment
+## 2026-08-14 (latest) — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
+
+[DOGFOOD_0_6.md](DOGFOOD_0_6.md) built six probe modules against the shipped CLIs and produced a
+ledger, [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md), whose own header said fixing was a separate
+round. This is that round: twelve parallel units in isolated worktrees, one finding or group each, every
+one exercised against a real module rather than only the suite. Ten `fix` findings landed, five
+`surface` ones became **RM68–RM72** in [ROADMAP_0_7.md](ROADMAP_0_7.md), and the work turned up **nine
+new findings** which are filed in the same ledger as Round 2 rather than in a new file.
+
+**Nothing in the corpus moved except where a new column made it legal.** All sixteen reference examples
+were compiled before and after: `content_signature`, `resolution_signature` and `sources.signature` are
+identical on every module, and `artifact.digest` moved on exactly the three carrying `literature.csv`,
+because `LiteratureRow` gained an optional `doi_checked`. That is the additive case Principle 3 permits
+as amended — the column is outside `LITERATURE_FACT_FIELDS`, so no authored identity moved.
+
+The findings worth knowing outside this repo:
+
+- **`enrich` crashed on any module carrying a symbolic allele** (D1-1). RM5 shipped the grammar in 0.6
+  and the VRS tier was never told, so `<DEL:4977>` reached `ga4gh.vrs` and raised an unhandled
+  `ValidationError`. Probing the fix showed the crash is the *character class*, not the spelling:
+  RM58's `.` raises identically, and RM59's `*` **passes** the sequence pattern, so it would have been
+  handed a content-addressed id for a state that is not a sequence. All three are guarded, in both
+  tiers, each with its own permanent reason class rather than being called an indel.
+- **The rsid↔coordinate check was documented, named in the check vocabulary, and unreachable**
+  (R2-15). It lives on `resolve_variants`, whose only non-test caller is the compiler's deprecated
+  `_legacy_resolve`; `enrich()` never called it, and a row authoring both halves was never compared.
+  Found only because wiring its attestation required counts that did not exist. Generalize it: asking a
+  pass to publish a number is how you discover it never computed one.
+- **Six of the twelve unemitted `VALID_VERIFICATION_CHECKS` members are now emitted** (D4-1) —
+  `literature` writes three, `pgx` and `vrs mint` one each, and `enrich` gained rsid↔coordinate.
+  `merge_records` had been built and tested for a multi-command document no two commands produced; two
+  real commands now exercise it. The remaining six are RM72, four of them blocked on
+  `check-identifiers`/`check-acmg` advertising "Writes nothing".
+- **`vrs mint` records a skip, not a pass.** Its member names the cross-check against a *source-reported*
+  id, and nothing in the workspace fills that input — so recording the alleles it minted as `subjects`
+  would assert a comparison never made. Coverage rides in `detail` instead.
+- **A `<<REPLACE>>` template stub in `licensing.csv` compiles green under `--strict`** and reaches
+  `manifest.sources` inside the block its own signature covers (R2-8, unfixed). `SourceRow` is not an
+  `AuthoredModel`, so the "a generated stub must be unable to compile" guarantee never reached the one
+  fact sidecar a human writes.
+- **RM62's rule was one-sided as shipped.** "Narrow the authored bound to float32" rests on
+  `float32(0.3)` being above `0.3`; `float32(0.9)` is **below** `0.9`, so narrowing an authored `0.9`
+  drops a row whose measurement never went through float32. The rule that survives is the one
+  SCHEMAS.md's heading always gave: compare *in* float32. Now on the `measure_max` description, where an
+  author reads it.
+- **RM63's own correction overclaimed** (R2-14, unfixed). It replaced a false statement about homologs
+  with *"read a pipe as heterozygous"*, and `C|C` loads — `1|1` is an ordinary phased homozygous call.
+  The printed descriptions carry the true half; the comment still does not. A correction is where this
+  happens: the reviewer checks the claim being removed, not the one going in.
+
+Two process notes. **Eleven units were green alone and one pair was not green together** — a test
+pinned `"indel/MNV"` for an allele another unit was concurrently reclassifying as symbolic, which only
+merging could catch. And **three of the nine new findings came from re-verifying a report rather than
+relaying it**: one claim was refuted outright (R2-7, raised twice and now closed against every path),
+one brief was wrong about where its own subject ran (R2-15), and one instruction had to be disobeyed to
+avoid printing a false claim (D5-2).
+
+## 2026-08-13 — 0.6.0: the design round, built — eleven items, the VCF 4.4 cluster, and a charter amendment
 
 **The whole of [PROPOSAL_0_6.md](PROPOSAL_0_6.md)'s build list shipped**, in eleven parallel lanes
 over one day. The reasoning stays in the proposal; the outcomes and what probing changed are in
