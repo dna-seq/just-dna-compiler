@@ -310,8 +310,10 @@ def inspect_rows(csv_name: str, csv_text: str) -> HintReport:
     parsed: list[BaseModel | None] = []
     for index, raw in enumerate(rows):
         cells = dict(raw)
-        _check_placeholders(index, cells, report)
-        instance = _validate_row(index, cells, model, csv_name, report)
+        # The stub columns are handed to `_validate_row` rather than left implicit in the call order:
+        # both layers see the same cell, and this is what lets the second one stay quiet about it.
+        stubbed = _check_placeholders(index, cells, report)
+        instance = _validate_row(index, cells, model, report, stubbed=stubbed)
         parsed.append(instance)
         if instance is not None:
             cells = _apply_normalizations(index, cells, instance, model, header, report)
@@ -392,18 +394,55 @@ def _parse(csv_text: str, fieldnames: list[str]) -> tuple[list[dict[str, str]], 
     return rows, header, (1 if has_header else 0), ragged
 
 
-def _check_placeholders(index: int, cells: dict[str, str], report: HintReport) -> None:
-    for column, value in cells.items():
-        if value.strip() == TEMPLATE_PLACEHOLDER:
-            report.findings.append(
-                Finding(index, column, "error", f"{column} is still a template stub — replace it")
-            )
+def _check_placeholders(index: int, cells: dict[str, str], report: HintReport) -> list[str]:
+    """One finding per cell still carrying the placeholder, and the columns it named.
+
+    The return value is consumed by `_validate_row`: the model's own `mode="before"` guard sees the
+    same cells and raises a row-level `ValueError` listing every one of them, so without it a stub
+    is reported twice — once here with its column, once there without."""
+    stubbed = [column for column, value in cells.items() if value.strip() == TEMPLATE_PLACEHOLDER]
+    for column in stubbed:
+        report.findings.append(
+            Finding(index, column, "error", f"{column} is still a template stub — replace it")
+        )
+    return stubbed
 
 
 def _validate_row(
-    index: int, cells: dict[str, str], model: type[BaseModel], csv_name: str, report: HintReport
+    index: int,
+    cells: dict[str, str],
+    model: type[BaseModel],
+    report: HintReport,
+    *,
+    stubbed: list[str],
 ) -> BaseModel | None:
-    """Build the row, turning each validation error into a per-cell finding rather than an exception."""
+    """Build the row, turning each validation error into a per-cell finding rather than an exception.
+
+    **A stub cell is reported once, by the check that knows which column it is** (D4-2). Two other
+    layers see the same cell and say the same thing less usefully, and both are dropped here:
+
+    * an authored model guards its raw input with `vocab.reject_template_placeholders`, which raises
+      one row-level error naming every placeholder path. That is precisely what makes a generated
+      stub unable to compile, which is its job; as a *hint* it is a strictly weaker restatement,
+      carrying no `loc`, hence a `Finding` with no `column`, hence no `line 2 [genotype]` in the CLI.
+      A freshly drafted 109-row panel printed two lines per defect.
+    * a table whose model is not an `AuthoredModel` — `sources.csv`/`licensing.csv` — carries no such
+      guard, so the placeholder reaches the field validators and comes back as a type or vocabulary
+      error quoting the stub token (`layer must be one of [...], got: '<<REPLACE>>'`). Same defect
+      through a different door, and the same answer: the cell is unfilled, and that is the whole of
+      what an author can act on. Once it is filled with something wrong, the error returns.
+
+    The suppression is narrow in both directions. Row-level errors key on `stubbed` being non-empty
+    rather than on the message alone, so a placeholder error nothing reported per cell would still be
+    shown — the aim is no duplicates, not fewer findings — and that guard is exact rather than
+    approximate here: both layers apply the identical `strip() == TEMPLATE_PLACEHOLDER` test to the
+    same flat dict of cells (the `!= ""` filter below cannot drop a stub, which is never empty), so a
+    non-empty `stubbed` means every path the model's message lists was already reported with its
+    column. Located errors are dropped only on a column that *is* a stub, which is `draft.PartialRow`'s
+    rule for the same situation. And the row is still validated rather than skipped: the raw guard
+    runs first and aborts the rest today, but that is a fact about the current validator order, not a
+    decision — if it ever changes, the errors it stops masking surface here rather than being
+    swallowed by a shortcut."""
     payload = {k: v for k, v in cells.items() if v != ""}
     try:
         return model.model_validate(payload)
@@ -411,9 +450,12 @@ def _validate_row(
         for error in getattr(exc, "errors", list)():
             location = error.get("loc") or (None,)
             column = location[0] if isinstance(location[0], str) else None
-            report.findings.append(
-                Finding(index, column, "error", str(error.get("msg", "")).removeprefix("Value error, "))
-            )
+            message = str(error.get("msg", "")).removeprefix("Value error, ")
+            if column is not None and column in stubbed:
+                continue
+            if column is None and stubbed and TEMPLATE_PLACEHOLDER in message:
+                continue
+            report.findings.append(Finding(index, column, "error", message))
         if not getattr(exc, "errors", None):
             report.findings.append(Finding(index, None, "error", str(exc)))
         return None

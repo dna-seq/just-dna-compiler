@@ -370,6 +370,16 @@ tautological; for an rsid-only row `resolution._verify` never runs at all, and t
 honestly unverified to apparently verified. Every looked-up fact is therefore reported with
 `applied=False` and a refusal reason, and the enricher's `lookup.py` answers in the same shape.
 
+One consequence of computing nothing new is that the same cell can be seen by two layers, and a hint
+must still print it once. An unreplaced `TEMPLATE_PLACEHOLDER` is the case: `_check_placeholders`
+names the column, and the model then says the same thing less usefully — a row-level `ValueError`
+listing every placeholder path on an authored model, or a vocabulary error quoting the token back on
+`sources.csv`/`licensing.csv`, whose row model carries no such guard. A freshly drafted 109-row panel
+printed two lines per defect. `_validate_row` drops both restatements, keyed on the cells the
+per-column check actually reported, so a placeholder error nothing covered would still be shown. The
+guard itself is untouched: it is what makes a generated stub unable to compile, and a hint refuses
+nothing.
+
 ## And what is not the compiler's job at all
 
 Static checking has an upper bound here, and the analogue of dynamic analysis lives elsewhere. The
