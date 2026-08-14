@@ -1016,11 +1016,24 @@ rows by three routes:
    dependency, and byte-identical to what `ga4gh.vrs` and the live gnomAD API produce.
 2. **normalized** — an indel/MNV, justified against the reference through the seqrepo REST data proxy.
    Needs the network, so `--offline` skips it.
-3. **null** — an indel offline, an unreachable sequence service, an off-assembly contig. A missing id
-   is honest; an unjustified one would be a `ga4gh:VA.…` that *looks* interoperable and is not.
+3. **null** — an indel offline, an unreachable sequence service, an off-assembly contig, or an allele
+   that names no sequence at all. A missing id is honest; an unjustified one would be a `ga4gh:VA.…`
+   that *looks* interoperable and is not.
 
 A source's own id (gnomAD serves one) is **cross-checked, never trusted over** the minted value — the
 point of a content-addressed identity is that it does not depend on which sources happened to answer.
+
+**An allele that names no sequence is a permanent class, and it used to be a crash.** RM5's symbolic
+alleles (`<DEL:4977>`), RM58's `.` and RM59's `*` are legal cells the mint pass routed to indel
+normalization like any other non-substitution — and `ga4gh.vrs`'s `LiteralSequenceExpression` accepts
+`^[A-Z*\-]*$`, so the first two raised an unhandled `pydantic.ValidationError` that killed a whole
+enrich run over one row, while `*` passed the pattern and would have been handed a content-addressed
+id for a state that is not a sequence. `vrs._sequence_free_reason` decides the class once, for both
+`mint` and `why_not`, so the verdict and the sentence cannot drift: the row keeps no id, the run
+carries on (the `UnsupportedBuildError` guard beside it is the same shape), and the reason says the
+id is unreachable on **any** run rather than offering the `--offline` re-run that used to be the
+crash. One constant string per class, because `unmintable_reasons` groups on it. Still a warning in
+both modes — no authored edit makes a symbolic allele mintable (P5).
 
 ## Publisher surface — module upload (`upload.py`, `[dev]`)
 
