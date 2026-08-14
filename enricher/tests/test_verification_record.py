@@ -351,9 +351,14 @@ def test_vrs_mint_records_that_it_compared_nothing_rather_than_that_it_passed(
     assert record.skipped == "nothing_to_check"
     assert (record.subjects, record.findings) == (0, 0)
     assert "no source-reported allele id" in (record.detail or "")
-    # The module's own coverage, and the gap named by reason class rather than per allele — this
-    # example's MT deletion is an indel, which cannot be justified without the reference sequence.
-    assert "indel/MNV" in (record.detail or "")
+    # The module's own coverage, and the gap named by reason class rather than per allele. This
+    # example's MT common deletion is authored as `<DEL:4977>` — a **symbolic** allele (RM5), not an
+    # indel: it names no sequence at all, so no run of any kind can mint an id for it, which is a
+    # permanent reason class rather than the indel's "needs the reference sequence, so run online".
+    # This assertion read "indel/MNV" when it was written, against a classification D1-2 was
+    # concurrently correcting in the same batch; the merge is what caught the disagreement.
+    assert "symbolic/structural allele" in (record.detail or "")
+    assert "indel/MNV" not in (record.detail or ""), "a symbolic allele is not an indel (D1-2)"
     # The reference example arrives carrying an `enrich` attestation, and it survives: that is what
     # the merge is for, and until now no two real commands ever produced one document.
     assert "reference_allele" in by_check
