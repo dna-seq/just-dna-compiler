@@ -13,6 +13,12 @@ questions, in increasing ambition and decreasing coverage:
 3. **Does the quoted passage appear in the article?** Only for the open-access subset, and honestly
    labelled as such.
 
+**All three are attested** (RM45): the pass writes `citation_existence`, `citation_identifier` and
+`provenance_quote` into `verification.json` on its way out, including on the offline return, so a
+module can say which of the three was put and over how many citations. Until 0.6 the answers reached
+a log line and the result object and died there, which left a module whose citations had been checked
+indistinguishable from one where the command was never run.
+
 **Coverage is partial by nature, and saying so is part of the check.** A pass that reported "0 quotes
 found" for an article it could not read would be describing its own reach as if it were a property of
 the module. So the result separates *checked and not found* from *never retrievable* — `quotes_found`
@@ -58,6 +64,7 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import binning_citations, load_binning_rows, load_csv_rows
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import DOI_PATTERN, StudyRow, extract_pmcids, extract_pmids
 from tenacity import (
@@ -69,6 +76,7 @@ from tenacity import (
 from just_dna_enricher.eutils import EutilsClient, is_missing
 from just_dna_enricher.licensing import article_terms
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
+from just_dna_enricher.verification import ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +96,12 @@ _FIELDNAMES: list[str] = list(LiteratureRow.model_fields)
 
 #: Seconds a single `provenance_regex` match may run before it is recorded as unchecked.
 DEFAULT_REGEX_TIMEOUT = 5.0
+
+#: The `source` a row written by this pass carries, and the only value the identifier cross-check
+#: will compare against. A merged row spelling anything else — `manual`, a curator's correction —
+#: holds the curator's own identifiers, and calling a disagreement with those "the registry's" would
+#: be a false attribution. Named once so the writer and the comparison cannot drift apart.
+_REGISTRY_SOURCE = "pubmed"
 
 _WHITESPACE = re.compile(r"\s+")
 
@@ -136,46 +150,118 @@ class PmcidConflict:
 
 @dataclass
 class LiteratureResult:
+    """What the pass found, and — through `subject_rows` — what it found it *about*.
+
+    **One subject set, read by the report, by the `strict` gates and by the attestation.** The set is
+    the citations the module makes *now*, answered by the rows `literature.csv` holds *now*, and it is
+    the single rule the whole pass turns on. Three separate defects came from parts of this file
+    reading three different sets:
+
+    * the `strict` gates read lists appended inside the fetch loop, so a module enriched once with
+      `--best-effort` and then with `--strict` was blessed on a citation PubMed has no record of —
+      the refusal depended on the order the two runs happened in, and the attestation written by the
+      same run said `findings=1` while the gate beside it said nothing was wrong;
+    * the identifier cross-check ran inside that loop too, so an existing `literature.csv` hid every
+      DOI/PMC id disagreement;
+    * the counts read `rows`, which is everything the sidecar carries and never shrinks, so a
+      citation deleted from `studies.csv` went on being counted and no authored edit could clear the
+      finding it produced.
+
+    Merge-not-clobber is what makes the distinction real: the sidecar keeps rows for citations the
+    module has since dropped, and those rows are still written back (deleting a curator's row is not
+    this pass's call) — they are simply not what any of this run's questions were about.
+    """
+
     rows: list[LiteratureRow]
     missing: list[str] = field(default_factory=list)          # PMIDs PubMed has no record of
     doi_conflicts: list[DoiConflict] = field(default_factory=list)
     pmcid_conflicts: list[PmcidConflict] = field(default_factory=list)
+    cited: list[str] = field(default_factory=list)             # the PMIDs the module cites right now
+    existence_checked: int = 0                                 # of those, the ones carrying a verdict
+    unresolved_citations: int = 0                              # of those, the ones resolving nowhere
+    doi_verdicts_stale: int = 0                                # pinned DOI answers about another DOI
+    doi_never_checked: int = 0                                 # cited DOIs no run has resolved
+    noncommercial_quoted: list[str] = field(default_factory=list)   # quoted under a no-sale licence
+    fulltext_requested: bool = True                            # --fulltext/--no-fulltext, as run
     quotes_authored: int = 0
     quotes_found: int = 0
-    quotes_unchecked: int = 0                                  # no retrievable fulltext
+    quotes_checked: int = 0                                    # quotes a retrieved text settled
+    quotes_unchecked: int = 0                                  # unretrievable + never examined
+    quotes_unexamined: int = 0                                 # authored after the sidecar pinned the row
     fulltext_checked: list[str] = field(default_factory=list)  # PMIDs whose fulltext was read
     abstract_checked: list[str] = field(default_factory=list)  # PMIDs matched against the abstract only
     doi_missing: list[str] = field(default_factory=list)       # DOIs Crossref has no record of
+    identifiers_authored: int = 0                              # citations carrying an authored doi/PMC id
+    identifiers_compared: int = 0                              # of those, the ones PubMed also named one for
+    identifiers_conflicting: int = 0                           # of those, the ones where the two disagree
+    identifiers_unmatched: int = 0                             # of those, the ones PubMed named none for
+    identifiers_foreign: int = 0                               # of those, the ones a curator wrote
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
     skipped_offline: bool = False
 
     @property
+    def subject_rows(self) -> list[LiteratureRow]:
+        """The rows this run's questions were about: a row for a citation the module still makes.
+
+        Not `rows`, which is the whole sidecar — see the class docstring. Not this run's fetch list
+        either: `literature.csv` *is* the pin, so a row merged from an earlier run carries a verdict
+        that still stands, and counting only what this run looked up would let a no-op re-run replace
+        a true attestation with `subjects=0`, which reads as "the check ran and had nothing in scope".
+        """
+        cited = set(self.cited)
+        return [r for r in self.rows if r.pmid in cited]
+
+    @property
     def coverage(self) -> str:
         """The sentence this pass exists to be able to say honestly.
 
-        The denominator is citations that had **something to check** — one with no authored quote was
+        The denominator is what had **something to check** — a citation with no authored quote was
         not skipped for lack of a fulltext, it simply asked no question. Counting it as unretrievable
         was a real bug found by running this against `reference_examples/pathogenic_clinvar/`, whose
         single citation is open access *and* carries no quote: the old wording claimed its fulltext
         could not be retrieved, which was the opposite of true.
+
+        **Counted in quotes, off the tally, and not in citations off the run's own fetch lists.** The
+        earlier wording read `fulltext_checked`, which only ever holds PMIDs *this run* retrieved, so
+        a no-op re-run over a pinned open-access citation printed "0 of 1 … 1 with nothing
+        retrievable" one line above "1/1 found" — the same false retrievability claim the paragraph
+        above records as a bug, arrived at from the other direction. Quotes also partition cleanly
+        where citations do not: one citation can carry a settled quote and a never-examined one at
+        once, so a citation-granular sentence has to put it in one bucket and be wrong about the
+        other.
         """
-        checkable = [r for r in self.rows if (r.quotes_authored or 0) > 0]
-        if not checkable:
+        if self.quotes_authored == 0:
             return (
-                f"no provenance quotes authored across {len(self.rows)} citation(s) — nothing to "
+                f"no provenance quotes authored across {len(self.cited)} citation(s) — nothing to "
                 f"check against fulltext"
             )
-        unread = len(checkable) - len(self.fulltext_checked) - len(self.abstract_checked)
+        if not self.fulltext_requested:
+            # `--no-fulltext` leaves every quote unchecked, and the generic wording below would call
+            # that "nothing retrievable" — a claim about articles nobody tried to fetch, and one the
+            # verification record for the same run contradicts by saying `not_requested`.
+            return (
+                f"{self.quotes_authored} authored quote(s) not matched against anything: "
+                f"--no-fulltext"
+            )
         parts = [
-            f"checked fulltext for {len(self.fulltext_checked)} of {len(checkable)} citation(s) with "
-            f"an authored quote"
+            f"checked {self.quotes_checked} of {self.quotes_authored} authored quote(s) against "
+            f"retrieved text"
         ]
-        if self.abstract_checked:
-            # Reported separately, never folded into the fulltext count: a hit in an abstract settles
-            # a quote, a miss does not, so the two searches are not the same evidence.
-            parts.append(f"{len(self.abstract_checked)} abstract-only (a miss there is not a verdict)")
-        parts.append(f"{unread} with nothing retrievable")
+        unretrievable = self.quotes_unchecked - self.quotes_unexamined
+        if unretrievable:
+            # An abstract miss lives here rather than in the checked count, and the clause says so: a
+            # hit in an abstract settles a quote, a miss does not, so the two searches are not the
+            # same evidence.
+            parts.append(
+                f"{unretrievable} with nothing retrievable (or only an abstract, where a miss is not "
+                f"a verdict)"
+            )
+        if self.quotes_unexamined:
+            parts.append(
+                f"{self.quotes_unexamined} not looked up, because literature.csv already pins their "
+                f"citation — delete it to re-derive"
+            )
         return "; ".join(parts)
 
 
@@ -616,6 +702,10 @@ def enrich_literature(
     `--offline` makes this a no-op with a warning. There is no offline literature snapshot and there
     will not be one; once `literature.csv` is written it *is* the pin, and later compiles read it
     offline and deterministically.
+
+    **Three checks are attested on the way out** (`_attest`), the offline return included: a run that
+    did not put a question has to say so, or the manifest cannot tell it from a run that put one and
+    found nothing.
     """
     spec_dir = Path(spec_dir)
     studies_path = spec_dir / "studies.csv"
@@ -663,16 +753,23 @@ def enrich_literature(
         out = sorted(existing.values(), key=lambda r: int(r.pmid))
         if write and existing:
             _write_literature_csv(out, output_path)
-        return LiteratureResult(
-            rows=out, mode=mode, skipped_offline=True,
-            sources=sorted({r.source for r in out if r.source}),
-            quotes_authored=authored_total,
+        return _attest(
+            LiteratureResult(
+                rows=out, mode=mode, skipped_offline=True,
+                sources=sorted({r.source for r in out if r.source}),
+                cited=sorted(citations, key=int),
+                quotes_authored=authored_total,
+                fulltext_requested=check_fulltext,
+            ),
+            spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi,
         )
 
     wanted = [pmid for pmid in citations if pmid not in existing]
     fetched_at = now_utc_iso()
     result = LiteratureResult(rows=list(existing.values()), mode=mode,
-                              quotes_authored=authored_total)
+                              cited=sorted(citations, key=int),
+                              quotes_authored=authored_total,
+                              fulltext_requested=check_fulltext)
 
     if wanted:
         owned_eutils = eutils is None
@@ -702,26 +799,23 @@ def enrich_literature(
                 license_name = epmc_record.get("license") if epmc_record else None
                 terms = article_terms(license_name)
 
-                if not exists:
-                    result.missing.append(pmid)
-
-                for conflict in _doi_conflicts(pmid, citations[pmid], doi):
-                    result.doi_conflicts.append(conflict)
-                for conflict in _pmcid_conflicts(pmid, citations[pmid], pmcid):
-                    result.pmcid_conflicts.append(conflict)
+                # Nothing is tallied in this loop, and that is the rule rather than a preference:
+                # every count this pass reports is taken afterwards over `subject_rows`, so the
+                # `strict` gates, the CLI report and the attestation cannot end up reading three
+                # different sets. A citation already pinned in `literature.csv` is not fetched here,
+                # so a count made in this loop is a count of *this run's requests* — which made the
+                # existence gate, the identifier cross-check and the record disagree with each other
+                # depending on the order two runs happened in.
 
                 # Crossref checks the **authored** DOI in preference to the derived one. Checking the
                 # registry's own DOI would be circular — it exists by construction, since the registry
                 # just handed it over. The authored cell is the one nobody has verified, and it is the
                 # only one that exists at all for a citation PubMed does not index (a preprint, book or
                 # dataset), which is the case this whole client is here for.
-                authored_doi = next((s.doi for s in citations[pmid] if s.doi), None)
-                target_doi = _doi_token(authored_doi) if authored_doi else (doi or None)
+                target_doi = _doi_to_check(citations[pmid], doi)
                 doi_exists: bool | None = None
                 if check_doi and target_doi:
                     doi_exists = crossref.exists(target_doi)
-                    if doi_exists is False:
-                        result.doi_missing.append(target_doi)
 
                 quotes = [
                     s for s in citations[pmid] if s.provenance_quote or s.provenance_regex
@@ -747,10 +841,10 @@ def enrich_literature(
                             1 for s in quotes
                             if _study_quote_found(s, text, regex_timeout=regex_timeout)
                         )
-                if quotes and (found is None or (quote_source == "abstract" and found < len(quotes))):
-                    # Unchecked = the body was never read. An abstract hit settles a quote; an abstract
-                    # miss leaves it open, so only the shortfall counts as unchecked.
-                    result.quotes_unchecked += len(quotes) - (found or 0)
+                # What the retrieved text settled is tallied once, after the loop, over every row —
+                # see `_tally_quotes`. The per-row facts it reads (`quotes_authored`, `quotes_found`,
+                # `quote_source`) are written right here, so the tally is the same arithmetic applied
+                # to merged rows as well as fresh ones.
                 result.rows.append(
                     LiteratureRow(
                         pmid=pmid, doi=doi, pmcid=pmcid, exists=exists,
@@ -763,6 +857,9 @@ def enrich_literature(
                         quotes_found=found,
                         quote_source=quote_source,
                         doi_exists=doi_exists,
+                        # Which DOI that verdict is about. Without it the pin cannot say, and a
+                        # re-run pairs the stored answer with whatever the author writes next.
+                        doi_checked=target_doi if doi_exists is not None else None,
                         # PubMed is the row's source: it decides existence and supplies the
                         # identifiers. Europe PMC contributes `is_open_access` and the fulltext, but
                         # it cannot originate a row (it silently omits ids it does not know), so it
@@ -779,10 +876,14 @@ def enrich_literature(
                 crossref.close()
 
     result.rows.sort(key=lambda r: int(r.pmid))
-    result.missing = sorted(set(result.missing), key=int)
     result.fulltext_checked = sorted(set(result.fulltext_checked), key=int)
     result.sources = sorted({r.source for r in result.rows if r.source})
-    result.quotes_found = sum(r.quotes_found for r in result.rows if r.quotes_found is not None)
+    # Every tally runs here, once, over the sorted subject rows — so each list is ordered by PMID
+    # rather than by whatever order the fetch took, and the gates below refuse on exactly what the
+    # attestation records.
+    _tally_existence(result, citations)
+    _tally_quotes(result, citations)
+    _compare_identifiers(result, citations)
     logger.info("Literature: %s", result.coverage)
 
     if mode == "strict" and result.missing:
@@ -812,7 +913,495 @@ def enrich_literature(
         )
     if write:
         _write_literature_csv(result.rows, output_path)
+    return _attest(
+        result, spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi
+    )
+
+
+def _doi_to_check(studies: list[StudyRow], registry_doi: str | None) -> str | None:
+    """The DOI Crossref is asked about: the **authored** one, else the registry's.
+
+    Shared by the fetch loop and `_tally_existence` so the run and the tally cannot end up naming
+    different identifiers for the same citation. Checking the registry's own DOI is circular — it
+    exists by construction, since the registry just handed it over — but it is the only one a
+    citation without an authored cell has, and a citation PubMed does not index (a preprint, book or
+    dataset) has only the authored one, which is the case the Crossref client is here for.
+    """
+    authored = next((s.doi for s in studies if s.doi), None)
+    return _doi_token(authored) if authored else (registry_doi or None)
+
+
+def _tally_existence(result: LiteratureResult, citations: dict[str, list[StudyRow]]) -> None:
+    """Which cited citations resolve nowhere — the `strict` gates' subject, and the record's.
+
+    Taken over `subject_rows` rather than accumulated in the fetch loop. The loop only visits
+    citations this run looked up, so on a module already carrying a `literature.csv` both lists came
+    out empty and `strict` refused nothing — while the same run's attestation, reading the rows,
+    reported the finding. A gate and a record disagreeing about one run is the RM44 class: the module
+    would ship a manifest naming a defect its own `--strict` compile had just blessed.
+
+    **A pinned DOI verdict only counts while it is about the DOI the module cites now**
+    (`doi_checked`). The PMID half needs no such guard — the row is keyed by the PMID, so a stored
+    `exists` cannot be about another one — but the DOI half is a verdict about a cell the author can
+    edit, and a re-run does not refetch a pinned row. Without the guard, correcting a bad DOI to a
+    good one left `--strict` refusing and the attestation publishing a finding, both now naming the
+    *corrected* DOI: a finding no authored edit could clear, which is the class this pass treats as
+    a defect wherever else it appears. Same reasoning as `_tally_quotes`' `pinned != authored_now`.
+    A row written before the column existed carries no `doi_checked`, so its verdict is unattributable
+    and is left out rather than guessed at — re-run after deleting the sidecar to re-derive it.
+
+    **A DOI nothing ever resolved is counted too** (`doi_never_checked`), and it is a different
+    absence from a stale verdict. Run the pass once with `--no-doi` and again without: the rows exist
+    by then, so Crossref is never asked, and the record would otherwise report a full denominator for
+    a check the vocabulary defines over PubMed *and* Crossref with the Crossref half never put for any
+    row. Both counts ride in `detail` rather than shrinking the denominator, because the PMID half of
+    each of those citations really was answered.
+    """
+    stale_doi = never_checked = 0
+    missing: list[str] = []
+    doi_missing: list[str] = []
+    checked = unresolved = 0
+    for row in result.subject_rows:
+        target = _doi_to_check(citations.get(row.pmid) or [], row.doi)
+        doi_stands = row.doi_exists is not None and row.doi_checked == target and target is not None
+        if row.doi_exists is not None and not doi_stands:
+            stale_doi += 1
+        elif row.doi_exists is None and target is not None:
+            never_checked += 1
+        if row.exists is not None or doi_stands:
+            checked += 1
+        if row.exists is False:
+            missing.append(row.pmid)
+        if row.exists is False or (doi_stands and row.doi_exists is False):
+            unresolved += 1
+        if doi_stands and row.doi_exists is False and target is not None:
+            doi_missing.append(target)
+    result.missing = sorted(missing, key=int)
+    result.doi_missing = doi_missing
+    result.existence_checked = checked
+    result.unresolved_citations = unresolved
+    result.doi_verdicts_stale = stale_doi
+    result.doi_never_checked = never_checked
+
+
+def _tally_quotes(result: LiteratureResult, citations: dict[str, list[StudyRow]]) -> None:
+    """Count what a retrieved text actually SETTLED, over the cited rows.
+
+    Four numbers, and the split between the last two is the whole reason this is a function rather
+    than a sum: `quotes_found` is the numerator, `quotes_checked` is the denominator a verdict was
+    reached over, and the rest is unchecked — for one of **two** reasons that must not be rendered as
+    one sentence, since only the second is about the article being unreadable.
+
+    * `quotes_unexamined` — the pinned row does not describe the quotes the module carries now.
+      Merge-not-clobber never refetches a pinned row, so a quote authored since is one nothing ever
+      looked for. Calling that "no fulltext could be retrieved" states a retrievability failure that
+      never happened, and for an open-access article it is flatly false; the remedy is also
+      different, since deleting the sidecar re-derives it.
+    * the remainder — the article's text could not be read, or only its abstract could, where a
+      **hit** settles a quote and a miss does not (`quote_source` records which text was searched).
+      A row carrying a count with no `quote_source` is read the same conservative way, since the
+      column is null exactly when neither text could be retrieved.
+
+    Running it over the merged rows rather than inside the fetch loop is the same fix as everywhere
+    else in this file: the loop's version reported `quotes_unchecked = 0` on a re-run for citations
+    whose fulltext had never been retrievable.
+
+    **The pinned count has to MATCH, not merely be non-zero.** A row pinned at `quotes_authored=2,
+    quotes_found=1` whose failing quote the author then deletes would otherwise keep publishing
+    `subjects=2, findings=1` — a finding about a quote the module no longer makes, clearable by no
+    authored edit — which is the defect this same round fixed one level up for whole citations. When
+    the counts differ the pin is describing a different set of quotes, so none of its verdicts is
+    attributable to these and the whole row goes to `unexamined`: understating rather than
+    misattributing, the rule RM4's audit fallback already follows. A count is not a fingerprint, so
+    an *edited* quote at the same count still inherits the old verdict here; what catches that is the
+    attestation's own binding, which perishes the moment `studies.csv` changes.
+    """
+    found = checked = unchecked = unexamined = 0
+    noncommercial: list[str] = []
+    for row in result.subject_rows:
+        authored_now = sum(
+            1 for s in (citations.get(row.pmid) or []) if s.provenance_quote or s.provenance_regex
+        )
+        if not authored_now:
+            continue
+        # The licence notice belongs to the same subject set and the same "now": it is about
+        # publisher text sitting in *this* module's annotation layer, so a citation the author has
+        # since dropped is not carrying any. Reading the row's pinned `quotes_authored` here would
+        # have gone on naming it every run, clearable only by deleting the sidecar.
+        if row.commercial_use is False:
+            noncommercial.append(row.pmid)
+        pinned = row.quotes_authored or 0
+        if pinned != authored_now:
+            unexamined += authored_now
+            continue
+        if row.quotes_found is None:
+            unchecked += pinned
+            continue
+        found += row.quotes_found
+        if row.quote_source == "fulltext":
+            checked += pinned
+        else:
+            checked += row.quotes_found
+            unchecked += pinned - row.quotes_found
+    result.noncommercial_quoted = sorted(noncommercial, key=int)
+    result.quotes_found = found
+    result.quotes_checked = checked
+    result.quotes_unexamined = unexamined
+    result.quotes_unchecked = unchecked + unexamined
+
+
+def _compare_identifiers(
+    result: LiteratureResult, citations: dict[str, list[StudyRow]]
+) -> None:
+    """Authored DOIs and PMC ids against the registry's own, for every row — merged ones included.
+
+    This used to happen inside the fetch loop, which meant it happened only for citations this run
+    looked up. A module enriched twice therefore reported no identifier conflicts the second time,
+    and since the conflict lists are what `strict` refuses on, running `--best-effort` first and
+    `--strict` second blessed a module that the same two commands in the other order refuse. The
+    comparison needs no request — both halves are already in hand — so there is no reason to make it
+    depend on which rows were fetched.
+
+    **Only a row this pass wrote is compared** (`_REGISTRY_SOURCE`). A curator who hand-corrects a
+    row spells `source` something else, and their `doi` is their own claim, not PubMed's; reporting a
+    disagreement with it as "the registry's" would put a false attribution in front of an author.
+
+    The counts are collected here, beside the comparison, because they are the denominator of the
+    `citation_identifier` attestation: citations that authored an identifier at all, of those the
+    ones the registry also named one for, and of those the ones that disagree. A citation counts once
+    however many identifiers it carries, which is what keeps findings a subset of subjects. The two
+    ways a citation can drop out are counted **apart** — the registry named no identifier, or the row
+    is a curator's — because a single "not compared" number reported a hand-corrected row as one
+    PubMed reports nothing for, which is a claim about PubMed that the run never established.
+    """
+    doi_conflicts: list[DoiConflict] = []
+    pmcid_conflicts: list[PmcidConflict] = []
+    authored = compared = conflicting = unmatched = foreign = 0
+    for row in result.subject_rows:
+        studies = citations.get(row.pmid) or []
+        authored_dois = [s.doi for s in studies if s.doi]
+        authored_pmcids = [p for s in studies for p in extract_pmcids(s.pmid)]
+        if not authored_dois and not authored_pmcids:
+            continue
+        authored += 1
+        if row.source != _REGISTRY_SOURCE:
+            foreign += 1
+            continue
+        # "Comparable" means both halves exist. PubMed reports no PMC id for a paywalled article and
+        # sometimes no DOI at all, and an absent registry value is not a contradiction — the same
+        # tri-state `_doi_conflicts` and `_pmcid_conflicts` already apply row by row.
+        if not ((authored_dois and row.doi) or (authored_pmcids and row.pmcid)):
+            unmatched += 1
+            continue
+        compared += 1
+        found_doi = _doi_conflicts(row.pmid, studies, row.doi)
+        found_pmcid = _pmcid_conflicts(row.pmid, studies, row.pmcid)
+        doi_conflicts.extend(found_doi)
+        pmcid_conflicts.extend(found_pmcid)
+        if found_doi or found_pmcid:
+            conflicting += 1
+    result.doi_conflicts = doi_conflicts
+    result.pmcid_conflicts = pmcid_conflicts
+    result.identifiers_authored = authored
+    result.identifiers_compared = compared
+    result.identifiers_conflicting = conflicting
+    result.identifiers_unmatched = unmatched
+    result.identifiers_foreign = foreign
+
+
+def _attest(
+    result: LiteratureResult,
+    spec_dir: Path,
+    *,
+    write: bool,
+    check_fulltext: bool,
+    check_doi: bool,
+) -> LiteratureResult:
+    """Record what this pass checked into `verification.json`, then hand the result back (RM45).
+
+    Called on the offline return as well as the ordinary one, for the reason `clinpgx._attest` gives:
+    a pass that records its findings and stays silent about not having run leaves the manifest unable
+    to tell "asked and found nothing" from "never asked", which is the collapse the whole item exists
+    to undo. Not called on a `strict` refusal — that path raises, so there is no run to attest.
+    """
+    if write:
+        record_verification(
+            _verification_records(result, check_fulltext=check_fulltext, check_doi=check_doi),
+            spec_dir,
+            error=LiteratureEnrichmentError,
+        )
     return result
+
+
+def _verification_records(
+    result: LiteratureResult, *, check_fulltext: bool, check_doi: bool
+) -> list[VerificationRecord]:
+    """The three checks this pass puts, as records `verification.json` can carry.
+
+    Three records rather than one, because they are three questions with three different
+    denominators: every citation carries an existence verdict, only some carry an authored identifier
+    to compare, and fewer still carry a quote whose article could be read. One record averaging them
+    would be a number nothing could act on.
+
+    Every count is read off `result`, over the one subject set the `strict` gates refuse on — see
+    `LiteratureResult`. Nothing is recounted here, for the reason `enrich`'s own record builder
+    states: a denominator recomputed beside a check is one that can disagree with it.
+
+    **An offline run that has a pin records nothing at all**, and that is the point rather than an
+    omission. `--offline` is a documented no-op: it fetches nothing and re-examines nothing, so it
+    has put no question and has nothing to say. Writing a skip would be worse than silence, because
+    `merge_records` replaces per check — the skip would overwrite a true `subjects=5, findings=1`
+    from an earlier online run with `subjects=0, skipped=offline`, turning an answer into "never
+    asked" on a run that changed nothing. With no pin at all there is no earlier answer to protect
+    and nothing this run could learn, so the three skips are written and say why.
+
+    `release` is null on all three. PubMed and Europe PMC are continuously updated and publish no
+    release a run could pin, and inventing a date here would make a re-run look like a different
+    edition of the same source.
+    """
+    offline = result.skipped_offline
+    if offline and result.subject_rows:
+        return []
+
+    records: list[VerificationRecord] = []
+    unanswered = len(result.cited) - result.existence_checked
+
+    # ── does the citation exist ─────────────────────────────────────────────────────────────────
+    if offline:
+        records.append(
+            skipped(
+                "citation_existence",
+                "offline",
+                detail=(
+                    # Says what was established, not that the file is absent: `literature.csv` may
+                    # be sitting right there and simply pin none of the citations the module makes
+                    # now, which is the same "nothing to protect" state and a different sentence.
+                    "PubMed and Crossref have no offline snapshot, and no citation this module "
+                    "makes carries a pinned answer in literature.csv"
+                ),
+                source="pubmed",
+            )
+        )
+    else:
+        parts = []
+        if result.missing:
+            parts.append(f"{len(result.missing)} cited PMID(s) have no PubMed record")
+        if result.doi_missing:
+            parts.append(f"{len(result.doi_missing)} cited DOI(s) do not resolve in Crossref")
+        if result.doi_verdicts_stale:
+            parts.append(
+                f"{result.doi_verdicts_stale} pinned DOI verdict(s) are about a DOI the module no "
+                f"longer cites and were not counted — delete literature.csv to re-derive them"
+            )
+        if result.doi_never_checked:
+            parts.append(
+                f"{result.doi_never_checked} cited DOI(s) have never been resolved in Crossref — "
+                f"their row was pinned by a run that did not ask, and a re-run does not refetch a "
+                f"row it already has, so delete literature.csv to put the question"
+            )
+        if unanswered:
+            parts.append(
+                f"{unanswered} of {len(result.cited)} citation(s) carry no verdict at all and are "
+                f"outside this denominator"
+            )
+        if not check_doi:
+            # Worded for the pin, not for the run. `doi_exists` is a persisted verdict, so a module
+            # whose sidecar already carries a failed DOI still counts it here — and saying "only
+            # PubMed was asked" beside that count made one published `detail` string contradict its
+            # own numbers, on a field RM44 established consumers parse.
+            parts.append(
+                "--no-doi: no DOI was looked up this run, so any DOI verdict above comes from the "
+                "pinned literature.csv and a citation with no pinned verdict went unchecked"
+            )
+        records.append(
+            ran(
+                "citation_existence",
+                subjects=result.existence_checked,
+                findings=result.unresolved_citations,
+                source="pubmed",
+                detail="; ".join(parts) or None,
+            )
+        )
+
+    # ── do the authored identifiers agree with the registry's ───────────────────────────────────
+    if offline:
+        records.append(
+            skipped(
+                "citation_identifier",
+                "offline",
+                detail="the registry's own DOI and PMC id arrive with the existence lookup, which "
+                       "did not run",
+                source="pubmed",
+            )
+        )
+    elif result.identifiers_authored == 0:
+        records.append(
+            skipped(
+                "citation_identifier",
+                "nothing_to_check",
+                detail=(
+                    f"none of {len(result.cited)} citation(s) carries an authored DOI or PMC id, so "
+                    f"there was nothing to compare against PubMed's own"
+                ),
+                source="pubmed",
+            )
+        )
+    elif result.identifiers_compared == 0:
+        # Authored identifiers, and not one of them had a registry value to sit beside. `ran(0, 0)`
+        # would read as "the check ran and had nothing in scope", which is the clean-looking pass
+        # this whole item exists to stop — so the two reasons are named instead, and named APART,
+        # because "PubMed reports none of its own" is a claim about PubMed that a curator-written
+        # row does not license anyone to make.
+        reasons = []
+        if result.identifiers_unmatched:
+            reasons.append(
+                f"{result.identifiers_unmatched} citation(s) PubMed reports no identifier of its "
+                f"own for"
+            )
+        if result.identifiers_foreign:
+            reasons.append(
+                f"{result.identifiers_foreign} citation(s) whose literature.csv row a curator "
+                f"wrote, so its identifiers are that curator's claim rather than the registry's"
+            )
+        records.append(
+            skipped(
+                "citation_identifier",
+                "no_reference",
+                detail=(
+                    f"{result.identifiers_authored} authored identifier(s), none with a registry "
+                    f"value to compare against: " + "; ".join(reasons)
+                ),
+                source="pubmed",
+            )
+        )
+    else:
+        parts = []
+        if result.identifiers_conflicting:
+            parts.append(
+                f"{len(result.doi_conflicts)} DOI and {len(result.pmcid_conflicts)} PMC id "
+                f"disagreement(s)"
+            )
+        if result.identifiers_unmatched:
+            parts.append(
+                f"{result.identifiers_unmatched} citation(s) authored an identifier PubMed reports "
+                f"none of its own for"
+            )
+        if result.identifiers_foreign:
+            parts.append(
+                f"{result.identifiers_foreign} citation(s) whose row a curator wrote, so the "
+                f"registry's own identifier is not in hand for them"
+            )
+        records.append(
+            ran(
+                "citation_identifier",
+                subjects=result.identifiers_compared,
+                findings=result.identifiers_conflicting,
+                source="pubmed",
+                detail="; ".join(parts) or None,
+            )
+        )
+
+    # ── does the quoted passage appear in the article ───────────────────────────────────────────
+    # Four reasons this can be absent, and the order is not arbitrary: the two that no amount of
+    # egress would clear come first. `not_requested` is the caller's own switch (the ordering
+    # `enrich._verification_records` uses), and a module with no authored quote asks this question in
+    # no mode at all — reporting either as `offline` would send an author looking for a network they
+    # are not in fact missing. Only then does connectivity decide, and last comes having looked and
+    # got no text back.
+    if not check_fulltext and result.quotes_checked:
+        # A switched-off check that the pin already answers is the offline case again: this run put
+        # no question, so writing `not_requested` would replace a true `subjects=1, findings=0` with
+        # "the caller declined to ask" on a run that changed nothing — and the sentence would be
+        # false by this run's own tally, since `_tally_quotes` just read those verdicts off the pin.
+        pass
+    elif not check_fulltext:
+        records.append(
+            skipped(
+                "provenance_quote",
+                "not_requested",
+                detail="--no-fulltext: no authored quote was matched against any retrieved text",
+                source="europepmc",
+            )
+        )
+    elif result.quotes_authored == 0:
+        records.append(
+            skipped(
+                "provenance_quote",
+                "nothing_to_check",
+                detail=(
+                    "no provenance quote or regex on any citation, so none of them asked this "
+                    "question"
+                ),
+                source="europepmc",
+            )
+        )
+    elif offline:
+        records.append(
+            skipped(
+                "provenance_quote",
+                "offline",
+                detail=(
+                    f"{result.quotes_authored} authored quote(s); an article's text can only come "
+                    f"over the network, and there is no offline fulltext archive"
+                ),
+                source="europepmc",
+            )
+        )
+    elif result.quotes_checked == 0:
+        # Not `ran(subjects=0)`: with quotes authored and no verdict on any of them, "the check ran
+        # and had nothing in scope" would be the false half of the answered-absence/unasked-question
+        # collapse. Which of the two ways of having read nothing applies is spelled out rather than
+        # smoothed over — saying "could not be retrieved" about a quote nobody went looking for is
+        # flatly false when the article is open access and was read on an earlier run.
+        records.append(
+            skipped(
+                "provenance_quote",
+                "no_reference",
+                detail=(
+                    f"{result.quotes_authored} authored quote(s), none of them settled: "
+                    + _quote_gap_detail(result)
+                ),
+                source="europepmc",
+            )
+        )
+    else:
+        records.append(
+            ran(
+                "provenance_quote",
+                subjects=result.quotes_checked,
+                findings=result.quotes_checked - result.quotes_found,
+                source="europepmc",
+                detail=(
+                    f"{result.quotes_unchecked} further authored quote(s) outside this denominator: "
+                    + _quote_gap_detail(result)
+                    if result.quotes_unchecked
+                    else None
+                ),
+            )
+        )
+    return records
+
+
+def _quote_gap_detail(result: LiteratureResult) -> str:
+    """The two ways a quote goes unchecked, named apart — never rendered as one sentence.
+
+    An article whose text could not be read and a quote nobody went looking for are different facts
+    with different remedies: the first is this pass's honest reach, the second is merge-not-clobber
+    declining to refetch a pinned citation, and only the second is cleared by deleting the sidecar.
+    """
+    parts = []
+    unretrievable = result.quotes_unchecked - result.quotes_unexamined
+    if unretrievable:
+        parts.append(
+            f"{unretrievable} in articles whose fulltext could not be read (or only an abstract "
+            f"could, where a miss is not a verdict)"
+        )
+    if result.quotes_unexamined:
+        parts.append(
+            f"{result.quotes_unexamined} never looked up, because literature.csv already pinned "
+            f"their citation and a merge never refetches one — delete the sidecar to re-derive"
+        )
+    return "; ".join(parts)
 
 
 def _identifiers(summary: dict) -> dict[str, str | None]:

@@ -13,9 +13,16 @@ copy of the merge.
 
 **One proof-of-work per call, which means one per command.** The work is ~0.7s of hashing and it
 binds the whole document, so a pass that recorded checks one at a time would pay it per check for no
-extra guarantee. `enrich()` therefore collects its records and writes once at the end. A separate
-command (`check-identifiers`, `literature`) writes once of its own, and the merge below is what keeps
-the two runs' records in one document instead of overwriting each other.
+extra guarantee. `enrich()` therefore collects its records and writes once at the end, `literature`
+writes its own three, `clinpgx` its one, and the merge below is what keeps several commands' records
+in one document instead of overwriting each other.
+
+**Which commands actually call this, as of 0.6.** `enrich` (four checks), `literature` (three) and
+`clinpgx` (one). `check-identifiers` and `check-acmg` still write nothing, and their own docstrings
+say so — a tracked gap, not a claim this module gets to make on their behalf. That distinction is
+worth keeping sharp here, because the sentence this paragraph replaced named `check-identifiers` as a
+second writer and it never was one: the merge was built and tested against a document no two commands
+produced, which is exactly the shape of unverified machinery this module exists to end.
 """
 
 import logging

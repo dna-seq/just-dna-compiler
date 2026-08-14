@@ -922,9 +922,9 @@ variant, and deliberately so: a DOI, a PMCID and "does PubMed have this record" 
 *paper*. A module with three hundred variants citing five papers carries five rows here, not three
 hundred with the same DOI repeated — the same argument that put gene constraint in its own table, and
 the one that keeps the file readable by the human the DSL exists for. Facts: `pmid`, `doi?`, `pmcid?`,
-`exists?`. Everything else is provenance or time-varying state: `doi_exists?`, `is_open_access?`,
-`license?`, `share_alike?`, `commercial_use?`, `redistribution?`, `quotes_authored?`, `quotes_found?`,
-`quote_source?`, `source?`, `status?`, `fetched_at?`.
+`exists?`. Everything else is provenance or time-varying state: `doi_exists?`, `doi_checked?`,
+`is_open_access?`, `license?`, `share_alike?`, `commercial_use?`, `redistribution?`,
+`quotes_authored?`, `quotes_found?`, `quote_source?`, `source?`, `status?`, `fetched_at?`.
 
 - **No `dataset` column**, unlike its two siblings. gnomAD ships numbered releases; PubMed and Europe
   PMC are continuously updated and publish no release identifier, so the column could only ever be null
@@ -952,6 +952,13 @@ the one that keeps the file readable by the human the DSL exists for. Facts: `pm
   paywalled work. What PubMed cannot answer for is a citation it does not index at all: a preprint,
   book, thesis or dataset has a DOI and no PMID, which is what Crossref covers. Two registries, two
   columns (Principle 5), never one overloaded `exists`.
+- **`doi_checked` names which DOI `doi_exists` is a verdict about (0.6), and it exists because this
+  table is a PIN.** A re-run does not refetch a row it already holds, so a stored "does not resolve"
+  outlives the cell that caused it: without the column it was re-paired with whatever the author wrote
+  next, and *correcting* a bad DOI left `--strict` refusing while naming the corrected one — a finding
+  no authored edit could clear. `exists` needs no such column because the row is keyed by the PMID it
+  answers for. Rows written before 0.6 carry no `doi_checked`, so their DOI verdict is unattributable
+  and is left out of the counts rather than guessed at; delete the sidecar to re-derive.
 - **`quote_source` records how far the search reached**, because a hit and a miss are not symmetric: a
   phrase found in an abstract is in the paper, while a phrase absent from a 200-word abstract says
   nothing about the body. Without the column a `quotes_found` of 0 would read as a verdict when it was

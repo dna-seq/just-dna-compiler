@@ -25,7 +25,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
-| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` |
+| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) |
 | **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` |
 | **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) |
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
@@ -117,18 +117,61 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   clean bill. Everything not compared stays **outside** the denominator and inside the record's
   `detail`, grouped by reason.
 - **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
-  five of its checks at the end of the run. A separate command writes its own; the merge is what keeps
-  both in one document, replacing per check and never erasing a check this run did not put.
+  five of its checks at the end of the run, `enrich_literature` its three. The merge is what keeps
+  both commands in one document, replacing per check and never erasing a check this run did not put —
+  and until `literature` was wired in there was no second writer at all, so the merge was machinery
+  tested only against a document nothing produced.
+- **A pass has ONE subject set, and the gate and the record both read it.** `literature` is the worked
+  example and it got this wrong three ways at once, all the same shape. `literature.csv` is the pin —
+  merge-not-clobber means a re-run refetches nothing — so anything counted inside the fetch loop is a
+  count of *this run's requests*: the `strict` gates saw an empty list and refused nothing while the
+  attestation, reading the rows, reported the finding, so **whether `--strict` refused depended on how
+  many times `--best-effort` had run first**, and the module could ship a manifest naming a defect its
+  own strict compile had just blessed. The subject set is now the citations the module makes *now*,
+  answered by the rows the sidecar holds *now*, and every number — CLI report, refusal, record — comes
+  off it. Two consequences worth copying. A comparison the sidecar does not pin is **re-made over every
+  row** rather than over the fetched ones (that is how an existing `literature.csv` came to hide every
+  DOI/PMC id conflict). And the set is the **cited** rows, not the whole file: the sidecar keeps a row
+  for a citation the author has since deleted, and counting it produced a finding no authored edit
+  could clear, which this project treats as a defect wherever else it appears.
+- **A no-op run records nothing; it does not record a zero.** `literature --offline` fetches nothing
+  and re-examines nothing, so on a module that already carries a `literature.csv` it writes no records
+  at all and the earlier ones stand. Writing `skipped="offline"` there would be worse than silence,
+  because the merge replaces per check: a true `subjects=5, findings=1` becomes "never asked" on a run
+  that changed nothing. With no pin at all there is no earlier answer to protect, so the skips are
+  written and say why.
+- **`literature` puts three questions with three different denominators, and one record cannot carry
+  them.** Every citation gets an existence verdict; only some carry an authored DOI or PMC id to
+  compare; fewer still carry a quote whose article could be read. So `provenance_quote` counts the
+  quotes a retrieved text *settled* — never the quotes authored — with the remainder in `detail`, and
+  it is a **skip** (`no_reference`) rather than `subjects=0` when nothing was settled at all, since a
+  zero out of zero on a check that could not run is exactly the clean-looking pass this whole item
+  exists to stop. An abstract-only search settles a hit and nothing else. The remainder itself splits
+  in two and the two must not be one sentence: an article whose text could not be read, and a quote
+  **nobody went looking for** because the sidecar's pinned counts do not describe the quotes the
+  module carries now. Only the second is cleared by deleting the sidecar, and calling it a retrieval
+  failure is flatly false for an open-access article that was read on the previous run. The pinned
+  count has to *match*, not merely be non-zero — a row pinned at two quotes says nothing attributable
+  about the one that is left, so the whole row goes unexamined rather than carrying a finding about a
+  quote the module no longer makes. Same rule on the identifier check: a citation drops out of the
+  comparison because PubMed named no identifier *or* because a curator wrote that row, and reporting
+  the second as the first is a claim about PubMed nobody established. And a DOI has **three** states
+  rather than two: resolved, a pinned verdict about a DOI the module no longer cites
+  (`LiteratureRow.doi_checked` is what makes that visible — without it, correcting a bad DOI made the
+  finding follow the correction), and one no run ever put the question for, which is what a
+  `--no-doi` run followed by a plain one leaves behind. Both ride in `detail` rather than shrinking
+  the denominator, since the PubMed half of those citations really was answered.
 - **The attestation is bound to the module's authored bytes.** Edit `variants.csv` afterwards and the
   compiler drops the block with a warning — correctly, because the checks were put against rows that no
   longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
   read off each record's own `release`.
 
 **Which of these attest, and which are recording passes rather than checks.** `enrich()` attests five
-(reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate), `enrich_clinpgx`
-attests its own, and `pgx` and `vrs mint` attest theirs — `allele_function` and `vrs_allele_id`, wired in
-the same release the corpus first grew a `verification.json` to look at; the rest report to their result
-object and are wired in as their commands grow the call. The line
+(reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate),
+`enrich_literature` attests three (citation existence, identifier agreement, provenance quote),
+`enrich_clinpgx` attests its own, and `pgx` and `vrs mint` attest theirs — `allele_function` and
+`vrs_allele_id`. All of these were wired in the release the corpus first grew a `verification.json` to
+look at; the rest report to their result object and are wired in as their commands grow the call. The line
 that decides whether a pass belongs in `VALID_VERIFICATION_CHECKS` at all is whether it compares
 something the module **asserts** — so `gene_validity.csv` and `clinical_assertions.csv`, which record
 what ClinGen and ClinVar say and adjudicate nothing, have no check name and must not gain one: a

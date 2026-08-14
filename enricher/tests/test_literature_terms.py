@@ -30,8 +30,15 @@ from just_dna_enricher.literature import (
 )
 from just_dna_enricher.lookup import LookupClients, lookup_citation
 from just_dna_enricher.net import PacingGate
+from just_dna_format import verification as verification_module
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.spec import StudyRow
+
+
+@pytest.fixture(autouse=True)
+def _cheap_proof_of_work(monkeypatch):
+    """8 bits instead of 20: the pass attests on its way out and these cases are not about the work."""
+    monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", 8)
 
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _ESUMMARY = json.loads((_ASSETS / "pubmed_esummary_payload.json").read_text())
@@ -152,6 +159,31 @@ def test_the_pass_records_the_article_licence_and_its_rights(tmp_path: Path) -> 
         assert rows[pmid].share_alike is expected.share_alike
         assert rows[pmid].redistribution is expected.redistribution
     assert rows[_NC_PMID].commercial_use is False
+
+
+def test_a_dropped_citation_stops_being_named_as_quoted_publisher_text(tmp_path: Path) -> None:
+    """The notice is about publisher text in *this* module's annotation layer, so it follows the
+    subject set like every other count in the pass.
+
+    `literature.csv` keeps a row for a citation the author has since dropped — deleting a curator's
+    row is not this pass's call — and the row's pinned `quotes_authored` said the module still quotes
+    it. Every later run therefore named it, clearable only by deleting the sidecar.
+    """
+    spec = _spec(
+        tmp_path / "s", studies=f"rsid,pmid,provenance_quote\nrs334,{_NC_PMID},some passage\n"
+    )
+    quoted = enrich_literature(
+        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False
+    )
+    assert quoted.rows[0].commercial_use is False
+    assert quoted.noncommercial_quoted == [_NC_PMID]
+
+    (spec / "studies.csv").write_text(f"rsid,pmid\nrs334,{_NC_PMID}\n", encoding="utf-8")
+    dropped = enrich_literature(
+        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False
+    )
+    assert dropped.rows[0].commercial_use is False      # the row and its licence are unchanged
+    assert dropped.noncommercial_quoted == []           # the quote that mattered is gone
 
 
 def test_the_licence_is_not_derived_from_the_open_access_flag(tmp_path: Path) -> None:

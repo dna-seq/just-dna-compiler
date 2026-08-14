@@ -470,9 +470,22 @@ def literature_(
         typer.secho("skipped: --offline (PubMed/Europe PMC have no offline snapshot)", fg=typer.colors.YELLOW)
         return
     typer.secho(f"literature: {spec_dir / 'literature.csv'}", fg=typer.colors.GREEN)
-    typer.echo(f"citations: {len(result.rows)}  {result.coverage}")
+    # The citations the module makes, not the rows the sidecar holds: merge-not-clobber keeps a row
+    # for a citation the author has since deleted, and counting it here would put a number in front
+    # of the author that nothing else in the run agrees with.
+    typer.echo(f"citations: {len(result.cited)}  {result.coverage}")
     typer.echo(f"quotes: {result.quotes_found}/{result.quotes_authored} found, "
-               f"{result.quotes_unchecked} not checkable")
+               f"{result.quotes_unchecked} not checked")
+    if result.quotes_unexamined:
+        # Split out rather than left inside "not checked": an article whose text could not be read
+        # and a quote nobody went looking for have different remedies, and only this one is the
+        # author's to clear. Calling it "not checkable" was false for an open-access article whose
+        # fulltext the previous run read.
+        typer.secho(
+            f"  {result.quotes_unexamined} authored quote(s) were never looked up: literature.csv "
+            f"already pins their citation and a merge never refetches one — delete it to re-derive",
+            fg=typer.colors.YELLOW,
+        )
     if result.missing:
         # Red: a citation that does not resolve is a defect in the module, not a coverage gap.
         typer.secho(f"  PubMed has no record of: {result.missing}", fg=typer.colors.RED, err=True)
@@ -485,9 +498,10 @@ def literature_(
     # different articles is exactly the case the schema's PMC guard cannot see (RM50).
     for conflict in result.pmcid_conflicts:
         typer.secho(f"  pmcid conflict: {conflict}", fg=typer.colors.RED, err=True)
-    noncommercial = sorted(
-        {r.pmid for r in result.rows if r.commercial_use is False and (r.quotes_authored or 0) > 0}
-    )
+    # Off the tally, which knows which citations the module quotes *now*: the sidecar keeps a row for
+    # a citation the author has since dropped, and its pinned `quotes_authored` would have gone on
+    # naming publisher text this module no longer carries.
+    noncommercial = result.noncommercial_quoted
     if noncommercial:
         # Yellow, not red, and never a non-zero exit: quoting for comment or research is often fine,
         # and the format is not the tier that adjudicates copyright (the `clin_sig` precedent).
