@@ -14,6 +14,8 @@ where a male sample is hemizygous and the repeat field carries one value rather 
 
 ### 1 — `largest`'s meaning sentence assumes a ploidy this contig does not have
 
+> **Fixed** (D5-1). The illustration is gone; the rule keeps the reference-inclusion clause two tests pin. The sentence quoted below is the pre-fix text, kept as the evidence of what was found.
+
 `vocab.ELEMENT_RULE_MEANINGS`, printed by `just-dna-compiler reference` under `vocabulary_notes`:
 
 > **largest** — the greatest of the values the field carries for this record, the reference element
@@ -32,6 +34,8 @@ written in terms of *elements the field carries*; only `largest` reaches for an 
 illustration is where the ploidy assumption entered.
 
 ### 2 — RM63's correction is a code comment, and the pipe form is not in the printed contract at all
+
+> **Fixed** (D5-2), with one correction to the finding itself. Both `genotype` descriptions now name all three shapes the validator accepts and carry RM63's reading of the pipe — except the zygosity word, which turned out to be false: `C|C` loads, and `1|1` is an ordinary phased homozygous call. RM63's own comment in `base.py` still carries that overclaim and is filed as R2-14.
 
 `just-dna-compiler describe variants.csv` gives `genotype` as:
 

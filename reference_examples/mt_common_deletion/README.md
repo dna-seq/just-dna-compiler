@@ -17,6 +17,8 @@ normalizes to `MT`, including on reverse.
 
 ### 1 — `enrich` crashes on any module carrying a symbolic allele
 
+> **Fixed** (D1-1). `VrsMinter.mint` refuses a sequence-free allele before routing it to `_mint_normalized`, alongside the `UnsupportedBuildError` guard it sits beside. Probing it also showed the crash is the *character class*, not the symbolic spelling: RM58's `.` raises the identical error, and RM59's `*` passes `LiteralSequenceExpression`'s pattern, so it would have been handed a content-addressed id for a state that is not a sequence. All three are guarded.
+
 ```
 $ just-dna-enricher enrich reference_examples/mt_common_deletion
 ValidationError: 1 validation error for LiteralSequenceExpression
@@ -47,6 +49,8 @@ and it exercises the drafter *skipping* them.
 
 ### 2 — offline, the same allele is misdiagnosed as an indel, with a remedy that crashes
 
+> **Fixed** (D1-2), in both tiers. `why_not` and the compiler's `_vrs_gap_reason` / `_recompute_vrs_id` each give a symbolic allele its own permanent reason class, so nothing offers a remedy that cannot work.
+
 ```
 VRS coverage — VRS allele identity covers 2/3 allele(s) (67%) — 1 still carry no ga4gh:VA. id
 VRS coverage —   1 allele(s): an indel/MNV, which must be justified against the reference sequence
@@ -63,6 +67,8 @@ added a fourth reason. One root cause, two visible defects, and the offline one 
 because it looks like ordinary output.
 
 ### 3 — a binning table that names a variant is exempt from the grounding check, in a module with no `studies.csv`
+
+> **Fixed** (D1-3). The variant-identity term is gone from the `ungrounded` filter: inside a scope where the module has no study rows, naming a variant grounds nothing. The two-route remedy text stays, because a heteroplasmy author really does have both routes open.
 
 `_check_binning_grounding` opens with `if studies: return []` — it only runs when the module has **no
 study rows at all** — and then counts a bin as grounded when it names a variant:
@@ -82,6 +88,8 @@ zero grounding warnings, in both modes. The control (`reference_examples/htt_rep
 as designed.
 
 ### 4 — `describe` omits the vocabulary notes that `reference` carries
+
+> **Fixed** (D1-4). Per-member prose now rides on the field's `vocabulary` marker, so `describe`, `field_options` and the per-field entries of the whole-schema reference all carry it, with a cross-surface guard test that did not exist before.
 
 `just-dna-compiler describe heteroplasmy.csv` calls itself "the **full** machine description of one
 table kind" and prints `source_element`'s eight members with one general sentence about the `_alt`

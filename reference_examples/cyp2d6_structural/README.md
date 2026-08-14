@@ -13,6 +13,8 @@ recalled: Poor Metabolizer at 0, Intermediate 0.25–1.0, Normal 1.25–2.25, Ul
 
 ### 1 — the lengthless-symbolic-allele message names `<DEL>` whatever was authored
 
+> **Fixed** (D3-1). The reason text names no allele type at all, so it cannot disagree with the example clause beside it; `<DEL:1500>` / `<CNV:TR:30>` stay in it as the spelling to use. Interpolating the authored type was rejected — these messages are grouped by reason, and interpolation turns one constant into one message per type.
+
 ```
 $ # variants.csv carrying alts=<DUP:TANDEM>
 warning: variants.csv: 1 row(s) carry a symbolic allele with no usable length. A <DEL> that does not
@@ -26,6 +28,8 @@ Small, and squarely in the class this workspace treats as a defect elsewhere: a 
 the wrong thing sends the reader looking for a `<DEL>` they do not have.
 
 ### 2 — RM67's refusal does not make the documented divergence findable
+
+> **Fixed** (D3-2), message only — RM67 is still `not work` and the grammar is not widened. The arity refusals now name the two-allele cap as a decision, citing VCF 4.4 §7.2. Probing it surfaced R2-9: a genotype pasted straight from a VCF (`0/1`) is still refused without anyone saying those are allele *indices*.
 
 CYP2D6 with a duplication carrying SNVs is the *spec's own* polyploid example, and it is the module
 where an author meets it:
