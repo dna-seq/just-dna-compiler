@@ -261,13 +261,19 @@ nothing could point at it.
 base reaching all four kinds, plus a relaxation of `StudyRow`'s subject requirement so the paper behind
 a threshold can be described without inventing a variant for it. The rule for reading the pair is *the
 bin row cites, the citation table describes* — the pointer sits on the row that states the number, and
-everything about the paper stays in `studies.csv`. `heteroplasmy.csv` was never affected: its optional
-`rsid`/`chrom`/`start` columns (0.5.1) already gave a row a variant identity a study row can name,
-which `reference_examples/mt_heteroplasmy` does, and that remains an alternative route there.
+everything about the paper stays in `studies.csv`. `heteroplasmy.csv` had a second route from the
+start: its optional `rsid`/`chrom`/`start` columns (0.5.1) give a row a variant identity a study row
+can name, which `reference_examples/mt_heteroplasmy` does — but that route *is* the study row, so it
+grounds a bin only in a module that carries one.
 
-`_check_binning_grounding` still warns in **both** modes, now over the bins that carry neither a `pmid`
-nor a variant identity, in a module with no study rows at all — and the remedy it names is the same for
-every kind, since every kind can now cite its boundary. The same-release obligation was the reason the
+`_check_binning_grounding` still warns in **both** modes, over the bins that carry no `pmid`, in a
+module with no study rows at all — and the remedy it names is the same for every kind, since every kind
+can now cite its boundary; a kind whose rows can be pointed at is offered the study-row route as a
+second one. It used to exempt a bin for merely naming a variant, inside a branch that has already
+established the module records **no** study rows, so the citation clearing the bin was one that does not
+exist: a `heteroplasmy.csv` module stating four thresholds and citing nothing was green and silent while
+the identical thresholds on `repeat_alleles.csv` were reported (D1-3, fixed in 0.6). The same-release
+obligation was the reason the
 item was filed rather than fixed: `_cross_check_literature` reads the bin pointers alongside
 `studies.csv` (otherwise every threshold-grounding citation would read as a stale orphan), and so does
 the enricher's literature pass, so a bin-grounded citation is checked for existence and identifiers
