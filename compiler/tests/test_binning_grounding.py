@@ -110,9 +110,15 @@ def test_a_studies_csv_clears_it(tmp_path: Path) -> None:
     assert _finding(validate_spec(spec).warnings, "repeat_alleles.csv") is None
 
 
-def test_a_heteroplasmy_row_naming_its_variant_is_grounded_and_stays_silent() -> None:
-    """`mt_heteroplasmy` is the counterexample, and it is real: its bins carry `chrom`/`start`/`ref`/
-    `alts` (the 0.5.1 identity columns) and its `studies.csv` cites the same variant."""
+def test_a_heteroplasmy_module_that_cites_its_variants_stays_silent() -> None:
+    """`mt_heteroplasmy` is the counterexample, and what silences it is the `studies.csv` gate.
+
+    Its bins do carry `chrom`/`start`/`ref`/`alts` (the 0.5.1 identity columns) and its `studies.csv`
+    cites the same variant, which is the pairing the extra remedy route describes — but the check
+    never reaches the rows here: a module with any study rows is not nagged, so the identity is why
+    the module is *actually* grounded rather than why the function is quiet. This test used to claim
+    the identity did the silencing, which was never true of this fixture and hid D1-3.
+    """
     bins = _rows(_MT / "heteroplasmy.csv")
     studies = _rows(_MT / "studies.csv")
     placed = {(r["chrom"], r["start"], r["ref"]) for r in bins}
@@ -122,27 +128,67 @@ def test_a_heteroplasmy_row_naming_its_variant_is_grounded_and_stays_silent() ->
     assert _finding(validate_spec(_MT, strict=True).warnings, "heteroplasmy.csv") is None
 
 
-def test_the_same_heteroplasmy_rows_stripped_of_their_identity_get_the_extra_route() -> None:
-    """The distinction is derived from the *row*, never from the table name: a heteroplasmy row that
-    names no variant carries a second remedy a repeat bin does not, because it *could* name one.
-
-    Since RM47 that is an **additional** route rather than the only actionable one — both kinds are
-    first told to cite the boundary itself."""
-    authored = [
+def _heteroplasmy_rows(*, identity: bool) -> list[HeteroplasmyRow]:
+    """The `mt_heteroplasmy` bins as model rows, with or without their 0.5.1 identity columns."""
+    return [
         HeteroplasmyRow(
             gene=r["gene"], reference_sequence=r["reference_sequence"], tissue=r["tissue"],
             measure_kind=r["measure_kind"], measure_min=float(r["measure_min"]),
             measure_max=float(r["measure_max"]), conclusion=r["conclusion"],
+            **(
+                {"chrom": r["chrom"], "start": int(r["start"]), "ref": r["ref"], "alts": r["alts"]}
+                if identity
+                else {}
+            ),
         )
         for r in _rows(_MT / "heteroplasmy.csv")
         if r["unresolved"] != "true"
     ]
+
+
+def test_naming_the_variant_does_not_ground_a_bin_when_no_study_row_exists(tmp_path: Path) -> None:
+    """D1-3: the exemption the check granted a variant-keyed bin was vacuous inside its own gate.
+
+    The function returns early unless the module records **zero** study rows, and then counted a bin
+    as grounded for naming a variant "a study row can then name back" — the study row it had just
+    established does not exist. So a real MELAS/NARP module stating thresholds and citing nothing was
+    green and silent while the identical module on `repeat_alleles.csv` was warned.
+
+    Both halves are exercised: the model rows (identity stamped at construction) and a whole spec
+    directory through the real loader, since it is the loader that stamps `variant_key` for an author.
+    """
+    authored = _heteroplasmy_rows(identity=True)
+    assert all(r.variant_key is not None for r in authored), "the fixture must name its variants"
+    assert all(r.pmid is None for r in authored), "and cite no boundary"
+
+    finding = _finding(_check_binning_grounding({"heteroplasmy.csv": authored}, []), "heteroplasmy.csv")
+    assert finding is not None
+    assert f"{len(authored)} of {len(authored)} bin(s)" in finding
+
+    spec = tmp_path / "uncited_mt"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    (spec / "heteroplasmy.csv").write_text(
+        (_MT / "heteroplasmy.csv").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    assert not (spec / "studies.csv").exists(), "the module must record no evidence at all"
+    assert _finding(validate_spec(spec, strict=True).warnings, "heteroplasmy.csv") is not None
+
+
+def test_the_same_heteroplasmy_rows_stripped_of_their_identity_get_the_extra_route() -> None:
+    """The distinction is derived from the *row*, never from the table name: a heteroplasmy row
+    carries a second remedy a repeat bin does not, because a study row can name the variant it is
+    about.
+
+    Since RM47 that is an **additional** route rather than the only actionable one — both kinds are
+    first told to cite the boundary itself."""
+    authored = _heteroplasmy_rows(identity=False)
     assert all(r.variant_key is None for r in authored), "stripped of identity, by construction"
 
     finding = _finding(_check_binning_grounding({"heteroplasmy.csv": authored}, []), "heteroplasmy.csv")
     assert finding is not None
     assert "put the PubMed id on the bin row (`pmid`)" in finding
-    assert "alternatively fill this kind's rsid/chrom+start" in finding
+    assert "alternatively, a studies.csv row naming the variant" in finding
     # The repeat table, whose rows could never name a variant, gets the first half and not the second.
     repeat_finding = _finding(
         _check_binning_grounding(
@@ -151,7 +197,7 @@ def test_the_same_heteroplasmy_rows_stripped_of_their_identity_get_the_extra_rou
         "repeat_alleles.csv",
     )
     assert repeat_finding is not None
-    assert "alternatively fill this kind's rsid/chrom+start" not in repeat_finding
+    assert "alternatively, a studies.csv row naming the variant" not in repeat_finding
 
 
 def _repeat_rows(*, pmid: str | None) -> list[RepeatAlleleRow]:

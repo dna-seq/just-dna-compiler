@@ -1336,18 +1336,26 @@ def _check_binning_grounding(
     carrying `variants.csv` the missing table is already a hard error, so this never doubles it.
     A warning in both modes: the remedy is an authored edit, but `strict` means *reproducible
     artifact*, an unrelated axis (P5), and a module that cites nothing still reproduces exactly.
+
+    **A variant identity is not evidence, and treating it as one here was vacuous (D1-3).** A second
+    exemption used to sit beside the `pmid` one: a bin naming a variant was counted as grounded,
+    because a study row can name that variant back. Inside this function there is no study row — the
+    early return has just established that the module records none — so the exemption cleared a bin
+    against a citation that does not exist, and a `heteroplasmy.csv` module stating four thresholds
+    and citing nothing was green and silent while the identical module on `repeat_alleles.csv` was
+    warned. That is the S19 gap, reopened for the one binning kind a real MELAS/NARP module uses.
+    Identity survives as the reason `heteroplasmy.csv` is offered a **second remedy** — a study row
+    really can point at those bins — never as a reason to say nothing.
     """
     if studies:
         return []
     warnings: list[str] = []
     for csv_name, model in _BINNING_TABLE_KINDS:
         rows = [r for r in rows_by_csv.get(csv_name) or [] if not r.unresolved]
-        # Two ways a bin can be grounded, both read off the row and never off the table name: its own
-        # `pmid` (RM47, every kind), or — for the one kind whose model carries a variant identity —
-        # naming the variant a study row can then name back.
-        ungrounded = [
-            r for r in rows if r.pmid is None and getattr(r, "variant_key", None) is None
-        ]
+        # One way a bin is grounded in a module with no studies.csv, read off the row and never off
+        # the table name: its own `pmid` (RM47, every kind). A variant identity is not a second way —
+        # see the D1-3 paragraph above — it only decides which remedies this kind can be offered.
+        ungrounded = [r for r in rows if r.pmid is None]
         if not ungrounded:
             continue
         remedy = (
@@ -1361,8 +1369,8 @@ def _check_binning_grounding(
         # `hasattr` spelling arrived with the first because RM43 had not landed under it yet.
         if "variant_key" in model.model_fields:
             remedy += (
-                "; alternatively fill this kind's rsid/chrom+start, and a studies.csv row on the "
-                "same variant grounds each bin"
+                "; alternatively, a studies.csv row naming the variant these bins are about grounds "
+                "them — this kind carries rsid/chrom+start, so fill those in if they are empty"
             )
         else:
             # Deliberately does NOT restate the pre-RM47 claim that nothing can point at these bins.
@@ -1372,9 +1380,9 @@ def _check_binning_grounding(
             # a gene-keyed kind, and say it in the affirmative.
             key = ", ".join(f for f in model._KEY_FIELDS if f != "variant_key")
             remedy += (
-                f"; for a ({key}) row the bin's own pmid is the route, because studies.csv identifies "
-                f"its subject by rsid or chrom+start, so a study row grounds the module while the bin "
-                f"pointer grounds this threshold"
+                f"; for a ({key}) row the bin's own pmid is the route, because a study row can only "
+                f"name a variant as its subject and never a bin, so it grounds the module while the "
+                f"bin pointer grounds this threshold"
             )
         warnings.append(
             f"{csv_name}: {len(ungrounded)} of {len(rows)} bin(s) state a threshold and the module "

@@ -1301,9 +1301,18 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   - **The enricher reaches the bins through PUBLIC compiler symbols**, `load_binning_rows` /
     `binning_citations`. Importing `_BINNING_TABLE_KINDS` or keeping a second list of the four kinds in
     the enricher is the RM40/RM41 shape, and the copy goes stale on the fifth kind.
-  - **Grounding is counted per ROW, off the row.** `_check_binning_grounding` subtracts bins carrying a
-    `pmid` and bins carrying a variant identity; the gate ("no study rows at all") is unchanged, so a
-    module with a `studies.csv` is not newly nagged.
+  - **Grounding is counted per ROW, off the row — and a variant identity is NOT one of the ways
+    (D1-3, 0.6).** `_check_binning_grounding` subtracts bins carrying a `pmid`, full stop; the gate
+    ("no study rows at all") is unchanged, so a module with a `studies.csv` is not newly nagged. It
+    also subtracted bins carrying a variant identity, on the reasoning that a study row can name that
+    variant back — inside a branch whose own first line has established the module records **no** study
+    rows, so the citation clearing the bin was one that does not exist. The visible cost: a
+    `heteroplasmy.csv` module stating four thresholds and citing nothing was green and silent while the
+    identical thresholds on `repeat_alleles.csv` were reported, which is S19 reopened for the one
+    binning kind a real MELAS/NARP module uses. Identity survives as the reason that kind is offered a
+    **second remedy** (a study row really can point at those bins), never as a reason to say nothing.
+    Generalize it: when an exemption cites another record as the thing that makes a row acceptable,
+    check whether the branch it sits in has already ruled that record out.
   - **The rejected repairs, so they are not re-proposed:** a packed `subject_key` on `StudyRow`
     (multicolumn keying, never a tuple — and it can drift from the columns it restates); key columns on
     `StudyRow` *instead of* a bin pointer (grounds at *table* granularity, so it still cannot say why
