@@ -9,9 +9,13 @@ fix. `class` is the standing fix-vs-surface split: **fix** = a false claim, a mi
 unaggregated wall, a guard that is never reached; **surface** = the obvious repair is itself a design
 decision, and the entry says why each candidate repair is wrong.
 
-> **Already repaired (D2 round, before the fix/file split was called).** F1–F7 and F9, F10 were fixed
-> and pinned with regression tests in the same session that found them, and landed in one commit that
-> can be reviewed or reverted as a unit. **Everything from D1 onward is filed, not fixed.**
+> **Status, 2026-08-14.** F1–F7 and F9, F10 were fixed in the D2 round itself, before the fix/file
+> split was called, and landed in one commit that can be reviewed or reverted as a unit. **Everything
+> from D1 onward was filed and has since been worked**: the rows below carry `(done)` where a fix
+> landed, and the mapping from finding to pull request is at the end of this file. The `surface` rows
+> became RM68–RM72 in [ROADMAP_0_7.md](ROADMAP_0_7.md). Two rows are deliberately not `(done)`: D4-3,
+> which is a design decision, and D4-1, whose fix half is six of its twelve members with the rest
+> argued in RM72.
 
 > **Round 2 is at the bottom of this file.** The fix round for the findings above turned up defects of
 > its own — not by dogfooding, but by reading the code around each repair. They are recorded here rather
@@ -71,10 +75,10 @@ this module — the corpus-uniformity heuristic, paying off exactly as the plan 
 
 | id | finding | class | severity |
 |---|---|---|---|
-| **D1-1** | **`enrich` crashes on any module carrying a symbolic allele** — reproduced on `<DEL:4977>` (D1) and independently on `<DUP:16000>` (D3), so it is the allele class and not one spelling. Unhandled `pydantic.ValidationError` out of `ga4gh.vrs`: `VrsMinter.mint` routes a non-substitution to `_mint_normalized`, which builds `models.LiteralSequenceExpression(sequence=alt.upper())` **outside** the `try` below it — whose comment reads *"A failure here is a live-service problem … never a reason to fail the enrichment."* Same shape as the `UnsupportedBuildError` defect recorded eight lines above it in the same function. | fix | **high** |
-| **D1-2** | **Offline, the same allele is misdiagnosed as an indel with a remedy that crashes.** `_vrs_coverage` reports *"an indel/MNV, which must be justified against the reference sequence — re-run without --offline to mint it"*. A symbolic allele names no sequence by construction, so no id is ever mintable — a permanent reason class, not an `--offline` limitation — and the suggested re-run is D1-1. | fix | **high** |
-| **D1-3** | **`_check_binning_grounding` exempts a variant-keyed bin in a module that has no `studies.csv`.** The function returns early unless there are **zero** study rows, then treats a bin as grounded because it names a variant "a study row can then name back" — the study row it has just established does not exist. A `heteroplasmy.csv` module stating four thresholds and citing nothing is green and silent; the same module on `repeat_alleles.csv` is warned. Reopens the S19 gap for the one binning kind a real MELAS/NARP module uses. | fix | medium |
-| **D1-4** | **`describe <kind>` omits `vocabulary_notes`.** It calls itself "the full machine description of one table kind" and prints `source_element`'s members without `ELEMENT_RULE_MEANINGS`, which reach only the whole-schema `reference`. The per-table command is the one an author authoring one table uses. | fix | low |
+| **D1-1** | **`enrich` crashes on any module carrying a symbolic allele** — reproduced on `<DEL:4977>` (D1) and independently on `<DUP:16000>` (D3), so it is the allele class and not one spelling. Unhandled `pydantic.ValidationError` out of `ga4gh.vrs`: `VrsMinter.mint` routes a non-substitution to `_mint_normalized`, which builds `models.LiteralSequenceExpression(sequence=alt.upper())` **outside** the `try` below it — whose comment reads *"A failure here is a live-service problem … never a reason to fail the enrichment."* Same shape as the `UnsupportedBuildError` defect recorded eight lines above it in the same function. | fix (done) | **high** |
+| **D1-2** | **Offline, the same allele is misdiagnosed as an indel with a remedy that crashes.** `_vrs_coverage` reports *"an indel/MNV, which must be justified against the reference sequence — re-run without --offline to mint it"*. A symbolic allele names no sequence by construction, so no id is ever mintable — a permanent reason class, not an `--offline` limitation — and the suggested re-run is D1-1. | fix (done) | **high** |
+| **D1-3** | **`_check_binning_grounding` exempts a variant-keyed bin in a module that has no `studies.csv`.** The function returns early unless there are **zero** study rows, then treats a bin as grounded because it names a variant "a study row can then name back" — the study row it has just established does not exist. A `heteroplasmy.csv` module stating four thresholds and citing nothing is green and silent; the same module on `repeat_alleles.csv` is warned. Reopens the S19 gap for the one binning kind a real MELAS/NARP module uses. | fix (done) | medium |
+| **D1-4** | **`describe <kind>` omits `vocabulary_notes`.** It calls itself "the full machine description of one table kind" and prints `source_element`'s members without `ELEMENT_RULE_MEANINGS`, which reach only the whole-schema `reference`. The per-table command is the one an author authoring one table uses. | fix (done) | low |
 
 ### Checked and held (D1)
 
@@ -98,8 +102,8 @@ out of the published snapshot rather than recalled.
 
 | id | finding | class | severity |
 |---|---|---|---|
-| **D3-1** | **The lengthless-symbolic-allele message names `<DEL>` whatever was authored.** `alts=<DUP:TANDEM>` is correctly refused, with the sentence *"A `<DEL>` that does not say how long it is …"* beside an example clause naming the real cell. The two halves of one message disagree about what is being discussed. | fix | low |
-| **D3-2** | **RM67's refusal does not make the documented divergence findable.** A polyploid genotype on a duplicated CYP2D6 — the spec's own polyploid example — is refused with a bare restatement of the grammar. VCF permits higher ploidy and this format deliberately does not; nothing in the message says so, so it reads as a syntax error. Every other deliberate refusal here names its own limit in-line (RM5's "a release away", the ploidy check's contigs, the VRS warnings' RM15). | fix (message) | medium |
+| **D3-1** | **The lengthless-symbolic-allele message names `<DEL>` whatever was authored.** `alts=<DUP:TANDEM>` is correctly refused, with the sentence *"A `<DEL>` that does not say how long it is …"* beside an example clause naming the real cell. The two halves of one message disagree about what is being discussed. | fix (done) | low |
+| **D3-2** | **RM67's refusal does not make the documented divergence findable.** A polyploid genotype on a duplicated CYP2D6 — the spec's own polyploid example — is refused with a bare restatement of the grammar. VCF permits higher ploidy and this format deliberately does not; nothing in the message says so, so it reads as a syntax error. Every other deliberate refusal here names its own limit in-line (RM5's "a release away", the ploidy check's contigs, the VRS warnings' RM15). | fix (message, done) | medium |
 
 ### Checked and held (D3)
 
@@ -128,8 +132,8 @@ docstring established is a contract and not commentary.
 
 | id | finding | class | severity |
 |---|---|---|---|
-| **D5-1** | **`largest`'s meaning sentence assumes a ploidy the contig does not have.** `ELEMENT_RULE_MEANINGS['largest']` explains the rule as *"the longer of the sample's two alleles"* — a claim about a diploid record — and FMR1 in a male is the presentation the gene is known for. The rule itself is correct for one value; only the illustration is wrong, and it is the only member's sentence that reaches for one. | fix (wording) | medium |
-| **D5-2** | **RM63's correction is a code comment, and the pipe form is not in the printed contract at all.** `describe variants.csv` gives `genotype` as *"Slash-separated sorted alleles, e.g. A/G"* — no `A\|G`, no mention of phase — while the validator accepts it, its own error message lists it, and `phased` is materialized and round-tripped. RM63's corrected wording (*"heterozygous, phase recorded but unaddressable"*) sits above the validator in `base.py` and nothing prints it. | fix | medium |
+| **D5-1** | **`largest`'s meaning sentence assumes a ploidy the contig does not have.** `ELEMENT_RULE_MEANINGS['largest']` explains the rule as *"the longer of the sample's two alleles"* — a claim about a diploid record — and FMR1 in a male is the presentation the gene is known for. The rule itself is correct for one value; only the illustration is wrong, and it is the only member's sentence that reaches for one. | fix (wording, done) | medium |
+| **D5-2** | **RM63's correction is a code comment, and the pipe form is not in the printed contract at all.** `describe variants.csv` gives `genotype` as *"Slash-separated sorted alleles, e.g. A/G"* — no `A\|G`, no mention of phase — while the validator accepts it, its own error message lists it, and `phased` is materialized and round-tripped. RM63's corrected wording (*"heterozygous, phase recorded but unaddressable"*) sits above the validator in `base.py` and nothing prints it. | fix (done) | medium |
 
 ### Checked and held (D5)
 
@@ -155,7 +159,7 @@ no `gene_metrics.csv`.
 | id | finding | class | severity |
 |---|---|---|---|
 | **D4-1** | **Five of seven checking passes attest nothing; 12 of 17 `VALID_VERIFICATION_CHECKS` members are emitted by nothing.** `record_verification` has exactly two callers — `enrich()` and `enrich_clinpgx()`. `literature`, `gene-validity`, `check-identifiers`, `check-acmg`, `dosage`, `pgx` and `vrs mint` each perform a check the vocabulary names, report it to stdout, and let the record die with the process — the sentence RM45's own docstring opens with as the thing it exists to fix. And it is a **claim**: that docstring states *"A separate command (`check-identifiers`, `literature`) writes once of its own, and the merge below is what keeps the two runs' records in one document"*. `merge_records` is built and tested for a document no two commands produce. Unreachable members: `acmg_secondary_findings`, `allele_function`, `citation_existence`, `citation_identifier`, `dosage_sensitivity`, `gene_disease_validity`, `gene_locus_agreement`, `gene_symbol_currency`, `provenance_quote`, `rsid_coordinate_agreement`, `trait_currency`, `vrs_allele_id`. | fix | **high** |
-| **D4-2** | **`hint` reports every template stub twice** — once from its own per-column check, once from the model's `mode="before"` validator. A freshly drafted 109-row panel yields 219 findings for 109 defects. The CPIC aggregation lesson arriving through a different door: two layers reporting one cell rather than a loop over a source table. | fix | low |
+| **D4-2** | **`hint` reports every template stub twice** — once from its own per-column check, once from the model's `mode="before"` validator. A freshly drafted 109-row panel yields 219 findings for 109 defects. The CPIC aggregation lesson arriving through a different door: two layers reporting one cell rather than a loop over a source table. | fix (done) | low |
 | **D4-3** | **The alleles needed to replace a `genotype` stub are only in `draft-panel`'s stdout.** A drafted row is rsID-only (identity whole or not at all), so the file does not state `ref`/`alts`; the pair is emitted once per row as a warning. The author's next action is an edit to a file that does not contain the information. Tolerable at 16 rows, not at the 761 the same command drafts for PALB2 at the 2-star floor. | **surface** (writing it into the row would fill an identity column a drafting provider must fill whole or not at all) | medium |
 
 ### Checked and held (D4)
@@ -184,7 +188,7 @@ No new module: the adversarial pass over all sixteen examples, run after the fiv
 | id | finding | class | severity |
 |---|---|---|---|
 | **D6-2** | **`test_derived_layout.py`'s movable-sidecar list was four sidecars behind the layout it tests.** `_MOVABLE` was a hand-written five-tuple naming `sources.csv` (the *deprecated* spelling) and omitting `gene_validity.csv`, `clinical_assertions.csv` (RM24/RM25), `verification.json` (RM45) and `licensing.csv` (RM51). Its comment said the list was written out deliberately, "so the test states the contract instead of echoing it" — and the contract it stated was 0.5's. Invisible because `_flat` discovers the first example carrying `variants.csv` + `resolution.csv` and no example carried any of the four; `hboc_palb2` carries all of them, and `manifest.derived` came back with two entries still at the spec root. Same shape as S21: a good discovery mechanism defeated by the one hand-kept list beside it. **Repaired in place** (the list is still written out, and a new assertion checks it against `_DERIVED_FILES`) — this is a test the probe artifact reddened, not a product fix. | fix (done) | medium |
-| **D6-1** | **RM62's authoring rule is in the consumer docs and not in the authoring contract.** `docs/SCHEMAS.md` states it fully — a VCF `Float` is 32-bit, `0.3` widens to `0.300000011920928955…`, so an inclusive non-dyadic `measure_max` is missed by a float32 read, and the rule is to *narrow the authored bound*. `describe <kind>`'s `measure_max` says only *"Inclusive upper bound; None = open above. Inclusive on every measure_kind."* The word "narrow" appears **zero** times in `just-dna-compiler reference`. RM62 is a rule about **what to author**, and it reaches only the document the author is not writing from. Third instance of this shape in the batch, with D1-4 and D5-2. | fix | medium |
+| **D6-1** | **RM62's authoring rule is in the consumer docs and not in the authoring contract.** `docs/SCHEMAS.md` states it fully — a VCF `Float` is 32-bit, `0.3` widens to `0.300000011920928955…`, so an inclusive non-dyadic `measure_max` is missed by a float32 read, and the rule is to *narrow the authored bound*. `describe <kind>`'s `measure_max` says only *"Inclusive upper bound; None = open above. Inclusive on every measure_kind."* The word "narrow" appears **zero** times in `just-dna-compiler reference`. RM62 is a rule about **what to author**, and it reaches only the document the author is not writing from. Third instance of this shape in the batch, with D1-4 and D5-2. | fix (done) | medium |
 
 ### Checked and held (D6)
 
@@ -324,3 +328,53 @@ the function.
   GRCh38, one was caught and the other minted a VRS id and recorded `resolved`, because GRCh38 carries
   the authored `ref` at that position too. That is the documented ~3-in-4 sensitivity, and it means
   *"the compiler catches wrong-build coordinates"* is not a reading anyone should take.
+
+---
+
+## What landed, per finding
+
+The fix round ran as twelve parallel units in isolated worktrees, each landing one finding or one
+group. Every unit ran the shipped CLIs against a real module, not only the suite — the same standard
+the probes themselves were held to.
+
+| finding | unit | PR |
+|---|---|---|
+| D1-1, D1-2 (enricher half) | 1 | [#15](https://github.com/dna-seq/just-dna-compiler/pull/15) |
+| D1-2 (compiler half) | 2 | [#13](https://github.com/dna-seq/just-dna-compiler/pull/13) |
+| D1-3 | 3 | [#14](https://github.com/dna-seq/just-dna-compiler/pull/14) |
+| D1-4 | 4 | [#16](https://github.com/dna-seq/just-dna-compiler/pull/16) |
+| D3-1 | 5 | [#12](https://github.com/dna-seq/just-dna-compiler/pull/12) |
+| D3-2 | 6 | [#18](https://github.com/dna-seq/just-dna-compiler/pull/18) |
+| D5-1, D5-2, D6-1 | 7 | [#21](https://github.com/dna-seq/just-dna-compiler/pull/21) |
+| D4-2 | 8 | [#17](https://github.com/dna-seq/just-dna-compiler/pull/17) |
+| D4-1, `allele_function` + `vrs_allele_id` | 10 | [#20](https://github.com/dna-seq/just-dna-compiler/pull/20) |
+| D4-1, `rsid_coordinate_agreement` | 11 | [#22](https://github.com/dna-seq/just-dna-compiler/pull/22) |
+| F1 (surface), F8, F11, D4-3, D4-1 (surface) → RM68–RM72 | 12 | [#19](https://github.com/dna-seq/just-dna-compiler/pull/19) |
+
+### What the round cost the corpus: nothing
+
+All sixteen reference examples were compiled before the round at `8fdaf1d` and again after, and all
+four signatures — `artifact.digest`, `content_signature`, `compilation.resolution_signature`,
+`sources.signature` — are **identical on every module**. That is the expected result and it is worth
+stating rather than assuming: these fixes are messages, printed descriptions and attestation records,
+and none of them is hashed. The baseline is `data/sig-baseline-8fdaf1d.txt` (gitignored).
+
+### What only the merge could find
+
+Eleven units were green in isolation and one pair was not green together. Unit 10's `vrs mint` test
+asserted `"indel/MNV"` in its record detail, using `mt_common_deletion` and explaining in a comment
+that the module's deletion "is an indel" — while unit 1 was concurrently fixing exactly that
+misclassification, since `<DEL:4977>` is a symbolic allele that names no sequence. Neither unit could
+have caught it alone. The assertion now names the true class and a second assertion forbids the old
+one, so the two cannot swap back silently.
+
+### Corrections made to the findings themselves
+
+Three entries above were wrong in some part, and re-verification rather than relay is what caught it:
+
+- **R2-7 does not reproduce**, in `compile_module` or in `validate_spec`, and two separate reviewers
+  raised it. Closed rather than left open.
+- **D5-2's fix is narrower than the finding asked for.** RM63's wording could not be carried across
+  verbatim, because `C|C` loads and the "heterozygous" half is false of it — which is now R2-14.
+- **Unit 11's brief was wrong about where the rsid↔coordinate check ran**, and the check turned out to
+  be unreachable from `enrich()` entirely. That is R2-15, and it is the round's most valuable finding.
