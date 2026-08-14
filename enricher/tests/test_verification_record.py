@@ -13,6 +13,7 @@ import pytest
 from just_dna_compiler.compiler import authored_input_entries, compile_module
 from just_dna_enricher.cli import app
 from just_dna_enricher.enrich import _verification_records
+from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON
@@ -217,6 +218,8 @@ def _records_for(ref_check, build, **over):
         "verify_rsids": False,
         "rsid_subjects": 0,
         "stale_rsids": [],
+        "pairs": PairCheck(not_checked="nothing_to_check"),
+        "ensembl_ref": None,
         **over,
     }
     return {r.check: r for r in _verification_records(**kwargs)}
@@ -261,6 +264,45 @@ def test_nothing_to_check_still_reached_when_the_ref_check_really_ran_clean() ->
     build = records["genome_build_agreement"]
     assert build.skipped == "nothing_to_check"
     assert "no authored ref disagreed" in (build.detail or "")
+
+
+def test_the_pair_denominator_excludes_what_the_reference_could_not_place() -> None:
+    """The rsid↔coordinate record publishes what it compared, and says what it did not (RM45).
+
+    A pair whose rsID the snapshot has no record of is a question never put. Counting it as a subject
+    would put an unasked row inside a clean denominator — the same defect `_vrs_coverage` exists for,
+    one check over — so it lands outside the count and inside the sentence.
+    """
+    from just_dna_enricher.grch37 import BuildDiagnosisResult
+    from just_dna_enricher.sequences import RefCheck
+
+    pairs = PairCheck(disagreements=["rs429358 authored at 19:999:T"], subjects=2, unknown=["rs1799945"])
+    record = _records_for(
+        RefCheck([], 0, "offline"), BuildDiagnosisResult(not_checked="skipped_offline"), pairs=pairs
+    )["rsid_coordinate_agreement"]
+
+    assert (record.subjects, record.findings) == (2, 1)
+    assert record.skipped is None
+    assert "rs1799945" in (record.detail or ""), "the unplaced pair has to be named"
+    assert "rs429358" in (record.detail or "")
+
+
+def test_a_pair_check_that_could_not_run_never_reads_as_one_that_did() -> None:
+    """Every `not_checked` reason lands as a skip with its own sentence — F4's defect, pre-empted."""
+    from just_dna_enricher.grch37 import BuildDiagnosisResult
+    from just_dna_enricher.sequences import RefCheck
+
+    details: set[str] = set()
+    for reason in ("unsupported", "nothing_to_check", "offline", "no_reference"):
+        record = _records_for(
+            RefCheck([], 12),
+            BuildDiagnosisResult(not_checked="no_ref_mismatches"),
+            pairs=PairCheck(not_checked=reason),
+        )["rsid_coordinate_agreement"]
+        assert record.skipped == reason
+        assert (record.subjects, record.findings) == (0, 0)
+        details.add(record.detail or "")
+    assert len(details) == 4, f"four reasons, four sentences — got {sorted(details)}"
 
 
 def test_the_clinvar_release_label_is_the_shared_one(tmp_path) -> None:
