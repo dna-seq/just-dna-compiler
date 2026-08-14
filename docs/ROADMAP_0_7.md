@@ -713,3 +713,120 @@ against what a source says?* — and then answer it only to a terminal.
 
 **What would unblock it:** a decision on that line, which then settles the reword. The four members
 follow mechanically once it is made; the two reserved ones do not move either way.
+
+---
+
+## RM73 — a row's provenance is unknowable in a flat CSV, and nothing closes the authoring phase
+
+**Severity** high · **Status** open — the root item; several shipped and deferred items are its
+sprouts · **Owner** format + compiler + enricher (all three tiers) · **Found by** reading RM72 on
+2026-08-14, which is the fourth item to hit the same wall from a different side
+
+### The claim
+
+A module's authored tables are flat CSV. A row in one carries no record of **how it came to be**, and
+the three ways it can have come to be have different verification status by construction:
+
+| how the row arrived | verification status | who knows |
+|---|---|---|
+| hand-authored by a curator | **unverified by design** — a human asserted it | nobody, after the fact |
+| written by a drafting provider | **verified by construction** — it is a copy of a source | nobody, after the fact |
+| drafted, then edited by a curator | **unverified again** — the copy stopped being a copy | nobody, after the fact |
+
+Nothing in the artifact distinguishes the three. That is not an oversight in any one pass; it is a
+property of the storage. The consequence is that **every check which needs to know where a value came
+from has to guess**, and each has guessed differently.
+
+### Why this keeps producing items
+
+RM4 needed exactly this and could not have it. Its tautology skip exists because a panel drafted from
+ClinVar carries ClinVar's own `clin_sig`, so cross-checking it compares a value against itself — 0
+conflicts, necessarily, at 90% of the resolve time, and the zero **looks like evidence**. The skip is
+keyed on a module-level marker (the release stamped into the licence row) because that is the finest
+grain available. A single cell edited after the draft is no longer a copy, and no module-level fact can
+see it. RM4 shipped that hole knowingly, named it in its own warning, and put the expensive per-row
+audit behind `strict` — which is the duplication route below.
+
+The same wall, from other sides:
+
+- **RM71 / D4-3** — a drafted `genotype` stub must be filled by a human, and the file does not carry
+  what to fill it from. The edit that resolves the stub is exactly the transition from *drafted* to
+  *altered*, and it leaves no trace.
+- **RM68 / F1** — a drafting provider writing GRCh38 coordinates into a GRCh37 module. The row is a
+  faithful copy of a source and wrong for this module; provenance and correctness come apart, and only
+  provenance is recoverable.
+- **R2-8** — a `<<REPLACE>>` template stub compiles green under `--strict` and reaches
+  `manifest.sources` inside the block its own signature covers. An *unfinished authoring state* passes
+  every gate, because nothing marks authoring as unfinished.
+- **RM72** — four checks that put a real authored-versus-source question and record nothing. What they
+  would record is a provenance fact with no home.
+
+Four items and a high-severity finding, each repaired separately, none of them addressing the reason
+they exist. They will keep arriving.
+
+### Why the two obvious repairs fail
+
+**A per-row provenance column** (`origin: authored | drafted | edited`). Full authored cost under the
+0.6 amendment, on every table that can carry a row — and worse, it is **self-asserted**. An author who
+edits a drafted row can leave the cell reading `drafted`; nothing checks it, because checking it is the
+original problem. It records a claim about provenance rather than provenance, which is the same defect
+one level down, now with a schema to maintain.
+
+**Re-fetch and compare per row** — the audit RM4 put behind `strict`. It costs the whole saving the
+skip exists for, it needs the network on a path documented as offline-capable, and the comparison target
+moves: a source's next release legitimately changes the value, so a mismatch cannot distinguish *the
+author edited this* from *the source did*. It also cannot see an edit that happens to restore the
+source's value. The deeper objection is the one that generalizes: **validation by duplication requires a
+second copy, and the second copy is no more write-protected than the first.** Storing the drafted row
+beside the authored row to diff them just moves the mutability problem, and storing a hash of it does
+too, until something makes the hash unforgeable at a moment in time.
+
+### The shape that survives
+
+The only thing in this system that is not mutable-in-place is an **attestation**: a hash bound to bytes
+at a moment, which a later edit invalidates rather than silently changing. So the answer is not a
+column and not a comparison — it is a **phase boundary**. Authoring is a process, and it currently has
+no end; giving it one is what makes the question answerable:
+
+```
+inputs  →  validation  →  signature  →  compilation
+                          ^
+                          authoring closes here
+```
+
+Before the signature, rows are mutable and their provenance is a live question. After it, the authored
+set is fixed, and a machine-written record made *during* drafting — which rows this provider wrote, from
+which source at which release, with the hash each row had when it was written — becomes checkable rather
+than merely asserted. A row whose hash still matches its draft-time hash **is** a copy, and the tautology
+skip over it is sound rather than hopeful. A row whose hash has moved is authored, whatever any column
+says. A row with no draft-time record was never drafted. The classification is **derived, never typed**,
+which is the whole difference from the column repair.
+
+Note what this makes of `verification.json`: today it is written after enrichment and binds the authored
+bytes as a side effect of a pass having run. Under this shape it is the artifact that *closes* a phase,
+and the checks that write into it are recording against a set that is about to stop moving.
+
+### Honest limits, stated so they are not discovered later
+
+- **This is tamper-evidence, not tamper-proofing.** Nothing local stops an author editing a row and its
+  recorded hash together. What a signature buys is that the pair must be edited *deliberately and
+  together*, and that a publish carries the evidence. That is the same guarantee the artifact digest
+  already gives, applied one phase earlier — not a new kind of promise.
+- **It does not make an authored row true.** The compiler is an assembler, not a truth oracle. This
+  distinguishes *copied* from *asserted*; it says nothing about whether either is correct.
+- **A curator's edit to a drafted row is legitimate and common.** The point is never to discourage it —
+  it is the whole reason a drafting provider appends rather than mutates. The point is that the module
+  should be able to say which rows it happened to.
+
+### Sizing, and what is additive
+
+The mechanism is **additive and minor-legal**: a machine-written sidecar recording draft-time hashes,
+plus a command that closes the phase, plus the classification derived from the two. No authored column,
+no existing column retyped, nothing promoted to required. Making a closed attestation a **precondition
+of compiling** is the part that is not additive — that is a promotion to required and waits for a major.
+Which of those the format wants is the first thing to decide, and the answer may well be *ship the
+mechanism, leave the requirement to 1.0*.
+
+**What would unblock it:** a design round of its own. This item exists to stop the sprouts being
+repaired one at a time as though each were local, and to record that the root was identified before the
+next one arrives.
