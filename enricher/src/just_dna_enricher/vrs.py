@@ -22,13 +22,18 @@ module scope, which drags the heavy tree back in for a convenience wrapper we do
 Three ways a row can get an id, in precedence order:
 
 1. **Minted locally, stdlib** — a substitution. Zero egress, and verified against the library itself
-   to be byte-identical (see `enricher/tests/test_vrs_mint.py`), so the offline answer and the online
-   answer for a substitution are the same answer.
+   to be byte-identical (see `schema/tests/test_vrs.py`), so the offline answer and the online answer
+   for a substitution are the same answer.
 2. **Minted, normalized** — an indel/MNV, justified against the reference over the REST proxy. Needs
    the network, so `--offline` skips it.
-3. **Left null** — an indel in an offline run, an unreachable sequence service, or an off-assembly
-   contig. A missing id is the honest outcome; an unjustified one would be a `ga4gh:VA.…` string that
-   *looks* interoperable and silently is not.
+3. **Left null** — an indel in an offline run, an unreachable sequence service, an off-assembly
+   contig, or an allele that names no sequence at all (`_sequence_free_reason`). A missing id is the
+   honest outcome; an unjustified one would be a `ga4gh:VA.…` string that *looks* interoperable and
+   silently is not.
+
+The last of those is **permanent**, and keeping it apart from the rest is the point: an indel offline
+is a re-run away, while a `<DEL:4977>` has no sequence for any run to justify, so a reason that offers
+the re-run is a false remedy as well as a misdiagnosis.
 
 All three are decided **per ALT, not per row**: `vrs_id` is a comma-joined parallel array of `alts`
 (`just_dna_format.vrs.split_vrs_ids`), so a multi-allelic site names each of its alleles and a hole
@@ -45,6 +50,7 @@ from dataclasses import dataclass, field
 
 from ga4gh.core.identifiers import ga4gh_identify
 from ga4gh.vrs import models, normalize
+from just_dna_format.alleles import MISSING_ALLELE, is_symbolic_allele, is_unobservable_allele
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vrs import (
     VRS_SPEC_VERSION,
@@ -59,6 +65,85 @@ from just_dna_format.vrs import (
 from just_dna_enricher.sequences import DEFAULT_SEQREPO_URI, SequenceProxy
 
 logger = logging.getLogger(__name__)
+
+# ── Alleles that name no sequence, and so can never carry an id ────────────────────────────────
+#
+# Three legal cells the schema holds and VRS has nothing to say about: RM5's symbolic/structural
+# alleles, RM58's `.` and RM59's `*`. They were routed to `_mint_normalized` like any other
+# non-substitution, and two of the three then reached `models.LiteralSequenceExpression`, whose
+# `sequence` accepts `^[A-Z*\-]*$` — so `<DEL:4977>` and `.` each raised an unhandled
+# `pydantic.ValidationError` out of the enricher, killing a whole run over one row. `*` is the
+# quieter half: it passes that pattern, so it would have been normalized and handed a
+# content-addressed id for a state that is not a sequence.
+#
+# One constant string per class, never interpolated with the allele: `MintResult.unmintable_reasons`
+# groups on the reason, and a spelling in the text turns an aggregate back into a per-row wall. They
+# are *named* rather than inlined because that prose is what a caller reading `EnrichmentResult.vrs`
+# actually sees, so a consumer telling the permanent classes apart should have something to compare
+# against rather than a substring of a sentence anyone may reword (RM44).
+#
+#: A symbolic/structural allele — `<DEL:1500>`, `<CNV:TR:30>`, and the malformed `<FOO>` too. Worded
+#: without naming a column, because it is true of whichever of `ref`/`alts` carries the token.
+SYMBOLIC_REASON: str = (
+    "a symbolic/structural allele (RM5), which names no sequence by construction — there is nothing "
+    "to justify against, so no run of any kind mints an id for it"
+)
+#: VCF's MISSING marker in `alts`. The one class here with an authored repair, which is exactly why
+#: it is the one that must say **which** column it is about: a remedy pointed at the wrong cell is
+#: the misdiagnosis this whole guard exists to remove, one column over.
+MISSING_ALT_REASON: str = (
+    "VCF's MISSING marker `.` in `alts` (RM58), which states that no alternate allele exists rather "
+    "than naming one — leave the cell empty, which also stops the row keying under a second identity"
+)
+#: VCF's MISSING marker in `ref`, where emptying the cell is not the repair and the damage is
+#: different: the mint interval is `len(ref)`, so a marker there is a length as well as an allele.
+MISSING_REF_REASON: str = (
+    "VCF's MISSING marker `.` in `ref` (RM58) — a reference allele is the sequence the record is "
+    "anchored to, so `.` anchors nothing and states no span for the id to be minted over"
+)
+#: VCF's allele-missing-due-to-overlapping-deletion marker. Column-agnostic for the same reason
+#: `SYMBOLIC_REASON` is: nothing in it is a repair, so nothing in it is about a particular cell.
+UNOBSERVABLE_REASON: str = (
+    "VCF's `*` (RM59), which records that a call could not observe the allele here — a fact about a "
+    "sample rather than a sequence, so there is never an id to mint for it"
+)
+
+
+def _is_missing_allele(value: str | None) -> bool:
+    """Whether `value` is the bare MISSING marker. The schema names the constant and classifies it
+    inside `non_nucleotide_reason`; nothing there exposes the single test, and the two other classes
+    here have their own predicate, so this is the one that spells it out."""
+    return value is not None and value.strip() == MISSING_ALLELE
+
+
+def _sequence_free_reason(ref: str | None, alt: str | None) -> str | None:
+    """Why this allele can never be minted — *permanently*, on any run — or `None` when it can.
+
+    Read by both `mint` (which returns nothing when this answers) and `why_not` (which returns the
+    string), so the verdict and the explanation cannot drift apart. Computing the class twice is how
+    a run ends up refusing an allele for one reason and reporting another, which is the defect this
+    was written for, one level down.
+
+    `ref` is asked as well as `alt` because `_mint_normalized`'s interval is `len(ref)` — arithmetic
+    over characters a token like `<DEL:1500>` does not have — and because a locus spelled that way
+    has no sequence at either end. `alt` is asked **first** throughout: it is the cell that carries
+    one of these by far the most often, and on a row where both are spoiled it is the one the author
+    wrote deliberately.
+
+    The symbolic test is the **lenient** `is_symbolic_allele` (anything opening with `<`) rather than
+    the parser: `<FOO>` and the unterminated `<DEL` are not usable symbolic alleles, and they carry
+    exactly the characters the model refuses, so a guard keyed on well-formedness would let the two
+    likeliest typos through to the crash it exists to stop.
+    """
+    if is_symbolic_allele(alt) or is_symbolic_allele(ref):
+        return SYMBOLIC_REASON
+    if _is_missing_allele(alt):
+        return MISSING_ALT_REASON
+    if _is_missing_allele(ref):
+        return MISSING_REF_REASON
+    if is_unobservable_allele(alt) or is_unobservable_allele(ref):
+        return UNOBSERVABLE_REASON
+    return None
 
 
 @dataclass
@@ -163,6 +248,13 @@ class VrsMinter:
         """
         if chrom is None or start is None or ref is None or not alt:
             return None, None
+        # An allele that names no sequence is refused here rather than caught below: the crash is in
+        # the `models.Allele(...)` *construction*, which sits outside `_mint_normalized`'s try — and
+        # a broad `except ValidationError` there would swallow real defects while leaving `why_not`
+        # free to keep calling a `<DEL:4977>` an indel. Same severity as any other unmintable allele:
+        # no id, and the run carries on, exactly like the `UnsupportedBuildError` guard below.
+        if _sequence_free_reason(ref, alt) is not None:
+            return None, None
         if is_substitution(ref, alt):
             # `refget_accession` RAISES for a build with no table, deliberately — a caller asking for
             # GRCh37 must hear "not built", never get a GRCh38-flavoured id. So every call site has to
@@ -193,11 +285,18 @@ class VrsMinter:
         reference sequence out of that tier) and merely *offline* here. Sharing the wording would make
         one of the two lie about what a re-run could fix, which is the whole point of reporting a
         reason at all.
+
+        The branches are in `mint`'s order on purpose, which is what puts the permanent classes ahead
+        of the build and the offline checks: a symbolic allele on a GRCh37 row is not waiting on a
+        refget table, and a refget table would not make it mintable.
         """
         if chrom is None or start is None:
             return "no coordinate to mint from (an unresolved row)"
         if not alt:
             return "no ALT recorded, and a VRS allele id names exactly one allele"
+        sequence_free = _sequence_free_reason(ref, alt)
+        if sequence_free is not None:
+            return sequence_free
         try:
             accession = refget_accession(chrom, build)
         except UnsupportedBuildError as exc:

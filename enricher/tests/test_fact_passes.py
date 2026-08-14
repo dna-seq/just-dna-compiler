@@ -470,6 +470,134 @@ def test_offline_minter_makes_no_data_proxy() -> None:
     assert minter._data_proxy() is None
 
 
+# ── Alleles that name no sequence: RM5's `<DEL:…>`, RM58's `.`, RM59's `*` ──────────────────────
+
+
+class _ReachableSequences:
+    """A `SequenceProxy` stand-in whose proxy is always there, answering nothing.
+
+    The crash these tests pin is **online-only**: offline, `_data_proxy()` returns `None` and
+    `_mint_normalized` returns before it builds anything, so an offline run cannot see it. The
+    sentinel needs no reads, because the failure is in `models.Allele(...)` — constructed *before*
+    the proxy is used, outside the `try` that exists for live-service failures.
+    """
+
+    def proxy(self) -> object:
+        return object()
+
+
+def _online_minter() -> VrsMinter:
+    return VrsMinter(sequences=_ReachableSequences())
+
+
+def test_a_symbolic_allele_is_left_unminted_instead_of_aborting_the_run() -> None:
+    """RM5 made `<DEL:4977>` a legal ALT and the VRS tier was never told.
+
+    `mint` routes every non-substitution to `_mint_normalized`, which builds
+    `models.LiteralSequenceExpression(sequence=alt.upper())` — whose `sequence` pattern is
+    `^[A-Z*\\-]*$` — so the MT common deletion killed the whole enrich run with an unhandled
+    `pydantic.ValidationError`, the same shape as the `UnsupportedBuildError` defect eight lines
+    above it. Reproduced on `reference_examples/mt_common_deletion`'s own row.
+    """
+    minter = _online_minter()
+    assert minter.mint("MT", 8470, "N", "<DEL:4977>") == (None, None)
+
+    row = ResolutionRow(
+        variant_key="MT:8470:N:<DEL:4977>", chrom="MT", start=8470, ref="N", alts="<DEL:4977>",
+        source="authored", status="resolved",
+    )
+    result = mint_resolution_rows([row], minter=minter)
+
+    assert row.vrs_id is None and row.vrs_spec is None
+    assert (result.skipped_unmintable, result.identified, result.alleles) == (1, 0, 1)
+
+
+def test_a_malformed_symbolic_allele_takes_the_same_route() -> None:
+    """`is_symbolic_allele` is lenient (anything opening with `<`) precisely for this: `<FOO>` and the
+    unterminated `<DEL` are not usable symbolic alleles, and they reach the same model with the same
+    characters it cannot hold. A guard keyed on the strict parser would let both through."""
+    minter = _online_minter()
+    assert minter.mint("MT", 8470, "N", "<FOO>") == (None, None)
+    assert minter.mint("MT", 8470, "N", "<DEL:1500") == (None, None)
+
+
+def test_the_two_markers_that_name_no_allele_are_left_unminted() -> None:
+    """`.` (RM58) raises the *identical* ValidationError; `*` (RM59) passes the model's pattern and
+    would have minted a content-addressed id for a state that is not a sequence at all.
+
+    Their reasons are kept apart, as everywhere else: `.` asserts that no alternate allele exists and
+    has an authored repair, `*` records that a sample's allele could not be observed and has none.
+    """
+    minter = _online_minter()
+    assert minter.mint("1", 11796321, "G", ".") == (None, None)
+    assert minter.mint("1", 11796321, "G", "*") == (None, None)
+
+    rows = [
+        ResolutionRow(variant_key="k1", chrom="1", start=11796321, ref="G", alts="."),
+        ResolutionRow(variant_key="k2", chrom="1", start=11796321, ref="G", alts="*"),
+    ]
+    result = mint_resolution_rows(rows, minter=minter)
+
+    assert [row.vrs_id for row in rows] == [None, None]
+    assert len(result.unmintable_reasons) == 2, "two classes, not one bucket"
+
+
+def test_a_marker_in_ref_is_not_diagnosed_against_alts() -> None:
+    """`.` in `ref` and `.` in `alts` are different mistakes, and only the second is repaired by
+    emptying the cell — so a reason that offers that repair for the first would send the author to
+    delete a perfectly good ALT. Same misdiagnosis class as D1-2, one column over.
+    """
+    minter = VrsMinter(offline=True)
+    in_alts = minter.why_not("1", 11796321, "G", ".")
+    in_ref = minter.why_not("1", 11796321, ".", "A")
+
+    assert minter.mint("1", 11796321, ".", "A") == (None, None)
+    assert in_alts != in_ref
+    assert "leave the cell empty" in in_alts and "leave the cell empty" not in in_ref
+
+
+def test_a_row_keeps_the_substitution_beside_its_symbolic_allele() -> None:
+    """The guard is per ALLELE, like every other decision here: a site carrying `A` and `<DEL:4977>`
+    names the one it can and leaves a hole for the one it cannot."""
+    row = ResolutionRow(variant_key="k", chrom="MT", start=8993, ref="T", alts="G,<DEL:4977>")
+    result = mint_resolution_rows([row], minter=_online_minter())
+
+    assert split_vrs_ids(row.vrs_id) == [derive_vrs_allele_id("MT", 8993, "T", "G"), None]
+    assert (result.minted_stdlib, result.skipped_unmintable) == (1, 1)
+
+
+def test_the_symbolic_reason_is_permanent_and_never_points_at_the_crash() -> None:
+    """D1-2: offline, the same allele was reported as an indel *"which must be justified against the
+    reference sequence — re-run without --offline to mint it"*, and that re-run is the crash above.
+
+    A symbolic allele names no sequence by construction, so the reason class is permanent — and it is
+    one constant string, so two different spellings collapse into one line rather than a wall.
+    """
+    rows = [
+        ResolutionRow(variant_key="k1", chrom="MT", start=8470, ref="N", alts="<DEL:4977>"),
+        ResolutionRow(variant_key="k2", chrom="22", start=42126499, ref="N", alts="<DUP:16000>"),
+        ResolutionRow(variant_key="k3", chrom="11", start=5226762, ref="C", alts="CA"),  # a real indel
+    ]
+    result = mint_resolution_rows(rows, offline=True)
+
+    symbolic = [reason for reason in result.unmintable_reasons if "--offline" not in reason]
+    assert len(symbolic) == 1 and result.unmintable_reasons[symbolic[0]] == 2
+    assert "--offline" not in symbolic[0]
+
+    lines = result.coverage_warnings()
+    assert sum("2 allele(s)" in line for line in lines[1:]) == 1
+    # The real indel keeps its own remedy: `--offline` is exactly what blocks that one.
+    assert any("1 allele(s)" in line and "--offline" in line for line in lines[1:])
+
+
+def test_the_symbolic_reason_outranks_the_build_it_was_authored_on() -> None:
+    """A symbolic allele on a GRCh37 row is unmintable for a reason a refget table would not clear, so
+    the permanent class is the one reported — `why_not` mirrors `mint`'s order for that reason."""
+    minter = _online_minter()
+    reason = minter.why_not("1", 11796321, "N", "<DEL:1500>", build="GRCh37")
+    assert "GRCh37" not in reason and "--offline" not in reason
+
+
 @pytest.mark.integration
 def test_indel_normalization_is_representation_independent() -> None:
     """Two equivalent spellings of one insertion must mint the same id.
