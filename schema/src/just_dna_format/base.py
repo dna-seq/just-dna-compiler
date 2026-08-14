@@ -48,6 +48,7 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.vocab import (
     ALLELE_PATTERN,
+    ELEMENT_RULE_MEANINGS,
     VALID_CLIN_SIG,
     VALID_DIRECTIONS,
     VALID_ELEMENT_RULES,
@@ -135,15 +136,38 @@ def field_category(model: type[BaseModel], name: str) -> str:
     return "optional" if accepts_none(field.annotation) else "defaulted"
 
 
-def vocabulary(name: str, options: frozenset[str], *, closed: bool = True) -> dict[str, object]:
+def vocabulary(
+    name: str,
+    options: frozenset[str],
+    *,
+    closed: bool = True,
+    notes: dict[str, str] | None = None,
+) -> dict[str, object]:
     """Mark a field as drawn from `options`, for tools that offer an author the valid values.
 
     `closed=True` means a validator rejects anything outside the set; `closed=False` marks the
     recommended-but-open sets (`RECOMMENDED_EFFECT_MEASURES`, `ACTIONABILITY_SEED`,
     `RECOMMENDED_AUTHOR_KINDS`), where the members are suggestions and a novel value is legal. A
     consumer must be able to tell "pick one of these" from "these are suggestions", so the two are one
-    marker with a flag rather than two markers."""
-    return {"vocabulary": {"name": name, "options": sorted(options), "closed": closed}}
+    marker with a flag rather than two markers.
+
+    `notes` is per-member prose, for the vocabularies where the member *name* cannot carry the whole
+    rule — `ELEMENT_RULE_MEANINGS` is the case that forced it, since `largest` has two answers on a
+    `Number=R` field and only a sentence can say which one it means. It rides on the marker for the
+    same reason `options` does: a name to look up would need a central registry, and `vocab` cannot
+    import `pgx` (the cycle this module's dependency note exists to avoid), so a registry anywhere
+    else is a second hand-kept list. Carrying the prose here is what lets *every* surface that reads
+    `field_vocabularies` print it — before this, the meanings reached the whole-schema reference and
+    nothing else, so `describe <kind>`, the command an author filling one table runs, listed eight
+    members and could not say which of them counted the reference element.
+
+    Omitted from the marker when there is none, so the shape of the 20-odd vocabularies that need no
+    prose is unchanged. Members keep their declaration order rather than being sorted: it is the
+    reading order the constant was written in, and it is as deterministic as `sorted(options)` is."""
+    marker: dict[str, object] = {"name": name, "options": sorted(options), "closed": closed}
+    if notes:
+        marker["notes"] = dict(notes)
+    return {"vocabulary": marker}
 
 
 # The vocabularies enforced by this class's own shared validators below. Declared once, here, so the
@@ -164,9 +188,22 @@ SHARED_VOCABULARIES: dict[str, frozenset[str]] = {
     **dict.fromkeys(VCF_POINTER_COMPANIONS, VALID_ELEMENT_RULES),
 }
 
+# Per-member prose for the shared vocabularies that have any — see `vocabulary(notes=…)`. Derived
+# from the *same* relation `SHARED_VOCABULARIES` derives its element-rule entry from, so a companion
+# column added beside another pointer arrives carrying its meanings; a second list keyed by the same
+# names is exactly the drift the marker exists to prevent. The other four shared vocabularies need
+# none — `risk`, `1A`, `pathogenic` and `significant` are each their own definition — which is the
+# test for whether a vocabulary wants prose at all: only where the member name is not the whole rule.
+#
+# `dict.fromkeys` aliases one dict across every key, which is safe because nothing mutates it —
+# `vocabulary()` copies the mapping into each marker it builds.
+SHARED_VOCABULARY_NOTES: dict[str, dict[str, str]] = dict.fromkeys(
+    VCF_POINTER_COMPANIONS, ELEMENT_RULE_MEANINGS
+)
+
 
 def field_vocabularies(model: type[BaseModel]) -> dict[str, dict]:
-    """`{field_name: {name, options, closed}}` for every vocabulary-bound field of `model`.
+    """`{field_name: {name, options, closed[, notes]}}` for every vocabulary-bound field of `model`.
 
     The single route to "what may this cell contain" — `authoring_reference()` and any authoring tool
     read it, and neither keeps a list of its own. Covers both binding sites: a field marked at its own
@@ -181,7 +218,9 @@ def field_vocabularies(model: type[BaseModel]) -> dict[str, dict]:
         if isinstance(marker, dict):
             found[name] = marker
         elif name in SHARED_VOCABULARIES:
-            found[name] = vocabulary(name, SHARED_VOCABULARIES[name])["vocabulary"]
+            found[name] = vocabulary(
+                name, SHARED_VOCABULARIES[name], notes=SHARED_VOCABULARY_NOTES.get(name)
+            )["vocabulary"]
     return found
 
 

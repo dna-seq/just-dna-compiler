@@ -635,7 +635,10 @@ The reference-inclusion trap is written into the vocabulary rather than left to 
 ranging rule therefore comes in a pair — the bare name counts the reference element, the `_alt` name
 does not — and on a field with no reference element (including a packed cell of the sample's own
 alleles) the two coincide. Per-member prose lives in `vocab.ELEMENT_RULE_MEANINGS` and reaches an
-author through `authoring_reference()["vocabulary_notes"]`. `htt_repeat_expansion` now authors
+author through the vocabulary marker, which means through every generated surface at once: the
+whole-schema `authoring_reference()["vocabulary_notes"]` block, the `notes` key beside the members on
+each field that binds the vocabulary, and `just-dna-compiler describe <kind>`, which is the command an
+author filling one table actually runs. `htt_repeat_expansion` now authors
 `FORMAT/REPCN` + `largest`, which is the clinical rule for a dominant repeat expansion: *the longer of
 the two alleles*, whichever of them happens to be reference-length.
 

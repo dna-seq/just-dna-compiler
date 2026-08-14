@@ -1096,7 +1096,7 @@ The three hashes and how they compose into `(content_signature, resolution_signa
 | `stub <kind>` | `draft.stub_template` | `--rows` |
 | `requirements <kind>` | `draft.authoring_requirements` | `--json` |
 | `scaffold <spec>` | `scaffold.scaffold_module` | `--kind`, `--rows`, `--dry-run` |
-| `describe <kind>` | `hints.describe_table` | one table's columns + pick-lists |
+| `describe <kind>` | `hints.describe_table` | one table's columns + pick-lists, each column's `category` and its vocabulary's per-member `notes` |
 | `hint <kind>` | `hints.inspect_rows` | `--rows-file`/`--row`, `--json` |
 
 **`--no-resolve` is the master switch, not an Ensembl switch** (S14). With an injected `resolution.csv`

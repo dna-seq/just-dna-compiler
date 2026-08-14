@@ -38,7 +38,7 @@ import json
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
-from just_dna_format.base import authored_field_names, field_vocabularies
+from just_dna_format.base import authored_field_names, field_category, field_vocabularies
 from just_dna_format.binning import MeasureBinRow, validate_bins
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
@@ -151,12 +151,19 @@ class Finding:
 
 @dataclass(frozen=True)
 class FieldOptions:
-    """The values a column accepts, for a picker."""
+    """The values a column accepts, for a picker.
+
+    `notes` is the per-member prose for the vocabularies whose member *name* cannot carry the whole
+    rule, `None` for the rest — a picker offering `largest` beside `largest_alt` has nowhere else to
+    say which of them counts the reference element. It rides here because it rides on the marker
+    (`base.vocabulary`), so the surface an author reaches when their row was rejected knows what
+    `describe` and the whole-schema reference know."""
 
     column: str
     vocabulary: str
     options: list[str]
     closed: bool
+    notes: dict[str, str] | None = None
 
 
 @dataclass
@@ -214,7 +221,18 @@ def describe_table(csv_name: str) -> dict[str, Any]:
     """Everything a tool needs to help someone fill one table kind, without any input from them.
 
     Columns with their types, requiredness and allowed values; the alternative identity groups; the
-    natural key two rows are the same row by. All generated from the live models."""
+    natural key two rows are the same row by. All generated from the live models.
+
+    **Whatever the whole-schema `authoring_reference()` says about a column, this says too** — this
+    is the command an author filling *one* table runs, so a fact that reaches only the other surface
+    reaches the reader least likely to be reading it. Two were missing, both because this column dict
+    is assembled here rather than shared with the other surface, and a guard compared only
+    `field_category`. The **per-member prose** a closed vocabulary can carry: `source_element`'s eight
+    members printed with no way to tell which of them counts the reference element, which is the one
+    question the vocabulary was added to answer (D1-4). And **`category`**: `required` alone is
+    pydantic's two-way answer, false for `MeasureBinRow.measure_kind` and `unresolved`, which an
+    author must still write out carrying their defaults. `required` stays beside it — a published key
+    is not removed, and it is insufficient rather than wrong."""
     model = model_for(csv_name)
     vocabularies = field_vocabularies(model)
     requirements = authoring_requirements(csv_name)
@@ -225,12 +243,18 @@ def describe_table(csv_name: str) -> dict[str, Any]:
             {
                 "name": name,
                 "required": model.model_fields[name].is_required(),
+                "category": field_category(model, name),
                 "description": model.model_fields[name].description,
                 **(
                     {
                         "vocabulary": vocabularies[name]["name"],
                         "options": vocabularies[name]["options"],
                         "closed": vocabularies[name]["closed"],
+                        **(
+                            {"notes": dict(vocabularies[name]["notes"])}
+                            if vocabularies[name].get("notes")
+                            else {}
+                        ),
                     }
                     if name in vocabularies
                     else {}
@@ -251,6 +275,7 @@ def field_options(csv_name: str) -> list[FieldOptions]:
             vocabulary=marker["name"],
             options=marker["options"],
             closed=marker["closed"],
+            notes=dict(marker["notes"]) if marker.get("notes") else None,
         )
         for column, marker in field_vocabularies(model_for(csv_name)).items()
     ]

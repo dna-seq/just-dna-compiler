@@ -211,6 +211,53 @@ def test_actionability_is_reported_closed_because_it_is_enforced() -> None:
     assert "actionability_seed" not in ref["open_recommended"]
 
 
+def test_per_member_prose_rides_on_the_marker_and_reaches_both_blocks() -> None:
+    """The prose channel is the marker, so every surface reading `field_vocabularies` gets it (D1-4).
+
+    `vocabulary_notes` was composed in `authoring_reference()` from `VCF_POINTER_COMPANIONS` and
+    `ELEMENT_RULE_MEANINGS` directly, which made this block the only place the meanings could ever
+    reach — `just-dna-compiler describe`, the command an author filling one table runs, printed the
+    members and not what they mean. Discovered from the models rather than named here, so a
+    vocabulary that gains prose later is covered without editing this test."""
+    from just_dna_format.base import field_vocabularies
+    from just_dna_format.reference import _ALL_MODELS
+
+    ref = authoring_reference()
+    marked = {
+        marker["name"]: marker
+        for model in _ALL_MODELS.values()
+        for marker in field_vocabularies(model).values()
+        if marker.get("notes")
+    }
+    assert marked, "the element rules carry per-member prose; something has unbound it"
+    # The block is exactly what the markers carry — no vocabulary described in one and not the other.
+    assert set(ref["vocabulary_notes"]) == set(marked)
+    for name, marker in marked.items():
+        assert ref["vocabulary_notes"][name] == marker["notes"]
+        # A note names a member that exists, and says something.
+        assert set(marker["notes"]) <= set(marker["options"]), name
+        assert all(isinstance(prose, str) and prose.strip() for prose in marker["notes"].values())
+    # …and the per-field description carries it beside the members it explains, so a tool rendering
+    # one column's picker needs no second lookup.
+    for model_name, fields in ref["models"].items():
+        for entry in fields:
+            expected = ref["vocabulary_notes"].get(entry.get("vocabulary"))
+            assert entry.get("notes") == expected, f"{model_name}.{entry['name']}"
+
+
+def test_a_vocabulary_with_no_member_prose_carries_no_notes_key() -> None:
+    """Omitted, never an empty dict: the members of `direction` are their own definitions, and a
+    surface that had to distinguish `{}` from absence would be reading a third state into two."""
+    from just_dna_format.base import field_vocabularies
+    from just_dna_format.spec import VariantRow
+
+    assert "notes" not in field_vocabularies(VariantRow)["direction"]
+    described = next(
+        f for f in authoring_reference()["models"]["VariantRow"] if f["name"] == "direction"
+    )
+    assert "notes" not in described
+
+
 def test_the_one_hand_authored_sidecar_is_described() -> None:
     """S21. `sources.csv` is the only fact sidecar a human writes — the schema's own
     `MISPLACED_COLUMN_REASONS['source']` tells them to — and it is the only table the compile licence

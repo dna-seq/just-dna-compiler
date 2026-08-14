@@ -14,8 +14,11 @@ still Python-only, and the gaps were load-bearing rather than cosmetic:
 import json
 from pathlib import Path
 
+import pytest
 from just_dna_compiler import draft
 from just_dna_compiler.cli import app
+from just_dna_compiler.draft import DRAFTABLE, model_for
+from just_dna_compiler.hints import describe_table
 from just_dna_format.base import field_category
 from just_dna_format.manifest import read_manifest
 from just_dna_format.reference import _ALL_MODELS, authoring_reference
@@ -164,3 +167,65 @@ def test_both_surfaces_now_read_one_definition() -> None:
         model = _ALL_MODELS[model_name]
         for entry in fields:
             assert entry["category"] == field_category(model, entry["name"])
+
+
+# ── describe vs reference: one description of a column, two commands (D1-4) ────────────────────
+# `describe <kind>` calls itself "the full machine description of one table kind" and is the command
+# an author filling *one* table runs; `reference` is the whole-schema dump an MCP surface renders.
+# Anything the second says about a column the first has to say too, or the per-table command is the
+# one that quietly knows less. The concrete instance: `ELEMENT_RULE_MEANINGS` reached `reference`'s
+# `vocabulary_notes` and nothing else, so `describe repeat_alleles.csv` printed `source_element`'s
+# eight members with no way to tell which of them counts the reference element — the very question
+# the vocabulary was added to answer.
+
+
+def _column_vocabulary_facts(entry: dict) -> dict:
+    """The vocabulary half of one column's description, however the surface spells the rest."""
+    return {key: entry[key] for key in ("vocabulary", "options", "closed", "notes") if key in entry}
+
+
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_describe_carries_the_member_prose_the_whole_schema_reference_carries(kind: str) -> None:
+    """A vocabulary's per-member prose must reach the per-table command, not only the whole-schema one.
+
+    Anchored on `reference["vocabulary_notes"]`, which is where the prose already lived: for every
+    vocabulary-bound column of every draftable kind, whatever that block says about the column's
+    vocabulary is what `describe` must say about the column."""
+    notes_by_vocabulary = authoring_reference()["vocabulary_notes"]
+    for entry in describe_table(kind)["columns"]:
+        expected = notes_by_vocabulary.get(entry.get("vocabulary"))
+        if expected is None:
+            continue
+        assert entry.get("notes") == expected, f"{kind}:{entry['name']}"
+
+
+def test_some_draftable_kind_actually_exercises_the_prose_path() -> None:
+    """The parametrized guard above is vacuous for a kind whose columns carry no prose, and *every*
+    kind would be vacuous if the prose came unbound at the marker — a green sweep saying nothing.
+
+    Which kinds carry it is derived rather than listed: naming the four that bind `source_element`
+    today is the hand-kept list this whole binding exists to abolish, and it goes stale on the fifth."""
+    notes_by_vocabulary = authoring_reference()["vocabulary_notes"]
+    assert notes_by_vocabulary, "no vocabulary carries per-member prose; the marker channel is dead"
+    reached = {
+        (kind, column["name"])
+        for kind in DRAFTABLE
+        for column in describe_table(kind)["columns"]
+        if column.get("vocabulary") in notes_by_vocabulary
+    }
+    assert reached, "no draftable table binds a vocabulary that carries prose"
+
+
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_the_two_descriptions_of_a_column_agree(kind: str) -> None:
+    """And the general form: neither surface may know something about a column the other does not.
+
+    `field_category` was the only cross-surface guard here, and it left the vocabulary half — the
+    part a picker renders — unpinned in both directions."""
+    model = model_for(kind)
+    reference_entries = {f["name"]: f for f in authoring_reference()["models"][model.__name__]}
+    for entry in describe_table(kind)["columns"]:
+        mirror = reference_entries[entry["name"]]
+        assert _column_vocabulary_facts(entry) == _column_vocabulary_facts(mirror), entry["name"]
+        assert entry["required"] == mirror["required"]
+        assert entry["category"] == mirror["category"]

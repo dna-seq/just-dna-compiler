@@ -54,9 +54,7 @@ from just_dna_format.spec import (
     VariantRow,
 )
 from just_dna_format.vocab import (
-    ELEMENT_RULE_MEANINGS,
     RESERVED_NAMES_0_4,
-    VCF_POINTER_COMPANIONS,
 )
 
 # The authored surface, grouped by role. Order is the reading order for an author/agent.
@@ -155,6 +153,28 @@ def _collect_vocabularies(*, closed: bool) -> dict[str, list[str]]:
     return collected
 
 
+def _collect_vocabulary_notes() -> dict[str, dict[str, str]]:
+    """`{vocabulary name: {member: prose}}` for every marked field that carries per-member prose.
+
+    Read off the markers, exactly like `_collect_vocabularies` above, rather than composed here from
+    the one relation that has notes today. The comprehension it replaces named `ELEMENT_RULE_MEANINGS`
+    and `VCF_POINTER_COMPANIONS` directly, which meant a vocabulary in `pgx`/`binning`/`spec` could
+    never contribute prose (this module can import those, but the marker is the only channel a *tool*
+    reads) and that a second surface wanting the same prose had to repeat the composition. It did:
+    `just_dna_compiler.hints.describe_table` had no notes at all, so the per-table command an author
+    actually runs listed `source_element`'s members without their meanings.
+
+    Outer keys sorted, members left in the declaring constant's own order — the reading order it was
+    written in, and deterministic for the same reason `_collect_vocabularies` is."""
+    collected: dict[str, dict[str, str]] = {}
+    for model in _ALL_MODELS.values():
+        for marker in field_vocabularies(model).values():
+            notes = marker.get("notes")
+            if notes:
+                collected[marker["name"]] = dict(notes)
+    return {name: collected[name] for name in sorted(collected)}
+
+
 def _describe_model(model: type[BaseModel]) -> list[dict[str, Any]]:
     """Field list for one model, in declaration order — `{name, type, required, description}`.
 
@@ -197,6 +217,11 @@ def _describe_model(model: type[BaseModel]) -> list[dict[str, Any]]:
             entry["vocabulary"] = marker["name"]
             entry["options"] = marker["options"]
             entry["closed"] = marker["closed"]
+            # Per-member prose where the member name cannot carry the whole rule, beside the members
+            # it explains rather than only in the top-level `vocabulary_notes` block: a tool rendering
+            # one column's picker has the marker in hand and should not need a second lookup.
+            if marker.get("notes"):
+                entry["notes"] = dict(marker["notes"])
         fields.append(entry)
     return fields
 
@@ -222,9 +247,12 @@ def authoring_reference() -> dict[str, Any]:
         # is silent about which one it means repeats the defect it was added to fix one level down.
         # Keyed by the same names as `vocabularies` above, so a consumer that found a member there
         # can look up what it means without a second lookup table of its own.
-        "vocabulary_notes": {
-            name: dict(ELEMENT_RULE_MEANINGS) for name in sorted(VCF_POINTER_COMPANIONS)
-        },
+        #
+        # Derived from the fields' own markers, like both blocks above it. It was a comprehension over
+        # `VCF_POINTER_COMPANIONS` naming `ELEMENT_RULE_MEANINGS` in place — correct, and the only
+        # channel that composition could reach was this block, so the prose never got to the per-table
+        # `describe` an author filling one table runs (D1-4).
+        "vocabulary_notes": _collect_vocabulary_notes(),
         # Alternative identity-column sets, any ONE of which satisfies a row's requirement. Field-level
         # `required` cannot express "rsid OR chrom+start" — that rule is a model validator — so a tool
         # listing required columns told an author a `variants.csv` row needed no identifier at all.
