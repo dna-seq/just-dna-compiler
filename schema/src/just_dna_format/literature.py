@@ -178,7 +178,18 @@ class LiteratureRow(BaseModel):
         description=(
             "Whether the authored/derived DOI resolves in Crossref. Independent of `exists`, which is "
             "PubMed's answer: a preprint, book or dataset has a DOI and no PMID, so this is the check "
-            "that covers citations PubMed does not index at all."
+            "that covers citations PubMed does not index at all. Read it with `doi_checked`, which "
+            "names which DOI it is about."
+        ),
+    )
+    doi_checked: str | None = Field(
+        default=None,
+        description=(
+            "The DOI `doi_exists` is a verdict about — the authored one where a study row supplied "
+            "it, else the registry's. Recorded because this table is a **pin**: a re-run does not "
+            "refetch a row it already has, so without it a stored 'does not resolve' would be "
+            "re-attributed to whatever DOI the author writes next, and correcting the citation "
+            "could not clear the finding. Null when Crossref was not asked."
         ),
     )
     source: str | None = Field(

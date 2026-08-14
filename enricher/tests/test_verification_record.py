@@ -1,9 +1,15 @@
 """The enricher's half of RM45: passes record what they checked, and the record survives the next run.
 
-The merge is what makes several commands share one document — `enrich` writes three checks, a later
-`check-identifiers` writes its own, and neither may erase the other's. That is the same load-merge-write
+The merge is what makes several commands share one document — `enrich` writes its four checks, a later
+`literature` writes its three, and neither may erase the other's. That is the same load-merge-write
 discipline `licensing.record_source_terms` has, for the same reason: a count of call sites goes stale,
 one function does not.
+
+**That second command was hypothetical when this file was written**, and it showed: the merge cases
+below synthesise the second pass by hand, because `literature` reported its three checks to stdout and
+let the record die with the process. `test_two_real_commands_land_in_one_document` is the same claim
+put to two commands that exist, which is the only version of it that can catch a pass writing to the
+wrong place or clobbering the other's block.
 """
 
 import shutil
@@ -11,7 +17,8 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import authored_input_entries, compile_module
-from just_dna_enricher.enrich import _verification_records
+from just_dna_enricher.enrich import _verification_records, enrich
+from just_dna_enricher.literature import enrich_literature
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON
@@ -57,7 +64,11 @@ def test_the_document_is_bound_to_the_module_as_it_stands(tmp_path: Path) -> Non
 
 
 def test_a_second_pass_adds_its_check_without_erasing_the_first(tmp_path: Path) -> None:
-    """Two commands, one document. The first run's answer is not 'never asked' after the second."""
+    """The merge mechanism itself, with the two record shapes side by side.
+
+    Synthetic on purpose — it pins `ran` beside `skipped` in one document, which no pair of real
+    commands is guaranteed to produce. The real two-command case is the test below it.
+    """
     spec = _module(tmp_path)
     record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
     record_verification(
@@ -68,6 +79,41 @@ def test_a_second_pass_adds_its_check_without_erasing_the_first(tmp_path: Path) 
     assert set(by_check) == {"rsid_currency", "gene_symbol_currency"}
     assert by_check["rsid_currency"].findings == 1
     assert by_check["gene_symbol_currency"].skipped == "offline"
+
+
+def test_two_real_commands_land_in_one_document(tmp_path: Path) -> None:
+    """`enrich` then `literature`, on one module, offline — seven records, none erased.
+
+    The claim the module docstring of `just_dna_enricher.verification` makes, put to two commands that
+    both write. Until `literature` was wired in there was no second writer at all, so the merge could
+    only ever be exercised against a hand-built document; running the two in sequence is what would
+    catch a pass resolving the sidecar path differently or replacing the file wholesale.
+
+    Offline is the honest way to run it here: every record comes out a skip, which is itself the point
+    — a run with no egress has to say *which* questions it could not put, and both commands do. Note
+    that `provenance_quote` is `nothing_to_check` rather than `offline`: this module's citations carry
+    no quote, so egress would not change the answer, and the reason that survives a re-run is the one
+    recorded.
+    """
+    spec = _module(tmp_path)
+    enrich(spec, offline=True, download=False)
+    after_enrich = {r.check for r in read_verification(spec / VERIFICATION_JSON).records}
+
+    enrich_literature(spec, offline=True)
+    records = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+
+    literature_checks = {"citation_existence", "citation_identifier", "provenance_quote"}
+    assert literature_checks <= set(records)
+    assert after_enrich <= set(records), "the second command must not erase the first's block"
+    assert set(records) == after_enrich | literature_checks
+    assert records["citation_existence"].skipped == "offline"
+    assert records["citation_identifier"].skipped == "offline"
+    assert records["provenance_quote"].skipped == "nothing_to_check"
+    # One producer line and one nonce for the whole document, however many commands contributed.
+    doc = read_verification(spec / VERIFICATION_JSON)
+    assert doc.producer == producer_label() and doc.module_hash == module_binding(
+        authored_input_entries(spec)
+    )
 
 
 def test_re_running_one_check_replaces_its_own_record(tmp_path: Path) -> None:
