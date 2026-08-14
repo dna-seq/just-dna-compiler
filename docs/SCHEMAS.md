@@ -582,6 +582,17 @@ assert nothing about being in cis. The order is still preserved byte-for-byte th
 (Principle 7) and `flags: phased` still records that the call was phased; neither says which homolog.
 A module that genuinely needs cis/trans says so with `diplotypes.csv`, which names haplotypes.
 
+**Two alleles is the ceiling, and VCF's is not (RM67).** §7.2 permits any ploidy and adds *partial*
+phasing on top of it — `GT |0|0/1/2`, where the leading indicator is optional and each separator says
+whether that allele is phased with the one before it. The genotype grammar here caps at two and
+refuses a mixed separator, which is a deliberate generalization rather than an oversight: a module
+annotates human loci where diploid is the upper bound, and the two narrower directions are already
+carried (the single-allele arm spells a haploid or hemizygous call, and the compiler warns when a
+two-allele genotype lands on MT or non-PAR Y). Nothing is queued against it; the spec's own polyploid
+example is a tandem duplication carrying SNVs, so a CNV-aware consumer meeting one is what would
+reopen the question. The three refusals say all of this in-line — an author holding a real triploid
+call should be able to tell a decision from a typo.
+
 **The VCF `ID` column is a list, and `rsid` is one variant (RM64).** §1.6.1.3 defines ID as a
 "semicolon-separated list of unique identifiers", so a real record may carry `rs123;rs456`, or an rsID
 beside a COSMIC id. `validate_rsid` accepts exactly one, which is right for the authored side — a row
