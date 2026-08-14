@@ -13,6 +13,11 @@ decision, and the entry says why each candidate repair is wrong.
 > and pinned with regression tests in the same session that found them, and landed in one commit that
 > can be reviewed or reverted as a unit. **Everything from D1 onward is filed, not fixed.**
 
+> **Round 2 is at the bottom of this file.** The fix round for the findings above turned up defects of
+> its own — not by dogfooding, but by reading the code around each repair. They are recorded here rather
+> than in a new file, for the reason CLAUDE.md gives about second inboxes: a backlog the ledger cannot
+> see is a backlog nobody sees.
+
 ## The shape the batch has
 
 Three findings are the same defect in three places, and it is worth naming: **a correction that lives
@@ -236,6 +241,37 @@ Recorded so absence is legible rather than looking like coverage:
 - **RM49's re-split from `manifest.derived`** — the format's half is verified (the block carries the
   relative paths and hashes, and a `derived/` module compiles to identical signatures); performing
   the re-split is a registry's job and lives outside this repo.
+
+---
+
+## Round 2 — found while fixing round 1
+
+Different provenance from everything above, and worth stating plainly: **these came from reading the
+code around a repair, not from building a module.** Dogfooding asks whether the thing is usable; this
+round asks whether the code says what it means, which is a review question. The distinction matters
+because it changes what counts as evidence — a dogfooding finding is reproduced by running a CLI, and
+three of the five below are reproduced against real data instead.
+
+Each was **re-verified here before being written down**, not copied from the report that raised it.
+That caught one claim that does not survive contact with the code (R2-7), which is the reason the
+re-verification is not a formality.
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **R2-1** | **ClinPGx's `gene` column is `;`-multi-valued, and both readers treat it as one symbol.** `clinpgx_draft.py:135` filters with `(gene or "").upper() not in wanted_genes` — an exact-set membership against the whole cell — and `:158` passes that same cell into `PharmVariantRow.gene`, which has no validator (`pgx.py:364`, a plain `str \| None`). Probed against the provisioned snapshot: **396 of 16,087 rows** carry a `;` (`IFNL3;IFNL4` ×51, `ANKK1;DRD2` ×24, `CYP2A7P1;CYP2B6` ×18), and **`--gene VKORC1` silently drops 3 real rows** that name VKORC1 inside a multi-gene cell. In the other direction an unfiltered draft writes `PRSS53;VKORC1` into a column documented as "Gene symbol, e.g. VKORC1", where nothing will ever reject it. Both halves are silent. Same shape as the CPIC `gene.chr` lesson: a claim about a source that was true of the *cell* and false of the *column*. | fix | **high** |
+| **R2-2** | **`spec_genome_build`'s refusal escapes `draft` and `draft-panel` as a traceback.** F1's repair routed both providers through `source_build_mismatch` (`enrich.py:306`), which calls `spec_genome_build` (`:275`), which deliberately **raises `EnrichmentError`** on a present-but-unreadable `module_spec.yaml` — picking a build for a module whose declaration cannot be read is exactly the invention that function exists to remove, so the raise is right. But `draft` catches `(CpicError, DraftError)` (`cli.py:686`) and `draft-panel` catches `(ClinVarDraftError, DraftError)` (`:1730`); neither catches `EnrichmentError`. Reproduced: a broken yaml in a spec dir turns `draft-panel --gene PALB2 --offline` into a rich traceback rather than the clean message-and-exit-1 every other enricher command gives. The message itself is good; it is the presentation that regressed, and it regressed *because* F1 was fixed. | fix | medium |
+| **R2-3** | **A test's stated coverage is not exercised — the fixture's key is one level off.** `enricher/tests/test_draft_declared_build.py:48` builds `_LOCATIONS` with a nested `"location"` key, while `cpic.defining_variants` reads `r.get("sequence_location")` (`cpic.py:472`, and the PostgREST select at `:461` names the same). The location dict is therefore always `{}`, so the file's claim to cover a defining variant carrying a position is empty. Third instance of this class in the workspace, after S21's registry and D6-2's `_MOVABLE`: a guard that proves less than its name says, green either way. | fix | low |
+| **R2-4** | **An optional message-enrichment call can sink a finished CPIC draft.** `pgx_draft.py:315` asks `cpic.knows_drug(drug)` inside the `try` whose `finally` closes the client — deliberately, and the comment says so — but by then `alleles_for_gene`, `diplotypes_for_gene`, `defining_variants` and every `recommendations` call have already returned. `knows_drug` exists only to sharpen the message for drugs that came back empty (F5's fix), so a transport failure there discards a complete draft to improve a sentence about it. Same shape as the gnomAD rule already in CLAUDE.md: a per-item error must never sink a batch. | fix | low |
+| **R2-5** | **A stored VRS id against a symbolic allele may be blaming the wrong party.** `_recompute_vrs_id` returns `_BLAME_TIER` (warning in both modes) for a symbolic allele carrying a `ga4gh:VA.…`. But nothing mints one — the enricher now declines by construction (D1-1) — so a *present* id names some other allele, and **deleting the cell clears it**, which takes the row out of the P5 "no authored edit could clear it" class that `_BLAME_TIER` is for. The obvious repair (escalate to `_BLAME_ROW`) would refuse in both modes a module that compiles today, and the minting side has to answer first: may the enricher ever write a non-VA identity into that column? Recorded in `_recompute_vrs_id`'s docstring by the unit that found it. | **surface** | medium |
+| **R2-6** | **RM59's `*` would land in the indel bucket, one axis over from D1-2.** `is_unobservable_allele` is not tested by either compiler VRS reason function, so an unobservable allele reaching `resolution.csv`'s `alts` would be reported as "an indel or MNV … re-run it online" — the same false class D1-2 just fixed for symbolic alleles. **Nothing writes one there today**, so the diff is zero and this is not yet a defect. Filed because it is the same blind spot and because "nothing produces it today" is a fact about the current wiring, not about the function — the standing lesson from RM38 and `VALID_RSID_STATUS.withdrawn`. | watch | low |
+| **R2-7** | **Not reproduced — recorded so it is not re-raised.** The claim was that `compiler.py:1269`'s *"see the skip reported above"* dangles under `--no-resolve`, which prints no skip. It does print one: `compile_module` emits the `--no-resolve` master-switch warning whenever a resolution table is present (`compiler.py:3630-3642`), and the joinability branch is conjoined with exactly that condition. The other `fill_applied=False` cases the comment enumerates each report something above too. A residual question is left open rather than asserted: `validate_spec` has no resolution step, so whether the same sentence can dangle there was probed on `pgx_slco1b1_simvastatin` and produced no joinability line at all, i.e. the probe did not reach the branch. Someone re-raising this needs a module that does. | not a finding | — |
+
+### Provenance
+
+R2-1 through R2-4 were raised by the code-review pass of the unit fixing D3-1 and re-verified here
+(the snapshot probe, the traceback reproduction and the two reads are this file's own work). R2-5 and
+R2-6 were raised and argued by the unit fixing D1-2's compiler half, which correctly declined to fix
+either — R2-5 because the repair is a decision, R2-6 because there is nothing to fix yet.
 
 ---
 
