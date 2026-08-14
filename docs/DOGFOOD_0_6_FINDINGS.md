@@ -9,10 +9,29 @@ fix. `class` is the standing fix-vs-surface split: **fix** = a false claim, a mi
 unaggregated wall, a guard that is never reached; **surface** = the obvious repair is itself a design
 decision, and the entry says why each candidate repair is wrong.
 
-> **Already repaired in the working tree (D2 round, before the split was called).** F1–F7 and F9, F10
-> below were fixed and pinned with regression tests in the same session that found them. They are
-> listed here anyway, because the ledger has to be complete and because the fixes are unstaged and
-> may be reviewed or dropped as a unit. Everything from D1 onward is **filed, not fixed**.
+> **Already repaired (D2 round, before the fix/file split was called).** F1–F7 and F9, F10 were fixed
+> and pinned with regression tests in the same session that found them, and landed in one commit that
+> can be reviewed or reverted as a unit. **Everything from D1 onward is filed, not fixed.**
+
+## The shape the batch has
+
+Three findings are the same defect in three places, and it is worth naming: **a correction that lives
+where the author does not read it.** RM63's phase wording is a code comment (D5-2); `ELEMENT_RULE_MEANINGS`
+reaches `reference` but not `describe` (D1-4); RM62's narrowing rule reaches `docs/SCHEMAS.md` but not
+the printed column description (D6-1), and D5-1 is the fourth — a printed description that is wrong
+rather than absent. `describe`/`requirements`/`reference` are the authoring contract, which is the
+lesson the 0-vs-1-based `start` docstring cost 3,038 rows to learn, and four 0.6 items landed just
+short of it.
+
+Two more are the same as each other: **a vocabulary or a mechanism built and then not wired.**
+`VALID_VERIFICATION_SKIPS.unsupported` was emitted by nothing (F4); twelve of seventeen
+`VALID_VERIFICATION_CHECKS` members still are, and `merge_records` is built for a multi-command
+document no two commands produce (D4-1).
+
+And one is the reason four of the others were invisible: **the corpus was uniform on every axis the
+0.6 batch touched.** No symbolic allele reached the enricher, no module carried an attestation, none
+of the two new binning kinds had an instance, and the round-trip sweep's own third signature had
+never been compared (F9).
 
 ---
 
@@ -47,7 +66,7 @@ this module — the corpus-uniformity heuristic, paying off exactly as the plan 
 
 | id | finding | class | severity |
 |---|---|---|---|
-| **D1-1** | **`enrich` crashes on any module carrying a symbolic allele.** Unhandled `pydantic.ValidationError` out of `ga4gh.vrs`: `VrsMinter.mint` routes a non-substitution to `_mint_normalized`, which builds `models.LiteralSequenceExpression(sequence=alt.upper())` **outside** the `try` below it — whose comment reads *"A failure here is a live-service problem … never a reason to fail the enrichment."* Same shape as the `UnsupportedBuildError` defect recorded eight lines above it in the same function. | fix | **high** |
+| **D1-1** | **`enrich` crashes on any module carrying a symbolic allele** — reproduced on `<DEL:4977>` (D1) and independently on `<DUP:16000>` (D3), so it is the allele class and not one spelling. Unhandled `pydantic.ValidationError` out of `ga4gh.vrs`: `VrsMinter.mint` routes a non-substitution to `_mint_normalized`, which builds `models.LiteralSequenceExpression(sequence=alt.upper())` **outside** the `try` below it — whose comment reads *"A failure here is a live-service problem … never a reason to fail the enrichment."* Same shape as the `UnsupportedBuildError` defect recorded eight lines above it in the same function. | fix | **high** |
 | **D1-2** | **Offline, the same allele is misdiagnosed as an indel with a remedy that crashes.** `_vrs_coverage` reports *"an indel/MNV, which must be justified against the reference sequence — re-run without --offline to mint it"*. A symbolic allele names no sequence by construction, so no id is ever mintable — a permanent reason class, not an `--offline` limitation — and the suggested re-run is D1-1. | fix | **high** |
 | **D1-3** | **`_check_binning_grounding` exempts a variant-keyed bin in a module that has no `studies.csv`.** The function returns early unless there are **zero** study rows, then treats a bin as grounded because it names a variant "a study row can then name back" — the study row it has just established does not exist. A `heteroplasmy.csv` module stating four thresholds and citing nothing is green and silent; the same module on `repeat_alleles.csv` is warned. Reopens the S19 gap for the one binning kind a real MELAS/NARP module uses. | fix | medium |
 | **D1-4** | **`describe <kind>` omits `vocabulary_notes`.** It calls itself "the full machine description of one table kind" and prints `source_element`'s members without `ELEMENT_RULE_MEANINGS`, which reach only the whole-schema `reference`. The per-table command is the one an author authoring one table uses. | fix | low |
@@ -150,6 +169,73 @@ three signatures.
 **Not run:** RM4's `withdraw_stale_dataset` needs two ClinVar releases and one snapshot is
 provisioned. Building a second from the same VCF under a different label would fabricate the
 provenance the mechanism exists to protect.
+
+---
+
+## D6 — the corpus sweep
+
+No new module: the adversarial pass over all sixteen examples, run after the five above landed.
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **D6-2** | **`test_derived_layout.py`'s movable-sidecar list was four sidecars behind the layout it tests.** `_MOVABLE` was a hand-written five-tuple naming `sources.csv` (the *deprecated* spelling) and omitting `gene_validity.csv`, `clinical_assertions.csv` (RM24/RM25), `verification.json` (RM45) and `licensing.csv` (RM51). Its comment said the list was written out deliberately, "so the test states the contract instead of echoing it" — and the contract it stated was 0.5's. Invisible because `_flat` discovers the first example carrying `variants.csv` + `resolution.csv` and no example carried any of the four; `hboc_palb2` carries all of them, and `manifest.derived` came back with two entries still at the spec root. Same shape as S21: a good discovery mechanism defeated by the one hand-kept list beside it. **Repaired in place** (the list is still written out, and a new assertion checks it against `_DERIVED_FILES`) — this is a test the probe artifact reddened, not a product fix. | fix (done) | medium |
+| **D6-1** | **RM62's authoring rule is in the consumer docs and not in the authoring contract.** `docs/SCHEMAS.md` states it fully — a VCF `Float` is 32-bit, `0.3` widens to `0.300000011920928955…`, so an inclusive non-dyadic `measure_max` is missed by a float32 read, and the rule is to *narrow the authored bound*. `describe <kind>`'s `measure_max` says only *"Inclusive upper bound; None = open above. Inclusive on every measure_kind."* The word "narrow" appears **zero** times in `just-dna-compiler reference`. RM62 is a rule about **what to author**, and it reaches only the document the author is not writing from. Third instance of this shape in the batch, with D1-4 and D5-2. | fix | medium |
+
+### Checked and held (D6)
+
+- **The four-signature ledger, all sixteen modules.** `artifact.digest`, `content_signature` and
+  `source_signature` are a fixed point everywhere. `resolution_signature` moves on four, in two
+  distinct shapes: `None → value` on the three modules carrying no `resolution.csv`
+  (`grch37_build`, `mt_heteroplasmy`, `cyp2d6_structural` — reverse materializes the table from the
+  parquets, nothing is lost, lap two is stable) and `value → value` on exactly one,
+  `cyp2c9_warfarin_grch37`, which is F8's forced RM15 loss.
+- **RM51's migration.** `hfe_hemochromatosis` carries the deprecated `sources.csv`; reverse writes
+  `licensing.csv` and no signature moves.
+- **RM49, all three halves.** Eight sidecars moved under `derived/` compile to an identical
+  `content_signature` and `resolution_signature`; `manifest.derived` carries the relative paths and
+  hashes so a registry can re-split; a copy at both locations is an **error naming both paths** and
+  saying which spelling to keep; and a typo'd `derived/varaints.csv` is caught by the near-miss
+  guard, which is the case that would otherwise compile green with zero variant rows. And **the
+  writers follow the reader**: re-running `enrich` on a `derived/` module rewrote `resolution.csv`
+  and `verification.json` in place under `derived/` and left nothing at the spec root — the
+  second-copy collision RM49/RM51 made an error, arrived at by following the documented workflow.
+- **The count rule holds across the corpus.** Only two warning shapes are compile-only — the
+  one-to-many expansion count and the coordinate-authored/no-rsid count — and both take *resolution
+  output* as their input, which is the side of the rule they belong on. No message appears with two
+  different counts on the two sides.
+- **RM62 and RM64 are both reachable from the published docs** (`docs/SCHEMAS.md` §§ on float
+  comparison and on the ID column), so the 0.6 findings did land as prose. D6-1 is about the
+  *second* surface, not about the first.
+- **RM57's inversion warning, on the row type it exists for.** `requires_callable=true` with
+  `quality_from=QUAL, min_quality=30` warns, cites VCF §1.6.1.6, explains that QUAL is
+  `-10log10 prob(no variant)` on a variant record and `-10log10 prob(variant)` where ALT is `.`, adds
+  *"the higher the floor, the more confidently wrong the result"*, and names GQ and MIN_DP as the
+  fix. The `FORMAT/DP` row beside it is silent.
+- **RM50, both halves.** A `pmid` cell of `PMC 3110566` — the spelling that used to be accepted as a
+  *different* paper — is refused with a message that **names the PMC id**, explains that PMC and
+  PubMed number independently, and points at `hint citation --pmcid`. `21551363; PMC3110566` is
+  accepted, so the refusal is narrow by construction.
+- **RM24's key, on real ClinGen data.** `hboc_palb2` carries two PALB2 rows from one submitter:
+  `autosomal_recessive` → Fanconi anemia complementation group N, and `autosomal_dominant` →
+  PALB2-related cancer predisposition. They differ on disease *and* on mode of inheritance, and would
+  have collapsed under any key that did not carry both. The orphan half fires too: rename the gene in
+  `variants.csv` and both `gene_validity.csv` and `gene_metrics.csv` report *"names 1 gene(s) this
+  module never mentions: ['PALB2']"*.
+
+## Not run
+
+Recorded so absence is legible rather than looking like coverage:
+
+- **RM4's `withdraw_stale_dataset`** — needs two ClinVar releases; one is provisioned, and building a
+  second from the same VCF under a different label would fabricate the provenance the mechanism
+  exists to protect.
+- **RM46's non-commercial-quote warning** — needs a `provenance_quote` lifted from an article whose
+  Europe PMC licence is recorded as CC-BY-NC. Neither citation in the modules built here is in that
+  set (both came back `is_open_access: false` with no licence recorded, which is the correct
+  withhold), so the path was not exercised.
+- **RM49's re-split from `manifest.derived`** — the format's half is verified (the block carries the
+  relative paths and hashes, and a `derived/` module compiles to identical signatures); performing
+  the re-split is a registry's job and lives outside this repo.
 
 ---
 

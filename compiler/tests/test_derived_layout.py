@@ -23,18 +23,55 @@ import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import _TABLE_KIND_CSVS, compile_module, validate_spec
+from just_dna_compiler.compiler import (
+    _DERIVED_FILES,
+    _TABLE_KIND_CSVS,
+    compile_module,
+    validate_spec,
+)
 from just_dna_format.layout import (
     DERIVED_SUBDIR,
+    LICENSING_CSV,
+    VERIFICATION_JSON,
     SidecarCollision,
     resolve_sidecar,
     sidecar_write_path,
 )
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
-#: Exactly what may move — `resolution.csv` plus the fact sidecars. Named here rather than imported
-#: from the compiler's private tuple so the test states the contract instead of echoing it.
-_MOVABLE = ("resolution.csv", "frequencies.csv", "gene_metrics.csv", "literature.csv", "sources.csv")
+
+#: Exactly what may move — `resolution.csv`, the attestation, and the fact sidecars, in both legal
+#: spellings of the licence table.
+#:
+#: **Stated here AND checked against the compiler's own set, because stating it alone silently rotted.**
+#: The list used to be a bare five-tuple with a comment saying it was written out "so the test states
+#: the contract instead of echoing it" — good intent, and it then sat four sidecars behind the layout
+#: it tests: `gene_validity.csv` and `clinical_assertions.csv` (RM24/RM25), `verification.json`
+#: (RM45), and `licensing.csv` (RM51's *preferred* spelling — it named only the deprecated
+#: `sources.csv`). Nothing noticed, because `_flat` picks the first reference example carrying both
+#: `variants.csv` and `resolution.csv` and no example carried any of the four. `hboc_palb2` carries
+#: all of them, `_flat` found it the moment it landed, and `manifest.derived` came back with two
+#: entries still at the spec root.
+#:
+#: So the contract is still written out, and the assertion below is what makes a drifted copy fail
+#: loudly instead of quietly moving less than it claims. Same shape as the guard that discovers
+#: enforcement by behaviour and was defeated by the one hand-kept list beside it (S21).
+_MOVABLE = (
+    "resolution.csv",
+    VERIFICATION_JSON,
+    "frequencies.csv",
+    "gene_metrics.csv",
+    "literature.csv",
+    "gene_validity.csv",
+    "clinical_assertions.csv",
+    "sources.csv",
+    LICENSING_CSV,
+)
+
+
+def test_the_movable_set_is_the_compilers_own() -> None:
+    """A new derived sidecar must break this, not slip past `_split` unmoved."""
+    assert set(_MOVABLE) == set(_DERIVED_FILES) | {LICENSING_CSV}
 
 
 def _flat(tmp_path: Path, name: str = "flat") -> Path:

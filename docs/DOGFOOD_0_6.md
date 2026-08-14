@@ -362,7 +362,7 @@ and it is where the P7 interactions live. Each line is a claim to falsify:
 | RM5 | D1, D2, D3 | placement (droppable vs fatal), lengthless refusal, subtypes, CPIC's two unusable kinds |
 | RM24 | D4 | the orphan check, the MOI + submitter key, GenCC disagreement |
 | RM25 | D4 | the tier persisted beside a ClinVar-drafted panel; no verification member |
-| RM27 | D2, D4, D6 | the verdict is stamped and nothing gates |
+| RM27 | D2 | the compile gate refuses without a recorded declaration; `--use` is an *enricher* flag, so a compiler `--use` was never the probe |
 | RM43 | D1, D2, D6 | the fill on all three positional kinds, off GRCh38, and reverse's second source |
 | RM44 | D2, D4 | `resolution_subjects` as the denominator of a vacuous flag |
 | RM45 | D2, D4, D6 | staleness, determinism, skip vocabulary, PoW budget, round-trip survival |
@@ -376,7 +376,7 @@ and it is where the P7 interactions live. Each line is a claim to falsify:
 | RM54 | D1, D3, D5 | element rules where reference inclusion decides; the reserved companions; a hemizygous "larger" |
 | RM55 | D3, D5 | the warning fires on both kinds, aggregated, and points at 0.7 |
 | RM56 | D3, D5 | withhold, said once |
-| RM57 | D2 | the inversion warning on the row type it exists for |
+| RM57 | D6 | the inversion warning on the row type it exists for (moved from D2: `requires_callable` is `VariantRow`-only and D2 has no `variants.csv`) |
 | RM58 | D1 | `.` diagnosed as MISSING, not as notation |
 | RM59 | D1, D3 | `*` natural (autosomal) and hostile (haploid + ploidy check) |
 | RM60 | D1 | the widening, and whether it blinded RM48's contig check |

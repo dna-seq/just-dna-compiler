@@ -74,6 +74,16 @@ coverage warnings name RM15. This one reads like a syntax error.
   is reported (`no bin covers (10.0, 21.0)`), so RM55's "the coverage-gap check cannot report the
   hole" is a statement about *sub-integer* holes and not a check that has been turned off.
 
+## This module cannot be enriched, for the reason `mt_common_deletion` records
+
+`just-dna-enricher enrich` on this directory dies with an unhandled
+`pydantic.ValidationError` — `String should match pattern '^[A-Z*\-]*$'`, `input_value='<DUP:16000>'`
+— which is the same defect `reference_examples/mt_common_deletion` found on `<DEL:4977>`. Reproducing
+it here on a different allele type, at a different position, on a different contig establishes that
+it is the **allele class** and not one spelling. That is why this module carries no `resolution.csv`
+and no `verification.json`: its coordinates are authored, and the pass that would add the rest
+crashes.
+
 ## RM65 / RM66 — the gating evidence, not a finding
 
 0.6 corrected the claim that these tables are "not joinable by position, which is a property of what
