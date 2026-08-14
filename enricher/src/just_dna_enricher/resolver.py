@@ -11,13 +11,15 @@ caller's responsibility (the marketplace pins one reference for the whole ecosys
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import duckdb
 from just_dna_compiler.resolution import genotype_fits
 from just_dna_format.base import derive_variant_key
 from just_dna_format.spec import VariantRow
+from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
 
@@ -410,6 +412,152 @@ def _lookup_positions_by_rsid(
     return dict(result)
 
 
+@dataclass(frozen=True)
+class PairCheck:
+    """What the rsid↔coordinate comparison did, not just what it found (RM45).
+
+    Same shape and same argument as `sequences.RefCheck`: the disagreements alone answer one of the
+    two questions a reader has, and an empty list says three different things — every pair agreed, the
+    reference had no record of any of them, or there was no reference at all. `subjects` is the
+    denominator the check really ran over, `unknown` names the pairs it could not put the question for
+    (an answered absence is not an agreement — S20), and `not_checked` carries a
+    `VALID_VERIFICATION_SKIPS` key when the whole pass could not run.
+    """
+
+    disagreements: list[str] = field(default_factory=list)
+    subjects: int = 0
+    unknown: list[str] = field(default_factory=list)
+    undecided: list[str] = field(default_factory=list)
+    not_checked: str | None = None
+
+
+def _place(chrom: str | None, start: int | None) -> str:
+    """One coordinate as `chrom:start`, contig spelling normalized (`chr10` and `10` are one place)."""
+    return f"{normalize_chrom(chrom)}:{start}"
+
+
+def _is_substitution(ref: str | None) -> bool:
+    """Whether a `ref` names a single base, i.e. a locus with no flank an indel could be re-anchored on."""
+    return ref is not None and len(ref) == 1
+
+
+def coordinate_verdict(
+    chrom: str | None,
+    start: int | None,
+    ref: str | None,
+    loci: Sequence[dict],
+) -> bool | None:
+    """Does the reference place this rsID where the row says? **Three-valued**, `hosting_verdict`'s shape.
+
+    The per-row verdict behind both of this tier's rsid↔coordinate checks — the one `enrich()` puts
+    against the injected snapshot and the deprecated DuckDB path's `_check_rsid_coord_consistency`
+    below — so the two cannot drift into two readings of one question.
+
+    * `True` — one of the rsID's loci sits at the authored coordinate.
+    * `False` — none does, **and** every locus the reference gives is a substitution (and the row's own
+      `ref`, where it states one, is too). A substitution has no shared flank, so its position is
+      unambiguous and a mismatch can only be a different place. Same reasoning that keeps
+      `hosting_verdict`'s confident negative sharp.
+    * `None` — none does, but an indel is involved. One deletion has several valid spellings and
+      re-anchoring moves the coordinate — ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG`
+      are the same 2 bp deletion (RM31) — so a differing position is not by itself a contradiction, and
+      reporting one would be the false accusation that item exists to end.
+
+    Compared at **`chrom:start`**, not `chrom:start:ref`. Two reasons, and the first is what a
+    CPIC-drafted module runs into: `ref` is optional on `HaplotypeRow`/`PharmVariantRow`, and
+    `pgx_draft` writes exactly that shape, so keying on it renders `10:94781859:None` and a legal row
+    can never match anything. The second is that a `ref` disagreeing with the reference is the
+    *reference-allele* check's finding (`sequences.verify_reference_alleles`) — reporting it here too
+    would give one defect two names, in the register the manifest publishes. The contig is normalized
+    on both sides for the same class of reason: `chr10` and `10` are one place, and no PGx model runs
+    the chrom validator that would have folded them together.
+
+    Callers pass the loci the chain actually gathered and handle an **empty** list themselves: no
+    record is a question never put, not an agreement, and collapsing the two is the S20 defect.
+    """
+    if not loci:
+        return None
+    if _place(chrom, start) in {_place(lo.get("chrom"), lo.get("start")) for lo in loci}:
+        return True
+    if all(_is_substitution(lo.get("ref")) for lo in loci) and (ref is None or _is_substitution(ref)):
+        return False
+    return None
+
+
+def coordinate_disagreement(
+    rsid: str,
+    chrom: str | None,
+    start: int | None,
+    ref: str | None,
+    loci: Sequence[dict],
+) -> str | None:
+    """The sentence for a `False` verdict above, or `None` for every other answer.
+
+    A convenience for the caller that only reports contradictions; anything needing to tell an
+    agreement from an undecided pair asks `coordinate_verdict` directly.
+    """
+    if coordinate_verdict(chrom, start, ref, loci) is not False:
+        return None
+    return disagreement_message(rsid, chrom, start, loci)
+
+
+def disagreement_message(
+    rsid: str, chrom: str | None, start: int | None, loci: Sequence[dict]
+) -> str:
+    """The sentence a `False` verdict is reported as, in one place so the two callers cannot drift."""
+    places = sorted({_place(lo.get("chrom"), lo.get("start")) for lo in loci})
+    return (
+        f"{rsid} authored at {_place(chrom, start)}, but Ensembl maps {rsid} to {places} "
+        f"(reference disagreement — may be a dbSNP merge, or a coordinate from another build)."
+    )
+
+
+def check_rsid_coordinates(
+    pairs: Sequence[tuple[str, str | None, int | None, str | None]],
+    rsid_loci: Mapping[str, Sequence[dict]],
+) -> PairCheck:
+    """Compare each authored `(rsid, chrom, start, ref)` pair against the loci that rsid resolves to.
+
+    Takes the loci the caller's chain already gathered rather than opening anything, so the pass costs
+    no lookup of its own and no egress: `enrich()` widens the batch it was already sending.
+
+    **A pair is compared, unplaceable, or undecided, and only the first is a subject.** `unknown` is a
+    pair whose rsID the reference has no record of — a question never put — and `undecided` is one
+    where it has a record and the verdict is `None` (an indel, whose coordinate re-anchoring can move
+    legitimately). Both stay outside `subjects`, so `findings/subjects` describes exactly the pairs a
+    verdict was reached on, and both are named to the caller so what was *not* compared can be stated.
+
+    **One direction only** — is the authored coordinate among the rsid's loci — where the deprecated
+    path below also asks the converse (is the authored rsid among the ids at that position). The
+    converse needs a position→id lookup at `chrom:start:ref` granularity, and the reverse map
+    `enrich()` holds is **allele-exact**; asking it would report a disagreement whenever the authored
+    ALT is spelled differently from the reference's, which is a false accusation about a row rather
+    than a finding. The compiler's `resolution._verify` asks this same single direction over the
+    injected table, which is what makes the two halves one question.
+    """
+    disagreements: list[str] = []
+    unknown: list[str] = []
+    undecided: list[str] = []
+    subjects = 0
+    for rsid, chrom, start, ref in pairs:
+        loci = rsid_loci.get(rsid) or []
+        if not loci:
+            unknown.append(rsid)
+            continue
+        verdict = coordinate_verdict(chrom, start, ref, loci)
+        if verdict is None:
+            # An indel spelling this tier cannot re-anchor. Outside `subjects` rather than inside it
+            # with a clean bill — the rule `RefCheck` applies to a read that came back empty.
+            undecided.append(rsid)
+            continue
+        subjects += 1
+        if verdict is False:
+            disagreements.append(disagreement_message(rsid, chrom, start, loci))
+    return PairCheck(
+        disagreements=disagreements, subjects=subjects, unknown=unknown, undecided=undecided
+    )
+
+
 def _check_rsid_coord_consistency(
     con: duckdb.DuckDBPyConnection, rows: list[VariantRow], warnings: list[str]
 ) -> None:
@@ -419,25 +567,25 @@ def _check_rsid_coord_consistency(
     loci AND the rsid is among the coordinate's dbSNP ids. A contradiction is a warning (it may be a
     dbSNP merge or a reference-build difference); when the reference knows neither side, the pair is
     left unverified (skipped). Inject-only — the same reference the resolver already opened, no
-    network (Constitution Principle 2)."""
+    network (Constitution Principle 2).
+
+    The first direction is `coordinate_disagreement` above, shared with the pass `enrich()` runs, so
+    the two do not drift. The second stays here: it is the half `enrich()` declines to ask, for the
+    reason `check_rsid_coordinates` records."""
     rsid_loci = _lookup_positions_by_rsid(con, list({r.rsid for r in rows}), [])
-    rsid_coordkeys: dict[str, set[str]] = {
-        rsid: {derive_variant_key(None, lo["chrom"], lo["start"], lo["ref"]) for lo in loci}
-        for rsid, loci in rsid_loci.items()
-    }
     positions = list({(r.chrom, r.start, r.ref) for r in rows})
     coord_ids = _lookup_rsid_sets_by_position(con, positions)
 
     for r in rows:
+        disagreement = coordinate_disagreement(
+            r.rsid, r.chrom, r.start, r.ref, rsid_loci.get(r.rsid or "", [])
+        )
+        if disagreement is not None:
+            warnings.append(disagreement)
+            continue
         coordkey = derive_variant_key(None, r.chrom, r.start, r.ref)
-        loci = rsid_coordkeys.get(r.rsid)
         ids = coord_ids.get(coordkey)
-        if loci and coordkey not in loci:
-            warnings.append(
-                f"{r.rsid} authored at {coordkey}, but Ensembl maps {r.rsid} to {sorted(loci)} "
-                f"(reference disagreement — may be a dbSNP merge/build difference)."
-            )
-        elif ids and r.rsid not in ids:
+        if ids and r.rsid not in ids:
             warnings.append(
                 f"{coordkey} authored as {r.rsid}, but Ensembl reports {sorted(ids)} there "
                 f"(reference disagreement — may be a dbSNP merge/build difference)."

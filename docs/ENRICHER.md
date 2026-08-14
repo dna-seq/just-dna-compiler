@@ -19,7 +19,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` |
 | **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) |
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
-| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` (warning), and `resolver._check_rsid_coord_consistency` against the injected snapshot — one question, two tiers, so one attestation name |
+| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
 | **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**) |
 | **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
@@ -77,17 +77,33 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   skip at all — the check does not apply, there is no claim to have an opinion about, and recording one
   would mine a nonce and create a `verification.json` on a module that never asked for one.
   `nothing_to_check` stays for a table that is present with no row in scope, which is a real answer.
+- **A check with no lookup of its own still needs a reason ladder.** The rsid↔coordinate pass costs no
+  request: it widens the rsID batch the resolver chain was already sending and compares the authored
+  pairs against what came back (`resolver.check_rsid_coordinates`, one direction — the converse needs a
+  position→id lookup at `chrom:start:ref` granularity, and the reverse map `enrich()` holds is
+  allele-exact, so asking it would report a spelling difference as a contradiction). The verdict is
+  three-valued and compared at `chrom:start`: `ref` is optional on the PGx models — `pgx_draft` writes
+  exactly that shape — and a `ref` that disagrees with the reference is the reference-allele check's
+  finding, so including it would give one defect two names. A differing position is a contradiction
+  only where every side is a **substitution**; an indel re-anchors legitimately (RM31), so that pair is
+  undecided rather than reported. What the cheapness pays back is ways not to run: no row authoring
+  both halves (`nothing_to_check`, tested first — a module with no pair has no assembly question
+  either), a non-GRCh38 module (`unsupported`, since every resolver link is gated on the build), no
+  snapshot opened (`offline` or `no_reference`), and a snapshot that settles none of the pairs —
+  `no_reference` again, never `ran(0, 0)`, because a record of a check that ran over nothing reads as a
+  clean bill. Everything not compared stays **outside** the denominator and inside the record's
+  `detail`, grouped by reason.
 - **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
-  four of its checks at the end of the run. A separate command writes its own; the merge is what keeps
+  five of its checks at the end of the run. A separate command writes its own; the merge is what keeps
   both in one document, replacing per check and never erasing a check this run did not put.
 - **The attestation is bound to the module's authored bytes.** Edit `variants.csv` afterwards and the
   compiler drops the block with a warning — correctly, because the checks were put against rows that no
   longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
   read off each record's own `release`.
 
-**Which of these attest, and which are recording passes rather than checks.** `enrich()` attests four
-(reference allele, wrong build, clinical significance, rsID currency) and `enrich_clinpgx` attests its
-own; the rest report to their result object and are wired in as their commands grow the call. The line
+**Which of these attest, and which are recording passes rather than checks.** `enrich()` attests five
+(reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate) and
+`enrich_clinpgx` attests its own; the rest report to their result object and are wired in as their commands grow the call. The line
 that decides whether a pass belongs in `VALID_VERIFICATION_CHECKS` at all is whether it compares
 something the module **asserts** — so `gene_validity.csv` and `clinical_assertions.csv`, which record
 what ClinGen and ClinVar say and adjudicate nothing, have no check name and must not gain one: a

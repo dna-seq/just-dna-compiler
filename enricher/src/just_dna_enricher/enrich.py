@@ -10,6 +10,7 @@ fails unless every in-scope variant resolves to a position (the network analogue
 
 import csv
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -49,8 +50,12 @@ from just_dna_enricher.licensing import (
     resolution_authority,
     sidecar_path,
 )
-from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
-from just_dna_enricher.resolver import lookup_loci
+from just_dna_enricher.locations import (
+    read_release,
+    resolve_clinvar_reference,
+    resolve_ensembl_reference,
+)
+from just_dna_enricher.resolver import PairCheck, check_rsid_coordinates, lookup_loci
 from just_dna_enricher.sequences import (
     RefCheck,
     RefMismatch,
@@ -202,6 +207,66 @@ def _authored_alt(v: _Subject) -> str | None:
     if v.alts and "," not in v.alts:
         return v.alts
     return None
+
+
+#: How many per-row sentences a record's `detail` carries before it becomes a count. The field is
+#: prose a human reads, and a module whose whole panel disagrees would otherwise put one sentence per
+#: row into `manifest.verification` — the un-aggregated wall this tree collapses everywhere else. The
+#: log still names every one.
+_DETAIL_LIMIT = 5
+
+
+def _examples(names: Sequence[str], limit: int = _DETAIL_LIMIT) -> str:
+    """A few names and a count, so a per-row list cannot become the message (the CPIC lesson)."""
+    shown = ", ".join(names[:limit])
+    return shown if len(names) <= limit else f"{shown} and {len(names) - limit} more"
+
+
+def _check_authored_pairs(
+    pairs: Sequence[tuple[str, str | None, int | None, str | None]],
+    rsid_loci: Mapping[str, Sequence[dict]],
+    *,
+    genome_build: str,
+    reference: Path | None,
+    offline: bool,
+    unusable: bool = False,
+) -> PairCheck:
+    """The rsid↔coordinate pass, with the reason it did not run when it did not (RM45).
+
+    The comparison itself is `resolver.check_rsid_coordinates`; what lives here is the ladder that
+    decides whether it could be put at all, because only the caller knows the module's build and
+    whether a snapshot was ever opened. Five ways it does not run, and each is a different sentence:
+
+    * **`nothing_to_check`** — the module authors no pair, which is exactly what that member means: no
+      row this check applies to. **Tested first**, ahead of the build, because a module with no pair
+      has no assembly question to answer either, and answering `unsupported` there would describe a
+      claim the module never made.
+    * **`unsupported`** — coordinate resolution is GRCh38-bound (RM15), so every link was gated off
+      and there is nothing this tier could compare the pair against. A permanent limit, not a
+      connectivity one, which is why it outranks the two below: a GRCh37 module run offline satisfies
+      both, and reporting `offline` would promise that a re-run with egress answers it.
+    * **`offline` / `no_reference`** — no snapshot was opened. Offline that is cleared by egress (the
+      run would have provisioned one); online it is a provisioning failure, which egress will not fix.
+      A snapshot that is present and will not answer (`unusable`) is `no_reference` too — it is not a
+      connectivity problem, and the log names the file.
+    * **`no_reference` again, for a snapshot that carries none of the pairs, or can settle none.** Zero
+      comparisons is not `ran(0, 0)`: a record saying a check ran over nothing reads as a clean bill,
+      which is F4 in this same batch. What it could not place, and what it could not decide, are named
+      in the record's detail either way.
+    """
+    if not pairs:
+        return PairCheck(not_checked="nothing_to_check")
+    if genome_build != "GRCh38":
+        return PairCheck(not_checked="unsupported")
+    if reference is None or unusable:
+        no_snapshot = "offline" if offline and not unusable else "no_reference"
+        return PairCheck(not_checked=no_snapshot)
+    check = check_rsid_coordinates(pairs, rsid_loci)
+    if check.subjects == 0:
+        return PairCheck(
+            unknown=check.unknown, undecided=check.undecided, not_checked="no_reference"
+        )
+    return check
 
 
 def _locus_alleles(locus: dict) -> tuple[str, frozenset[str]]:
@@ -402,6 +467,13 @@ class EnrichmentResult:
     # same entry there, and only one of them is worth re-running. Same reason `clin_sig_not_checked`
     # exists beside an empty conflict list. Empty offline, since nothing was asked in the first place.
     unreachable_rsids: list[str] = field(default_factory=list)
+    # What the rsid↔coordinate pass did (`resolver.check_rsid_coordinates`): the pairs it compared,
+    # the ones the reference could not place, and the disagreements. Surfaced for the RM40/RM41 reason
+    # — the run computes it and a consumer would otherwise recompute it from the log — and because the
+    # denominator is the half a bare list of disagreements cannot state. `None` only for a caller that
+    # built the result by hand; `enrich()` always sets it, carrying `not_checked` when the pass could
+    # not run rather than an empty finding list that reads as a clean bill.
+    rsid_coordinates: PairCheck | None = None
 
     @property
     def fully_resolved(self) -> bool:
@@ -530,14 +602,32 @@ def enrich(
         v for v in subjects
         if v.rsid is None and v.chrom is not None and v.variant_key not in existing
     ]
+    # Rows that authored BOTH halves of the identity. They need no resolution, which is exactly why
+    # nothing used to look at them: they fall through to the verbatim branch below. But an authored
+    # pair is a *claim* — this rsID sits at this coordinate — and this tier is the only one that can
+    # compare it with a reference (`rsid_coordinate_agreement`). Deliberately **not** exempted by an
+    # existing `resolution.csv` row: that row is machine-written or hand-corrected, not the reference,
+    # so skipping the pairs it covers would compare the module against itself.
+    verify_pairs = [
+        (v.rsid, v.chrom, v.start, v.ref)
+        for v in subjects
+        if v.rsid is not None and v.chrom is not None and v.start is not None
+    ]
 
     rsid_to_loci: dict[str, list[dict]] = {}
     source_of_rsid: dict[str, str] = {}
+    # A snapshot that is present and will not answer. Distinct from having none: the pair check below
+    # reports `no_reference` either way, but a run that had no snapshot and one whose snapshot is
+    # broken are different remedies, so the sentence differs and the log names the file.
+    snapshot_unusable = False
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
     # Reverse (position→rsid) back-fill is allele-aware and keeps ALL candidates per authored allele,
     # so we can take a deterministic pick and flag a genuine multi-rsid allele as ambiguous rather than
     # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
+    # Initialized before the lookup, not inside it: the call can fail (a present-but-unqueryable
+    # cache) and the loops below still have to have something to iterate.
+    pos_candidates: dict[tuple, list[str]] = {}
     rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
     rev_source: dict[tuple, str] = {}            # which link produced the candidates
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
@@ -550,9 +640,31 @@ def enrich(
             reference = resolve_ensembl_reference(ensembl_cache)
         except Exception as exc:  # provisioning is best-effort; degrade to live/offline
             logger.warning("Snapshot provisioning failed (%s); continuing without cache.", exc)
-    if reference is not None and (need_pos or need_rsid) and genome_build == "GRCh38":
-        rsids = [v.rsid for v in need_pos if v.rsid]
-        rsid_to_loci, pos_candidates, _ = lookup_loci(reference, rsids, positions)
+    if reference is not None and (need_pos or need_rsid or verify_pairs) and genome_build == "GRCh38":
+        # The verify rsIDs ride in the batch this call was already making, which is the whole cost of
+        # the pair check. `verify_pairs` is in the gate too: a module where *every* row authors both
+        # halves has empty `need_pos` and `need_rsid`, so the snapshot would never be opened and the
+        # check would silently never run on exactly the modules it exists for.
+        rsids = [v.rsid for v in need_pos if v.rsid] + [rsid for rsid, _, _, _ in verify_pairs]
+        try:
+            rsid_to_loci, pos_candidates, _ = lookup_loci(reference, rsids, positions)
+        except Exception as exc:
+            # A *located* cache can still be unusable — a stale snapshot, or a parquet a different
+            # tool wrote — and the query then raises rather than returning nothing. That was fatal
+            # before this block was widened, and it stays fatal for a run that needed the coordinates:
+            # nothing here changes the severity of a broken cache for a module that was going to open
+            # it anyway. What must not happen is the *check* making it fatal — this pass gates nothing
+            # and costs nothing, so a module needing no resolution at all must not start failing
+            # because an optional comparison went looking. Same argument the ClinVar link below makes,
+            # applied to the only case this widening created.
+            if need_pos or need_rsid:
+                raise
+            snapshot_unusable = True
+            logger.warning(
+                "Ensembl reference at %s is present but not queryable (%s); the rsID↔coordinate "
+                "check is recorded as unrun. Rebuild it with `just-dna-enricher cache pull`.",
+                reference, exc,
+            )
         for rsid in rsid_to_loci:
             source_of_rsid[rsid] = "cache"
         for pt, cands in pos_candidates.items():
@@ -924,6 +1036,52 @@ def enrich(
     elif verify_rsids:
         logger.info("rsID currency check skipped: --offline (dbSNP has no offline merge table).")
 
+    # Fourth validation pass: for a row that authored both an rsID and a coordinate, does the pair
+    # agree with the reference? This is the enricher's half of a question the compiler also asks —
+    # `resolution._verify` puts it over the injected table, this one puts it against the snapshot the
+    # chain already opened — so there is one question, two tiers and one attestation name.
+    #
+    # A warning in BOTH modes, and the difference from the compiler's half is not an oversight. There,
+    # the authored value wins and the table's position is lost on a reverse, so a contradiction is an
+    # instability in the artifact; here nothing is dropped or rewritten and the likely causes — a dbSNP
+    # merge, a coordinate from another build — are not cleared by any authored edit this run can name
+    # (P5, the `not_covered` class).
+    #
+    # One consequence worth naming, because the sibling passes have to work for it: there is **no
+    # severity gate reading this**, so nothing can disagree with the record. `pair_check` is the run's
+    # only reading of the question — the log line, `EnrichmentResult.rsid_coordinates` and the
+    # attestation are all built from that one object — where a check with a `strict` refusal has two
+    # readers that can drift apart, and then a `--strict` run refuses over a set its own
+    # `verification.json` does not describe.
+    pair_check = _check_authored_pairs(
+        verify_pairs, rsid_to_loci, genome_build=genome_build, reference=reference,
+        offline=offline, unusable=snapshot_unusable,
+    )
+    if pair_check.disagreements:
+        # One line for the run, naming them, on the `unreachable_rsids` model: a line per row would be
+        # one per variant on a fully coordinate-authored panel.
+        logger.warning(
+            "rsid↔coordinate disagreement — %d of %d authored pair(s) name a coordinate the injected "
+            "Ensembl snapshot does not give for that rsID: %s Reported, never repaired: which half is "
+            "wrong is not knowable here.",
+            len(pair_check.disagreements), pair_check.subjects,
+            " ".join(pair_check.disagreements),
+        )
+    if pair_check.unknown:
+        logger.info(
+            "rsid↔coordinate: %d authored pair(s) were not compared — the injected Ensembl snapshot "
+            "carries no record for %s. Not in the snapshot is not 'not in Ensembl'; the pair is "
+            "unchecked rather than disagreeing.",
+            len(pair_check.unknown), _examples(sorted(set(pair_check.unknown))),
+        )
+    if pair_check.undecided:
+        logger.info(
+            "rsid↔coordinate: %d authored pair(s) could not be decided — %s name an indel, and one "
+            "deletion has several valid spellings whose anchors sit a base or two apart (RM31), so a "
+            "differing position is not a contradiction. Undecided, never reported as a disagreement.",
+            len(pair_check.undecided), _examples(sorted(set(pair_check.undecided))),
+        )
+
     # Which licensed source each link speaks for (RM33). **Derived, never fetched** — read off the
     # row's own `source` — and filled only where empty, so a hand-written authority survives exactly as
     # a hand-written `vrs_id` does. A link with no mapping (`authored`, `reversed`, `manual`) keeps
@@ -941,6 +1099,7 @@ def enrich(
         build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
+        rsid_coordinates=pair_check,
     )
 
     if unreachable_rsids:
@@ -1028,6 +1187,8 @@ def enrich(
                 verify_rsids=verify_rsids,
                 rsid_subjects=rsid_subjects,
                 stale_rsids=stale_rsids,
+                pairs=pair_check,
+                ensembl_ref=reference,
             ),
             spec_dir,
             error=EnrichmentError,
@@ -1059,8 +1220,10 @@ def _verification_records(
     verify_rsids: bool,
     rsid_subjects: int,
     stale_rsids: list[RsidStatus],
+    pairs: PairCheck,
+    ensembl_ref: Path | None,
 ) -> list[VerificationRecord]:
-    """The four checks this pass puts, as records `verification.json` can carry (RM45).
+    """The five checks this pass puts, as records `verification.json` can carry (RM45).
 
     Every count comes from the check that produced it — never re-derived here. That is the whole
     reason `verify_reference_alleles` and `verify_clin_sig` now return what they compared: a
@@ -1219,10 +1382,93 @@ def _verification_records(
                 source="dbsnp",
             )
         )
+    # rsID ↔ coordinate. This tier's half of a question the compiler asks too (`resolution._verify`
+    # over the injected table), so one name covers both and this record covers **this** half: the
+    # authored pair against the Ensembl snapshot the chain opened. `source` is the authority the
+    # licence table joins on, not the link that answered — the `gene_metrics.csv` rule from RM33.
+    unplaced = _examples(sorted(set(pairs.unknown)))
+    unsettled = _examples(sorted(set(pairs.undecided)))
+    # What was not compared, and why, in one sentence per reason — never one per row.
+    not_compared = [
+        note for note in (
+            f"the injected Ensembl snapshot carries no record for {len(pairs.unknown)} of them "
+            f"({unplaced}), and absent from this snapshot is not absent from Ensembl"
+            if pairs.unknown else "",
+            f"{len(pairs.undecided)} name an indel ({unsettled}), whose spelling can move the "
+            f"coordinate legitimately, so no verdict was reached"
+            if pairs.undecided else "",
+        ) if note
+    ]
+    if pairs.not_checked is not None:
+        if pairs.not_checked == "unsupported":
+            detail = (
+                "coordinate resolution is GRCh38-bound, so an authored rsID+coordinate pair on "
+                "another assembly has nothing to be compared against (RM15)"
+            )
+        elif pairs.not_checked == "nothing_to_check":
+            detail = (
+                "no row authors both an rsID and a coordinate, so the module makes no pair claim to "
+                "compare — this is not a comparison that found nothing"
+            )
+        elif not_compared:
+            # A snapshot was read and settled nothing. Distinct from having no snapshot at all, and the
+            # pairs are named because *which* ones went unchecked is what a re-run against a fuller
+            # snapshot — or an online run that can normalize an indel — would change.
+            detail = "no authored pair could be compared: " + "; ".join(not_compared)
+        else:
+            detail = (
+                "no Ensembl snapshot was opened this run, so no authored pair was compared"
+                + (" — a run with egress provisions one" if pairs.not_checked == "offline" else "")
+            )
+        records.append(
+            skipped("rsid_coordinate_agreement", pairs.not_checked, detail=detail, source="ensembl")
+        )
+    else:
+        # What was NOT compared travels with what was: coverage of an unstated fraction is the defect
+        # `_vrs_coverage` exists for, one check over.
+        notes = list(pairs.disagreements[:_DETAIL_LIMIT])
+        if len(pairs.disagreements) > _DETAIL_LIMIT:
+            notes.append(
+                f"({len(pairs.disagreements) - _DETAIL_LIMIT} further disagreement(s) not listed "
+                f"here; the run's log names every one.)"
+            )
+        if not_compared:
+            notes.append(
+                "Further authored pairs were not compared: " + "; ".join(not_compared) + "."
+            )
+        records.append(
+            ran(
+                "rsid_coordinate_agreement",
+                subjects=pairs.subjects,
+                findings=len(pairs.disagreements),
+                source="ensembl",
+                release=_snapshot_release(ensembl_ref),
+                detail=" ".join(notes) or None,
+            )
+        )
+
     # Deliberately takes neither `variants` nor `rows`: nothing here may count anything itself, and a
     # function that cannot see the tables cannot be tempted to. The denominators come in already
     # computed, from the checks that computed them.
     return records
+
+
+def _snapshot_release(reference: Path | None) -> str | None:
+    """The label a snapshot's own `release.json` states, or `None` when it states none.
+
+    The `dataset` key, which is the one every builder writes and `cache status` prints, so a reader of
+    the attestation and a reader of the cache see the same string. No fallback and no guess: a
+    snapshot that cannot name its release is an unknown, and an unknown is withheld rather than
+    written as a label something could match — the same call `clinvar_dataset_label` makes for its own
+    (richer) source. ClinVar has its own function because its release is a *file date* with a digest
+    fallback; nothing equivalent is published for the Ensembl variation snapshot.
+    """
+    if reference is None:
+        return None
+    release = read_release(Path(reference))
+    if not release:
+        return None
+    return str(release.get("dataset") or "").strip() or None
 
 
 def _clinvar_release(reference: Path | None) -> str | None:
