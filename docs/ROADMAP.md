@@ -164,6 +164,154 @@ item starts here as a `## RMn` section; the index in [RM_TOC.md](RM_TOC.md) is w
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
+## RM74 — the drafting providers read their sources wrong, and the test that would have caught one does not run
+
+**Severity** high (one member) · **Status** open, fixable in a patch · **Owner** enricher · **Found by**
+code review during the 0.6 dogfooding fix round, 2026-08-14
+
+Three defects in how the providers read a source, grouped because they are one read each and one loop.
+
+**ClinPGx's `gene` is `;`-multi-valued and both readers treat the cell as one symbol** (ledger R2-1).
+`clinpgx_draft` filters with an exact-set membership against the whole cell and passes that same cell
+into `PharmVariantRow.gene`, which has no validator. Probed against the provisioned snapshot: **396 of
+16,087 rows** carry a `;` (`IFNL3;IFNL4` ×51, `ANKK1;DRD2` ×24), so `--gene VKORC1` silently drops the
+3 rows naming VKORC1 inside a multi-gene cell, while an unfiltered draft writes `PRSS53;VKORC1` into a
+column described as "Gene symbol, e.g. VKORC1". Both directions silent. Same shape as the CPIC
+`gene.chr` lesson: a claim true of the *cell* and false of the *column*.
+
+**`skipped_unidentified` counts the wrong denominator** (R2-11). The rsID check runs before the `--gene`
+filter, so a record with no rsID from an unrequested gene increments the count. On any `--gene` draft the
+"records the source could not identify" number is inflated by the rest of the database, which destroys
+the one thing it is for — judging whether coverage of *your* gene is poor.
+
+**A test's stated coverage is not exercised** (R2-3). `enricher/tests/test_draft_declared_build.py`
+builds its location fixture with a nested `"location"` key while `cpic.defining_variants` reads
+`"sequence_location"`, so the dict is always empty and the file's claim to cover a defining variant
+carrying a position is hollow. Third instance of this class after S21's registry and D6-2's `_MOVABLE`.
+
+## RM75 — a complete result is destroyed by an incidental failure, and one handler cannot see its own case
+
+**Severity** medium · **Status** open, fixable in a patch · **Owner** enricher · **Found by** code
+review during the 0.6 dogfooding fix round, 2026-08-14
+
+Three instances of one shape: work that has already succeeded is thrown away by a failure in something
+inessential, or by a handler written for exactly that failure and unable to catch it.
+
+**A persistent CPIC 5xx sinks the pass its own comment says it must not** (R2-13). `enrich_pgx` catches
+`(PharmVarError, CpicError)` per leg under *"One source failing must not sink the pass — the other may
+still answer."* `CpicClient` calls `raise_for_status()` and wraps only *shape* failures into `CpicError`,
+so once retries are exhausted a raw `httpx.HTTPStatusError` walks through both handlers and takes
+PharmVar's answer with it.
+
+**An optional message-enrichment call can lose a finished CPIC draft** (R2-4). `knows_drug` is asked
+inside the `try` whose `finally` closes the client, by which point every substantive query has returned.
+It exists only to sharpen the message for drugs that came back empty, so a transport failure there
+discards a complete draft to improve a sentence about it. The related cause: `cpic.knows_drug` is typed
+`bool | None` but can only return `True`/`False` or raise, so the `known is None` branch that already
+carries the correct "could not ask" wording is **unreachable from the live client** — the tri-state was
+designed and not delivered, which is why the raise escapes.
+
+**An ordinary mid-authoring state tracebacks** (R2-2). The 0.6 fix for the declared-build defect routed
+`draft` and `draft-panel` through `source_build_mismatch`, which calls `spec_genome_build`, which
+deliberately raises `EnrichmentError` on a present-but-unreadable `module_spec.yaml`. Neither CLI catches
+it: `draft` catches `(CpicError, DraftError)`, `draft-panel` catches `(ClinVarDraftError, DraftError)`.
+Reproduced — a spec carrying only `name:` turns `draft-panel --gene PALB2 --offline` into a rich
+traceback where every other enricher command exits cleanly, and in `draft_gene_panel` the raise lands
+*after* the snapshot download is paid for. The message is right; the presentation regressed because the
+other defect was fixed.
+
+## RM76 — an unfinished authoring state passes every gate, including `--strict`
+
+**Severity** high · **Status** open · **Owner** format + compiler · **Found by** the 0.6 dogfooding fix
+round, 2026-08-14 · **A sprout of [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase)**
+
+`SourceRow` is a plain `BaseModel`, not an `AuthoredModel`, so it carries neither the raw-input guard
+nor `reject_template_placeholders` — deliberately, and its docstring gives the reason (a machine-produced
+reference fact). S21 then made it **draftable**, because it is the one fact sidecar a human writes, and
+nobody reconciled the two decisions. A vocabulary column catches a stub by accident; a free-text column
+does not.
+
+Probed on `hfe_hemochromatosis` with `source=<<REPLACE>>`: the module **compiles green under `--strict`**
+and `manifest.sources` publishes `"sources": ["<<REPLACE>>"]` inside the block its own `signature`
+covers. A signed module's attribution ledger can name a template placeholder as the source it accounts
+for. The compiler's only remark on that file was that `sources.csv` is the deprecated spelling.
+
+The narrow repair (give `SourceRow` the placeholder guard) is probably right and is not obviously
+sufficient: the guarantee *"a generated stub must be unable to compile"* is asserted nowhere and holds
+only where a model happens to inherit the right base, so the question RM73 asks — what marks authoring
+as unfinished — reaches this from underneath.
+
+## RM77 — the genotype diagnosis tells the author about the wrong thing
+
+**Severity** medium · **Status** open · **Owner** format · **Found by** the 0.6 dogfooding fix round,
+2026-08-14
+
+**A genotype pasted out of a VCF is refused without anyone naming allele indices** (R2-9). `GT` is
+`0/1`; `genotype` wants the bases. Probed all three spellings: `0/1` and `0|1` fall through to the
+nucleotide-grammar message, which recites what an allele may be and never says these are indices into
+the record's REF/ALT list. `0/1/1` is now *worse* — after the 0.6 ploidy-message fix it gets a confident
+explanation of the two-allele ceiling, which is about the wrong thing, since that cell's defect is the
+notation and not the arity. This is the most likely single mistake an author makes, and the repair is the
+`mode="before"` diagnosis shape already used by `reject_reserved` / `reject_authority_keys` /
+`reject_misplaced` — a message that changes no verdict.
+
+**The RM63 correction is itself an overclaim, and it is the third turn of the same screw** (R2-14).
+`base.py` reads *"Read a pipe here as **heterozygous**, phase recorded but unaddressable"*. Probed:
+`VariantRow(genotype="C|C")` loads, and `1|1` is an ordinary phased homozygous call. The original comment
+claimed a pipe encodes which homolog an allele sits on; 0.6's RM63 correctly refuted that and replaced it
+with an unchecked claim about zygosity. The printed descriptions now carry only the true half — the
+comment they were copied from does not. A correction is where this happens: the reviewer checks the claim
+being removed, not the one going in.
+
+## RM78 — the VRS reason surface's remaining blind spots, and one guard that answers the question it exists to prevent
+
+**Severity** medium · **Status** open — two fixes and one decision · **Owner** format + compiler ·
+**Found by** the 0.6 dogfooding fix round, 2026-08-14
+
+**`*` still lands in the compiler's indel bucket** (R2-6). The 0.6 round gave a symbolic allele its own
+permanent reason class in `_vrs_gap_reason` and `_recompute_vrs_id`, and guarded `*` and `.` on the
+enricher side — but the compiler's two reason functions do not test `is_unobservable_allele`, so an
+unobservable allele reaching `resolution.csv`'s `alts` would still be reported as *"an indel or MNV …
+re-run it online"*. Filed when it had no instantiation and upgraded when it turned out to have one: `*`
+**passes** `LiteralSequenceExpression`'s `^[A-Z*\-]*$`, so before the enricher guard it would have been
+normalized and handed a content-addressed id for a state that is not a sequence. *"Nothing produces it
+today"* was a fact about the wiring, never about the function.
+
+**`refget_supports_build` answers `True` for the two inputs `refget_accession` raises on** (R2-10). Its
+docstring says it is *"the question `refget_accession` raises on"*. For `GRCh37` the two agree; for `None`
+and `""` they do not. Latent — no caller passes an empty build — but it is public in the schema tier and
+it is the guard a caller reaches for *precisely* to avoid that exception.
+
+**The decision: a stored VRS id against a symbolic allele may be blaming the wrong party** (R2-5).
+`_recompute_vrs_id` returns the tier-blame outcome (a warning in both modes) for a symbolic allele
+carrying a `ga4gh:VA.…`. But nothing mints one — the enricher now declines by construction — so a
+*present* id names some other allele, and **deleting the cell clears it**, which takes the row out of the
+"no authored edit could clear it" class that tier-blame is for. Escalating to row-blame would refuse in
+both modes a module that compiles today, and the minting side has to answer first: may the enricher ever
+write a non-VA identity into that column? Recorded in `_recompute_vrs_id`'s docstring.
+
+## RM79 — two honest counters disagree in a published manifest field
+
+**Severity** low · **Status** open — a decision, not a repair · **Owner** compiler · **Found by** the
+0.6 dogfooding fix round, 2026-08-14
+
+`manifest.literature.missing_count` counts `exists is False` over **every row in `literature.csv`**;
+the `citation_existence` verification record counts over the citations the module makes **now**.
+`literature.csv` is merge-not-clobber, so it keeps a row for a citation the author has since deleted
+from `studies.csv`, and the two numbers then disagree in a published manifest with nothing wrong in the
+module.
+
+Each is right about its own subject, which is what makes this a decision. The `manifest.literature`
+block's siblings are table facets, so counting the table is what that block means, and the compiler's
+own test states that rule verbatim. The open question is one line: **should `manifest.literature`
+describe the table it is named after, or the module's current citations?**
+
+Candidate repairs and why each fails. *Filter the compiler's count to cited rows* — the block stops
+describing the table it names, and it needs `studies.csv` in scope where the block is a sidecar facet.
+*Filter the record* — that is already what it does. *Drop stale rows on re-run* — destroys the pin that
+makes a re-run cheap, which is the whole point of merge-not-clobber. Consumer-visible either way, so it
+is minor-legal but not invisible.
+
 ## RM7 — Evaluation-output / report-card schema
 
 **Severity** — · **Status** **not format scope** — a consumer contract · **Owner** consumer
