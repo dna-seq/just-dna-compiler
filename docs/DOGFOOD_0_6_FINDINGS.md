@@ -266,12 +266,26 @@ re-verification is not a formality.
 | **R2-6** | **RM59's `*` would land in the indel bucket, one axis over from D1-2.** `is_unobservable_allele` is not tested by either compiler VRS reason function, so an unobservable allele reaching `resolution.csv`'s `alts` would be reported as "an indel or MNV … re-run it online" — the same false class D1-2 just fixed for symbolic alleles. **Nothing writes one there today**, so the diff is zero and this is not yet a defect. Filed because it is the same blind spot and because "nothing produces it today" is a fact about the current wiring, not about the function — the standing lesson from RM38 and `VALID_RSID_STATUS.withdrawn`. | watch | low |
 | **R2-7** | **Not reproduced — recorded so it is not re-raised.** The claim was that `compiler.py:1269`'s *"see the skip reported above"* dangles under `--no-resolve`, which prints no skip. It does print one: `compile_module` emits the `--no-resolve` master-switch warning whenever a resolution table is present (`compiler.py:3630-3642`), and the joinability branch is conjoined with exactly that condition. The other `fill_applied=False` cases the comment enumerates each report something above too. A residual question is left open rather than asserted: `validate_spec` has no resolution step, so whether the same sentence can dangle there was probed on `pgx_slco1b1_simvastatin` and produced no joinability line at all, i.e. the probe did not reach the branch. Someone re-raising this needs a module that does. | not a finding | — |
 
+| **R2-8** | **The "a generated stub must be unable to compile" guarantee does not reach `sources.csv`/`licensing.csv`.** `SourceRow` is a plain `BaseModel` (`sources.py:75`), not an `AuthoredModel`, so it carries neither `_guard_raw_input` nor `reject_template_placeholders` — deliberately, on the grounds that it is "a machine-produced reference fact rather than an authored" row (its own docstring). But S21 made it **draftable**, precisely because it is the one fact sidecar a human writes, and the two decisions were never reconciled. A vocabulary column catches the stub by accident (`layer` refuses `<<REPLACE>>` as a non-member); a free-text column does not. Probed on `hfe_hemochromatosis` with `source=<<REPLACE>>`: **compiles green under `--strict`**, and `manifest.sources` publishes `"sources": ["<<REPLACE>>"]` inside the block its own `signature` is computed over. So the attribution ledger of a signed module can name a template placeholder as the source it is accounting for, which is the one thing that table exists to prevent. The compiler's *only* remark on that file was that `sources.csv` is the deprecated spelling. | fix | **high** |
+
 ### Provenance
 
 R2-1 through R2-4 were raised by the code-review pass of the unit fixing D3-1 and re-verified here
 (the snapshot probe, the traceback reproduction and the two reads are this file's own work). R2-5 and
 R2-6 were raised and argued by the unit fixing D1-2's compiler half, which correctly declined to fix
-either — R2-5 because the repair is a decision, R2-6 because there is nothing to fix yet.
+either — R2-5 because the repair is a decision, R2-6 because there is nothing to fix yet. R2-8 was
+noticed by the unit fixing D4-2, whose own test across every draftable kind turned `sources.csv` red
+for a *different* mechanism than the one it was fixing; the compile probe and the manifest read are
+this file's own work.
+
+**R2-6 is no longer a watch item.** It was filed on the reasoning that nothing writes a `*` into
+`resolution.csv` today, so there was nothing to fix. The unit fixing D1-1 then probed
+`LiteralSequenceExpression`'s pattern — `^[A-Z*\-]*$` — and found that `*` **passes** it, so an
+unobservable allele reaching the minter would have been normalized and handed a content-addressed VRS
+id for a state that is not a sequence, while RM58's `.` raises the same unhandled error `<DEL:4977>`
+did. Both are guarded now on the enricher side (PR #15). The lesson is the one already in CLAUDE.md and
+worth not learning twice: *"nothing produces it today"* is a fact about the current wiring, never about
+the function.
 
 ---
 
