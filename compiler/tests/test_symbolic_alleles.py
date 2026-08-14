@@ -225,6 +225,33 @@ def test_each_reason_gets_its_own_line_with_its_own_consequence(tmp_path: Path) 
     # Each line names only the alleles its own reason is about.
     unknown = next(w for w in result.warnings if reasons["unknown_type"] in w)
     assert "<*>" in unknown and "<DEL:913>" not in unknown
+    reference = next(w for w in result.warnings if reasons["reference_allele"] in w)
+    assert "<DEL:913>" in reference and "<*>" not in reference and "<FOO>" not in reference
+
+
+def test_the_lengthless_reason_does_not_name_a_type_the_author_did_not_write(
+    tmp_path: Path,
+) -> None:
+    """The explanation and the example clause beside it must be about the same allele (D3-1).
+
+    `<DUP:TANDEM>` is a real CYP2D6 spelling — a subtype below the closed five, carrying no length —
+    and it is correctly refused. The reason text used to open *"A <DEL> that does not say how long it
+    is"*, so the sentence explaining the refusal named a type the author never wrote while the clause
+    beside it quoted the real cell. `<DEL:1500>` still appears, as the *spelling to use*, which is
+    what an author needs; what may not appear is a bare `<DEL>` standing in for what this row is.
+    """
+    spec = _spec(
+        tmp_path / "spec",
+        _USABLE
+        + ",22,42126400,N,<DUP:TANDEM>,<DUP:TANDEM>,risk,"
+        + "a tandem CYP2D6 duplication with no stated length,CYP2D6,\n",
+    )
+    result = validate_spec(spec)
+
+    finding = next(w for w in result.warnings if "no usable length" in w)
+    assert "<DUP:TANDEM>" in finding, finding
+    assert "<DEL>" not in finding, finding
+    assert "<DEL:1500>" in finding, "the remedy still shows the spelling to use"
 
 
 def test_the_unspecified_allele_is_named_rather_than_generically_refused(tmp_path: Path) -> None:
