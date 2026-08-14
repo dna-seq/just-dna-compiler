@@ -2025,13 +2025,23 @@ class _SymbolicFinding:
 #: Reason → (what is wrong, what to do). Written out rather than composed, because the three are
 #: different findings with different fixes and running them together is the conflation this codebase
 #: has unwound twice (`cpic.unusable_allele_reason`, `_spelling_clauses`).
+#:
+#: **The prose names no allele type, and the reason is the aggregation** (D3-1). This dict is keyed by
+#: reason because the messages are grouped by reason — one line per (table, reason), never one per row
+#: — so a sentence that opened "A <DEL> that does not say how long it is" was a claim about *the*
+#: offending allele made where several are being reported at once, and it read as a false one the
+#: moment the author had written `<DUP:TANDEM>`. Interpolating the authored type would make each
+#: sentence exactly right and turn one constant into N messages, which is the per-row prose that
+#: printed forty lines each naming a different indel in the VRS pass. The example clause that
+#: `_symbolic_allele_messages` appends already names the real cells, so the specific case is not lost.
+#: `<DEL:1500>` survives below as the *spelling to use*, which is what an author actually needs.
 _SYMBOLIC_REASONS: dict[str, str] = {
     "no_length": (
-        "a symbolic allele with no usable length. A <DEL> that does not say how long it is cannot be "
-        "sized, matched against a call, or told apart from any other deletion at the same position, so "
-        "the rule states nothing a consumer can apply. Spell the length into the allele — <DEL:1500>, "
-        "<CNV:TR:30> — or, when the sequence is actually known, spell the bases out instead (VCF 4.4 "
-        "says to: symbolic notation is for imprecision)"
+        "a symbolic allele with no usable length. An allele that names an event without saying how "
+        "long it is cannot be sized, matched against a call, or told apart from any other event of "
+        "the same type at that position, so the rule states nothing a consumer can apply. Spell the "
+        "length into the allele — <DEL:1500>, <CNV:TR:30> — or, when the sequence is actually known, "
+        "spell the bases out instead (VCF 4.4 says to: symbolic notation is for imprecision)"
     ),
     "unknown_type": (
         "an allele that is angle-bracketed but not one this format holds. The first level is the closed "
