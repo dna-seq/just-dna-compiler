@@ -462,6 +462,40 @@ _GENOTYPE_ALLELE_GRAMMAR: str = (
 )
 
 
+#: Why a genotype naming a third allele is refused, spelled once for the refusals that have to say it.
+#:
+#: The cap at two is a **decision**, and a refusal that only restates the grammar reads as a syntax
+#: error. The author who meets it is typically holding a real call — a duplicated CYP2D6 carrying SNVs
+#: is the standard's own polyploid example — so a bare "write A/G instead" tells them to write
+#: something they do not have. Naming the limit in-line is what every other deliberate refusal here
+#: does: the lengthless-symbolic message says the grammar could widen, the compiler's ploidy check
+#: names its contigs, the VRS coverage warnings name RM15.
+#:
+#: Two things it must not say, both easy to add back by accident. **It is not a promise.** RM67 is
+#: recorded as *not work*, so "a release away" — true of the RM5 grammar gap, and the nearest sentence
+#: in this file — would be false here. **And it must not imply a typo**, because the cell may be
+#: exactly what the caller emitted; the wording therefore stops at what this format holds and asks the
+#: author to correct nothing.
+#:
+#: The two **arity** refusals say it unconditionally, without first asking whether the members are
+#: spellable alleles, and that is deliberate. RM67's divergence is *two* refusals — the cap at two
+#: alleles and the refused leading separator — so `|A|G` (VCF 4.4's optional leading phasing
+#: indicator) and `0/1/1` (a triploid GT written with allele indices) are both really that divergence,
+#: and gating on spellability would deny the explanation to precisely the cells that were copied out
+#: of a VCF. The cost is that a trailing-separator typo reads it too, which is a paragraph that does
+#: not apply rather than a claim about the row: the grammar restatement it follows is the actionable
+#: half, and it is first.
+_PLOIDY_DIVERGENCE: str = (
+    "Two alleles is this format's ceiling, and that is a decision rather than a gap in the grammar: a "
+    "module annotates human loci where diploid is the upper bound, the narrower haploid and "
+    "hemizygous calls are the single-allele spelling, and the compiler warns when a two-allele "
+    "genotype lands on MT or on non-pseudoautosomal Y. VCF 4.4 §7.2 goes further — any ploidy, and "
+    "partial phasing on top of it (|0|0/1/2) — so a triploid call is spellable there and is not "
+    "spellable here. The divergence is recorded rather than overlooked (RM67), and nothing is queued "
+    "against it: a consumer that actually meets such a call is what would reopen the question."
+)
+
+
 class AuthoredModel(BaseModel):
     """Base for authored-DSL rows: reserved-namespace guard + shared-vocabulary field validators."""
 
@@ -655,9 +689,33 @@ class AuthoredModel(BaseModel):
         # the phase-ambiguity check, which is why this is an overclaiming comment rather than a defect.
         if "|" in v:
             parts = v.split("|")
+            # A cell carrying BOTH separators is VCF's partial phasing, not an unspellable allele:
+            # §7.2 puts `|` before an allele phased with the one before it and `/` where that
+            # relationship is unknown, which is a distinction only three or more alleles have. The
+            # per-member check below reported `A|G/T` as the allele `'G/T'` failing the nucleotide
+            # grammar — true, and it sent the author to inspect a cell spelled exactly as the standard
+            # says.
+            #
+            # Two placement decisions, and both are about which finding a cell really is. It sits
+            # **above** the arity check, so a longer partially-phased call (`A|A|C/G`, ploidy 4) is
+            # named as the notation rather than counted; and it fires only when every member is a
+            # spellable allele, so a slash *inside* an illegal token (`<DEL/INS>`, the slash-for-colon
+            # slip) stays an allele defect and keeps the message that names the token. The
+            # separator-splitting is safe because nothing legal survives it: `ALLELE_PATTERN` is
+            # `^[ACGT]+$`, a symbolic token is bracketed and colon-separated, and `*` is one
+            # character, so no genotype member can contain `/` or `|` in the first place.
+            if "/" in v and all(genotype_allele_ok(m) for m in v.replace("|", "/").split("/")):
+                raise ValueError(
+                    f"genotype {v!r} mixes the two separators: / is an unphased pair and | a phased "
+                    f"one, and a genotype uses one or the other. Mixing them is the standard's "
+                    f"partial-phasing notation, which says which allele is phased with the one "
+                    f"before it — a distinction that arises only above two alleles. "
+                    f"{_PLOIDY_DIVERGENCE}"
+                )
             if len(parts) != 2:
                 raise ValueError(
-                    f"phased genotype must be two pipe-separated alleles (e.g. A|G), got: {v!r}"
+                    f"phased genotype must be two pipe-separated alleles (e.g. A|G), got: {v!r}. "
+                    f"{_PLOIDY_DIVERGENCE}"
                 )
             for allele in parts:
                 if not genotype_allele_ok(allele):
@@ -687,9 +745,12 @@ class AuthoredModel(BaseModel):
                     f"expected {'/'.join(sorted(parts))!r}, got: {v!r}"
                 )
             return v
+        # Reached only for three or more slash-separated alleles: the one- and two-allele arms above
+        # both return, so this is the arity refusal and never a spelling one.
         raise ValueError(
             f"genotype must be a single allele (hemizygous, e.g. A), two sorted slash-separated "
-            f"alleles (A/G), or two pipe-separated phased alleles (A|G), got: {v!r}"
+            f"alleles (A/G), or two pipe-separated phased alleles (A|G), got: {v!r}. "
+            f"{_PLOIDY_DIVERGENCE}"
         )
 
     @model_validator(mode="after")
