@@ -238,7 +238,7 @@ now.
 **Status — accepted; suggestion (1) shipped in compiler 0.5.4.** Reproduced: a spec with a
 committed `resolution.csv` compiles green with every coordinate null under `--no-resolve`.
 The warning now names the unread table and its row count. Suggestion (2) is filed as
-[RM45](ROADMAP.md#rm45--…) — splitting the flag is a CLI break we want to make once.
+[RM45](ROADMAP_HISTORY.md#rm45--…) — splitting the flag is a CLI break we want to make once.
 <!-- triaged: 0.5.4 · sha 43031f8f63b3 -->
 ```
 

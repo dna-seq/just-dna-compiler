@@ -25,7 +25,7 @@ See [ROADMAP § 0.6](ROADMAP.md#06--what-a-minor-permits).
 compiled module's identity, which is a *format/compiler* question. Work confined to the network tier
 touches no parquet, no model and no manifest field, so it can ship as an enricher patch release while
 format and compiler stay where they are. The first of those is **`just-dna-enricher` 0.5.1**, whose
-content is [RM38](ROADMAP.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher) — a cache for the
+content is [RM38](ROADMAP_HISTORY.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher) — a cache for the
 licence-gated sources, so a hosted enricher stops fetching them live per request. This does **not**
 reopen the paragraph above: that one is about labelling a batch inside an *unpublished* release, which
 0.5.1 is not — 0.5.0 shipped, so 0.5.1 is a real next number rather than a name for work in progress.
@@ -353,7 +353,7 @@ facts are unchanged and the bytes are not, and asserts the byte hash moves while
 signatures byte-identical, with `grch37_build` correctly getting an empty list rather than a fabricated
 one.
 
-**The second half is filed, not built — [RM49](ROADMAP.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses).**
+**The second half is filed, not built — [RM49](ROADMAP_HISTORY.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses).**
 The reporter also asked that a `derived/` subdirectory be *tolerated* on input, so a downloaded module
 recompiles where it sits. It is not the one-line fallback it looks like: `spec_dir / "resolution.csv"` is
 resolved in eight places across two packages, and tolerating the layout on input without deciding the
@@ -477,7 +477,7 @@ module carries `studies.csv` rows. Narrow by construction: `frequency` still war
 `frequencies.csv` is machine-written *with* a `source` column, so a frequency declaration in a module
 with no frequencies really is stale. Both directions pinned.
 
-**Filed, not built: [RM48](ROADMAP.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive) (S22, 0.6).**
+**Filed, not built: [RM48](ROADMAP_HISTORY.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive) (S22, 0.6).**
 An author curating from older literature has hg19 coordinates and the module must be GRCh38, and
 nothing here converts. Filed as **rsID recovery** rather than liftover, on the reporter's own argument
 against their request: with an rsID liftover is unnecessary and strictly worse (the rsID *produces* the
@@ -608,13 +608,13 @@ change that had not happened. Fixed, with the reading spelled out: a moved diges
 `just-dna-compiler signature` computes it without compiling. Also: the three-way field-ownership boundary
 (S2), which `authoring_reference()` has generated since 0.4.1 with no prose anywhere.
 
-**Filed rather than fixed, both 0.6.** [RM45](ROADMAP.md#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader)
+**Filed rather than fixed, both 0.6.** [RM45](ROADMAP_HISTORY.md#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader)
 (S8) — the manifest records what resolution *achieved* and nothing about which verification passes *ran*,
 so a verified module and an unchecked one ship identical manifests. Additive and cheap, but a design round:
 free-string check names and free-prose skip reasons are both unversioned interfaces, the enricher→compiler
 seam has no per-*pass* channel, and the trust rule belongs on the fields. It does **not** subsume RM44,
 and saying so unblocks that one-line integer.
-[RM46](ROADMAP.md#rm46--a-literature-sources-terms-are-per-article-so-the-enricher-names-a-source-it-cannot-record)
+[RM46](ROADMAP_HISTORY.md#rm46--a-literature-sources-terms-are-per-article-so-the-enricher-names-a-source-it-cannot-record)
 (S10) — `enrich_literature` writes `source="pubmed"` and no terms constant exists, so every
 literature-enriched module warns about a source the enricher introduced. A `PUBMED_TERMS` entry is the
 wrong fix for the reporter's own reason: a literature licence is **per-article**, so one row would clear a
@@ -667,7 +667,7 @@ citation; the four binning kinds and `HaplotypeRow`/`AlleleFunctionRow` carry no
 real reason is that for a gene-keyed table the requirement would be *unsatisfiable* rather than merely
 unmet, which is a different thing and is now what the comment says.
 
-**Filed as [RM47](ROADMAP.md#rm47--a-bin-boundary-is-the-most-interpretive-claim-in-the-format-and-the-only-one-with-nowhere-to-cite) for 0.6**, with the four candidate repairs and why none is a one-liner — the
+**Filed as [RM47](ROADMAP_HISTORY.md#rm47--a-bin-boundary-is-the-most-interpretive-claim-in-the-format-and-the-only-one-with-nowhere-to-cite) for 0.6**, with the four candidate repairs and why none is a one-liner — the
 short version is that each costs either a duplicated column set (`pmid` on `MeasureBinRow` drags
 `studies.csv`'s provenance columns along, and lands a PMID the literature pass does not read) or a
 duplicated key (`subject_key` is the packed tuple the binning tables explicitly reject; a

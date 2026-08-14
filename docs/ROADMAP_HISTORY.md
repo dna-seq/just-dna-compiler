@@ -1151,7 +1151,7 @@ changes. Every existing module keeps compiling, and by the time 1.0 arrives ever
 which is the difference between a rename people notice and one they do not. The old spelling is
 **deprecated in the same 0.6 release** (warn-only, still fully read) and **removed at 1.0**, which is
 the cadence the 0.6 charter amendment settled — and this item is the case that prompted it. See
-[§ 1.0 cleanup — `sources.csv`](#sourcescsv--the-name-and-the-source-column-it-collides-with) for the
+[§ 1.0 cleanup — `sources.csv`](ROADMAP.md#sourcescsv--the-name-and-the-source-column-it-collides-with) for the
 name argument itself and for the half that cannot come along.
 
 **Why it is minor-legal, checked rather than assumed.** `sources.csv` is deliberately **not** in
@@ -1617,7 +1617,7 @@ least one PubMed ID" and never says the word PMCID, so it is a generic refusal w
 a fix — the same shape as `MISPLACED_COLUMN_REASONS` and `reject_reserved` one level down.
 
 **2. A citation with no PMID at all** is *already tracked* and is not re-filed here: [§ 1.0 cleanup —
-`StudyRow.pmid` required + PMID-shaped](#studyrowpmid-required--pmid-shaped) queues the requiredness
+`StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped) queues the requiredness
 demotion to "≥1 of `{doi, pmid}`", and a PMC-only record (books, NIH reports, some datasets) is largely
 covered by it, since such a record normally carries a DOI. What that entry does not say is what
 `LiteratureRow` — keyed on `pmid`, digits-only, **required** — is supposed to do with such a row. That

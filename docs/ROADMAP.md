@@ -152,9 +152,9 @@ Two consequences worth stating outright:
 
 **None in this file.** Everything that was open on the `0.6` branch was built in the 0.6 batch and
 moved to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the
-roadmap of the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, and
-the deferred halves of RM55, RM56, RM65, plus RM66 and RM67) and
-[ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half).
+roadmap of the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the
+deferred halves of RM55, RM56, RM65, plus RM66 and RM67, and since 2026-08-14 the five dogfooding items
+RM68–RM72) and [ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half).
 
 The trackers below are **not** empty and are the live part of this file: the reserved-namespace tracker
 and the 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself. A new
@@ -345,7 +345,7 @@ disambiguating them, which is the tell: a name needing a table is a name doing n
 **The input half is done — [RM51](ROADMAP_HISTORY.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
 shipped in 0.6.0**: `licensing.csv` is an accepted spelling, `sources.csv` is deprecated (warn-only,
 read exactly as before), and four reference examples already carry the new name. Its ledger line is in
-[RM52](#rm52--10-ships-an-upgrade-procedure-or-10-does-not-ship). What stays here is the half that
+[RM52](ROADMAP_1_0.md#rm52--10-ships-an-upgrade-procedure-or-10-does-not-ship). What stays here is the half that
 genuinely breaks a reader: `sources.parquet`
 is in `_OUTPUT_FILES` and therefore inside `artifact.digest`, and consumers read it by name;
 `manifest.sources` is a published key. Renaming either is a **removal**, so both are major-only. The old
@@ -440,6 +440,12 @@ column gets the generic "extra inputs not permitted":
 - **`reference_db`** — a module-side hint naming *which* reference database the app should join this
   annotation against when several exist (implicit Ensembl for variants / ClinVar for `clin_sig` today;
   a module may pin it, e.g. a specific PharmVar release). Annotation-side addressing, a real future axis.
+- **`callable_element`** / **`quality_element`** — added in 0.6 by RM54, which built `source_element` on
+  the binning tables and deliberately did not build these two companions on `VariantRow`'s pointers: no
+  module points `callable_from` or `quality_from` at a multi-valued field, and an authored column is
+  full cost. They are reserved rather than merely absent because the symmetry makes them guessable — an
+  author reasoning "if `source_field` has one, `callable_from` must too" should hear what the name is
+  held for, not the generic stray-column message.
 
 *(**`callable_from` was reserved here through 0.4 and is now BUILT** as a `VariantRow` column in 0.5
 (RM6). A built name must leave this list: `reject_reserved` refuses a reserved column at author time,

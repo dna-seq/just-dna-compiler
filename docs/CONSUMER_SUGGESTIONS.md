@@ -25,9 +25,10 @@ a recycled id would collide with it.
 
 S1–S28 are all answered, as of 2026-08-12 — see
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md), whose contents list is the one-line
-summary of every one. Seven spawned roadmap items that are **still open** — **RM43**, **RM44**, **RM45**,
-**RM46**, **RM47**, **RM48**, **RM49** — and [RM_TOC.md](RM_TOC.md) is the index for that half: *answered* means a consumer has a
-reply, never that the work is finished.
+summary of every one. Seven spawned roadmap items — **RM43**, **RM44**, **RM45**, **RM46**, **RM47**,
+**RM48**, **RM49** — and all seven shipped in 0.6.0, RM44 and RM49 on 2026-08-12 and the rest with the
+design round on 2026-08-13; [RM_TOC.md](RM_TOC.md) is the index for that half and carries their status. The distinction the sentence was written for still holds:
+*answered* means a consumer has a reply, never that the work is finished.
 
 **S25 and S26 are answered but not yet installable**, which is a state this file had not carried
 before: each fix is a new optional manifest field, so it is legal only in a **minor**, and the tree

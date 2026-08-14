@@ -243,6 +243,13 @@ This is a **defensible generalization** — the format annotates human diploid l
 spec's own polyploid example is a tandem duplication with SNVs on it, which a CNV-aware consumer will
 meet, so revisit if one actually does.
 
+**The message changed on 2026-08-14; the decision did not.** Dogfooding a duplicated CYP2D6 — the
+spec's own polyploid example — refused the call with a bare restatement of the grammar, so a deliberate
+limit read as a syntax error, while every other deliberate refusal in this schema names its own limit
+in-line. The arity refusals now carry that sentence: two alleles is a decision, VCF 4.4 §7.2 permits
+more, and nothing is queued against it. Recorded as D3-2 in
+[DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md).
+
 ---
 
 # The 0.6 dogfooding items deferred out of the fix round

@@ -64,8 +64,9 @@ answer it describes. Append a line when an item is archived; ids are never reuse
 *Written after the 0.4 pin bump landed and the whole test corpus was run through the server-side
 compile path.*
 
-**Status: consumer feedback / design input — not a shipped contract.** Same spirit as
-[`CONSUMER_FIELD_NOTES.md`](CONSUMER_FIELD_NOTES.md): illustrative asks framed to stay inside the
+**Status: consumer feedback / design input — not a shipped contract.** Same spirit as the round-1
+thread `docs/CONSUMER_FIELD_NOTES.md`, deleted in `1f9dcd7` on 2026-08-12 and readable at `53f9260`:
+illustrative asks framed to stay inside the
 [`CONSTITUTION.md`](CONSTITUTION.md) invariants (additive-within-a-major, orthogonal axes,
 declarative-not-code). Everything below is **out-of-digest** (identity/metadata), so none of it
 touches `artifact.digest` bytes — it is 4.1-shippable, not major-gated.
@@ -506,7 +507,7 @@ thing that stops being done the moment someone forgets.
 ## S9 — the 0.4 table families are materialized verbatim, so `resolution.csv` never reaches them
 
 **Status — option 2 shipped in 0.5.3 (2026-08-11); option 1 is filed as
-[RM43](ROADMAP.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more),
+[RM43](ROADMAP_HISTORY.md#rm43--resolution-reaches-the-snp-core-only-so-a-04-led-module-is-rsid-joinable-and-nothing-more),
 and it is not 1.0 for the reason given below — nor 1.0 at all any more.** Its prerequisite is a stamped
 identity column, which the 2026-08-11 charter amendment makes **0.6** work: a new optional column is
 additive and minor-legal, and only removal, promotion to required or retyping waits for a major. Reproduced on this tree's own
@@ -602,7 +603,7 @@ green, and the artifact verifies.
 
 ## S8 — the manifest records what resolution *achieved* but not which checks *ran*, so `unchecked` and `clean` are indistinguishable to a downloader
 
-**Status — accepted and filed as [RM45](ROADMAP.md#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader), targeted at 0.6; your two-field shape and your trust caveat are both adopted.**
+**Status — accepted and filed as [RM45](ROADMAP_HISTORY.md#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader), targeted at 0.6; your two-field shape and your trust caveat are both adopted.**
 Confirmed structurally rather than by example, which is the strongest form the claim can take:
 `Compilation` has twelve fields and none is about verification; `ResolutionRow`'s eighteen columns are
 all per-*row*; `EnrichmentResult` holds `clin_sig_not_checked`, `ref_mismatches`, `stale_rsids` and
@@ -740,7 +741,7 @@ it in.
 ## S13 — `fully_resolved` is scoped to `variants.csv` but reads as a verdict about the module, and the only durable record of the difference is a warning string
 
 **Status — confirmed from this side and filed as
-[RM44](ROADMAP.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one),
+[RM44](ROADMAP_HISTORY.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one),
 targeted at 0.6; suggestion (1) is the accepted shape.** Reproduced end to end: the phrase
 `have no chrom+start` reaches `manifest.compilation.warnings` in `manifest.json` verbatim for both
 modules named below and is absent for a module whose core resolves, so the marker match is sound and
@@ -930,7 +931,7 @@ ourselves).
 
 ## S10 — `enrich_literature` introduces a source whose terms nothing can record, and the terms are per-article anyway
 
-**Status — accepted and filed as [RM46](ROADMAP.md#rm46--a-literature-sources-terms-are-per-article-so-the-enricher-names-a-source-it-cannot-record), 0.6; your per-article analysis is the reason it is not a one-line constant.**
+**Status — accepted and filed as [RM46](ROADMAP_HISTORY.md#rm46--a-literature-sources-terms-are-per-article-so-the-enricher-names-a-source-it-cannot-record), 0.6; your per-article analysis is the reason it is not a one-line constant.**
 Reproduced by reading the three pieces together: `enrich_literature` writes `source="pubmed"` on every
 row, `TERMS_BY_SOURCE` has seven members and no `pubmed`, and `record_source_terms` deliberately skips a
 name it has no terms for — so the tier introduces a source and declines to record it, and the finding
@@ -1239,7 +1240,7 @@ sentence.
 **(3) is not taken, and it is not deferred either.** Per-row authored provenance is a design question, and
 the honest answer is that the axis already has an owner: what a hand-read source needs recorded is its
 *terms*, which is what `sources.csv` is, and the open work there is per-article granularity —
-[RM46](ROADMAP.md#rm46--a-literature-sources-terms-are-per-article-so-the-enricher-names-a-source-it-cannot-record),
+[RM46](ROADMAP_HISTORY.md#rm46--a-literature-sources-terms-are-per-article-so-the-enricher-names-a-source-it-cannot-record),
 from your own S10. If a use case survives that, file it then; you were right not to ask for it now.
 <!-- triaged: 0.5.4 · sha a58134120148 -->
 
@@ -1406,7 +1407,7 @@ Given a heading here rather than left under the inbox's own description, which i
 ## S19 — a binning table has nowhere to record its evidence, so the most interpretive claims in the format are the only ungrounded ones
 
 **Status — accepted; suggestions (1) and (2) shipped in compiler 0.5.4, suggestion (3) filed as
-[RM47](ROADMAP.md#rm47--a-bin-boundary-is-the-most-interpretive-claim-in-the-format-and-the-only-one-with-nowhere-to-cite) for 0.6.** Reproduced on our own reference example, which is the part that
+[RM47](ROADMAP_HISTORY.md#rm47--a-bin-boundary-is-the-most-interpretive-claim-in-the-format-and-the-only-one-with-nowhere-to-cite) for 0.6.** Reproduced on our own reference example, which is the part that
 settled it: `reference_examples/htt_repeat_expansion` compiles green under `--strict` asserting where
 Huntington disease becomes fully penetrant, with no citation anywhere — and its README already said "a
 module making a novel claim should carry its evidence", advice the schema gave no way to take. The
@@ -1724,7 +1725,7 @@ reject the name outright.
 
 ## S22 — literature reports hg19 and a module must be GRCh38; there is no supported path between them (longshot)
 
-**Status — accepted as a real gap and filed as [RM48](ROADMAP.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive) (0.6). No code in 0.5.4.**
+**Status — accepted as a real gap and filed as [RM48](ROADMAP_HISTORY.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive) (0.6). No code in 0.5.4.**
 Your framing is adopted whole, including the part that argues against your own request — the item is
 filed as *rsID recovery*, with liftover as the announced fallback, for the reason you give: with an
 rsID liftover is unnecessary and strictly worse, so it is only reachable in the case where the lifted
@@ -2056,7 +2057,7 @@ That is the thing that currently cannot travel with the module.
 ## S26 — the derived-fact CSVs are attested nowhere, so the enricher's own tables cannot travel with a module
 
 **Status — first half accepted and shipped in the tree (lands in 0.6.0); second half filed as
-[RM49](ROADMAP.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses).**
+[RM49](ROADMAP_HISTORY.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses).**
 Reproduced end to end: compiling `reference_examples/pathogenic_clinvar` leaves `resolution.csv` and
 `literature.csv` beside the spec with `literature.parquet` in the artifact and no byte hash for either
 CSV anywhere in the manifest. Your reading of why is exactly right, including that `_INPUT_FILES`
