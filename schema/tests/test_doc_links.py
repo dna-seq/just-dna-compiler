@@ -36,8 +36,10 @@ _ROOT = Path(__file__).resolve().parents[2]
 _SKIP_DIRS = {"data", "dist", "node_modules"}
 
 # `[text](target)`. It matches a link that wraps across a line because `[^\]]*` and `\s*` both admit a
-# newline — no `.` appears in the pattern, so this is not `re.DOTALL` doing the work. Five of the
-# nineteen dead links hid from a line-based sweep for exactly that reason; do not narrow those classes.
+# newline — no `.` appears in the pattern, so this is not `re.DOTALL` doing the work. Exactly one of
+# the nineteen dead links hid from a line-based sweep for that reason (`ROADMAP_HISTORY.md`'s pointer
+# at the 1.0 `StudyRow.pmid` entry, whose link text wraps), which is one more than a docs sweep should
+# miss; do not narrow those classes.
 _LINK = re.compile(r"\[[^\]]*\]\(\s*([^)\s]+)\s*\)")
 _FENCE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
 _HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$")
