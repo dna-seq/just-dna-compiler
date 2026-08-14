@@ -551,7 +551,7 @@ as the *inconsistent reference allele* error, and catchable offline.
 
 `_recompute_vrs_id` returns either the recomputed id or the reason there is none, **for one allele**.
 `vrs_id` is a comma-joined parallel array of `alts`, so the pass walks the two together and each ALT
-gets its own verdict; an empty member is a hole and reads exactly like an empty cell. The four reasons
+gets its own verdict; an empty member is a hole and reads exactly like an empty cell. The five reasons
 are limits of a no-network tier, not defects in the row:
 
 | Row | Path | Both modes |
@@ -561,6 +561,7 @@ are limits of a no-network tier, not defects in the row:
 | substitution, id differs | **mismatch** | error |
 | multi-allelic, every member agrees | verified allele by allele | silent |
 | multi-allelic, members swapped | **mismatch** — the desync a length check cannot see | error |
+| symbolic allele (`<DEL:4977>`, RM5) | names a structural **event**, not a sequence — no tier mints one | warning |
 | indel / MNV (`C>CA`) | needs the reference sequence — minted upstream, not recomputable here | warning |
 | off-assembly contig, or a position past the contig end | no refget accession to address the sequence by | warning |
 | non-GRCh38 `genome_build` | no refget table for that build (RM15) | warning |
@@ -573,6 +574,22 @@ picking one would invent data". The premise is `derive_variant_key`'s and it is 
 where nothing is picked because every ALT is named. It cost the id on 909 of 1,613 rows in one real
 module while every input needed to mint all 2,110 of them sat in the same row.
 
+**A symbolic allele is its own row of that table, and it was an indel for the whole of 0.6 until a
+module carried one.** RM5 shipped the structural grammar and this pass was never told, so `<DEL:4977>`
+fell through to `is_substitution` and was reported as *"an indel or MNV: justification needs the
+reference sequence, so only the enricher can mint it (re-run it online)"* — false on every clause.
+Symbolic notation exists precisely because the sequence is *not* spelled: there is no sequence to
+justify against, nothing for a content-addressed id to be a digest of, and no tier that mints one, so
+the id is permanently absent rather than one online run away. (The enricher's minting pass says the
+same wrong thing in its own words, and the online run this message recommended crashed on the same
+allele — both of those are its side of the item, not this one's.) Two
+consequences worth keeping. The branch sits **ahead** of both the substitution test and the accession
+lookup, in `_vrs_gap_reason` and `_recompute_vrs_id` alike: a symbolic allele on a GRCh37 module is
+also a build with no refget table, and between two true statements the one to print is the one no
+release can answer. And the predicate is the **lenient** `is_symbolic_allele` — a malformed `<FOO>` or
+an unterminated `<DEL` names no sequence either, so filing it under "indel" would be the same false
+claim about a different mistake.
+
 #### Coverage — what a VA does *not* name
 
 Verification only ever looks at ids that are present, so a table where nothing was minted verifies
@@ -584,6 +601,14 @@ reliability of the identity scheme instead of inferring it; "complete" is `ident
 derived rather than stored twice. A shortfall is a **warning in both modes** — the usual causes (an
 indel with no sequence proxy, a build with no refget table) are fixable by no authored edit, and
 `strict` means "reproducible artifact", which an incompletely-named table still is.
+
+A **symbolic allele still counts in the denominator**, so a structural module reads as permanently
+short of complete coverage — `reference_examples/mt_common_deletion` compiles at 2/3 and always will.
+That is the honest number: the denominator is *allele slots in `resolution.csv`*, one definition, and
+excluding the slots that can never be named would publish a second, undisclosed one — "coverage over
+the alleles an id was possible for" — which is exactly the flag-with-a-hidden-subset shape RM44 exists
+to stop. What tells the two situations apart is the reason line beside the count, which now says the
+gap is permanent instead of naming a remedy.
 
 The last row is a fixed bug worth naming: `refget_accession` **raises** `UnsupportedBuildError` rather
 than returning `None` — deliberately, so a caller asking for GRCh37 hears "not built yet" instead of
