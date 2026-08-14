@@ -562,25 +562,37 @@ The compiler warns on any such table.
 
 **Compare in float32, not float64 (RM62).** §1.3 makes every VCF `Float` a 32-bit IEEE-754 value, while
 every bound and floor here is a Python float64 parsed from the decimal the author typed. Widening a
-float32 is exact but not value-preserving against that decimal: a VCF `0.1` widens to
-`0.100000001490116…`, which is strictly **above** an authored `0.1`. For `measure_min` this is harmless
-— the value lands inside the bin, and the shared-endpoint rule already gives a boundary to the higher
-bin. For an **inclusive `measure_max`** it is not: any non-dyadic closed upper bound (`0.1`, `0.3`, the
-`mt_heteroplasmy` boundaries) can be missed by a value that reads as equal in the source file, and the
-same holds for `min_quality` against a float32 QUAL. The rule is to **narrow the authored bound to
-float32 before comparing** (`struct.unpack("f", struct.pack("f", bound))[0]`, or `numpy.float32`), not
-to add an epsilon — an epsilon is a guess about magnitude and this is an exactly-known representation.
-The schema keeps decimal bounds deliberately: the DSL exists for the human, and the parquet already
-carries the machine form.
+float32 is exact but not value-preserving against that decimal, and **which way it moves depends on the
+decimal**: a VCF `0.1` widens to `0.100000001490116…`, strictly **above** an authored `0.1`, while a VCF
+`0.9` widens to `0.899999976158142…`, strictly **below** one. Both directions lose a row. Upward, an
+**inclusive `measure_max`** (`0.1`, `0.3`, the `mt_heteroplasmy` boundaries) is missed by a value that
+reads as equal in the source file; downward, a `measure_min` drops that value into the bin beneath, so
+neither bound is the safe one and `min_quality` against a float32 QUAL is the same shape again. The rule
+is to **compare in float32** — narrow the bound the same way the measurement was narrowed
+(`struct.unpack("f", struct.pack("f", bound))[0]`, or `numpy.float32`) and compare the two. Rounding to
+float32 is monotone, so where the measurement really is a float32 read — the case the spec describes —
+that comparison is exact whichever way the decimal moved. Against a value that never went through
+float32 it is a *narrowing* rather than an identity: it errs toward admitting the boundary
+(`float32(0.30000000000000004) == float32(0.3)`), which is the direction to err in for an inclusive
+bound. Narrowing only the bound is **not** the rule, and that is the direction that loses a row:
+a consumer parsing the text cell straight to float64 meets a narrowed downward-rounding upper bound
+that rejects a value the naive comparison would have matched, which is this defect pointed the other
+way. Nor is an epsilon the rule: that is a guess about magnitude and this is an exactly-known
+representation. The schema keeps decimal bounds deliberately: the DSL exists for the human, and the
+parquet already carries the machine form.
 
-**A pipe in a `variants.csv` genotype means "heterozygous, phase recorded but unaddressable" (RM63).**
+**A pipe in a `variants.csv` genotype means "phase recorded but unaddressable" (RM63).**
 VCF defines allele order only *within* a phase set — §1.6.2 adds PSL precisely because with PS a
 genotype "isn't connected to any specific haplotype (i.e. first or second)" — and there is no global
 first homolog. This format has no phase-set column, so an authored `A|G` and an authored `G|A` are
 distinguishable to the schema and indistinguishable to any consumer, and two rows both written `A|G`
 assert nothing about being in cis. The order is still preserved byte-for-byte through the round trip
 (Principle 7) and `flags: phased` still records that the call was phased; neither says which homolog.
-A module that genuinely needs cis/trans says so with `diplotypes.csv`, which names haplotypes.
+A module that genuinely needs cis/trans says so with `diplotypes.csv`, which names haplotypes. The
+claim is about the **homolog**, not about zygosity: `1|1` is an ordinary phased homozygous call and the
+grammar accepts its transcription, so "a pipe means heterozygous" — which this passage used to say, and
+which the comment above `_validate_genotype` still says — is false of `C|C`. The printed column
+descriptions carry the narrower reading; the comment is due the same edit.
 
 **Two alleles is the ceiling, and VCF's is not (RM67).** §7.2 permits any ploidy and adds *partial*
 phasing on top of it — `GT |0|0/1/2`, where the leading indicator is optional and each separator says

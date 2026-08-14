@@ -392,8 +392,12 @@ class VariantRow(AuthoredModel):
 
     genotype: str = Field(
         description=(
-            "Slash-separated sorted alleles, e.g. A/G. An allele is bases, or a symbolic/structural "
-            "allele carrying its length — a heterozygous deletion sorts as <DEL:1500>/A"
+            "Slash-separated sorted alleles, e.g. A/G, or a single allele where the contig is "
+            "hemizygous or haploid (non-PAR X/Y in males, homoplasmic MT). An allele is bases, or a "
+            "symbolic/structural allele carrying its length — a heterozygous deletion sorts as "
+            "<DEL:1500>/A. A pipe (A|G) is also accepted and records that the call was phased; with "
+            "no phase-set column the order names no homolog, so it is phase recorded but "
+            "unaddressable — say cis/trans in diplotypes.csv where a module needs it."
         )
     )
     weight: float | None = Field(default=None, description="Score (positive=protective)")

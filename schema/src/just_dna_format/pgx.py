@@ -365,8 +365,11 @@ class PharmVariantRow(AuthoredModel):
     genotype: str | None = Field(
         default=None,
         description=(
-            "Genotype the response applies to, canonical sorted form, e.g. C/T. An allele is bases, "
-            "or a symbolic/structural allele carrying its length (<DEL:1500>/C)"
+            "Genotype the response applies to, canonical sorted form, e.g. C/T, or a single allele "
+            "where the contig is hemizygous or haploid. An allele is bases, or a symbolic/structural "
+            "allele carrying its length (<DEL:1500>/C). A pipe (C|T) is also accepted and records "
+            "that the call was phased; with no phase-set column the order names no homolog, so it "
+            "is phase recorded but unaddressable."
         ),
     )
     variant_key: str | None = stamped_identity_field(

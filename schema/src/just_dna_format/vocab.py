@@ -229,11 +229,20 @@ VALID_ELEMENT_RULES: frozenset[str] = frozenset(
 
 #: One sentence per member, total over `VALID_ELEMENT_RULES` (a test pins that). This is where the
 #: reference-inclusion answer actually lives, so a member can never be silent about it.
+#:
+#: Every sentence speaks of *the values the field carries*, and none of them speaks of a sample's
+#: alleles. `largest` used to illustrate itself as "the longer of the sample's two alleles", which is
+#: a claim about a diploid record: on chrX outside the pseudoautosomal regions a male sample is
+#: hemizygous and the repeat field carries one value, and fragile X is the presentation FMR1 is known
+#: for (`reference_examples/fmr1_cgg_repeat`). The rule was always right there — the greatest of one
+#: value is that value — but an author reading the illustration could reasonably conclude otherwise,
+#: and these strings are printed into the authoring reference rather than being internal commentary.
 ELEMENT_RULE_MEANINGS: dict[str, str] = {
     "largest": (
         "the greatest of the values the field carries for this record, the reference element included "
         "where the field has one (Number=R). This is the rule a dominant repeat expansion wants: the "
-        "longer of the sample's two alleles, whichever of them happens to be reference-length"
+        "longest tract the record reports, whether the record carries one value or several, and "
+        "counted even where the longest of them is the reference-length element"
     ),
     "largest_alt": (
         "the greatest element among the ALT elements only; on a Number=R field this skips element "

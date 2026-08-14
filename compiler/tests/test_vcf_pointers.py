@@ -241,6 +241,33 @@ def test_every_element_rule_says_whether_the_reference_counts() -> None:
         assert "reference" in meaning.lower(), member
 
 
+def test_no_meaning_assumes_a_ploidy_the_contig_may_not_have() -> None:
+    """A rule names *values the field carries*, never *the sample's alleles* — the two differ on chrX.
+
+    `largest` used to explain itself as "the longer of the sample's two alleles", which is a claim
+    about a diploid record. Outside the pseudoautosomal regions a male sample is hemizygous and the
+    repeat field carries one value, and fragile X is the presentation FMR1 is known for — so the one
+    module in the corpus that pairs `largest` with a real hemizygous locus
+    (`reference_examples/fmr1_cgg_repeat`) is the one the sentence was false on. The rule itself was
+    always right (the greatest of one value is that value); only the illustration was wrong, and
+    `reference` prints it, so it is the authoring contract rather than commentary.
+    """
+    for member, meaning in ELEMENT_RULE_MEANINGS.items():
+        # Positive property: every member is defined over the record's elements, which is the frame
+        # that holds whatever the ploidy is.
+        assert "element" in meaning or "value" in meaning, member
+        lowered = meaning.lower()
+        # A rule ranges over the values a *field carries*, never over the sample's alleles: how a
+        # caller packs multiplicity is the caller's business and this tier holds no opinion on it
+        # (P2, and the vocabulary's own docstring says so). Any phrasing that reaches for the sample
+        # is the door D5-1 came through, whether or not it names a number.
+        assert "sample's" not in lowered, f"{member} describes the sample rather than the record"
+        # …and any fixed cardinality is wrong for the same reason: the count is the record's, and it
+        # is one on a hemizygous contig and two on a diploid one.
+        for cardinality in ("two", "both", "pair", "diploid", "haploid", "hemizygous"):
+            assert cardinality not in lowered, f"{member} fixes a cardinality: {cardinality!r}"
+
+
 def test_the_ranging_rules_come_in_pairs_and_the_pair_is_the_answer() -> None:
     ranging = {m for m in VALID_ELEMENT_RULES if not m.endswith("_alt") and m != "reference"}
     assert {f"{m}_alt" for m in ranging} <= VALID_ELEMENT_RULES

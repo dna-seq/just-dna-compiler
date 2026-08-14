@@ -204,6 +204,30 @@ class MeasureBinRow(AuthoredModel):
         json_schema_extra=vocabulary("measure_kind", VALID_MEASURE_KINDS),
         description="Measured quantity; one of VALID_MEASURE_KINDS",
     )
+    # Both bounds are float64, parsed from the decimal the author typed, while VCF 4.4 §1.3 makes
+    # every `Float` a 32-bit value (RM62). Widening a float32 back to float64 is exact but not
+    # value-preserving against that decimal, and **which way it moves depends on the decimal**: a
+    # VCF `0.3` arrives as 0.300000011920928955…, above the authored bound, while a VCF `0.9`
+    # arrives as 0.899999976158142…, below it. Compared naively, the first is missed by an inclusive
+    # `measure_max` of `0.3` and the second falls out of the bottom of a bin starting at `0.9` — so
+    # neither bound is the safe one, and "measure_min is harmless" holds only for the decimals that
+    # round upward.
+    #
+    # The repair belongs to the comparison rather than to the cell, and it is to compare **in
+    # float32**: narrow the bound the same way the measurement was narrowed
+    # (`struct.unpack("f", struct.pack("f", bound))[0]`) and compare the two. float32 rounding is
+    # monotone, so where the measurement really is a float32 read the comparison is exact whichever
+    # way the decimal moved; against a float64-precise value it is a narrowing rather than an
+    # identity, erring toward admitting the boundary, which is the safe direction for an inclusive
+    # bound. Narrowing only the bound is not the rule, and that is the direction that loses a row —
+    # against a measurement that never went through float32 it shrinks a downward-rounding bin and
+    # drops a value the naive comparison would have matched. An epsilon is not the rule either: it
+    # is a guess about magnitude where the representation is exactly known. The bounds stay decimal
+    # because the DSL exists for the human and the parquet already carries the machine form.
+    #
+    # The rule is stated on `measure_max`'s description, not only in docs/SCHEMAS.md, because
+    # `describe`/`requirements`/`reference` print these strings and that is what an author writes a
+    # table from (D6-1).
     measure_min: float | None = Field(
         default=None,
         description=(
@@ -215,7 +239,11 @@ class MeasureBinRow(AuthoredModel):
         default=None,
         description=(
             "Inclusive upper bound; None = open above. Inclusive on every measure_kind — on a "
-            "continuous measure the next bin may start on it, and then that bin owns the value."
+            "continuous measure the next bin may start on it, and then that bin owns the value. "
+            "Author the decimal you mean: a VCF Float is 32-bit, so a measured 0.3 reads as just "
+            "above an authored 0.3 (and a measured 0.9 as just below). The comparison is done in "
+            "float32 — narrow the bound the same way the measurement was narrowed — never with an "
+            "epsilon."
         ),
     )
     direction: str | None = Field(
