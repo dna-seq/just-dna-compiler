@@ -77,6 +77,29 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   skip at all — the check does not apply, there is no claim to have an opinion about, and recording one
   would mine a nonce and create a `verification.json` on a module that never asked for one.
   `nothing_to_check` stays for a table that is present with no row in scope, which is a real answer.
+- **Two authorities answering one check still make one record, and the counts have to follow.**
+  `allele_function` is compared against PharmVar *and* CPIC, so three things differ from the
+  single-source passes. `subjects` is the alleles an authority **named back**, never the authored rows:
+  a curator may state a function for an allele a point-in-time slice does not list, and counting that
+  row would publish a comparison nobody put (the shortfall is named in `detail` instead). `findings`
+  counts **alleles in dispute, not conflicts** — one authored status contradicted by both panels is one
+  allele reported twice, and `VerificationRecord` rightly refuses `findings > subjects`. And `source`
+  is filled only when exactly one authority is implicated, because it is a single join key into the
+  licensing table: naming one of two would hide the other, and a comma-joined value would break the
+  join the column exists for. With no leg answering, the reason is picked by precedence
+  (`not_permitted` → `offline` → `unreachable` → `not_requested`) and the sentence names every absent
+  leg — a licensing refusal is cleared by a *declaration*, so reporting it as `offline` would send a
+  reader hunting a network problem that does not exist.
+- **A check whose input has no producer records the skip, not the pass's own numbers.** `vrs mint`
+  ends with a number out of a number, and that number is coverage, not a comparison: `vrs_allele_id`
+  names the cross-check of a *source's* own `ga4gh:VA.…` against the locally minted one, whose input is
+  `mint_resolution_rows(source_ids=…)` — and `resolution.csv` records ids without recording where an id
+  came from, so no caller in the workspace fills that map. The command therefore records
+  `nothing_to_check` with the coverage in `detail`, grouped by reason class. Recording the alleles it
+  *named* as `subjects` would assert a comparison that was never made, which is exactly the trap the
+  reference-allele pass fell into on an unbuilt assembly. (The coverage numbers are published already,
+  by the compiler, as `manifest.compilation.vrs_alleles` / `vrs_alleles_identified` — this record is
+  not their second home.)
 - **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
   four of its checks at the end of the run. A separate command writes its own; the merge is what keeps
   both in one document, replacing per check and never erasing a check this run did not put.
@@ -86,8 +109,10 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   read off each record's own `release`.
 
 **Which of these attest, and which are recording passes rather than checks.** `enrich()` attests four
-(reference allele, wrong build, clinical significance, rsID currency) and `enrich_clinpgx` attests its
-own; the rest report to their result object and are wired in as their commands grow the call. The line
+(reference allele, wrong build, clinical significance, rsID currency), `enrich_clinpgx` attests its
+own, and `pgx` and `vrs mint` attest theirs — `allele_function` and `vrs_allele_id`, wired in the same
+release the corpus first grew a `verification.json` to look at; the rest report to their result object
+and are wired in as their commands grow the call. The line
 that decides whether a pass belongs in `VALID_VERIFICATION_CHECKS` at all is whether it compares
 something the module **asserts** — so `gene_validity.csv` and `clinical_assertions.csv`, which record
 what ClinGen and ClinVar say and adjudicate nothing, have no check name and must not gain one: a

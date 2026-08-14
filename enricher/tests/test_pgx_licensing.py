@@ -33,8 +33,12 @@ from just_dna_enricher.pharmvar import (
     chrom_from_accession,
     parse_allele,
 )
+from just_dna_format import verification as verification_module
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.sources import SourceRow
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
+from just_dna_format.verification import read_verification
+from pydantic import ValidationError
 
 #: The licence sidecar's current filename, derived rather than named: it gained a second
 #: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test
@@ -59,6 +63,17 @@ def _no_ambient_pharmvar_key(monkeypatch: pytest.MonkeyPatch) -> None:
     would be silently restored. Both readers treat empty as absent (`api_key or environ.get(...)`).
     """
     monkeypatch.setenv(API_KEY_ENV, "")
+
+
+@pytest.fixture(autouse=True)
+def _cheap_proof_of_work(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pass attests now (RM45), and the real proof-of-work is ~0.5s of hashing per call.
+
+    Eight bits keeps every test in this module honest about the *document* while paying for none of
+    the difficulty — the same fixture `test_verification_record.py` carries, for the same reason.
+    """
+    monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", 8)
+
 
 _YAML = (
     'schema_version: "1.0"\n'
@@ -393,3 +408,211 @@ def test_one_source_failing_does_not_sink_the_pass(tmp_path: Path) -> None:
     assert [r.source for r in result.rows] == ["cpic"]
     assert any("PharmVar API key" in w or "PHARMVAR_API_KEY" in w for w in result.warnings)
     assert {c.source for c in result.conflicts} == {"cpic"}
+
+
+# ── the attestation (RM45, D4-1) ────────────────────────────────────────────────────────────────
+def _record(spec: Path) -> VerificationRecord:
+    """The one `allele_function` record the pass wrote, read back from the file it wrote."""
+    doc = read_verification(spec / VERIFICATION_JSON)
+    return next(r for r in doc.records if r.check == "allele_function")
+
+
+def test_the_cross_check_records_what_it_compared(tmp_path: Path) -> None:
+    """The pass consulted two authorities about two alleles; the module now says so.
+
+    Until this landed the finding reached stdout and a `PgxResult` field and died with the process,
+    so a module whose star alleles had been checked against PharmVar and CPIC and one where the
+    check never ran compiled to identical manifests — the sentence RM45 opens with.
+    """
+    spec = _spec(tmp_path)
+    result = enrich_pgx(
+        spec, declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+    )
+    record = _record(spec)
+    assert record.skipped is None
+    # Both authorities name both authored alleles, so both claims were really compared.
+    assert record.subjects == result.compared == 2
+    # ONE allele is in dispute — reported twice, once per authority. Counting conflicts would say 2.
+    assert record.findings == 1 and len(result.conflicts) == 2
+    # Two authorities answer one check and `source` is a single join key into the licensing table, so
+    # it names one only when one is implicated; the sentence carries both.
+    assert record.source is None
+    # The route travels with the name — an injected client here, a snapshot or the live service in
+    # a real run, and a pinned release beside it where the source states one.
+    assert "pharmvar (injected)" in record.detail and "cpic (injected)" in record.detail
+
+
+def test_two_authorities_disputing_one_allele_is_one_finding_not_two(tmp_path: Path) -> None:
+    """The naive count is not merely imprecise — the model refuses the record it builds.
+
+    `VerificationRecord` rejects `findings > subjects` ("a finding is one of the rows the check was
+    evaluated over"), and one authored allele contradicted by both PharmVar and CPIC is exactly that
+    shape. Demonstrated on the failing construction rather than asserted about it.
+    """
+    spec = _spec(tmp_path)
+    (spec / "allele_function.csv").write_text(
+        "gene,allele,function_status\nCYP2C19,*2,normal_function\n"
+    )
+    result = enrich_pgx(
+        spec, declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+    )
+    assert len(result.conflicts) == 2 and result.compared == 1
+    with pytest.raises(ValidationError):
+        VerificationRecord(
+            check="allele_function", subjects=result.compared, findings=len(result.conflicts)
+        )
+    record = _record(spec)
+    assert (record.subjects, record.findings) == (1, 1)
+
+
+def test_a_claim_no_authority_lists_is_not_counted_as_compared(tmp_path: Path) -> None:
+    """`subjects` is alleles an authority named back, never authored rows.
+
+    `*17` is a real CYP2C19 allele that neither fixture payload carries, which is the ordinary case:
+    a source is a point-in-time slice and a curator may state a function for an allele it does not
+    list. Counting that row would publish a comparison that was never put — and the shortfall has to
+    be visible, so the sentence names it.
+    """
+    spec = _spec(tmp_path)
+    (spec / "allele_function.csv").write_text(
+        _ALLELE_FUNCTION + "CYP2C19,*17,increased_function\n"
+    )
+    enrich_pgx(
+        spec, declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+    )
+    record = _record(spec)
+    assert record.subjects == 2
+    assert (
+        "1 authored claim(s) name an allele no consulted authority states a function for"
+        in record.detail
+    )
+
+
+def test_a_module_stating_no_function_is_nothing_to_check_even_when_both_answered(
+    tmp_path: Path,
+) -> None:
+    """Zero out of zero would read as agreement, and both authorities did answer here.
+
+    A module may define its haplotypes and state no function for any of them — `function_status` is
+    optional. There is then no authored claim for an authority to disagree with, which is a different
+    fact from every claim having been upheld.
+    """
+    spec = _spec(tmp_path)
+    (spec / "allele_function.csv").unlink()
+    (spec / "haplotypes.csv").write_text(
+        "gene,haplotype_name,rsid,allele\nCYP2C19,*2,rs4244285,A\n"
+    )
+    result = enrich_pgx(
+        spec, declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+    )
+    assert set(result.routes) == {"pharmvar", "cpic"}      # both answered
+    record = _record(spec)
+    assert record.skipped == "nothing_to_check" and record.subjects == 0
+
+
+def test_a_run_that_reached_no_authority_never_reads_as_clean(tmp_path: Path) -> None:
+    """Offline with no snapshot: the check did not run, and the record says which absence it was."""
+    spec = _spec(tmp_path)
+    enrich_pgx(
+        spec, offline=True, declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        cpic_cache=tmp_path / "absent", pharmvar_cache=tmp_path / "absent",
+    )
+    record = _record(spec)
+    assert record.skipped == "offline" and record.subjects == 0
+    # Both legs are named: a reason naming one leg says nothing about the other.
+    assert "pharmvar" in record.detail and "cpic" in record.detail
+
+
+def test_a_licence_refusal_is_not_a_connectivity_problem(tmp_path: Path) -> None:
+    """`not_permitted` rather than `offline`: this one is cleared by a declaration, not by egress.
+
+    The pass ran online with two working clients and consulted neither, because nothing was declared
+    and both sources forbid sale. Folding that into `offline` would send a reader hunting a network
+    problem that does not exist — which is why the vocabulary keeps the two apart.
+    """
+    spec = _spec(tmp_path)
+    enrich_pgx(
+        spec, declared_use="unstated",
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+    )
+    record = _record(spec)
+    assert record.skipped == "not_permitted" and record.subjects == 0
+    assert "--use non-commercial" in record.detail
+
+
+def test_a_leg_the_caller_switched_off_is_not_the_reason_the_other_was_absent(
+    tmp_path: Path,
+) -> None:
+    """One leg off, the other with nothing provisioned — the record names the actionable absence.
+
+    Precedence exists because both legs record an outcome and the record carries one reason. A
+    `not_requested` here would describe the caller's own choice and hide the leg that could have
+    answered, which is the half the author can act on.
+
+    The reason is `no_reference` and not `unreachable`: a keyless PharmVar was never *asked*. Nothing
+    was provisioned that could answer — no snapshot, and no usable live route — and the remedy is a
+    key or a built snapshot, where `unreachable` would send the reader to retry a request that was
+    never made.
+    """
+    spec = _spec(tmp_path)
+    keyless = PharmVarClient(api_key=None, client=httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
+    ))
+    enrich_pgx(spec, declared_use="non_commercial", use_cpic=False, pharmvar_client=keyless)
+    record = _record(spec)
+    assert record.skipped == "no_reference"
+    # One authority is implicated, so the join key is filled.
+    assert record.source == "pharmvar"
+    assert "PHARMVAR_API_KEY" in record.detail
+
+
+def test_a_source_that_was_asked_and_gave_no_answer_is_unreachable(tmp_path: Path) -> None:
+    """The other half of the pair: the request was made, and it produced no answer.
+
+    A key that PharmVar rejects resolves a perfectly good client — the leg has something to ask with,
+    so it asks, and the 401 comes back from the request itself. That is the branch `unreachable`
+    describes, and keeping it distinct from `no_reference` is the whole point: one reader re-runs,
+    the other provisions.
+    """
+    spec = _spec(tmp_path)
+    rejected = PharmVarClient(api_key="stale-key", client=httpx.Client(
+        transport=httpx.MockTransport(
+            lambda r: httpx.Response(401, json={"errorMessage": "API Key is invalid or missing"})
+        )
+    ))
+    enrich_pgx(spec, declared_use="non_commercial", use_cpic=False, pharmvar_client=rejected)
+    record = _record(spec)
+    assert record.skipped == "unreachable" and record.source == "pharmvar"
+
+
+def test_a_module_with_no_pgx_table_is_not_attested_at_all(tmp_path: Path) -> None:
+    """The check does not *apply*, which is not the same as having failed to run.
+
+    `clinpgx` refuses to attest this case for a reason that holds here too: a module carrying neither
+    PGx table has no star allele for PharmVar or CPIC to have an opinion about, so a record would
+    mine a nonce and publish a `manifest.verification` block about a question the module cannot pose.
+    `nothing_to_check` stays for a table that is present with nothing in scope — the case above.
+    """
+    spec = _spec(tmp_path)
+    (spec / "allele_function.csv").unlink()
+    result = enrich_pgx(
+        spec, declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+    )
+    assert result.warnings and "names no genes" in result.warnings[0]
+    assert not (spec / VERIFICATION_JSON).exists()
+
+
+def test_a_dry_run_writes_no_attestation(tmp_path: Path) -> None:
+    """`write=False` means no files, and an attestation is a file."""
+    spec = _spec(tmp_path)
+    enrich_pgx(
+        spec, declared_use="non_commercial", write=False,
+        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+    )
+    assert not (spec / VERIFICATION_JSON).exists()

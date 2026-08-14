@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import authored_input_entries, compile_module
+from just_dna_enricher.cli import app
 from just_dna_enricher.enrich import _verification_records
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
@@ -20,6 +21,7 @@ from just_dna_format.verification import (
     module_binding,
     read_verification,
 )
+from typer.testing import CliRunner
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _EASY = 8
@@ -284,3 +286,54 @@ def test_the_clinvar_release_label_is_the_shared_one(tmp_path) -> None:
     (digest_only / "release.json").write_text(json.dumps({"source_sha256": "a" * 64}))
     assert _clinvar_release(digest_only) == clinvar_dataset_label(digest_only)
     assert _clinvar_release(digest_only) is not None, "it can name its release; None hides that"
+
+
+# ── `vrs mint`, and the merge two real commands now exercise (D4-1) ─────────────────────────────
+def test_vrs_mint_records_that_it_compared_nothing_rather_than_that_it_passed(
+    tmp_path: Path,
+) -> None:
+    """A minting run ends with a number out of a number, and that number is not a comparison.
+
+    What `vrs_allele_id` names is the cross-check — a source's own `ga4gh:VA.…` against the locally
+    minted one — whose input is `mint_resolution_rows(source_ids=…)`. `resolution.csv` records ids
+    and never where an id came from, so this command has nothing to fill that map from and the
+    question was not put. Recording coverage as `subjects` would assert a comparison nobody made,
+    which is the F4 shape; the coverage still travels, in `detail`, grouped by reason class.
+    """
+    spec = _module(tmp_path, "mt_common_deletion")
+    result = CliRunner().invoke(app, ["vrs", "mint", str(spec), "--offline"])
+    assert result.exit_code == 0, result.output
+
+    by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    record = by_check["vrs_allele_id"]
+    assert record.skipped == "nothing_to_check"
+    assert (record.subjects, record.findings) == (0, 0)
+    assert "no source-reported allele id" in (record.detail or "")
+    # The module's own coverage, and the gap named by reason class rather than per allele — this
+    # example's MT deletion is an indel, which cannot be justified without the reference sequence.
+    assert "indel/MNV" in (record.detail or "")
+    # The reference example arrives carrying an `enrich` attestation, and it survives: that is what
+    # the merge is for, and until now no two real commands ever produced one document.
+    assert "reference_allele" in by_check
+
+
+def test_two_real_commands_land_in_one_document(tmp_path: Path) -> None:
+    """`merge_records` was built and tested for a document no two commands produced (D4-1).
+
+    `pgx` and `vrs mint` write different checks about one module, from separate processes in real
+    use. Neither may erase the other's, and both are single-record runs, so a naive write would have
+    left whichever ran last as the module's whole attestation.
+    """
+    spec = _module(tmp_path, "cyp2c19_star_alleles")
+    for argv in (
+        ["pgx", str(spec), "--offline"],
+        ["vrs", "mint", str(spec), "--offline"],
+    ):
+        result = CliRunner().invoke(app, argv)
+        assert result.exit_code == 0, result.output
+
+    by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    assert {"allele_function", "vrs_allele_id"} <= set(by_check)
+    # Offline with nothing declared: PharmVar and CPIC both forbid sale, so the pass consulted
+    # neither — and that is a permission, not a network problem.
+    assert by_check["allele_function"].skipped == "not_permitted"

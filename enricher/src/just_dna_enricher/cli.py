@@ -17,6 +17,7 @@ from pathlib import Path
 import typer
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
 from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
@@ -101,6 +102,8 @@ from just_dna_enricher.pharmvar import PharmVarError
 from just_dna_enricher.pharmvar_build import build_snapshot as build_pharmvar_snapshot
 from just_dna_enricher.sequences import summarize_ref_mismatches
 from just_dna_enricher.upload import DEFAULT_CLINPGX_REPO_ID, DEFAULT_CPIC_REPO_ID
+from just_dna_enricher.verification import record_verification, skipped
+from just_dna_enricher.vrs import MintResult
 
 app = typer.Typer(
     add_completion=False,
@@ -1402,6 +1405,32 @@ vrs_app = typer.Typer(
 app.add_typer(vrs_app, name="vrs")
 
 
+def _mint_record(result: MintResult) -> VerificationRecord:
+    """What a minting run can honestly attest about `vrs_allele_id` (RM45).
+
+    The member names the **cross-check** — a source's own `ga4gh:VA.…` against the one minted here —
+    and its input is `mint_resolution_rows(source_ids=…)`, a map this command has nothing to fill
+    from: `resolution.csv` records the ids the tier minted and never where an id came from, so the
+    question was not put. That is a skip, not a clean pass. Recording `subjects` as the alleles the
+    run *named* would say the opposite of what happened, which is the F4 shape — an attestation
+    asserting a comparison nobody made — and it is the reading a coverage figure invites, since this
+    pass does end with a number out of a number.
+
+    The coverage counts still travel, in `detail`: they are what the run did do, and they are grouped
+    by reason class by `MintResult` rather than listed per allele. They are not this record's
+    numbers, though — the compiler publishes them, as `manifest.compilation.vrs_alleles` and
+    `vrs_alleles_identified`, which is where a consumer already reads them.
+    """
+    detail = (
+        "no source-reported allele id accompanies this resolution.csv, so nothing was compared "
+        f"against the ids minted here; {result.identified}/{result.alleles} allele(s) now carry one"
+    )
+    gaps = result.coverage_warnings()[1:]
+    if gaps:
+        detail += ". Not named: " + "; ".join(line.strip() for line in gaps)
+    return skipped("vrs_allele_id", "nothing_to_check", detail=detail)
+
+
 @vrs_app.command("mint")
 def vrs_mint_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
@@ -1437,6 +1466,15 @@ def vrs_mint_(
         typer.secho(f"  warning: {line}", fg=typer.colors.YELLOW, err=True)
     for mismatch in result.mismatches:
         typer.secho(f"  mismatch: {mismatch}", fg=typer.colors.YELLOW, err=True)
+    try:
+        record_verification([_mint_record(result)], spec_dir, error=EnrichmentError)
+    except EnrichmentError as exc:
+        # The mint did **not** fail — the ids are on disk and the line above says so. What failed is
+        # the attestation, and the only way this raises is a module carrying `verification.json` in
+        # both legal places, which is a defect in the module's layout rather than in this run. Naming
+        # the mint here would tell the author the opposite of what happened.
+        typer.secho(f"MINTED, BUT NOT ATTESTED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
 
 
 if __name__ == "__main__":
