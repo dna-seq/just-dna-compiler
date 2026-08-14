@@ -440,6 +440,12 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
          {"chrom": "MT", "start": 999999, "vrs_id": _SICKLE}, "warn"),
         ("non-GRCh38 build — no refget table (must not raise)",
          {"genome_build": "GRCh37", "vrs_id": _SICKLE}, "warn"),
+        # A symbolic allele (RM5, 0.6) is the tier's limit only in the sense that *every* tier's limit
+        # is the same one: it names a structural event and no sequence, so there is nothing for a
+        # content-addressed id to digest anywhere. Same severity as the rest of this block — the row
+        # is legal under RM5's grammar, so no authored edit clears it.
+        ("symbolic allele — names no sequence, so no tier can recompute an id for it",
+         {"ref": "N", "alts": "<DEL:4977>", "vrs_id": _SICKLE}, "warn"),
         # ---- the row contradicting itself: errors, in both modes ---------------------------------
         # Not a limit of this tier. The row asserts an identity while withholding the very thing that
         # identity is a digest of, so nothing anywhere could ever check it.
@@ -508,6 +514,83 @@ def test_vrs_coverage_counts_alleles_and_groups_the_gaps_by_reason() -> None:
     warnings = _vrs_coverage_warnings(rows)
     assert "2/6" in warnings[0] and "33%" in warnings[0]
     assert len(warnings) == 1 + len(gaps)
+
+
+def test_a_symbolic_allele_is_its_own_gap_class_never_an_indel() -> None:
+    """RM5 shipped the symbolic grammar in 0.6 and this pass was never told (D1-2, compiler half).
+
+    The ledger quotes the *enricher's* copy of the same blind spot; this is the compiler's own, which
+    says it in different words and is fixed on its own.
+
+    `<DEL:4977>` fell through to the `is_substitution` branch and was reported as *"an indel or MNV:
+    justification needs the reference sequence, so only the enricher can mint it (re-run it online)"*
+    — false on every clause. A symbolic allele names a structural *event*, not a sequence, so there is
+    nothing to justify against a reference and nothing for a content-addressed id to be a digest of:
+    no id is mintable by any tier, online or off. The remedy it offered was the enricher run that
+    crashed on the same allele (D1-1).
+
+    Two classes here, not one bucket, because the remedies differ absolutely: an indel is one online
+    enricher run away from an id, and a symbolic allele is permanently without one.
+    """
+    from just_dna_compiler.compiler import _vrs_coverage
+
+    rows = [
+        _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),   # the MT common deletion, as authored
+        _res_row(ref="C", alts="CA", vrs_id=None),           # a real indel: the enricher's job
+    ]
+    alleles, identified, gaps = _vrs_coverage(rows)
+
+    assert (alleles, identified) == (2, 0)
+    assert len(gaps) == 2, f"symbolic and indel must not share a bucket: {gaps}"
+    symbolic = [reason for reason in gaps if "symbolic" in reason]
+    assert len(symbolic) == 1, gaps
+    reason = symbolic[0]
+    assert "indel" not in reason and "MNV" not in reason
+    # The half that made the old message actively harmful: it named a remedy, and the remedy is both
+    # impossible and (at the time) a crash. Keyed on the remedy rather than on the word "online",
+    # because the new line says "offline or online" — a denial of both, which is the sentence that
+    # stops a reader trying the run the old one recommended.
+    assert "re-run" not in reason and "enricher" not in reason
+
+
+def test_the_symbolic_gap_reason_is_one_constant_string() -> None:
+    """Grouped by *class*, so two symbolic alleles are one line — the rule that keeps this readable.
+
+    Interpolating the token would reproduce the 40-lines-each-naming-a-different-indel wall that
+    `_vrs_gap_reason` exists to prevent, and a structural module carries many spellings at once.
+    """
+    from just_dna_compiler.compiler import _vrs_coverage
+
+    _alleles, _identified, gaps = _vrs_coverage([
+        _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),
+        _res_row(chrom="22", start=42126499, ref="A", alts="<DUP:16000>", vrs_id=None),
+        _res_row(chrom="22", start=42126499, ref="A", alts="<CNV:TR:30>", vrs_id=None),
+    ])
+    assert len(gaps) == 1 and sum(gaps.values()) == 3
+
+
+def test_a_symbolic_allele_on_a_non_grch38_module_reports_the_permanent_reason() -> None:
+    """Both facts are true of this row; only one of them is permanent, and that is the one to print.
+
+    A GRCh37 row has no refget table (RM15, a release away from being answered) *and* a symbolic ALT
+    (never answerable). Telling its author to wait for multi-build minting would be advice for an
+    allele that still has no id afterwards, so the symbolic branch sits ahead of the accession lookup
+    in both `_vrs_gap_reason` and `_recompute_vrs_id` — the one branch those two functions must order
+    identically, since they otherwise interleave their checks differently.
+    """
+    from just_dna_compiler.compiler import _vrs_coverage, _verify_vrs_ids
+
+    row = _res_row(ref="N", alts="<DEL:4977>", genome_build="GRCh37", vrs_id=None)
+    _alleles, _identified, gaps = _vrs_coverage([row])
+    assert len(gaps) == 1 and "symbolic" in next(iter(gaps))
+
+    errors, warnings = _verify_vrs_ids([_res_row(
+        ref="N", alts="<DEL:4977>", genome_build="GRCh37", vrs_id=_SICKLE
+    )])
+    assert not errors
+    assert "symbolic" in warnings[0] and "GRCh37" not in warnings[0]
+    # "minted upstream by the enricher" is the indel branch's promise and is false here.
+    assert "enricher" not in warnings[0]
 
 
 def test_the_manifest_records_vrs_coverage_as_two_counts(tmp_path: Path) -> None:

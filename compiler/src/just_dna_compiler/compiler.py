@@ -2255,7 +2255,7 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
     - **verified** — recomputed and equal. Silent.
     - **mismatch** — recomputed and *different*. Always an **error**, in both modes: this computation
       is fully deterministic here, so a disagreement can only mean the stored id is corrupt.
-    - **unverifiable** — could not be recomputed at all (see `_recompute_vrs_id` for the four reasons).
+    - **unverifiable** — could not be recomputed at all (see `_recompute_vrs_id` for the five reasons).
       Severity follows **whose limit it is**, not the mode alone: `_BLAME_ROW` is an **error** in both
       modes, `_BLAME_TIER` is a **warning** in both.
 
@@ -2354,18 +2354,40 @@ def _vrs_coverage(resolution_rows: list[ResolutionRow]) -> tuple[int, int, dict[
     return alleles, identified, gaps
 
 
+#: The symbolic-allele gap class (RM5, 0.6), as ONE constant string — `_vrs_coverage` groups on it, so
+#: interpolating the token would rebuild the per-row wall this bucketing exists to prevent, and a
+#: structural module carries several spellings at once (`<DEL:4977>`, `<DUP:16000>`, `<CNV:TR:30>`).
+#: It names no remedy, because there is none: this is not the indel class one enricher run away from an
+#: id, it is an allele nothing anywhere can mint one for.
+_SYMBOLIC_GAP_REASON: str = (
+    "a symbolic allele (<DEL:…>, <CNV:TR:…>): it names a structural event rather than a sequence, so "
+    "there is nothing for a content-addressed id to be a digest of — no tier can mint one, offline or "
+    "online, and no authored edit clears it"
+)
+
+
 def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
     """Which *class* of gap this is — a bucket, deliberately not `_recompute_vrs_id`'s prose.
 
     That function names the alleles (`AG>A is not a single-base substitution…`) because it is
     diagnosing one row, and it is right to. Grouping on it produced 40-odd lines that all said the same
-    thing about a different indel — a per-row wall wearing an aggregate's clothes. There are five
-    reasons an allele has no id here, and a reader needs the five.
+    thing about a different indel — a per-row wall wearing an aggregate's clothes. There are six
+    reasons an allele has no id here, and a reader needs the six.
     """
     if row.chrom is None or row.start is None:
         return "no coordinate to mint from (an unresolved row)"
     if not alt:
         return "no ALT recorded, and a VRS allele id names exactly one allele"
+    # Ahead of both the mint attempt and the `is_substitution` fall-through, in this function and in
+    # `_recompute_vrs_id` — the two order their other branches differently, and this one branch must be
+    # in the same place in both. A symbolic allele is *also* not a substitution and *also* has no
+    # accession on a non-GRCh38 build, and both of those reasons are answerable by someone: the indel
+    # class by an online enricher run, the build class by RM15. This one never is, so it is the reason
+    # to print. Lenient predicate on purpose (`is_symbolic_allele`, not `parse_symbolic_allele`): a
+    # malformed `<FOO>` or an unterminated `<DEL` names no sequence either, so filing it under "indel"
+    # would be the same false claim about a different mistake.
+    if is_symbolic_allele(alt):
+        return _SYMBOLIC_GAP_REASON
     try:
         recomputed = derive_vrs_allele_id(row.chrom, row.start, row.ref, alt, build=row.genome_build)
     except UnsupportedBuildError as exc:
@@ -2412,6 +2434,10 @@ def _vrs_coverage_warnings(resolution_rows: list[ResolutionRow]) -> list[str]:
 #: Whose limit made an allele unverifiable — the classification `_verify_vrs_ids` takes its severity
 #: from. `TIER` is *this compiler cannot do it, and no edit to the module would change that*; `ROW` is
 #: *the row does not carry what a check needs*, which a producer can fix. See `_recompute_vrs_id`.
+#: Two values, not three: a symbolic allele is beyond *every* tier rather than this one, and that is a
+#: sharper statement than `TIER` makes — but blame decides severity and nothing else, and a third
+#: member mapping to the same severity would be a fourth outcome in all but name. It is said in the
+#: reason instead, which is what a reader actually sees.
 _BLAME_TIER = "tier"
 _BLAME_ROW = "row"
 
@@ -2421,7 +2447,7 @@ def _recompute_vrs_id(
 ) -> tuple[str | None, str | None, str | None]:
     """`(recomputed_id, reason, blame)` for ONE allele — either the id is set, or the other two are.
 
-    The four reasons an allele is unverifiable here, split by **whose limit each one is**, because that
+    The five reasons an allele is unverifiable here, split by **whose limit each one is**, because that
     is what decides severity upstream (`_BLAME_TIER` / `_BLAME_ROW`):
 
     1. **no coordinate** — nothing to recompute from (an unresolved rsid row carrying an external id).
@@ -2432,9 +2458,23 @@ def _recompute_vrs_id(
        reasoning that "picking one from a comma-joined cell would be inventing data". Nothing is picked
        now: `vrs_id` is positionally aligned with `alts`, so the caller walks the pair and asks about
        allele *i* — and a multi-allelic site of substitutions verifies as completely as a bi-allelic one;
-    3. **not a single-base substitution** — an indel or MNV must be justified against the reference
+    3. **a symbolic allele** (`<DEL:4977>`, `<CNV:TR:30>` — RM5, 0.6) — it names a structural *event*
+       and no sequence, so nothing is being digested and no id exists to recompute. `_BLAME_TIER` by
+       severity and by the only thing blame decides, though it understates the case: this is not a
+       limit of *this* tier but of every tier, since the enricher cannot mint one either. Checked
+       **before** reason 4, which it would otherwise fall into: both statements are true of the row,
+       and the one to print is the one no release can answer. **Whether a *stored* id on such a row
+       should instead be `_BLAME_ROW` is a real open question, deliberately not answered here.** The
+       case for it: nothing mints a VA for a symbolic allele, so a present one names some other,
+       sequence-spelled allele, and unlike an indel — which the enricher legitimately mints online —
+       deleting the cell clears the finding, which is exactly what takes it out of the P5 class where
+       no authored edit helps. The case against acting on that in this pass: it would refuse, in both
+       modes, a module that compiles today, and the same judgement has to be made on the minting side
+       first (whether the enricher may ever write a non-VA identity into that column). Surfaced, not
+       half-mended;
+    4. **not a single-base substitution** — an indel or MNV must be justified against the reference
        sequence, which this tier has no access to and will never fetch (Principle 2). `_BLAME_TIER`;
-    4. **outside the primary assembly, or a build with no refget table** — no accession to address the
+    5. **outside the primary assembly, or a build with no refget table** — no accession to address the
        sequence by. `_BLAME_TIER` for both. The build case is *raised* by `refget_accession` rather than
        returned, deliberately (a caller asking for GRCh37 should hear "not built" rather than get a
        GRCh38-flavoured answer), so it is caught here and turned into a reason. Letting it propagate
@@ -2449,6 +2489,16 @@ def _recompute_vrs_id(
             "the row records an id against no ALT (a position-only row), and a VRS allele id "
             "names exactly one allele",
             _BLAME_ROW,
+        )
+    if is_symbolic_allele(alt):
+        # Named per row here (unlike `_vrs_gap_reason`'s constant) for the same reason the indel branch
+        # below names its alleles: this diagnoses one row, and the caller has already located it.
+        return (
+            None,
+            f"{alt} is a symbolic allele: it names a structural event rather than a sequence, so there "
+            f"is nothing for a content-addressed id to be a digest of and no tier mints one — this id "
+            f"cannot be recomputed here or anywhere",
+            _BLAME_TIER,
         )
     if not is_substitution(row.ref, alt):
         return (
