@@ -17,11 +17,14 @@ from just_dna_compiler.hints import (
     ATTESTATION_BEARING,
     REDUNDANCY_BEARING,
     REFUSAL_REASONS,
+    Finding,
+    HintReport,
     describe_table,
     field_options,
     inspect_rows,
 )
 from just_dna_format.base import authored_field_names, field_vocabularies
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
@@ -231,6 +234,76 @@ def test_a_binning_table_without_the_sentinel_is_flagged() -> None:
 def test_an_unreplaced_stub_is_reported_as_a_stub() -> None:
     report = inspect_rows("variants.csv", stub_template("variants.csv"))
     assert any("template stub" in f.message for f in report.findings)
+
+
+def _stub_cells(text: str) -> set[tuple[int, str]]:
+    """`(row index, column)` for every cell of `text` still carrying the placeholder."""
+    lines = text.splitlines()
+    header = next(csv.reader([lines[0]]))
+    return {
+        (index, column)
+        for index, line in enumerate(lines[1:])
+        for column, value in zip(header, next(csv.reader([line])), strict=True)
+        if value.strip() == TEMPLATE_PLACEHOLDER
+    }
+
+
+def _placeholder_findings(report: HintReport) -> list[Finding]:
+    """Every finding either emitter produces about a placeholder, whichever wording it uses."""
+    return [
+        f for f in report.findings if "template stub" in f.message or TEMPLATE_PLACEHOLDER in f.message
+    ]
+
+
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_one_stub_cell_yields_exactly_one_finding(kind: str) -> None:
+    """One cell, one finding — the whole of D4-2.
+
+    Two layers see the same cell: `_check_placeholders` walks the columns, and the model's own
+    `mode="before"` guard raises one row-level `ValueError` naming every stub path, which
+    `_validate_row` turned into a second `Finding` with no `column` on it. A freshly drafted panel
+    therefore printed two lines per defect. The per-column finding is the one to keep — it names the
+    column, so the CLI can print `line 2 [genotype]` — and the guard itself is untouched, since it is
+    what makes a generated stub unable to compile.
+    """
+    text = stub_template(kind, rows=2)
+    report = inspect_rows(kind, text)
+    cells = _stub_cells(text)
+    assert cells, f"{kind} stubs nothing, so this kind proves nothing"
+    findings = _placeholder_findings(report)
+    assert {(f.row, f.column) for f in findings} == cells
+    assert len(findings) == len(cells)
+    assert all(f.line == f.row + 2 for f in findings)
+
+
+def test_a_stub_in_a_vocabulary_column_does_not_also_fail_the_vocabulary() -> None:
+    """The second door onto the same defect, and the proof that suppressing it loses nothing.
+
+    `SourceRow` is deliberately not an `AuthoredModel`, so it carries no placeholder guard and the
+    stub reaches the field validators, which quote the token back (`layer must be one of [...], got
+    '<<REPLACE>>'`). An unfilled cell is one fact, so it gets one finding — and the moment it is
+    filled with something the vocabulary rejects, the vocabulary error is there again."""
+    header = "source,layer,license\n"
+    report = inspect_rows("sources.csv", f"{header}clinvar,{TEMPLATE_PLACEHOLDER},CC0\n")
+    assert [(f.row, f.column, f.message) for f in report.findings if f.row == 0] == [
+        (0, "layer", "layer is still a template stub — replace it")
+    ]
+
+    filled = inspect_rows("sources.csv", f"{header}clinvar,annotations,CC0\n")  # the member is singular
+    assert [(f.row, f.column) for f in filled.findings if f.row == 0] == [(0, "layer")]
+    assert "must be one of" in next(f.message for f in filled.findings if f.row == 0)
+
+
+def test_a_partially_filled_row_reports_only_the_cells_still_stubbed() -> None:
+    """The suppression is keyed on the cells actually stubbed, not on the file being a fresh stub."""
+    text = (
+        "rsid,chrom,start,ref,alts,genotype,weight,state,conclusion\n"
+        f"rs1801133,,,,,C/T,0.4,significant,{TEMPLATE_PLACEHOLDER}\n"
+        "rs429358,,,,,C/C,0.9,significant,higher risk\n"
+    )
+    report = inspect_rows("variants.csv", text)
+    findings = _placeholder_findings(report)
+    assert [(f.row, f.column, f.line) for f in findings] == [(0, "conclusion", 2)]
 
 
 @pytest.mark.parametrize("kind", sorted(DRAFTABLE))
