@@ -273,6 +273,9 @@ re-verification is not a formality.
 
 | **R2-9** | **A genotype copied straight out of a VCF is refused without anyone saying it is allele *indices*.** `GT` is `0/1`, and `genotype` wants the bases — but `0/1` falls through to the nucleotide-grammar message, which recites what an allele may be (`nucleotides, '*' …, or a symbolic/structural allele whose first-level type …`) and never says the one thing the author needs: those are indices into the record's REF/ALT list, and this column spells the alleles out. Probed on all three spellings — `0/1` and `0\|1` get the grammar wall, and `0/1/1` now gets D3-2's ploidy explanation, which is *worse* here because it is confidently about the wrong thing (the cell's defect is the notation, not the arity). This is the most likely single mistake an author makes, since pasting a `GT` field is the obvious first guess, and it is exactly the class CLAUDE.md already names: a generic rejection is a dead end where a specific one is a fix, and the repair is a `mode="before"` diagnosis that changes no verdict — the shape `reject_reserved` / `reject_authority_keys` / `reject_misplaced` already share. | fix | medium |
 
+| **R2-13** | **A persistent CPIC 5xx sinks the pass the comment beside it says it must not.** `enrich_pgx` catches `(PharmVarError, CpicError)` per leg (`pgx.py:294, 318`) under the comment *"One source failing must not sink the pass — the other may still answer."* But `CpicClient` calls `response.raise_for_status()` (`cpic.py:294`) and wraps only *shape* failures into `CpicError` (`:297, 519, 548`) — an HTTP status is never wrapped, so once retries are exhausted a raw `httpx.HTTPStatusError` walks straight through both handlers and takes PharmVar's answer down with it. The handler is written for exactly this case and cannot see it. | fix | medium |
+| **R2-14** | **RM63's correction is itself an overclaim, and it is the third turn of the same screw.** `base.py:687` reads *"Read a pipe here as **heterozygous**, phase recorded but unaddressable"*. Probed: `VariantRow(genotype="C\|C")` **loads** — `1\|1` is an ordinary phased homozygous call — so the sentence is false of a genotype the model accepts. The history is the point. The original comment claimed a pipe encodes which homolog an allele sits on; 0.6's RM63 correctly refuted that and replaced it with a claim about *zygosity* that nobody checked. Unit 7 caught it while carrying the wording onto the printed descriptions, kept "phase recorded but unaddressable" (which is true and is RM63's actual content), and dropped only the zygosity word — so `describe` is now correct while the comment it was copied from is not. A correction is exactly where this happens: the reviewer is checking the claim being removed, not the one going in. | fix | medium |
+
 ### Provenance
 
 R2-1 through R2-4 were raised by the code-review pass of the unit fixing D3-1 and re-verified here
@@ -282,6 +285,15 @@ either — R2-5 because the repair is a decision, R2-6 because there is nothing 
 noticed by the unit fixing D4-2, whose own test across every draftable kind turned `sources.csv` red
 for a *different* mechanism than the one it was fixing; the compile probe and the manifest read are
 this file's own work.
+
+**RM62 as shipped was one-sided, and unit 7 corrected `docs/SCHEMAS.md` while putting the rule on the
+printed column (D6-1).** The documented remedy was *narrow the authored bound to float32*, resting on
+`float32(0.3)` being **above** `0.3`. Probed in both directions: `0.1` and `0.3` round up, while `0.9`
+and `0.7` round **down** — `float32(0.9)` is `0.8999999761581421`. So "`measure_min` is harmless" held
+only for upward-rounding decimals, and narrowing an authored `0.9` upper bound drops a row whose
+measurement never went through float32 at all. The rule that survives is the one SCHEMAS.md's own
+heading always stated: **compare in float32**, rather than move the authored number. Worth recording as
+a finding about the batch's own output, not just as an edit.
 
 **R2-6 is no longer a watch item.** It was filed on the reasoning that nothing writes a `*` into
 `resolution.csv` today, so there was nothing to fix. The unit fixing D1-1 then probed
