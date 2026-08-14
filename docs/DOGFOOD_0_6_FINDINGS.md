@@ -353,13 +353,22 @@ the probes themselves were held to.
 | D4-1, `rsid_coordinate_agreement` | 11 | [#22](https://github.com/dna-seq/just-dna-compiler/pull/22) |
 | F1 (surface), F8, F11, D4-3, D4-1 (surface) → RM68–RM72 | 12 | [#19](https://github.com/dna-seq/just-dna-compiler/pull/19) |
 
-### What the round cost the corpus: nothing
+### What the round cost the corpus: three digests, and only where a column was added
 
-All sixteen reference examples were compiled before the round at `8fdaf1d` and again after, and all
-four signatures — `artifact.digest`, `content_signature`, `compilation.resolution_signature`,
-`sources.signature` — are **identical on every module**. That is the expected result and it is worth
-stating rather than assuming: these fixes are messages, printed descriptions and attestation records,
-and none of them is hashed. The baseline is `data/sig-baseline-8fdaf1d.txt` (gitignored).
+All sixteen reference examples were compiled before the round at `8fdaf1d` and again after.
+`content_signature`, `compilation.resolution_signature` and `sources.signature` are **identical on
+every module** — the authored identity did not move anywhere. `artifact.digest` moved on **three**:
+`fmr1_cgg_repeat`, `hboc_palb2` and `pathogenic_clinvar`, which are exactly the three carrying
+`literature.csv`, because `LiteratureRow` gained an optional `doi_checked` and the parquet grew a
+column. That is the additive case Principle 3 permits — the column is outside `LITERATURE_FACT_FIELDS`,
+so no identity a consumer keys on changed. Verified by diffing the parquet schemas rather than inferred
+from the diff. The baseline is `data/sig-baseline-8fdaf1d.txt` (gitignored).
+
+**This section read "identical on every module" until the last unit landed, and that is worth keeping
+rather than quietly overwriting.** It was measured, correctly, across the eleven units merged at the
+time; the twelfth added the column. A measurement is true of the tree it was taken on, and a summary
+that is not re-taken after the last change is a summary of something else — the same failure this
+ledger records in D6-2 and R2-12, arriving in the document that reports it.
 
 ### What only the merge could find
 
