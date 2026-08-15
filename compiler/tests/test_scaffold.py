@@ -400,3 +400,59 @@ def test_epsilon_names_are_legal_in_every_pgx_table_now() -> None:
     DiplotypeRow(gene="APOE", haplotype_a="e3", haplotype_b="e4", conclusion="c")
     AlleleFunctionRow(gene="APOE", allele="e4")
     assert not (_APOE / "allele_function.csv").exists()
+
+
+@pytest.mark.parametrize("kind", sorted(DRAFTABLE))
+def test_a_generated_stub_is_refused_for_being_a_stub(kind: str, tmp_path: Path) -> None:
+    """The guarantee `stub_template`'s docstring prints, asserted for the first time (RM76).
+
+    That docstring says an unreplaced stub *"**cannot compile** — `vocab.reject_template_placeholders`
+    refuses it by name and row, in both modes"*, and until this landed nothing checked it. It held
+    only where a model happened to inherit `AuthoredModel`, and `sources.csv` — the one fact sidecar a
+    human writes, the only table the compile licence gate reads, and draftable since S21 — did not.
+
+    **The assertion is on the guard's own wording, not merely on a refusal, and the first draft of
+    this test got that wrong.** Asserting "some error mentions `<<REPLACE>>`" passed on the *buggy*
+    code, because `stub_template` stubs `layer` too and its vocabulary validator quotes the token back
+    while rejecting it as a non-member. A guard that is green because a different mechanism happens to
+    fire is the S21 / D6-2 / R2-3 shape — a test proving less than its name says — arriving inside the
+    repair for one.
+
+    Parametrized over `DRAFTABLE` rather than naming the kinds, because the defect was a model quietly
+    outside a set, and a hand-written list would have to be extended by whoever forgot the base class.
+    The *loader* is what is exercised, since that is the path a compile takes.
+    """
+    from just_dna_compiler.compiler import _load_csv_rows
+    from just_dna_compiler.draft import stub_template
+
+    text = stub_template(kind)
+    assert TEMPLATE_PLACEHOLDER in text, f"{kind} stubs nothing, so this proves nothing"
+
+    path = tmp_path / kind
+    path.write_text(text, encoding="utf-8")
+    rows, errors, _ = _load_csv_rows(path, model_for(kind), kind)
+
+    assert any("unreplaced template placeholder" in e for e in errors), (kind, errors)
+    # And nothing survived to reach a parquet — a partly-accepted stub file is the silent-success
+    # shape, not a milder version of a refusal.
+    assert rows == []
+
+
+def test_a_stub_in_a_free_text_column_alone_is_still_refused(tmp_path: Path) -> None:
+    """The exact hole, isolated: `sources.csv` with a valid `layer` and only `source` unfilled.
+
+    This is what was probed on `reference_examples/hfe_hemochromatosis` — the module **compiled green
+    under `--strict`** and `manifest.sources` published `"sources": ["<<REPLACE>>"]`, inside the block
+    its own `signature` is computed over, so a signed module's attribution ledger named a template
+    placeholder as the source it was accounting for. A vocabulary column catches a stub by accident;
+    `source` is free text by design, and free text is most of this table.
+    """
+    from just_dna_compiler.compiler import _load_csv_rows
+    from just_dna_format.sources import SourceRow
+
+    path = tmp_path / SOURCES_CSV
+    path.write_text(f"source,layer,license\n{TEMPLATE_PLACEHOLDER},annotation,CC0\n", encoding="utf-8")
+    rows, errors, _ = _load_csv_rows(path, SourceRow, SOURCES_CSV)
+
+    assert rows == []
+    assert any("unreplaced template placeholder" in e and "source" in e for e in errors), errors

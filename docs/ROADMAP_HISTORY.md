@@ -1757,3 +1757,51 @@ rediscovering it.
 **And the raise moved to the top of both providers.** It landed *after* `_resolve_snapshot` had
 provisioned a published ClinVar snapshot and after every CPIC query, for a check that reads one file
 beside the spec. The warning is still appended where it was, so no reported order moved.
+
+## RM76 — an unfinished authoring state passes every gate, including `--strict`
+
+**Severity** high · **Status** ✅ the narrow repair shipped; **the general question is
+[RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase)**
+· **Owner** format + compiler · **Found by** the 0.6 dogfooding fix round, 2026-08-14 · **Ledger** R2-8
+
+`SourceRow` is a plain `BaseModel`, not an `AuthoredModel`, deliberately and for a stated reason: it is
+a machine-produced reference fact, grouped with `ResolutionRow`/`FrequencyRow`/`GeneMetricsRow`/
+`LiteratureRow`. S21 then made it **draftable**, also deliberately, because it is *"the only fact
+sidecar a human writes"* and the only table the compile licence gate reads. Nobody reconciled the two,
+and the gap is exactly the shape of both decisions being right.
+
+Re-probed on `reference_examples/hfe_hemochromatosis` with `source=<<REPLACE>>`: the module **compiles
+green under `--strict`** and `manifest.sources` publishes `"sources": ["<<REPLACE>>"]` inside the block
+its own `signature` covers. The compiler's only remark on that file was that `sources.csv` is the
+deprecated spelling.
+
+**What shipped: the guard, on the model rather than through the base.** `ModuleSpecConfig` is the
+precedent — standalone for its own reasons, carrying its own `reject_template_placeholders` all the
+same — so the classification stays true and the other four sidecars stay out, since no template is ever
+generated for them. It refuses in **both** modes, which is not a choice: a load error is fatal in both,
+and it is what every other authored table already does with the same token.
+
+**Why a vocabulary column was hiding it, and why that matters twice.** `layer` refuses `<<REPLACE>>` as
+a non-member, so a stub in *that* cell was caught by accident; `source` is free text by design, and
+free text is most of this table. The accident is also what made the **first draft of this item's own
+test green on the unfixed code** — asserting "some error mentions `<<REPLACE>>`" is satisfied by the
+vocabulary message quoting the token back. The test now asserts the guard's own wording, and a second
+one isolates the real hole: a valid `layer` with only `source` stubbed. A guard green because a
+different mechanism happens to fire is the S21 / D6-2 / R2-3 shape arriving inside the repair for one.
+
+**And the guarantee is now asserted, which it never was.** `draft.stub_template`'s docstring prints
+*"an unreplaced stub **cannot compile** — `vocab.reject_template_placeholders` refuses it by name and
+row, in both modes"*, and nothing checked it; it held only where a model happened to inherit the right
+base. The new test is parametrized over `DRAFTABLE` rather than naming kinds, because the defect was a
+model quietly outside a set and a hand-written list would have to be extended by whoever forgot the
+base class. One `test_hints` docstring stated the old behaviour as a reason and is corrected in place
+rather than deleted — the correction is the useful part.
+
+Nothing in the corpus moved: a `mode="before"` validator that only raises changes no accepted value,
+verified against the `artifact.digest` / `content_signature` values recorded independently in
+ROADMAP_0_7 and CLAUDE.md.
+
+**What is not closed.** *"A generated stub must be unable to compile"* is now true and now tested, but
+it is still a property that holds because each model was individually given the right guard. What marks
+authoring as **unfinished** — as opposed to marking one token as unreplaced — reaches this from
+underneath, and that is RM73's phase boundary. This item is a sprout, repaired; the root is not.

@@ -35,7 +35,7 @@ contract for the same reason.
 """
 
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from just_dna_format.base import vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
@@ -43,6 +43,7 @@ from just_dna_format.vocab import (
     VALID_DECLARED_USE,
     VALID_SOURCE_LAYERS,
     check_vocab,
+    reject_template_placeholders,
 )
 
 # Fact columns feeding `integrity.source_signature`.
@@ -78,9 +79,29 @@ class SourceRow(BaseModel):
     Standalone (not an `AuthoredModel`) for the same reason `ResolutionRow`/`FrequencyRow`/
     `GeneMetricsRow`/`LiteratureRow` are — a machine-produced reference fact rather than an authored
     annotation — with `extra="forbid"` so a typo'd column is caught rather than silently dropped.
+
+    **But it is the one of the five a human starts from a template, and that is why it carries the
+    placeholder guard below** (RM76). S21 put it in `DRAFTABLE` precisely because it is *"the only
+    fact sidecar a human writes"* and the only table the compile licence gate reads; the standalone
+    decision above predates that and nobody reconciled the two. The consequence was measured on
+    `reference_examples/hfe_hemochromatosis` with `source=<<REPLACE>>`: the module **compiles green
+    under `--strict`** and `manifest.sources` publishes `"sources": ["<<REPLACE>>"]` — inside the
+    block its own `signature` is computed over. A signed module's attribution ledger naming a
+    template placeholder as the source it accounts for is the one thing this table exists to prevent.
+
+    A vocabulary column caught a stub by accident (`layer` refuses the token as a non-member); a
+    free-text one did not, and `source` is free text by design. Reaching the guard rather than the
+    base is deliberate — `ModuleSpecConfig` is the precedent, standalone for its own reasons and
+    guarded all the same — so the classification above stays true and the other four sidecars stay
+    out, since no template is ever generated for them.
     """
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_template_placeholders(cls, data: object) -> object:
+        return reject_template_placeholders(data, what="sources.csv row")
 
     # ── identity: which source, contributing to which layer ──
     source: str = Field(

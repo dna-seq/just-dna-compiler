@@ -279,10 +279,16 @@ def test_one_stub_cell_yields_exactly_one_finding(kind: str) -> None:
 def test_a_stub_in_a_vocabulary_column_does_not_also_fail_the_vocabulary() -> None:
     """The second door onto the same defect, and the proof that suppressing it loses nothing.
 
-    `SourceRow` is deliberately not an `AuthoredModel`, so it carries no placeholder guard and the
-    stub reaches the field validators, which quote the token back (`layer must be one of [...], got
-    '<<REPLACE>>'`). An unfilled cell is one fact, so it gets one finding — and the moment it is
-    filled with something the vocabulary rejects, the vocabulary error is there again."""
+    An unfilled cell is one fact, so it gets one finding — and the moment it is filled with something
+    the vocabulary rejects, the vocabulary error is there again.
+
+    **This used to read "`SourceRow` carries no placeholder guard, so the stub reaches the field
+    validators, which quote the token back", and RM76 made that false.** The row now refuses as a
+    stub before any field validator runs, which is what closes the hole where a *free-text* column
+    (`source`) let `<<REPLACE>>` through to a signed `manifest.sources`. Worth keeping the correction
+    visible rather than editing the sentence away: `layer`'s vocabulary really did catch this cell,
+    by accident, and reasoning from that accident is how the free-text half stayed open — and how the
+    first draft of RM76's own test came out green on the unfixed code."""
     header = "source,layer,license\n"
     report = inspect_rows("sources.csv", f"{header}clinvar,{TEMPLATE_PLACEHOLDER},CC0\n")
     assert [(f.row, f.column, f.message) for f in report.findings if f.row == 0] == [

@@ -150,8 +150,12 @@ Two consequences worth stating outright:
 
 # Active items
 
-**RM76–RM79**, from the 0.6 dogfooding fix round (2026-08-14); RM74 and RM75 shipped from the same
-batch and moved to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired). Everything that was open on the
+**RM77–RM79**, from the 0.6 dogfooding fix round (2026-08-14); RM74, RM75 and RM76 shipped from the
+same batch and moved to
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired). RM76's
+narrow repair is what shipped — the general question it asks from underneath is
+[RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase),
+which stays open. Everything that was open on the
 `0.6` branch *before* that round was built in the 0.6 batch and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
 the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the deferred
@@ -167,27 +171,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM76 — an unfinished authoring state passes every gate, including `--strict`
-
-**Severity** high · **Status** open · **Owner** format + compiler · **Found by** the 0.6 dogfooding fix
-round, 2026-08-14 · **A sprout of [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase)**
-
-`SourceRow` is a plain `BaseModel`, not an `AuthoredModel`, so it carries neither the raw-input guard
-nor `reject_template_placeholders` — deliberately, and its docstring gives the reason (a machine-produced
-reference fact). S21 then made it **draftable**, because it is the one fact sidecar a human writes, and
-nobody reconciled the two decisions. A vocabulary column catches a stub by accident; a free-text column
-does not.
-
-Probed on `hfe_hemochromatosis` with `source=<<REPLACE>>`: the module **compiles green under `--strict`**
-and `manifest.sources` publishes `"sources": ["<<REPLACE>>"]` inside the block its own `signature`
-covers. A signed module's attribution ledger can name a template placeholder as the source it accounts
-for. The compiler's only remark on that file was that `sources.csv` is the deprecated spelling.
-
-The narrow repair (give `SourceRow` the placeholder guard) is probably right and is not obviously
-sufficient: the guarantee *"a generated stub must be unable to compile"* is asserted nowhere and holds
-only where a model happens to inherit the right base, so the question RM73 asks — what marks authoring
-as unfinished — reaches this from underneath.
 
 ## RM77 — the genotype diagnosis tells the author about the wrong thing
 

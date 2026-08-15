@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-15 (latest) — 0.6.0: RM74 and RM75, the fix round's own findings
+## 2026-08-15 (latest) — 0.6.0: RM74, RM75 and RM76, the fix round's own findings
 
 Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) — the findings the fix round produced by
 reading the code around each repair — was grouped into RM74–RM79 on 2026-08-14. The first two are
@@ -89,7 +89,34 @@ precondition owes the same addition to each of their handlers, which `_DRAFT_PRE
 carries. The check also moved to the top of both providers — it reads one file beside the spec and was
 landing after a published ClinVar snapshot had been provisioned.
 
-Suite 2227 → 2232.
+**RM76 — an unfinished authoring state passed every gate, including `--strict`.** `SourceRow` is a
+plain `BaseModel`, not an `AuthoredModel`, deliberately: it is a machine-produced reference fact,
+grouped with the other four sidecars. S21 then made it **draftable**, also deliberately, because it is
+the only fact sidecar a human writes and the only table the compile licence gate reads. Both decisions
+were right and nobody reconciled them. Re-probed on `hfe_hemochromatosis` with `source=<<REPLACE>>`: the
+module compiles green under `--strict` and `manifest.sources` publishes `"sources": ["<<REPLACE>>"]`
+inside the block its own `signature` covers — a signed module's attribution ledger naming a template
+placeholder as the source it accounts for.
+
+The guard lands on the model rather than through the base, with `ModuleSpecConfig` as the precedent —
+standalone for its own reasons and guarded all the same — so the classification stays true and the
+other four sidecars stay out, since no template is ever generated for them. It refuses in both modes,
+which is not a choice: a load error is fatal in both.
+
+Two things the repair turned up. A **vocabulary** column was catching the stub by accident (`layer`
+refuses the token as a non-member), which is why the free-text half stayed open — and why the first
+draft of this item's own test came out **green on the unfixed code**, since "some error mentions
+`<<REPLACE>>`" is satisfied by the vocabulary message quoting it back. And `draft.stub_template`'s
+docstring has printed the guarantee *"an unreplaced stub cannot compile … in both modes"* all along
+with nothing checking it; it is now asserted over every `DRAFTABLE` kind, parametrized rather than
+listed, because the defect was a model quietly outside a set.
+
+No corpus movement: a `mode="before"` validator that only raises changes no accepted value, verified
+against `artifact.digest` / `content_signature` values recorded independently in ROADMAP_0_7 and
+CLAUDE.md. The general question underneath — what marks *authoring* as unfinished, rather than one
+token as unreplaced — stays [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase).
+
+Suite 2227 → 2246.
 
 ## 2026-08-14 — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
 
