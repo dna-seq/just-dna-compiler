@@ -245,7 +245,32 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
     gave it away: *lower your guarantee*, or *delete a correct identity*.
   - **the row's contradiction → error in both modes.** An id recorded against no coordinate or no ALT:
     the row asserts an identity while withholding what that identity is a digest of, so nothing
-    anywhere could check it. Same class as *inconsistent reference allele*, catchable offline.
+    anywhere could check it. Same class as *inconsistent reference allele*, catchable offline. **A
+    stored id against a SYMBOLIC allele joined this class in 0.6 (R2-5), and the order it was settled
+    in is the reusable part.** It sat in the tier bucket, failing that bucket's own test — deleting the
+    cell clears it, so it is not a finding no authored edit could clear — and it was not simply
+    escalated, because the escalation only follows if a present id can *only* be a VA for a different
+    allele, which nothing had established: `vrs_id` was checked for well-formedness alone
+    (`ga4gh:<TYPE>.<digest>`, five types) while its description said *allele id*. So the **grammar went
+    first**: `vrs.validate_vrs_allele_id` makes both `vrs_id` columns `ga4gh:VA.`-only (no
+    instantiation — 844 corpus ids, all VA; and a `SL` already failed downstream as a *mismatch*, so
+    nothing passing began to fail), and only then does the severity change rest on a stated rule
+    instead of preceding one. Generalize both halves: **a format check is not a column rule** — "is
+    this well-formed" and "may this column hold it" are different questions, and only the first should
+    be generous — and when a severity change depends on a premise, state the premise in the schema
+    before changing the severity.
+
+    **The asymmetry that must not be flattened:** an **absent** id on the same symbolic row stays a
+    coverage *warning* in both modes, because no tier can mint one and refusing would make every
+    structural module uncompilable. *Absence is a limit; a claim is a claim.* Pinned by a test.
+  - **`*` (RM59) is a THIRD gap class, not the indel one** (R2-6). `_vrs_gap_reason` and
+    `_recompute_vrs_id` both test `is_unobservable_allele`, above the substitution fall-through, or the
+    marker is reported as *"an indel or MNV … re-run it online"* — a remedy that can never apply. Filed
+    as having no instantiation and upgraded when `*` turned out to **pass**
+    `LiteralSequenceExpression`'s `^[A-Z*\-]*$`, so before the enricher guard it would have been handed
+    a content-addressed id for a state that is not a sequence. Note what could *not* have caught it:
+    **severity**, since the indel branch is also tier-blame — only the reason differs, which is why the
+    test asserts the reason.
 
   An indel is **never** a "mismatch": this tier cannot recompute one, so it can only report that it did
   not check, and saying otherwise would claim a verdict never reached. Multi-allelic is not
@@ -257,11 +282,76 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
 - **`refget_accession` RAISES for a non-GRCh38 build** (it must — a caller asking for GRCh37 should
   hear "not built", not get a GRCh38 answer). Every call site therefore has to catch
   `UnsupportedBuildError`; one that didn't used to abort a whole compile over a single row.
+  **`refget_supports_build` is the yes/no form and the two now read ONE predicate** — they disagreed on
+  `None`/`""` (the guard said `True`, the lookup raised) while the guard's docstring claimed to answer
+  *"the question `refget_accession` raises on"*, so the guard a caller reaches for **to avoid** the
+  exception was the one input that handed it over (R2-10). The reasoning that produced it is the part
+  to avoid repeating: *"an unset build is the format's default"* imports a **spec-layer** fact into the
+  **identity** layer. `ModuleSpecConfig.genome_build` defaults to GRCh38 and so does each signature,
+  but an explicitly passed `None` is not an omitted argument — it is a caller who has not threaded the
+  row's build through, which is what `test_build_call_sites.py` walks the AST to prevent. Every other
+  build gate in `vrs` already read it that way.
 - **`ga4gh.vrs` is a CORE enricher dependency, not `[dev]`.** Substitution minting is stdlib in the
   format tier; indel normalization goes over the **seqrepo REST** proxy (14 pure-Python packages — the
   plan's `[extras]`/`pysam`/multi-GB-seqrepo assumption was wrong). `--offline` is the only thing that
   degrades minting to substitutions-only. Never add `ga4gh.vrs` to format or compiler: the compiler's
   verify pass is stdlib on purpose.
+- **A client that leaks its transport library's exception type has no contract (R2-13).**
+  `CpicClient._get` called `raise_for_status()` and wrapped only *shape* failures, so an exhausted
+  retry ladder left a raw `httpx.HTTPStatusError` that walked through both of `enrich_pgx`'s per-leg
+  handlers — written under *"One source failing must not sink the pass"* — and took the other source's
+  answer down. The retrying half is `_request` and the translating wrapper is `_get`, in that order:
+  wrapping **inside** the retry defeats it, since `retry_if_exception_type` tests the httpx type and a
+  `CpicError` raised there is a first-and-final attempt. A test asserts the ladder survived the split,
+  because a decorator on the wrong half turns three attempts into one and nothing fails. **Fix both
+  legs**: PharmVar had the identical hole, and repairing one makes that comment true in one direction
+  only — the guarantee would then hold or not depending on which source went down.
+- **An incidental call must not be able to discard finished work (R2-4).** `cpic.knows_drug` is asked
+  only to sharpen the sentence explaining an empty result, and by then every substantive query has
+  returned — so its failure is caught and rendered as the tri-state's *could not ask*, with its **own**
+  wording: "the snapshot cannot answer" is fixed by going live and "the request failed" by re-running,
+  so folding them puts the snapshot's sentence in front of an author who has no snapshot. Its
+  `bool | None` had been *designed and never delivered from the live client*, which is exactly why the
+  raise escaped: the handling existed and nothing could reach it.
+- **Which columns may become several rows is decided by the DEDUP KEY, not by the source's dialect
+  (R2-1).** ClinPGx `;`-joins both `drugs` and `gene`. `drug` is *in* `PharmVariantRow`'s dedup key, so
+  one record legitimately becomes one row per drug; `gene` is **outside** it, so the same move makes
+  copies that collide on `(variant_key, drug, genotype, phenotype_category, annotation_id)` and the
+  compiler refuses the module. With one-row-per-member illegal and no rule to pick by (the pharmacogene
+  is first in `CYP3A5;ZSCAN25` and second in `PRSS53;VKORC1`), the answer is the CPIC `gene.chr` move —
+  write the member the **request** selects, and otherwise withhold and name what the cell held. Also
+  check filter ordering while you are there: `skipped_unidentified` was counted *before* the `--gene`
+  filter, so a "records the source could not identify" count was inflated by the whole database.
+- **`SourceRow` carries the placeholder guard, and the "a generated stub cannot compile" guarantee is
+  now tested over every `DRAFTABLE` kind (RM76).** It is a plain `BaseModel` — a machine-produced
+  reference fact, like the other four sidecars — *and* the one a human starts from a template (S21),
+  and nobody had reconciled the two: `source=<<REPLACE>>` compiled green under `--strict` and reached
+  `manifest.sources` inside the block its own signature covers. The guard sits on the model
+  (`ModuleSpecConfig` is the precedent) rather than through the base, so the classification stays true.
+  Two reusable halves: a **vocabulary** column catches a stub by accident and a free-text one does not,
+  which is why the free-text half stayed open — *and* why the first draft of the test came out green on
+  the unfixed code, asserting only that some error mentioned the token. And a printed guarantee that
+  holds "wherever a model inherits the right base" is not a guarantee; parametrize over the registry.
+- **A genotype that is all digits is a pasted VCF `GT`, and the diagnosis runs before the arity check
+  (RM77).** `0/1` used to hit the nucleotide-grammar wall, which never says those are **indices** into
+  the record's REF/ALT list — the single likeliest mistake in that column. `0/1/1` was worse *because
+  of* 0.6: the ploidy fix gave it a confident, correct explanation of the two-allele ceiling, which is
+  about the wrong thing, and a correct sentence aimed at the wrong defect sends the author to change
+  the wrong cell. Changes no verdict; nothing legal can look like a GT cell. Related: **RM63's own
+  replacement wording was false** — a pipe does not mean heterozygous, `C|C` loads — which is the third
+  turn of one screw and the standing warning that *a correction is where this happens, because the
+  reviewer checks the claim being removed, not the one going in.*
+- **The compiler DISCARDS a literature row no study and no bin cites; `literature.csv` keeps it
+  (RM79).** Two honest counters disagreed —`manifest.literature.missing_count` over the whole table,
+  the `citation_existence` record over current citations — and merge-not-clobber makes that gap normal.
+  The filed question (*which subject should the block describe?*) was the wrong one: both already
+  publish their denominator. What nobody had decided was why a row nothing joins to is in the artifact,
+  so the fix is upstream of the counting and the two agree by construction. `split_cited_literature` is
+  the one rule the check and the materializer share. Three guards to keep: the check sees **every** row
+  (reporting needs the full list) while everything after it sees the kept ones; an **empty** citation
+  set discards nothing, since a module citing nothing cannot tell a stale sidecar from unauthored
+  citations; and both citation sites count (RM47) — blind to bin `pmid`s the compiler would now
+  *discard* a threshold's evidence rather than warn about it.
 - **The two gene-constraint routes are different releases.** The live `gnomad_constraint` API field
   serves **v2.1.1**; v4.1 ships only in the bulk TSV. They carry different `dataset` labels, and
   `dataset` is inside the fact set. Don't "fix" a test that asserts they differ.
