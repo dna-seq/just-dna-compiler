@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-15 (latest) — 0.6.0: RM74, RM75 and RM76, the fix round's own findings
+## 2026-08-15 (latest) — 0.6.0: RM74–RM77, the fix round's own findings
 
 Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) — the findings the fix round produced by
 reading the code around each repair — was grouped into RM74–RM79 on 2026-08-14. The first two are
@@ -116,7 +116,32 @@ against `artifact.digest` / `content_signature` values recorded independently in
 CLAUDE.md. The general question underneath — what marks *authoring* as unfinished, rather than one
 token as unreplaced — stays [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase).
 
-Suite 2227 → 2246.
+**RM77 — the genotype diagnosis told the author about the wrong thing.** `GT` is `0/1`; `genotype`
+wants the bases. Pasting the `GT` field is the obvious first guess and therefore the single most likely
+mistake in this column, and `0/1` fell through to the nucleotide-grammar wall — a sentence reciting
+what an allele may be that never says those digits are **indices** into the record's own REF/ALT list.
+`0/1/1` was worse *because of* 0.6: the ploidy-message fix gave it a confident, correct explanation of
+the two-allele ceiling, which is about the wrong thing, and a correct sentence aimed at the wrong
+defect sends the author to change the wrong cell. So the diagnosis runs ahead of the arity branch, with
+a test pinning that a base-spelled triploid still gets the ceiling message and this one does not.
+
+It changes no verdict — every cell it matches was already refused — and it is the `mode="before"`
+diagnosis shape `reject_reserved` / `reject_authority_keys` / `reject_misplaced` already share,
+reaching a *value* rather than a column name. Nothing legal can look like a GT cell: `ALLELE_PATTERN`
+is `^[ACGT]+$`, a symbolic allele is bracketed, `*` is one character. It reaches `PharmVariantRow` for
+free, since the grammar has lived on `AuthoredModel` since 0.5, and that is pinned rather than assumed.
+
+**And RM63's correction was itself an overclaim — the third turn of one screw.** The comment read
+*"Read a pipe here as **heterozygous**, phase recorded but unaddressable"*. `VariantRow(genotype="C|C")`
+loads, and `1|1` is an ordinary phased homozygous call. The original comment claimed a pipe encodes
+which homolog an allele sits on; RM63 refuted that correctly and replaced it with an unchecked claim
+about zygosity; the 0.6 unit that carried the wording onto the printed `describe` output dropped the
+zygosity word on the way, so **the contract an author reads has been right since then and only its
+source was wrong.** A correction is exactly where this happens: the reviewer checks the claim being
+removed, not the one going in. The comment now keeps the history of both wrong versions, and a test
+pins that `C|C` loads.
+
+Suite 2246 → 2257.
 
 ## 2026-08-14 — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
 

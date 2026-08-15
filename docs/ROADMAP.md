@@ -150,8 +150,8 @@ Two consequences worth stating outright:
 
 # Active items
 
-**RM77–RM79**, from the 0.6 dogfooding fix round (2026-08-14); RM74, RM75 and RM76 shipped from the
-same batch and moved to
+**RM78 and RM79**, from the 0.6 dogfooding fix round (2026-08-14); RM74–RM77 shipped from the same
+batch and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired). RM76's
 narrow repair is what shipped — the general question it asks from underneath is
 [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase),
@@ -171,28 +171,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM77 — the genotype diagnosis tells the author about the wrong thing
-
-**Severity** medium · **Status** open · **Owner** format · **Found by** the 0.6 dogfooding fix round,
-2026-08-14
-
-**A genotype pasted out of a VCF is refused without anyone naming allele indices** (R2-9). `GT` is
-`0/1`; `genotype` wants the bases. Probed all three spellings: `0/1` and `0|1` fall through to the
-nucleotide-grammar message, which recites what an allele may be and never says these are indices into
-the record's REF/ALT list. `0/1/1` is now *worse* — after the 0.6 ploidy-message fix it gets a confident
-explanation of the two-allele ceiling, which is about the wrong thing, since that cell's defect is the
-notation and not the arity. This is the most likely single mistake an author makes, and the repair is the
-`mode="before"` diagnosis shape already used by `reject_reserved` / `reject_authority_keys` /
-`reject_misplaced` — a message that changes no verdict.
-
-**The RM63 correction is itself an overclaim, and it is the third turn of the same screw** (R2-14).
-`base.py` reads *"Read a pipe here as **heterozygous**, phase recorded but unaddressable"*. Probed:
-`VariantRow(genotype="C|C")` loads, and `1|1` is an ordinary phased homozygous call. The original comment
-claimed a pipe encodes which homolog an allele sits on; 0.6's RM63 correctly refuted that and replaced it
-with an unchecked claim about zygosity. The printed descriptions now carry only the true half — the
-comment they were copied from does not. A correction is where this happens: the reviewer checks the claim
-being removed, not the one going in.
 
 ## RM78 — the VRS reason surface's remaining blind spots, and one guard that answers the question it exists to prevent
 

@@ -1805,3 +1805,42 @@ ROADMAP_0_7 and CLAUDE.md.
 it is still a property that holds because each model was individually given the right guard. What marks
 authoring as **unfinished** — as opposed to marking one token as unreplaced — reaches this from
 underneath, and that is RM73's phase boundary. This item is a sprout, repaired; the root is not.
+
+## RM77 — the genotype diagnosis tells the author about the wrong thing
+
+**Severity** medium · **Status** ✅ shipped · **Owner** format · **Found by** the 0.6 dogfooding fix
+round, 2026-08-14 · **Ledger** R2-9, R2-14
+
+**A genotype pasted out of a VCF was refused without anyone naming allele indices** (R2-9). `GT` is
+`0/1`; `genotype` wants the bases. Re-probed on all the spellings: `0/1` and `0|1` fell through to the
+nucleotide-grammar wall — a sentence reciting what an allele may be (nucleotides, `*`, a symbolic
+token whose first-level type is one of five) that never says the one thing that resolves the cell.
+This is the single most likely mistake an author makes here, because pasting the `GT` field is the
+obvious first guess.
+
+`0/1/1` was **worse, and 0.6 made it worse**: the ploidy-message fix gave it a confident, correct
+explanation of the two-allele ceiling, which is about the wrong thing — that cell's defect is the
+notation, not how many alleles it names. A correct sentence aimed at the wrong defect is worse than a
+generic one, because it sends the author to change the wrong cell. So the diagnosis runs **ahead of
+the arity branch**, and a test pins that a genuinely polyploid call spelled in bases still gets the
+ceiling explanation and this one does not.
+
+The repair is CLAUDE.md's standing shape — a generic rejection is a dead end where a specific one is a
+fix — and it **changes no verdict**: every cell it matches was already refused. `_GT_INDEX_CELL`
+matches a cell whose every member is a digit run or VCF's no-call `.`, which nothing legal can look
+like: `ALLELE_PATTERN` is `^[ACGT]+$`, a symbolic allele is bracketed, and `*` is one character. The
+message names what to translate *against* (the record's own REF and ALT) and says those cannot be
+resolved here, since a genotype cell carries neither. It reaches `PharmVariantRow` for free, because
+the grammar has lived on `AuthoredModel` since 0.5 — pinned, since a diagnosis added to one arm of a
+shared validator is the drift that move exists to prevent.
+
+**RM63's correction was itself an overclaim, and it is the third turn of one screw** (R2-14). The
+comment read *"Read a pipe here as **heterozygous**, phase recorded but unaddressable"*. Probed:
+`VariantRow(genotype="C|C")` loads, and `1|1` is an ordinary phased homozygous call, so the sentence
+was false of a genotype the model accepts. The history is the finding — the original comment claimed a
+pipe encodes which homolog an allele sits on; RM63 refuted that correctly and replaced it with an
+unchecked claim about *zygosity*; the 0.6 unit carrying the wording onto the printed `describe` output
+dropped the zygosity word and kept the true half, so the **printed contract has been right since then
+and only its source was wrong.** A correction is exactly where this happens: the reviewer checks the
+claim being removed, not the one going in. The comment now says only what RM63 established, keeps the
+history of both wrong versions, and a test pins that `C|C` loads so there is no fourth turn.

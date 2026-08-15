@@ -27,6 +27,7 @@ Dependency-light: imports only `pydantic` + the stdlib `vocab` leaf, and nothing
 imports it back, so it introduces no cycle.
 """
 
+import re
 from typing import Any, ClassVar, get_args
 
 from pydantic import (
@@ -485,6 +486,32 @@ _GENOTYPE_ALLELE_GRAMMAR: str = (
 #: of a VCF. The cost is that a trailing-separator typo reads it too, which is a paragraph that does
 #: not apply rather than a claim about the row: the grammar restatement it follows is the actionable
 #: half, and it is first.
+#: A cell whose every member is a GT allele index (`0`, `1`, `12`) or VCF's no-call `.` — `0/1`,
+#: `0|1`, `./.`, `0/1/1`. Nothing legal can look like this: `ALLELE_PATTERN` is `^[ACGT]+$`, a
+#: symbolic allele is bracketed, and `*` is one character, so no genotype member is ever a digit run.
+_GT_INDEX_CELL = re.compile(r"^(\d+|\.)([/|](\d+|\.))*$")
+
+#: The diagnosis for one (RM77 / R2-9). Pasting a VCF `GT` field is the single most likely mistake an
+#: author makes here — it is the obvious first guess, and it is *wrong in a way the grammar message
+#: cannot express*: `0/1` falls through to a wall reciting what an allele may be (nucleotides, `*`, a
+#: symbolic token) and never says the one thing that resolves it, that those are **indices** into the
+#: record's own REF/ALT list while this column spells the alleles out.
+#:
+#: Reported **before** the arity branch, deliberately. After the 0.6 ploidy-message fix, `0/1/1` got a
+#: confident explanation of the two-allele ceiling — which is about the wrong thing, since that cell's
+#: defect is the notation and not how many alleles it names. A correct sentence aimed at the wrong
+#: defect is worse than a generic one, because it sends the author to change the wrong cell.
+#:
+#: This changes **no verdict**: every cell it matches was already refused. It is the `mode="before"`
+#: diagnosis shape (`reject_reserved`, `reject_authority_keys`, `reject_misplaced`) reaching a value
+#: rather than a column name — a generic rejection is a dead end where a specific one is a fix.
+_GT_INDEX_DIAGNOSIS: str = (
+    "those are VCF GT **allele indices** (0 is the record's REF, 1 the first ALT, 2 the second, "
+    "'.' a no-call), and this column spells the alleles out instead. Translate against that "
+    "record's own REF and ALT — with REF=C ALT=T, a GT of 0/1 is 'C/T' and 1/1 is 'T/T'. The "
+    "indices cannot be resolved here, because a genotype cell carries no REF/ALT to count from."
+)
+
 _PLOIDY_DIVERGENCE: str = (
     "Two alleles is this format's ceiling, and that is a decision rather than a gap in the grammar: a "
     "module annotates human loci where diploid is the upper bound, the narrower haploid and "
@@ -675,6 +702,9 @@ class AuthoredModel(BaseModel):
         # from the annotation, so the shared grammar only has to let a genuine absence through.
         if v is None:
             return v
+        # Ahead of every other branch, including the arity one — see `_GT_INDEX_DIAGNOSIS`.
+        if _GT_INDEX_CELL.match(v.strip()):
+            raise ValueError(f"genotype {v!r} looks like a VCF GT field: {_GT_INDEX_DIAGNOSIS}")
         # Phased: pipe-separated, exactly two alleles, and NOT sorted — the authored order is preserved
         # through compile → reverse → compile (P7 pins it, and that has not changed). ROADMAP 0.3 5b.
         #
@@ -684,9 +714,19 @@ class AuthoredModel(BaseModel):
         # any specific haplotype (i.e. first or second)". There is no global first homolog, and
         # `variants.csv` carries no phase-set column — so an authored `A|G` and an authored `G|A` are
         # distinguishable to us and indistinguishable to any consumer, and two rows both written `A|G`
-        # assert nothing about being in cis. Read a pipe here as **heterozygous, phase recorded but
-        # unaddressable**. The cis/trans case a module actually needs is carried by `DiplotypeRow` and
-        # the phase-ambiguity check, which is why this is an overclaiming comment rather than a defect.
+        # assert nothing about being in cis. Read a pipe here as **phase recorded but unaddressable**.
+        # The cis/trans case a module actually needs is carried by `DiplotypeRow` and the
+        # phase-ambiguity check, which is why this is an overclaiming comment rather than a defect.
+        #
+        # **The word "heterozygous" stood here until R2-14, and it was the third turn of the same
+        # screw.** The original comment claimed a pipe encodes which homolog an allele sits on; RM63
+        # refuted that correctly and replaced it with a claim about *zygosity* that nobody checked —
+        # `VariantRow(genotype="C|C")` loads, and `1|1` is an ordinary phased homozygous call, so the
+        # replacement was false of a genotype the model accepts. A correction is exactly where this
+        # happens: the reviewer checks the claim being removed, not the one going in. The 0.6 unit
+        # carrying this wording onto the printed `describe` output dropped the zygosity word on the
+        # way and kept the true half, so the contract an author reads has been right since then and
+        # only its source was wrong.
         if "|" in v:
             parts = v.split("|")
             # A cell carrying BOTH separators is VCF's partial phasing, not an unspellable allele:
