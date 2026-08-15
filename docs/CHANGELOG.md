@@ -34,7 +34,64 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-14 (latest) — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
+## 2026-08-15 (latest) — 0.6.0: RM74 and RM75, the fix round's own findings
+
+Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) — the findings the fix round produced by
+reading the code around each repair — was grouped into RM74–RM79 on 2026-08-14. The first two are
+worked here. Both are **enricher-only**: no parquet, no model, no manifest field, so the corpus is
+untouched and nothing versions but the network tier's own next patch.
+
+**RM74 — the drafting providers read their sources wrong.** ClinPGx joins the genes one annotation
+names with `;`, the same separator its drug list already had a named constant for, and both readers in
+`clinpgx_draft` treated the whole cell as one symbol. Re-probed against the provisioned snapshot:
+**396 of 16,087 rows** carry a `;`, and `--gene VKORC1` silently dropped the three rows of `rs17886199`
+(published as `PRSS53;VKORC1`). The filter matches per member now.
+
+*What a plural cell writes* was the one real choice, and two of the three candidates are refuted by
+facts rather than by taste. **One row per gene is illegal**: `gene` is *outside* `PharmVariantRow`'s
+dedup key, so the copies collide on `(variant_key, drug, genotype, phenotype_category, annotation_id)`
+and the compiler refuses the module — the structural difference from `drugs`, which *is* in the key.
+**Picking from the cell alone has no rule to pick by**: the pharmacogene is first in `CYP3A5;ZSCAN25`
+and second in `ANKK1;DRD2`, `CYP2A7P1;CYP2B6` and `PRSS53;VKORC1`. So the answer is the CPIC `gene.chr`
+move — write the member the *request* selects, which is a lookup in what the caller already stated, and
+otherwise **withhold and name the genes the cell held**, aggregated by cell. An empty cell reads as
+*not stated*; the joined cell is false about its own column and matches no consumer's gene filter.
+
+Two more in the same loop: `skipped_unidentified` was counted **before** the `--gene` filter, so on any
+narrowed draft the "records the source could not identify" number was inflated by the rest of the
+database — which destroys the one thing it is for. And `test_draft_declared_build.py`'s location
+fixture was keyed `"location"` where `cpic.defining_variants` reads `"sequence_location"`, so the
+nested dict was always `{}` and the file's claim to cover a coordinate-carrying defining variant was
+hollow — third instance of that class after S21's registry and D6-2's `_MOVABLE`. Repaired with the key
+*and* an assertion that the coordinate reaches `haplotypes.csv`, which is what makes the key
+load-bearing.
+
+**RM75 — a complete result destroyed by an incidental failure.** `CpicClient._get` called
+`raise_for_status()` and wrapped only *shape* failures into `CpicError`, so an exhausted retry ladder
+left a raw `httpx.HTTPStatusError` that walked through both of `enrich_pgx`'s per-leg handlers — the
+handlers written under *"One source failing must not sink the pass"* — and took PharmVar's answer with
+it. The retrying half is `_request` now and the translation sits **outside** it: wrapping inside would
+make `retry_if_exception_type` a no-op, so a test pins that the ladder survived the split. **The
+finding named only CPIC and PharmVar had the identical hole**, which is worth stating because repairing
+one leg makes that comment true in one direction only — the guarantee would hold or not depending on
+which source went down.
+
+`cpic.knows_drug` is caught now (it exists only to sharpen a sentence, and every substantive query has
+already returned by the time it is asked), so an optional message-enrichment call can no longer discard
+a finished draft. Its `bool | None` tri-state had been designed and never delivered *from the live
+client*, which is why the raise escaped: the handling existed and nothing could reach it. The failure
+gets a **third** wording rather than reusing the snapshot one — "the snapshot cannot answer" is fixed by
+going live, "the request failed" by re-running.
+
+And `spec_genome_build`'s deliberate raise no longer tracebacks out of `draft`/`draft-panel`. That
+regressed *because* the declared-build defect was fixed: routing three providers through a shared
+precondition owes the same addition to each of their handlers, which `_DRAFT_PRECONDITION_ERRORS` now
+carries. The check also moved to the top of both providers — it reads one file beside the spec and was
+landing after a published ClinVar snapshot had been provisioned.
+
+Suite 2227 → 2232.
+
+## 2026-08-14 — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
 
 [DOGFOOD_0_6.md](DOGFOOD_0_6.md) built six probe modules against the shipped CLIs and produced a
 ledger, [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md), whose own header said fixing was a separate

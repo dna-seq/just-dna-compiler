@@ -1657,3 +1657,103 @@ while `StudyRow.pmid` is still mandatory answers a question no module can curren
 RM47 makes the same observation from the other side, that a new PMID site obliges the literature pass
 to learn it in the same release.
 
+
+# 0.6 dogfooding — the fix round's own findings, repaired
+
+Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) came from *reading the code around each
+repair* rather than from building a module, and the thirteen findings that needed action were numbered
+RM74–RM79 on 2026-08-14. What follows is what shipped, in the order it was worked.
+
+## RM74 — the drafting providers read their sources wrong, and the test that would have caught one does not run
+
+**Severity** high (one member) · **Status** ✅ shipped · **Owner** enricher · **Found by** code review
+during the 0.6 dogfooding fix round, 2026-08-14 · **Ledger** R2-1, R2-11, R2-3
+
+Three defects, one read each and one loop, all in `clinpgx_draft._rows_from_snapshot` and the test file
+beside it.
+
+**ClinPGx's `gene` is `;`-multi-valued** (R2-1). Re-probed against the provisioned snapshot before
+touching anything: **396 of 16,087 rows** carry a `;` (`IFNL3;IFNL4` ×51, `ANKK1;DRD2` ×24,
+`CYP2A7P1;CYP2B6` ×18), and `--gene VKORC1` dropped the **3** rows of `rs17886199`, published as
+`PRSS53;VKORC1`. The filter now matches per member. The `;` separator was already a named constant —
+for `drugs` — which is the part worth keeping: one dialect, two columns, and only one of them read it.
+
+**What is *written* for a plural cell was the one real choice here, and the three candidates are not
+equally wrong.** Writing the cell verbatim is what shipped until now, and it is a non-symbol in a
+column described as *"Gene symbol, e.g. VKORC1"* — every consumer's gene filter misses it for exactly
+the reason ours did. **One row per gene is illegal, not merely undesirable**: `gene` is *outside*
+`PharmVariantRow`'s dedup key, so the copies collide on
+`(variant_key, drug, genotype, phenotype_category, annotation_id)` and the compiler refuses the module
+— which is the structural difference from `drugs`, which *is* in the key and therefore legitimately
+becomes one row each. And **picking from the cell alone has no rule to pick by**: the pharmacogene is
+first in `CYP3A5;ZSCAN25` and second in `ANKK1;DRD2`, `CYP2A7P1;CYP2B6` and `PRSS53;VKORC1`, so
+position orders nothing and "the one that matters" is a pharmacological judgement this tier does not
+make.
+
+What shipped is the CPIC `gene.chr` move — a **lookup in what the caller already stated**. Under
+`--gene VKORC1` the request selects exactly one member and writing it asserts only what the source
+asserts. With no request, or with a request selecting two members of one cell, nothing selects, and
+the answer is the house one: **withhold, and say which genes the cell named**, aggregated by cell so a
+panel-scale draft does not print one line per row. An empty cell reads as *not stated*, which is
+weaker than the truth; the joined cell is false about its own column.
+
+**`skipped_unidentified` counted the wrong denominator** (R2-11). The rsID check ran before the
+`--gene` filter, so a record with no rsID from an unrequested gene incremented it, and on any
+`--gene` draft the "records the source could not identify" number was inflated by the rest of the
+database — destroying the one thing it is for, judging whether coverage of *your* gene is poor. The
+filter moved above it; every skip counter is now scoped to the requested set.
+
+**A test's stated coverage was not exercised** (R2-3). `test_draft_declared_build.py` built its
+fixture with a nested `"location"` key while `cpic.defining_variants` reads `"sequence_location"`, so
+the dict was always `{}` and the file's claim to cover "one defining variant carrying a coordinate"
+was hollow — the drafted `haplotypes.csv` did not exist and the file passed either way. Third
+instance of the class after S21's registry and D6-2's `_MOVABLE`. Fixed with the key **and** an
+assertion that the coordinate reaches the file, which is what makes the key load-bearing; demonstrated
+by restoring the old key and watching the new assertion fail on a missing `haplotypes.csv`.
+
+## RM75 — a complete result is destroyed by an incidental failure, and one handler cannot see its own case
+
+**Severity** medium · **Status** ✅ shipped · **Owner** enricher · **Found by** code review during the
+0.6 dogfooding fix round, 2026-08-14 · **Ledger** R2-13, R2-4, R2-2
+
+**A client that leaks its transport library's exception type has no contract** (R2-13). `CpicClient._get`
+called `raise_for_status()` and wrapped only *shape* failures into `CpicError`, so once retries were
+exhausted a raw `httpx.HTTPStatusError` walked through both of `enrich_pgx`'s per-leg handlers — the
+handlers written under the comment *"One source failing must not sink the pass — the other may still
+answer"* — and took PharmVar's answer with it. The retrying request is now `_request` and the
+translating wrapper is `_get`, in that order, because wrapping *inside* the retry would defeat it:
+`retry_if_exception_type` tests `httpx.HTTPStatusError`, and a `CpicError` raised there is a
+first-and-final attempt. A test asserts the ladder survived the split, since a decorator on the wrong
+half turns three attempts into one and nothing fails.
+
+**The same hole was on the PharmVar leg and the ledger named only CPIC.** Repairing one and not the
+other would make that comment true in one direction, so the guarantee would hold or not depending on
+which source went down — worse than either state. `PharmVarClient` got the identical split; its 401
+branch stays inside `_request`, because that is a *diagnosis* raised before the status check rather
+than a translation of one, and it must not be retried.
+
+**An optional message-enrichment call could discard a finished draft** (R2-4). `pgx_draft` asks
+`cpic.knows_drug` inside the `try` whose `finally` closes the client — deliberately — but by then the
+alleles, diplotypes, defining variants and every recommendation have already returned. `knows_drug`
+exists only to tell a typo apart from a real drug CPIC scores in a shape this table cannot hold (F5),
+so a transport failure there threw away complete work to improve a sentence about it: the gnomAD rule
+(a per-item error must never sink a batch) in a different tier. It is caught now, and the `bool | None`
+tri-state that was *designed and never delivered from the live client* is finally reachable from it.
+
+**A third reading of "could not establish" earned its own sentence rather than reusing the second.**
+`known is None` already meant "the snapshot's recommendation table cannot answer this", whose remedy is
+to go live; a failed request is re-runnable. Folding them would put the snapshot's wording in front of
+an author who has no snapshot.
+
+**An ordinary mid-authoring state tracebacked** (R2-2). F1's repair routed `draft` and `draft-panel`
+through `source_build_mismatch` → `spec_genome_build`, which deliberately raises `EnrichmentError` on a
+present-but-unreadable `module_spec.yaml`. Neither CLI named that exception, so a spec carrying only
+`name:` turned `draft-panel --gene PALB2 --offline` into a rich traceback where every other enricher
+command exits with a message. The presentation regressed *because* the build defect was fixed, which is
+the shape worth naming: a shared precondition added to three providers owes the same addition to each
+of their handlers. `_DRAFT_PRECONDITION_ERRORS` is what makes the fourth provider inherit it instead of
+rediscovering it.
+
+**And the raise moved to the top of both providers.** It landed *after* `_resolve_snapshot` had
+provisioned a published ClinVar snapshot and after every CPIC query, for a check that reads one file
+beside the spec. The warning is still appended where it was, so no reported order moved.

@@ -150,7 +150,8 @@ Two consequences worth stating outright:
 
 # Active items
 
-**RM74–RM79**, all six from the 0.6 dogfooding fix round (2026-08-14). Everything that was open on the
+**RM76–RM79**, from the 0.6 dogfooding fix round (2026-08-14); RM74 and RM75 shipped from the same
+batch and moved to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired). Everything that was open on the
 `0.6` branch *before* that round was built in the 0.6 batch and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
 the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the deferred
@@ -166,62 +167,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM74 — the drafting providers read their sources wrong, and the test that would have caught one does not run
-
-**Severity** high (one member) · **Status** open, fixable in a patch · **Owner** enricher · **Found by**
-code review during the 0.6 dogfooding fix round, 2026-08-14
-
-Three defects in how the providers read a source, grouped because they are one read each and one loop.
-
-**ClinPGx's `gene` is `;`-multi-valued and both readers treat the cell as one symbol** (ledger R2-1).
-`clinpgx_draft` filters with an exact-set membership against the whole cell and passes that same cell
-into `PharmVariantRow.gene`, which has no validator. Probed against the provisioned snapshot: **396 of
-16,087 rows** carry a `;` (`IFNL3;IFNL4` ×51, `ANKK1;DRD2` ×24), so `--gene VKORC1` silently drops the
-3 rows naming VKORC1 inside a multi-gene cell, while an unfiltered draft writes `PRSS53;VKORC1` into a
-column described as "Gene symbol, e.g. VKORC1". Both directions silent. Same shape as the CPIC
-`gene.chr` lesson: a claim true of the *cell* and false of the *column*.
-
-**`skipped_unidentified` counts the wrong denominator** (R2-11). The rsID check runs before the `--gene`
-filter, so a record with no rsID from an unrequested gene increments the count. On any `--gene` draft the
-"records the source could not identify" number is inflated by the rest of the database, which destroys
-the one thing it is for — judging whether coverage of *your* gene is poor.
-
-**A test's stated coverage is not exercised** (R2-3). `enricher/tests/test_draft_declared_build.py`
-builds its location fixture with a nested `"location"` key while `cpic.defining_variants` reads
-`"sequence_location"`, so the dict is always empty and the file's claim to cover a defining variant
-carrying a position is hollow. Third instance of this class after S21's registry and D6-2's `_MOVABLE`.
-
-## RM75 — a complete result is destroyed by an incidental failure, and one handler cannot see its own case
-
-**Severity** medium · **Status** open, fixable in a patch · **Owner** enricher · **Found by** code
-review during the 0.6 dogfooding fix round, 2026-08-14
-
-Three instances of one shape: work that has already succeeded is thrown away by a failure in something
-inessential, or by a handler written for exactly that failure and unable to catch it.
-
-**A persistent CPIC 5xx sinks the pass its own comment says it must not** (R2-13). `enrich_pgx` catches
-`(PharmVarError, CpicError)` per leg under *"One source failing must not sink the pass — the other may
-still answer."* `CpicClient` calls `raise_for_status()` and wraps only *shape* failures into `CpicError`,
-so once retries are exhausted a raw `httpx.HTTPStatusError` walks through both handlers and takes
-PharmVar's answer with it.
-
-**An optional message-enrichment call can lose a finished CPIC draft** (R2-4). `knows_drug` is asked
-inside the `try` whose `finally` closes the client, by which point every substantive query has returned.
-It exists only to sharpen the message for drugs that came back empty, so a transport failure there
-discards a complete draft to improve a sentence about it. The related cause: `cpic.knows_drug` is typed
-`bool | None` but can only return `True`/`False` or raise, so the `known is None` branch that already
-carries the correct "could not ask" wording is **unreachable from the live client** — the tri-state was
-designed and not delivered, which is why the raise escapes.
-
-**An ordinary mid-authoring state tracebacks** (R2-2). The 0.6 fix for the declared-build defect routed
-`draft` and `draft-panel` through `source_build_mismatch`, which calls `spec_genome_build`, which
-deliberately raises `EnrichmentError` on a present-but-unreadable `module_spec.yaml`. Neither CLI catches
-it: `draft` catches `(CpicError, DraftError)`, `draft-panel` catches `(ClinVarDraftError, DraftError)`.
-Reproduced — a spec carrying only `name:` turns `draft-panel --gene PALB2 --offline` into a rich
-traceback where every other enricher command exits cleanly, and in `draft_gene_panel` the raise lands
-*after* the snapshot download is paid for. The message is right; the presentation regressed because the
-other defect was fixed.
 
 ## RM76 — an unfinished authoring state passes every gate, including `--strict`
 
