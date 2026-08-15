@@ -286,6 +286,14 @@ def draft_gene(
         # Acquisition-time refusal: nothing is fetched, because the terms are accepted by taking it.
         return PgxDraftResult(warnings=[skip_reason], skipped=True)
 
+    # **Asked before the client, not beside the rows it warns about** (R2-2). `source_build_mismatch`
+    # raises `EnrichmentError` on a present-but-unreadable `module_spec.yaml`, which is right — a
+    # module whose declaration cannot be read has no build to draft against — but asking it *after*
+    # the CPIC queries meant the failure landed once the work was already paid for. It reads a file
+    # beside the spec and costs nothing, so it belongs with the other precondition above. The warning
+    # itself is still appended in its old place, so the reported order does not move.
+    build_warning = source_build_mismatch(spec_dir, "CPIC", CPIC_GENOME_BUILD)
+
     owned = client is None
     if client is not None:
         cpic = client
@@ -312,15 +320,36 @@ def draft_gene(
         # Asked here, inside the `try`, because the client is closed in the `finally` below — and
         # asked only for the drugs that came back empty, since that is the only case whose message
         # needs it. See `CpicClient.knows_drug`.
-        drug_known = {drug: cpic.knows_drug(drug) for drug, found in by_drug.items() if not found}
+        #
+        # **Its failure is caught, and that is R2-4.** By this line every substantive query has
+        # already returned: the alleles, the diplotypes, the defining variants and the
+        # recommendations are all in hand, and a complete draft exists. `knows_drug` exists only to
+        # sharpen the *sentence* explaining an empty result, so letting a transport failure here
+        # propagate would discard finished work to improve a message about it — the gnomAD rule
+        # (a per-item error must never sink a batch) arriving in a different tier.
+        #
+        # The tri-state it is typed with was designed and, from the live client, never delivered:
+        # `CpicClient.knows_drug` could only return `True`/`False` or raise, so the `known is None`
+        # branch below was reachable from the snapshot client alone. R2-13 is what makes this
+        # catchable at all — before it, the escape was a raw `httpx.HTTPStatusError`.
+        drug_known: dict[str, bool | None] = {}
+        unaskable: dict[str, str] = {}
+        for drug, found in by_drug.items():
+            if found:
+                continue
+            try:
+                drug_known[drug] = cpic.knows_drug(drug)
+            except CpicError as exc:
+                drug_known[drug] = None
+                unaskable[drug] = str(exc)
     finally:
         if owned:
             cpic.close()
 
     warnings = list(defining_warnings)
     # CPIC's `sequence_location` is GRCh38 and `haplotypes.csv` gets a `chrom`/`start` from it, so a
-    # module declaring another build is about to record a position from the wrong assembly.
-    build_warning = source_build_mismatch(spec_dir, "CPIC", CPIC_GENOME_BUILD)
+    # module declaring another build is about to record a position from the wrong assembly. Computed
+    # at the top of the function; reported here.
     if build_warning:
         warnings.append(f"{gene}: {build_warning}")
     selected = _selected_alleles(alleles, [a.allele for a in published], gene)
@@ -432,6 +461,16 @@ def draft_gene(
                 detail = (
                     "CPIC does not list that drug at all — check the spelling (CPIC uses lowercase "
                     "generic names)"
+                )
+            elif drug in unaskable:
+                # A third reading of "could not establish", kept apart from the snapshot one below
+                # because the remedies differ: this one is re-runnable and that one is not. Folding
+                # them would put the snapshot's sentence in front of an author who has no snapshot.
+                detail = (
+                    f"CPIC could not be asked whether it lists that drug ({unaskable[drug]}), so "
+                    "whether the name is a typo or a real drug with no phenotype-keyed "
+                    "recommendation is undetermined. The rest of the draft is unaffected and was "
+                    "written; re-run to settle this line"
                 )
             elif known is None:
                 # Deliberately does NOT say "re-run without --offline": the route is snapshot-first,

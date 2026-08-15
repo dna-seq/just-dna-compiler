@@ -249,7 +249,7 @@ class PharmVarClient:
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
     )
-    def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
+    def _request(self, path: str, params: dict[str, str] | None = None) -> Any:
         # Pace before retry, as in gnomad.py: retrying spends the same budget that caused the throttle.
         self._gate.wait()
         response = self._client.get(
@@ -267,6 +267,24 @@ class PharmVarClient:
             )
         response.raise_for_status()
         return response.json()
+
+    def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
+        """`PharmVarError` for every way this client can fail — the CPIC repair, symmetrically.
+
+        R2-13 named only `CpicClient`, and the hole is identical here: `raise_for_status()` was
+        called and nothing wrapped it, so a persistent PharmVar 5xx escaped as
+        `httpx.HTTPStatusError` past `enrich_pgx`'s `(PharmVarError, CpicError)` handler and sank
+        CPIC's answer. Fixing one leg and not the other would leave the comment above that handler
+        — *"One source failing must not sink the pass"* — true in one direction only, which is worse
+        than either state: the guarantee would hold or not depending on which source went down.
+
+        The 401 branch inside `_request` stays where it is. It is a *diagnosis* raised before the
+        status check, not a translation of one, and it must not be retried.
+        """
+        try:
+            return self._request(path, params)
+        except (httpx.TransportError, httpx.HTTPStatusError, ValueError) as exc:
+            raise PharmVarError(f"PharmVar {path} could not be read: {exc}") from exc
 
     def alleles_for_gene(self, gene: str, *, include_sub_alleles: bool = False) -> list[PharmVarAllele]:
         """Every allele PharmVar defines for one gene, with its defining variants.

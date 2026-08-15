@@ -71,22 +71,24 @@ _LOCATIONS = [
 _GENES = [{"symbol": "CYP2C19", "chr": "chr10"}]
 
 
-def _client() -> CpicClient:
-    def handler(request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path.endswith("/gene"):
-            return httpx.Response(200, json=_GENES)
-        if path.endswith("/allele"):
-            return httpx.Response(200, json=_ALLELES)
-        if path.endswith("/diplotype"):
-            return httpx.Response(200, json=_DIPLOTYPES)
-        if path.endswith("/allele_definition"):
-            return httpx.Response(200, json=_DEFINITIONS)
-        if path.endswith("/allele_location_value"):
-            return httpx.Response(200, json=_LOCATIONS)
-        return httpx.Response(404, json=[])
+def _dispatch(request: httpx.Request) -> httpx.Response:
+    """The four tables a gene draft reads. Split out of `_client` so a test can override one route."""
+    path = request.url.path
+    if path.endswith("/gene"):
+        return httpx.Response(200, json=_GENES)
+    if path.endswith("/allele"):
+        return httpx.Response(200, json=_ALLELES)
+    if path.endswith("/diplotype"):
+        return httpx.Response(200, json=_DIPLOTYPES)
+    if path.endswith("/allele_definition"):
+        return httpx.Response(200, json=_DEFINITIONS)
+    if path.endswith("/allele_location_value"):
+        return httpx.Response(200, json=_LOCATIONS)
+    return httpx.Response(404, json=[])
 
-    return CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+def _client() -> CpicClient:
+    return CpicClient(client=httpx.Client(transport=httpx.MockTransport(_dispatch)))
 
 
 def _spec(tmp_path: Path) -> Path:
@@ -530,3 +532,52 @@ def test_the_conclusion_carries_cpics_own_two_halves() -> None:
     summarized."""
     rows, _ = _recommendation_rows(_DIPS, [_rec("Poor Metabolizer", "general")], population=None)
     assert rows[0].conclusion == "Reduced active metabolite. Avoid standard dose."
+
+
+# ── an incidental failure must not destroy a complete draft (R2-4) ──────────────────────────────
+def test_an_unanswerable_knows_drug_keeps_the_draft_and_says_it_could_not_ask(tmp_path: Path) -> None:
+    """`knows_drug` sharpens a sentence; it must not be able to discard the rows (R2-4).
+
+    By the time it is asked, `alleles_for_gene`, `diplotypes_for_gene`, `defining_variants` and every
+    `recommendations` call have already returned — a complete draft is in hand. It is asked at all
+    only to tell a typo apart from a real drug CPIC scores in a shape this table cannot hold (F5), so
+    a transport failure there used to throw away finished work to improve a message about it. Same
+    rule as the gnomAD one: a per-item error must never sink a batch.
+
+    Failure injected on `knows_drug` itself rather than on the `/drug` route, because
+    `recommendations` reads that table too — its failure is *not* incidental, it is the query whose
+    answer the draft needs, and conflating the two would test a case this fix deliberately leaves
+    fatal. Translation from `httpx.HTTPStatusError` to `CpicError` is R2-13's test; what is under
+    test here is what `draft_gene` does with the `CpicError`.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        # `/drug` empty is what makes `recommendations` return nothing and `knows_drug` be asked.
+        if request.url.path.endswith("/drug"):
+            return httpx.Response(200, json=[])
+        return _dispatch(request)
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    def _unreachable(drug: str) -> bool | None:
+        raise CpicError("CPIC drug could not be read: 503")
+
+    client.knows_drug = _unreachable  # type: ignore[method-assign]
+
+    spec = _spec(tmp_path)
+    result = draft_gene(
+        spec, "CYP2C19", drugs=["warfarin"], client=client, declared_use="non_commercial"
+    )
+
+    # The draft survived, whole — before the repair this call raised and `spec` was left with nothing.
+    assert not result.skipped
+    for name in ("haplotypes.csv", "allele_function.csv", "diplotypes.csv"):
+        assert (spec / name).is_file(), name
+    assert result.added > 0
+
+    # …and the sentence says the question could not be put, rather than asserting either reading.
+    could_not_ask = next(w for w in result.warnings if "warfarin" in w)
+    assert "could not be asked" in could_not_ask
+    assert "typo" in could_not_ask
+    # It must NOT reach for the snapshot wording — there is no snapshot here, and the two "could not
+    # establish" readings have different remedies.
+    assert "snapshot" not in could_not_ask

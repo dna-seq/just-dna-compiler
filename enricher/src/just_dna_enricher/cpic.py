@@ -289,10 +289,36 @@ class CpicClient:
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
     )
-    def _get(self, path: str, params: dict[str, str]) -> list[dict[str, Any]]:
+    def _request(self, path: str, params: dict[str, str]) -> httpx.Response:
+        """The retrying half, kept separate so the translation below sits *outside* the retry.
+
+        Wrapping inside would defeat the decorator: `retry_if_exception_type` tests
+        `httpx.HTTPStatusError`, and a `CpicError` raised here would be a first-and-final attempt.
+        """
         response = self._client.get(f"{self.endpoint}/{path.lstrip('/')}", params=params)
         response.raise_for_status()
-        payload = response.json()
+        return response
+
+    def _get(self, path: str, params: dict[str, str]) -> list[dict[str, Any]]:
+        """Every way this client can fail, spelled as `CpicError` (R2-13).
+
+        **What was wrong:** `raise_for_status()` was called and nothing wrapped it, so only *shape*
+        failures became `CpicError`. `enrich_pgx` catches `(PharmVarError, CpicError)` per leg under
+        the comment *"One source failing must not sink the pass — the other may still answer"* — and
+        once retries were exhausted a raw `httpx.HTTPStatusError` walked straight through both
+        handlers and took PharmVar's answer down with it. The handler was written for exactly this
+        case and could not see it, which is the point: an exception type is part of a client's
+        contract, and a client that leaks its transport library's types has no contract at all.
+
+        A malformed body is wrapped for the same reason and in the same clause. It is not the case
+        R2-13 names, but it is the same class arriving one line later, and leaving it would put a
+        second invisible escape beside the one being repaired.
+        """
+        try:
+            response = self._request(path, params)
+            payload = response.json()
+        except (httpx.TransportError, httpx.HTTPStatusError, ValueError) as exc:
+            raise CpicError(f"CPIC {path} could not be read: {exc}") from exc
         if not isinstance(payload, list):
             raise CpicError(f"CPIC {path} returned {type(payload).__name__}, expected a list")
         return payload

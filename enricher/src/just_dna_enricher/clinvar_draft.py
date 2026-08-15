@@ -453,6 +453,13 @@ def draft_gene_panel(
     if skip_reason:
         return ClinVarDraftResult(warnings=[skip_reason], skipped=True)
 
+    # **Before the snapshot, not after it** (R2-2). `source_build_mismatch` raises `EnrichmentError`
+    # on a present-but-unreadable `module_spec.yaml` — correctly, since a module whose declaration
+    # cannot be read has no build to draft against — and asking it below meant a spec carrying only
+    # `name:` failed *after* `_resolve_snapshot` had provisioned a published snapshot. It reads one
+    # file beside the spec, so it costs nothing here. The warning is still appended in its old place.
+    build_warning = source_build_mismatch(spec_dir, "the ClinVar snapshot", CLINVAR_GENOME_BUILD)
+
     reference, provisioning_warnings = _resolve_snapshot(snapshot, offline=offline, download=download)
     records = select_by_gene(
         reference, list(genes), clin_sig=clin_sig, min_review_stars=min_review_stars
@@ -460,8 +467,8 @@ def draft_gene_panel(
     warnings: list[str] = list(provisioning_warnings)
     # The snapshot is built from NCBI's `vcf_GRCh38/clinvar.vcf.gz`, and `_row_cells` writes the full
     # coordinate for any record this pass cannot key by rsID — so a module on another build is about
-    # to record GRCh38 positions under its own declaration. See `enrich.source_build_mismatch`.
-    build_warning = source_build_mismatch(spec_dir, "the ClinVar snapshot", CLINVAR_GENOME_BUILD)
+    # to record GRCh38 positions under its own declaration. See `enrich.source_build_mismatch`;
+    # computed above, before the snapshot is resolved.
     if build_warning:
         warnings.append(build_warning)
     partials: list[PartialRow] = []

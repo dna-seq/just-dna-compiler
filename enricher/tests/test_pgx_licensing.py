@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 import pytest
 from just_dna_compiler.compiler import _load_csv_rows
-from just_dna_enricher.cpic import CpicClient, map_function_status
+from just_dna_enricher.cpic import CpicClient, CpicError, map_function_status
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
     CPIC_TERMS,
@@ -408,6 +408,74 @@ def test_one_source_failing_does_not_sink_the_pass(tmp_path: Path) -> None:
     assert [r.source for r in result.rows] == ["cpic"]
     assert any("PharmVar API key" in w or "PHARMVAR_API_KEY" in w for w in result.warnings)
     assert {c.source for c in result.conflicts} == {"cpic"}
+
+
+def _http_error(*_args: object, **_kwargs: object) -> None:
+    """What a persistent 5xx leaves behind once `tenacity` has exhausted its attempts."""
+    request = httpx.Request("GET", "https://api.cpicpgx.org/v1/allele")
+    raise httpx.HTTPStatusError(
+        "Server error '503 Service Unavailable'",
+        request=request,
+        response=httpx.Response(503, request=request),
+    )
+
+
+def test_a_client_leaks_no_transport_exception_to_its_callers() -> None:
+    """Every failure of `CpicClient`/`PharmVarClient` is that client's own error type (R2-13).
+
+    `_get` called `raise_for_status()` and wrapped only *shape* failures, so a persistent 5xx
+    surfaced as a raw `httpx.HTTPStatusError`. That is not a cosmetic type: `enrich_pgx` catches
+    `(PharmVarError, CpicError)` per leg, so the un-wrapped escape walked through both handlers and
+    took the other source's answer with it — the handler written for exactly this case could not see
+    it. Asserted on both clients because the hole was symmetric and fixing one leg would make the
+    "one source failing must not sink the pass" guarantee hold in one direction only.
+
+    Patched at `_request` rather than served as a 503, deliberately: a real 503 would spend the
+    retry ladder's real sleeps to reach the same line, and what is under test is the translation
+    that happens *after* the retries, not the retries.
+    """
+    cpic = CpicClient(client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[]))))
+    cpic._request = _http_error  # type: ignore[method-assign]
+    with pytest.raises(CpicError):
+        cpic.alleles_for_gene("CYP2C19")
+
+    pharmvar = PharmVarClient(api_key="k", client=httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
+    ))
+    pharmvar._request = _http_error  # type: ignore[method-assign]
+    with pytest.raises(PharmVarError):
+        pharmvar.alleles_for_gene("CYP2C19")
+
+
+def test_the_retry_ladder_survived_the_split() -> None:
+    """Moving the request out of `_get` must not have moved it out from under `@retry`.
+
+    The fix split one decorated method into a retrying `_request` and a translating `_get`, which is
+    the one way this repair could silently cost something: a wrapper applied to the wrong half turns
+    three attempts into one and nothing fails.
+    """
+    for method in (CpicClient._request, PharmVarClient._request):
+        assert hasattr(method, "retry"), method
+    # …and the translating half must NOT be retried, or a shape error would be attempted three times.
+    assert not hasattr(CpicClient._get, "retry")
+    assert not hasattr(PharmVarClient._get, "retry")
+
+
+def test_a_failing_cpic_no_longer_takes_pharmvars_answer_with_it(tmp_path: Path) -> None:
+    """The end-to-end half: the comment above `enrich_pgx`'s handlers is now true both ways.
+
+    Before R2-13 this test could not be written against a status failure at all — the exception
+    escaped `enrich_pgx` entirely rather than degrading the CPIC leg.
+    """
+    cpic = _cpic_client()
+    cpic._request = _http_error  # type: ignore[method-assign]
+    result = enrich_pgx(
+        _spec(tmp_path), declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(), cpic_client=cpic,
+    )
+    assert [r.source for r in result.rows] == ["pharmvar"]
+    assert {c.source for c in result.conflicts} == {"pharmvar"}
+    assert any("cpic" in w.lower() for w in result.warnings), result.warnings
 
 
 # ── the attestation (RM45, D4-1) ────────────────────────────────────────────────────────────────

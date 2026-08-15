@@ -112,6 +112,22 @@ app = typer.Typer(
 )
 
 
+#: What a drafting command must catch beyond its own source's error, and **why it is a named tuple
+#: rather than two more entries in two `except` clauses** (R2-2).
+#:
+#: Every provider that writes a coordinate asks `enrich.source_build_mismatch` before it writes (F1),
+#: and that function raises `EnrichmentError` on a present-but-unreadable `module_spec.yaml` —
+#: deliberately, because picking a build for a module whose declaration cannot be read is the
+#: invention it exists to remove. Neither CLI caught it: `draft` caught `(CpicError, DraftError)` and
+#: `draft-panel` caught `(ClinVarDraftError, DraftError)`, so a spec carrying only `name:` — an
+#: ordinary mid-authoring state — turned `draft-panel --gene PALB2 --offline` into a rich traceback
+#: where every other enricher command exits cleanly. The presentation regressed *because* the build
+#: defect was fixed, which is the shape worth naming: a shared precondition added to three providers
+#: owes the same addition to each of their handlers, and a tuple makes the fourth provider inherit it
+#: instead of rediscovering it.
+_DRAFT_PRECONDITION_ERRORS: tuple[type[Exception], ...] = (DraftError, EnrichmentError)
+
+
 def _mode(strict: bool) -> str:
     return "strict" if strict else "best_effort"
 
@@ -700,7 +716,7 @@ def draft_(
                 spec_dir, name, drugs=drug, alleles=allele, population=population,
                 declared_use=declared, dry_run=dry_run, offline=offline, cpic_cache=cpic_cache,
             )
-        except (CpicError, DraftError) as exc:
+        except (CpicError, *_DRAFT_PRECONDITION_ERRORS) as exc:
             typer.secho(f"DRAFT FAILED ({name}): {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from exc
         if result.skipped:
@@ -1779,7 +1795,7 @@ def draft_panel_(
             min_review_stars=min_review_stars, max_citations=max_citations,
             declared_use=_use(use), dry_run=dry_run,
         )
-    except (ClinVarDraftError, DraftError) as exc:
+    except (ClinVarDraftError, *_DRAFT_PRECONDITION_ERRORS) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     if result.skipped:

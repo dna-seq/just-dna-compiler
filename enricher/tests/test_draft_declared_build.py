@@ -147,3 +147,34 @@ def test_the_default_build_draft_is_unchanged(tmp_path: Path) -> None:
     )
     assert not [w for w in result.warnings if "coordinates and this module declares" in w]
 
+
+def test_an_unreadable_spec_exits_cleanly_rather_than_tracebacking(tmp_path: Path) -> None:
+    """The presentation half of the same repair (R2-2), and it regressed *because* F1 was fixed.
+
+    `source_build_mismatch` raises `EnrichmentError` on a present-but-unreadable `module_spec.yaml`
+    — correctly: a module whose declaration cannot be read has no build to draft against. But
+    routing the providers through it gave two CLIs an exception their handlers did not name, so a
+    spec carrying only `name:` (an ordinary mid-authoring state, not a corrupt file) turned
+    `draft-panel` into a rich traceback where every other enricher command exits with a message.
+
+    Both commands are checked, because the handlers were separately wrong and a shared tuple is what
+    now keeps them together. `draft-panel` runs `--offline`: the raise must land before any snapshot
+    is provisioned, so this passes with no cache on the machine.
+    """
+    from typer.testing import CliRunner
+
+    from just_dna_enricher.cli import app
+
+    spec = tmp_path / "half-authored"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text("name: broken\n")
+
+    for argv in (
+        ["draft-panel", str(spec), "--gene", "PALB2", "--offline"],
+        ["draft", str(spec), "--gene", "CYP2C19", "--offline", "--use", "non_commercial"],
+    ):
+        result = CliRunner().invoke(app, argv)
+        assert result.exit_code == 1, (argv, result.output)
+        assert result.exception is None or isinstance(result.exception, SystemExit), argv
+        assert "DRAFT FAILED" in result.output, (argv, result.output)
+        assert "genome_build" in result.output, (argv, result.output)
