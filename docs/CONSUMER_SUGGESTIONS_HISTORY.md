@@ -52,6 +52,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S26** the derived-fact CSVs are attested nowhere — in tree 0.6.0; layout RM49
 - **S27** accepted `effect_allele` liftover caveat unwritten — docs 0.5.4
 - **S28** accepted consumer join contract unwritten — docs 0.5.4
+- **S29** `annotations.parquet` states no joinable key — RM80, 0.6.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2250,3 +2251,88 @@ carry per-sample coverage.** But two small, in-charter things would materially h
    reading no-call as reference is the difference between "screened negative" and "not screened." A
    module author flags such rows; a consumer that lacks callability data then knows to withhold the
    reassuring conclusion rather than assert it. Purely additive, opt-in, and it names a real hazard.
+
+# just-dna-lite, moving the annotating engine and report onto 0.5 (2026-08-16)
+
+*Reported against 0.5.4. S30 from the same round is still open in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md).*
+
+## S29 — `annotations.parquet` is keyed by nothing a consumer can join on
+
+**Status — fixed in 0.6.0 as [RM80](ROADMAP_HISTORY.md#rm80--annotationsparquet-had-no-column-for-the-thing-that-distinguishes-its-rows), 2026-08-16.** Your second
+candidate, and your closing sentence is the one that decided it: the table could not state its own key,
+so we made the key statable rather than picking a dedup rule for you.
+
+`annotations.parquet` now carries **`genotype`**, and the dedup key is
+`(variant_key, genotype, conclusion, negatives)`.
+
+**Why not the first candidate.** Unique-per-`variant_key` is not reachable: a genuine poly-effect
+variant is one locus carrying two annotations with different `conclusion`/`phenotype`/`category`, which
+is why the table was re-keyed off bare `variant_key` in the first place. Your own ClinVar panels are the
+same shape from the other side. So collapsing further would have to discard a real row eventually, and
+the local dedup you are running is lossless only for as long as it happens to be.
+
+**Why carrying the column was not enough on its own, and this is the part worth knowing.** Adding
+`genotype` *without* putting it in the key would have been worse than the gap you reported. Two
+genotypes sharing a conclusion (`C/T` and `T/T` both "carrier") collapse under the old key, so the
+surviving row would name one genotype while silently standing for both — and a consumer filtering on it
+would get a **wrong** answer where today it gets a missing one. Both halves shipped together.
+
+With `genotype` in the key the dedup is provably a no-op: `(variant_key, genotype)` is `VariantRow`'s
+own natural key and the compiler rejects duplicates on it. So the table is now **exactly one row per
+authored variant row**, which is the property your join wants.
+
+**On your `rs4977574` case.** Those three rows were surviving a key that already included
+`conclusion` and `negatives`, so something in that pair separated them — but not anything a reader could
+act on, which is the defect you are describing rather than a different one. `genotype` now makes the
+distinction visible in the table instead of implied by it.
+
+**What to change.** Drop the local dedup and join on `(variant_key, genotype)`; on the weights side the
+genotype is stored as an allele list plus a `phased` bit, so rebuild the string the way `reverse` does
+(phased → `|` in order, unphased → `/` alphabetically sorted). Your ×1.00 should hold without the
+projection step. Older artifacts are unaffected — reverse now detects which of the three keyings an
+artifact carries rather than assuming, and both legacy branches are preserved.
+
+**Cost:** a parquet column is approximately free under the 2026-08-13 charter amendment (materialized,
+derived, no human types one), which is what made this a minor rather than a deferral.
+`content_signature` does not move; a recompile's `artifact.digest` does, for any module carrying
+`variants.csv`.
+
+<!-- triaged: 0.6.0 · sha b06fea9cf075 -->
+
+Reported from **just-dna-lite** (consuming 0.5.4), 2026-08-16, while moving the annotating engine and
+report onto the 0.5 contract.
+
+**What we ran.** The report enriches a user's annotated variants with `gene`/`category`/`phenotype` by
+joining `annotations.parquet` on `rsid` — a join written when annotations were one row per rsID. On 0.5
+artifacts it fans out. Measured over our built corpus (`weights` left-joined to
+`annotations.select(rsid, gene, category, phenotype)`):
+
+| module | weights rows | annotations rows | joined | inflation |
+|---|---|---|---|---|
+| coronary | 81 | 77 | 231 | ×2.85 |
+| lipidmetabolism | 45 | 41 | 123 | ×2.73 |
+| vo2max | 39 | 28 | 84 | ×2.15 |
+| longevitymap | 1039 | 528 | 1039 | ×1.00 |
+
+**What we expected.** That `variant_key` would be the key, per the 0.5 note that annotations are keyed
+by `variant_key` rather than collapsed per rsID. It is not unique either: coronary's 77 annotation rows
+carry **27** distinct `variant_key`, and the three rows of `rs4977574` are byte-identical across every
+column the table has — same `rsid`, same `variant_key`, same `gene`, same `conclusion`.
+
+**What is actually happening.** The table has one row per authored *genotype* — coronary's `rs4977574`
+is authored `A/A`, `A/G`, `G/G` — but carries no `genotype` column, so the distinguishing field is not
+in the table. The rows are therefore not duplicates that a dedup would be discarding information to
+remove; they are genuinely indistinguishable.
+
+**What we did meanwhile.** Deduplicated the projection before joining, on `variant_key` where the
+weights side has one. That restores exactly ×1.00 on all nine of our modules with zero unmatched rows —
+including the three ClinVar gene panels, where an rsID maps to several genes and `variant_key` is the
+only key that separates them (`rsid` dedup still inflates cardio ×1.12, cancer ×1.14, pathogenic ×1.08).
+
+**Candidate fixes, and the argument against the first.** *Make the table unique per `variant_key`* is
+what we do locally and it loses nothing today — but it is only lossless while the per-genotype rows stay
+identical, and the table exists to carry per-variant facts that a curator might one day want to state
+per genotype. *Add the `genotype` column* keeps that door open and makes the row count honest, at the
+cost of a column on a table whose whole point is to be the variant-level one. We have no view on which
+is right; what we would ask for either way is that the table state its own key, since a consumer
+currently cannot derive it from the artifact.

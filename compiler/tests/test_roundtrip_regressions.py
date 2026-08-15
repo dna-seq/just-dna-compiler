@@ -293,3 +293,93 @@ def test_p_value_cross_check_stays_silent_on_indefinite_and_rounded_strings(tmp_
         )
         assert result.success, result.errors
         assert not [m for m in result.warnings + result.errors if "disagree" in m]
+
+
+# ── RM80: annotations.parquet carries the genotype that distinguishes its rows ──────────────────
+# Reported by a downstream consumer: `variant_key` is not unique in this table and never could be
+# (the poly-effect case above is real), so every consumer had to dedup before joining — and the
+# authored column that says *which call an annotation applies to* was in no column at all.
+
+
+def test_annotations_carry_the_genotype_that_distinguishes_their_rows(tmp_path: Path) -> None:
+    variants = (
+        "rsid,genotype,state,conclusion,gene,phenotype,category\n"
+        "rs1,A/G,risk,carrier,GENE1,MildTrait,catA\n"
+        "rs1,A/A,risk,affected,GENE1,SevereTrait,catB\n"
+    )
+    studies = "rsid,pmid\nrs1,12345678\n"
+    orig, recompiled = _roundtrip(tmp_path, variants, studies)
+
+    for d in (orig, recompiled):
+        ann = pl.read_parquet(d / "annotations.parquet")
+        assert "genotype" in ann.columns
+        # The consumer's first option — "unique per variant_key" — is impossible here, which is why
+        # the second one is the fix. Both statements are asserted so the reason survives.
+        keys = [r["variant_key"] for r in ann.iter_rows(named=True)]
+        assert len(set(keys)) == 1 and len(keys) == 2
+        by_genotype = {
+            r["genotype"]: (r["phenotype"], r["category"]) for r in ann.iter_rows(named=True)
+        }
+        assert by_genotype == {
+            "A/G": ("MildTrait", "catA"),
+            "A/A": ("SevereTrait", "catB"),
+        }
+
+
+def test_two_genotypes_sharing_one_conclusion_stay_two_annotation_rows(tmp_path: Path) -> None:
+    """The case that forced `genotype` into the KEY rather than merely into the columns.
+
+    Under the old variant-effect key these two rows collapse to one, so a `genotype` column carried
+    without being keyed on would have named one genotype while silently standing for both — a
+    consumer filtering on it gets a wrong answer instead of a missing one. The old behaviour is
+    demonstrated here rather than asserted about: the effect-pair projection really does lose the
+    distinction, and the shipped key really does keep it."""
+    variants = (
+        "rsid,genotype,state,conclusion,gene,phenotype,category\n"
+        "rs1,A/G,risk,carrier,GENE1,Trait,cat\n"
+        "rs1,A/A,risk,carrier,GENE1,Trait,cat\n"
+    )
+    studies = "rsid,pmid\nrs1,12345678\n"
+    orig, recompiled = _roundtrip(tmp_path, variants, studies)
+
+    ann = pl.read_parquet(orig / "annotations.parquet")
+    effect_pairs = {(r["variant_key"], r["conclusion"], r["negatives"]) for r in ann.iter_rows(named=True)}
+    assert len(effect_pairs) == 1, "the old key really is blind to the genotype here"
+    assert ann.height == 2, "the shipped key keeps both rows"
+    assert {r["genotype"] for r in ann.iter_rows(named=True)} == {"A/G", "A/A"}
+    assert (
+        pl.read_parquet(orig / "annotations.parquet")
+        .equals(pl.read_parquet(recompiled / "annotations.parquet"))
+    )
+
+
+def test_a_phased_genotype_still_finds_its_annotation(tmp_path: Path) -> None:
+    """The property RM80's join now depends on, pinned rather than assumed.
+
+    `annotations.parquet` stores the **authored** genotype cell; the reverse probe rebuilds the string
+    from `weights.parquet`, which stores an allele list plus a `phased` bit. The two must agree or the
+    lookup misses and `gene`/`phenotype`/`category` come back empty — a silent P7 loss.
+
+    Unphased is safe by construction, because the model *rejects* an unsorted pair rather than
+    canonicalizing it (`G/A` never reaches a cell), so the fixtures above cannot exercise the risk.
+    A phased pair is the case that can: `G|A` keeps its authored order, and reverse must re-emit that
+    order rather than sorting it.
+    """
+    variants = (
+        "rsid,genotype,state,conclusion,gene,phenotype,category\n"
+        "rs1,G|A,risk,phased effect,GENE1,PhasedTrait,catP\n"
+        "rs1,A/G,risk,unphased effect,GENE1,UnphasedTrait,catU\n"
+    )
+    studies = "rsid,pmid\nrs1,12345678\n"
+    orig, recompiled = _roundtrip(tmp_path, variants, studies)
+
+    for d in (orig, recompiled):
+        ann = pl.read_parquet(d / "annotations.parquet")
+        assert {
+            r["genotype"]: (r["phenotype"], r["category"]) for r in ann.iter_rows(named=True)
+        } == {"G|A": ("PhasedTrait", "catP"), "A/G": ("UnphasedTrait", "catU")}
+
+    # The reversed CSV kept both annotations: an empty gene/phenotype here is exactly the silent loss
+    # a key the probe cannot reproduce would cause.
+    reversed_csv = (tmp_path / "reversed" / "variants.csv").read_text(encoding="utf-8")
+    assert "PhasedTrait" in reversed_csv and "UnphasedTrait" in reversed_csv

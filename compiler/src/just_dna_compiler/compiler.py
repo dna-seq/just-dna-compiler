@@ -5169,8 +5169,8 @@ def _cross_check_clinical_assertions(
 
 
 def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataFrame:
-    """Build annotations.parquet, deduplicated by the genuine **variant-effect pair**
-    `(variant_key, conclusion, negatives)` (first occurrence wins).
+    """Build annotations.parquet, keyed on `(variant_key, genotype, conclusion, negatives)`
+    (first occurrence wins).
 
     Keying on `variant_key` alone collapsed a genuine *poly-effect* variant — the same locus
     carrying two distinct annotations (different `conclusion`/`category`, as embryo-level / neural
@@ -5179,19 +5179,38 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
     round-trip loss introduced with the `variant_key` column). The effect (`conclusion` + `negatives`)
     is part of the identity, so a row per (variant, effect) is kept.
 
-    Carries `variant_key`/`conclusion`/`negatives` so the table is **self-joinable** back to
-    `weights.parquet` on reverse (each weights row rebuilds the same triple), and an explicit
+    **`genotype` joined that key in 0.6 (RM80), reported by a consumer.** `variant_key` is not unique
+    here and never could be, so every consumer had to dedup before joining — and the authored column
+    that actually distinguishes the rows, the one that decides *which call this annotation applies
+    to*, was in no column. A het "carrier" row and a hom "affected" row at one locus were two rows a
+    reader could tell apart only by reading the prose in `conclusion`.
+
+    **Carrying it without keying on it would have been worse than the gap**, which is why this is one
+    change and not two: two genotypes sharing a conclusion (`C/T` and `T/T` both "carrier") collapse
+    under the old key, so the surviving row would name one genotype while silently standing for both,
+    and a consumer filtering on it would get a wrong answer instead of a missing one. With `genotype`
+    in the key the dedup is provably a no-op — `(variant_key, genotype)` is `VariantRow`'s own natural
+    key and `_cross_validate_variants` rejects duplicates on it — so the table is now exactly one row
+    per authored variant row. It is kept rather than dropped because this function must not silently
+    depend on a guarantee another function enforces.
+
+    Carries `variant_key`/`genotype`/`conclusion`/`negatives` so the table is **self-joinable** back to
+    `weights.parquet` on reverse (each weights row rebuilds the same tuple), and an explicit
     `variant_key` (rsid, else `chrom:start:ref`) so a **position-only** variant's annotation survives
     (rsid is null for such a row)."""
-    seen_keys: set[tuple[str, str | None, str | None]] = set()
+    seen_keys: set[tuple[str, str | None, str | None, str | None]] = set()
     records: list[dict[str, str | None]] = []
     for v in variants:
-        key = (v.variant_key, v.conclusion, v.negatives)
+        key = (v.variant_key, v.genotype, v.conclusion, v.negatives)
         if key not in seen_keys:
             records.append(
                 {
                     "rsid": v.rsid,
                     "variant_key": v.variant_key,
+                    # The authored cell, not the materialized allele list `weights.parquet` carries:
+                    # this table is read on its own, so it states the genotype the way the author
+                    # wrote it rather than asking a consumer to re-join and re-assemble one.
+                    "genotype": v.genotype,
                     "conclusion": v.conclusion,
                     "negatives": v.negatives,
                     "module": module_name,
@@ -5204,6 +5223,7 @@ def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataF
     schema = {
         "rsid": pl.Utf8,
         "variant_key": pl.Utf8,
+        "genotype": pl.Utf8,
         "conclusion": pl.Utf8,
         "negatives": pl.Utf8,
         "module": pl.Utf8,
@@ -5461,32 +5481,34 @@ def reverse_module(
     # variants.csv + studies.csv only when the module has them.
     if weights_df is not None:
         ann_lookup: dict[tuple, dict[str, str]] = {}
-        ann_keyed_by_effect = False
+        ann_key_columns: tuple[str, ...] = ()
         ann_path = parquet_dir / "annotations.parquet"
         if ann_path.exists():
             ann_df = pl.read_parquet(ann_path)
-            # An artifact whose annotations carry `conclusion` is keyed on the variant-effect pair;
-            # an older one (pre-effect-key) is keyed on variant_key alone. Detect once and key both
-            # the lookup and the weights-side probe the same way.
-            ann_keyed_by_effect = "conclusion" in ann_df.columns
+            # Which columns follow `variant_key` in this artifact's annotation key, read off the
+            # artifact rather than assumed — three generations of the table are in the wild and each
+            # keyed differently: 0.6 on (variant_key, genotype, conclusion, negatives) (RM80), 0.5 on
+            # the variant-effect pair, and the oldest on variant_key alone. Detected once and used by
+            # both the lookup and the weights-side probe, so the two cannot key differently.
+            # Order is fixed here, not by column order in the parquet, or the two sides could agree
+            # on the members and disagree on the tuple.
+            ann_key_columns = tuple(
+                name for name in ("genotype", "conclusion", "negatives") if name in ann_df.columns
+            )
             for row in ann_df.iter_rows(named=True):
                 # variant_key so position-only variants (rsid null) match; fall back to rsid for an
                 # older artifact compiled before the variant_key column existed.
                 base = row.get("variant_key") or row.get("rsid")
                 if base is None:
                     continue
-                key = (
-                    (base, row.get("conclusion"), row.get("negatives"))
-                    if ann_keyed_by_effect
-                    else (base,)
-                )
+                key = (base, *(row.get(name) for name in ann_key_columns))
                 ann_lookup[key] = {
                     "gene": row.get("gene", ""),
                     "phenotype": row.get("phenotype", ""),
                     "category": row.get("category", ""),
                 }
         _write_variants_csv(
-            weights_df, ann_lookup, ann_keyed_by_effect, default_curator, default_method,
+            weights_df, ann_lookup, ann_key_columns, default_curator, default_method,
             default_priority, output_dir / "variants.csv", genome_build=genome_build,
         )
     studies_path = parquet_dir / "studies.parquet"
@@ -5746,7 +5768,7 @@ def _most_common(df: pl.DataFrame, col: str) -> str | None:
 def _write_variants_csv(
     weights_df: pl.DataFrame,
     ann_lookup: dict[tuple, dict[str, str]],
-    ann_keyed_by_effect: bool,
+    ann_key_columns: tuple[str, ...],
     default_curator: str,
     default_method: str,
     default_priority: str | None,
@@ -5826,14 +5848,6 @@ def _write_variants_csv(
                     else {"chrom", "start", "ref", "alts"}
                 )
             emit_rsid = raw_rsid or "" if "rsid" in authored_set else ""
-            # Probe the annotation on the same key the table was built with: the variant-effect pair
-            # (variant_key, conclusion, negatives) when the artifact carries it, else variant_key.
-            ann_key = (
-                (variant_key, row.get("conclusion"), row.get("negatives"))
-                if ann_keyed_by_effect
-                else (variant_key,)
-            )
-            ann = ann_lookup.get(ann_key, {})
             genotype_list = row.get("genotype", [])
             curator = row.get("curator", "")
             method = row.get("method", "")
@@ -5842,6 +5856,10 @@ def _write_variants_csv(
             # list) tells us which separator to re-emit: a phased pair keeps its order and joins with
             # '|'; an unphased pair is re-emitted alphabetically sorted with '/'; a single allele
             # (hemizygous / homoplasmic) passes through. Lossless round-trip (ROADMAP 0.3 item 5b).
+            #
+            # Runs **before** the annotation probe because since RM80 the genotype is part of that
+            # key, and `weights.parquet` stores the allele list rather than the authored cell — so
+            # the string has to be rebuilt before it can be joined on.
             if genotype_list and len(genotype_list) == 2:
                 if row.get("phased"):
                     genotype_str = "|".join(genotype_list)
@@ -5849,6 +5867,14 @@ def _write_variants_csv(
                     genotype_str = "/".join(sorted(genotype_list))
             else:
                 genotype_str = "/".join(genotype_list) if genotype_list else ""
+            # Probe the annotation on the same key the table was built with, whichever generation of
+            # the table this artifact carries (see `ann_key_columns` at the call site).
+            ann_probe = {
+                "genotype": genotype_str,
+                "conclusion": row.get("conclusion"),
+                "negatives": row.get("negatives"),
+            }
+            ann = ann_lookup.get((variant_key, *(ann_probe[n] for n in ann_key_columns)), {})
             alts_list = row.get("alts")
             writer.writerow(
                 {
