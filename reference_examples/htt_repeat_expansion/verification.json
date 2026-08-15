@@ -1,0 +1,14 @@
+{
+  "module_hash": "sha256:2841bad0b61e14e55e9bae8ff4908ed3fb84df66116b3a121b50529c11ab4df9",
+  "signature": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "difficulty": 20,
+  "nonce": 81530,
+  "producer": null,
+  "produced_at": "2026-08-15T23:27:20Z",
+  "closure": {
+    "closed_at": "2026-08-15T23:27:20Z",
+    "closed_by": "just-dna-format reference corpus",
+    "signature": null
+  },
+  "records": []
+}

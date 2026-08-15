@@ -119,6 +119,7 @@ from just_dna_format.manifest import (
     Sources,
     Stats,
     Verification,
+    VerificationDoc,
     read_manifest,
     write_manifest,
 )
@@ -133,10 +134,13 @@ from just_dna_format.pgx import (
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
 from just_dna_format.verification import (
+    attest,
     attestation_failure,
+    close,
     module_binding,
     read_verification,
     verification_block,
+    write_verification,
 )
 from just_dna_format.spec import (
     RESERVED_FLAGS,
@@ -170,7 +174,7 @@ from just_dna_format.vrs import (
 )
 from pydantic import BaseModel, ValidationError
 
-from just_dna_compiler.models import CompilationResult, ValidationResult
+from just_dna_compiler.models import ClosureResult, CompilationResult, ValidationResult
 from just_dna_compiler.resolution import (
     hosting_verdict,
     resolve_from_table,
@@ -4190,6 +4194,101 @@ def compile_module(
     )
 
 
+def close_module(
+    spec_dir: Path,
+    *,
+    closed_by: str | None = None,
+    private_key_pem: bytes | None = None,
+    now: str | None = None,
+    difficulty: int | None = None,
+) -> ClosureResult:
+    """Declare a module's authoring phase finished, binding the statement to its authored bytes (RM73).
+
+    A flat CSV row records nothing about how it came to be, so authoring had no end and every check
+    that needed one guessed. This is the end: a `closure` block inside the module's `verification.json`
+    naming the hash of the authored files as they stand. A later edit moves that hash, the compiler
+    recomputes it, and the closure is dropped along with the rest of the attestation — which is why
+    there is no second file and no second binding here to keep in step.
+
+    **Deliberate, never a side effect.** `validate_spec` stays read-only and nothing stamps this on a
+    passing run: a record written by whatever happened to execute says only *someone ran a tool*,
+    which is the exact defect RM73 levels at an attestation produced as a by-product. So this is its
+    own function behind its own command, and `--private-key` makes the act attributable rather than
+    merely evident.
+
+    **It refuses on an invalid spec and not on a warning.** Declaring a set finished that the compiler
+    will not accept is a contradiction; declaring one finished that carries an unresolvable rsID or an
+    ungrounded threshold is ordinary, and refusing there would make closure unreachable for every
+    module whose findings no authored edit can clear (P5, the `not_covered` class).
+
+    Existing check records survive **only while they describe these bytes**, and then the whole
+    document is kept verbatim rather than rebuilt — `producer` names who put the *checks*, so stamping
+    this tier's label over it would have the compiler claim an enricher's cross-checks. Records that no
+    longer hold are dropped and named in `dropped_checks`: carrying them across would re-bind a claim
+    to rows the check never saw, which is the failure `module_hash` exists to catch, committed by the
+    tool instead of by an edit.
+    """
+    spec_dir = Path(spec_dir)
+    validation = validate_spec(spec_dir)
+    if not validation.valid:
+        return ClosureResult(
+            closed=False,
+            errors=[
+                "This spec does not validate, so its authoring set cannot be declared finished. "
+                "Fix the errors below and close it afterwards.",
+                *validation.errors,
+            ],
+            warnings=validation.warnings,
+        )
+
+    try:
+        path = sidecar_write_path(spec_dir, VERIFICATION_JSON)
+    except SidecarCollision as exc:
+        return ClosureResult(closed=False, errors=[str(exc)])
+
+    binding = _module_binding(spec_dir)
+    stamp = now or now_utc_iso()
+    statement = close(binding, closed_at=stamp, closed_by=closed_by, private_key_pem=private_key_pem)
+    warnings: list[str] = []
+    previous: VerificationDoc | None = None
+    if path.is_file():
+        try:
+            previous = read_verification(path)
+        except (OSError, ValueError) as exc:
+            warnings.append(
+                f"The existing {path.name} could not be read ({exc}); this closure replaces it, so "
+                f"any checks it recorded are gone. Re-run the checks (just-dna-enricher)."
+            )
+
+    held = previous is not None and attestation_failure(previous, binding) is None
+    if held:
+        # Everything the document says still holds, so the closure is the only new claim in it and the
+        # rest is kept **verbatim** — including `producer`, which names who put the *checks*. Writing
+        # this tier's own label there would say the compiler ran an enricher's cross-checks, which is
+        # a false claim manufactured by an unrelated act. Reusing the document also keeps the nonce
+        # already mined over an unchanged payload, so closing costs no work rather than the same work
+        # twice.
+        doc = previous.model_copy(update={"closure": statement})
+    else:
+        # Either there was no document, or it no longer describes these bytes. Its records are dropped
+        # rather than re-attested: re-binding them would claim a check was put against rows it never
+        # saw, which is the failure `module_hash` exists to catch, committed by the tool instead of by
+        # an edit. `producer` stays unset for the same reason — nobody put a check into this document.
+        doc = attest(
+            [], binding, produced_at=stamp, difficulty=difficulty, closure=statement
+        )
+    dropped = sorted(r.check for r in previous.records) if previous is not None and not held else []
+    write_verification(doc, path)
+    return ClosureResult(
+        closed=True,
+        path=path,
+        module_hash=binding,
+        signed=doc.closure is not None and doc.closure.signature is not None,
+        dropped_checks=dropped,
+        warnings=warnings,
+    )
+
+
 def _frequency_block(rows: list[FrequencyRow]) -> Frequency | None:
     """The manifest's `frequency` summary, or `None` when the module carries no frequency sidecar.
 
@@ -4449,6 +4548,19 @@ def _sources_block(rows: list[SourceRow]) -> Sources | None:
 
 
 def _verification_block(spec_dir: Path) -> tuple[Verification | None, list[str]]:
+    """The manifest's `verification` block plus every warning about it — RM45's, and RM73's.
+
+    A wrapper rather than a fourth branch inside the reader below, so the closure reminder is decided
+    once from the outcome and both call sites (`validate_spec` and `compile_module`) inherit it
+    without either having to remember. That mattered here: the two are already de-duplicated on the
+    message, and a warning wired into only one of them is the pre-flight/compile parity gap this file
+    has now closed four times.
+    """
+    block, warnings = _read_verification_block(spec_dir)
+    return block, [*warnings, *_closure_warning(block)]
+
+
+def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[str]]:
     """The manifest's `verification` block, or `None` plus the reason it is not being published (RM45).
 
     Returns `(block, warnings)` and **never errors**. Three outcomes, and the middle one is the whole
@@ -4489,12 +4601,53 @@ def _verification_block(spec_dir: Path) -> tuple[Verification | None, list[str]]
         ]
     failure = attestation_failure(doc, _module_binding(spec_dir))
     if failure is not None:
+        # Naming the closure only when the dropped document actually carried one: the remedies differ
+        # (re-running the checks is the enricher's job, re-closing is the author's), and a compile
+        # that recommended both to everyone would send half its readers after a file they never had.
+        remedy = (
+            "Re-run the checks to attest these bytes, and close the module again."
+            if doc.closure is not None
+            else "Re-run the checks to attest these bytes."
+        )
         return None, [
             *spelling_warnings,
             f"{shown} is stale: {failure}. The manifest records no verification for this compile, "
-            f"which says nothing rather than claiming a pass. Re-run the checks to attest these bytes.",
+            f"which says nothing rather than claiming a pass. {remedy}",
         ]
     return verification_block(doc), list(spelling_warnings)
+
+
+#: The authoring phase is not closed (RM73). Named because a consumer can only learn this from the
+#: warning text until the manifest field reaches them, which is the unversioned-interface shape RM44
+#: made a rule — `UNJOINABLE_PHRASE` is the precedent and a test pins this one the same way.
+UNCLOSED_PHRASE: str = "records no closure"
+
+
+def _closure_warning(block: Verification | None) -> list[str]:
+    """The reminder that authoring was never declared finished — keyed on the OUTCOME, not the file.
+
+    One sentence covers all three ways a compile ends up publishing no closure (no attestation
+    document at all, one that no longer describes these bytes, one that was never closed), because
+    what an author needs to know is the same in each: this artifact does not say the module is done.
+    The reasons differ and the *other* warnings already carry them; repeating a diagnosis here would
+    put two sentences on one cause.
+
+    **Warning in both modes, and never a `strict` matter.** An unclosed module is perfectly
+    reproducible — `strict` means "reproducible artifact", an unrelated axis — and this is the
+    `not_covered` class read from the other end: a finding the author *can* clear, but whose severity
+    is not the mode's business. It also carries no count, which is what keeps it collapsible under the
+    de-duplication that runs it in both `validate_spec` and `compile_module`.
+    """
+    if block is not None and block.closure is not None:
+        return []
+    return [
+        f"This module {UNCLOSED_PHRASE}: nothing in it states that authoring is finished, so a "
+        f"consumer cannot tell a spec still being edited from one its author considers done. Run "
+        f"`just-dna-compiler close <spec-dir>` when the module is complete — closing is a deliberate "
+        f"act, it is never stamped by a passing check, and editing any authored file afterwards drops "
+        f"the closure again. Compiling without one is a warning today; requiring it is filed for 1.0 "
+        f"(RM73)."
+    ]
 
 
 def _module_binding(spec_dir: Path) -> str:

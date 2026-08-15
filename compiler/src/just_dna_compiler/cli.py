@@ -10,6 +10,7 @@ Exit codes are CI/registry-gateable: `0` success, `1` failure (invalid spec / fa
     just-dna-compiler compile spec/ out/ --strict --ensembl-cache ref.duckdb
     just-dna-compiler reverse parquet_dir/ spec_out/ --version 1.2.3
     just-dna-compiler verify out/ --no-require-marketplace --public-key <base64>
+    just-dna-compiler close spec/                   # declare authoring finished (RM73)
     just-dna-compiler keygen --out key.pem          # the key `sign` needs, and its public half
     just-dna-compiler sign out/ --private-key key.pem
     just-dna-compiler reference --json              # the live authoring reference / JSON Schemas
@@ -33,6 +34,7 @@ from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import ValidationError
 
 from just_dna_compiler.compiler import (
+    close_module,
     compile_module,
     content_signature,
     reverse_module,
@@ -255,6 +257,55 @@ def verify(
         f"signature: {'verified against the pinned key' if public_key else
                       ('present, self-consistent only' if manifest.signature else 'absent')}"
     )
+
+
+@app.command()
+def close(
+    spec_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Module spec directory to declare finished"
+    ),
+    by: str | None = typer.Option(
+        None, "--by", help="Who is closing authoring. Legibility only — sign it to make it provable."
+    ),
+    private_key: Path | None = typer.Option(
+        None, "--private-key", exists=True, dir_okay=False,
+        help="Ed25519 private key PEM (from `keygen`). Signs the closure over the authored bytes.",
+    ),
+) -> None:
+    """Declare this module's authoring phase finished, bound to its authored bytes (RM73).
+
+    Authoring is a process and it had no end, so every check that needed to know whether a value was
+    still a copy of its source, or whether a stub had been filled, was guessing. Closing writes a
+    `closure` block into the module's `verification.json` naming the hash of `module_spec.yaml` and
+    the authored CSVs as they stand right now. Edit any of them afterwards and the hash moves, the
+    compiler drops the closure, and the module is open again — which is the point.
+
+    It is deliberate on purpose. `validate` will not do this for you however cleanly it passes: a
+    record stamped by whatever happened to run says only that something ran. `--private-key` signs
+    the act with the same key `sign` uses on a compiled artifact, which is what turns *someone closed
+    this* into *this party closed this*.
+
+    Refuses on a spec that does not validate, and does **not** refuse on warnings — an unresolved
+    rsID or an ungrounded threshold is a legitimate state to call finished.
+    """
+    result = close_module(
+        spec_dir, closed_by=by, private_key_pem=private_key.read_bytes() if private_key else None
+    )
+    for message in result.warnings:
+        typer.secho(f"  warning: {message}", fg=typer.colors.YELLOW, err=True)
+    if not result.closed:
+        for message in result.errors:
+            typer.secho(f"  {message}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    if result.dropped_checks:
+        typer.secho(
+            f"  dropped {len(result.dropped_checks)} check record(s) attested over different bytes: "
+            f"{', '.join(result.dropped_checks)} — re-run the checks against the closed module.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+    typer.secho(f"closed: {result.path}", fg=typer.colors.GREEN)
+    typer.echo(f"authored bytes: {result.module_hash}")
+    typer.echo(f"signature: {'present' if result.signed else 'none (change-evident, not attributed)'}")
 
 
 @app.command()

@@ -1178,6 +1178,41 @@ everywhere else. The compiler confirms it and stamps `manifest.verification`.
   reversed module carries no block, which is the honest *says nothing*; re-attesting means re-running
   the checks.
 
+### The closure (RM73) — the authoring phase, ended
+
+`VerificationDoc.closure` is an optional `Closure` — `closed_at`, `closed_by?`, `signature?` — written
+by `just-dna-compiler close` and by nothing else. It answers a different question from the records
+beside it: they say *these checks were put against these bytes*, it says *a human declared these bytes
+final*. A module may legitimately carry either alone.
+
+- **It rides this document rather than a file of its own, and that is the entire design.** Everything
+  a phase boundary needs was already here: `module_hash` binds the authored set, and the compiler
+  recomputes it and drops the block on any mismatch. So an edit after closing un-closes the module for
+  free, with no second binding, no second staleness rule and no second transport to keep in step. A
+  free-standing `closure.json` would also be dropped silently by `reverse` — the RM51 class.
+- **Outside `pow_digest`'s payload**, which stays `module_hash|signature|nonce`. Closing an attested
+  document therefore re-mines nothing, and every attestation written before 0.6 still verifies against
+  a reader that knows about closures.
+- **Deliberate, never a side effect.** `validate` stays read-only however cleanly it passes: a record
+  stamped by whatever happened to execute says only *someone ran a tool*, which is the defect RM73
+  levels at an attestation produced as a by-product. Closing refuses a spec that does not validate —
+  an authored set the compiler will not accept is not finished — and does **not** refuse on warnings,
+  or a module carrying a finding no authored edit can clear could never be closed at all.
+- **`closed_by` is untrusted; the signature is not.** An Ed25519 signature over `module_hash` (the same
+  `signing.sign_digest` the artifact signature uses) makes the act attributable. Unsigned is legal and
+  still change-evident — this format offers tamper-*evidence*, never tamper-proofing. But a **present**
+  signature that fails to verify drops the whole document: absence is a limit, a claim is a claim.
+- **It moves no identity.** `verification.json` is a derived sidecar, in neither `content_signature`
+  nor `artifact.digest` — measured by compiling all sixteen reference examples before and after
+  closing them, with every digest and signature byte-identical.
+- **An enricher run leaves a closed module closed**, since enrichment writes only derived sidecars,
+  which are outside the binding. Where the authored bytes *have* moved, `record_verification` drops the
+  closure rather than re-binding it: only the author may make that claim again.
+- **Absent is the ordinary state and it warns**, in both modes, in `validate` and `compile` alike.
+  Requiring it is filed for 1.0 and is **blocked** there — reverse cannot re-emit the document, so
+  under a gate `compile → reverse → compile` would refuse on step 3. See ROADMAP_1_0 § RM73 (gate
+  half); the asymmetry is free today only because warnings feed no digest and no signature.
+
 **Nothing in `manifest.verification` is trusted, and the block's every field description says so.**
 `compiled_by` has carried that warning for one field since the beginning; here it has to be on all of
 them. A **forged pass is worse than silence** — a consumer that reads "the clinical calls were

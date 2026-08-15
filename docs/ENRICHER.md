@@ -121,6 +121,16 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   both commands in one document, replacing per check and never erasing a check this run did not put —
   and until `literature` was wired in there was no second writer at all, so the merge was machinery
   tested only against a document nothing produced.
+- **The merge carries the author's CLOSURE across, and only while the authored bytes stand still
+  (RM73, 0.6).** `just-dna-compiler close` writes a `closure` block into the same document, so this
+  pass — which rebuilds it rather than editing it — would have dropped a field it did not know about,
+  silently and on every run. Enrichment writes only *derived* sidecars, which are outside the binding,
+  so the ordinary case is that nothing the author closed has changed and un-closing it would train an
+  author to stop closing. Where the authored bytes **have** moved, the closure is dropped rather than
+  re-bound: carrying it would have this pass assert *a human declared these bytes final* about bytes
+  that human never saw. Only the author may make that claim again. This is the never-clobber trap one
+  column over from `SourceRow.dataset` and `draft_digest`, and the rule generalizes — when another
+  tier starts writing into a document this one rebuilds, ask what the rebuild silently discards.
 - **A pass has ONE subject set, and the gate and the record both read it.** `literature` is the worked
   example and it got this wrong three ways at once, all the same shape. `literature.csv` is the pin —
   merge-not-clobber means a re-run refetches nothing — so anything counted inside the fetch loop is a

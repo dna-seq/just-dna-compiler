@@ -22,14 +22,33 @@ anyone claimed. What the boundary costs is real and is stated rather than hidden
 enricher against a fresher ClinVar leaves the attestation matching, so a consumer reads *which*
 release each check was put against from the record's own `release` field rather than inferring
 currency from the binding.
+
+**The closure (RM73, 0.6) rides this document, and that is the whole design.** RM73 asked for a phase
+boundary: an attestation that authoring is finished, which a later edit invalidates rather than
+silently outliving. Everything that needs is already here — `module_hash` binds the authored bytes,
+and the compiler recomputes it and drops the block on any mismatch — so the closure is one optional
+block on `VerificationDoc` rather than a second sidecar with its own binding, its own staleness rule
+and its own transport. It sits **outside** `pow_digest`'s payload, so no document written before it
+existed has been invalidated and closing one re-mines nothing.
+
+The two answer different questions and must not be read as one: the records say *these checks were
+put against these bytes*, the closure says *a human declared these bytes final*. A module may
+legitimately carry either alone.
 """
 
 import hashlib
 from collections.abc import Sequence
 from pathlib import Path
 
-from just_dna_format.integrity import artifact_digest, fact_signature
-from just_dna_format.manifest import FileEntry, Verification, VerificationDoc, VerificationRecord
+from just_dna_format.integrity import IntegrityError, artifact_digest, fact_signature, verify_signature
+from just_dna_format.manifest import (
+    Closure,
+    FileEntry,
+    Verification,
+    VerificationDoc,
+    VerificationRecord,
+)
+from just_dna_format.signing import sign_digest
 
 #: Fact columns feeding `verification_signature`, on the discipline `integrity.fact_signature`
 #: documents for the four CSV sidecars: what the record *claims*, with the producer's noise left out.
@@ -118,6 +137,34 @@ def find_nonce(module_hash: str, signature: str, difficulty: int) -> int:
     return nonce
 
 
+def close(
+    module_hash: str,
+    *,
+    closed_at: str,
+    closed_by: str | None = None,
+    private_key_pem: bytes | None = None,
+) -> Closure:
+    """Build the closure that says authoring is finished over `module_hash` (RM73).
+
+    Signing is optional and the message signed is `module_hash` itself, so `signing.sign_digest`
+    serves unchanged — it takes whichever digest string it is handed, which is why `Signature` moved
+    up beside the models that use it rather than growing a second spelling here.
+
+    Nothing about this function decides *when* it is legitimate to call. That is the caller's job and
+    it is a real one: closing a document whose records were attested over other bytes would re-bind
+    them to these, which is why `compile_module`'s side of this drops such records rather than
+    carrying them across.
+    """
+    return Closure(
+        closed_at=closed_at,
+        closed_by=closed_by,
+        signature=(
+            None if private_key_pem is None
+            else sign_digest(module_hash, private_key_pem, signed_at=closed_at)
+        ),
+    )
+
+
 def attest(
     records: Sequence[VerificationRecord],
     module_hash: str,
@@ -125,6 +172,7 @@ def attest(
     producer: str | None = None,
     produced_at: str | None = None,
     difficulty: int | None = None,
+    closure: Closure | None = None,
 ) -> VerificationDoc:
     """Build the document: hash the records, bind them to `module_hash`, and mine the nonce.
 
@@ -150,6 +198,12 @@ def attest(
         producer=producer,
         produced_at=produced_at,
         records=ordered,
+        # Deliberately outside `pow_digest`'s payload, which stays `module_hash|signature|nonce`.
+        # Two consequences worth having: closing an already-attested document re-mines nothing it
+        # would not have re-mined anyway, and every attestation written before 0.6 still verifies
+        # against a reader that knows about closures. What protects the closure is the binding it
+        # rides plus its own optional signature, not the work.
+        closure=closure,
     )
 
 
@@ -177,7 +231,7 @@ def attestation_failure(
     if doc.module_hash != module_hash:
         return (
             f"the attestation was computed over different module bytes ({doc.module_hash} vs "
-            f"{module_hash}) — the spec has been edited since the checks ran, so nothing here "
+            f"{module_hash}) — the spec has been edited since this was written, so nothing here "
             f"describes the rows being compiled"
         )
     recomputed = verification_signature(doc.records)
@@ -196,6 +250,18 @@ def attestation_failure(
             f"nonce {doc.nonce} does not meet the {doc.difficulty}-bit proof-of-work it claims — the "
             f"attestation was assembled by hand rather than by a run of the checks"
         )
+    # A closure with no signature is checked by the binding above and nothing else — that is the whole
+    # of what an unsigned one claims. A signature that is *present* is a stronger claim, so a failure
+    # here drops the document: an unverifiable attribution is worse than an anonymous closure, and the
+    # asymmetry is the house rule that absence is a limit while a claim is a claim.
+    if doc.closure is not None and doc.closure.signature is not None:
+        try:
+            verify_signature(doc.module_hash, doc.closure.signature)
+        except IntegrityError as exc:
+            return (
+                f"the closure is signed and the signature does not verify against the bytes it "
+                f"names ({exc}) — re-close the module with the key that should have signed it"
+            )
     return None
 
 
@@ -211,6 +277,7 @@ def verification_block(doc: VerificationDoc) -> Verification:
         module_hash=doc.module_hash,
         producer=doc.producer,
         produced_at=doc.produced_at,
+        closure=doc.closure,
         checks=list(doc.records),
     )
 

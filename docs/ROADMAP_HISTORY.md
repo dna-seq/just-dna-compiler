@@ -1761,7 +1761,7 @@ beside the spec. The warning is still appended where it was, so no reported orde
 ## RM76 — an unfinished authoring state passes every gate, including `--strict`
 
 **Severity** high · **Status** ✅ the narrow repair shipped; **the general question is
-[RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase)**
+[RM73](ROADMAP_HISTORY.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end)**
 · **Owner** format + compiler · **Found by** the 0.6 dogfooding fix round, 2026-08-14 · **Ledger** R2-8
 
 `SourceRow` is a plain `BaseModel`, not an `AuthoredModel`, deliberately and for a stated reason: it is
@@ -1804,7 +1804,10 @@ ROADMAP_0_7 and CLAUDE.md.
 **What is not closed.** *"A generated stub must be unable to compile"* is now true and now tested, but
 it is still a property that holds because each model was individually given the right guard. What marks
 authoring as **unfinished** — as opposed to marking one token as unreplaced — reaches this from
-underneath, and that is RM73's phase boundary. This item is a sprout, repaired; the root is not.
+underneath, and that is RM73's phase boundary — a sprout repaired a day before its root, which closed on
+2026-08-16 with `just-dna-compiler close`. Note what the two do and do not cover between them: a closure
+says the author declared *these bytes* final, and the guard here says one particular token cannot survive
+into a compile. Neither says a cell is right, and neither is the other's substitute.
 
 ## RM77 — the genotype diagnosis tells the author about the wrong thing
 
@@ -1981,10 +1984,86 @@ Nothing in the corpus moved: no reference example carries an uncited literature 
 recompiling all sixteen. Which also means the corpus cannot exercise this — the standing
 corpus-uniformity trap — so the behaviour is pinned by fixtures rather than by an example.
 
+## RM73 (phase boundary) — authoring is a process, and it now has an end
+
+✅ **Shipped in 0.6.0** (2026-08-16), completing the item; the provenance half below shipped the same
+day. What remains of RM73 is not a half but a **promotion**: making a closure a *precondition* of
+compiling is major-only under P8, it is filed in
+[ROADMAP_1_0 § RM73 (gate half)](ROADMAP_1_0.md#rm73-gate-half--the-closure-gate-refuses-on-step-3-of-the-round-trip),
+and it is **blocked** there for a reason found while building this — see the last section.
+
+**What was missing was one sentence's worth of state.** RM45 had already built almost all of it for a
+different purpose: `verification.json` binds `module_hash` over the authored files, the compiler
+recomputes that binding on every compile, and a mismatch drops the whole block with a warning. So
+change-evidence over the authored set had been shipping since 0.6 — what nobody had is a record saying
+*a human declared this finished*, because the document was written as a **side effect of a pass
+running** and therefore only ever said "the enricher ran".
+
+**What shipped: `Closure`, `just-dna-compiler close`, and a warning.** `VerificationDoc.closure` is an
+optional block (`closed_at`, `closed_by?`, `signature?`), `close_module` writes it, and both
+`validate_spec` and `compile_module` report a module that carries none. Five decisions worth keeping:
+
+- **No new file, no new binding, no new proof-of-work.** The closure rides the attestation, so an edit
+  after closing un-closes the module for free; a free-standing `closure.json` would need its own
+  staleness rule and would be dropped silently by `reverse` (the RM51 class). It sits **outside**
+  `pow_digest`'s payload, so closing re-mines nothing and every attestation written before 0.6 still
+  verifies. Measured: all sixteen reference examples compile to a byte-identical `artifact.digest` and
+  `content_signature` before and after being closed.
+- **Deliberate, never a side effect.** `validate` stays read-only however cleanly it passes, because a
+  mark left by whatever happened to run reproduces the exact defect this item levels at
+  `verification.json`. `--private-key` signs the closure over `module_hash` with the same
+  `signing.sign_digest` the artifact signature uses, which turns *someone closed this* into *this
+  party closed this*. Unsigned stays legal and still change-evident — tamper-*evidence* was always the
+  guarantee on offer.
+- **Refuses an invalid spec; does not refuse on a warning.** Declaring finished a set the compiler will
+  not accept is a contradiction. Declaring finished one that carries an unresolvable rsID or an
+  ungrounded threshold is ordinary, and refusing there would make closure unreachable for exactly the
+  modules whose findings no authored edit can clear (P5, the `not_covered` class).
+- **The enricher's merge had to learn it, and this is the never-clobber trap a third time.**
+  `record_verification` rebuilds the document rather than editing it, so it dropped the new field by
+  default — silently, and in the wrong direction, since enrichment writes only derived sidecars and the
+  ordinary case is a closed module staying closed. It now carries the closure across **only while the
+  binding holds**, and drops rather than re-binds it otherwise: re-stamping would have the machine
+  assert on the author's behalf. Same shape as `SourceRow.dataset` and `draft_digest`, one column over.
+- **Absence warns; a false claim drops the block.** No closure is the state every module was in before
+  0.6, so it is a warning in both modes, never `strict`-gated (an unclosed module is perfectly
+  reproducible). A closure that is *signed* and whose signature does not verify drops the whole
+  document — absence is a limit, a claim is a claim.
+- **Closing adds a block to the document; it does not rebuild one.** The first version re-attested,
+  which rewrote `producer` from `just-dna-enricher 0.6.0` to `just-dna-compiler 0.6.0` on the three
+  reference examples that carry real check records — a field naming who put the *checks*, so the
+  compiler was claiming an enricher's cross-checks as a side effect of an unrelated act. Found by
+  reading the corpus diff rather than by a test, and now pinned by one. Keeping the document verbatim
+  is also what makes *closing re-mines nothing* literally true rather than nearly so.
+
+**Whether compile should warn on absence was decided twice, and the second answer was right.** The
+first analysis argued for silence, on the grounds that `reverse` cannot re-emit the document, so a
+closed module's `compile → reverse → compile` warns on step 3 where step 1 was silent — and RM44 made
+`manifest.compilation.warnings` a surface consumers parse. That was overturned by two facts. The
+divergence **costs nothing enforceable**: `artifact_digest` is a Merkle root over `_OUTPUT_FILES`,
+which is parquet only, `manifest.json` is not in it, warnings feed no signature, and no round-trip test
+compares them. And with no warning, the closure has **no consumer in 0.x at all** — the manifest field
+would be read by a catalog that does not exist yet and by nothing else until 1.0, which is the
+designed-and-never-delivered shape that let the `knows_drug` raise escape. So the corpus was closed
+instead: all sixteen reference examples ship a closure, with a test asserting each one is still current
+so an authored edit fails loudly rather than degrading into a *stale* warning nobody reads.
+
+**And that probe is what blocks 1.0.** Warnings being free is a fact about warnings; a **refusal** is
+not free. Under the planned gate, a reversed spec is unclosed by construction — reverse rebuilds from
+parquet and the document is not there — so `compile → reverse → compile` would refuse on step 3 for
+every module, and P7's round trip is enforced by tests. The obvious repair is closed too:
+`manifest.verification` carries the records but not `difficulty`/`nonce`, so reverse cannot rebuild a
+valid document from the artifact it holds. Three candidate answers are recorded, undecided, in
+ROADMAP_1_0 — and the reason this was worth writing down rather than discovering later is that
+`verification.json` has carried the identical asymmetry since RM45 without consequence, so the
+precedent is silent about the danger.
+
+---
+
 ## RM73 (provenance half) — a drafted value that has not moved is a copy that can be *established*
 
-✅ **Shipped in 0.6.0** (2026-08-16). The [phase-boundary half stays open](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase);
-this is the half the sprouts were actually asking for. Halved rather than closed, on RM28's precedent.
+✅ **Shipped in 0.6.0** (2026-08-16), alongside the phase boundary above; this is the half the sprouts
+were actually asking for, and it landed first because it needed no phase boundary to answer.
 
 **The problem, restated at the size that shipped.** RM4's tautology skip exists because a panel
 drafted from ClinVar carries ClinVar's own `clin_sig`, so the cross-check compares a value against

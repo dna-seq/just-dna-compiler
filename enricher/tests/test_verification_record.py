@@ -53,8 +53,46 @@ def _module(tmp_path: Path, name: str = "hfe_hemochromatosis") -> Path:
 def test_a_run_with_no_checks_writes_nothing(tmp_path: Path) -> None:
     """An empty attestation would assert that a module was checked and nothing was found."""
     spec = _module(tmp_path)
+    # Every reference example is closed since 0.6 (RM73), so a fresh copy already carries a document.
+    # Removed here because the claim is about this pass creating one, not about the corpus.
+    (spec / VERIFICATION_JSON).unlink(missing_ok=True)
     assert record_verification([], spec, error=_Boom) is None
     assert not (spec / VERIFICATION_JSON).exists()
+
+
+def test_a_run_leaves_a_closed_module_closed(tmp_path: Path) -> None:
+    """The never-clobber trap, one column over from `SourceRow.dataset` and `draft_digest`.
+
+    This pass rebuilds the document rather than editing it, so a field it did not know about is
+    dropped by default — and the default here would be silent and in the wrong direction: enrichment
+    writes only derived sidecars, which are outside the binding, so the ordinary case is that nothing
+    an author closed has changed. Un-closing it on every run would train an author to stop closing.
+    """
+    spec = _module(tmp_path)  # the reference examples ship closed (RM73)
+    before = read_verification(spec / VERIFICATION_JSON).closure
+    assert before is not None
+
+    doc = record_verification([ran("rsid_currency", subjects=12, findings=0)], spec, error=_Boom)
+    assert doc.closure == before
+    assert attestation_failure(doc, module_binding(authored_input_entries(spec))) is None
+
+
+def test_a_run_after_an_authored_edit_drops_the_closure_rather_than_re_binding_it(
+    tmp_path: Path,
+) -> None:
+    """The other half, and the one that matters: only the author may make this claim.
+
+    Carrying the closure across an edit would have this pass assert *a human declared these bytes
+    final* about bytes that human never saw — the machine closing the phase behind their back, which
+    is exactly what the deliberate-act decision rules out. Dropped, never re-stamped.
+    """
+    spec = _module(tmp_path)
+    variants = spec / "variants.csv"
+    variants.write_text(variants.read_text().replace("hemochromatosis", "haemochromatosis"))
+
+    doc = record_verification([ran("rsid_currency", subjects=12, findings=0)], spec, error=_Boom)
+    assert doc.closure is None
+    assert attestation_failure(doc, module_binding(authored_input_entries(spec))) is None
 
 
 def test_the_document_is_bound_to_the_module_as_it_stands(tmp_path: Path) -> None:

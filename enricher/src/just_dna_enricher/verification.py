@@ -32,7 +32,7 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import authored_input_entries
 from just_dna_format.layout import VERIFICATION_JSON, SidecarCollision, sidecar_write_path
-from just_dna_format.manifest import VerificationDoc, VerificationRecord
+from just_dna_format.manifest import Closure, VerificationDoc, VerificationRecord
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.verification import (
     attest,
@@ -78,6 +78,13 @@ def record_verification(
     Existing records for checks this run did not put are kept (`verification.merge_records`) — a run
     that did not ask a question has said nothing about it, and dropping the earlier answer would turn
     "not asked this time" into "never asked", which is the collapse this whole item exists to undo.
+
+    **An existing closure (RM73) is carried across, but only while the binding holds.** Enrichment
+    writes derived sidecars, which are outside the authored set, so the ordinary case is that a run
+    here leaves a closed module closed — and it must, or every enrichment would silently un-close one.
+    Where the authored bytes *have* moved, the closure is dropped rather than re-bound: re-stamping it
+    would have this pass assert on the author's behalf, which is the one thing the deliberate-act
+    decision forbids.
     """
     fresh = list(records)
     if not fresh:
@@ -88,25 +95,43 @@ def record_verification(
     except SidecarCollision as exc:
         raise error(str(exc)) from exc
 
+    binding = module_binding(authored_input_entries(spec_dir))
     existing: list[VerificationRecord] = []
+    closure: Closure | None = None
     if path.is_file():
         # A document that will not parse is replaced rather than merged into: it records nothing this
         # run can preserve, and refusing would leave an author unable to re-attest without deleting a
         # file by hand. The line says so, because a silently discarded record is the shape of a
         # silent success.
         try:
-            existing = read_verification(path).records
+            previous = read_verification(path)
         except (OSError, ValueError) as exc:
             logger.warning(
                 "Could not read the existing %s (%s); this run's records replace it wholesale.",
                 path.name, exc,
             )
+        else:
+            existing = previous.records
+            # The closure (RM73) is carried across only while the authored bytes stand still. This is
+            # the never-clobber trap one column over from `SourceRow.dataset` and `draft_digest`: a
+            # rebuild that quietly *kept* it would have this pass re-bind a human's "I am finished"
+            # to bytes that human never saw — the machine closing the phase behind their back, which
+            # is precisely what the deliberate-act decision rules out. Dropped, never re-stamped,
+            # because only the author can make this claim again.
+            if previous.closure is not None and previous.module_hash == binding:
+                closure = previous.closure
+            elif previous.closure is not None:
+                logger.warning(
+                    "%s carried a closure over different authored bytes; it is dropped rather than "
+                    "re-bound. Re-close the module once you are finished editing it.", path.name,
+                )
 
     doc = attest(
         merge_records(existing, fresh),
-        module_binding(authored_input_entries(spec_dir)),
+        binding,
         producer=producer_label(),
         produced_at=now or now_utc_iso(),
+        closure=closure,
     )
     # The format tier's writer, so both tiers spell the file one way.
     write_verification(doc, path)

@@ -33,6 +33,36 @@ class ValidationResult(BaseModel):
     )
 
 
+class ClosureResult(BaseModel):
+    """Result of closing a module's authoring phase (RM73).
+
+    Closing is refused rather than reported-and-done when the spec does not validate: the phase
+    boundary means *this authored set is finished*, and a set the compiler will not accept is not
+    finished. Warnings do not refuse — an unresolved rsID or an ungrounded bin is a legitimate state
+    to declare done, and treating every warning as a blocker would make closure impossible on modules
+    whose findings no authored edit can clear.
+    """
+
+    closed: bool = Field(description="Whether the closure was written")
+    path: Path | None = Field(
+        default=None, description="The `verification.json` written (None when nothing was closed)"
+    )
+    module_hash: str | None = Field(
+        default=None, description="The authored bytes the closure was bound to"
+    )
+    signed: bool = Field(default=False, description="Whether the closure carries an Ed25519 signature")
+    dropped_checks: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Check records discarded because they had been attested over different authored bytes. "
+            "Re-binding them would claim a check was put against rows it never saw, so they are "
+            "dropped and named rather than carried across."
+        ),
+    )
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class CompilationResult(BaseModel):
     """Result of spec compilation, including the emitted manifest."""
 

@@ -34,11 +34,51 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-16 (latest) — 0.6.0: RM73's provenance half, and RM80
+## 2026-08-16 (latest) — 0.6.0: RM73 closed, both halves, and RM80
+
+**RM73 (phase boundary) — authoring is a process, and it now has an end.** A module could not say it
+was finished, so every check that needed to know where a value came from was guessing. The mechanism
+turned out to be one block: RM45 had already built the binding for another purpose — `verification.json`
+hashes the authored files and the compiler drops the whole block when that hash no longer matches — so
+what was missing was a record saying *a human declared this final* rather than *a pass ran*.
+
+`VerificationDoc.closure` (`closed_at`, `closed_by?`, `signature?`) is written by the new
+`just-dna-compiler close`, and by nothing else. **No new file, no new binding, no new proof-of-work**:
+the closure rides the attestation, so an edit after closing un-closes the module for free, and it sits
+outside `pow_digest`'s payload, so closing re-mines nothing and every attestation written before it
+still verifies. `validate` stays read-only however cleanly it passes — a mark left by whatever happened
+to run says only that something ran, which is the defect the item levels at a by-product attestation.
+`--private-key` signs the closure over the authored bytes with the same key `sign` uses, turning
+*someone closed this* into *this party closed this*; unsigned stays legal and still change-evident.
+Closing refuses a spec that does not validate and **does not** refuse on a warning, or a module carrying
+a finding no authored edit can clear could never be closed at all.
+
+A compile (and the pre-flight) now warns when it publishes no closure — both modes, never `strict`, no
+count in the sentence so the two runs de-duplicate. A closure that is *signed* and does not verify drops
+the whole document: absence is a limit, a claim is a claim. `record_verification` had to learn to carry
+a closure across, and only while the binding holds — the never-clobber trap a third time after
+`SourceRow.dataset` and `draft_digest`, and it drops rather than re-binds one whose bytes have moved,
+because only the author may make that claim again.
+
+**No identity moved and the corpus is closed.** All sixteen reference examples compile to a
+byte-identical `artifact.digest` and `content_signature` before and after being closed, measured rather
+than argued; all sixteen now ship a closure, with a test asserting each is still current so an authored
+edit fails loudly instead of decaying into a *stale* warning nobody reads.
+
+**Whether to warn on absence was decided twice, and the probe behind the reversal is what blocks 1.0.**
+The first analysis argued for silence, since `reverse` cannot re-emit the document, so a closed module's
+`compile → reverse → compile` would warn on step 3 where step 1 was silent — and RM44 made
+`manifest.compilation.warnings` a parsed surface. Two facts overturned it: the divergence costs nothing
+enforceable (`artifact_digest` covers the parquet only, `manifest.json` is not in it, warnings feed no
+signature, no round-trip test compares them), and without the warning the closure has **no consumer in
+0.x at all** — a manifest field read by a catalog that does not exist yet is the designed-and-never-
+delivered shape. But a *refusal* is not free the way a warning is: under the 1.0 gate a reversed spec is
+unclosed by construction, so step 3 would refuse for every module. That is filed with three undecided
+candidate answers in [ROADMAP_1_0 § RM73 (gate half)](ROADMAP_1_0.md).
 
 **RM73 (provenance half) — a drafted value that has not moved is a copy that can be *established*.**
-The root item is **halved**, not closed: the phase boundary stays open in
-[ROADMAP_0_7](ROADMAP_0_7.md), and this is the half four separate items were actually asking for.
+Shipped the same day, and the half four separate items were actually asking for; it needed no phase
+boundary to answer.
 
 A drafting provider now hashes the table it wrote, projected onto the column its own cross-check later
 reads, and stamps it onto the licence row it was already writing (`SourceRow.draft_digest`, new
@@ -199,7 +239,7 @@ listed, because the defect was a model quietly outside a set.
 No corpus movement: a `mode="before"` validator that only raises changes no accepted value, verified
 against `artifact.digest` / `content_signature` values recorded independently in ROADMAP_0_7 and
 CLAUDE.md. The general question underneath — what marks *authoring* as unfinished, rather than one
-token as unreplaced — stays [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase).
+token as unreplaced — stays [RM73](ROADMAP_HISTORY.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end).
 
 **RM77 — the genotype diagnosis told the author about the wrong thing.** `GT` is `0/1`; `genotype`
 wants the bases. Pasting the `GT` field is the obvious first guess and therefore the single most likely

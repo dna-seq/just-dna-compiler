@@ -1122,8 +1122,63 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
     deleted; the check behaves identically in both modes. It changed no verdict — the `copied` bucket
     was an early exit *before* the camp logic, and an exact match agrees with itself. Standing limit:
     a row hand-authored **before** a later re-draft is covered by the new stamp and escapes.
-  **The phase boundary is still open** (RM73 in ROADMAP_0_7, re-sized): validate stays read-only,
-  closure is a separate deliberate sign, compile warns in 0.x and refuses at 1.0.
+  **The phase boundary shipped too** — see the next bullet.
+- **Authoring now has an END, and it cost one optional block on a document that already existed
+  (RM73's phase boundary, 0.6).** RM45 had built almost all of it for another purpose: `verification.json`
+  binds `module_hash` over the authored files, the compiler recomputes it every compile, and a mismatch
+  drops the whole block. What was missing was a record saying *a human declared this final* rather than
+  *a pass ran*. `VerificationDoc.closure` + `just-dna-compiler close` (`compiler.close_module`) is the
+  whole of it. Seven things not to redo:
+  - **No new file, no new binding, no new proof-of-work.** The closure rides the attestation, so an edit
+    after closing un-closes the module for free. A free-standing `closure.json` needs its own staleness
+    rule and is dropped silently by `reverse` — the RM51 class. It sits **outside** `pow_digest`'s
+    payload (`module_hash|signature|nonce`, unchanged), so closing re-mines nothing and every
+    attestation written before 0.6 still verifies.
+  - **`validate` stays read-only, and that is the item's own argument turned on itself.** A record
+    stamped by whatever happened to execute says only *someone ran a tool*, which is exactly what RM73
+    levels at an attestation produced as a by-product. So closing is its own command. `--private-key`
+    signs `module_hash` with the existing `signing.sign_digest`; unsigned is legal and still
+    change-evident (tamper-*evidence* was always the guarantee).
+  - **Refuses an invalid spec, never a warning.** An authored set the compiler will not accept is not
+    finished; one carrying an unresolvable rsID or an ungrounded threshold is ordinary, and refusing
+    there makes closure unreachable for every module whose findings no authored edit can clear (P5).
+  - **`record_verification` had to learn to carry it — the never-clobber trap a THIRD time**, after
+    `SourceRow.dataset` and `draft_digest`. That pass rebuilds the document rather than editing it, so
+    it dropped the new field by default, silently and in the wrong direction (enrichment writes only
+    derived sidecars, which are outside the binding). It carries the closure across **only while the
+    binding holds** and **drops rather than re-binds** it otherwise: re-stamping would have the machine
+    assert on the author's behalf. Generalize it — when another tier starts writing into a document
+    this one rebuilds, ask what the rebuild discards.
+  - **Absence warns; a false claim drops the block.** No closure is the state every module was in
+    before 0.6, so it warns in both modes and is never `strict`-gated (an unclosed module is perfectly
+    reproducible). A *signed* closure whose signature fails drops the whole document. Same asymmetry as
+    the symbolic-allele `vrs_id` pair.
+  - **Closing KEEPS the document verbatim and adds one block — it does not rebuild it.** The first
+    version re-attested, which rewrote `producer` from `just-dna-enricher 0.6.0` to
+    `just-dna-compiler 0.6.0` on the three examples carrying real check records: that field names who
+    put the **checks**, so the compiler was claiming an enricher's cross-checks, manufactured by an
+    unrelated act. Caught by reading the corpus diff, not by a test. Reuse also makes *closing
+    re-mines nothing* literally true — the payload is unchanged, so the nonce already found over it is
+    still the answer. Generalize it: **when one act writes into a record another act owns, restamp
+    nothing that describes the other.**
+  - **Whether to warn on absence was decided TWICE, and the reversal is the reusable part.** The first
+    answer was silence, because `reverse` cannot re-emit the document, so a closed module's
+    `compile → reverse → compile` warns on step 3 where step 1 was silent, and RM44 made
+    `manifest.compilation.warnings` a parsed surface. Overturned by two facts: the divergence **costs
+    nothing enforceable** (`artifact_digest` is a Merkle root over `_OUTPUT_FILES`, parquet only;
+    `manifest.json` is not in it; warnings feed no signature; no round-trip test compares them), and
+    without the warning the closure has **no consumer in 0.x at all** — a manifest field read by a
+    catalog that does not exist yet is the designed-and-never-delivered shape that let the
+    `knows_drug` raise escape. The corpus was closed instead, with a test that fails loudly when an
+    authored edit outdates one.
+  - **That same probe is what BLOCKS the 1.0 gate**, and the asymmetry must not be flattened: warnings
+    being free is a fact about warnings, and a **refusal** is not free. Under the gate a reversed spec
+    is unclosed by construction, so step 3 refuses on every module and P7's round trip is enforced by
+    tests. `manifest.verification` carries the records but not `difficulty`/`nonce`, so reverse cannot
+    rebuild a valid document either. Three candidate answers, undecided, in ROADMAP_1_0 § RM73 (gate
+    half) — do not build the gate before picking one.
+  Measured, not argued: all sixteen reference examples compile byte-identically on `artifact.digest`
+  and `content_signature` before and after being closed.
 - **`annotations.parquet` carries `genotype` AND keys on it (RM80, 0.6).** `variant_key` is not unique
   there and never could be — poly-effect is real — so the consumer's other option (carry what
   distinguishes the rows) was the only one. Carrying it *without* keying on it would be worse than the

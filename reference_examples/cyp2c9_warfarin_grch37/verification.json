@@ -5,6 +5,11 @@
   "nonce": 486811,
   "producer": "just-dna-enricher 0.6.0",
   "produced_at": "2026-08-13T23:13:14Z",
+  "closure": {
+    "closed_at": "2026-08-15T23:27:13Z",
+    "closed_by": "just-dna-format reference corpus",
+    "signature": null
+  },
   "records": [
     {
       "check": "clinical_significance",

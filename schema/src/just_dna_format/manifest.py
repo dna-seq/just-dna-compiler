@@ -667,6 +667,66 @@ UNTRUSTED_NOTE: str = (
 )
 
 
+class Signature(BaseModel):
+    """Optional detached signature over `artifact.digest` (SPEC §5 'future'). Defends against a
+    compromised storage backend: a client that pins the marketplace's public key can prove the
+    digest was signed by the trusted party.
+
+    Declared here rather than beside `ModuleManifest`, where it sat until 0.6, because `Closure`
+    below signs a different hash with the identical shape. Nothing about it is artifact-specific:
+    the signed message is whichever digest string the caller hands `signing.sign_digest`.
+    """
+
+    algorithm: str = Field(default="ed25519", description="Signature algorithm")
+    public_key: str = Field(description="Base64 (raw) Ed25519 public key")
+    signature: str = Field(description="Base64 signature over the artifact.digest string bytes")
+    signed_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp")
+
+
+class Closure(BaseModel):
+    """The author's statement that this authored set is **finished** (RM73).
+
+    Authoring is a process and until 0.6 it had no end. Every check that needed to know where a value
+    came from had to guess, and each guessed differently, because a flat CSV row records nothing about
+    how it came to be. The provenance half of RM73 answered *did this cell move* by hashing what a
+    drafting provider wrote; this answers the other question — *is the author done* — and the two are
+    genuinely different, which is why one is a column on a licence row and this is a signable act.
+
+    **What it binds is the document's `module_hash`, and nothing here re-derives it.** The closure
+    rides inside `VerificationDoc`, whose binding the compiler already recomputes and drops on
+    mismatch, so an author who edits a row after closing loses the closure *for free* — the same
+    perishability the check records have, arrived at by carrying no second copy of the hash. That is
+    the whole mechanism: no new file, no new binding, and no entry in `verification.pow_digest`, whose
+    payload is deliberately unchanged so that closing a document re-mines nothing and every
+    attestation written before this still verifies.
+
+    **`closed_by` is untrusted and `signature` is not.** A name in a JSON file is a claim anyone can
+    type; the Ed25519 signature over `module_hash` is what makes the act attributable, using the same
+    `signing.sign_digest` / `integrity.verify_signature` pair the artifact signature uses. Signing is
+    optional — an unsigned closure is still change-evident, which is the guarantee this format offers
+    (tamper-*evidence*, never tamper-proofing) — and a **present** signature that does not verify
+    drops the whole block, because a false claim is worse than silence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    closed_at: str = Field(description="ISO-8601 UTC timestamp of the closing act")
+    closed_by: str | None = Field(
+        default=None,
+        description=(
+            "Who closed authoring, as free text. Legibility only — the signature below is what makes "
+            f"this attributable. {UNTRUSTED_NOTE}"
+        ),
+    )
+    signature: Signature | None = Field(
+        default=None,
+        description=(
+            "Optional Ed25519 signature over the document's `module_hash` string bytes. Verified by "
+            "`verification.attestation_failure`, which drops the block when a present one fails."
+        ),
+    )
+
+
 class VerificationRecord(BaseModel):
     """One check, and what putting it produced — the row grain of `verification.json` (RM45).
 
@@ -841,6 +901,15 @@ class VerificationDoc(BaseModel):
     produced_at: str | None = Field(
         default=None, description="ISO-8601 UTC timestamp of the run that wrote this document"
     )
+    closure: Closure | None = Field(
+        default=None,
+        description=(
+            "The author's statement that this authored set is finished (RM73). Absent on a module "
+            "still being authored, which is the ordinary state and the one every module was in "
+            "before 0.6. Carried here rather than in a file of its own so it inherits this "
+            "document's binding, its staleness check and its transport."
+        ),
+    )
     records: list[VerificationRecord] = Field(
         default_factory=list, description="One record per check, at most one per check name"
     )
@@ -898,6 +967,14 @@ class Verification(BaseModel):
     produced_at: str | None = Field(
         default=None,
         description=f"ISO-8601 UTC timestamp of the verifying run. {UNTRUSTED_NOTE}",
+    )
+    closure: Closure | None = Field(
+        default=None,
+        description=(
+            "The author's statement that authoring was finished over these bytes (RM73), when the "
+            "module carries one. Its presence here means the compiler confirmed the binding and, if "
+            f"the closure was signed, that the signature verifies. {UNTRUSTED_NOTE}"
+        ),
     )
     checks: list[VerificationRecord] = Field(
         default_factory=list,
@@ -974,17 +1051,6 @@ class Contribution(BaseModel):
                 f"kind must list at least one tag (recommended: {sorted(RECOMMENDED_AUTHOR_KINDS)})"
             )
         return cleaned
-
-
-class Signature(BaseModel):
-    """Optional detached signature over `artifact.digest` (SPEC §5 'future'). Defends against a
-    compromised storage backend: a client that pins the marketplace's public key can prove the
-    digest was signed by the trusted party."""
-
-    algorithm: str = Field(default="ed25519", description="Signature algorithm")
-    public_key: str = Field(description="Base64 (raw) Ed25519 public key")
-    signature: str = Field(description="Base64 signature over the artifact.digest string bytes")
-    signed_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp")
 
 
 class ModuleManifest(BaseModel):

@@ -52,6 +52,20 @@ def _module(tmp_path: Path, name: str = "hfe_hemochromatosis") -> Path:
     return spec
 
 
+def _unattested(spec: Path) -> Path:
+    """Strip the attestation, so a case about *having none* actually has none.
+
+    Every reference example ships a `verification.json` since 0.6 — they are closed (RM73), and a
+    closure rides that document. So "a module nobody attested" stopped being what a fresh copy of the
+    corpus is, and a test that assumed it was silently became a test about something else. Arranged
+    explicitly here rather than by picking whichever example happens to lack one, which is the same
+    assumption one level down.
+    """
+    for path in (spec / VERIFICATION_JSON, spec / DERIVED_SUBDIR / VERIFICATION_JSON):
+        path.unlink(missing_ok=True)
+    return spec
+
+
 def _records() -> list[VerificationRecord]:
     return [
         VerificationRecord(
@@ -85,7 +99,7 @@ def _compile(spec: Path, out: Path):
 
 def test_a_module_with_no_attestation_says_nothing_and_says_it_silently(tmp_path: Path) -> None:
     """The ordinary case. An unverified module is not a finding, so nothing is warned about."""
-    result = _compile(_module(tmp_path), tmp_path / "out")
+    result = _compile(_unattested(_module(tmp_path)), tmp_path / "out")
     assert result.manifest.verification is None
     assert not [w for w in result.warnings if VERIFICATION_JSON in w]
 
@@ -136,7 +150,7 @@ def test_editing_the_module_after_attesting_drops_the_block_with_a_warning(tmp_p
     assert after.manifest.verification is None
     stale = [w for w in after.warnings if VERIFICATION_JSON in w and "stale" in w]
     assert len(stale) == 1, after.warnings
-    assert "edited since the checks ran" in stale[0]
+    assert "edited since this was written" in stale[0]
 
 
 def test_the_pre_flight_reports_the_same_staleness(tmp_path: Path) -> None:
@@ -184,7 +198,7 @@ def test_an_unreadable_document_is_reported_rather_than_fatal(tmp_path: Path) ->
 
 def test_the_attestation_may_live_under_derived(tmp_path: Path) -> None:
     """It is a machine-written sidecar, so it takes both legal places (RM49)."""
-    spec = _module(tmp_path)
+    spec = _unattested(_module(tmp_path))
     (spec / DERIVED_SUBDIR).mkdir()
     _attest(spec, where=spec / DERIVED_SUBDIR / VERIFICATION_JSON)
     result = _compile(spec, tmp_path / "out")
@@ -331,7 +345,7 @@ def test_reverse_says_the_attestation_cannot_be_carried(tmp_path: Path, caplog) 
 
 def test_reverse_is_quiet_for_a_module_that_was_never_attested(tmp_path: Path, caplog) -> None:
     """Nothing was lost, so there is nothing to say — the other half of the guard."""
-    spec = _module(tmp_path)
+    spec = _unattested(_module(tmp_path))
     _compile(spec, tmp_path / "a1")
     with caplog.at_level("WARNING", logger="just_dna_compiler.compiler"):
         reverse_module(tmp_path / "a1", tmp_path / "rev")

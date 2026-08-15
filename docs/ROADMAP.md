@@ -152,14 +152,16 @@ Two consequences worth stating outright:
 
 **None in this file.** RM74–RM79, the whole 0.6 dogfooding fix round, shipped on 2026-08-15 and moved
 to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired) — but
-read that as *the sprouts are repaired*, not *the ground is clear*: RM76's narrow repair is what
-shipped, and the question it asks from underneath is
-[RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase),
-which is open and is the root several of these grew from. Everything that was open on the
+read that as *the sprouts are repaired*, and the ground with them: RM76's narrow repair is what shipped
+in that round, and the question it asks from underneath —
+[RM73](ROADMAP_HISTORY.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end), the root
+several of these grew from — closed on 2026-08-16, both halves. What remains of it is the
+**promotion**: making a closure a precondition of compiling is major-only and is filed, with its own
+blocker, in [ROADMAP_1_0.md](ROADMAP_1_0.md). Everything that was open on the
 `0.6` branch *before* that round was built in the 0.6 batch and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
 the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the deferred
-halves of RM55, RM56, RM65, plus RM66 and RM67, and the five dogfooding items RM68–RM73) and
+halves of RM55, RM56, RM65, plus RM66 and RM67, and the dogfooding items RM68–RM72) and
 [ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half).
 
 **This section read "None in this file" for a day after the six were filed**, because they were appended

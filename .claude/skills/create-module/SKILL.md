@@ -78,9 +78,9 @@ A `.env` found by walking up from the working directory is loaded automatically.
 ## The order, and the one place deviating from it deadlocks
 
 ```
-scaffold ──▶ draft ──▶ curate ──▶ enrich ──▶ check ──▶ compile ──▶ sign
-             (if a          (only a human)
-              source has it)
+scaffold ──▶ draft ──▶ curate ──▶ enrich ──▶ check ──▶ close ──▶ compile ──▶ sign
+             (if a          (only a human)              (you say
+              source has it)                             it's done)
 ```
 
 **Curate before you enrich.** A drafted row leaves `<<REPLACE>>` in the cells only a human can decide,
@@ -325,10 +325,11 @@ published **v3.3**, so without a snapshot every disagreement comes back `unverif
 finding. Build it once from ACMG's workbook — `just-dna-enricher acmg build <workbook.xlsx> --out
 acmg/` — and the check also stops needing the network.
 
-## 6 — Compile, verify, publish
+## 6 — Close, compile, verify, publish
 
 ```bash
 just-dna-compiler validate spec/ --strict
+just-dna-compiler close    spec/ --by "your name"    # optionally --private-key key.pem
 just-dna-compiler compile  spec/ out/ --strict
 just-dna-compiler keygen --out key.pem              # prints the public key `verify` pins
 just-dna-compiler sign    out/ --private-key key.pem
@@ -342,8 +343,22 @@ for the other compile. `--strict` means *reproducible artifact*: it refuses when
 something it could not reproduce. It is orthogonal to `--use`, which is about who may use the data, and
 it is not a statement that the module is *right*.
 
+**`close` is you saying the module is finished, and nothing says it for you.** It writes a closure into
+the module's `verification.json`, bound to a hash of `module_spec.yaml` and your authored CSVs as they
+stand. Edit any of them afterwards and that hash moves, so the closure is dropped and the compile tells
+you the module is open again — re-close it when you are done. Nothing else stamps it: a green `validate`
+will not, because a mark left by whatever happened to run says only that something ran. Compiling
+without one is a warning, not a refusal.
+
+`--private-key` (a key from `keygen`) signs the closure, which turns *someone closed this* into *this
+party closed this*. Unsigned is still perfectly legal, and still change-evident.
+
+Closing refuses a spec that does not validate — an authored set the compiler will not accept is not
+finished — and does **not** refuse on warnings. A module carrying a finding no edit can clear (an rsID
+the reference cannot place, a threshold with nothing to cite) is a legitimate thing to call done.
+
 `enrich-and-compile spec/ out/` does steps 4 and 6 in one call (`--frequencies` / `--gene-metrics` to
-add those passes).
+add those passes). It does not close for you — closing is yours.
 
 `keygen` writes an unencrypted PKCS#8 key — it bootstraps a key, it is not a key-management system. A
 real publishing key belongs in whatever secret store you already run.
@@ -520,6 +535,11 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
   already there exactly as it is.
 - **Write CSVs with a CSV writer, not by splitting on commas.** Several `conclusion` values contain
   commas, and a column shift usually surfaces as a bizarre validation error three columns away.
+- **`verification.json` is machine-written and yours to keep, not to edit.** It records which checks
+  ran against which release, and your closure. Editing it by hand breaks the hash it carries, and the
+  compile then publishes nothing from it — which is the correct reading of a record that no longer
+  describes the module. Re-run the checks, or `close`, to rewrite it. It may sit beside the spec or
+  under `derived/`, but never in both places.
 
 ## Known gaps — do not work around these in your data
 
@@ -548,7 +568,8 @@ workaround.
 | `describe <kind>` | full JSON: columns, vocabularies, pick-lists, requirements |
 | `reference` | every model at once. `--summary`, `--schemas` |
 | `hint <kind> --file F` | inspect authored rows; report wrong / rewritten / left-to-you. Writes nothing |
-| `validate <dir>` | full pre-flight, exit 1 if invalid. `--strict/--best-effort` — pass the mode you will compile with |
+| `validate <dir>` | full pre-flight, exit 1 if invalid. `--strict/--best-effort` — pass the mode you will compile with. Writes nothing |
+| `close <dir>` | declare authoring finished, bound to the authored bytes. `--by`, `--private-key`. Refuses an invalid spec, not a warning |
 | `compile <dir> <out>` | parquet + `manifest.json`. `--strict`, `--compression`, `--compiled-by` |
 | `signature <dir>` | the content signature of the raw authored data — no compile, no reference |
 | `reverse <artifact> <out>` | artifact → authored spec DSL. `--resolution/--no-resolution`, `--genome-build` |

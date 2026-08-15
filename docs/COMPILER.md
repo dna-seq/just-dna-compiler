@@ -483,7 +483,11 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
     authored inputs, re-check the proof-of-work, and either carry the block into the manifest or
     **warn and drop it**. A stale attestation never fails a compile — the goal is that it never
     becomes a published claim, not that it be impossible to write while editing. Nothing here is
-    trusted; see SCHEMAS.md.
+    trusted; see SCHEMAS.md. **The same read decides the closure (RM73, 0.6)**: if the block that
+    survives carries none, the compile says so — a warning in both modes, carrying no count so the
+    identical sentence from `validate_spec` de-duplicates against it. Absence is the only thing said
+    here, because the reason (never closed, closed then edited, no document at all) is already carried
+    by whichever other warning applies.
 11. **Build the manifest** (`content_signature` re-read from raw disk, the resolution fields, the
     `frequency` / `gene_metrics` / `literature` / `verification` blocks, and `derived[]` — byte hashes
     of the sidecars *where they live beside the spec*, transport-only and never their identity) and
@@ -1065,7 +1069,13 @@ table kind, and one CSV per derived-fact sidecar whose parquet is present (`freq
   `readme`, and the **verification attestation** (RM45) — `verification.json` is not in the artifact,
   so there is nothing for reverse to read and inventing one would mint a claim nobody put; a reversed
   module carries no `manifest.verification`, which is the honest *says nothing*, and re-attesting
-  means re-running the checks. A
+  means re-running the checks. **The RM73 closure rides that document and is lost with it**, so a
+  reversed spec is open and warns until a human closes it — deliberate, since reverse holds no key and
+  no standing to declare someone else's authoring finished. That asymmetry costs nothing while the
+  finding is a warning (warnings feed no digest and no signature, so the fixed point is untouched),
+  and it is precisely what blocks promoting the finding to a refusal at 1.0: under a gate, step 3 of
+  `compile → reverse → compile` would refuse on every module. The three candidate answers are recorded
+  in [ROADMAP_1_0.md](ROADMAP_1_0.md) § RM73 (gate half). A
   consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). The test of
   whether something belongs on this list is whether losing it can change a parquet byte — which is why
   `genome_build` moved off it. `readme` joins `logo` here for the same reason and with the same
@@ -1113,7 +1123,8 @@ The three hashes and how they compose into `(content_signature, resolution_signa
 
 | Command | Python API | Notes |
 |---|---|---|
-| `validate <spec>` | `compiler.validate_spec` | `--strip-identity` / `--authority-key` |
+| `validate <spec>` | `compiler.validate_spec` | `--strip-identity` / `--authority-key`. Read-only — it never stamps a closure |
+| `close <spec>` | `compiler.close_module` | `--by`, `--private-key`. Writes the RM73 closure into `verification.json`, bound to the authored bytes. Refuses an invalid spec; a warning does not refuse |
 | `compile <spec> <out>` | `compiler.compile_module` | `--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`, and the **deprecated** `--ensembl-cache` (routes to the enricher; removed at 1.0). Prints `digest`, `content_signature`, `resolution_mode`/`fully_resolved`/`resolution_signature` |
 | `signature <spec>` | `compiler.content_signature` | no compile, no reference |
 | `reverse <parquet_dir> <out>` | `compiler.reverse_module` | `--resolution/--no-resolution` (default on) + display overrides |
@@ -1215,6 +1226,7 @@ would break scripts for no gain.
 | **dosage sensitivity (0.5)** | ✅ `haploinsufficiency`/`triplosensitivity` against `VALID_DOSAGE_SENSITIVITY` | ✅ `gene_metrics.parquet` (in digest, fact-hashed) | — | complete (ClinGen route in the enricher) |
 | **`redistribution` (0.5, settled 0.6)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete — **recorded here, enforced downstream** (RM27; the ask is in SCHEMAS.md) |
 | **verification attestation (0.6, RM45)** | ✅ binding recomputed from the authored inputs, proof-of-work re-checked; stale ⇒ warn + drop, never fatal | ✅ `manifest.verification` (out of `artifact.digest`); nothing reaches a parquet | — (the enricher puts the checks) | complete (`verification.json`; nothing in the block is trusted) |
+| **authoring closure (0.6, RM73)** | ✅ published when the attestation holds and carries one; absent ⇒ warn in both modes; a *signed* closure that does not verify ⇒ drop the whole block | ✅ `manifest.verification.closure`; moves no digest and no signature (measured on all sixteen reference examples) | ✅ `close` writes it; `validate` never does | mechanism complete (`compiler.close_module`); the **refusal** is 1.0 and blocked — see ROADMAP_1_0 § RM73 |
 | **drafting (0.5)** | ✅ appended rows are validated rows; keys reuse `_TABLE_DUPE_KEYS` | — (writes authored CSVs, not parquet) | ✅ append / already-present / differs report | complete (`draft.append_rows`, `blank_template`); `DRAFTABLE` covers the SNP core, the table kinds and `sources.csv` (0.5.4) |
 | **templating (0.5)** | ✅ a stub carries `TEMPLATE_PLACEHOLDER`, which no mode compiles | — (writes authored CSVs, not parquet) | ✅ created / kept-untouched plan | complete (`draft.stub_template`, `scaffold.scaffold_module`) |
 | **hints (0.5)** | ✅ per-cell validation, bin coverage, duplicate keys — all offline | — (writes nothing at all) | ✅ alterations + findings + options | complete (`hints.inspect_rows`, `hints.describe_table`) |
