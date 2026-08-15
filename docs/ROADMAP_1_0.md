@@ -117,7 +117,7 @@ breaking half, and the line is owed by whoever created the obligation.
 |---|---|---|---|
 | 0.6.0 | **RM51** — `sources.csv` deprecated in favour of `licensing.csv` | the old input filename stops being read | **Author:** `git mv sources.csv licensing.csv`. No content change, and no signature moves — verified across all eleven reference examples when four of them were renamed. **Consumer: no action needed** — `sources.parquet` and `manifest.sources` keep their names through the whole 0.x line and are untouched by this item. |
 | 0.6.0 | **RM4** — the `module_spec.yaml` `panel:` block deprecated | the block stops being read | **Author:** delete it. Nothing replaces it — the enricher now records the drafted-from release into the licence row's `dataset` column itself, which is what the tautology check reads. Deleting it moves neither `artifact.digest` nor `content_signature`, measured on `reference_examples/apoe_epsilon` with the block appended. **Consumer: no action needed** — `manifest.panel` is passthrough metadata nothing derives from. |
-| 1.0 (planned) | **RM73** (phase-boundary half) — a closed authoring attestation becomes a **precondition of compiling** | a module with no closure stops compiling; today it only warns | **Author:** run the close command once the module is finished, and re-run it after any edit. It is a deliberate act by design — `validate` stays read-only, so nothing stamps behind your back. **Consumer:** a compiled artifact then carries a closure it did not before; reading it is optional, and the provenance half it rests on (`SourceRow.draft_digest`) already ships in 0.6.0. Promotion to required is what makes this major (P8); the mechanism itself is additive and can land in a minor. |
+| 1.0 (planned) | **RM73** (phase-boundary half) — a closed authoring attestation becomes a **precondition of compiling** | a module with no closure stops compiling; today it only warns. **This one is blocked, not merely planned — see § RM73 below: the gate refuses on step 3 of the round trip** | **Author:** run the close command once the module is finished, and re-run it after any edit. It is a deliberate act by design — `validate` stays read-only, so nothing stamps behind your back. **Consumer:** a compiled artifact then carries a closure it did not before; reading it is optional, and the provenance half it rests on (`SourceRow.draft_digest`) already ships in 0.6.0. Promotion to required is what makes this major (P8); the mechanism itself is additive and can land in a minor. |
 | 0.7 (planned) | **RM55** — the integer copy-number / repeat-count columns deprecated in favour of float ones | the integer column and the integer tiling semantics are removed | **Author:** move the value to the float column; a whole number is still a whole number, so no re-authoring of the *values* is needed. **Consumer:** re-read the float column, and note that bin tiling for these two kinds becomes continuous — a shared endpoint is owned by the higher bin, and a gap is reportable. Written when the 0.7 half lands. |
 
 ---
@@ -146,3 +146,53 @@ the implementation being wrong is not a licence to break the rule that keeps it 
 Design detail carried forward from 0.7: whether quantised-versus-continuous is a **per-table
 declaration** or a **sixth measure kind** is still open at the point the integer column is removed, and
 the answer decides what the removal leaves behind. See [ROADMAP_0_7.md](ROADMAP_0_7.md) § RM55.
+
+---
+
+## RM73 (gate half) — the closure gate refuses on step 3 of the round trip
+
+**Severity** high, and **release-blocking for the gate itself** · **Status** open; a precondition of the
+ledger row above, not a detail of it · **Owner** compiler · **Found by** probing whether compile should
+*warn* on an absent closure, 2026-08-16 — the answer for 0.x turned out to be the reason the 1.0 half is
+blocked
+
+The mechanism half of RM73 is warn-only and charter-clean. Promoting the warning to a refusal is what
+this row is, and it does not work as written:
+
+- `reverse_module` rebuilds authored files from parquet alone. It **cannot re-emit `verification.json`**
+  and already says so, warning that the source artifact carried an attestation the reversed spec will
+  not. So a reversed spec is unclosed **by construction**, not by omission.
+- Under the gate, `compile_module` → `reverse_module` → `compile_module` therefore **refuses on step 3**
+  — for every module, including all sixteen reference examples. Principle 7's lossless round-trip is
+  enforced by tests rather than asserted, and those tests do not start failing subtly; the sequence
+  stops being runnable at all.
+
+**Why this is invisible today, which is the part worth recording.** Probed while deciding the 0.x
+behaviour: `artifact_digest` is a Merkle root over `_OUTPUT_FILES`, which is parquet only. `manifest.json`
+is not in it, warnings feed no signature, and no round-trip test compares them. So the same asymmetry
+already exists — a closed module and its round trip differ in `manifest.compilation.warnings` — and in
+0.x it **costs exactly nothing enforceable**, even though RM44 established that a catalog parses that
+field. `verification.json` has carried the identical asymmetry since RM45 with no consequence, for
+precisely this reason. The precedent is therefore silent about the danger, and the gate is what converts
+a free divergence into a refusal.
+
+The obvious repair is closed too: `manifest.verification` carries the `checks` but **not** `difficulty`
+or `nonce`, so reverse cannot rebuild a valid attestation document out of the artifact it holds.
+
+**Candidate answers, none decided.** Stated with their costs so the gate is not built on whichever occurs
+to someone first:
+
+- **Widen `Verification` to carry the whole document**, so reverse can re-emit it. Additive and
+  minor-legal, so it could land well before 1.0 — but it makes `reverse` write a closure it did not
+  witness, which is the self-asserted provenance RM73 rejected when it rejected the `origin:` column. And
+  reverse holds no key, so whatever it writes is unsigned by construction.
+- **Exempt a reversed spec from the gate.** Requires the reversed spec to state that it came from
+  reverse: the same self-assertion one level down, in a marker any author can type.
+- **Require a human to re-close a reversed spec.** Honest, and possibly correct — reverse produces a
+  spec, not a finished module — but it changes what the round-trip guarantee *means*. The fixed point
+  would still hold over every authored value, while `compile → reverse → compile` stops being a sequence
+  that runs without a human in it. If this is the answer then Principle 7's wording is what needs
+  amending, deliberately and on purpose, and the reference-example corpus needs a documented closing step.
+
+**What would unblock it:** picking one of the three *before* the gate is built. The severity change is one
+line; this question is the whole of the item.

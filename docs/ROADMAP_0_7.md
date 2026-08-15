@@ -753,7 +753,12 @@ reads it. Three decisions, settled in discussion on 2026-08-16 and not yet built
   change-evident.
 - **Compile warns in 0.x and refuses at 1.0.** Refusing on a missing closure today breaks every
   published module and all sixteen reference examples, which is P3. The 1.0 line is filed in
-  [ROADMAP_1_0.md](ROADMAP_1_0.md).
+  [ROADMAP_1_0.md](ROADMAP_1_0.md) — **and the refusal is blocked there, not merely scheduled**:
+  `reverse_module` cannot re-emit `verification.json`, so a reversed spec is unclosed by construction
+  and the gate refuses on step 3 of the round trip. In 0.x that same asymmetry is free, because
+  warnings feed no digest and no signature; the gate is what gives it a cost. See
+  [§ RM73 (gate half)](ROADMAP_1_0.md#rm73-gate-half--the-closure-gate-refuses-on-step-3-of-the-round-trip)
+  for the three candidate answers, none of them chosen.
 - **Whatever the record is, its `reverse` behaviour is part of the decision.** `reverse_module`
   rebuilds authored files from parquet alone: the `draft_digest` above survives a round trip because
   it rides `sources.parquet`, and a free-standing sidecar would ride nothing and be dropped silently.
