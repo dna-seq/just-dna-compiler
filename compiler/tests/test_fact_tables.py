@@ -446,6 +446,13 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
         # is legal under RM5's grammar, so no authored edit clears it.
         ("symbolic allele — names no sequence, so no tier can recompute an id for it",
          {"ref": "N", "alts": "<DEL:4977>", "vrs_id": _SICKLE}, "warn"),
+        # `*` (RM59) joins them, one axis over (R2-6). Not a variant at all — it records that an
+        # overlapping deletion left the position uncallable in the sample — so there is no sequence to
+        # digest, and the indel branch it used to fall into offers a remedy (re-run online) that can
+        # never apply. Same severity as its neighbours, and the *stored*-id question the symbolic
+        # branch records is identical here and equally not answered by this row.
+        ("unobservable-allele marker — the callability axis, not a gap in the identity scheme",
+         {"alts": "*", "vrs_id": _SICKLE}, "warn"),
         # ---- the row contradicting itself: errors, in both modes ---------------------------------
         # Not a limit of this tier. The row asserts an identity while withholding the very thing that
         # identity is a digest of, so nothing anywhere could ever check it.
@@ -551,6 +558,53 @@ def test_a_symbolic_allele_is_its_own_gap_class_never_an_indel() -> None:
     # because the new line says "offline or online" — a denial of both, which is the sentence that
     # stops a reader trying the run the old one recommended.
     assert "re-run" not in reason and "enricher" not in reason
+
+
+def test_the_unobservable_marker_is_its_own_gap_class_never_an_indel() -> None:
+    """`*` had the symbolic blind spot one axis over, and it stopped being hypothetical (R2-6).
+
+    0.6 gave the symbolic class its own permanent reason here and guarded `*` and `.` on the enricher
+    side; neither of these two compiler functions was told, so a `*` reaching `resolution.csv`'s
+    `alts` would have been reported as *"an indel or MNV … re-run it online"* — the same false class
+    D1-2 had just fixed for symbolic alleles, with a remedy that can never work.
+
+    Filed when it had no instantiation and upgraded when it turned out to have one: `*` **passes**
+    `LiteralSequenceExpression`'s `^[A-Z*\\-]*$`, so before the enricher guard an unobservable allele
+    reaching the minter would have been normalized and handed a content-addressed id for a state that
+    is not a sequence. *"Nothing produces it today"* is a fact about the wiring, never the function.
+
+    Three classes, not two: `*` is kept apart from the symbolic bucket by the P5 split the predicates
+    already make — `parse_symbolic_allele` asks *which variant is this, unspelled*, while
+    `is_unobservable_allele` asks *whether the call could see an allele at all*.
+    """
+    from just_dna_compiler.compiler import _vrs_coverage
+
+    rows = [
+        _res_row(alts="*", vrs_id=None),                    # the callability marker
+        _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),  # a structural event
+        _res_row(ref="C", alts="CA", vrs_id=None),          # a real indel: the enricher's job
+    ]
+    alleles, identified, gaps = _vrs_coverage(rows)
+
+    assert (alleles, identified) == (3, 0)
+    assert len(gaps) == 3, f"the three classes must not share a bucket: {gaps}"
+    unobservable = [reason for reason in gaps if "unobservable" in reason]
+    assert len(unobservable) == 1, gaps
+    reason = unobservable[0]
+    # The half that made the old message harmful: it named a remedy, and the remedy cannot apply.
+    assert "indel" not in reason and "MNV" not in reason, reason
+    assert "online" not in reason and "re-run" not in reason, reason
+    # …and it is not folded into the symbolic sentence either, which would answer a different question.
+    assert "structural event" not in reason, reason
+
+    # The *verify* side says the same thing, and it needs asserting separately: the severity matrix
+    # above already read "warn" for this row before the fix, because the indel branch it fell into is
+    # also `_BLAME_TIER` — so severity could not have caught this and only the reason can.
+    from just_dna_compiler.compiler import _BLAME_TIER, _recompute_vrs_id
+
+    recomputed, why, blame = _recompute_vrs_id(_res_row(alts="*", vrs_id=_SICKLE), "*")
+    assert recomputed is None and blame == _BLAME_TIER
+    assert "unobservable" in why and "indel" not in why and "MNV" not in why, why
 
 
 def test_the_symbolic_gap_reason_is_one_constant_string() -> None:

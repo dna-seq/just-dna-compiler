@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-15 (latest) — 0.6.0: RM74–RM77, the fix round's own findings
+## 2026-08-15 (latest) — 0.6.0: RM74–RM77 and RM78's two fixes
 
 Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) — the findings the fix round produced by
 reading the code around each repair — was grouped into RM74–RM79 on 2026-08-14. The first two are
@@ -141,7 +141,31 @@ source was wrong.** A correction is exactly where this happens: the reviewer che
 removed, not the one going in. The comment now keeps the history of both wrong versions, and a test
 pins that `C|C` loads.
 
-Suite 2246 → 2257.
+**RM78's two fixes — the VRS reason surface's remaining blind spots.** `*` still landed in the
+compiler's indel bucket: 0.6 gave the symbolic class its own permanent reason in `_vrs_gap_reason` and
+`_recompute_vrs_id` and guarded `*` and `.` on the *enricher* side, and neither compiler function was
+told — so an unobservable allele in `resolution.csv`'s `alts` was reported as *"an indel or MNV … re-run
+it online"*, the same false class D1-2 had just fixed for symbolic alleles, offering a remedy that can
+never apply. Filed as having no instantiation and upgraded when it turned out to have one: `*` **passes**
+`LiteralSequenceExpression`'s `^[A-Z*\-]*$`, so before the enricher guard it would have been normalized
+and handed a content-addressed id for a state that is not a sequence. Three reason classes now, split by
+the P5 line the predicates already draw — *which variant is this, unspelled* versus *could the call see
+an allele at all*. **Severity could not have caught this**, and the test says so: the indel branch it
+fell into is also tier-blame, so the verify matrix read `warn` before and after.
+
+`refget_supports_build` answered `True` for the two inputs `refget_accession` raises on. Its docstring
+says it is *"the question `refget_accession` raises on"*, and for `None` and `""` it was answering the
+opposite — a printed claim the code does not honour, in the tier the other two build on, on the guard a
+caller reaches for *precisely* to avoid the exception. The old reasoning (*"an unset build is the
+format's default"*) imports a spec-layer fact into the identity layer: the GRCh38 default lives in each
+signature, and an explicitly passed `None` is a caller who has not threaded the row's build through —
+the class `test_build_call_sites.py` walks the AST to prevent. Every other build gate in `vrs` already
+read it that way. Both sides now read one predicate, so RM15's second table cannot re-open the gap.
+
+The third part of RM78 is a decision and stays open: whether a stored VA against a symbolic allele is
+the row's contradiction rather than the tier's limit.
+
+Suite 2257 → 2260.
 
 ## 2026-08-14 — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
 

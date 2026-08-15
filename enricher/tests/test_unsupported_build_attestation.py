@@ -28,7 +28,7 @@ from pathlib import Path
 
 from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
 from just_dna_format.resolution import ResolutionRow
-from just_dna_format.vrs import refget_supports_build
+from just_dna_format.vrs import UnsupportedBuildError, refget_accession, refget_supports_build
 
 _GRCH37 = [
     # `reference_examples/grch37_build`'s own two HFE rows, verbatim.
@@ -43,8 +43,38 @@ def test_the_build_predicate_separates_the_two_negatives() -> None:
     """`refget_supports_build` answers the assembly question `refget_accession` raises on."""
     assert refget_supports_build("GRCh38") is True
     assert refget_supports_build("GRCh37") is False
-    # An unset build is the format's default, not an unbuilt assembly.
-    assert refget_supports_build(None) is True and refget_supports_build("") is True
+
+
+def test_the_predicate_and_the_lookup_agree_on_every_input() -> None:
+    """The docstring's claim, checked rather than asserted — and it was false for two inputs (R2-10).
+
+    `refget_supports_build` says it answers *"the question `refget_accession` raises on"*, and for
+    `None` and `""` it answered **`True`** while that function raised. Latent, because the one caller
+    filters `if row.genome_build` first — but this is a public function in the schema tier, and it is
+    the guard a caller reaches for *precisely* to avoid the exception, so the first caller that hands
+    over an unset build got exactly what the guard exists to prevent. Same class as the `start`
+    docstring: a printed claim the code does not honour, in the tier the other two build on.
+
+    **This line used to read `refget_supports_build(None) is True`, with the comment "an unset build
+    is the format's default, not an unbuilt assembly", and that reasoning is what moved.** It imports
+    a fact about the *spec* layer into the *identity* layer. `ModuleSpecConfig.genome_build` does
+    default to GRCh38, and so does each of these functions' own signature — but an explicitly passed
+    `None` is not an omitted argument; it is a caller who has not threaded the row's build through,
+    which is the bug class `test_build_call_sites.py` walks the AST to prevent. Every other build gate
+    in `vrs` already reads it that way, so `True` here made this one function the outlier rather than
+    the rule.
+    """
+    for build in ("GRCh38", "GRCh37", "hg19", None, ""):
+        raised = False
+        try:
+            refget_accession("1", build=build)  # type: ignore[arg-type]
+        except UnsupportedBuildError:
+            raised = True
+        assert refget_supports_build(build) is not raised, build
+
+    # Omitting the argument is still the GRCh38 default — the signature is where that default lives,
+    # and moving it would break every caller that legitimately relies on it.
+    assert refget_accession("1") is not None
 
 
 def test_a_grch37_module_is_unsupported_not_a_clean_pass() -> None:

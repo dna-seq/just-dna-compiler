@@ -172,32 +172,42 @@ same commit.
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM78 — the VRS reason surface's remaining blind spots, and one guard that answers the question it exists to prevent
+## RM78 — a stored VRS id against a symbolic allele may be blaming the wrong party
 
-**Severity** medium · **Status** open — two fixes and one decision · **Owner** format + compiler ·
-**Found by** the 0.6 dogfooding fix round, 2026-08-14
+**Severity** medium · **Status** open — **the two fixes shipped 2026-08-15; only the decision is left**
+· **Owner** format + compiler · **Found by** the 0.6 dogfooding fix round, 2026-08-14 · **Ledger** R2-5
+(open), R2-6 and R2-10 (done — see
+[ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm78-the-two-fixes--the-unobservable-marker-and-a-guard-that-answered-its-own-question-wrong))
 
-**`*` still lands in the compiler's indel bucket** (R2-6). The 0.6 round gave a symbolic allele its own
-permanent reason class in `_vrs_gap_reason` and `_recompute_vrs_id`, and guarded `*` and `.` on the
-enricher side — but the compiler's two reason functions do not test `is_unobservable_allele`, so an
-unobservable allele reaching `resolution.csv`'s `alts` would still be reported as *"an indel or MNV …
-re-run it online"*. Filed when it had no instantiation and upgraded when it turned out to have one: `*`
-**passes** `LiteralSequenceExpression`'s `^[A-Z*\-]*$`, so before the enricher guard it would have been
-normalized and handed a content-addressed id for a state that is not a sequence. *"Nothing produces it
-today"* was a fact about the wiring, never about the function.
+`_recompute_vrs_id` returns the **tier-blame** outcome — a warning in both modes — for a symbolic
+allele carrying a `ga4gh:VA.…`. But nothing mints one: the enricher declines by construction since
+D1-1, and no tier can, because a symbolic allele names a structural event and no sequence. So a
+*present* id names **some other allele**, and it is a false content-addressed claim rather than a gap
+in coverage.
 
-**`refget_supports_build` answers `True` for the two inputs `refget_accession` raises on** (R2-10). Its
-docstring says it is *"the question `refget_accession` raises on"*. For `GRCh37` the two agree; for `None`
-and `""` they do not. Latent — no caller passes an empty build — but it is public in the schema tier and
-it is the guard a caller reaches for *precisely* to avoid that exception.
+**Why that is the wrong blame class on the stated rule.** Tier-blame exists for a finding **no authored
+edit could clear** (P5 — the same rule that keeps `not_covered` and the VRS coverage warnings out of
+the `strict` gate). Deleting the cell clears this one, so by the rule as written it belongs with
+*inconsistent reference allele* and *an id recorded against no ALT*: the row's own contradiction,
+catchable offline, an error in both modes.
 
-**The decision: a stored VRS id against a symbolic allele may be blaming the wrong party** (R2-5).
-`_recompute_vrs_id` returns the tier-blame outcome (a warning in both modes) for a symbolic allele
-carrying a `ga4gh:VA.…`. But nothing mints one — the enricher now declines by construction — so a
-*present* id names some other allele, and **deleting the cell clears it**, which takes the row out of the
-"no authored edit could clear it" class that tier-blame is for. Escalating to row-blame would refuse in
-both modes a module that compiles today, and the minting side has to answer first: may the enricher ever
-write a non-VA identity into that column? Recorded in `_recompute_vrs_id`'s docstring.
+**Why it was not simply escalated.** Two reasons, and only the second is still live.
+
+- It would refuse, **in both modes, a module that compiles today.** Narrower than it sounds: `vrs_id`
+  is machine-written, sits outside every signature, is never re-emitted by `reverse_module`, and no
+  reference example carries such a row — so the P3 exposure is a hand-edited or externally-produced
+  sidecar, not the corpus.
+- **The minting side has to answer first**, and the question is *may the enricher ever write a
+  non-VA identity into that column?* Partly settled already, which the original filing did not note:
+  `validate_vrs_id_list` enforces `ga4gh:<TYPE>.<digest>` at load, and the field description says
+  *"GA4GH VRS allele id (`ga4gh:VA.…`) — one per ALT"*. What is not settled is whether a **non-`VA`**
+  GA4GH type (a `SL` sequence-location id, say) is a legitimate value for a row whose allele has no
+  sequence — which is the only reading under which a present id on a symbolic row is not simply wrong.
+
+**What would unblock it:** answering that one question. If `vrs_id` is VA-only, the escalation follows
+mechanically and the grammar should say so too; if a location-level id is legitimate there, the current
+tier-blame is right and the reason text should name *that* rather than implying the id is bogus.
+Recorded in `_recompute_vrs_id`'s docstring so the next reader of the branch meets it.
 
 ## RM79 — two honest counters disagree in a published manifest field
 

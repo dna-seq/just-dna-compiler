@@ -348,13 +348,26 @@ def sole_build_naming_contig(chrom: str | None) -> str | None:
     return _BUILD_BY_EXCLUSIVE_CONTIG.get((normalize_chrom(chrom) or "").casefold())
 
 
+def _build_has_refget_table(build: str | None) -> bool:
+    """The one predicate `refget_accession` and `refget_supports_build` both read (R2-10).
+
+    They disagreed on `None` and `""` — one raised, the other answered `True` while its docstring
+    said it answers *"the question `refget_accession` raises on"*. Writing the condition twice is
+    what let them; RM15 adds a second table, which is when a third copy would appear.
+    """
+    return build == "GRCh38"
+
+
 def refget_accession(chrom: str | None, build: str = "GRCh38") -> str | None:
     """The refget accession for a contig on `build`, or `None` for a contig outside the table.
 
     Raises `UnsupportedBuildError` for a build with no table — a caller asking for GRCh37 today gets a
-    clear "not built yet" rather than a silently GRCh38-flavoured answer (RM15).
+    clear "not built yet" rather than a silently GRCh38-flavoured answer (RM15). An explicitly passed
+    `None` or `""` is such a build: the GRCh38 default lives in this signature, so *omitting* the
+    argument is the default and *handing over an empty one* is a caller who has not established the
+    build. `refget_supports_build` reads the same predicate and says so first.
     """
-    if build != "GRCh38":
+    if not _build_has_refget_table(build):
         raise UnsupportedBuildError(
             f"no refget table for build {build!r}; VRS minting is GRCh38-only today (RM15 tracks "
             f"the multi-build extension — a second table beside REFGET_GRCh38)"
@@ -377,8 +390,24 @@ def refget_supports_build(build: str | None) -> bool:
     Kept beside the table rather than in the enricher, for the reason `PAR_GRCh38` is here: which
     assemblies have a refget table is a property of this tier's constants, and a copy elsewhere is a
     second list to keep in step when RM15 adds the second table.
+
+    **`None` and `""` answer `False`, and they answered `True` until R2-10.** The docstring above
+    claims to answer *"the question `refget_accession` raises on"*, and for those two inputs it was
+    answering the opposite of what that function does — a printed claim the code did not honour, in
+    the tier the other two build on, and precisely on the guard a caller reaches for *in order to*
+    avoid the exception. Latent, because the one caller filters `if row.genome_build` first.
+
+    The old reasoning was *"an unset build is the format's default, not an unbuilt assembly"*, and it
+    imports a fact about the **spec** layer into the **identity** layer. `ModuleSpecConfig.genome_build`
+    does default to GRCh38, and so does each of these functions' own *signature* — but an explicit
+    `None` handed to a build parameter is not an omitted argument, it is a caller who did not thread
+    the row's build through, which is the bug class `test_build_call_sites.py` walks the AST to
+    prevent. Every other build gate in this module already reads it that way (`in_pseudoautosomal_region`,
+    `par_partner`, `contig_length`, and the two minting functions all withhold on anything that is not
+    literally `GRCh38`), so answering `True` here made this one function the outlier. Both sides now
+    read the same predicate, so they cannot drift apart again.
     """
-    return build in (None, "") or build == "GRCh38"
+    return _build_has_refget_table(build)
 
 
 def sequence_location_digest(

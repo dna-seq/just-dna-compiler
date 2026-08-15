@@ -2383,6 +2383,33 @@ _SYMBOLIC_GAP_REASON: str = (
     "online, and no authored edit clears it"
 )
 
+#: The unobservable-allele gap class (RM59, 0.6) — a *third* bucket, not a spelling of the one above
+#: and emphatically not the indel one (R2-6).
+#:
+#: 0.6 gave the symbolic class its own permanent reason here and guarded `*` and `.` on the *enricher*
+#: side, and these two compiler functions were never told: neither tested `is_unobservable_allele`, so
+#: a `*` in `resolution.csv`'s `alts` would have been reported as *"an indel or MNV … re-run it
+#: online"* — the same false class D1-2 had just fixed for symbolic alleles, one axis over, with a
+#: remedy that could never work.
+#:
+#: **Filed as having no instantiation, and upgraded when it turned out to have one.** The reasoning
+#: was that nothing writes a `*` into that column today; the unit fixing D1-1 then probed
+#: `LiteralSequenceExpression`'s pattern — `^[A-Z*\\-]*$` — and found `*` **passes** it, so before the
+#: enricher guard an unobservable allele reaching the minter would have been normalized and handed a
+#: content-addressed id for a state that is not a sequence. *"Nothing produces it today"* is a fact
+#: about the current wiring, never about the function: the same lesson RM38 and
+#: `VALID_RSID_STATUS.withdrawn` already carry.
+#:
+#: Separate from the symbolic bucket because the two answer different questions and P5 keeps them
+#: apart everywhere else: `parse_symbolic_allele` asks *which variant is this, unspelled*, while
+#: `is_unobservable_allele` asks *whether this sample's call could see the allele at all* — the
+#: callability axis. One is a variant with no sequence written down; the other is not a variant.
+_UNOBSERVABLE_GAP_REASON: str = (
+    "the unobservable-allele marker '*': it records that an overlapping deletion left this position "
+    "uncallable in the sample, so it names no allele and there is nothing to digest — no tier mints "
+    "one, and this is the callability axis rather than a gap in the identity scheme"
+)
+
 
 def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
     """Which *class* of gap this is — a bucket, deliberately not `_recompute_vrs_id`'s prose.
@@ -2406,6 +2433,12 @@ def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
     # would be the same false claim about a different mistake.
     if is_symbolic_allele(alt):
         return _SYMBOLIC_GAP_REASON
+    # Beside it, and above the substitution fall-through for the identical reason (R2-6): `*` is also
+    # not a substitution, and filing it under the indel class would print a remedy — re-run online —
+    # that can never work. The two are disjoint predicates (`*` is one character, a symbolic token is
+    # bracketed), so their order relative to each other decides nothing.
+    if is_unobservable_allele(alt):
+        return _UNOBSERVABLE_GAP_REASON
     try:
         recomputed = derive_vrs_allele_id(row.chrom, row.start, row.ref, alt, build=row.genome_build)
     except UnsupportedBuildError as exc:
@@ -2516,6 +2549,19 @@ def _recompute_vrs_id(
             f"{alt} is a symbolic allele: it names a structural event rather than a sequence, so there "
             f"is nothing for a content-addressed id to be a digest of and no tier mints one — this id "
             f"cannot be recomputed here or anywhere",
+            _BLAME_TIER,
+        )
+    if is_unobservable_allele(alt):
+        # The same branch `_vrs_gap_reason` gained in R2-6, in the same place: above the substitution
+        # fall-through, because `*` is not one either and the indel message's remedy — re-run the
+        # enricher online — is unreachable for a marker that names no allele. `_BLAME_TIER` matches
+        # the symbolic branch above, and a *stored* id here raises the identical open question that
+        # branch records: nothing mints one, so a present id names something else.
+        return (
+            None,
+            f"{alt} is the unobservable-allele marker, not an allele: it records that an overlapping "
+            f"deletion left this position uncallable in the sample, so there is no sequence for a "
+            f"content-addressed id to name",
             _BLAME_TIER,
         )
     if not is_substitution(row.ref, alt):

@@ -1844,3 +1844,46 @@ dropped the zygosity word and kept the true half, so the **printed contract has 
 and only its source was wrong.** A correction is exactly where this happens: the reviewer checks the
 claim being removed, not the one going in. The comment now says only what RM63 established, keeps the
 history of both wrong versions, and a test pins that `C|C` loads so there is no fourth turn.
+
+## RM78, the two fixes — the unobservable marker, and a guard that answered its own question wrong
+
+**Severity** medium · **Status** ✅ both fixes shipped; **the R2-5 decision stays open in
+[ROADMAP.md](ROADMAP.md)** · **Owner** format + compiler · **Found by** the 0.6 dogfooding fix round,
+2026-08-14 · **Ledger** R2-6, R2-10
+
+**`*` landed in the compiler's indel bucket** (R2-6). 0.6 gave the symbolic class its own permanent
+reason in `_vrs_gap_reason` and `_recompute_vrs_id` and guarded `*` and `.` on the *enricher* side, and
+neither compiler function was told — so an unobservable allele in `resolution.csv`'s `alts` was
+reported as *"an indel or MNV … re-run it online"*: the same false class D1-2 had just fixed for
+symbolic alleles, one axis over, offering a remedy that can never apply.
+
+**Filed as having no instantiation and upgraded when it turned out to have one.** The reasoning was
+that nothing writes a `*` there today; the unit fixing D1-1 then probed `LiteralSequenceExpression`'s
+pattern — `^[A-Z*\-]*$` — and found `*` **passes**, so before the enricher guard an unobservable allele
+reaching the minter would have been normalized and handed a content-addressed id for a state that is
+not a sequence. *"Nothing produces it today"* is a fact about the wiring, never about the function:
+RM38 and `VALID_RSID_STATUS.withdrawn` already carry the same lesson.
+
+Three classes now, not two, and the split is P5's rather than a convenience: `parse_symbolic_allele`
+asks *which variant is this, unspelled*, and `is_unobservable_allele` asks *whether the call could see
+an allele at all* — the callability axis. **Severity could not have caught this**, which is why the
+test asserts the reason: the indel branch it fell into is also tier-blame, so the verify matrix read
+`warn` before the fix and after it.
+
+**`refget_supports_build` answered `True` for the two inputs `refget_accession` raises on** (R2-10).
+Its docstring says it is *"the question `refget_accession` raises on"*; for `GRCh37` the two agreed and
+for `None` and `""` they did not. Latent, because the one caller filters `if row.genome_build` first —
+but it is public in the schema tier and it is the guard a caller reaches for *precisely* to avoid that
+exception, so the first caller handing over an unset build got what the guard exists to prevent. Same
+class as the `start` docstring: a printed claim the code does not honour, in the tier the other two
+build on.
+
+**Which side moved, and why that was the real question.** The old reasoning was *"an unset build is the
+format's default, not an unbuilt assembly"* — which imports a fact about the **spec** layer into the
+**identity** layer. `ModuleSpecConfig.genome_build` does default to GRCh38, and so does each of these
+functions' own *signature*; but an explicitly passed `None` is not an omitted argument, it is a caller
+who has not threaded the row's build through — the bug class `test_build_call_sites.py` walks the AST
+to prevent. Every other build gate in `vrs` (`in_pseudoautosomal_region`, `par_partner`,
+`contig_length`, both minting functions) already withholds on anything that is not literally `GRCh38`,
+so answering `True` made this one function the outlier rather than the rule. Both now read one
+predicate, so RM15's second table cannot re-open the gap.
