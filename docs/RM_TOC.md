@@ -3,9 +3,10 @@
 **The single complete list.** Nothing else was: [ROADMAP.md](ROADMAP.md)'s detail table covered
 RM4–RM7 / RM10–RM17 / RM20–RM27, [USE_CASES.md](USE_CASES.md)'s covered RM1–RM14 / RM18–RM22, neither
 was sorted, RM28–RM35 lived only as prose paragraphs, and the major-version items are not numbered at
-all. So `RM33` was genuinely unfindable. This file exists to make that impossible. ROADMAP.md's own
-active list is empty since the 0.6 batch, which does not retire the argument — the items did not
-disappear, they moved, and a pointer at where one used to live is the same defect one document over.
+all. So `RM33` was genuinely unfindable. This file exists to make that impossible. ROADMAP.md's active
+list ran empty after the 0.6 batch and filled again with RM74–RM79, which does not retire the argument
+either way — an item that moves leaves a pointer at where it used to live, and that is the same defect
+one document over.
 
 **Add an entry here whenever you add an item, and keep it sorted.** If you find yourself wanting a
 second index somewhere else, don't — two partial lists of the same 35 items is what caused this, and

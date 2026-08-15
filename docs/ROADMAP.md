@@ -150,19 +150,22 @@ Two consequences worth stating outright:
 
 # Active items
 
-**None in this file.** Everything that was open on the `0.6` branch was built in the 0.6 batch and
-moved to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the
-roadmap of the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the
-deferred halves of RM55, RM56, RM65, plus RM66 and RM67, and since 2026-08-14 the five dogfooding items
-RM68–RM72) and [ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half).
+**RM74–RM79**, all six from the 0.6 dogfooding fix round (2026-08-14). Everything that was open on the
+`0.6` branch *before* that round was built in the 0.6 batch and moved to
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
+the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the deferred
+halves of RM55, RM56, RM65, plus RM66 and RM67, and the five dogfooding items RM68–RM73) and
+[ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half).
 
-The trackers below are **not** empty and are the live part of this file: the reserved-namespace tracker
-and the 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself. A new
-item starts here as a `## RMn` section; the index in [RM_TOC.md](RM_TOC.md) is what makes it findable.
+**This section read "None in this file" for a day after the six were filed**, because they were appended
+below the *Not format scope* heading and nothing moved the boundary — so the roadmap's own summary line
+said it had no open work while carrying two high-severity items. Recorded rather than quietly fixed: it
+is the [RM_TOC.md](RM_TOC.md) failure mode (an item nobody can find) arriving in the file the index
+points *at*, and it is why a new item starts here as a `## RMn` section and gets its RM_TOC row in the
+same commit.
 
-# Not format scope
-
-Listed so they are not mistaken for format scope, and so nobody re-proposes them.
+The trackers further down are the other live part of this file: the reserved-namespace tracker and the
+1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
 ## RM74 — the drafting providers read their sources wrong, and the test that would have caught one does not run
 
@@ -311,6 +314,10 @@ describing the table it names, and it needs `studies.csv` in scope where the blo
 *Filter the record* — that is already what it does. *Drop stale rows on re-run* — destroys the pin that
 makes a re-run cheap, which is the whole point of merge-not-clobber. Consumer-visible either way, so it
 is minor-legal but not invisible.
+
+# Not format scope
+
+Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM7 — Evaluation-output / report-card schema
 
