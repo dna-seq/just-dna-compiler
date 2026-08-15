@@ -33,7 +33,7 @@ from just_dna_format.vocab import (
     normalize_population,
     validate_population,
 )
-from just_dna_format.vrs import validate_caid, validate_vrs_id
+from just_dna_format.vrs import validate_caid, validate_vrs_allele_id
 
 # The fact columns that feed `integrity.frequency_signature` — everything except the provenance
 # columns (`source`/`status`/`fetched_at`), so a human-filled and a gnomAD-filled table carrying the
@@ -173,7 +173,7 @@ class FrequencyRow(BaseModel):
     @field_validator("vrs_id")
     @classmethod
     def _validate_vrs_id(cls, v: str | None) -> str | None:
-        return validate_vrs_id(v)
+        return validate_vrs_allele_id(v)
 
     @field_validator("caid")
     @classmethod

@@ -1887,3 +1887,46 @@ to prevent. Every other build gate in `vrs` (`in_pseudoautosomal_region`, `par_p
 `contig_length`, both minting functions) already withholds on anything that is not literally `GRCh38`,
 so answering `True` made this one function the outlier rather than the rule. Both now read one
 predicate, so RM15's second table cannot re-open the gap.
+
+## RM78, the decision — a stored VRS id against a symbolic allele is the row's contradiction
+
+**Severity** medium · **Status** ✅ decided and shipped 2026-08-15 · **Owner** format + compiler ·
+**Ledger** R2-5
+
+`_recompute_vrs_id` returned **tier-blame** — a warning in both modes — for a symbolic allele carrying
+a `ga4gh:VA.…`. Tier-blame exists for a finding **no authored edit could clear** (P5, the rule that
+also keeps `not_covered` and the coverage warnings out of the `strict` gate), and deleting the cell
+clears this one. So the finding was filed in the class whose own test it fails.
+
+**Decided: escalate to row-blame — an error in both modes — but settle the grammar first.** That order
+was the point. The escalation only follows if a present id can *only* be a VA minted for a different
+allele, and nothing had established that: `vrs_id` was validated for well-formedness alone
+(`ga4gh:<TYPE>.<digest>`, five types), while its description says *"GA4GH VRS allele id
+(`ga4gh:VA.…`)"*. Changing severity before answering that would have been a verdict resting on a
+premise the schema did not state.
+
+**The grammar step.** `validate_vrs_allele_id` makes `ResolutionRow.vrs_id` and `FrequencyRow.vrs_id`
+`ga4gh:VA.`-only, and names the type it got when refusing. Three things about it:
+
+- **It makes no passing module fail.** A `ga4gh:SL.…` already reached `_verify_vrs_ids`, which
+  recomputes with `derive_vrs_allele_id` (always a VA), and was reported as a **mismatch** —
+  *"recomputed and different, so corruption"* — an error in both modes with the wrong explanation. The
+  tightening moves a confident wrong diagnosis to load time.
+- **No instantiation**, which is the test this repo applies to a tightening (the IUPAC probe is the
+  precedent): nothing mints a non-VA into either column, and a probe across all sixteen reference
+  examples found **844 ids, every one `ga4gh:VA.`, zero of the other four types**.
+- **`validate_vrs_id` keeps its lenience and its documented reason.** What was wrong was using a
+  *format* check where a *column* rule was meant — "is this a well-formed VRS id" and "may this column
+  hold one" are different questions, and only the first should be generous.
+
+**The escalation.** With the column VA-only, a recorded id on a symbolic row can only be a VA for some
+other allele: a false content-addressed claim, catchable offline, the same class as *inconsistent
+reference allele* and *an id recorded against no ALT*. The message says which cell to delete and that
+the allele keeps its identity through `variant_key`, so the remedy is one edit and loses nothing.
+
+**The asymmetry that must not be flattened, and it is now pinned by a test.** The *coverage* side
+(`_vrs_gap_reason`, `_vrs_coverage_warnings`) still reports a symbolic allele as a permanent gap and
+**warns in both modes**. An absent id there is the ordinary, correct state — no tier can mint one — so
+refusing would make every structural module uncompilable for a reason no edit could fix, which is the
+P5 class this whole item is about. *Absence is a limit; a claim is a claim.* `mt_common_deletion`,
+`cyp2d6_structural` and `pathogenic_clinvar` still compile under `--strict`.

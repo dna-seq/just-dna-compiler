@@ -2544,12 +2544,30 @@ def _recompute_vrs_id(
     if is_symbolic_allele(alt):
         # Named per row here (unlike `_vrs_gap_reason`'s constant) for the same reason the indel branch
         # below names its alleles: this diagnoses one row, and the caller has already located it.
+        #
+        # **`_BLAME_ROW`, and it was `_BLAME_TIER` until R2-5 was settled.** Tier-blame is for a
+        # finding **no authored edit could clear** (P5 — the rule that also keeps `not_covered` and the
+        # coverage warnings out of the `strict` gate), and this one is cleared by deleting the cell. It
+        # belongs with *inconsistent reference allele* and *an id recorded against no ALT*: the row
+        # asserts a content-addressed identity for an allele that has no content to address, so the id
+        # necessarily names some **other** allele. That is a false claim, catchable offline, and an
+        # error in both modes.
+        #
+        # It was left at tier-blame when first found because escalating needed the minting side
+        # answered first — *may a non-VA identity ever be written here?* — and that is now settled in
+        # the grammar: `validate_vrs_allele_id` refuses anything but `ga4gh:VA.`, on a probe of 844 ids
+        # across the corpus that found no other type. With the column VA-only, a present id on a
+        # symbolic row can only be a VA minted for a different allele, and there is nothing left to be
+        # unsure about. Note the asymmetry that stays: the *coverage* side (`_vrs_gap_reason`) still
+        # reports the same allele as a permanent gap and warns, because an **absent** id there is
+        # honest and no edit improves it. Absence is a limit; a claim is a claim.
         return (
             None,
             f"{alt} is a symbolic allele: it names a structural event rather than a sequence, so there "
-            f"is nothing for a content-addressed id to be a digest of and no tier mints one — this id "
-            f"cannot be recomputed here or anywhere",
-            _BLAME_TIER,
+            f"is nothing for a content-addressed id to be a digest of and no tier mints one — a "
+            f"recorded id here names some other allele. Delete the vrs_id cell; the allele keeps its "
+            f"identity through variant_key",
+            _BLAME_ROW,
         )
     if is_unobservable_allele(alt):
         # The same branch `_vrs_gap_reason` gained in R2-6, in the same place: above the substitution

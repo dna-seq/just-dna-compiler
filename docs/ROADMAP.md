@@ -150,8 +150,8 @@ Two consequences worth stating outright:
 
 # Active items
 
-**RM78 and RM79**, from the 0.6 dogfooding fix round (2026-08-14); RM74–RM77 shipped from the same
-batch and moved to
+**RM79** alone, from the 0.6 dogfooding fix round (2026-08-14); RM74–RM78 shipped from the same batch
+and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired). RM76's
 narrow repair is what shipped — the general question it asks from underneath is
 [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase),
@@ -171,43 +171,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM78 — a stored VRS id against a symbolic allele may be blaming the wrong party
-
-**Severity** medium · **Status** open — **the two fixes shipped 2026-08-15; only the decision is left**
-· **Owner** format + compiler · **Found by** the 0.6 dogfooding fix round, 2026-08-14 · **Ledger** R2-5
-(open), R2-6 and R2-10 (done — see
-[ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm78-the-two-fixes--the-unobservable-marker-and-a-guard-that-answered-its-own-question-wrong))
-
-`_recompute_vrs_id` returns the **tier-blame** outcome — a warning in both modes — for a symbolic
-allele carrying a `ga4gh:VA.…`. But nothing mints one: the enricher declines by construction since
-D1-1, and no tier can, because a symbolic allele names a structural event and no sequence. So a
-*present* id names **some other allele**, and it is a false content-addressed claim rather than a gap
-in coverage.
-
-**Why that is the wrong blame class on the stated rule.** Tier-blame exists for a finding **no authored
-edit could clear** (P5 — the same rule that keeps `not_covered` and the VRS coverage warnings out of
-the `strict` gate). Deleting the cell clears this one, so by the rule as written it belongs with
-*inconsistent reference allele* and *an id recorded against no ALT*: the row's own contradiction,
-catchable offline, an error in both modes.
-
-**Why it was not simply escalated.** Two reasons, and only the second is still live.
-
-- It would refuse, **in both modes, a module that compiles today.** Narrower than it sounds: `vrs_id`
-  is machine-written, sits outside every signature, is never re-emitted by `reverse_module`, and no
-  reference example carries such a row — so the P3 exposure is a hand-edited or externally-produced
-  sidecar, not the corpus.
-- **The minting side has to answer first**, and the question is *may the enricher ever write a
-  non-VA identity into that column?* Partly settled already, which the original filing did not note:
-  `validate_vrs_id_list` enforces `ga4gh:<TYPE>.<digest>` at load, and the field description says
-  *"GA4GH VRS allele id (`ga4gh:VA.…`) — one per ALT"*. What is not settled is whether a **non-`VA`**
-  GA4GH type (a `SL` sequence-location id, say) is a legitimate value for a row whose allele has no
-  sequence — which is the only reading under which a present id on a symbolic row is not simply wrong.
-
-**What would unblock it:** answering that one question. If `vrs_id` is VA-only, the escalation follows
-mechanically and the grammar should say so too; if a location-level id is legitimate there, the current
-tier-blame is right and the reason text should name *that* rather than implying the id is bogus.
-Recorded in `_recompute_vrs_id`'s docstring so the next reader of the branch meets it.
 
 ## RM79 — two honest counters disagree in a published manifest field
 

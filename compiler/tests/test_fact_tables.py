@@ -440,12 +440,9 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
          {"chrom": "MT", "start": 999999, "vrs_id": _SICKLE}, "warn"),
         ("non-GRCh38 build — no refget table (must not raise)",
          {"genome_build": "GRCh37", "vrs_id": _SICKLE}, "warn"),
-        # A symbolic allele (RM5, 0.6) is the tier's limit only in the sense that *every* tier's limit
-        # is the same one: it names a structural event and no sequence, so there is nothing for a
-        # content-addressed id to digest anywhere. Same severity as the rest of this block — the row
-        # is legal under RM5's grammar, so no authored edit clears it.
-        ("symbolic allele — names no sequence, so no tier can recompute an id for it",
-         {"ref": "N", "alts": "<DEL:4977>", "vrs_id": _SICKLE}, "warn"),
+        # A symbolic allele with a *stored* id moved out of this block in R2-5 — see the error section
+        # below. Its **absence** is still the tier's limit and still lives here, which is the whole
+        # asymmetry: an unminted id on such a row is honest, and a recorded one is a false claim.
         # `*` (RM59) joins them, one axis over (R2-6). Not a variant at all — it records that an
         # overlapping deletion left the position uncallable in the sample — so there is no sequence to
         # digest, and the indel branch it used to fall into offers a remedy (re-run online) that can
@@ -460,6 +457,14 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
          {"alts": None, "vrs_id": _SICKLE}, "error"),
         ("no coordinate — an id recorded against no place",
          {"chrom": None, "start": None, "vrs_id": _SICKLE}, "error"),
+        # R2-5, settled 2026-08-15. Tier-blame is for a finding **no authored edit could clear** (P5),
+        # and deleting the cell clears this one — which is the test it was failing while filed there.
+        # Nothing mints a VA for a symbolic allele, so a recorded one names a *different* allele: a
+        # false content-addressed claim, catchable offline, exactly this block's shape. Gated until now
+        # on the minting question, now answered in the grammar — `validate_vrs_allele_id` makes the
+        # column `ga4gh:VA.`-only, so a present id here cannot be anything but a VA for another allele.
+        ("symbolic allele with a stored id — an id for an allele that has no content to address",
+         {"ref": "N", "alts": "<DEL:4977>", "vrs_id": _SICKLE}, "error"),
         # A multi-allelic site is now verified allele by allele. It used to be a blanket
         # "unverifiable" on the grounds that a VA names one allele — true, and the reason `vrs_id` is
         # a parallel array of `alts` rather than a scalar; with the pair aligned there is nothing left
@@ -607,6 +612,56 @@ def test_the_unobservable_marker_is_its_own_gap_class_never_an_indel() -> None:
     assert "unobservable" in why and "indel" not in why and "MNV" not in why, why
 
 
+def test_the_vrs_id_column_is_allele_ids_only() -> None:
+    """The grammar question RM78's severity change was gated on, settled (R2-5).
+
+    Both `vrs_id` columns are described as *"GA4GH VRS allele id (`ga4gh:VA.…`) — one per ALT"*, and
+    only the lenient well-formedness check ran — so a `ga4gh:SL.…`, a *sequence-location* id naming a
+    place rather than an allele, loaded cleanly and then failed downstream as a **mismatch**
+    ("recomputed and different, so corruption"), which is an error in both modes with the wrong
+    explanation. Tightening therefore makes no passing module fail; it moves a confident wrong
+    diagnosis to load time and names the type it got.
+
+    No instantiation, which is the test this repo applies to a tightening: nothing mints a non-VA into
+    either column, and a probe across all sixteen reference examples found 844 ids, every one a VA.
+    """
+    from just_dna_format.frequency import FrequencyRow
+    from just_dna_format.vrs import validate_vrs_id
+
+    location_id = "ga4gh:SL." + _SICKLE.split(".", 1)[1]
+
+    with pytest.raises(ValueError, match="allele id"):
+        _res_row(vrs_id=location_id)
+    with pytest.raises(ValueError, match="allele id"):
+        FrequencyRow(variant_key="k", population="nfe", source="gnomad", vrs_id=location_id)
+    # The message names the type it got, so the author is not left comparing digests.
+    with pytest.raises(ValueError, match="SL id"):
+        _res_row(vrs_id=location_id)
+
+    # The lenient checker keeps its documented job — rejecting the malformed, not the unfamiliar —
+    # because "is this a well-formed VRS id" and "may this column hold one" are different questions.
+    assert validate_vrs_id(location_id) == location_id
+    # …and a multi-allelic cell is checked member by member, so one bad member is enough.
+    with pytest.raises(ValueError, match="allele id"):
+        _res_row(alts="A,G", vrs_id=f"{_SICKLE},{location_id}")
+
+
+def test_an_absent_id_on_a_symbolic_allele_stays_a_warning() -> None:
+    """The asymmetry the R2-5 escalation must not flatten: absence is a limit, a claim is a claim.
+
+    Escalating the *stored*-id case would be wrong to generalize. A symbolic allele with **no** id is
+    the ordinary, correct state — no tier can mint one — so it stays a coverage warning in both modes,
+    which is what keeps a structural module compilable. What changed is only the row that records an
+    identity it cannot have.
+    """
+    from just_dna_compiler.compiler import _verify_vrs_ids, _vrs_coverage_warnings
+
+    row = _res_row(ref="N", alts="<DEL:4977>", vrs_id=None)
+    errors, warnings = _verify_vrs_ids([row])
+    assert errors == [] and warnings == []          # nothing recorded, so nothing to verify
+    assert any("symbolic" in w for w in _vrs_coverage_warnings([row]))
+
+
 def test_the_symbolic_gap_reason_is_one_constant_string() -> None:
     """Grouped by *class*, so two symbolic alleles are one line — the rule that keeps this readable.
 
@@ -638,13 +693,16 @@ def test_a_symbolic_allele_on_a_non_grch38_module_reports_the_permanent_reason()
     _alleles, _identified, gaps = _vrs_coverage([row])
     assert len(gaps) == 1 and "symbolic" in next(iter(gaps))
 
+    # A *stored* id on the same row is an error since R2-5 — the row's own contradiction rather than
+    # the tier's limit — but the ordering property under test is unchanged and is what is asserted:
+    # whichever channel it comes out of, the sentence must name the symbolic allele and not the build.
     errors, warnings = _verify_vrs_ids([_res_row(
         ref="N", alts="<DEL:4977>", genome_build="GRCh37", vrs_id=_SICKLE
     )])
-    assert not errors
-    assert "symbolic" in warnings[0] and "GRCh37" not in warnings[0]
+    assert not warnings
+    assert "symbolic" in errors[0] and "GRCh37" not in errors[0]
     # "minted upstream by the enricher" is the indel branch's promise and is false here.
-    assert "enricher" not in warnings[0]
+    assert "enricher" not in errors[0]
 
 
 def test_the_manifest_records_vrs_coverage_as_two_counts(tmp_path: Path) -> None:

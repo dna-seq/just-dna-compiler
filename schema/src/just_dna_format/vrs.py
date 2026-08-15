@@ -541,21 +541,59 @@ def join_vrs_ids(ids: Sequence[str | None]) -> str | None:
 def validate_vrs_id_list(value: str | None, field_name: str = "vrs_id") -> str | None:
     """Validate a comma-joined `vrs_id` cell member by member, returning the canonical spelling.
 
-    Each member is either a well-formed VRS id or empty. Alignment with `alts` is *not* checked here —
-    a field validator cannot see a sibling field — so `ResolutionRow` checks the count itself.
+    Each member is either a well-formed VRS **allele** id or empty. Alignment with `alts` is *not*
+    checked here — a field validator cannot see a sibling field — so `ResolutionRow` checks the count
+    itself.
     """
     ids = split_vrs_ids(value)
     for index, member in enumerate(ids):
-        validate_vrs_id(member, f"{field_name}[{index}]" if len(ids) > 1 else field_name)
+        validate_vrs_allele_id(member, f"{field_name}[{index}]" if len(ids) > 1 else field_name)
     return join_vrs_ids(ids)
 
 
 def validate_vrs_id(value: str | None, field_name: str = "vrs_id") -> str | None:
-    """Validate an optional GA4GH VRS identifier (`ga4gh:<TYPE>.<32-char digest>`)."""
+    """Validate an optional GA4GH VRS identifier of **any** identifiable type.
+
+    Well-formedness only: `ga4gh:<TYPE>.<32-char digest>`. Deliberately lenient (see
+    `VRS_ID_PATTERN`) so a validator rejects a *malformed* value rather than an
+    unfamiliar-but-well-formed one. Whether a given **column** may hold a non-allele type is a
+    separate question, and for the two `vrs_id` columns the answer is no — they use
+    `validate_vrs_allele_id`.
+    """
     if value is not None and not VRS_ID_PATTERN.match(value):
         raise ValueError(
             f"{field_name} must be a GA4GH VRS identifier like "
             f"ga4gh:VA.JGrSjQEcYOJ14vlkvm7sIyYSgHfpC5UG, got: {value!r}"
+        )
+    return value
+
+
+def validate_vrs_allele_id(value: str | None, field_name: str = "vrs_id") -> str | None:
+    """Well-formed **and** an allele id — the rule `ResolutionRow.vrs_id`/`FrequencyRow.vrs_id` obey.
+
+    **Settling this is what RM78's severity question was gated on.** Both columns are described as
+    *"GA4GH VRS allele id (`ga4gh:VA.…`) — one per ALT"*, and only the lenient format check ran — so a
+    `ga4gh:SL.…`, a *sequence-location* id naming a place rather than an allele, loaded cleanly. It
+    then reached `_verify_vrs_ids`, which recomputes with `derive_vrs_allele_id` (always a VA), found
+    a difference, and reported a **mismatch**: *"recomputed and different, so corruption"*. That
+    verdict is already an error in both modes, so this tightening makes no passing module fail — it
+    replaces a confident wrong diagnosis with the true one, at load, naming the type it got.
+
+    **Legal because it has no instantiation**, which is the test this repo applies to a tightening
+    (the IUPAC probe is the precedent). Nothing mints a non-VA into either column — both minting paths
+    call `derive_vrs_allele_id`, and gnomAD's own id is an allele id — and a probe across all sixteen
+    reference examples found **844 ids, every one `ga4gh:VA.`, zero of the other four types**.
+
+    `validate_vrs_id` keeps its documented lenience and its place. What was wrong was using a *format*
+    check where a *column* rule was meant: a column that holds one kind of thing should say which.
+    """
+    validate_vrs_id(value, field_name)
+    if value is not None and not value.startswith(VRS_ALLELE_PREFIX):
+        kind = value.split(".", 1)[0].removeprefix("ga4gh:")
+        raise ValueError(
+            f"{field_name} must be a VRS allele id ({VRS_ALLELE_PREFIX}…), got a {kind} id: "
+            f"{value!r}. This column names one allele per ALT and its value is recomputed with "
+            f"derive_vrs_allele_id, so a {kind} id names something else and could never verify."
         )
     return value
 

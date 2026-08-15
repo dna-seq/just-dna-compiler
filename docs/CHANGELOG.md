@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-15 (latest) — 0.6.0: RM74–RM77 and RM78's two fixes
+## 2026-08-15 (latest) — 0.6.0: RM74–RM78, the fix round's own findings
 
 Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) — the findings the fix round produced by
 reading the code around each repair — was grouped into RM74–RM79 on 2026-08-14. The first two are
@@ -165,7 +165,34 @@ read it that way. Both sides now read one predicate, so RM15's second table cann
 The third part of RM78 is a decision and stays open: whether a stored VA against a symbolic allele is
 the row's contradiction rather than the tier's limit.
 
-Suite 2257 → 2260.
+**RM78's decision — a stored VRS id against a symbolic allele is the row's contradiction, and the
+grammar was settled first.** `_recompute_vrs_id` returned tier-blame (a warning in both modes) for a
+symbolic allele carrying a `ga4gh:VA.…`. Tier-blame is for a finding **no authored edit could clear**
+(P5), and deleting the cell clears this one — so the finding sat in the class whose own test it fails.
+
+The escalation only follows if a present id can *only* be a VA minted for a different allele, and
+nothing had established that: `vrs_id` was checked for well-formedness alone (`ga4gh:<TYPE>.<digest>`,
+five types) while its description says *"GA4GH VRS allele id (`ga4gh:VA.…`)"*. So the grammar went
+first. `validate_vrs_allele_id` makes `ResolutionRow.vrs_id` and `FrequencyRow.vrs_id` `ga4gh:VA.`-only
+and names the type it refuses. It makes no passing module fail — a `ga4gh:SL.…` already reached
+`_verify_vrs_ids` and came out as a **mismatch** ("recomputed and different, so corruption"), an error
+in both modes with the wrong explanation — and it has no instantiation, the test this repo applies to a
+tightening: 844 ids across all sixteen reference examples, every one a VA. `validate_vrs_id` keeps its
+lenience and its documented reason, because "is this a well-formed VRS id" and "may this column hold
+one" are different questions and only the first should be generous.
+
+With that settled the escalation is mechanical: a recorded id on a symbolic row can only name some
+*other* allele, which is the *inconsistent reference allele* class — catchable offline, an error in both
+modes. The message says which cell to delete and that the allele keeps its identity through
+`variant_key`.
+
+**The asymmetry is pinned rather than assumed.** The coverage side still reports a symbolic allele as a
+permanent gap and warns in both modes: an **absent** id there is the ordinary correct state, and
+refusing would make every structural module uncompilable for a reason no edit could fix. Absence is a
+limit; a claim is a claim. `mt_common_deletion`, `cyp2d6_structural` and `pathogenic_clinvar` still
+compile under `--strict`.
+
+Suite 2260 → 2262.
 
 ## 2026-08-14 — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
 
