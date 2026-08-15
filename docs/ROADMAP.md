@@ -150,12 +150,12 @@ Two consequences worth stating outright:
 
 # Active items
 
-**RM79** alone, from the 0.6 dogfooding fix round (2026-08-14); RM74–RM78 shipped from the same batch
-and moved to
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired). RM76's
-narrow repair is what shipped — the general question it asks from underneath is
+**None in this file.** RM74–RM79, the whole 0.6 dogfooding fix round, shipped on 2026-08-15 and moved
+to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired) — but
+read that as *the sprouts are repaired*, not *the ground is clear*: RM76's narrow repair is what
+shipped, and the question it asks from underneath is
 [RM73](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase),
-which stays open. Everything that was open on the
+which is open and is the root several of these grew from. Everything that was open on the
 `0.6` branch *before* that round was built in the 0.6 batch and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
 the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the deferred
@@ -171,28 +171,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM79 — two honest counters disagree in a published manifest field
-
-**Severity** low · **Status** open — a decision, not a repair · **Owner** compiler · **Found by** the
-0.6 dogfooding fix round, 2026-08-14
-
-`manifest.literature.missing_count` counts `exists is False` over **every row in `literature.csv`**;
-the `citation_existence` verification record counts over the citations the module makes **now**.
-`literature.csv` is merge-not-clobber, so it keeps a row for a citation the author has since deleted
-from `studies.csv`, and the two numbers then disagree in a published manifest with nothing wrong in the
-module.
-
-Each is right about its own subject, which is what makes this a decision. The `manifest.literature`
-block's siblings are table facets, so counting the table is what that block means, and the compiler's
-own test states that rule verbatim. The open question is one line: **should `manifest.literature`
-describe the table it is named after, or the module's current citations?**
-
-Candidate repairs and why each fails. *Filter the compiler's count to cited rows* — the block stops
-describing the table it names, and it needs `studies.csv` in scope where the block is a sidecar facet.
-*Filter the record* — that is already what it does. *Drop stale rows on re-run* — destroys the pin that
-makes a re-run cheap, which is the whole point of merge-not-clobber. Consumer-visible either way, so it
-is minor-legal but not invisible.
 
 # Not format scope
 

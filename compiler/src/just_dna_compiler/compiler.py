@@ -4092,9 +4092,16 @@ def compile_module(
         rows, fact_errors, _ = _load_csv_rows(fact_path, model, fact_path.name)
         if fact_errors:
             return CompilationResult(success=False, errors=fact_errors, warnings=all_warnings)
-        fact_rows[model] = rows
         check, build = _FACT_HANDLERS[model]
+        # **The check sees every row; everything after it sees the kept ones** (RM79). A literature
+        # row for a citation no study and no bin names joins to nothing, so carrying it into the
+        # parquet and the manifest is dead weight — but reporting it needs the full list, which is why
+        # the split happens here rather than at load. `literature.csv` itself is untouched: it is
+        # merge-not-clobber on purpose, and that pin is what makes a re-run cheap.
         check_errors, check_warnings = check(rows)
+        if model is LiteratureRow:
+            rows, _dropped = split_cited_literature(rows, studies, kind_rows)
+        fact_rows[model] = rows
         if check_errors:
             return CompilationResult(success=False, errors=check_errors, warnings=all_warnings)
         all_warnings.extend(check_warnings)
@@ -4910,27 +4917,67 @@ def _cross_check_literature(
     if not rows:
         return []
     findings: list[str] = []
-    cited: set[str] = set()
-    for study in studies:
-        cited.update(extract_pmids(study.pmid))
-    cited.update(binning_citations(bin_rows or {}))
+    kept, dropped = split_cited_literature(rows, studies, bin_rows)
 
-    missing = sorted({r.pmid for r in rows if r.exists is False})
+    missing = sorted({r.pmid for r in kept if r.exists is False})
     if missing:
         findings.append(
             f"literature.csv records {len(missing)} citation(s) PubMed has no record of: "
             f"{missing} — either the id is a typo or the article was retracted from the index; "
             f"the annotation resting on it should be re-examined either way"
         )
-    if cited:
-        orphans = sorted({r.pmid for r in rows if r.pmid not in cited})
-        if orphans:
-            findings.append(
-                f"literature.csv describes {len(orphans)} citation(s) no study in this module cites: "
-                f"{orphans}"
-            )
-    findings.extend(_check_quoted_article_licenses(rows, studies))
+    if dropped:
+        findings.append(
+            f"literature.csv describes {len(dropped)} citation(s) no study or bin in this module "
+            f"cites: {sorted({r.pmid for r in dropped})} — left out of the artifact, and left in "
+            f"the CSV, which is the pin that keeps a re-run cheap"
+        )
+    findings.extend(_check_quoted_article_licenses(kept, studies))
     return findings
+
+
+def split_cited_literature(
+    rows: list[LiteratureRow],
+    studies: list[StudyRow],
+    bin_rows: dict[str, list[MeasureBinRow]] | None = None,
+) -> tuple[list[LiteratureRow], list[LiteratureRow]]:
+    """`(kept, dropped)` — the literature rows this module actually cites, and the rest (RM79).
+
+    **The compiler discards the rest; `literature.csv` keeps them.** A row describing a citation no
+    study and no bin names is dead weight in the artifact: nothing joins to it, and it is only there
+    because `literature.csv` is merge-not-clobber, so a citation the author has since deleted from
+    `studies.csv` leaves its row behind. Keeping the row in the CSV is the point of that rule — it is
+    the pin that makes a re-run cheap — and carrying it into the parquet and the manifest is a
+    separate decision that nobody had taken deliberately.
+
+    **What this settles.** `manifest.literature.missing_count` counted `exists is False` over *every*
+    row in the table while the `citation_existence` verification record counted over the module's
+    *current* citations, so the two disagreed in a published manifest with nothing wrong in the
+    module. Both were honest about their own subject, which is what made it a decision rather than a
+    bug. Filtering here makes them the same subject **by construction**, rather than documenting a
+    discrepancy a reader would have to reconcile.
+
+    **`cited` empty means discard nothing**, deliberately, and it is not the degenerate case it looks
+    like: a module that cites nothing at all cannot distinguish "the sidecar is stale" from "the
+    citations are not authored yet", and emptying its whole table on that reading would delete an
+    enrichment pass's entire output. The `if cited` guard the orphan check already had is kept for the
+    same reason it existed.
+
+    **On the round trip.** `reverse_module` rebuilds `literature.csv` from the parquet, so a reversed
+    copy carries the kept rows only. That is a deterministic narrowing rather than a P7 breach —
+    `literature.csv` is a machine-written derived sidecar, not an authored value (the RM69 reading of
+    Principle 7's letter) — and it **converges**: everything in the parquet is cited by construction,
+    so lap two discards nothing and the signatures are a fixed point. The rows are recoverable the way
+    every derived sidecar's are, by re-running the pass.
+    """
+    cited: set[str] = set()
+    for study in studies:
+        cited.update(extract_pmids(study.pmid))
+    cited.update(binning_citations(bin_rows or {}))
+    if not cited:
+        return list(rows), []
+    kept = [r for r in rows if r.pmid in cited]
+    return kept, [r for r in rows if r.pmid not in cited]
 
 
 def _check_quoted_article_licenses(

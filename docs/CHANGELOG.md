@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-15 (latest) — 0.6.0: RM74–RM78, the fix round's own findings
+## 2026-08-15 (latest) — 0.6.0: RM74–RM79, the fix round's own findings
 
 Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) — the findings the fix round produced by
 reading the code around each repair — was grouped into RM74–RM79 on 2026-08-14. The first two are
@@ -192,7 +192,37 @@ refusing would make every structural module uncompilable for a reason no edit co
 limit; a claim is a claim. `mt_common_deletion`, `cyp2d6_structural` and `pathogenic_clinvar` still
 compile under `--strict`.
 
-Suite 2260 → 2262.
+**RM79 — two honest counters disagreed, so the compiler stopped carrying the dead weight.**
+`manifest.literature.missing_count` counted `exists is False` over every row in `literature.csv`; the
+`citation_existence` verification record counted the module's *current* citations. `literature.csv` is
+merge-not-clobber, so it keeps a row for a citation since deleted from `studies.csv`, and the two
+numbers disagreed in a published manifest with nothing wrong in the module.
+
+**The item's own framing turned out to be the wrong question.** It asked whether `manifest.literature`
+should describe the table it is named after or the module's current citations — and probing found both
+blocks already publish their denominator (`row_count`, `subjects`), so a reader could reconcile them.
+What nobody had decided sat upstream of the counting: why is a row nothing joins to in the artifact at
+all? A literature row for a citation no study and no bin names is dead weight, present only as a side
+effect of merge-not-clobber. So the compiler discards it and the CSV keeps it — that file is the pin
+that makes a re-run cheap, and carrying the row onward was a separate thing nobody had chosen. The two
+counters now share a subject **by construction** rather than by documentation.
+
+Four things pinned rather than left to be re-derived. The check sees every row and everything after it
+sees the kept ones, since reporting what was dropped needs the full list — and the warning now reports
+an action taken rather than nagging about a file the author is not expected to tidy. An empty citation
+set discards nothing, because a module citing nothing cannot tell a stale sidecar from citations not
+yet authored, and emptying the table on the first reading would delete a whole enrichment pass's
+output. **Both** citation sites count (RM47) and the stakes rose with them: blind to bin `pmid`s the
+compiler used to warn about a threshold-grounding citation and would now *discard* the row that
+evidence lives in. And the round trip narrows once and **converges** — `reverse_module` rebuilds the
+CSV from the parquet, so a reversed copy carries the kept rows only, which is a deterministic narrowing
+of a machine-written derived sidecar rather than a P7 breach (RM69's reading), and lap two discards
+nothing.
+
+No corpus movement — no reference example carries an uncited row, verified by recompiling all sixteen —
+and therefore no corpus coverage either, so the behaviour is pinned by fixtures.
+
+Suite 2262 → 2264.
 
 ## 2026-08-14 — 0.6.0: the dogfooding fix round — sixteen findings worked, nine more found
 

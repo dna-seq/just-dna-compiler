@@ -17,7 +17,7 @@ decision, and the entry says why each candidate repair is wrong.
 > which is a design decision, and D4-1, whose fix half is six of its twelve members with the rest
 > argued in RM72.
 
-> **Status, 2026-08-15.** **RM74, RM75, RM76 and RM77 are done** — the six findings they carry (R2-1, R2-11, R2-3;
+> **Status, 2026-08-15.** **RM74–RM79 are all done** — the six findings they carry (R2-1, R2-11, R2-3;
 > R2-13, R2-4, R2-2) are marked `(done)` in the table below, with the outcomes in
 > [ROADMAP_HISTORY § 0.6 dogfooding](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired).
 > Two things they turned up that were not in the findings: **R2-13's hole is on the PharmVar leg too**,
@@ -29,8 +29,11 @@ decision, and the entry says why each candidate repair is wrong.
 > draftable kind — while the question it asks from underneath stays RM73's. And RM77's own repair
 > found a fifth thing worth the same note: its first candidate assertion, *"the message mentions
 > `<<REPLACE>>`"* in R2-8's test, passed on the unfixed code because a vocabulary column quoted the
-> token back — the R2-3 shape reappearing inside the round that was repairing it. RM78 and RM79
-> remain open.
+> token back — the R2-3 shape reappearing inside the round that was repairing it. And **R2-16 was decided against
+> its own framing**: it asked whether `manifest.literature` should describe the table or the module's
+> citations, and both blocks already publish their denominator — the undecided thing was upstream, why
+> a row nothing joins to is in the artifact at all. Nothing here is open; the root the sprouts grow
+> from is RM73.
 
 > **Every open Round 2 finding now has an `RMn`.** The thirteen that needed action were grouped into
 > **RM74–RM79** (`docs/ROADMAP.md`, active) on 2026-08-14, indexed in
@@ -303,7 +306,7 @@ re-verification is not a formality.
 
 | **R2-15** | **The enricher's rsid↔coordinate check was documented, named in the check vocabulary, and reachable only from the compiler's deprecated path.** `ENRICHER.md`'s table listed it as *"`resolver._check_rsid_coord_consistency` against the injected snapshot"*, and `vocab.py:635` cites it as "the enricher's half of the pair the compiler's `_verify` is the other half of". It is called from `resolve_variants` (`resolver.py:153`), whose only non-test caller in the workspace is `compiler.py:3680`'s `_legacy_resolve` — the deprecated DuckDB route. **`enrich()` never called it.** A row authoring both an rsID and a coordinate needs no resolution, so it fell through `enrich()`'s verbatim branch and nothing compared the two halves; there were no counts dying in a warning list, because the comparison was not happening. Found only because wiring the attestation required the counts, which is the general lesson: **asking a pass to publish a number is how you discover it never computed one.** Fixed in the same unit (`resolver.check_rsid_coordinates`, three-valued, shared with the legacy path so the two cannot drift). | fix (done) | **high** |
 
-| **R2-16** | **`manifest.literature.missing_count` and the `citation_existence` record count different things, and both are right.** The compiler's `_cross_check_literature` counts `exists is False` over **every row in `literature.csv`**; the verification record counts over the citations the module makes **now**. `literature.csv` is merge-not-clobber, so it keeps a row for a citation the author has since deleted from `studies.csv` — and the two numbers then disagree on a published manifest with nothing wrong in the module. Each is honest about its own subject: the `manifest.literature` block's siblings are table facets, so counting the table is what that block means, and the compiler's own test states that rule verbatim. Reconciling them changes a published field *and* rewrites the intent a test pins, so it is a decision rather than a repair. The candidate repairs and why each is wrong: filtering the compiler's count to cited rows makes `manifest.literature` stop describing the table it names, and it needs `studies.csv` in scope where the block is a sidecar facet; filtering the *record* is already what it does; and dropping stale rows on re-run destroys the pin that makes a re-run cheap, which is the whole point of merge-not-clobber. | **surface** → **RM79** | low |
+| **R2-16** | **`manifest.literature.missing_count` and the `citation_existence` record count different things, and both are right.** The compiler's `_cross_check_literature` counts `exists is False` over **every row in `literature.csv`**; the verification record counts over the citations the module makes **now**. `literature.csv` is merge-not-clobber, so it keeps a row for a citation the author has since deleted from `studies.csv` — and the two numbers then disagree on a published manifest with nothing wrong in the module. Each is honest about its own subject: the `manifest.literature` block's siblings are table facets, so counting the table is what that block means, and the compiler's own test states that rule verbatim. Reconciling them changes a published field *and* rewrites the intent a test pins, so it is a decision rather than a repair. The candidate repairs and why each is wrong: filtering the compiler's count to cited rows makes `manifest.literature` stop describing the table it names, and it needs `studies.csv` in scope where the block is a sidecar facet; filtering the *record* is already what it does; and dropping stale rows on re-run destroys the pin that makes a re-run cheap, which is the whole point of merge-not-clobber. | **surface** → **RM79** (done 2026-08-15 — decided the other way: the compiler discards the dead weight, so the two counts share a subject) | low |
 
 ### Provenance
 

@@ -1930,3 +1930,53 @@ the allele keeps its identity through `variant_key`, so the remedy is one edit a
 refusing would make every structural module uncompilable for a reason no edit could fix, which is the
 P5 class this whole item is about. *Absence is a limit; a claim is a claim.* `mt_common_deletion`,
 `cyp2d6_structural` and `pathogenic_clinvar` still compile under `--strict`.
+
+## RM79 — two honest counters disagreed, so the compiler stopped carrying the dead weight
+
+**Severity** low · **Status** ✅ shipped 2026-08-15 · **Owner** compiler · **Found by** the 0.6
+dogfooding fix round, 2026-08-14 · **Ledger** R2-16
+
+`manifest.literature.missing_count` counted `exists is False` over **every row in `literature.csv`**;
+the `citation_existence` verification record counted over the citations the module makes **now**.
+`literature.csv` is merge-not-clobber, so it keeps a row for a citation since deleted from
+`studies.csv`, and the two numbers then disagreed in a published manifest with nothing wrong in the
+module. Each was right about its own subject, which is what made it a decision rather than a repair.
+
+**What the item asked was the wrong question, and probing showed why.** It framed the choice as
+*should `manifest.literature` describe the table it is named after, or the module's current
+citations?* — and both blocks already publish their own denominator (`row_count`, `subjects`), so a
+reader could in principle reconcile them. The thing nobody had decided was upstream of the counting:
+**why is a row nothing joins to in the artifact at all?**
+
+**Decided: the compiler discards it, and `literature.csv` keeps it.** A literature row for a citation
+no study and no bin names is dead weight — nothing in the module references it, and it is present only
+as a side effect of merge-not-clobber. That rule is right and stays: the CSV is the pin that makes a
+re-run cheap. Carrying the row onward into `literature.parquet` and `manifest.literature` was a
+separate thing nobody had chosen. `split_cited_literature` is the one rule both the check and the
+materializer read.
+
+The counters then agree **by construction** rather than by documentation, which is the part worth
+having: no reader has to reconcile two numbers, because there is only one subject.
+
+Four things to keep straight:
+
+- **The check sees every row; everything after it sees the kept ones.** Reporting what was dropped
+  needs the full list, so the split happens after the cross-check rather than at load — and the
+  warning now reports an *action taken* ("left out of the artifact, and left in the CSV") instead of
+  nagging about a file the author is not expected to tidy.
+- **An empty citation set discards nothing**, and that guard is not the degenerate case it looks like:
+  a module citing nothing at all cannot tell "the sidecar is stale" from "the citations are not
+  authored yet", and emptying the table on the first reading would delete a whole enrichment pass's
+  output. The orphan check already had the guard; the filter inherits it rather than re-deriving it.
+- **Both citation sites count** (RM47), and the stakes went up. Blind to bin `pmid`s the compiler used
+  to *warn* about a threshold-grounding citation; it would now **discard** the row that evidence lives
+  in. `test_citation_sites` pins the split against both sites for that reason.
+- **The round trip narrows once and converges.** `reverse_module` rebuilds `literature.csv` from the
+  parquet, so a reversed copy carries the kept rows only — a deterministic narrowing of a
+  machine-written derived sidecar rather than a P7 breach (the RM69 reading of the principle's letter),
+  and lap two discards nothing, so the signature is a fixed point. Pinned by a test, because a
+  narrowing that kept narrowing would be a defect whatever the sidecar's status.
+
+Nothing in the corpus moved: no reference example carries an uncited literature row, verified by
+recompiling all sixteen. Which also means the corpus cannot exercise this — the standing
+corpus-uniformity trap — so the behaviour is pinned by fixtures rather than by an example.

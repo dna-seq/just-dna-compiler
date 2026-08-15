@@ -436,7 +436,15 @@ class Literature(BaseModel):
     sources: list[str] = Field(
         default_factory=list, description="Sorted union of LiteratureRow.source values"
     )
-    row_count: int = Field(default=0, description="Number of citations covered (one row each)")
+    row_count: int = Field(
+        default=0,
+        description=(
+            "Number of citations covered (one row each). **The module's current citations**, not "
+            "every row in literature.csv: that table is merge-not-clobber, so it keeps a row for a "
+            "citation since deleted from studies.csv, and the compiler leaves such a row out of the "
+            "artifact (RM79). Every count below shares this denominator."
+        ),
+    )
     resolved_count: int = Field(
         default=0, description="Citations PubMed returned a record for (`exists` is true)"
     )
@@ -444,7 +452,9 @@ class Literature(BaseModel):
         default=0,
         description=(
             "Citations PubMed has no record for (`exists` is false) — a nonexistent PMID, which is a "
-            "defect in the module rather than a gap in coverage."
+            "defect in the module rather than a gap in coverage. Counted over `row_count`, so it "
+            "agrees with the `citation_existence` verification record by construction; before RM79 "
+            "it counted the whole table and the two could differ with nothing wrong in the module."
         ),
     )
     open_access_count: int = Field(

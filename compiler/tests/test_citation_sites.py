@@ -164,10 +164,20 @@ def test_a_bin_cited_paper_is_not_an_orphan_in_literature_csv() -> None:
         ]
     }
     blind = _cross_check_literature(rows, studies, {})
-    assert any(_PMID in w and "no study in this module cites" in w for w in blind)
+    assert any(_PMID in w and "no study or bin in this module cites" in w for w in blind)
 
     seeing = _cross_check_literature(rows, studies, bins)
-    assert not any("no study in this module cites" in w for w in seeing)
+    assert not any("no study or bin in this module cites" in w for w in seeing)
+
+    # RM79 gave that finding teeth, so the stakes are now higher than a warning: blind to the bin,
+    # the compiler would **discard** the very row the threshold's evidence lives in. The split reads
+    # both citation sites for exactly this reason.
+    from just_dna_compiler.compiler import split_cited_literature
+
+    _kept_blind, dropped_blind = split_cited_literature(rows, studies, {})
+    assert [r.pmid for r in dropped_blind] == [_PMID]
+    kept_seeing, dropped_seeing = split_cited_literature(rows, studies, bins)
+    assert dropped_seeing == [] and {r.pmid for r in kept_seeing} == {other, _PMID}
 
 
 def test_a_nonexistent_bin_citation_is_still_reported() -> None:

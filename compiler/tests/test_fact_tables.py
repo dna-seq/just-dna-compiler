@@ -252,14 +252,61 @@ def test_a_nonexistent_citation_recorded_by_the_enricher_surfaces_at_compile(tmp
     assert result.manifest.literature.missing_count == 1
 
 
-def test_a_citation_no_study_makes_is_an_orphan_warning(tmp_path: Path) -> None:
+def test_an_uncited_citation_is_reported_and_left_out_of_the_artifact(tmp_path: Path) -> None:
+    """RM79: dead weight is discarded at compile, and `literature.csv` keeps it.
+
+    `literature.csv` is merge-not-clobber, so a citation the author has since deleted from
+    `studies.csv` leaves its row behind — that pin is what makes a re-run cheap and it stays. What
+    changed is that the row no longer travels into the parquet or the manifest, where nothing joins
+    to it.
+
+    **What this settles is a disagreement between two honest counters.**
+    `manifest.literature.missing_count` counted `exists is False` over every row in the table while
+    the `citation_existence` verification record counted the module's *current* citations, so the two
+    could differ in a published manifest with nothing wrong in the module. Filtering makes them the
+    same subject by construction rather than documenting a discrepancy a reader must reconcile.
+    """
     spec = _spec(tmp_path, literature=True)
     (spec / "literature.csv").write_text(
         _LITERATURE + "34567890,,,true,,,,pubmed,resolved,\n"
     )
+    before = (spec / "literature.csv").read_bytes()
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
-    assert result.success
-    assert any("no study in this module cites" in w for w in result.warnings)
+
+    assert result.success                                   # a warning, not a refusal
+    warning = next(w for w in result.warnings if "no study or bin in this module cites" in w)
+    assert "34567890" in warning
+    # The warning reports an action taken, not a nag about a file the author should tidy.
+    assert "left out of the artifact" in warning
+
+    # The artifact carries the cited rows only — computed from the fixture rather than hardcoded, so
+    # adding a row to `_LITERATURE` cannot quietly turn this into a weaker assertion.
+    import csv as _csv
+
+    with (spec / "studies.csv").open() as handle:
+        cited = {row["pmid"] for row in _csv.DictReader(handle)}
+    kept = pl.read_parquet(tmp_path / "out" / "literature.parquet")
+    assert set(kept["pmid"].to_list()) == cited
+    assert result.manifest.literature.row_count == len(cited)
+    assert "34567890" not in kept["pmid"].to_list()
+    # … and the CSV is byte-identical, because that is the pin.
+    assert (spec / "literature.csv").read_bytes() == before
+
+
+def test_a_module_that_cites_nothing_keeps_its_whole_literature_table(tmp_path: Path) -> None:
+    """The guard that stops the filter emptying a table it cannot judge.
+
+    With no citation anywhere, "the sidecar is stale" and "the citations are not authored yet" are
+    indistinguishable, and discarding on the first reading would delete an entire enrichment pass's
+    output. The orphan check has always had this guard; the filter inherits it rather than
+    re-deriving it.
+    """
+    from just_dna_compiler.compiler import split_cited_literature
+    from just_dna_format.literature import LiteratureRow
+
+    rows = [LiteratureRow(pmid="29165669", exists=True), LiteratureRow(pmid="34567890", exists=True)]
+    kept, dropped = split_cited_literature(rows, [], {})
+    assert [r.pmid for r in kept] == ["29165669", "34567890"] and dropped == []
 
 
 def test_the_literature_fact_hash_ignores_open_access_and_coverage(tmp_path: Path) -> None:
@@ -1439,3 +1486,41 @@ def test_sources_roundtrip_is_lossless(tmp_path: Path) -> None:
     orig = pl.read_parquet(tmp_path / "orig" / "sources.parquet")
     recompiled = pl.read_parquet(tmp_path / "recompiled" / "sources.parquet")
     assert orig.equals(recompiled)
+
+
+def test_discarding_uncited_literature_converges_on_the_round_trip(tmp_path: Path) -> None:
+    """A narrowing that reaches a fixed point on lap two, which is what makes it safe (RM79).
+
+    `reverse_module` rebuilds `literature.csv` from the parquet, so a reversed copy carries the kept
+    rows only. That is not a Principle 7 breach — `literature.csv` is a machine-written derived
+    sidecar, not an authored value, which is the reading RM69 established for `resolution.csv` — but
+    it is only tolerable because it **converges**: everything in the parquet is cited by construction,
+    so the second lap discards nothing and every signature holds. A narrowing that kept narrowing, or
+    that oscillated, would be a defect whatever the sidecar's status.
+
+    The author's own file is untouched by any of this; only a reverse into a fresh directory produces
+    the trimmed copy, and re-running the enricher restores the rows the way it does for every derived
+    sidecar.
+    """
+    spec = _spec(tmp_path, literature=True)
+    (spec / "literature.csv").write_text(_LITERATURE + "34567890,,,true,,,,pubmed,resolved,\n")
+
+    first = compile_module(spec, tmp_path / "one", resolve_with_ensembl=False)
+    assert first.success
+    reverse_module(tmp_path / "one", tmp_path / "back")
+
+    # The reversed spec carries the kept rows and not the orphan …
+    reversed_pmids = pl.read_parquet(tmp_path / "one" / "literature.parquet")["pmid"].to_list()
+    assert "34567890" not in reversed_pmids
+
+    second = compile_module(tmp_path / "back", tmp_path / "two", resolve_with_ensembl=False)
+    assert second.success
+    # … lap two discards nothing, so the finding is gone rather than repeating …
+    assert not [w for w in second.warnings if "no study or bin in this module cites" in w]
+    # … and the literature identity is a fixed point across it.
+    assert second.manifest.literature.signature == first.manifest.literature.signature
+    assert second.manifest.literature.row_count == first.manifest.literature.row_count
+    assert (
+        pl.read_parquet(tmp_path / "two" / "literature.parquet")["pmid"].to_list()
+        == reversed_pmids
+    )
