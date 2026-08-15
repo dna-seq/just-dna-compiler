@@ -735,14 +735,24 @@ because every consumer that reads the column has to agree on it and a second imp
   each ALT its own verdict, and what makes a swapped pair a mismatch rather than an invisible desync.
   A consumer counting identity coverage counts **slots**, not rows: a two-ALT row where only the
   substitution minted is `(2, 1)`.
-- **`validate_vrs_id` / `validate_vrs_id_list` / `validate_caid`** — the grammars, shared by every
-  model that declares one of these columns, so `ga4gh:VA.…` means the same thing in every table.
+- **`validate_vrs_id` / `validate_vrs_allele_id` / `validate_vrs_id_list` / `validate_caid`** — the
+  grammars, shared by every model that declares one of these columns, so `ga4gh:VA.…` means the same
+  thing in every table. **The first two answer different questions and the split is deliberate**:
+  `validate_vrs_id` is well-formedness alone (`ga4gh:<TYPE>.<digest>`, any of the five identifiable
+  VRS types) and stays lenient, so it rejects the *malformed* rather than the unfamiliar;
+  `validate_vrs_allele_id` additionally requires `ga4gh:VA.`, and is what
+  `ResolutionRow.vrs_id`/`FrequencyRow.vrs_id` run. Those columns name **one allele per ALT** and
+  their value is recomputed with `derive_vrs_allele_id`, so a location (`SL`) or sequence (`SQ`) id
+  there could never verify — it used to load and then surface downstream as a *mismatch*, i.e. as
+  corruption, which is the right severity with the wrong explanation.
 - **`is_substitution(ref, alt)`** — the predicate behind minting's "substitutions only" rule, exposed
   so a caller can ask *before* getting a `None` back and having to guess which of the several reasons
   applied.
 - **`normalize_chrom` / `refget_accession`** — contig spelling and the accession lookup.
   `refget_accession` **raises** `UnsupportedBuildError` for a build with no table rather than
-  returning `None`; a caller that treats one unaddressable row as a finding rather than a failure has
+  returning `None` — including for `None` or `""`, since the GRCh38 default lives in the signature and
+  an explicitly empty build is a caller who has not established one; `refget_supports_build` is the
+  yes/no form of exactly that question and reads the same predicate, so the two cannot disagree; a caller that treats one unaddressable row as a finding rather than a failure has
   to catch it (the compiler's verify pass learned this the expensive way — the exception escaped and
   aborted a whole compile over a single row it could not check).
 - **`PAR_GRCh38` / `in_pseudoautosomal_region` / `par_partner`** — the pseudoautosomal *geometry*,
@@ -1273,7 +1283,7 @@ silently.)
 | `resolution_signature(rows)` | resolution **facts** only (`RESOLUTION_FACT_FIELDS`) | order-independent | n/a | pins the resolved facts; producer-independent |
 | `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
 | `gene_metrics_signature(rows)` | gene-constraint **facts** (`GENE_METRICS_FACT_FIELDS`) | order-independent | n/a | pins the gene-constraint table |
-| `literature_signature(rows)` | citation **facts** (`LITERATURE_FACT_FIELDS`) | order-independent | n/a | pins which articles the module cites |
+| `literature_signature(rows)` | citation **facts** (`LITERATURE_FACT_FIELDS`) | order-independent | n/a | pins which articles the module cites — over the rows that reach the artifact, so a `literature.csv` row for a citation the module no longer makes is outside it (RM79) |
 | `gene_validity_signature(rows)` | gene–disease **facts** (`GENE_VALIDITY_FACT_FIELDS`) | order-independent | n/a | pins which curated assertions the module carries, at which strength |
 | `clinical_assertion_signature(rows)` | archive-record **facts** (`CLINICAL_ASSERTION_FACT_FIELDS`) | order-independent | n/a | pins the clinical calls **and the review behind them** |
 | `source_signature(rows)` | licensing **facts** (`SOURCE_FACT_FIELDS`) | order-independent | n/a | pins what the module was built from, and on what terms |

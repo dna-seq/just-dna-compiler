@@ -22,6 +22,22 @@ the genotype; `risk` for a variant you have reason to treat as actionable, `neut
 reason to discount, and if you can justify neither, the honest move is to drop the row rather than pick
 a `state` to make the compile pass.
 
+**`genotype '0/1' looks like a VCF GT field: those are VCF GT allele indices …`**
+The likeliest single mistake in this column, because pasting a `GT` field is the obvious first guess.
+`GT` records *indices* into that record's own REF/ALT list — `0` is REF, `1` the first ALT, `.` a
+no-call — and `genotype` spells the alleles out. Translate against the same VCF record: with `REF=C`
+and `ALT=T`, a `GT` of `0/1` is `C/T` and `1/1` is `T/T`. The indices cannot be resolved for you,
+because a genotype cell carries no REF/ALT to count from.
+
+`0/1/1` gets this message too, not the two-allele-ceiling one — the defect there is the notation, not
+how many alleles it names, and the ploidy explanation would send you to change the wrong thing.
+
+**`unreplaced template placeholder '<<REPLACE>>' in sources.csv row: source`**
+The licence table is the one fact sidecar you write by hand, so its stub blocks a compile exactly like
+an authored table's. This was silent until recently: a `<<REPLACE>>` there compiled clean under
+`--strict` and was published as the source the module accounted for. Fill in the real source name, or
+delete the row if that source is not one this module used.
+
 **`Input should be a valid string [input_value=None]` on a column you were not told to fill**
 A *defaulted* column left empty. An empty cell arrives as `None` and overrides the default. Run
 `just-dna-compiler requirements <kind>` — its "never leave empty (defaults)" line names them. A list of
@@ -216,17 +232,29 @@ edited.
 
 **`vrs_id ga4gh:VA.… could not be verified — …`** — a warning in both modes
 Not the same claim as the one above: nothing was compared, so no verdict was reached. The compiler
-cannot recompute an id for an indel, an MNV, an off-assembly contig, or a non-GRCh38 build — justifying
-those needs the reference sequence, which this tier never fetches. **Nothing is wrong with your
-module**, and `--strict` does not refuse it: the id was minted upstream by the enricher, which does have
-sequence access, and it is carried and marked unverified. A multi-allelic row is *not* in that list:
-`vrs_id` holds one id per ALT, comma-joined in the same order as `alts`, and each is checked on its own.
+cannot recompute an id for an indel, an MNV, an off-assembly contig, a non-GRCh38 build, or the
+unobservable-allele marker `*` — the first four need the reference sequence, which this tier never
+fetches, and `*` names no allele at all. **Nothing is wrong with your module**, and `--strict` does not
+refuse it: the id was minted upstream by the enricher, which does have sequence access, and it is
+carried and marked unverified. A multi-allelic row is *not* in that list: `vrs_id` holds one id per ALT,
+comma-joined in the same order as `alts`, and each is checked on its own.
 
 **`vrs_id … could not be verified — the row carries no coordinate` / `… against no ALT`** — an error in
 both modes
 The other half of the same message, and this one *is* about your data. An id is a digest of a place and
 an allele, so a row asserting one while recording neither cannot be checked by anything, ever. Re-run
 the enricher so the row resolves, or drop the `vrs_id` if the row is meant to stay unresolved.
+
+**`<DEL:4977> is a symbolic allele … a recorded id here names some other allele`** — an error in both
+modes
+The third member of that family, and the one that looks like a warning and is not. A symbolic allele
+names a structural *event* and no sequence, so nothing anywhere can mint an allele id for it — which
+means an id sitting in that cell was minted for a **different** allele. Delete the `vrs_id` cell: the
+row keeps its identity through `variant_key`, and nothing is lost.
+
+Note the pair this makes with the coverage warning further down. A symbolic allele with **no** id is
+normal and stays a warning — no tool can fill it, so refusing would make every structural module
+uncompilable. It is the recorded id that is the defect. Absence is a limit; a claim is a claim.
 
 **`VRS allele identity covers 289/474 allele(s) … Anything keying on the VA sees only the covered
 fraction`** — a warning in both modes

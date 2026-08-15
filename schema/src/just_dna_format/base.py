@@ -506,7 +506,7 @@ _GT_INDEX_CELL = re.compile(r"^(\d+|\.)([/|](\d+|\.))*$")
 #: diagnosis shape (`reject_reserved`, `reject_authority_keys`, `reject_misplaced`) reaching a value
 #: rather than a column name — a generic rejection is a dead end where a specific one is a fix.
 _GT_INDEX_DIAGNOSIS: str = (
-    "those are VCF GT **allele indices** (0 is the record's REF, 1 the first ALT, 2 the second, "
+    "those are VCF GT allele indices (0 is the record's REF, 1 the first ALT, 2 the second, "
     "'.' a no-call), and this column spells the alleles out instead. Translate against that "
     "record's own REF and ALT — with REF=C ALT=T, a GT of 0/1 is 'C/T' and 1/1 is 'T/T'. The "
     "indices cannot be resolved here, because a genotype cell carries no REF/ALT to count from."

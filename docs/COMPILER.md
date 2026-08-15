@@ -111,7 +111,8 @@ detectable without any reference. This is where most real authoring bugs are cau
 | direction ↔ weight sign | two encodings of one claim | warning |
 | `p_value` string ↔ the mantissa/exponent pair | two encodings of one number | warning / error in `strict` |
 | MT/Y two-allele genotype | ploidy contradicts the contig | warning |
-| study / frequency / gene-metrics / literature orphans | the sidecar describes something the module lacks | warning |
+| study / frequency / gene-metrics orphans | the sidecar describes something the module lacks | warning |
+| literature orphans | a citation no study and no bin makes — reported, and **left out of the artifact** (the row stays in `literature.csv`) | warning |
 | `sources.csv` orphans / undeclared sources | every source a fact table cites has terms recorded, and vice versa | warning |
 | star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it | warning |
 | **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs whose unphased genotype is identical while their conclusions differ | warning |
@@ -559,16 +560,18 @@ edit could clear is not a `strict` matter** — `strict` is orthogonal, and P5 s
 orthogonal.
 
 **What still errors, and in both modes, is the row contradicting itself**: a `vrs_id` recorded against
-no coordinate, or against no ALT. That is not a limit of this tier — the row asserts an identity while
-withholding the very thing that identity is a digest of, so nothing anywhere could check it. Same class
-as the *inconsistent reference allele* error, and catchable offline.
+no coordinate, against no ALT, or — since R2-5 — against a **symbolic** allele. That is not a limit of
+this tier. The first two assert an identity while withholding the very thing that identity is a digest
+of; the third asserts one for an allele that *has* no sequence to digest, so the id necessarily names a
+different allele. Nothing anywhere could check any of them. Same class as the *inconsistent reference
+allele* error, and catchable offline.
 
 #### Every flow path
 
 `_recompute_vrs_id` returns either the recomputed id or the reason there is none, **for one allele**.
 `vrs_id` is a comma-joined parallel array of `alts`, so the pass walks the two together and each ALT
-gets its own verdict; an empty member is a hole and reads exactly like an empty cell. The five reasons
-are limits of a no-network tier, not defects in the row:
+gets its own verdict; an empty member is a hole and reads exactly like an empty cell. Most of the
+reasons are limits of a no-network tier rather than defects in the row — the last three are not:
 
 | Row | Path | Both modes |
 |---|---|---|
@@ -577,12 +580,28 @@ are limits of a no-network tier, not defects in the row:
 | substitution, id differs | **mismatch** | error |
 | multi-allelic, every member agrees | verified allele by allele | silent |
 | multi-allelic, members swapped | **mismatch** — the desync a length check cannot see | error |
-| symbolic allele (`<DEL:4977>`, RM5) | names a structural **event**, not a sequence — no tier mints one | warning |
 | indel / MNV (`C>CA`) | needs the reference sequence — minted upstream, not recomputable here | warning |
 | off-assembly contig, or a position past the contig end | no refget accession to address the sequence by | warning |
 | non-GRCh38 `genome_build` | no refget table for that build (RM15) | warning |
+| `*`, the unobservable-allele marker (RM59) | the callability axis — it names no allele, so nothing to digest | warning |
+| symbolic allele (`<DEL:4977>`, RM5) **carrying an id** | no tier mints one, so a recorded id names a **different** allele | error |
 | position-only (no `alts`) | an id against no ALT — the **row's** contradiction, not the tier's | error |
 | no coordinate | an id against no place (an rsid row carrying an external id) | error |
+
+**A symbolic allele with no id is a coverage warning; one *carrying* an id is an error, and the
+asymmetry is the rule rather than an exception to it.** Absence is this tier's limit — no authored edit
+clears it, which is what keeps every structural module compilable — while a recorded id is a claim
+about an allele that has no content to address, so it can only name something else. *Absence is a
+limit; a claim is a claim.* The escalation waited on the grammar (R2-5): it follows only once `vrs_id`
+is known to hold allele ids alone, which `vrs.validate_vrs_allele_id` now enforces (`ga4gh:VA.` only,
+probed at 844 corpus ids with no other type). The remedy is one edit — delete the cell; `variant_key`
+still carries the allele's identity.
+
+`*` sits beside the symbolic row and **not** inside it (R2-6). The two are different axes, which is why
+`_vrs_gap_reason` and `_recompute_vrs_id` test `is_unobservable_allele` separately and above the
+substitution fall-through: `parse_symbolic_allele` asks *which variant is this, unspelled*, while
+`is_unobservable_allele` asks *whether the sample's call could see an allele at all*. Reported as an
+indel it would carry a remedy — re-run the enricher online — that can never apply.
 
 Multi-allelic used to be one row of this table, blanket-unverifiable, "a VA names exactly one allele;
 picking one would invent data". The premise is `derive_variant_key`'s and it is right there — a
