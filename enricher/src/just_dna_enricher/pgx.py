@@ -59,6 +59,7 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.locations import resolve_cpic_reference, resolve_pharmvar_reference
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarSnapshotClient
+from just_dna_enricher.provenance import DRAFT_PROJECTIONS, drafted_unchanged
 from just_dna_enricher.verification import ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -72,9 +73,41 @@ _ANSWERED = "answered"
 #: `offline` egress, `unreachable` only a retry, and `not_requested` nothing but asking. Leading with
 #: `not_permitted` is the case that matters: it is the one a reader would otherwise misdiagnose as a
 #: network problem, which is exactly why the vocabulary refuses to fold it into `offline`.
+# `tautology` sits LAST, and that placement is the point (RM73). The others say the source could not
+# be consulted; this one says it was consulted and could not disagree. If one leg is tautological and
+# the other genuinely could not run, the reader needs the absence — a remedy exists for it — so the
+# absence wins the single `reason` slot.
 _SKIP_PRECEDENCE: tuple[str, ...] = (
-    "not_permitted", "no_reference", "offline", "unreachable", "not_requested",
+    "not_permitted", "no_reference", "offline", "unreachable", "not_requested", "tautology",
 )
+
+
+def _tautology_note(
+    spec_dir: Path, source: str, dataset: str | None, existing: dict[tuple[str, str], SourceRow]
+) -> str | None:
+    """Why this leg cannot fail on this module, or `None` when it genuinely can.
+
+    The same conjunction `clinical.tautology_reason` applies, in the same order and for the same
+    reasons: the licence row must name **this** release (so the values really were copied out of what
+    is about to be read) **and** the drafter's digest must still match (so no checked cell has moved
+    since). Either half missing runs the leg, which is the conservative direction — and a live route,
+    which states no release, therefore never skips.
+    """
+    recorded = existing.get((source, "annotation"))
+    if recorded is None or not dataset:
+        return None
+    if (recorded.dataset or "").strip() != dataset:
+        return None
+    if not drafted_unchanged(spec_dir, source, [recorded]):
+        return None
+    projection = DRAFT_PROJECTIONS.get(source)
+    column = projection.checked[0] if projection else "the checked column"
+    return (
+        f"{source}: this module's licence row records that these rows were drafted from {dataset}, "
+        f"the release this leg reads, and every authored {column} still hashes to what the drafter "
+        f"wrote — so each is a copy of the value it would be compared against. Edit any of them and "
+        f"this leg runs again in full."
+    )
 
 
 class PgxEnrichmentError(RuntimeError):
@@ -313,6 +346,29 @@ def enrich_pgx(
             logger.warning("%s", note)
             return
         client, owned, route = resolved
+        dataset = getattr(client, "dataset", None)
+        # **Per LEG, never per record (RM73).** `pgx_draft` copies `function_status` straight out of
+        # CPIC and this check then compares that very column against CPIC, so on a drafted module the
+        # CPIC leg cannot fail — RM4's tautology, unmarked here for two releases because this was the
+        # provider recording no release at all. PharmVar's leg is an independent authority and still
+        # runs; the record aggregates both. A whole-record skip would have thrown away a real
+        # comparison to suppress a hollow one, which is why the module-level shape did not fit.
+        tautological = _tautology_note(spec_dir, terms.source, dataset, existing)
+        if tautological is not None:
+            if owned:
+                client.close()
+            result.routes[terms.source] = route
+            legs[terms.source] = ("tautology", tautological)
+            releases[terms.source] = dataset
+            emitted.append(terms.row("annotation", declared_use=declared_use, dataset=dataset))
+            # On `result.warnings`, not `logger.info` alone, and the mixed case is why: when PharmVar
+            # answers and CPIC skips, the record's `detail` names only the answered route, so a reader
+            # sees a clean comparison and no sign that half of it was hollow. Every sibling branch
+            # here surfaces its reason the same way — a skip that is not reported is the silent pass
+            # this whole item exists to end.
+            result.warnings.append(tautological)
+            logger.info("%s", tautological)
+            return
         try:
             reported, notes = read(client)
         except (PharmVarError, CpicError) as exc:
@@ -324,7 +380,6 @@ def enrich_pgx(
         finally:
             if owned:
                 client.close()
-        dataset = getattr(client, "dataset", None)
         result.routes[terms.source] = route
         result.warnings.extend(notes)
         conflicts, checked = _compare(authored, reported, terms.source)

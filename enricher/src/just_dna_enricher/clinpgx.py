@@ -34,12 +34,18 @@ from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
 from just_dna_enricher.download import ensure_clinpgx_snapshot
-from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.licensing import (
+    CLINPGX_TERMS,
+    check_declared_use,
+    merge_sources_file,
+    read_sources_file,
+)
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
+from just_dna_enricher.provenance import drafted_unchanged
 from just_dna_enricher.verification import ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -225,6 +231,33 @@ def enrich_clinpgx(
 
     snapshot_rows, release = load_snapshot(reference)
     result.dataset = release.get("dataset")
+
+    # **The third instance of RM4's tautology, and the one whose marker was already being written**
+    # (RM73). `clinpgx_draft` copies `evidence_level` straight out of this snapshot and stamps the
+    # release onto the licence row; this check then compares that very column against the same
+    # snapshot. The label had been recorded since 0.5.1 and read by nothing. Same conjunction as
+    # `clinical.tautology_reason`: this release **and** an unmoved digest, either half missing runs
+    # the check in full.
+    recorded = [
+        row for row in read_sources_file(spec_dir)
+        if row.source == CLINPGX_TERMS.source and row.layer == "annotation"
+    ]
+    if (
+        result.dataset
+        and recorded
+        and all((row.dataset or "").strip() == result.dataset for row in recorded)
+        and drafted_unchanged(spec_dir, CLINPGX_TERMS.source, recorded)
+    ):
+        note = (
+            f"ClinPGx evidence-level check not run: this module's licence row records that these "
+            f"annotations were drafted from {result.dataset}, the snapshot this check reads, and "
+            f"every authored evidence_level still hashes to what the drafter wrote — so each is a "
+            f"copy of the value it would be compared against. Edit any of them and it runs again."
+        )
+        result.warnings.append(note)
+        logger.info("%s", note)
+        result.not_checked = "tautology"
+        return _attest(result, spec_dir, write=write)
 
     # Index the snapshot. Drugs are `;`-separated upstream, so the cell is exploded — a row about
     # "simvastatin;simvastatin acid" is about both.

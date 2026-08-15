@@ -247,8 +247,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # One aggregated line, never one per row: on a drafted panel this is thousands of comparisons and
     # what the author has to know is the split. The conflicts themselves printed above, individually,
     # because those are the rows that need answering.
-    if result.clin_sig_audit is not None:
-        typer.secho(f"  clin_sig audit: {result.clin_sig_audit}", fg=typer.colors.CYAN)
+    if result.clin_sig_comparison is not None:
+        typer.secho(f"  clin_sig: {result.clin_sig_comparison}", fg=typer.colors.CYAN)
 
 
 @app.command("frequencies")

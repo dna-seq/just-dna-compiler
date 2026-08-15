@@ -27,9 +27,9 @@ from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
 from just_dna_enricher.clinical import (
-    ClinSigAudit,
+    ClinSigComparison,
     ClinSigConflict,
-    audit_clin_sig,
+    compare_clin_sig,
     tautology_reason,
 )
 from just_dna_enricher.clinvar import clinvar_dataset_label
@@ -438,7 +438,7 @@ class EnrichmentResult:
     # zeros — on every other run: `best_effort` deliberately does not pay for it (the reason is in
     # `clin_sig_not_checked`), and for a module that never claimed a draft the copied/authored split
     # would assert a provenance nobody established.
-    clin_sig_audit: ClinSigAudit | None = None
+    clin_sig_comparison: ClinSigComparison | None = None
     # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
     # columns and reported; never substituted — see `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = field(default_factory=list)
@@ -971,9 +971,9 @@ def enrich(
     # 90% saving, since deciding whether a value is still a copy *is* the look-up.
     clin_sig_conflicts: list[ClinSigConflict] = []
     clin_sig_not_checked: str | None = None
-    clin_sig_audit: ClinSigAudit | None = None
+    clin_sig_comparison: ClinSigComparison | None = None
     # What the comparison was evaluated OVER, for the attestation (RM45). `None` until the look-up
-    # runs, and never a zero standing in for it: `ClinSigAudit.compared` is the count the check itself
+    # runs, and never a zero standing in for it: `ClinSigComparison.compared` is the count the check itself
     # arrived at, and re-deriving one here from `variants` would be the recomputation RM40/RM41 rules
     # out — the two could disagree, and then the manifest's own halves would.
     clin_sig_compared: int | None = None
@@ -987,29 +987,25 @@ def enrich(
         clin_sig_not_checked = "no_snapshot"
         clin_sig_skip = "no_reference"
     else:
-        drafted_from_it = tautology_reason(read_sources_file(spec_dir), clinvar_ref)
-        if drafted_from_it is not None and mode != "strict":
+        # **No mode branch any more (RM73).** The skip used to be `best_effort`-only, because deciding
+        # per row whether a value was still a copy needed exactly the look-up the skip existed to
+        # avoid, so `strict` paid for it. `tautology_reason` now recomputes the drafter's digest over
+        # the `clin_sig` column and answers that offline, so the skip is sound in both modes and the
+        # ladder — along with the per-row audit under it — is gone.
+        drafted_from_it = tautology_reason(read_sources_file(spec_dir), clinvar_ref, spec_dir)
+        if drafted_from_it is not None:
             clin_sig_not_checked = drafted_from_it
             clin_sig_skip = "tautology"
             logger.info("ClinVar clin_sig cross-check not run: %s.", drafted_from_it)
         else:
-            audit = audit_clin_sig(variants, out, reference=clinvar_ref)
-            if audit is None:
+            comparison = compare_clin_sig(variants, out, reference=clinvar_ref)
+            if comparison is None:
                 clin_sig_not_checked = "unusable_snapshot"
                 clin_sig_skip = "no_reference"
             else:
-                clin_sig_conflicts = audit.conflicts
-                clin_sig_compared = audit.compared
-                if drafted_from_it is not None:
-                    # Kept only where drafting was *established*. The copied/authored split is a
-                    # provenance reading, and for a module that never claimed a draft a value equal to
-                    # ClinVar's is merely consistent with it — calling that "copied" would assert a
-                    # provenance nobody established.
-                    clin_sig_audit = audit
-                    logger.warning(
-                        "ClinVar clin_sig audit (strict, drafted module) — %s. %s", audit,
-                        "The copies could not have failed this check; the rest could.",
-                    )
+                clin_sig_conflicts = comparison.conflicts
+                clin_sig_compared = comparison.compared
+                clin_sig_comparison = comparison
     for conflict in clin_sig_conflicts:
         logger.warning("ClinVar clin_sig %s — %s",
                        "conflict" if conflict.opposed else "difference", conflict)
@@ -1095,7 +1091,7 @@ def enrich(
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
-        clin_sig_not_checked=clin_sig_not_checked, clin_sig_audit=clin_sig_audit,
+        clin_sig_not_checked=clin_sig_not_checked, clin_sig_comparison=clin_sig_comparison,
         build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),

@@ -55,6 +55,7 @@ from just_dna_enricher.licensing import (
     withdraw_stale_dataset,
 )
 from just_dna_enricher.locations import resolve_clinvar_reference
+from just_dna_enricher.provenance import stamp_draft_digest
 
 logger = logging.getLogger(__name__)
 
@@ -630,6 +631,11 @@ def draft_gene_panel(
         # protection produces a false claim, so the stale label is withdrawn — never re-labelled: the
         # module now carries rows from two releases and one column cannot name both. Gated on rows
         # actually being added, since a re-draft that added none changed nothing to be honest about.
+        # What the release label cannot see: which of these rows a human has edited since (RM73).
+        # `merge_sources_file` is never-clobber, so the digest has to be restamped explicitly or a
+        # second draft's would be silently dropped — see `stamp_draft_digest`. Unconditional: a run
+        # that appended nothing leaves the projection unchanged, so this is then a no-op.
+        stamp_draft_digest(spec_dir, CLINVAR_TERMS.source, "annotation", error=ClinVarDraftError)
         if report.added:
             superseded = withdraw_stale_dataset(
                 spec_dir, CLINVAR_TERMS.source, "annotation", dataset, error=ClinVarDraftError

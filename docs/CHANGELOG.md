@@ -34,7 +34,92 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-15 (latest) — 0.6.0: RM74–RM79, the fix round's own findings
+## 2026-08-16 (latest) — 0.6.0: RM73's provenance half, and RM80
+
+**RM73 (provenance half) — a drafted value that has not moved is a copy that can be *established*.**
+The root item is **halved**, not closed: the phase boundary stays open in
+[ROADMAP_0_7](ROADMAP_0_7.md), and this is the half four separate items were actually asking for.
+
+A drafting provider now hashes the table it wrote, projected onto the column its own cross-check later
+reads, and stamps it onto the licence row it was already writing (`SourceRow.draft_digest`, new
+optional column; `just_dna_enricher.provenance`). The check recomputes and compares. RM4's tautology
+skip stops being a hopeful module-level guess and becomes a **conjunction**: this release *and* no
+checked value moved since.
+
+- **Scoped to the checked column, not the row.** A ClinVar-drafted module always has edited rows —
+  `genotype` is a placeholder the human must fill — so a whole-row hash would never match once.
+- **Raw CSV cells, not models**, because the same function must run at draft time, when the table is
+  full of `<<REPLACE>>` that the models refuse to load by design.
+- **Uniform across all three providers**, which closed two tautologies nobody had filed:
+  `pgx_draft` writes `function_status` out of CPIC and the PGx check compares that column against
+  CPIC; `clinpgx_draft` writes `evidence_level` out of ClinPGx and the ClinPGx check compares that.
+  Both were publishing a structurally guaranteed `findings=0` into `verification.json`. CPIC was also
+  the one provider recording **no `dataset`**, and now stamps one.
+- **Per-leg in `enrich_pgx`**, so the CPIC leg skips while PharmVar — an independent authority —
+  still runs.
+- **Removed:** `ClinSigAudit`, the copied/authored/no_record bucketing, `EnrichmentResult.clin_sig_audit`
+  and its CLI line. They existed only because the module-level marker could not see a per-row edit, so
+  `strict` paid for a lookup to recover the split. **The mode ladder went with them** — the check now
+  behaves identically in both modes.
+- **Behaviour change:** a licence row naming the right release but carrying **no digest no longer
+  skips**. Nothing that was checked stopped being checked; a module waved through on a claim is now
+  examined.
+- **Identity:** `draft_digest` is outside `SOURCE_FACT_FIELDS`, so `sources.signature` moves nowhere
+  and `content_signature` is untouched (`pgx_slco1b1_simvastatin` still `sha256:8173dab7…`). A
+  recompile's `artifact.digest` moves for any module with a licence table.
+
+**RM80 — `annotations.parquet` carries the `genotype` that distinguishes its rows.** Retro-filed from
+a downstream consumer report: `variant_key` is not unique there and never could be (poly-effect is
+real), so consumers had to dedup before joining, and the authored column deciding *which call* an
+annotation applies to was in no column. It is now carried **and in the dedup key** — carrying without
+keying would let two genotypes sharing a conclusion collapse onto a row naming one of them, turning a
+missing answer into a wrong one. Reverse reads which of three keyings an artifact carries; both legacy
+branches preserved. `content_signature` unmoved.
+
+## 2026-08-16 — consumer note: `just-dna-lite`'s annotating engine moves onto 0.5
+
+No change here; recorded so the other consumers are not surprised. `just-dna-lite` migrated its
+*producing* side to 0.5 last August and left the *consuming* side on the 0.2 shape. The annotating
+engine has now been moved; the report follows in a second pass. Three things worth knowing:
+
+- **A `pharm_variants`-led module could not be annotated at all.** `weights.parquet` splits the
+  genotype into `List(Utf8)` and the 0.4 families keep the authored `"C/C"` string, so joining either
+  to a VCF's `List(Utf8)` genotype raised `SchemaError`. Filed as **S30**; the engine now coerces the
+  lead table's genotype to `List(Utf8)` before joining, mirroring `_split_genotype` exactly — **not
+  sorted**, so one artifact does not end up with two spellings of a genotype — after which `pharmgkb`
+  annotates rather than aborting the run.
+- **A lead table is now classified by its schema, not its family name.** `diplotypes`, `pgs`,
+  `allele_function` and the binning families carry no per-variant key, and the engine used to die on
+  `ColumnNotFoundError` — taking every other selected module's annotation with it. They are skipped
+  with the reason recorded, so adding a family to the format no longer breaks a consumer that has not
+  learned it yet.
+- **A shared ALT is not a shared variant.** Joining on `(chrom, start, genotype)` and dropping the
+  module's `ref` let `G>A` match a module's `GTGTCT>A` at the same locus. On one real sample that was
+  **6 of 9** reported `pathogenic` findings. The engine now requires `ref` agreement where the module
+  states one — and we checked that cheap string equality does not disagree with
+  `just_dna_format.alleles` on the set it can reach: once the genotype has matched, a differing `ref`
+  means the two records delete different numbers of bases, so `event_profile` calls all six a
+  **positive contradiction** and both survivors a match, with no "unknown" residual. Pinned by a
+  test, because it holds only of that reachable set — comparing allele strings is the wrong test for
+  indels in general.
+
+Two more came out of reading **PROPOSAL_0_6** against our own code, and both were live here:
+
+- **RM60 was biting us in production.** We strip a leading `chr`, so an hs38DH-aligned sample's
+  `chrM` became `M` — a contig no module writes — and **every mitochondrial annotation was dropped
+  without a word**. One of our three real samples is exactly that (35 rows), and `heteroplasmy` is an
+  entire table family about mtDNA. Fixed by routing our contig column through `vrs.normalize_chrom`
+  instead of maintaining a second, weaker folding.
+- **RM64 was a latent gap.** Our rsid join keyed on the raw ID cell, so a spec-legal `rs123;rs456`
+  record would have matched nothing. Zero occurrences in our two samples, so this is a fix ahead of
+  the failure rather than after it.
+
+**S29 was answered in the same round as [RM80](ROADMAP_HISTORY.md#rm80--annotationsparquet-had-no-column-for-the-thing-that-distinguishes-its-rows)** — `annotations.parquet` gains `genotype`,
+keyed `(variant_key, genotype, conclusion, negatives)`. Our report pass will join on
+`(variant_key, genotype)` as instructed rather than shipping the local dedup we had planned, which
+the reply rightly notes is lossless only for as long as it happens to be. **S30 is open.**
+
+## 2026-08-15 — 0.6.0: RM74–RM79, the fix round's own findings
 
 Round 2 of [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) — the findings the fix round produced by
 reading the code around each repair — was grouped into RM74–RM79 on 2026-08-14. The first two are

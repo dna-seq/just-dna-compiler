@@ -49,6 +49,7 @@ from just_dna_format.pgx import PharmVariantRow
 
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, _normalize_category, load_snapshot
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.provenance import stamp_draft_digest
 
 logger = logging.getLogger(__name__)
 
@@ -362,5 +363,12 @@ def draft_pharm_variants(
             ],
             spec_dir,
             error=ClinPgxEnrichmentError,
+        )
+        # The release label alone cannot see a cell edited after the draft, and this provider writes
+        # `evidence_level` straight out of the snapshot that `clinpgx` then compares it against —
+        # RM4's tautology, one source over (RM73). Restamped explicitly because `merge_sources_file`
+        # is never-clobber; see `provenance.stamp_draft_digest`.
+        stamp_draft_digest(
+            spec_dir, CLINPGX_TERMS.source, "annotation", error=ClinPgxEnrichmentError
         )
     return ClinPgxDraftResult(reports=reports, warnings=warnings)

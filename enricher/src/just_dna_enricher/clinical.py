@@ -32,6 +32,7 @@ from just_dna_format.sources import SourceRow
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.clinvar import clinvar_dataset_label, lookup_clin_sig
+from just_dna_enricher.provenance import drafted_unchanged
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,9 @@ def _effect_allele(variant: VariantRow, ref: str, alts: list[str]) -> str | None
     return None
 
 
-def tautology_reason(sources: Sequence[SourceRow], reference: Path | None) -> str | None:
+def tautology_reason(
+    sources: Sequence[SourceRow], reference: Path | None, spec_dir: Path | None = None
+) -> str | None:
     """Why this check cannot fail on this module, or `None` when it genuinely can (S4, re-keyed by RM4).
 
     A module drafted by `clinvar_draft` copied its `clin_sig` **out of the snapshot this check reads**,
@@ -146,6 +149,18 @@ def tautology_reason(sources: Sequence[SourceRow], reference: Path | None) -> st
     Three-valued in the usual way: a module with no licence table, one whose ClinVar row records no
     dataset, an unreadable `release.json`, or a **different** release all return `None` and the check
     runs. Only an *established* match skips it — an unknown is never a permission to skip.
+
+    **The release is half the question, and RM73 supplied the other half.** A matching release says
+    the rows *were* copied out of this snapshot; it says nothing about whether they still are, which
+    is the hole this function shipped with and named in its own message. `spec_dir` lets it recompute
+    the drafter's digest over the `clin_sig` column and answer that too, so the skip is now a
+    conjunction: same release **and** no checked value moved since. Either half failing runs the
+    check, which is why the expensive per-row `strict` audit this used to defer to is gone — the
+    digest answers the same question without a lookup, in both modes.
+
+    `spec_dir` is optional so an existing caller keeps working, and omitting it is not treated as a
+    pass: with no directory there is nothing to recompute, nothing is established, and the check
+    runs.
     """
     label = clinvar_dataset_label(reference)
     if label is None:
@@ -157,57 +172,48 @@ def tautology_reason(sources: Sequence[SourceRow], reference: Path | None) -> st
     ]
     if not recorded or any(dataset != label for dataset in recorded):
         return None
+    if spec_dir is None or not drafted_unchanged(spec_dir, "clinvar", list(sources)):
+        # Includes the `None` case on purpose — a module drafted before the digest existed has
+        # established nothing about its cells, so it is checked in full rather than trusted.
+        return None
     return (
         f"this module's licence row records that its ClinVar annotations were drafted from {label}, "
-        f"the very snapshot this check reads, so every authored clin_sig is a copy of the value it "
-        f"would be compared against. Two things that leaves unseen: a cell edited by hand since the "
-        f"draft, and rows added from another release. Re-run with --strict to look every row up and "
-        f"report which values are still copies, which a human wrote, and which conflict"
+        f"the very snapshot this check reads, and every authored clin_sig still hashes to what the "
+        f"drafter wrote — so each one is a copy of the value it would be compared against. What this "
+        f"does not cover: a row hand-authored *before* a later re-draft, which the drafter's stamp "
+        f"then covers along with its own. Edit any clin_sig and this check runs again in full"
     )
 
 
 @dataclass
-class ClinSigAudit:
-    """What a full look-up found on a module that says it was drafted from this snapshot (RM4).
+class ClinSigComparison:
+    """What the cross-check actually put, and what it found (RM4, simplified by RM73).
 
-    The `strict` arm of the drafted-module ladder. `best_effort` keeps the module-level skip above,
-    because deciding *per row* whether a value is still a copy requires exactly the look-up the skip
-    exists to avoid; `strict` pays that cost and reports the split instead of a meaningless zero.
+    Two numbers and the findings. It carried a *provenance* breakdown until 0.6 — copied / authored /
+    conflicting / no_record — which existed for one reason: the module-level release marker could not
+    see a cell edited after the draft, so `strict` paid for a per-row look-up to recover the split the
+    marker was blind to. `provenance.draft_digest` answers that question directly and offline, so the
+    breakdown had no remaining consumer and the mode ladder under it collapsed: this check now behaves
+    identically in both modes, which is what RM4 wanted and could not have.
 
-    Three disjoint outcomes, plus what could not be compared:
+    Removing it changed no verdict. The `copied` bucket was an early exit taken *before* the camp
+    logic, and an exact match agrees with itself, so every row it caught already reached "no conflict"
+    by the path below it.
 
-    * **copied** — the snapshot records this very value at this very allele. Nothing was learned, and
-      nothing could have been: this is the tautology, now counted rather than assumed of the whole
-      module. A row whose ALT could not be pinned down is never counted here, because a match against
-      the locus may be a sibling allele's call; it lands in `authored` instead.
-    * **authored** — the snapshot records something else that does not oppose it (a confidence
-      refinement, an undecided call, an orthogonal one). A human wrote or edited this cell.
-    * **conflicts** — the camps oppose. Exactly `verify_clin_sig`'s finding, unchanged, and the whole
-      reason the hand-edit hole matters: a cell edited after the draft is the one thing the
-      module-level skip cannot see.
-    * **no_record** — resolved, but the snapshot has nothing to compare at those coordinates (or the
-      row named no ALT to ask about). Counted rather than folded into `authored`, which would claim a
-      human wrote something the check never looked up.
-
-    Counts are per **comparison** — one per resolved locus a variant has, which is one per row in the
-    ordinary case. Variants with no resolved locus are outside this entirely and are already named by
-    `EnrichmentResult.unresolved`; recounting them here would publish the same number twice.
+    * `compared` — comparisons the snapshot could answer. One per resolved locus, which is one per row
+      in the ordinary case, and the denominator `verification.json` publishes beside the findings.
+    * `no_record` — resolved, but nothing at those coordinates to compare (or no ALT to ask about).
+      Counted rather than folded into `compared`, which would claim a comparison nobody made.
+    * `conflicts` — the disagreements, exactly as before.
     """
 
-    copied: int = 0
-    authored: int = 0
+    compared: int = 0
     no_record: int = 0
     conflicts: list[ClinSigConflict] = field(default_factory=list)
 
-    @property
-    def compared(self) -> int:
-        """Comparisons the snapshot could actually answer."""
-        return self.copied + self.authored + len(self.conflicts)
-
     def __str__(self) -> str:
         return (
-            f"{self.compared} authored clin_sig value(s) looked up: {self.copied} still a copy of "
-            f"ClinVar's own, {self.authored} written or edited by hand and consistent with it, "
+            f"{self.compared} authored clin_sig value(s) compared against ClinVar, "
             f"{len(self.conflicts)} in conflict; {self.no_record} had no ClinVar record to compare"
         )
 
@@ -220,21 +226,21 @@ def verify_clin_sig(
 ) -> list[ClinSigConflict]:
     """Compare each authored `clin_sig` against the ClinVar snapshot. Returns the disagreements.
 
-    The conflicts half of `audit_clin_sig`, which is where the comparison itself lives — one
+    The conflicts half of `compare_clin_sig`, which is where the comparison itself lives — one
     implementation, so the buckets and the findings can never disagree about a row. Empty when the
     snapshot could not be read at all; a caller that needs to tell that apart from "nothing
-    disagreed" calls `audit_clin_sig` and branches on its `None`.
+    disagreed" calls `compare_clin_sig` and branches on its `None`.
     """
-    audit = audit_clin_sig(variants, resolution_rows, reference=reference)
+    audit = compare_clin_sig(variants, resolution_rows, reference=reference)
     return audit.conflicts if audit is not None else []
 
 
-def audit_clin_sig(
+def compare_clin_sig(
     variants: list[VariantRow],
     resolution_rows: list[ResolutionRow],
     *,
     reference: Path | None,
-) -> ClinSigAudit | None:
+) -> ClinSigComparison | None:
     """Compare each authored `clin_sig` against the ClinVar snapshot, and classify every comparison.
 
     `None` — never an audit of zeros — when the comparison could not be performed at all: no snapshot
@@ -288,7 +294,7 @@ def audit_clin_sig(
                 no_record += 1
 
     if not wanted:
-        return ClinSigAudit(no_record=no_record)
+        return ClinSigComparison(no_record=no_record)
     try:
         records = lookup_clin_sig(reference, wanted)
     except Exception as exc:
@@ -302,7 +308,7 @@ def audit_clin_sig(
         return None
 
     conflicts: list[ClinSigConflict] = []
-    copied = authored_by_hand = 0
+    compared = 0
     for variant, authored, targets, locus_wide in plan:
         authored_camp = _CLIN_SIG_CAMP.get(authored, "undecided")
         candidates = [
@@ -314,33 +320,18 @@ def audit_clin_sig(
         if not candidates:
             no_record += 1
             continue
-        # Classified before any judgement about agreement, because "is this value a copy of the one it
-        # is compared against" is a question about the *word*, not about the camps: `pathogenic` beside
-        # `likely_pathogenic` agree and are not the same claim, and only one of them was copied. An
-        # exact match also always agrees, so this never hides a conflict the old order would have found.
-        #
-        # Never in the locus-wide fallback: there `candidates` spans every ALT at the locus, so an exact
-        # match may be a *sibling* allele's call rather than this row's, and "copied" would then say a
-        # human did not write a cell a human wrote. Such a row falls through to the camp logic and lands
-        # in `authored`, which understates rather than misattributes — the safe direction, since the
-        # comparison really did run.
-        if not locus_wide and any(record["clin_sig"] == authored for _t, record in candidates):
-            copied += 1
-            continue
+        compared += 1
         if authored_camp in {"undecided", "orthogonal"}:
-            authored_by_hand += 1
             continue
         # Agreement anywhere at the locus settles it — especially in the locus-wide fallback, where
         # several alts are in play and only one of them is the author's subject.
         if any(_CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") == authored_camp for _t, r in candidates):
-            authored_by_hand += 1
             continue
         opinionated = [
             (t, r) for t, r in candidates
             if _CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") not in {"undecided", "orthogonal"}
         ]
         if not opinionated:
-            authored_by_hand += 1
             continue
         # Report the best-reviewed disagreement: it is the one an author most needs to answer, and
         # `lookup_clin_sig` already ordered the records so the first is the best-reviewed.
@@ -364,6 +355,4 @@ def audit_clin_sig(
                 "%s: compared against the whole locus (the annotation's ALT could not be determined "
                 "from genotype %s)", variant.variant_key, variant.genotype,
             )
-    return ClinSigAudit(
-        copied=copied, authored=authored_by_hand, no_record=no_record, conflicts=conflicts
-    )
+    return ClinSigComparison(compared=compared, no_record=no_record, conflicts=conflicts)

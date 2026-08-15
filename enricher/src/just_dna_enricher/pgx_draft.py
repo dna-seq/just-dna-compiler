@@ -44,6 +44,7 @@ from just_dna_enricher.cpic import (
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, merge_sources_file
 from just_dna_enricher.locations import resolve_cpic_reference
+from just_dna_enricher.provenance import stamp_draft_digest
 
 #: The assembly CPIC's `sequence_location.position` is on — probed, not assumed: `rs1799853` is
 #: `10:94942290` there, which is its GRCh38 position (GRCh37 is `10:96702047`). Named for the reason
@@ -313,6 +314,9 @@ def draft_gene(
         else:
             cpic = CpicClient()
     try:
+        # Read inside the `try` for the reason `knows_drug` is asked here: the client is closed in the
+        # `finally` below. `None` on the live client, which carries no release to name.
+        cpic_dataset = getattr(cpic, "dataset", None)
         published = cpic.alleles_for_gene(gene)
         diplotypes = cpic.diplotypes_for_gene(gene)
         defining, defining_warnings = cpic.defining_variants(gene)
@@ -512,11 +516,27 @@ def draft_gene(
         # so a module drafted from it and carrying no `sources.csv` leaves the compile gate nothing to
         # refuse on — the restriction simply disappears. Building the row and not writing it is the
         # exact `clingen.py` bug, and it was sitting in the newest provider.
+        #
+        # **`dataset` was the missing half and it is what makes the tautology visible here (RM73).**
+        # This provider copies `function_status` straight out of CPIC and `pgx._function_conflicts`
+        # then compares that very column against CPIC — the RM4 shape exactly, and it went unmarked
+        # for two releases because this was the one provider recording no release at all. `None` on
+        # the live client, deliberately: with no label there is nothing to establish a copy against,
+        # so the check simply runs, which is the conservative direction.
         merge_sources_file(
-            [CPIC_TERMS.row("annotation", declared_use=declared_use)],
+            [
+                CPIC_TERMS.row(
+                    "annotation",
+                    declared_use=declared_use,
+                    dataset=cpic_dataset,
+                )
+            ],
             spec_dir,
             error=CpicError,
         )
+        # Restamped explicitly because `merge_sources_file` is never-clobber — see
+        # `provenance.stamp_draft_digest`.
+        stamp_draft_digest(spec_dir, CPIC_TERMS.source, "annotation", error=CpicError)
     return PgxDraftResult(reports=reports, warnings=warnings)
 
 

@@ -51,7 +51,7 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   (`VALID_VERIFICATION_CHECKS`, `VALID_VERIFICATION_SKIPS`); the human sentence rides in `detail`,
   beside the machine key and never instead of it.
 - **The denominator comes from the check, never from the caller.** `verify_reference_alleles` returns
-  a `RefCheck` and `audit_clin_sig` a `ClinSigAudit` (or `None`), so the count travels with the finding
+  a `RefCheck` and `compare_clin_sig` a `ClinSigComparison` (or `None`), so the count travels with the finding
   it belongs to: a count recomputed beside a check can disagree with it, and then the manifest's own
   two halves disagree. `_verification_records` deliberately takes neither `variants` nor `rows` — a
   function that cannot see the tables cannot be tempted to count them. Wiring this up surfaced a real
@@ -1258,37 +1258,55 @@ read all leave the check running. The row must be at the **`annotation`** layer 
 second `clinvar` row at the `resolution` layer for the coordinates it looked up, and a coordinate is
 not a copied clinical call.
 
-**The skip has a hole, and it closes on a mode ladder (RM4).** A cell edited by hand after the draft is
-no longer a copy of anything, and no module-level fact can see that.
+**The release label is half the question; the drafter's digest is the other half (RM73, 0.6).** A
+matching release says the rows *were* copied out of this snapshot. It says nothing about whether they
+still are — a cell edited by hand after the draft is no longer a copy of anything, and no module-level
+fact can see that. RM4 shipped that hole knowingly and put an expensive per-row audit behind `strict`
+to recover what the marker was blind to.
 
-| mode | what happens |
+`clinvar_draft` now also stamps `SourceRow.draft_digest`: a hash of `variants.csv` projected onto
+`(rsid, chrom, start, ref, alts) → clin_sig`, the identity cells and the column this check reads.
+`clinical.tautology_reason` recomputes it. **Skipping requires both** — this release **and** an
+unmoved digest — and either half missing runs the check in full.
+
+| what the module records | what happens |
 |---|---|
-| `best_effort` | the cheap module-level skip, **plus a notice naming the hole** — a hand-edited cell, and rows added from another release, are what it cannot see |
-| `strict` | no skip: every value is looked up and the split reported on `EnrichmentResult.clin_sig_audit` — **copied** (still ClinVar's own word), **authored** (a human wrote or edited it, and it does not oppose), **conflicts**, and **no_record** for a comparison the snapshot could not answer |
+| no licence row, no `dataset`, a different release, an unreadable `release.json` | the check runs |
+| this release, **no digest** (hand-written label, or a module drafted before 0.6) | the check runs |
+| this release **and** a digest that still matches | skipped as a tautology, in **both** modes |
+| this release, digest **moved** — someone edited a `clin_sig` | the check runs, over the whole table |
 
-Deciding *per row* in both modes was the obvious repair and it re-spends the whole 90% saving, because
-deciding whether a value is still a copy **is** the look-up. Hence the ladder. `strict` still does not
-escalate a conflict into a failure — that is this check's standing exception and it is unchanged.
+**Same in both modes, and that is the RM4 ladder collapsing.** `strict` used to pay for a per-row
+look-up because deciding whether a value was still a copy *was* the look-up; the digest answers it
+offline, so there is nothing left for a mode to switch on. `EnrichmentResult.clin_sig_audit` and its
+copied/authored/no_record split are **gone** — what remains is `clin_sig_comparison`, carrying
+`compared`, `no_record` and the conflicts. `strict` still does not escalate a conflict into a failure;
+that is this check's standing exception and it is unchanged.
 
-The audit is kept **only where drafting was established**: for a module that never claimed a draft, a
-value equal to ClinVar's is merely *consistent* with it, and calling that "copied" would assert a
-provenance nobody established. Counts are per comparison — one per resolved locus a variant has —
-and variants with no resolved locus are `EnrichmentResult.unresolved`, not recounted here.
+**Why the digest is scoped to the column and not the row.** A ClinVar-drafted module *always* has
+edited rows: `genotype` is a placeholder the human is required to fill, so a whole-row hash would be
+invalidated on every drafted module and the skip would never fire once. Scoped to `clin_sig`, filling
+the stub leaves it alone and editing the call moves it — exactly as sensitive as the question.
 
-**"Copied" is allele-exact, and in the locus-wide fallback nothing is counted as copied at all.** Where
-the ALT the annotation is about could not be pinned down, the candidates span every ALT at the locus, so
-an exact string match may be a *sibling* allele's call — and `rs334`'s locus, with a pathogenic `T>A`
-beside a likely-benign `T>G`, is exactly where that happens. Such a row falls through to the camp logic
-and lands in **authored**, which understates rather than misattributing: saying "copied" would tell a
-reader no human wrote a cell a human may well have written, on the one question this audit exists to
-answer.
+**The limit that remains, stated rather than left to be found.** The digest covers the whole table, so
+it means *no checked value has changed since the drafter last wrote*. A row hand-authored **before** a
+later re-draft is covered by the new stamp along with the drafted rows, and escapes the check. That is
+strictly narrower than what it replaces — the module-level marker let every hand-edit escape — and any
+later edit re-enables the check.
+
+**The same mechanism, the same way, for the other two providers.** `pgx_draft` writes
+`function_status` out of CPIC and `pgx._function_conflicts` compares that column against CPIC;
+`clinpgx_draft` writes `evidence_level` out of ClinPGx and the ClinPGx check compares that. Both were
+tautologies nobody had filed, both publishing a structurally guaranteed `findings=0`. In `enrich_pgx`
+the skip is **per leg**: the CPIC leg records `tautology` while PharmVar, an independent authority,
+still runs and the record aggregates both.
 
 The skip carries its reason on `EnrichmentResult.clin_sig_not_checked`, because an empty
 `clin_sig_conflicts` says two opposite things on its own ("compared everything, nothing disagreed" and
 "never compared"), and a consumer reading the first when the second happened has been told a check
 passed that was never put. Its values are `not_requested` (the author's own `--no-verify-clinsig`),
-`no_snapshot`, `unusable_snapshot` (present but not queryable — `audit_clin_sig` returns `None` rather
-than an audit of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
+`no_snapshot`, `unusable_snapshot` (present but not queryable — `compare_clin_sig` returns `None` rather
+than a comparison of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
 typed the `clin_sig`, nothing changes — that is the case this check exists for.
 
 ## Gene–disease validity (`gene_validity.py`, online only) — RM24

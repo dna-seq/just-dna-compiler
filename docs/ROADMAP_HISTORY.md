@@ -1980,3 +1980,120 @@ Four things to keep straight:
 Nothing in the corpus moved: no reference example carries an uncited literature row, verified by
 recompiling all sixteen. Which also means the corpus cannot exercise this — the standing
 corpus-uniformity trap — so the behaviour is pinned by fixtures rather than by an example.
+
+## RM73 (provenance half) — a drafted value that has not moved is a copy that can be *established*
+
+✅ **Shipped in 0.6.0** (2026-08-16). The [phase-boundary half stays open](ROADMAP_0_7.md#rm73--a-rows-provenance-is-unknowable-in-a-flat-csv-and-nothing-closes-the-authoring-phase);
+this is the half the sprouts were actually asking for. Halved rather than closed, on RM28's precedent.
+
+**The problem, restated at the size that shipped.** RM4's tautology skip exists because a panel
+drafted from ClinVar carries ClinVar's own `clin_sig`, so the cross-check compares a value against
+itself and reports a zero that *looks like evidence*. The skip was keyed on a module-level marker (the
+release stamped into the licence row) because that was the finest grain available, and RM4 named the
+hole in its own warning text: a cell edited after the draft is no longer a copy, and no module-level
+fact can see it. The expensive repair — `strict` looking every row up — is the validation-by-
+duplication route this item had already argued against.
+
+**What shipped: one digest per drafting source, over the projection the check actually reads.**
+`enricher/provenance.py` holds three entries — `clinvar`/`variants.csv`/`clin_sig`,
+`cpic`/`allele_function.csv`/`function_status`, `clinpgx`/`pharm_variants.csv`/`evidence_level` —
+each naming the table, the identity cells and the checked cell together. The provider hashes it and
+stamps `SourceRow.draft_digest`; the check recomputes it and compares. Six things worth keeping:
+
+- **The projection is a COLUMN, not a row, and that is what makes it work at all.** A
+  `clinvar_draft` module always has edited rows by construction — `genotype` is a placeholder the
+  human is *required* to fill — so a whole-row hash is invalidated on every drafted module and the
+  skip would never fire once. Scoping to the checked column makes the digest exactly as sensitive as
+  the question: filling a stub does not disturb it, editing a `clin_sig` does. Pinned by a test.
+- **Raw CSV cells, never loaded models — forced, not stylistic.** One function serves both sides,
+  because a writer and a reader that computed this differently would not fail, they would silently
+  never match (`clinvar_dataset_label`'s lesson). That function must therefore run at *draft* time,
+  when the table is full of `<<REPLACE>>` and `reject_template_placeholders` refuses to load it by
+  design. So `variant_key` and `effective_clin_sig` are unavailable and the identity is spelled as
+  the raw cells the provider already matches on.
+- **The skip is a CONJUNCTION, and shipping only the digest half would have been wrong.** The digest
+  hashes the module's table, not the snapshot, so it is silent about currency: a matching digest
+  against a *newer* release is a real comparison. Skip requires the recorded release to match **and**
+  the digest to match. A consequence worth stating: a check run against a **live** source never
+  skips, because there is no release to name.
+- **`merge_sources_file` would have eaten it.** Never-clobber is right for terms a curator may have
+  hand-written and wrong for a machine-stamped cell that must track the table — the same rule that
+  bit `dataset` and produced `withdraw_stale_dataset`, arriving on the neighbouring column one
+  release later. `stamp_draft_digest` restamps explicitly. Unlike `dataset` it **re-labels rather
+  than withdraws**: a release label cannot name two releases, so a mixed module has no honest value,
+  while a digest describes the table as it now stands whatever produced it.
+- **Two unmarked tautologies closed, neither previously filed.** `pgx_draft` writes `function_status`
+  out of CPIC and `pgx._function_conflicts` compares that column against CPIC; `clinpgx_draft` writes
+  `evidence_level` out of ClinPGx and `clinpgx` compares that column against ClinPGx. Both were
+  publishing a structurally guaranteed `findings=0` into `verification.json` — RM4's misinformation,
+  now inside RM45's proof-of-worked attestation, which is a stronger claim than a warning line. CPIC
+  was additionally the one provider recording **no `dataset` at all**, so it now stamps one.
+- **In `enrich_pgx` the tautology is a PER-LEG outcome.** That check has two authorities: on a
+  CPIC-drafted module the CPIC leg cannot fail while PharmVar's is genuinely independent. The
+  existing `legs` dict already carried one outcome per authority, so the CPIC leg records `tautology`
+  and PharmVar still runs. A whole-record skip would have discarded a real comparison to suppress a
+  hollow one — precisely the expressiveness the module-level marker shape lacked. `tautology` sits
+  **last** in `_SKIP_PRECEDENCE`: the other members say the source could not be consulted, and an
+  absence a reader can act on outranks a comparison that could not have failed.
+
+**The removal, which is the point as much as the addition.** `ClinSigAudit` and the
+copied/authored/no_record bucketing are gone, with `EnrichmentResult.clin_sig_audit`, its CLI line
+and the `mode != "strict"` branch in `enrich()`. The bucketing existed for exactly one reason — the
+module-level marker could not see a per-row edit, so `strict` paid for a lookup to recover the split
+— and the digest answers that offline. **The mode ladder collapsed with it**: this check now behaves
+identically in both modes, which is what RM4 wanted and could not have, and `strict` stops meaning
+"pay for a per-row lookup", which was never a reproducibility axis (P5). Removing it changed no
+verdict: the `copied` bucket was an early exit taken *before* the camp logic, and an exact match
+agrees with itself, so every row it caught already reached "no conflict" by the path below it.
+
+**The honest limit, stated rather than discovered.** The digest covers the whole table, so it means
+*no checked value has changed since the drafter last wrote*. A row hand-authored **before** a
+subsequent re-draft is covered by the new stamp and escapes the check. Strictly narrower than what it
+replaces — today's module-level marker lets *every* hand-edit escape — and unlike today any later
+edit re-enables the check in full.
+
+**Behaviour change worth reading twice.** A licence row naming the right release but carrying no
+digest **no longer skips**. Nothing that was being checked stopped being checked; a module that was
+being waved through on a claim is now examined. Its test says so by name.
+
+**Identity effect, measured.** `draft_digest` is deliberately **outside** `SOURCE_FACT_FIELDS` —
+`dataset` is inside it because which release these annotations came from is part of the claim the row
+makes about the source, while this is a fact about how the module was *built* and moves on every
+re-draft. So `sources.signature` moves nowhere, and `content_signature` is untouched
+(`pgx_slco1b1_simvastatin` still `sha256:8173dab7…`). A recompile's `artifact.digest` moves for any
+module carrying a licence table, since `sources.parquet` gains a column — the additive case P4 scopes
+to a fixed `compiler_version`.
+
+## RM80 — `annotations.parquet` had no column for the thing that distinguishes its rows
+
+✅ **Shipped in 0.6.0** (2026-08-16), retro-filed. **Reported by a downstream consumer**, whose note
+is the cleanest statement of it: `variant_key` is not unique in that table, so every consumer must
+dedup before joining — *either the table should be unique per `variant_key`, or it should carry the
+genotype that distinguishes its rows.*
+
+The first option is impossible and the reason is already recorded here: a genuine poly-effect variant
+is one locus carrying two annotations, which is why the table was re-keyed on the variant-effect pair
+`(variant_key, conclusion, negatives)` in the first place. So the answer is the second — except that
+the authored column which decides *which call an annotation applies to* was in no column at all. A
+het "carrier" row and a hom "affected" row at one locus could be told apart only by reading the prose
+in `conclusion`.
+
+**Carrying it without keying on it would have been worse than the gap**, which is why this is one
+change and not two. Two genotypes sharing a conclusion (`C/T` and `T/T` both "carrier") collapse under
+the old key, so the surviving row would name one genotype while silently standing for both, and a
+consumer filtering on it gets a *wrong* answer instead of a missing one. With `genotype` in the key
+the dedup is provably a no-op — `(variant_key, genotype)` is `VariantRow`'s own natural key and
+`_cross_validate_variants` rejects duplicates on it — so the table is now exactly one row per authored
+variant row. The dedup is kept anyway rather than deleted, because the function must not silently
+depend on a guarantee another function enforces.
+
+Two mechanics. Reverse now reads **which** generation of the table an artifact carries
+(`ann_key_columns`, derived from the columns present) instead of one bool — three keyings are in the
+wild and the old two-branch detection could not express a third; both legacy branches are preserved
+exactly. And the genotype reconstruction had to move **above** the annotation probe, because
+`weights.parquet` stores the allele list plus a `phased` bit rather than the authored cell, so the
+string has to be rebuilt before it can be joined on.
+
+A parquet column is ~free under the 2026-08-13 charter amendment (materialized, derived, no human
+types one), which is what makes this a minor rather than a deferral. `content_signature` does not
+move; a recompile's `artifact.digest` does, for any module carrying `variants.csv`.

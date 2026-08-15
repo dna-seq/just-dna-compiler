@@ -57,6 +57,14 @@ from just_dna_format.vocab import (
 #
 # `fetched_at` stays out, exactly as everywhere else — when the terms were read is producer noise, not
 # a fact about the module.
+#
+# **`draft_digest` stays out too, and the line it sits on is worth naming** (RM73). `dataset` is IN:
+# *which release these annotations came from* is part of the claim the row makes about the source, and
+# a consumer reading `manifest.sources` is entitled to have it hashed. `draft_digest` is a fact about
+# how this module's own table was **built** — it moves on every re-draft while the terms and the
+# release stand still — so hashing it would move `source_signature` on work that changed no claim
+# about any source. Same call `LiteratureRow` makes about its licence columns. Measured rather than
+# argued: no reference example's source signature moves.
 SOURCE_FACT_FIELDS: tuple[str, ...] = (
     "source",
     "layer",
@@ -199,6 +207,15 @@ class SourceRow(BaseModel):
     )
     fetched_at: str | None = Field(
         default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything"
+    )
+    draft_digest: str | None = Field(
+        default=None,
+        description=(
+            "Set by a drafting provider: a hash of the drafted table projected onto the column a "
+            "cross-check later compares against this source, so that check can tell a value still "
+            "copied from the source from one a human has since edited (RM73). Recomputed, never "
+            "trusted as a claim — an unrecognized or absent value simply means the check runs."
+        ),
     )
 
     @field_validator("layer")

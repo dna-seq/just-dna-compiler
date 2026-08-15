@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_enricher.clinical import audit_clin_sig, verify_clin_sig
+from just_dna_enricher.clinical import compare_clin_sig, verify_clin_sig
 from just_dna_enricher.clinvar import clinvar_dataset_label, select_by_gene
 from just_dna_enricher.clinvar_build import build_snapshot
 from just_dna_enricher.clinvar_draft import draft_gene_panel
@@ -243,33 +243,26 @@ def test_the_source_digest_names_the_release_when_the_file_date_does_not(
     assert clinvar_dataset_label(undated) == f"clinvar_sha256:{release['source_sha256']}"
 
 
-def test_the_check_is_skipped_when_the_licence_row_names_this_release(
+def test_a_release_label_alone_no_longer_skips_the_check(
     snapshot: Path, tmp_path: Path
 ) -> None:
-    """The recorded provenance matches the snapshot, so every authored `clin_sig` is a copy of what it
-    would be compared to.
+    """The skip is a conjunction since RM73, and this is the half that used to carry it alone.
 
-    Without the skip this reports a confident "0 conflicts" that no data could have made non-zero —
-    which reads as evidence and is not. The conflicting call is deliberately left in place: it proves
-    the check really was skipped rather than merely finding nothing.
+    A licence row naming this release says the rows *were* copied out of the snapshot. It says nothing
+    about whether they still are — that was the hole RM4 shipped and named in its own message — so a
+    row bearing the label and no drafter's digest establishes nothing about its cells and the check
+    runs in full. The conflicting call is left in place deliberately: it proves the check really ran.
+
+    Note the direction of the change. Nothing that was *checked* stopped being checked; a module that
+    was being waved through on a claim is now examined.
     """
     spec = _licenced(
-        tmp_path / "drafted", "benign", "A/T", dataset=clinvar_dataset_label(snapshot) or ""
+        tmp_path / "labelled", "benign", "A/T", dataset=clinvar_dataset_label(snapshot) or ""
     )
     result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
 
-    assert result.clin_sig_conflicts == []
-    reason = result.clin_sig_not_checked or ""
-    assert "drafted from" in reason
-    # The skip has to name its own hole, or a reader takes it for a clean bill.
-    assert "edited by hand" in reason and "--strict" in reason
-    # Same module with no licence row: the check runs and finds the disagreement.
-    plain = enrich(
-        _spec(tmp_path / "undrafted", "benign", "A/T"),
-        offline=True, clinvar_cache=snapshot, use_gnomad=False,
-    )
-    assert len(plain.clin_sig_conflicts) == 1
-    assert plain.clin_sig_not_checked is None
+    assert result.clin_sig_not_checked is None
+    assert [c.authored for c in result.clin_sig_conflicts] == ["benign"]
 
 
 def test_a_licence_row_naming_another_release_still_runs_the_check(
@@ -419,7 +412,7 @@ def test_drafting_records_which_release_the_rows_were_copied_out_of(
 
     result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
     assert "drafted from" in (result.clin_sig_not_checked or "")
-    assert result.clin_sig_audit is None  # best_effort does not pay for the per-row look-up
+    assert result.clin_sig_comparison is None  # nothing was compared; the skip held
 
 
 def test_widening_from_a_newer_release_withdraws_the_label_rather_than_re_labelling(
@@ -483,31 +476,27 @@ def test_a_re_draft_that_adds_nothing_leaves_the_label_alone(snapshot: Path, tmp
 def test_strict_looks_every_row_up_and_reports_the_split(snapshot: Path, tmp_path: Path) -> None:
     """The strict arm of the ladder: no skip, and never a meaningless zero.
 
-    Every drafted value is still a copy here, so the audit says exactly that — which is a different
-    statement from "0 conflicts", because it is a count of what was actually compared.
+    Both modes skip, and that is RM73's collapse of RM4's ladder. `strict` used to pay for a per-row
+    look-up here to recover the split the module-level marker could not see; the drafter's digest
+    answers the same question offline, so there is nothing left for a mode to switch on.
     """
     spec = _drafted_panel(tmp_path / "panel-strict", snapshot)
-    drafted_rows = len(
-        list(csv.DictReader(io.StringIO((spec / "variants.csv").read_text(encoding="utf-8"))))
-    )
-    result = enrich(spec, mode="strict", offline=True, clinvar_cache=snapshot, use_gnomad=False)
-
-    audit = result.clin_sig_audit
-    assert audit is not None and result.clin_sig_not_checked is None
-    assert audit.copied == drafted_rows
-    assert (audit.authored, audit.conflicts, audit.no_record) == (0, [], 0)
-    assert audit.compared == drafted_rows
-    assert "still a copy" in str(audit)
+    for mode in ("best_effort", "strict"):
+        result = enrich(spec, mode=mode, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+        assert "drafted from" in (result.clin_sig_not_checked or ""), mode
+        assert result.clin_sig_comparison is None, mode
+        assert result.clin_sig_conflicts == [], mode
 
 
-def test_strict_sees_the_hand_edit_the_module_level_skip_cannot(
+def test_a_hand_edit_re_enables_the_check_in_both_modes(
     snapshot: Path, tmp_path: Path
 ) -> None:
-    """The hole the ladder exists for.
+    """The hole RM4 shipped knowingly, closed (RM73).
 
-    A cell edited after the draft is no longer a copy of anything, and no module-level fact can see
-    that — so `best_effort` still skips (and says so), while `strict` finds the edited row, classifies
-    the rest as copies, and reports the conflict.
+    A cell edited after the draft is no longer a copy of anything, and no module-level fact could see
+    that — so `best_effort` skipped the check entirely and the edited row went unexamined. The
+    drafter's digest covers the `clin_sig` column, so the edit moves it, the skip lapses, and the
+    conflict is found **without** the per-row look-up `strict` used to pay for.
     """
     spec = _drafted_panel(tmp_path / "panel-edited", snapshot)
 
@@ -520,28 +509,44 @@ def test_strict_sees_the_hand_edit_the_module_level_skip_cannot(
     edited = _rewrite_variants(spec, disagree)
     assert [row["clin_sig"] for row in edited[1:]] == ["pathogenic"] * (len(edited) - 1)
 
-    lenient = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
-    assert lenient.clin_sig_conflicts == [] and "drafted from" in (lenient.clin_sig_not_checked or "")
-
-    strict = enrich(spec, mode="strict", offline=True, clinvar_cache=snapshot, use_gnomad=False)
-    audit = strict.clin_sig_audit
-    assert audit is not None
-    assert [c.authored for c in audit.conflicts] == ["benign"]
-    assert audit.conflicts[0].opposed is True
-    # The edit moved exactly one row out of the copied bucket, and the buckets still account for
-    # every comparison — a split that did not add up would be the defect this replaces.
-    assert audit.copied == audit.compared - 1
-    assert audit.compared == audit.copied + audit.authored + len(audit.conflicts)
+    for mode in ("best_effort", "strict"):
+        result = enrich(spec, mode=mode, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+        assert result.clin_sig_not_checked is None, mode
+        assert [c.authored for c in result.clin_sig_conflicts] == ["benign"], mode
+        assert result.clin_sig_conflicts[0].opposed is True, mode
+        # Every drafted row was compared, not just the edited one: the digest is a whole-table fact,
+        # so one edit re-opens the table rather than one row. Stated because it is the cost.
+        assert result.clin_sig_comparison.compared == len(edited)
 
 
-def test_a_refinement_of_the_source_is_authored_rather_than_copied(
+def test_filling_a_genotype_stub_does_not_re_enable_the_check(
     snapshot: Path, tmp_path: Path
 ) -> None:
-    """The middle bucket, and why it is not decided on the camps.
+    """Why the digest is scoped to the checked COLUMN rather than the row.
 
-    `likely_pathogenic` where ClinVar says `pathogenic` agrees with it — no conflict, deliberately —
-    but it is not the same claim and it is not a copy. Counting it among the copies would say the
-    check could not have failed on a row a human actually wrote.
+    `clinvar_draft` leaves `genotype` as a placeholder the human is required to fill, so a
+    whole-row hash would be invalidated by the one edit every drafted module must receive — the skip
+    would never fire once. Filling the stub leaves the `clin_sig` projection untouched.
+    """
+    spec = _drafted_panel(tmp_path / "panel-stub", snapshot)
+
+    def fill(rows: list[dict]) -> None:
+        for row in rows:
+            row["genotype"] = "A/G"
+
+    _rewrite_variants(spec, fill)
+    result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    assert "drafted from" in (result.clin_sig_not_checked or "")
+
+
+def test_a_refinement_of_the_source_re_enables_the_check_without_conflicting(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """`likely_pathogenic` where ClinVar says `pathogenic` is a real edit and not a disagreement.
+
+    It moves the digest — a human wrote it, so the check must look — and then reports nothing, because
+    the two agree within one camp. Both halves matter: the old bucket split asserted the same thing by
+    counting, and this asserts it by running the check.
     """
     spec = _drafted_panel(tmp_path / "panel-refined", snapshot)
 
@@ -549,37 +554,40 @@ def test_a_refinement_of_the_source_is_authored_rather_than_copied(
         rows[0]["clin_sig"] = "likely_pathogenic"
 
     _rewrite_variants(spec, refine)
-    result = enrich(spec, mode="strict", offline=True, clinvar_cache=snapshot, use_gnomad=False)
+    result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
 
-    audit = result.clin_sig_audit
-    assert audit is not None and audit.conflicts == []
-    assert (audit.authored, audit.copied) == (1, audit.compared - 1)
+    assert result.clin_sig_not_checked is None
+    assert result.clin_sig_conflicts == []
+    assert result.clin_sig_comparison is not None and result.clin_sig_comparison.compared > 0
 
 
-def test_a_locus_wide_comparison_never_calls_a_value_copied(snapshot: Path) -> None:
-    """The ALT could not be pinned down, so a match may be the *sibling* allele's call.
+def test_a_locus_wide_comparison_reports_no_conflict_against_a_sibling_allele(
+    snapshot: Path,
+) -> None:
+    """The ALT could not be pinned down, so the comparison spans the whole locus.
 
-    `rs334`'s locus carries a pathogenic `T>A` and a likely-benign `T>G`, and a genotype naming both
-    alts leaves the check comparing against the whole locus. `pathogenic` matches a record there — but
-    saying "copied" would tell a reader no human wrote a cell a human may well have written. It lands
-    in `authored` instead, which understates rather than misattributes.
+    `rs334` carries a pathogenic `T>A` beside a likely-benign `T>G`, and a genotype naming both alts
+    leaves the check unable to say which the row is about. Agreement anywhere at the locus settles it:
+    reporting a conflict here would be a finding about a sibling allele's call.
     """
     variant = _variant("pathogenic", "A/G")
-    audit = audit_clin_sig([variant], _resolution(variant), reference=snapshot)
+    comparison = compare_clin_sig([variant], _resolution(variant), reference=snapshot)
 
-    assert audit is not None and audit.conflicts == []
-    assert (audit.copied, audit.authored) == (0, 1)
-    # Pin the contrast: the same call on the allele the row is actually about *is* a copy.
+    assert comparison is not None and comparison.conflicts == []
+    assert comparison.compared == 1
+    # The same call on the allele the row is actually about behaves identically — the verdict never
+    # depended on the provenance split that used to be counted here.
     exact = _variant("pathogenic", "A/T")
-    exact_audit = audit_clin_sig([exact], _resolution(exact), reference=snapshot)
-    assert exact_audit is not None and (exact_audit.copied, exact_audit.authored) == (1, 0)
+    exact_comparison = compare_clin_sig([exact], _resolution(exact), reference=snapshot)
+    assert exact_comparison is not None and exact_comparison.conflicts == []
+    assert exact_comparison.compared == 1
 
 
 def test_a_locus_clinvar_says_nothing_about_is_counted_not_folded_in(snapshot: Path) -> None:
     """A comparison the snapshot could not answer is its own outcome.
 
-    Folding it into `authored` would claim a human wrote something the check never looked up — the
-    same reason an empty conflict list carries its reason rather than standing alone.
+    Folding it into `compared` would claim a comparison nobody made — the same reason an empty
+    conflict list carries its reason rather than standing alone.
     """
     variant = VariantRow(
         chrom="7", start=117559590, ref="A", alts="G", genotype="A/G",
@@ -587,29 +595,35 @@ def test_a_locus_clinvar_says_nothing_about_is_counted_not_folded_in(snapshot: P
     )
     rows = [ResolutionRow(variant_key=variant.variant_key, chrom="7", start=117559590, ref="A",
                           alts="G", source="clinvar", status="resolved")]
-    audit = audit_clin_sig([variant], rows, reference=snapshot)
+    audit = compare_clin_sig([variant], rows, reference=snapshot)
 
     assert audit is not None
     assert (audit.no_record, audit.compared) == (1, 0)
     assert "1 had no ClinVar record" in str(audit)
 
 
-def test_a_hand_authored_module_gets_no_provenance_split(snapshot: Path, tmp_path: Path) -> None:
-    """`strict` on a module that never claimed a draft runs the ordinary check and reports no audit.
+def test_a_hand_authored_module_is_never_skipped_as_a_tautology(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """A module that never claimed a draft records no digest, so nothing is established and the check
+    runs in full.
 
-    A value equal to ClinVar's is *consistent with* it; calling it "copied" would assert a provenance
-    nobody established — the same false-accusation rule that keeps the gene/locus check coarse.
+    A value equal to ClinVar's is *consistent with* it; treating it as copied would assert a
+    provenance nobody established — the same false-accusation rule that keeps the gene/locus check
+    coarse, and the reason `drafted_unchanged` returns `None` rather than `True` when there is no
+    record to compare against.
     """
     spec = _spec(tmp_path / "hand-authored", "pathogenic", "A/T")
     result = enrich(spec, mode="strict", offline=True, clinvar_cache=snapshot, use_gnomad=False)
 
-    assert result.clin_sig_audit is None
-    assert (result.clin_sig_conflicts, result.clin_sig_not_checked) == ([], None)
+    assert result.clin_sig_not_checked is None
+    assert result.clin_sig_conflicts == []
+    assert result.clin_sig_comparison is not None and result.clin_sig_comparison.compared == 1
 
 
 def test_an_unusable_snapshot_says_so_rather_than_reporting_a_pass(tmp_path: Path) -> None:
     """A check that could not run is not a check that passed — and an empty conflict list alone says
-    the second. `audit_clin_sig` returns `None` rather than an audit of zeros, and the run records it."""
+    the second. `compare_clin_sig` returns `None` rather than a comparison of zeros, and the run records it."""
     import polars as pl
 
     broken = tmp_path / "unusable" / "data"

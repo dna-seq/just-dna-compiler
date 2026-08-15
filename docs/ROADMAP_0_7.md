@@ -718,9 +718,50 @@ follow mechanically once it is made; the two reserved ones do not move either wa
 
 ## RM73 — a row's provenance is unknowable in a flat CSV, and nothing closes the authoring phase
 
-**Severity** high · **Status** open — the root item; several shipped and deferred items are its
-sprouts · **Owner** format + compiler + enricher (all three tiers) · **Found by** reading RM72 on
-2026-08-14, which is the fourth item to hit the same wall from a different side
+**Severity** high · **Status** **halved on 2026-08-16** — the provenance half shipped in 0.6.0
+([outcome](ROADMAP_HISTORY.md#rm73-provenance-half--a-drafted-value-that-has-not-moved-is-a-copy-that-can-be-established));
+the **phase boundary** stays open here · **Owner** format + compiler + enricher (all three tiers) ·
+**Found by** reading RM72 on 2026-08-14, which is the fourth item to hit the same wall from a
+different side
+
+> **What shipped, so the rest is read at its real size.** The claim below is unchanged and correct:
+> a flat CSV row records nothing about how it came to be. What 0.6 established is that the question
+> the *checks* were actually asking — "is this value still a copy of the source I am about to
+> compare it against?" — does not need the phase boundary to answer. A drafting provider hashes the
+> table it wrote, projected onto the column its own cross-check later reads, and stamps the digest
+> onto the licence row it was already writing (`SourceRow.draft_digest`, `enricher/provenance.py`).
+> The check recomputes it. A match, conjoined with the release label already there, establishes the
+> copy; anything else runs the check. All three providers do it the same way, which closed two
+> unmarked tautologies (CPIC/`allele_function`, ClinPGx/`pgx_evidence_level`) that had never been
+> filed, and let RM4's expensive `strict` per-row audit be deleted rather than kept.
+>
+> **The classification is derived, never typed** — the property this item said any answer had to
+> have — and it cost one optional column on a derived table.
+>
+> What that does **not** do is close the authoring phase. It answers *did this cell move*, never
+> *is the author finished*. The rest of this item is the second question.
+
+### What is still open, after the provenance half
+
+The **phase boundary** itself: an attestation that says authoring is complete, and a compile that
+reads it. Three decisions, settled in discussion on 2026-08-16 and not yet built:
+
+- **`validate` stays read-only.** A pre-flight that stamps on every run reproduces the exact defect
+  this item levels at `verification.json` below — the record then says only *someone ran validate*.
+  Closure is a **separate, deliberate act** (a `--close` flag or its own command), and signing it
+  with the Ed25519 key `keygen`/`sign` already ship would make it attributable rather than merely
+  change-evident.
+- **Compile warns in 0.x and refuses at 1.0.** Refusing on a missing closure today breaks every
+  published module and all sixteen reference examples, which is P3. The 1.0 line is filed in
+  [ROADMAP_1_0.md](ROADMAP_1_0.md).
+- **Whatever the record is, its `reverse` behaviour is part of the decision.** `reverse_module`
+  rebuilds authored files from parquet alone: the `draft_digest` above survives a round trip because
+  it rides `sources.parquet`, and a free-standing sidecar would ride nothing and be dropped silently.
+  That is the RM51 class, and it is not a follow-up.
+
+**Re-sized.** With the tautology answered and RM76 having closed the placeholder half of R2-8, what
+remains is one signable "a human finished this" plus compile's reading of it. Still worth doing, and
+no longer the root of a growing family.
 
 ### The claim
 

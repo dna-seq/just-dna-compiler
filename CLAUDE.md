@@ -1085,6 +1085,55 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
   reason lands on `EnrichmentResult.clin_sig_not_checked` because an empty conflict list otherwise means
   both "compared everything" and "never compared". Generalize it: **when a check's inputs can share a
   source, ask whether a pass is structurally guaranteed before reporting one.**
+- **A drafted value that has not moved is a copy that can be ESTABLISHED, and the digest is scoped to
+  the CHECKED COLUMN (RM73 provenance half, 0.6).** RM4's skip was a module-level guess keyed on the
+  release label, and it named its own hole: a cell edited after the draft is no longer a copy and no
+  module-level fact can see it. Each provider now hashes the table it wrote, projected onto the column
+  its own cross-check later reads, and stamps `SourceRow.draft_digest`; the check recomputes it
+  (`enricher/provenance.py`, `DRAFT_PROJECTIONS` — three entries, guarded by a test). Seven things not
+  to redo:
+  - **Column, never row.** A ClinVar-drafted module *always* has edited rows — `genotype` is a
+    placeholder the human is required to fill — so a whole-row hash never matches and the skip never
+    fires once. Scoped to `clin_sig`, filling the stub leaves it alone and editing the call moves it.
+  - **Raw CSV cells, never loaded models.** One function serves writer and reader, because two that
+    disagreed would not fail, they would silently never match. So it must run at *draft* time, where
+    the table is full of `<<REPLACE>>` and `reject_template_placeholders` refuses to load it by design.
+    Hence no `variant_key`, no `effective_clin_sig`.
+  - **The skip is a CONJUNCTION.** The digest hashes the module's table, not the snapshot, so it is
+    silent about currency — a matching digest against a *newer* release is a real comparison. Release
+    **and** digest. A **live** source therefore never skips: no release to name.
+  - **`merge_sources_file` would have eaten it**, being never-clobber — the same rule that bit
+    `dataset` and produced `withdraw_stale_dataset`, one column over. `stamp_draft_digest` restamps
+    explicitly, and unlike `dataset` it **re-labels rather than withdraws**: one column cannot name two
+    releases, but a digest describes the table as it now stands whatever produced it.
+  - **Outside `SOURCE_FACT_FIELDS`**, unlike `dataset`. Which release the annotations came from is part
+    of the row's claim about the source; how this module was built is not, and it moves on every
+    re-draft. `sources.signature` moves nowhere; `content_signature` untouched.
+  - **It closed two tautologies nobody had filed**, which is the reason to audit by *check* rather than
+    by provider: `pgx_draft` writes `function_status` out of CPIC and the PGx check compares that
+    column against CPIC; `clinpgx_draft` writes `evidence_level` out of ClinPGx and the ClinPGx check
+    compares that. Both published a guaranteed `findings=0` into `verification.json` — RM4's
+    misinformation inside RM45's proof-of-worked attestation. CPIC was also the only provider recording
+    **no `dataset`**; it stamps one now. In `enrich_pgx` the skip is **per leg** so PharmVar still runs,
+    and `tautology` sits **last** in `_SKIP_PRECEDENCE` (an absence a reader can act on outranks a
+    comparison that could not have failed).
+  - **What went away is the point as much as what arrived.** `ClinSigAudit`, the
+    copied/authored/no_record bucketing, `clin_sig_audit` and the `mode != "strict"` branch are
+    deleted; the check behaves identically in both modes. It changed no verdict — the `copied` bucket
+    was an early exit *before* the camp logic, and an exact match agrees with itself. Standing limit:
+    a row hand-authored **before** a later re-draft is covered by the new stamp and escapes.
+  **The phase boundary is still open** (RM73 in ROADMAP_0_7, re-sized): validate stays read-only,
+  closure is a separate deliberate sign, compile warns in 0.x and refuses at 1.0.
+- **`annotations.parquet` carries `genotype` AND keys on it (RM80, 0.6).** `variant_key` is not unique
+  there and never could be — poly-effect is real — so the consumer's other option (carry what
+  distinguishes the rows) was the only one. Carrying it *without* keying on it would be worse than the
+  gap: two genotypes sharing a conclusion collapse under the old variant-effect key, so the survivor
+  would name one genotype while standing for both, turning a missing answer into a wrong one. With it
+  in the key the dedup is provably a no-op (`(variant_key, genotype)` is `VariantRow`'s natural key and
+  duplicates are rejected), kept anyway so the function does not silently lean on another's guarantee.
+  Reverse reads **which** of three keyings an artifact carries (`ann_key_columns`) instead of one bool,
+  and the genotype reconstruction had to move *above* the annotation probe, since `weights.parquet`
+  stores the allele list plus `phased` rather than the authored cell.
 - **The marker for that skip is MACHINE-written, and `panel:` is deprecated with it (RM4, 0.6).** The
   skip used to key on the author's `panel:` pin. The claim being established is *provenance* — these
   rows came from this snapshot — and the tool that copied them is the authority on it, so
