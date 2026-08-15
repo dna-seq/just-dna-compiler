@@ -15,7 +15,7 @@ from just_dna_enricher.clinpgx_draft import (
     _authored_genotype,
     _meets_level,
     _rows_from_snapshot,
-    _split_drugs,
+    _split_cell,
     _symbolic_types,
     draft_pharm_variants,
 )
@@ -94,10 +94,120 @@ def test_the_evidence_floor_keeps_unknown_levels() -> None:
     assert _meets_level(None, "1A") and _meets_level("weird", "1A")
 
 
-def test_split_drugs_keeps_first_occurrence_order() -> None:
+def test_split_cell_keeps_first_occurrence_order() -> None:
     """Emitted order is digest-visible, so it must be stable and not set-derived."""
-    assert _split_drugs("b;a;b;c") == ["b", "a", "c"]
-    assert _split_drugs(None) == []
+    assert _split_cell("b;a;b;c") == ["b", "a", "c"]
+    assert _split_cell(None) == []
+
+
+#: The multi-gene shape, taken from the snapshot rather than invented (R2-1). `rs17886199` really is
+#: published as `PRSS53;VKORC1`, and it really is one of the 3 rows `--gene VKORC1` used to drop.
+_MULTI_GENE = [
+    {"annotation_id": "10", "rsid": "rs17886199", "gene": "PRSS53;VKORC1", "genotype": "CC",
+     "evidence_level": "3", "phenotype_category": "Dosage", "drugs": "warfarin"},
+    {"annotation_id": "11", "rsid": "rs4149056", "gene": "SLCO1B1", "genotype": "CC",
+     "evidence_level": "1A", "phenotype_category": "Metabolism/PK", "drugs": "simvastatin"},
+    {"annotation_id": "12", "rsid": "", "gene": "CYP2D6", "genotype": "AG",
+     "evidence_level": "1A", "phenotype_category": "Efficacy", "drugs": "codeine"},
+]
+
+
+def test_a_gene_filter_matches_a_member_and_not_the_whole_cell() -> None:
+    """`--gene VKORC1` must find VKORC1 inside `PRSS53;VKORC1` (R2-1).
+
+    The old filter tested the whole cell against the requested set, so a real VKORC1 annotation was
+    dropped in silence — the CPIC `gene.chr` shape, a claim true of the cell and false of the column.
+    """
+    rows, _ = _rows_from_snapshot(
+        _MULTI_GENE, genes=["VKORC1"], drugs=(), min_evidence_level=None
+    )
+    assert [r.rsid for r in rows] == ["rs17886199"]
+    # …and the written cell is the member the request selected, not the source's joined string,
+    # which is a non-symbol in a column documented as a symbol.
+    assert [r.gene for r in rows] == ["VKORC1"]
+
+
+def test_an_unselected_multi_gene_cell_is_withheld_and_reported() -> None:
+    """With nothing to select by, the cell is left empty and the author is told which genes it named.
+
+    Withholding rather than writing `PRSS53;VKORC1` is the house answer for a value the column
+    cannot hold: an empty cell reads as *not stated*, which is weaker than the truth; the joined
+    cell is false about its own column and matches no consumer's gene filter. The row is still
+    drafted — only the one column is withheld.
+    """
+    rows, warnings = _rows_from_snapshot(_MULTI_GENE, genes=(), drugs=(), min_evidence_level=None)
+    by_rsid = {r.rsid: r.gene for r in rows}
+    assert by_rsid["rs17886199"] is None
+    assert by_rsid["rs4149056"] == "SLCO1B1"  # a single-gene cell is untouched
+    withheld = next(w for w in warnings if "empty `gene`" in w)
+    assert "PRSS53;VKORC1" in withheld
+
+
+def test_two_requested_members_in_one_cell_select_nothing() -> None:
+    """Asking for both genes of one cell restores the ambiguity, so the answer is withhold again.
+
+    Position cannot break the tie: the pharmacogene is first in `CYP3A5;ZSCAN25` and second in
+    `PRSS53;VKORC1`, so "take the first" would be right half the time and silent about it.
+    """
+    rows, _ = _rows_from_snapshot(
+        _MULTI_GENE, genes=["VKORC1", "PRSS53"], drugs=(), min_evidence_level=None
+    )
+    assert [(r.rsid, r.gene) for r in rows] == [("rs17886199", None)]
+
+
+def test_the_unidentified_count_is_scoped_to_the_requested_genes() -> None:
+    """`skipped_unidentified` must count within `--gene`, not across the whole database (R2-11).
+
+    The rsID check used to run before the gene filter, so the "records the source could not
+    identify" number was inflated by every unrequested gene — which destroys the one thing it is
+    for, judging whether the source's coverage of *your* gene is poor. Here `rs17886199` and the
+    rsID-less CYP2D6 record are both present; asking for VKORC1 must report neither as unidentified.
+    """
+    _, filtered = _rows_from_snapshot(
+        _MULTI_GENE, genes=["VKORC1"], drugs=(), min_evidence_level=None
+    )
+    assert not [w for w in filtered if "no rsID" in w]
+
+    # Unfiltered, the same record is genuinely unidentifiable and is still reported — the fix is
+    # the scope of the count, not the removal of the check.
+    _, everything = _rows_from_snapshot(_MULTI_GENE, genes=(), drugs=(), min_evidence_level=None)
+    assert [w for w in everything if "no rsID" in w] == [
+        "1 annotation(s) skipped: carrying no rsID, so nothing this format can key on."
+    ]
+
+
+@_needs_snapshot
+def test_the_real_snapshot_yields_the_rows_the_whole_cell_filter_hid(tmp_path: Path) -> None:
+    """Against the real snapshot, computed rather than recalled: the hidden rows are now drafted.
+
+    The expectation is derived from the parquet in the same test, so it cannot rot into a hardcoded
+    count read off a dump — what is asserted is the *relationship*, that per-member matching is a
+    strict superset of whole-cell matching and that the difference is exactly the `;` rows.
+    """
+    import duckdb
+
+    parquet = str(_SNAPSHOT / "data" / "annotations.parquet")
+    con = duckdb.connect()
+    hidden = {
+        r[0]
+        for r in con.sql(
+            f"select distinct rsid from '{parquet}' "
+            "where gene like '%;%' and ';' || upper(gene) || ';' like '%;VKORC1;%' and rsid <> ''"
+        ).fetchall()
+    }
+    assert hidden, "snapshot carries no multi-gene VKORC1 row; the probe this test encodes is stale"
+
+    draft_pharm_variants(
+        tmp_path, snapshot=_SNAPSHOT, genes=["VKORC1"], declared_use="non_commercial"
+    )
+    rows, errors, _ = _load_csv_rows(
+        tmp_path / "pharm_variants.csv", PharmVariantRow, "pharm_variants.csv"
+    )
+    assert errors == []
+    drafted = {r.rsid for r in rows}
+    assert hidden <= drafted
+    # every drafted row names VKORC1 or names nothing — never the joined cell
+    assert {r.gene for r in rows} <= {"VKORC1", None}
 
 
 def test_a_commercial_declaration_refuses_before_reading_anything(tmp_path: Path) -> None:

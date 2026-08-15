@@ -18,6 +18,7 @@ module, and silently dropping the coordinate produces a different row than the a
 both are design decisions, and the enricher reports rather than repairs.
 """
 
+import csv
 from pathlib import Path
 
 import httpx
@@ -43,10 +44,18 @@ _DIPLOTYPES = [
      "totalactivityscore": "1.0"},
 ]
 _DEFINITIONS = [{"id": 1, "genesymbol": "CYP2C19", "name": "*2"}]
+#: **The key is `sequence_location`, and it was `location` until R2-3.** `cpic.defining_variants`
+#: reads `r.get("sequence_location")` — the same name its PostgREST `select` asks for — so the nested
+#: dict was always `{}` and every claim this file makes about "one defining variant carrying a
+#: coordinate" was hollow: the drafted haplotype row had no position, and the file passed either way.
+#: Third instance of the class after S21's registry and D6-2's `_MOVABLE` — a guard proving less than
+#: its name says. `test_the_cpic_provider_warns_and_still_drafts` now asserts the coordinate reaches
+#: `haplotypes.csv`, which is what makes the key matter.
 _LOCATIONS = [
     {"alleledefinitionid": 1, "variantallele": "A",
-     "location": {"chromosomelocation": "NC_000010.11:g.94781859G>A",
-                  "position": 94781859, "dbsnpid": "rs4244285", "genesymbol": "CYP2C19"}},
+     "sequence_location": {"chromosomelocation": "NC_000010.11:g.94781859G>A",
+                           "position": 94781859, "dbsnpid": "rs4244285",
+                           "genesymbol": "CYP2C19"}},
 ]
 
 
@@ -122,6 +131,14 @@ def test_the_cpic_provider_warns_and_still_drafts(tmp_path: Path) -> None:
     assert not result.skipped
     assert (spec / "allele_function.csv").is_file()
 
+    # **The row the warning is about must actually exist** (R2-3). Without this the file asserted a
+    # message and never checked that the coordinate the message warns about was written — and with
+    # the fixture's location key misspelled, it was not. `94781859` is CPIC's GRCh38 position for
+    # `rs4244285`; the point of the warning is that it lands in a module declaring GRCh37.
+    haplotypes = list(csv.DictReader((spec / "haplotypes.csv").open()))
+    starred = [r for r in haplotypes if r["allele"] == "A"]
+    assert [(r["chrom"], r["start"], r["rsid"]) for r in starred] == [("10", "94781859", "rs4244285")]
+
 
 def test_the_default_build_draft_is_unchanged(tmp_path: Path) -> None:
     """The GRCh38 path emits no build warning at all — the regression guard on the fix itself."""
@@ -129,3 +146,4 @@ def test_the_default_build_draft_is_unchanged(tmp_path: Path) -> None:
         _spec(tmp_path, "GRCh38"), "CYP2C19", client=_client(), declared_use="non_commercial"
     )
     assert not [w for w in result.warnings if "coordinates and this module declares" in w]
+

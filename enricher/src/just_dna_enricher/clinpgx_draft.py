@@ -23,6 +23,13 @@ is one annotation), and `drug` is singular, so one snapshot record becomes one r
 share an `annotation_id` and key distinctly, which is correct: PharmGKB really is saying the same
 thing about three drugs.
 
+**One annotation also names several genes, and that one cannot become several rows.** `gene` is
+`;`-joined by the same dialect (`PRSS53;VKORC1`) but sits **outside** the dedup key, so copies would
+collide where the drug copies do not. `--gene` matches per member — it used to test the whole cell,
+silently dropping the 3 VKORC1 rows hiding inside `PRSS53;VKORC1` — and the written cell is the
+member the request selects, or empty when nothing selects one. `_authored_gene` carries the
+argument.
+
 Skipped, with a warning rather than a coercion: haplotype-keyed genotypes (`*1`, `*1/*1`) belong on
 `DiplotypeRow`, and symbolic alleles (`del/del`) carry no length. Both are the policy `pgx_draft`
 already set. **The second reason changed in 0.6 and the distinction is worth keeping straight**: the
@@ -54,8 +61,19 @@ _TWO_BASE = re.compile(r"^[ACGT]{2}$")
 #: grammar that accepted every source's spelling would owe every consumer the same union.
 _CLINPGX_SYMBOLIC: dict[str, str] = {"del": "DEL", "ins": "INS", "dup": "DUP"}
 
-#: ClinPGx joins the drugs one annotation covers with `;`.
-_DRUG_SEP = ";"
+#: ClinPGx joins the drugs one annotation covers with `;` — **and the genes too** (R2-1). The drug
+#: half was known and handled from the first release; the gene half was not, and both readers here
+#: treated the whole cell as one symbol. Probed against the provisioned snapshot: **396 of 16,087
+#: rows** carry a `;` in `gene` (`IFNL3;IFNL4` ×51, `ANKK1;DRD2` ×24, `CYP2A7P1;CYP2B6` ×18), which
+#: is the CPIC `gene.chr` lesson again — a claim true of the *cell* and false of the *column*.
+#:
+#: The two halves are not symmetric, and the asymmetry is the whole design here. `drug` is singular
+#: **and outside no key**: it is *in* `PharmVariantRow`'s dedup key, so one record legitimately
+#: becomes one row per drug. `gene` is singular and **outside** that key, so the same move is
+#: illegal — N rows for N genes collide on
+#: `(variant_key, drug, genotype, phenotype_category, annotation_id)` and the compiler refuses the
+#: module. See `_authored_gene` for what is written instead.
+_SEP = ";"
 
 
 @dataclass
@@ -125,16 +143,26 @@ def _rows_from_snapshot(
     warnings: list[str] = []
     skipped_haplotype = skipped_symbolic = skipped_unidentified = 0
     skipped_other = skipped_gene = 0
+    withheld_gene: list[str] = []
 
     for record in records:
+        # **The `--gene` filter runs first, and that ordering is the fix for R2-11.** It used to sit
+        # below the rsID check, so a record with no rsID from a gene the author never asked about
+        # incremented `skipped_unidentified` — and the reported "records the source could not
+        # identify" count was inflated by the whole rest of the database on any `--gene` draft,
+        # which destroys the one thing that number is for: judging whether the source's coverage of
+        # *your* gene is poor. Every skip counter below now counts within the requested scope.
+        gene_members = _split_cell(record.get("gene"))
+        if wanted_genes and not any(m.upper() in wanted_genes for m in gene_members):
+            skipped_gene += 1
+            continue
         rsid = (record.get("rsid") or "").strip()
         if not rsid:
             skipped_unidentified += 1
             continue
-        gene = (record.get("gene") or "").strip() or None
-        if wanted_genes and (gene or "").upper() not in wanted_genes:
-            skipped_gene += 1
-            continue
+        gene = _authored_gene(gene_members, wanted_genes)
+        if gene is None and len(gene_members) > 1:
+            withheld_gene.append(_SEP.join(gene_members))
         raw_genotype = (record.get("genotype") or "").strip()
         genotype = _authored_genotype(raw_genotype)
         if genotype is None:
@@ -149,7 +177,7 @@ def _rows_from_snapshot(
             continue
         category = _normalize_category(record.get("phenotype_category"))
         annotation_id = (record.get("annotation_id") or "").strip() or None
-        for drug in _split_drugs(record.get("drugs")):
+        for drug in _split_cell(record.get("drugs")):
             if wanted_drugs and drug.lower() not in wanted_drugs:
                 continue
             rows.append(
@@ -204,19 +232,75 @@ def _rows_from_snapshot(
     ):
         if count:
             warnings.append(f"{count} annotation(s) skipped: {what}.")
+    if withheld_gene:
+        # Aggregated by *cell*, not one line per row — the collapse rule this package has now needed
+        # five times. The cells are named because the author's remedy is to fill the column by hand,
+        # and they cannot do that without knowing which genes the source offered.
+        cells = sorted(set(withheld_gene))
+        warnings.append(
+            f"{len(withheld_gene)} annotation(s) drafted with an empty `gene`: ClinPGx names "
+            f"several genes in one cell ({', '.join(cells[:5])}"
+            f"{f' and {len(cells) - 5} more' if len(cells) > 5 else ''}) and `gene` holds one "
+            "symbol. Narrowing with --gene picks the member you asked for; otherwise the cell is "
+            "left empty rather than written as a symbol no gene filter will match. The rows are "
+            "drafted either way — only the gene column is withheld."
+        )
     return rows, warnings
 
 
-def _split_drugs(raw: str | None) -> list[str]:
-    """The `;`-joined drug list, de-duplicated, first-occurrence order (emitted order is digest-visible)."""
+def _split_cell(raw: str | None) -> list[str]:
+    """A `;`-joined ClinPGx cell, de-duplicated, first-occurrence order.
+
+    First-occurrence rather than sorted because emitted row order is digest-visible, and shared by
+    `drugs` and `gene` because it is one dialect: the separator does not change meaning between two
+    columns of the same table. What differs is what the caller may *do* with the members — see
+    `_authored_gene`.
+    """
     if not raw:
         return []
     seen: dict[str, None] = {}
-    for token in str(raw).split(_DRUG_SEP):
+    for token in str(raw).split(_SEP):
         cleaned = token.strip()
         if cleaned:
             seen.setdefault(cleaned, None)
     return list(seen)
+
+
+def _authored_gene(members: Sequence[str], wanted_genes: set[str]) -> str | None:
+    """Which single symbol a multi-gene ClinPGx cell may be written down as, if any.
+
+    `PharmVariantRow.gene` is described as *"Gene symbol, e.g. VKORC1"* and is singular. A cell
+    naming several is the source saying something this column cannot hold, so the question is the
+    one `unusable_allele_reason` and `map_function_status` answer elsewhere: transcribe what is
+    holdable, and report the rest rather than coercing it.
+
+    Three candidates, and only one survives:
+
+    * **Write the cell verbatim** (`PRSS53;VKORC1`) — what this provider did until R2-1. It is a
+      non-symbol in a column documented as a symbol, so every consumer's gene filter misses it for
+      exactly the reason ours did, and nothing anywhere rejects it.
+    * **One row per gene** — illegal, not merely undesirable. `gene` is outside
+      `PharmVariantRow`'s dedup key, so the copies collide on
+      `(variant_key, drug, genotype, phenotype_category, annotation_id)` and the compiler refuses
+      the module. This is the structural difference from `drugs`, which *is* in the key.
+    * **Pick a member from the cell alone** — there is no rule to pick by. The pharmacogene is
+      first in `CYP3A5;ZSCAN25`, second in `ANKK1;DRD2`, `CYP2A7P1;CYP2B6` and `PRSS53;VKORC1`, so
+      position orders nothing and "the one that matters" is a judgement about pharmacology this
+      tier does not get to make.
+
+    What is left is the CPIC `gene.chr` move — a **lookup in what the caller already stated**, not
+    an inference. Under `--gene VKORC1` the request selects exactly one member of `PRSS53;VKORC1`,
+    and writing it asserts only what the source asserts (this annotation names VKORC1). With no
+    request, or with a request selecting two members of one cell, nothing selects, and the answer is
+    the house one: **withhold**, and say so. An empty cell reads as *not stated*, which is weaker
+    than the truth but is not false; the verbatim cell is false about its own column.
+    """
+    if len(members) == 1:
+        return members[0]
+    if not members:
+        return None
+    selected = [m for m in members if m.upper() in wanted_genes]
+    return selected[0] if len(selected) == 1 else None
 
 
 #: PharmGKB's levels, strongest first. Ordering them is a *presentation* of a published ranking, not
