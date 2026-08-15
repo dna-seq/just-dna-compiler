@@ -5492,20 +5492,57 @@ def _genome_build_from_artifact(parquet_dir: Path) -> str | None:
         return None
 
 
-def _artifact_records_verification(parquet_dir: Path) -> bool:
-    """Did this artifact's manifest carry a verification block — i.e. is reverse about to drop one?
+def _artifact_verification(parquet_dir: Path) -> Verification | None:
+    """The verification block reverse is about to drop, if the artifact carried one.
+
+    Returns the block rather than a bool because **what is being lost decides what to say**. A
+    document may carry checks, a closure (RM73), or both, and the remedies are different parties'
+    jobs: re-running the enricher re-attests the checks, and only the author can close the module
+    again. A single sentence naming the enricher was correct while checks were the only content and
+    became a correct sentence aimed at the wrong defect the moment a closure could ride alone — which
+    is now thirteen of the sixteen reference examples. That is the RM77 class, and the compile-side
+    stale message already branches the same way.
 
     Tolerant in the same way and for the same reason as the build recovery above: an unreadable
-    manifest is a provenance failure, and a provenance failure must not stop a reverse. A `False`
-    here only ever costs the warning.
+    manifest is a provenance failure, and a provenance failure must not stop a reverse. A `None` here
+    only ever costs the warning.
     """
     path = parquet_dir / "manifest.json"
     if not path.is_file():
-        return False
+        return None
     try:
-        return read_manifest(path).verification is not None
+        return read_manifest(path).verification
     except (OSError, ValueError):
-        return False
+        return None
+
+
+def _verification_loss_notice(block: Verification) -> str:
+    """What the reversed spec loses with the attestation, and whose job it is to put it back."""
+    if not block.checks:
+        return (
+            "The source artifact carries a verification attestation (RM73) holding a closure and no "
+            "checks, and the reversed spec will not: the document is not in the artifact, so there is "
+            "nothing for reverse to read, and it holds no authority to declare someone else's "
+            "authoring finished. Close %s yourself once you are satisfied with it; recompiling as-is "
+            "produces a manifest with no `verification` block and warns that the module is open."
+        )
+    checks = (
+        "the checks were put by the enricher, against sources this tier does not reach, and the "
+        "record is bound to authored bytes reverse is re-emitting. Re-run the enricher on %s to "
+        "re-attest"
+    )
+    if block.closure is not None:
+        return (
+            "The source artifact carries a verification attestation (RM45) with a closure (RM73) and "
+            "the reversed spec will carry neither: " + checks + ", and close it yourself — reverse "
+            "holds no authority to declare someone else's authoring finished. Recompiling as-is "
+            "produces a manifest with no `verification` block."
+        )
+    return (
+        "The source artifact carries a verification attestation (RM45) and the reversed spec "
+        "will not: " + checks + "; recompiling as-is produces a manifest with no "
+        "`verification` block."
+    )
 
 
 def reverse_module(
@@ -5587,15 +5624,9 @@ def reverse_module(
     # `manifest.compilation.warnings` — a surface consumers parse (RM44) — differs between a module
     # and its own round trip with nothing edited. Losing a record of what was checked is acceptable;
     # losing it invisibly is the S16 silent-success shape.
-    if _artifact_records_verification(parquet_dir):
-        logger.warning(
-            "The source artifact carries a verification attestation (RM45) and the reversed spec "
-            "will not: the checks were put by the enricher, against sources this tier does not "
-            "reach, and the record is bound to authored bytes reverse is re-emitting. Re-run the "
-            "enricher on %s to re-attest; recompiling as-is produces a manifest with no "
-            "`verification` block.",
-            output_dir,
-        )
+    dropped_verification = _artifact_verification(parquet_dir)
+    if dropped_verification is not None:
+        logger.warning(_verification_loss_notice(dropped_verification), output_dir)
 
     default_curator = "unknown"
     default_method = "unknown"

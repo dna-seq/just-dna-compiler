@@ -54,9 +54,10 @@ class ClosureResult(BaseModel):
     dropped_checks: list[str] = Field(
         default_factory=list,
         description=(
-            "Check records discarded because they had been attested over different authored bytes. "
-            "Re-binding them would claim a check was put against rows it never saw, so they are "
-            "dropped and named rather than carried across."
+            "Check records discarded because they had been attested over different authored bytes, or "
+            "because the attestation carrying them no longer holds. Re-binding them would claim a "
+            "check was put against rows it never saw, so they are dropped and named rather than "
+            "carried across."
         ),
     )
     errors: list[str] = Field(default_factory=list)

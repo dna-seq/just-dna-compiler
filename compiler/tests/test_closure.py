@@ -21,6 +21,7 @@ from just_dna_compiler.compiler import (
     authored_input_entries,
     close_module,
     compile_module,
+    reverse_module,
     validate_spec,
 )
 from just_dna_format import verification as verification_module
@@ -272,6 +273,56 @@ def test_closing_does_not_claim_to_have_put_the_checks_it_kept(tmp_path: Path) -
     assert after.produced_at == "2026-08-13T23:45:01Z"
     assert after.nonce == before.nonce
     assert after.model_copy(update={"closure": None}) == before, "only the closure was added"
+
+
+def test_reverse_names_the_closure_it_drops_and_says_whose_job_it_is(
+    tmp_path: Path, caplog
+) -> None:
+    """The warning has to describe what was actually lost, not what usually is.
+
+    Reverse cannot re-emit the attestation, and its notice said *the checks were put by the enricher …
+    re-run the enricher to re-attest*. That was exact while checks were the only content and became a
+    correct sentence aimed at the wrong defect the moment a closure could ride alone — which is now
+    thirteen of the sixteen reference examples. Re-running the enricher does not re-close a module and
+    could not: only the author may say authoring is finished, and reverse holds no standing to say it
+    for them. The RM77 class, on the surface RM73 just changed.
+    """
+    spec = _open_module(tmp_path)
+    assert close_module(spec).closed
+    _compile(spec, tmp_path / "a1")
+
+    with caplog.at_level("WARNING", logger="just_dna_compiler.compiler"):
+        reverse_module(tmp_path / "a1", tmp_path / "rev")
+    dropped = [r.getMessage() for r in caplog.records if "verification attestation" in r.getMessage()]
+    assert len(dropped) == 1, caplog.records
+    assert "closure" in dropped[0] and "Close" in dropped[0]
+    assert "Re-run the enricher" not in dropped[0], "there were no checks to re-attest"
+
+    # And the loss is real, so the assertion cannot pass on the sentence alone.
+    assert not (tmp_path / "rev" / VERIFICATION_JSON).exists()
+    reversed_compile = _compile(tmp_path / "rev", tmp_path / "a2")
+    assert reversed_compile.manifest.verification is None
+    assert len(_closure_warnings(reversed_compile.warnings)) == 1
+
+
+def test_reverse_names_both_when_the_document_carried_both(tmp_path: Path, caplog) -> None:
+    """Checks and a closure are two losses with two different parties to fix them."""
+    spec = _open_module(tmp_path)
+    write_verification(
+        attest(
+            [VerificationRecord(check="rsid_currency", subjects=7, findings=0)],
+            module_binding(authored_input_entries(spec)),
+        ),
+        spec / VERIFICATION_JSON,
+    )
+    assert close_module(spec).closed
+    _compile(spec, tmp_path / "a1")
+
+    with caplog.at_level("WARNING", logger="just_dna_compiler.compiler"):
+        reverse_module(tmp_path / "a1", tmp_path / "rev")
+    dropped = [r.getMessage() for r in caplog.records if "verification attestation" in r.getMessage()]
+    assert len(dropped) == 1
+    assert "Re-run the enricher" in dropped[0] and "close it yourself" in dropped[0]
 
 
 # ── The corpus ───────────────────────────────────────────────────────────────────────────────────
