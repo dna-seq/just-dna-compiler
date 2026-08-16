@@ -355,6 +355,43 @@ across the two namespaces. Unknown withholds. And the cardinality finding is sco
 *have* a companion column: `callable_from`/`quality_from` did not get one in 0.6, and telling an author
 to fill a column the schema does not have would be a finding no edit could clear.
 
+### And a fifth — a site annotated for some of its genotypes and not the rest (S32, 0.6)
+
+Not a schema limit at all: this one is entirely visible in the authored rows, and nothing but a check
+was ever missing. A consumer matches a subject on `(variant, genotype)`, so a genotype with no row is a
+subject with no answer — and the consumer who reported it found a curated 520-site module authoring no
+homozygous-alternate genotype at 208 of them, with their subject homozygous at 74. Every one was
+silently unreported.
+
+`_check_genotype_coverage` fires **only at a site the module already annotates for two or more
+genotypes**, and that scope is the design rather than a tuning choice. One genotype at a site is the
+ordinary shape of a drafted-then-curated module — `pathogenic_clinvar` authors exactly one at 326 of its
+327 sites — and it is a legitimate rule, not a gap; reporting those would put a line on almost every
+module in existence, which is how a warning stops being read. Two or more is the author demonstrating
+that the genotype *space* at that site is what they are describing, and the missing member is then a
+hole in something they started. It expects the reference homozygote, one heterozygote per alternate and
+one homozygote per alternate, and **never** an alternate/alternate pair — RM35's jointly-satisfiable
+lesson, since requiring `A/T` would make a two-alternate site unreachable. The reference allele comes
+from the row or from the injected table, never from a guess: with neither, a two-allele site is still
+enumerable and is reported by spelling, and a site with three or more alleles is skipped. Sites whose
+genotypes are not diploid nucleotide pairs drop out on their own, which is what keeps MT and non-PAR Y
+out without a contig list.
+
+**It says nothing about any callset, and that boundary is the item's own.** Whether a hom-ref row can
+ever match is a property of the data a consumer brings — a variant-only VCF emits no record where the
+sample matches the reference, a gVCF and an array both do — so that call belongs to the annotator. The
+*presence* of a hom-ref row is therefore never reported: those rows are correct, and on array data they
+are the ones that carry the answer. Warning in both modes and never a `strict` error, joining the small
+set of checks that arbitrate nothing (the ClinVar `clin_sig` cross-check, the declared-licence
+disagreement, the non-commercial quote): which genotypes a module annotates is the curator's judgement.
+
+It runs in `validate_spec` **only**, and reaches a compile through the warnings it returns — the message
+carries a count, and after resolution a one-to-many rsID has become one row per locus, so a second pass
+would publish a second, differently numbered copy of the same finding into
+`manifest.compilation.warnings`. Three reference examples fire it, each truthfully:
+`grch37_build` and `hfe_hemochromatosis` state a carrier and a homozygote and no reference homozygote,
+and `pathogenic_clinvar` states both HBB heterozygotes at 11:5225715 and neither homozygote.
+
 ### Hints are not a fourth validation class
 
 `hints.py` computes nothing the compiler does not already compute — it reuses `validate_bins`,

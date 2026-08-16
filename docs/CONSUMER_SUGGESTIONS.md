@@ -205,6 +205,51 @@ is a cost we had not considered. We raise the corpus half only because it surviv
 
 ## S32 — hom-ref rows are correct data that our callset cannot supply, and we nearly filed them as dead weight
 
+**Status — ask (1) shipped in 0.6.0; ask (2) was already true and we should have said where; the
+callset question is deflected, and that is a routing decision rather than a deferral.**
+
+**(1) The warning exists.** `_check_genotype_coverage` reports, per reason, the genotypes a site has no
+row for — the reference homozygote, a heterozygote, a homozygous alternate — with a count of genotypes
+*and* of sites, since one two-alternate locus can be missing two of them. It fires **only at a site the
+module already annotates for two or more genotypes**, and that scope is the whole design: one genotype
+at a site is a rule that fires on the call the author cares about, and `pathogenic_clinvar` is in that
+shape at 326 of its 327 sites, so the wider version would put a line on nearly every module ever
+drafted. Two or more is you having shown the genotype space is what you are describing. It warns in
+both modes and never fails a compile — which genotypes to annotate is the curator's judgement.
+
+Dogfooded on our own corpus before shipping, and it found three real instances there, which is the part
+worth telling you: `grch37_build` and `hfe_hemochromatosis` state a carrier and a homozygote and no
+reference homozygote, and `pathogenic_clinvar` states both HBB heterozygotes at 11:5225715 and neither
+homozygote — so a subject homozygous for a pathogenic HBB allele matched nothing, in our flagship
+example, for the same reason your 74 sites did. It never demands an alternate/alternate pair (RM35's
+unsatisfiable-triangle lesson), it takes the reference allele from the row or from `resolution.csv` and
+never guesses one, and sites whose genotypes are not diploid nucleotide pairs drop out on their own —
+which is how MT and non-PAR Y stay out with no contig list.
+
+**(2) `requires_callable` is populated, in three reference examples, and has been since 0.5.** Your
+corpus does not carry it; ours does — `mt_common_deletion` and `mt_heteroplasmy` set
+`requires_callable=true` with `callable_from=FORMAT/DP` on every row, and `shox_par1` sets the bare flag
+on all ten. `pgx_slco1b1_simvastatin` cannot: the column is `VariantRow`-only, so no PGx table can state
+it, which is filed as RM70 and is the gap your example choice happened to land on. So the round trip you
+want to implement against has a target today, and the missing piece for the PGx half is named.
+
+**(3) The callset question is not ours to answer, and your own framing had already reached that.**
+Which annotation path works against a chosen data input — variant-only VCF, gVCF, array, joint-called
+cohort — is the **annotator's** determination, not the format's, and the module cannot know it. So we
+are not building the module-level "evaluate me against a callset that can express the reference
+genotype" claim you named, and we are not warning on the *presence* of hom-ref rows either: your own
+report is the argument, since those rows are correct and are what make a module work on array data.
+Restoration and imputation both sit on your side of that line for the same reason, and your instinct to
+rank them apart is the one this repo would apply too — one is deterministic given callability evidence
+and the other is a probabilistic call, and a single rendering for both is what makes a manufactured
+reassurance possible. What the format owes you is the row-level statement (`requires_callable` /
+`callable_from`) and the honesty about what the table does *not* contain, which is ask (1).
+
+Note the check needs no notion of reachability, exactly as you said — it fires on what the author wrote,
+which is the only thing the compiler can see, and its message deliberately says "matches no row in this
+module" rather than anything about a file.
+<!-- triaged: 0.6.0 -->
+
 Reported from **just-dna-lite** (consuming 0.5.4), 2026-08-16, same run as S31.
 
 **What we ran.** The same twelve-module annotation of the same variant-only WGS genome.

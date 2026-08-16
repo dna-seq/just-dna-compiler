@@ -152,6 +152,7 @@ from just_dna_format.verification import (
     write_verification,
 )
 from just_dna_format.vocab import (
+    ALLELE_PATTERN,
     VALID_ELEMENT_RULES,
     VCF_COLLIDING_KEYS,
     VCF_COLLISION_REASONS,
@@ -2022,6 +2023,149 @@ def _check_allele_membership(
     return errors, warnings_out
 
 
+def _site_reference_allele(
+    rows: list[VariantRow], site_key: str, resolution_table: dict[str, list[ResolutionRow]]
+) -> str | None:
+    """Which allele is the reference at this site, or `None` when nothing establishes it.
+
+    Authored `ref` first, then the injected table — and the table half is what makes the check work at
+    all on an rsid-authored module, where no row carries a coordinate and the site key *is* the rsID,
+    which is exactly the key `resolution.csv` is written under. Withheld rather than guessed on a
+    disagreement, because the classification below turns a missing genotype into a sentence naming
+    which allele a subject would have to carry, and that is a claim about a row.
+    """
+    authored = {row.ref.upper() for row in rows if row.ref}
+    if len(authored) == 1:
+        return authored.pop()
+    if authored:
+        return None  # two rows disagree — `_cross_validate_variants` owns that finding, not this one
+    resolved = {r.ref.upper() for r in resolution_table.get(site_key, []) if r.ref}
+    return resolved.pop() if len(resolved) == 1 else None
+
+
+def _check_genotype_coverage(
+    variants: list[VariantRow], resolution_table: dict[str, list[ResolutionRow]]
+) -> list[str]:
+    """A site the module annotates for some of its genotypes and not the rest (S32).
+
+    A consumer joins a module on `(variant, genotype)`, so a genotype with no row is a subject with no
+    answer. `longevitymap` — a curated Gen-I module, 520 sites — authors **no** homozygous-alternate
+    genotype at 208 of them, and the reporting consumer's subject was homozygous at 74; every one was
+    silently unreported, and nothing in the toolchain said so. That is a curation gap the compiler can
+    see, because it is entirely a property of the authored rows.
+
+    **Scoped to sites authoring two or more genotypes, and that is the whole of the design.** A site
+    with exactly one is the ordinary shape of a drafted-then-curated module — `pathogenic_clinvar`
+    authors one genotype at 326 of its 327 sites — and it is a legitimate one: a rule that fires on the
+    risk genotype and says nothing otherwise is a rule, not a gap. Reporting those would put a warning
+    on almost every module in existence, which is the failure mode where warnings stop being read.
+    Two or more genotypes is the author demonstrating that this site's genotype *space* is what they
+    are describing, and then the missing member is a hole in something they started.
+
+    **It says nothing about any callset, deliberately.** Whether a hom-ref row can ever match is a
+    property of the *data* a consumer brings — a variant-only VCF emits no record where the sample
+    matches the reference, a gVCF and an array both do — and that call belongs to the annotator, not
+    here. So the finding is stated as what it is: a genotype this module has no row for. The presence
+    of a hom-ref row is not reported at all; those rows are correct, and on array data they are the
+    ones that carry the answer.
+
+    Three things it will not do, each of which would make it wrong rather than noisier:
+
+    * **never demand an alt/alt pair.** At a site with two alternates the expressible set includes
+      `A/T`, and requiring it would make a complete table unreachable — the jointly-satisfiable lesson
+      RM35 was filed for. The expected set is the reference homozygote, one heterozygote per alternate,
+      and one homozygote per alternate.
+    * **never guess the reference.** With no `ref` authored and none in the injected table, a
+      two-allele site is still fully enumerable (three pairs over two alleles) and is reported by
+      spelling; a site with three or more alleles is **skipped**, because without knowing which is the
+      reference there is no way to enumerate without inventing alt/alt pairs.
+    * **skip a site whose genotypes are not diploid nucleotide pairs.** Symbolic alleles (RM5), `*`
+      (RM59) and single-allele hemizygous cells all land here, which is what keeps MT and non-PAR Y out
+      without a contig list: those contigs are authored one allele per cell, so "incomplete" has no
+      meaning there and a special case would only be a second thing to keep true.
+
+    **Warning in both modes, never a `strict` error**, and it joins the small set of checks that
+    arbitrate nothing — the ClinVar `clin_sig` cross-check, the declared-licence disagreement, the
+    non-commercial quote. Which genotypes a module annotates is the curator's judgement; the compiler
+    can say a member is absent, and must not say it is wrong to be absent.
+
+    Runs in `validate_spec` **only**, and reaches `compile_module` through the warnings it returns. The
+    message embeds counts, and by the time the compile has resolved, a one-to-many rsID has become one
+    row per locus — so a second pass would report the same finding with a different number, and the
+    message-dedup keys on the sentence, putting both into `manifest.compilation.warnings` (RM44's
+    published surface). There is no severity for a re-run to recover here, so the single pass in front
+    of resolution is the correct side.
+    """
+    sites: dict[str, list[VariantRow]] = defaultdict(list)
+    for variant in variants:
+        # Position-level, never allele-level: `derive_variant_key` mints a distinct VA id per ALT when
+        # it is handed one, so keying with `alts` would split a two-alternate site into two
+        # single-genotype sites and this check would go quiet on exactly the shape it is looking for.
+        # This is the same call the study join and the reverse rsID back-fill make, for the same
+        # reason — a genotype is written about a place.
+        sites[derive_variant_key(variant.rsid, variant.chrom, variant.start, variant.ref)].append(
+            variant
+        )
+
+    by_reason: dict[str, list[str]] = defaultdict(list)
+    for site_key, rows in sites.items():
+        pairs = [tuple(a.upper() for a in _split_genotype(row.genotype)) for row in rows]
+        if any(len(p) != 2 or not all(ALLELE_PATTERN.match(a) for a in p) for p in pairs):
+            continue
+        authored = {tuple(sorted(p)) for p in pairs}
+        if len(authored) < 2:
+            continue
+        alleles = {a for pair in authored for a in pair}
+        ref = _site_reference_allele(rows, site_key, resolution_table)
+        if ref is None and len(alleles) != 2:
+            continue
+        if ref:
+            alts = sorted(alleles - {ref})
+            expected = {(ref, ref)} | {tuple(sorted((ref, a))) for a in alts}
+            expected |= {(a, a) for a in alts}
+        else:
+            # Two alleles and no reference: the three pairs over them are enumerable without knowing
+            # which is which, and no alt/alt pair can be invented from two.
+            first, second = sorted(alleles)
+            expected = {(first, first), (first, second), (second, second)}
+        for missing in sorted(expected - authored):
+            spelled = "/".join(missing)
+            if ref and missing == (ref, ref):
+                reason = (
+                    "the reference homozygote has no row, so a subject carrying neither alternate "
+                    "matches nothing in this module"
+                )
+            elif ref and missing[0] == missing[1]:
+                reason = (
+                    "a homozygous alternate genotype has no row, so a subject carrying two copies "
+                    "matches nothing in this module — the row that would describe them is the one "
+                    "missing"
+                )
+            elif ref:
+                reason = "a heterozygous genotype has no row, so a carrier matches nothing in this module"
+            else:
+                reason = (
+                    "a genotype expressible from the alleles this site already names has no row, and "
+                    "no ref is authored or resolved here, so which reading it is cannot be said"
+                )
+            by_reason[reason].append((site_key, spelled))
+
+    findings: list[str] = []
+    for reason, found in sorted(by_reason.items()):
+        # Both numbers, because they are different facts and one site can be missing several
+        # genotypes: `hfe_hemochromatosis` is missing two heterozygotes at a **single** two-alternate
+        # locus, which "2 sites" would have misreported. Same rule as every other counted warning here
+        # — say what the denominator is rather than leaving a bare number to be read as either.
+        sites_missing = len({site_key for site_key, _spelled in found})
+        findings.append(
+            f"{len(found)} genotype(s) at {sites_missing} site(s) have no row: {reason}. The module "
+            f"states two or more genotypes at each of those sites, so this is a gap in a set the "
+            f"author started rather than a rule that fires once — "
+            f"{_examples([f'{site_key} {spelled}' for site_key, spelled in found])}"
+        )
+    return findings
+
+
 # ── Symbolic / structural alleles (RM5) ─────────────────────────────────────────────────────────
 #
 # Which authored tables the symbolic-allele check may **drop a row from**, and which it must refuse on
@@ -3422,6 +3566,13 @@ def validate_spec(
         )
         all_errors.extend(membership_errors)
         all_warnings.extend(membership_warnings)
+        # Genotype coverage (S32). Here and **only** here: it is warning-only in both modes, so there
+        # is no severity a compile-side re-run could recover, and its message carries a count — which
+        # after resolution would be counted over the expanded rows and print a second, differently
+        # numbered copy of the same finding into `manifest.compilation.warnings`. It reads authored
+        # genotypes plus, for the reference allele alone, the injected table, so this side sees
+        # everything it needs. `compile_module` inherits the warning through `validation.warnings`.
+        all_warnings.extend(_check_genotype_coverage(variants, membership_table))
         # Ploidy runs here *and* post-resolution in `compile_module`, because the two passes see
         # different rows. Here it catches a hand-written `MT,3243,A/G` on the standalone `validate`
         # command, where there is no resolution step at all; there it catches the rsID-authored form,

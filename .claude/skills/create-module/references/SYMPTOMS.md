@@ -462,12 +462,14 @@ against. Provision a snapshot (`just-dna-enricher cache pull --only clinvar`) or
 `--clinvar-cache`. An unasked question is never a passed check.
 
 **`pharm_variants.csv: N of N row(s) have no chrom+start, so this table joins by rsID only`**
-Not a defect in your module, and nothing to fix by hand — but know what you are shipping. Resolution
-fills `variants.csv` and nothing else, so a PGx, haplotype or heteroplasmy table keeps exactly the
-coordinates you typed. A consumer joins a VCF by position, so a table with none of them matches only
-through the VCF's `ID` column, which many callers leave empty. The line tells you which situation you
-are in: *"resolution.csv can place N of them"* means the coordinates exist and this tier does not apply
-them to that table (nothing you can do today); *"no resolution.csv row places them"* means run
+Not a defect in your module, and nothing to fix by hand — but know what you are shipping. A consumer
+joins a VCF by position, so a table with no coordinates matches only through the VCF's `ID` column,
+which many callers leave empty. **Since 0.6 the compile fills these tables from `resolution.csv` the
+way it always filled `variants.csv`**, so what this line reports is the *residue* — the rows the fill
+could not place — and on most modules it no longer appears at all. The sentence tells you which
+situation you are in: *"resolution.csv names N of them, but at more than one locus or at one the row's
+own allele contradicts"* means the compiler refused to pick between candidates rather than guess (fix
+the genotype or the table); *"no resolution.csv row places them"* means run
 `just-dna-enricher enrich` first. Writing the coordinates into the table by hand also works and is
 legal — identity is filled whole or not at all, so that means `chrom`, `start` **and** `ref`, not a
 subset. It never fails a compile, including `--strict`.
@@ -495,6 +497,24 @@ its placeholder, because there the locus really is diploid.
 **`chrom=MT is not diploid here — use a single-allele genotype`**
 You (or a tool of your own) wrote `A/G` where only one copy exists. Write the single allele. The same
 message covers chrY outside PAR1/PAR2; inside them a pair is correct and no warning is emitted.
+
+**`N genotype(s) at M site(s) have no row: … the reference homozygote / a homozygous alternate
+genotype / a heterozygous genotype has no row`**
+A curation gap, reported only where you have shown it is one. A consumer matches a subject on
+`(variant, genotype)`, so a genotype your table does not carry is a subject your module cannot answer
+for — most often the **homozygote**, which is the reading a reader is least likely to expect to be
+missing. It fires only at a site where you already wrote **two or more** genotypes: one genotype at a
+site is a rule that fires on the call you care about, which is normal and silent. Never fails a
+compile, in either mode — which genotypes to annotate is your judgement, and the check only says which
+member of the set is absent.
+
+Two things it deliberately does not say. It never asks for an alternate/alternate pair (`A/T` at a
+two-alternate site), so a site is complete with the reference homozygote, one heterozygote per
+alternate and one homozygote per alternate. And it says nothing about whether a genotype can be
+*observed*: whether a hom-ref row ever matches depends on the file a consumer brings — a variant-only
+VCF emits no record where the sample matches the reference, while a gVCF or an array does — and that
+is the annotator's call, not this format's. Writing the reference-homozygote row is right when you
+mean it; the row is what makes the module usable on array data.
 
 **`clin_sig` differs from ClinVar's** and `--strict` did not fail
 Deliberate. Two opinions differing is not a factual error, and ClinVar is not truth — a curator who has
