@@ -38,6 +38,7 @@ from typing import Any
 import httpx
 from just_dna_compiler.compiler import load_csv_rows, load_spec_variants
 from just_dna_format.layout import SidecarCollision, resolve_sidecar
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import MULTI_SEP
@@ -49,6 +50,7 @@ from tenacity import (
 
 from just_dna_enricher.eutils import EutilsClient, is_missing
 from just_dna_enricher.net import PacingGate, attempt_floor, dedupe
+from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +244,12 @@ class IdentifierReport:
     #: says two opposite things — "compared everything, nothing disagreed" and "never compared" — the
     #: same reason `EnrichmentResult.clin_sig_not_checked` exists.
     gene_loci_not_checked: str | None = None
+    #: How many rows the comparison above actually judged — the denominator `gene_loci` is out of.
+    #: It comes from the check rather than from a caller recounting `variants` (RM72): a row whose gene
+    #: HGNC does not place, or whose variant has no known chromosome, was never compared, and counting
+    #: it would publish a coverage figure larger than the question that was put. A PAR-exempt row
+    #: **is** counted: it was compared and found not to contradict itself.
+    gene_loci_compared: int = 0
 
     @property
     def stale_rsids(self) -> list[RsidStatus]:
@@ -482,9 +490,11 @@ def check_identifiers(
         if owned:
             ontology.close()
     if check_genes:
-        report.gene_loci, report.gene_loci_not_checked = _gene_locus_conflicts(
-            variants, report.genes, Path(spec_dir) if spec_dir else None
-        )
+        (
+            report.gene_loci,
+            report.gene_loci_compared,
+            report.gene_loci_not_checked,
+        ) = _gene_locus_conflicts(variants, report.genes, Path(spec_dir) if spec_dir else None)
     return report
 
 
@@ -522,8 +532,12 @@ def _variant_chromosomes(
 
 def _gene_locus_conflicts(
     variants: list[VariantRow], genes: list[GeneStatus], spec_dir: Path | None
-) -> tuple[list[GeneLocusConflict], str | None]:
+) -> tuple[list[GeneLocusConflict], int, str | None]:
     """Compare each row's `gene` against the chromosome its variant resolves to (S24).
+
+    Returns the conflicts, **how many rows were actually compared**, and why the comparison did not
+    run. The middle number is the attestation's denominator and is counted here rather than by the
+    caller (RM72): only this loop knows which rows had both halves.
 
     **Chromosome granularity only, deliberately, and the stronger version is wrong.** A row may
     legitimately name a nearest or implicated gene for a variant outside the gene body, and the
@@ -537,18 +551,27 @@ def _gene_locus_conflicts(
     pseudoautosomal locus, which is one place on two contigs — `XG` and `SPRY3` straddle a PAR boundary,
     so an X-vs-Y disagreement there is a spelling, not a contradiction.
     """
+    if not genes:
+        # Named apart from the line below, which is a claim about HGNC: with no authored gene, HGNC
+        # was never asked, and reporting it as an unhelpful answer would be the same "the source did
+        # not say" / "there was nothing to ask" conflation this tier separates everywhere else.
+        return [], 0, "no row names a gene, so there was nothing to place on a chromosome"
     chrom_of_gene = {g.symbol: g.chromosome for g in genes if g.chromosome}
     if not chrom_of_gene:
-        return [], "HGNC returned no usable chromosome for any authored gene"
+        return [], 0, "HGNC returned no usable chromosome for any authored gene"
     chrom_of_variant, reason = _variant_chromosomes(variants, spec_dir)
     if not chrom_of_variant:
-        return [], reason or "no row has a known chromosome"
+        return [], 0, reason or "no row has a known chromosome"
 
     conflicts: list[GeneLocusConflict] = []
+    compared = 0
     for row in variants:
         gene_chrom = chrom_of_gene.get(row.gene or "")
         row_chrom = chrom_of_variant.get(row.variant_key)
-        if not gene_chrom or not row_chrom or gene_chrom == row_chrom:
+        if not gene_chrom or not row_chrom:
+            continue
+        compared += 1
+        if gene_chrom == row_chrom:
             continue
         if {gene_chrom, row_chrom} == {"X", "Y"}:
             continue        # a PAR locus is one place on two contigs — see `vrs.par_partner`
@@ -558,4 +581,183 @@ def _gene_locus_conflicts(
                 variant_key=row.variant_key, variant_chrom=row_chrom,
             )
         )
-    return conflicts, None
+    return conflicts, compared, None
+
+
+# ── the attestation (RM72) ──────────────────────────────────────────────────────────────────────
+
+
+def verification_records(
+    report: IdentifierReport, *, check_traits: bool, check_genes: bool
+) -> list[VerificationRecord]:
+    """The three checks this pass puts, as records `verification.json` can carry (RM72).
+
+    Three records rather than one, because they are three questions over three different subject
+    sets: the trait CURIEs the module names, the gene symbols it names, and the rows where a symbol
+    and a chromosome could both be established. One record averaging them would be a number nothing
+    could act on — the same argument `literature._verification_records` makes for its own three.
+
+    **Every count is read off `report`, and nothing is recounted here.** The denominator belongs to
+    the check that produced it; a count recomputed beside a check is one that can disagree with it,
+    and then the document's two halves contradict each other.
+
+    **A switched-off check is `not_requested`, an empty subject set is `nothing_to_check`, and a
+    comparison whose input was missing is `no_reference` — never `ran(0, 0)`.** A zero out of zero
+    reads as a clean bill, which is the whole confusion RM45 exists to end. Only the first of those
+    three is cleared by re-running with a different flag, which is why the skip vocabulary keeps them
+    apart rather than folding them into one absence.
+
+    This pass fetches nothing on the caller's behalf beyond OLS4 and HGNC, so there is no `offline`
+    branch to record: the command has no such flag, and inventing one here would name a state the run
+    cannot be in.
+    """
+    records = [_trait_record(report, check_traits), _gene_symbol_record(report, check_genes)]
+    records.append(_gene_locus_record(report, check_genes))
+    return records
+
+
+def unreachable_records(
+    *, check_traits: bool, check_genes: bool, detail: str
+) -> list[VerificationRecord]:
+    """The same three checks, for a run whose registry never answered.
+
+    A request that failed is `unreachable`, never an absence — S20's distinction, and the reason the
+    twin command records it too. Without this the command would advertise *records that the question
+    was put* and then write nothing on precisely the run where a reader most needs to know the
+    question went unanswered.
+
+    Derived from `verification_records` over an empty report rather than restated: the flag a caller
+    set is still the truer reason for a check they switched off (a source being down does not make
+    `--no-traits` a network problem), and the source names come from the one place that assigns them.
+    """
+    return [
+        record if record.skipped == "not_requested"
+        else skipped(record.check, "unreachable", detail=detail, source=record.source)
+        for record in verification_records(
+            IdentifierReport(), check_traits=check_traits, check_genes=check_genes
+        )
+    ]
+
+
+def _trait_record(report: IdentifierReport, check_traits: bool) -> VerificationRecord:
+    if not check_traits:
+        return skipped("trait_currency", "not_requested", detail="--no-traits", source="ols4")
+    if not report.traits:
+        return skipped(
+            "trait_currency", "nothing_to_check",
+            detail="no row carries a trait_efo_id, so there was no term to ask OLS4 about",
+            source="ols4",
+        )
+    # A CURIE whose prefix is outside `_ONTOLOGY_IRI` is answered `unchecked` without a request ever
+    # being sent, and `stale_traits` excludes it — so counting it as a subject would put a term nobody
+    # asked about into the denominator and never into the numerator, and the clean sentence would
+    # claim OLS4 vouched for a term it was never shown. Same rule as `gene_loci_compared` and
+    # `AcmgReport.checked`: the denominator is what was examined.
+    unresolvable = [t for t in report.traits if t.state == "unchecked"]
+    asked = [t for t in report.traits if t.state != "unchecked"]
+    if not asked:
+        return skipped(
+            "trait_currency", "unsupported",
+            detail=(
+                f"all {len(unresolvable)} authored trait term(s) use a CURIE prefix this check "
+                f"cannot resolve: " + examples([t.curie for t in unresolvable])
+            ),
+            source="ols4",
+        )
+    stale = report.stale_traits
+    detail = (
+        f"{len(stale)} of {len(asked)} authored trait term(s) are obsolete or absent: "
+        + examples([t.curie for t in stale])
+        if stale
+        else f"every one of {len(asked)} authored trait term(s) is current in OLS4"
+    )
+    if unresolvable:
+        detail += (
+            f"; {len(unresolvable)} further term(s) use a CURIE prefix this check cannot resolve "
+            f"({examples([t.curie for t in unresolvable])}) and are outside this denominator"
+        )
+    return ran(
+        "trait_currency",
+        subjects=len(asked),
+        findings=len(stale),
+        source="ols4",
+        detail=detail,
+    )
+
+
+def _gene_symbol_record(report: IdentifierReport, check_genes: bool) -> VerificationRecord:
+    if not check_genes:
+        return skipped("gene_symbol_currency", "not_requested", detail="--no-genes", source="hgnc")
+    if not report.genes:
+        return skipped(
+            "gene_symbol_currency", "nothing_to_check",
+            detail="no row names a gene, so there was no symbol to ask HGNC about",
+            source="hgnc",
+        )
+    stale = report.stale_genes
+    detail = (
+        f"{len(stale)} of {len(report.genes)} authored gene symbol(s) are retired or unknown to "
+        f"HGNC: " + examples([g.symbol for g in stale])
+        if stale
+        else f"every one of {len(report.genes)} authored gene symbol(s) is HGNC-approved"
+    )
+    return ran(
+        "gene_symbol_currency",
+        subjects=len(report.genes),
+        findings=len(stale),
+        source="hgnc",
+        detail=detail,
+    )
+
+
+def _gene_locus_record(report: IdentifierReport, check_genes: bool) -> VerificationRecord:
+    """The gene↔chromosome comparison, whose skip reason the report already carries in prose.
+
+    `gene_loci_not_checked` is the sentence and it stays the sentence — the closed member is what a
+    consumer branches on, and the reasons this check declines all reduce to one of them: an input the
+    comparison needed was not there (`no_reference`), or there was nothing to compare
+    (`nothing_to_check`). Mapping is done here rather than in the CLI so no caller has to pick a
+    vocabulary member from a message.
+    """
+    if not check_genes:
+        return skipped(
+            "gene_locus_agreement", "not_requested",
+            detail="--no-genes: the comparison joins HGNC's cytoband, which was not fetched",
+            source="hgnc",
+        )
+    if not report.genes:
+        # Checked before the prose reason, because "nothing to ask" and "asked and got nothing back"
+        # are the two absences this vocabulary exists to keep apart.
+        return skipped(
+            "gene_locus_agreement", "nothing_to_check",
+            detail=report.gene_loci_not_checked or "no row names a gene",
+            source="hgnc",
+        )
+    if report.gene_loci_not_checked:
+        return skipped(
+            "gene_locus_agreement", "no_reference",
+            detail=report.gene_loci_not_checked, source="hgnc",
+        )
+    if not report.gene_loci_compared:
+        return skipped(
+            "gene_locus_agreement", "nothing_to_check",
+            detail=(
+                "no row has both a gene HGNC places on a chromosome and a chromosome of its own "
+                "(authored, or resolved in an injected resolution.csv)"
+            ),
+            source="hgnc",
+        )
+    detail = (
+        f"{len(report.gene_loci)} of {report.gene_loci_compared} comparable row(s) pair a gene with "
+        f"a variant on another chromosome: "
+        + examples([f"{c.variant_key}/{c.gene}" for c in report.gene_loci])
+        if report.gene_loci
+        else f"the gene and the chromosome agree on all {report.gene_loci_compared} comparable row(s)"
+    )
+    return ran(
+        "gene_locus_agreement",
+        subjects=report.gene_loci_compared,
+        findings=len(report.gene_loci),
+        source="hgnc",
+        detail=detail,
+    )

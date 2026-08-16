@@ -11,9 +11,12 @@ from pathlib import Path
 import pytest
 from just_dna_enricher.acmg import (
     EXPECTED_HEADERS,
+    AcmgListUnavailable,
     AcmgSfError,
     check_acmg_sf,
+    fetch_acmg_page,
     parse_acmg_page,
+    verification_record,
     verify_acmg_sf,
 )
 from just_dna_format.spec import VariantRow
@@ -217,6 +220,92 @@ def test_findings_group_by_gene_because_that_is_what_they_are_about(current_list
     assert [(gene, len(rows)) for gene, rows, _ in grouped] == [("HBB", 12), ("APOE", 1)]
     # First-occurrence order, and the row numbers survive so a human can find them.
     assert grouped[0][1] == list(range(1, 13))
+
+
+# ── what the pass attests (RM72) ────────────────────────────────────────────────────────────────
+
+
+def test_the_record_counts_the_rows_the_question_could_be_asked_about(current_list):
+    """`subjects` is `report.checked`, which already excludes a row naming no gene.
+
+    Counting every verdict would publish a comparison for rows nobody compared — the shape the
+    reference-allele pass fell into on an unbuilt assembly.
+    """
+    variants = [_variant("HBB", True), _variant("HFE", True), _variant(None, True)]
+    report = check_acmg_sf(variants, current_list)
+    record = verification_record(report)
+
+    assert record.subjects == report.checked == 2 < len(report.verdicts)
+    assert record.findings == len(report.mismatches) == 1
+    assert record.skipped is None
+    assert (record.source, record.release) == ("acmg", current_list.version)
+    assert "HBB" in (record.detail or "")
+
+
+def test_a_disagreement_no_list_can_settle_is_named_rather_than_counted(sf_list):
+    """The sharp edge of `findings = mismatches`, and why the sentence beside it is load-bearing.
+
+    Against a superseded list every disagreement is demoted to `unverifiable`, so `mismatches` is
+    empty *by construction* and a bare `findings=0` would read as a clean bill on a module with real
+    disagreements. The count travels in `detail`, and `release` names the list that could not settle
+    them.
+    """
+    report = check_acmg_sf([_variant("HBB", True)], sf_list)
+    record = verification_record(report)
+
+    assert report.unverifiable and not report.mismatches
+    assert record.findings == 0
+    assert f"{len(report.unverifiable)} disagreement(s) could not be settled" in (record.detail or "")
+    assert record.release == sf_list.version
+
+
+def test_offline_with_no_list_is_a_skip_and_not_a_run_over_nothing():
+    """`ran(0, 0)` reads as "the check ran and had nothing in scope", which is the opposite of true."""
+    record = verification_record(verify_acmg_sf([_variant("HFE", True)], offline=True))
+    assert record.skipped == "offline" and record.subjects == 0
+    assert "acmg_sf went unchecked" in (record.detail or "")
+
+
+def test_a_module_naming_no_gene_has_nothing_to_check(current_list):
+    report = check_acmg_sf([_variant(None, True)], current_list)
+    record = verification_record(report)
+    assert record.skipped == "nothing_to_check"
+    # `release` is a property of a comparison, and none was made — so it names the list in the
+    # sentence instead of in the field.
+    assert record.release is None and current_list.version in (record.detail or "")
+
+
+def test_only_an_unreadable_list_is_a_skip_and_a_strict_refusal_is_not(tmp_path):
+    """Two ways of raising, and only one of them means the question was never put.
+
+    A caller that attested off the base exception would record "never asked" for the `strict`
+    refusal — the one run where the list *was* read and the question answered badly. The subclass is
+    what keeps those apart, and this pins that the refusal stays outside it.
+    """
+    from just_dna_enricher.acmg_build import build_acmg_snapshot
+
+    broken = _PAGE.replace("ACMG SF v3.2", "", 1)
+    with pytest.raises(AcmgListUnavailable) as unreadable:
+        parse_acmg_page(broken)
+    assert unreadable.value.skip == "no_reference"
+
+    build_acmg_snapshot(_WORKBOOK, tmp_path / "snap")
+    with pytest.raises(AcmgSfError) as refusal:
+        verify_acmg_sf([_variant("HBB", True)], mode="strict", snapshot_dir=tmp_path / "snap")
+    assert not isinstance(refusal.value, AcmgListUnavailable)
+
+
+def test_an_unreachable_page_is_unreachable_rather_than_no_reference(monkeypatch):
+    """A request that never completed is not a source that answered with nothing (S20's distinction)."""
+    import httpx
+
+    def boom(*_a, **_kw):
+        raise httpx.ConnectError("no route to host")
+
+    monkeypatch.setattr(httpx, "get", boom)
+    with pytest.raises(AcmgListUnavailable) as exc:
+        fetch_acmg_page("https://example.invalid/acmg")
+    assert exc.value.skip == "unreachable"
 
 
 def test_the_real_reference_examples_hold_up(sf_list):

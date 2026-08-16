@@ -29,10 +29,10 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` |
 | **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) |
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
-| **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` |
-| **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` |
-| **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` |
-| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` |
+| **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) |
+| **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) |
+| **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) |
+| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) |
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
@@ -77,6 +77,16 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   skip at all — the check does not apply, there is no claim to have an opinion about, and recording one
   would mine a nonce and create a `verification.json` on a module that never asked for one.
   `nothing_to_check` stays for a table that is present with no row in scope, which is a real answer.
+  RM72's two commands follow that line exactly: **no `variants.csv` attests nothing** (`acmg_sf`,
+  `gene` and `trait_efo_id` are all columns of it, so the check does not apply), while a failed
+  lookup attests `unreachable` — the run with no report to print is the one where a reader most needs
+  the record. `check-acmg` distinguishes the two ways it can raise for that purpose:
+  `AcmgListUnavailable` carries the skip member (`unreachable` for a request that never answered,
+  `no_reference` for a source that was there and carried no readable list), while a **`strict`
+  refusal stays the plain exception and attests nothing** — the list was read and the question was
+  answered, so recording a skip would say it was never put. When an attestation fails on the way out
+  of an already-failing run it is reported, not raised: the reason the source could not be read is the
+  sentence the author needs, and a layout complaint replacing it points at the wrong problem.
 - **Two authorities answering one check still make one record, and the counts have to follow.**
   `allele_function` is compared against PharmVar *and* CPIC, so three things differ from the
   single-source passes. `subjects` is the alleles an authority **named back**, never the authored rows:
@@ -117,10 +127,27 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   clean bill. Everything not compared stays **outside** the denominator and inside the record's
   `detail`, grouped by reason.
 - **One proof-of-work per call, so a pass collects its records and writes once.** `enrich()` writes all
-  five of its checks at the end of the run, `enrich_literature` its three. The merge is what keeps
-  both commands in one document, replacing per check and never erasing a check this run did not put —
-  and until `literature` was wired in there was no second writer at all, so the merge was machinery
-  tested only against a document nothing produced.
+  five of its checks at the end of the run, `enrich_literature` its three, `check-identifiers` its
+  three. The merge is what keeps every command in one document, replacing per check and never erasing
+  a check this run did not put — and until `literature` was wired in there was no second writer at
+  all, so the merge was machinery tested only against a document nothing produced.
+- **A skip does not displace an answer the document already holds (RM72, 0.6) — while the authored
+  bytes stand still.** The merge was unconditional newest-wins, so `check-acmg --offline` after a real
+  run, or `check-identifiers --no-traits` after a full one, rewrote a true `subjects=13, findings=0`
+  verdict to `subjects=0, skipped=offline`: an answer turned into "never asked" by a run that learned
+  nothing. The argument is the merge's own, one step further out — a skip **is** a run that did not
+  put the question, the same fact as an absent check spelled as a record instead of as a silence, so
+  the protection that already covered the absent check covers this one. Newest-wins still holds
+  between two records of the same disposition. This mattered more than it looked: every check wired
+  after it merges through the same function, so wiring four more members into a rule that can silently
+  downgrade them multiplies the defect by four. **The condition is what keeps the fix from being a
+  regression**: an answer earns protection by still describing *this* module, so once the authored
+  bytes have moved (`VerificationDoc.module_hash` against the current binding) a fresh "could not ask"
+  wins — which is exactly what `literature` relies on when a module's citations change, and a stale
+  finding no authored edit could clear is a defect this project has removed elsewhere. The
+  counter-argument — that a reader may want to know today's run could not reach the source — is
+  answered rather than dismissed: that is a fact about the **run**, and this is a per-check document,
+  so it would need a run-level place, which is a different question and is not opened.
 - **The merge carries the author's CLOSURE across, and only while the authored bytes stand still
   (RM73, 0.6).** `just-dna-compiler close` writes a `closure` block into the same document, so this
   pass — which rebuilds it rather than editing it — would have dropped a field it did not know about,
@@ -145,11 +172,13 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   for a citation the author has since deleted, and counting it produced a finding no authored edit
   could clear, which this project treats as a defect wherever else it appears.
 - **A no-op run records nothing; it does not record a zero.** `literature --offline` fetches nothing
-  and re-examines nothing, so on a module that already carries a `literature.csv` it writes no records
-  at all and the earlier ones stand. Writing `skipped="offline"` there would be worse than silence,
-  because the merge replaces per check: a true `subjects=5, findings=1` becomes "never asked" on a run
-  that changed nothing. With no pin at all there is no earlier answer to protect, so the skips are
-  written and say why.
+  and re-examines nothing, so on a module that already carries a `literature.csv` pinning the
+  citations it makes now, it writes no records at all and the earlier ones stand: a run that has said
+  nothing has nothing to record. With no pin covering those citations there is no answer this run
+  could protect, so the three skips are written and say why — and after an online run that state is
+  reached only by the citations having changed, which is the case the merge rule above deliberately
+  lets a skip win. (This bullet used to argue the silence from the merge replacing per check. That was
+  the merge's defect rather than an argument, and RM72 fixed it.)
 - **`literature` puts three questions with three different denominators, and one record cannot carry
   them.** Every citation gets an existence verdict; only some carry an authored DOI or PMC id to
   compare; fewer still carry a quote whose article could be read. So `provenance_quote` counts the
@@ -176,12 +205,28 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
   read off each record's own `release`.
 
-**Which of these attest, and which are recording passes rather than checks.** `enrich()` attests five
-(reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate),
-`enrich_literature` attests three (citation existence, identifier agreement, provenance quote),
-`enrich_clinpgx` attests its own, and `pgx` and `vrs mint` attest theirs — `allele_function` and
-`vrs_allele_id`. All of these were wired in the release the corpus first grew a `verification.json` to
-look at; the rest report to their result object and are wired in as their commands grow the call. The line
+**Which of these attest, and which are recording passes rather than checks.** Seven commands attest,
+for fifteen of the seventeen members. `enrich()` attests five (reference allele, wrong build, clinical
+significance, rsID currency, rsid↔coordinate), `enrich_literature` three (citation existence,
+identifier agreement, provenance quote), `check-identifiers` three (gene symbol currency, trait
+currency, gene↔locus agreement), and `enrich_clinpgx`, `pgx`, `vrs mint` and `check-acmg` one each.
+The last four members were wired in **RM72** (0.6): the two check commands put a real
+authored-versus-source question, reported it to stdout, and let the record die with the process, which
+is the sentence RM45 exists to end. What blocked them was their own printed promise to *write
+nothing*; that promise is now the narrower and truer one — **writes no authored cell, and records
+that the question was put** — because there is no other home for *was this check run*. It cannot be
+offloaded downstream (a consumer holding the artifact cannot tell "asked and clean" from "never
+asked", which is the whole of RM45) and it cannot go in the authored section (an author does not
+attest to a check they did not run). The record is **unconditional**, with no `--attest` flag: an
+optional record is ambiguous between *the check was not run* and *it ran without the flag*, which
+reintroduces the two-readings-of-one-absence defect the skip vocabulary was built to end. Filling
+`acmg_sf` or a gene symbol from the registry being asked about it stays refused whatever the
+attestation does — that is `hints.REDUNDANCY_BEARING`, and it is why these are open-ended checks
+rather than an apply route. The **two remaining members are reserved, and each says so in the code**
+(`vocab.VALID_VERIFICATION_CHECKS`): `gene_disease_validity` and `dosage_sensitivity` have no emitter
+because `enrich_gene_validity` and `enrich_dosage_sensitivity` *record* ClinGen/GenCC verdicts into a
+derived table and compare nothing authored. Wiring them would report a check where no question was
+put. The line
 that decides whether a pass belongs in `VALID_VERIFICATION_CHECKS` at all is whether it compares
 something the module **asserts** — so `gene_validity.csv` and `clinical_assertions.csv`, which record
 what ClinGen and ClinVar say and adjudicate nothing, have no check name and must not gain one: a
@@ -2235,8 +2280,12 @@ just-dna-enricher clinvar publish cv/                           # create-or-upda
 `enrich`/`enrich-and-compile` take `--strict/--best-effort`, `--offline`, `--ensembl-cache`,
 `--clinvar-cache`, `--clinvar/--no-clinvar`, and the three verify toggles above; `literature` takes
 `--strict/--best-effort`, `--offline`, `--fulltext/--no-fulltext`; `check-identifiers` takes
-`--strict`, `--traits/--no-traits`, `--genes/--no-genes` and writes nothing (there is no sidecar column
-for a module-level identifier — the report is the whole output); `upload` takes `--repo`, `--name`, `--message`,
+`--strict`, `--traits/--no-traits`, `--genes/--no-genes` and, like `check-acmg`, **writes no authored
+cell and records that the question was put**: there is no sidecar column for a module-level identifier
+and filling one from the registry being asked about it would make the comparison vacuous
+(`hints.REDUNDANCY_BEARING`), so the report is the whole output *apart from* the `verification.json`
+attestation — three records for `check-identifiers`, one for `check-acmg`, unconditional, and an
+attestation rather than a value; `upload` takes `--repo`, `--name`, `--message`,
 `--dry-run`; `clinvar build` takes `--vcf`/`--download`/`--out`; `clinvar publish` takes `--repo`,
 `--message`, `--dry-run`. `enrich-and-compile` runs `enrich` then `compile_module(..., ensembl_cache=None,
 strict=…)`, so compilation consumes the just-written `resolution.csv` (path 1) with no reference and

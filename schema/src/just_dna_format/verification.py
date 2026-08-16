@@ -283,7 +283,10 @@ def verification_block(doc: VerificationDoc) -> Verification:
 
 
 def merge_records(
-    existing: Sequence[VerificationRecord], fresh: Sequence[VerificationRecord]
+    existing: Sequence[VerificationRecord],
+    fresh: Sequence[VerificationRecord],
+    *,
+    existing_still_binds: bool = True,
 ) -> list[VerificationRecord]:
     """Fold a run's records into what the document already carried — newest wins, per check.
 
@@ -292,9 +295,43 @@ def merge_records(
     record: a run that did not put a question has said nothing about it, and deleting the older answer
     would turn "not asked this time" into "never asked", which is the exact collapse RM45 exists to
     undo.
+
+    **A `skipped` record does not replace a `ran` one (RM72), and that is the paragraph above applied
+    one step further out.** A skip *is* a run that did not put the question — the same fact as an
+    absent check, spelled as a record instead of as a silence — so the argument that protects the
+    absent check protects this one, and unconditional newest-wins performed exactly the deletion the
+    paragraph refuses: `check-acmg --offline` after a real run, or `check-identifiers --no-traits`
+    after a full one, rewrote a true `subjects=13 findings=0` verdict to `subjects=0 findings=0
+    skipped=offline`. Newest-wins still holds between two records of the same disposition — a fresh
+    `ran` replaces an older `ran` (that is the point of re-running), and a fresh skip replaces an
+    older skip (the newer reason is the current one).
+
+    **`existing_still_binds` is the condition on that protection, and it is not a knob.** An answer is
+    worth protecting because it is still an answer *about this module*; once the authored bytes have
+    moved it describes rows that no longer exist, and preserving it over a fresh honest "could not
+    ask" would publish a stale finding rather than a real one. That case is not hypothetical: it is
+    how `literature` behaves when the module's citations change, and a previous round fixed exactly
+    that defect by writing the skip. So the caller passes whether the document it read was computed
+    over the bytes it is now being rewritten over (`VerificationDoc.module_hash` vs the binding), and
+    with `False` this is plain newest-wins. The default is `True` because a caller holding no earlier
+    document has nothing that could fail the test.
+
+    The counter-argument to the protection is real and is answered rather than dismissed: a reader may
+    legitimately want to know that *today's* run could not reach the source. That is a fact about the
+    **run**, not about the **check**, and this is a per-check document — a run-level fact needs a
+    run-level place, which is a separate question and is deliberately not opened here.
     """
     by_check = {record.check: record for record in existing}
-    by_check.update({record.check: record for record in fresh})
+    for record in fresh:
+        previous = by_check.get(record.check)
+        if (
+            existing_still_binds
+            and record.skipped is not None
+            and previous is not None
+            and previous.skipped is None
+        ):
+            continue
+        by_check[record.check] = record
     return _ordered(by_check.values())
 
 

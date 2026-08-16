@@ -14,13 +14,21 @@
 import json
 from pathlib import Path
 
+import httpx
 import typer
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.vocab import VALID_DECLARED_USE, match_vocab
 
-from just_dna_enricher.acmg import DEFAULT_ACMG_URL, AcmgReport, AcmgSfError, verify_acmg_sf
+from just_dna_enricher.acmg import (
+    DEFAULT_ACMG_URL,
+    AcmgListUnavailable,
+    AcmgReport,
+    AcmgSfError,
+    verify_acmg_sf,
+)
+from just_dna_enricher.acmg import verification_record as acmg_record
 from just_dna_enricher.assertions import (
     ASSERTION_GENOME_BUILD,
     ClinicalAssertionError,
@@ -68,6 +76,8 @@ from just_dna_enricher.gene_validity import (
 )
 from just_dna_enricher.grch37 import GRCH37_BUILD, summarize_build_diagnoses
 from just_dna_enricher.identifiers import check_identifiers
+from just_dna_enricher.identifiers import unreachable_records as identifier_unreachable
+from just_dna_enricher.identifiers import verification_records as identifier_records
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
     CPIC_TERMS,
@@ -770,10 +780,18 @@ def check_identifiers_(
 ) -> None:
     """Report obsolete trait ontology terms and retired gene symbols (online, reports only).
 
-    Writes nothing: unlike the rsID check (whose verdict lands on resolution.csv), these are module-
-    level identifiers with no sidecar column to record, so the report is the whole output.
+    **Writes no authored cell, and records that the question was put.** Unlike the rsID check (whose
+    verdict lands on resolution.csv), these are module-level identifiers with no sidecar column to
+    record, and filling one from the registry being asked about it would make the comparison vacuous
+    — see `hints.REDUNDANCY_BEARING`. What this does write is `verification.json`: an attestation that
+    the three checks ran and over how many rows, never a value. A consumer holding the artifact has no
+    other way to tell "asked and clean" from "never asked" (RM45/RM72).
     """
     if not (spec_dir / "variants.csv").exists():
+        # No attestation here, and that is the `enrich_clinpgx` rule rather than an omission: a module
+        # carrying no `variants.csv` has no `gene`, `trait_efo_id` or row for these checks to have an
+        # opinion about, so the check does not APPLY — which is not a skip. Recording one would mine a
+        # nonce and create a `verification.json` on a module that never asked for one.
         typer.secho("no variants.csv — nothing to check", fg=typer.colors.YELLOW)
         return
     try:
@@ -781,7 +799,20 @@ def check_identifiers_(
         # evidence that the row-taking form leaves every caller reaching for a private loader.
         report = check_identifiers(spec_dir=spec_dir, check_traits=traits, check_genes=genes)
     except ValueError as exc:
+        # A module whose rows will not load: nothing is attested, because there are no bytes for an
+        # attestation to bind to and no question was reached.
         typer.secho(f"{exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except httpx.HTTPError as exc:
+        # The registry never answered, which is `unreachable` rather than an absence (S20) — and it is
+        # the run on which a reader most needs the record, since the report is empty. `check-acmg`
+        # records the same thing through `AcmgListUnavailable`; without this the promise two lines up
+        # would be false exactly when it matters.
+        _attest_on_the_way_out(
+            identifier_unreachable(check_traits=traits, check_genes=genes, detail=str(exc)),
+            spec_dir,
+        )
+        typer.secho(f"IDENTIFIER CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"traits checked: {len(report.traits)}  genes checked: {len(report.genes)}")
     for finding in [*report.stale_traits, *report.stale_genes, *report.gene_loci]:
@@ -793,10 +824,42 @@ def check_identifiers_(
             f"  gene/chromosome agreement not checked: {report.gene_loci_not_checked}",
             fg=typer.colors.YELLOW,
         )
+    # One call for all three records: the proof-of-work binds the whole document, so a per-check write
+    # would pay it three times for one guarantee. Before the strict exit below, because the check DID
+    # run — the exit code is presentation, and an attestation withheld on it would make the record
+    # depend on which flag the author passed.
+    try:
+        record_verification(
+            identifier_records(report, check_traits=traits, check_genes=genes),
+            spec_dir,
+            error=EnrichmentError,
+        )
+    except EnrichmentError as exc:
+        # The check did not fail — the report is above and it is complete. What failed is the
+        # attestation, so the message says which, in the `vrs mint` shape.
+        typer.secho(f"CHECKED, BUT NOT ATTESTED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     if report.clean:
         typer.secho("all identifiers current", fg=typer.colors.GREEN)
     elif strict:
         raise typer.Exit(code=1)
+
+
+def _attest_on_the_way_out(records: list[VerificationRecord], spec_dir: Path) -> None:
+    """Attest on the way out of a failed run, and report rather than raise if that fails too.
+
+    Used by the two check commands' failure paths only. The command is already exiting 1 with the
+    reason the source could not be read, and replacing that sentence with a layout or filesystem
+    complaint would tell the author about the wrong problem. `vrs mint`'s "BUT NOT ATTESTED" message
+    exists because *there* the run succeeded and only the record failed; here both went wrong and the
+    first one is the one to say. `OSError` is caught beside the caller's own error because
+    `record_verification` translates only a sidecar collision — a read-only spec directory reaches
+    here as an `OSError` and would otherwise replace the message this exists to protect.
+    """
+    try:
+        record_verification(records, spec_dir, error=EnrichmentError)
+    except (EnrichmentError, OSError) as exc:
+        typer.secho(f"  (not attested either: {exc})", fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("check-acmg")
@@ -812,18 +875,38 @@ def check_acmg_(
 ) -> None:
     """Check each row's `acmg_sf` against the ACMG secondary-findings list (reports only).
 
-    Writes nothing, for the same reason `check-identifiers` writes nothing: `acmg_sf` is an authored
-    cell this asks a registry about, not a fact this pass contributes. Filling it here would break the
-    check — see `hints.REDUNDANCY_BEARING`.
+    **Writes no authored cell, and records that the question was put** — the same two halves as
+    `check-identifiers`. `acmg_sf` is an authored cell this asks a registry about, not a fact this
+    pass contributes, and filling it here would break the check (see `hints.REDUNDANCY_BEARING`). The
+    `verification.json` record is an attestation, never a value: it says the list was consulted and
+    over how many rows, which is the one thing a downstream reader cannot reconstruct from the
+    artifact (RM45/RM72).
     """
     if not (spec_dir / "variants.csv").exists():
+        # Nothing attested — see `check-identifiers`: `acmg_sf` is a `variants.csv` column, so with no
+        # such file the check does not apply and there is no claim to have an opinion about.
         typer.secho("no variants.csv — nothing to check", fg=typer.colors.YELLOW)
         return
     try:
         report = verify_acmg_sf(
             spec_dir=spec_dir, mode=_mode(strict), offline=offline, url=url, snapshot_dir=sf_list
         )
+    except AcmgListUnavailable as exc:
+        # No list was obtained, so the check applies and did not run — the one failure here that is a
+        # skip. The reason travels on the exception (`unreachable` for a request that never answered,
+        # `no_reference` for a source that was there and carried no readable list), decided where the
+        # failure happened rather than sniffed out of the message.
+        _attest_on_the_way_out(
+            [skipped("acmg_secondary_findings", exc.skip, detail=str(exc), source="acmg")],
+            spec_dir,
+        )
+        typer.secho(f"ACMG CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     except AcmgSfError as exc:
+        # Everything else: a `strict` refusal, or a `variants.csv` that will not load. Nothing is
+        # attested — the strict path read the list and got an answer, so recording a skip would say the
+        # question was never put on the one run where it was put and answered badly; and a module whose
+        # rows will not load has no bytes for an attestation to bind to.
         typer.secho(f"ACMG CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     version = f"ACMG SF v{report.version}" if report.version else "not consulted"
@@ -842,6 +925,14 @@ def check_acmg_(
     for gene, rows, message in AcmgReport.by_gene(report.mismatches):
         typer.secho(f"  {gene} ({len(rows)} row(s), first at {rows[0]}): {message}",
                     fg=typer.colors.YELLOW, err=True)
+    # After the report, for `check-identifiers`' reason: the check ran and its answer is above, so an
+    # attestation that cannot be written must not take the answer down with it. `vrs mint`'s shape —
+    # the message says which of the two failed, because saying "the check failed" would be false.
+    try:
+        record_verification([acmg_record(report)], spec_dir, error=EnrichmentError)
+    except EnrichmentError as exc:
+        typer.secho(f"CHECKED, BUT NOT ATTESTED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     if report.clean and report.version:
         typer.secho("every stated acmg_sf agrees with the list", fg=typer.colors.GREEN)
 

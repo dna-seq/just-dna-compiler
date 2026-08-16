@@ -69,8 +69,11 @@ from pathlib import Path
 
 import httpx
 from just_dna_compiler.compiler import load_spec_variants
+from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
+
+from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +113,26 @@ _TAG_RE = re.compile(r"<[^>]+>")
 
 class AcmgSfError(RuntimeError):
     """An ACMG SF fetch or parse failed in a way the caller must see rather than work around."""
+
+
+class AcmgListUnavailable(AcmgSfError):
+    """No usable list was obtained, so the check could not be put at all (RM72).
+
+    A subclass rather than a second exception, so every existing `except AcmgSfError` still catches
+    it. It exists because this module has **two** ways of raising and a caller that attests must tell
+    them apart: the list could not be read, or the module disagrees with a list that was read
+    perfectly well (the `strict` refusal). Recording the second as a skip would say the question was
+    never put, on the one run where it was put and answered badly — the answered-absence-versus-
+    unasked-question collapse this tier draws everywhere else.
+
+    `skip` carries the `VALID_VERIFICATION_SKIPS` member, decided where the failure happens rather
+    than sniffed from the message: `unreachable` when the source was asked and never answered, and
+    `no_reference` when something was there and no list could be read out of it.
+    """
+
+    def __init__(self, message: str, *, skip: str) -> None:
+        super().__init__(message)
+        self.skip = skip
 
 
 @dataclass(frozen=True)
@@ -284,9 +307,10 @@ def parse_acmg_page(text: str, *, source_url: str = DEFAULT_ACMG_URL) -> AcmgSfL
     """
     version_match = _VERSION_RE.search(text)
     if version_match is None:
-        raise AcmgSfError(
+        raise AcmgListUnavailable(
             f"{source_url} declares no 'ACMG SF vN.N' version — the page changed, and a list with no "
-            "version cannot be reported against"
+            "version cannot be reported against",
+            skip="no_reference",
         )
     version = version_match.group(1)
 
@@ -294,9 +318,10 @@ def parse_acmg_page(text: str, *, source_url: str = DEFAULT_ACMG_URL) -> AcmgSfL
     cells = re.split(r"<td[^>]*>", table)[1:]
     width = len(EXPECTED_HEADERS)
     if not cells or len(cells) % width:
-        raise AcmgSfError(
+        raise AcmgListUnavailable(
             f"{source_url}: the ACMG table has {len(cells)} cells, which is not a multiple of "
-            f"{width} — the column layout changed, so the list cannot be read positionally"
+            f"{width} — the column layout changed, so the list cannot be read positionally",
+            skip="no_reference",
         )
 
     findings: list[SecondaryFinding] = []
@@ -304,10 +329,11 @@ def parse_acmg_page(text: str, *, source_url: str = DEFAULT_ACMG_URL) -> AcmgSfL
         disease_cell, medgen_cell, gene_cell, _clinvar_cell = cells[index : index + width]
         links = _GENE_LINK_RE.findall(gene_cell)
         if len(links) != 1:
-            raise AcmgSfError(
+            raise AcmgListUnavailable(
                 f"{source_url}: row {index // width + 1} has {len(links)} gene links in its gene "
                 f"cell, expected exactly 1 — refusing rather than returning a list short by a gene "
-                f"(cell: {_strip(gene_cell)[:120]!r})"
+                f"(cell: {_strip(gene_cell)[:120]!r})",
+                skip="no_reference",
             )
         gene_id, symbol = links[0]
         gene_mim = _MIM_RE.search(_strip(gene_cell))
@@ -327,9 +353,10 @@ def parse_acmg_page(text: str, *, source_url: str = DEFAULT_ACMG_URL) -> AcmgSfL
 
     genes = {f.gene for f in findings}
     if len(genes) < MIN_GENES:
-        raise AcmgSfError(
+        raise AcmgListUnavailable(
             f"{source_url}: parsed only {len(genes)} distinct genes from ACMG SF v{version}, below "
-            f"the {MIN_GENES} floor — the response is truncated or is not the list page"
+            f"the {MIN_GENES} floor — the response is truncated or is not the list page",
+            skip="no_reference",
         )
     logger.info("ACMG SF v%s: %d genes over %d gene-condition rows", version, len(genes), len(findings))
     return AcmgSfList(
@@ -351,8 +378,9 @@ def _select_table(text: str, source_url: str) -> str:
         header = body[: header_end if header_end != -1 else len(body)]
         if all(label in header for label in EXPECTED_HEADERS):
             return body[header_end + len("</tr>") :] if header_end != -1 else body
-    raise AcmgSfError(
-        f"{source_url}: no table carries the headers {EXPECTED_HEADERS} — the page was re-laid out"
+    raise AcmgListUnavailable(
+        f"{source_url}: no table carries the headers {EXPECTED_HEADERS} — the page was re-laid out",
+        skip="no_reference",
     )
 
 
@@ -362,7 +390,10 @@ def fetch_acmg_page(url: str = DEFAULT_ACMG_URL, *, timeout: float = 60.0) -> st
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise AcmgSfError(f"could not fetch the ACMG secondary-findings page from {url}: {exc}") from exc
+        raise AcmgListUnavailable(
+            f"could not fetch the ACMG secondary-findings page from {url}: {exc}",
+            skip="unreachable",
+        ) from exc
     return response.text
 
 
@@ -454,14 +485,18 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
     release_path = snapshot_dir / SNAPSHOT_RELEASE
     csv_path = snapshot_dir / SNAPSHOT_CSV
     if not release_path.exists() or not csv_path.exists():
-        raise AcmgSfError(
+        raise AcmgListUnavailable(
             f"{snapshot_dir} is not an ACMG SF snapshot ({SNAPSHOT_RELEASE} + {SNAPSHOT_CSV} "
-            f"expected) — build one with `just-dna-enricher acmg build <workbook.xlsx> <dir>`"
+            f"expected) — build one with `just-dna-enricher acmg build <workbook.xlsx> <dir>`",
+            skip="no_reference",
         )
     release = json.loads(release_path.read_text(encoding="utf-8"))
     version = release.get("sf_version")
     if not version:
-        raise AcmgSfError(f"{release_path} records no sf_version — the snapshot cannot be reported against")
+        raise AcmgListUnavailable(
+            f"{release_path} records no sf_version — the snapshot cannot be reported against",
+            skip="no_reference",
+        )
 
     findings: list[SecondaryFinding] = []
     with csv_path.open(encoding="utf-8", newline="") as handle:
@@ -484,9 +519,10 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
                 )
             )
     if len({f.gene for f in findings}) < MIN_GENES:
-        raise AcmgSfError(
+        raise AcmgListUnavailable(
             f"{csv_path}: {len({f.gene for f in findings})} distinct genes, below the {MIN_GENES} "
-            f"floor — the snapshot is truncated"
+            f"floor — the snapshot is truncated",
+            skip="no_reference",
         )
     logger.info(
         "ACMG SF v%s snapshot: %d genes over %d rows (source %s)",
@@ -588,9 +624,85 @@ def verify_acmg_sf(
     )
     if mode == "strict" and report.mismatches:
         grouped = AcmgReport.by_gene(report.mismatches)
+        # Plain `AcmgSfError`, deliberately, and `AcmgListUnavailable`'s docstring is why: the list was
+        # read and the question was answered, so a caller attesting off this exception must not record
+        # a skip. Nothing is attested on this path at all — the tier's rule for a `strict` refusal.
         raise AcmgSfError(
             f"strict acmg_sf check: {len(report.mismatches)} row(s) across {len(grouped)} gene(s) "
             f"disagree with ACMG SF v{sf_list.version}: "
             + "; ".join(f"{gene} ({len(rows)} row(s)): {message}" for gene, rows, message in grouped)
         )
     return report
+
+
+# ── the attestation (RM72) ──────────────────────────────────────────────────────────────────────
+
+
+def verification_record(report: AcmgReport) -> VerificationRecord:
+    """This pass's one check, as a record `verification.json` can carry (RM72).
+
+    **`subjects` is `report.checked`** — the rows the question could actually be asked about, which
+    already excludes a row naming no gene and every row of a run that reached no list. Counting all
+    the verdicts would publish a comparison for rows nobody compared, which is the shape the reference
+    -allele pass fell into on an unbuilt assembly.
+
+    **`findings` is `mismatches` alone**, and the `detail` sentence is what keeps that honest. A
+    disagreement against a *superseded* list is demoted to `unverifiable` by `_disagreement` — every
+    one of them, in both directions — so a run against NCBI's v3.2 page can hold ten disagreements and
+    still have an empty `mismatches`. Recording `findings=0` with no further word would read as a
+    clean bill, so the count of unsettled disagreements travels in `detail` and `release` names the
+    list that could not settle them. `unstated` notes are authoring aids and are named there too;
+    they are deliberately not findings, because blank means "not stated" and turning that into a
+    defect is the `None`-means-`False` collapse this codebase refuses.
+
+    The offline-with-no-list return is a **skip**, not `ran(0, 0)`: `verify_acmg_sf` is the only path
+    that can produce a report with no version at all, and it produces one precisely when no list was
+    consulted.
+    """
+    if report.version is None:
+        return skipped(
+            "acmg_secondary_findings", "offline",
+            detail=(
+                report.warnings[0] if report.warnings
+                else "no list was consulted, so no acmg_sf cell was compared against one"
+            ),
+            source="acmg",
+        )
+    if not report.checked:
+        return skipped(
+            "acmg_secondary_findings", "nothing_to_check",
+            # The version rides in the sentence rather than in `release`: that field belongs to a
+            # comparison and this record is the statement that none was made. `skipped()` takes no
+            # `release` for the same reason.
+            detail=(
+                f"none of {len(report.verdicts)} row(s) names a gene, so there was nothing to look "
+                f"up in ACMG SF v{report.version}"
+            ),
+            source="acmg",
+        )
+    parts = []
+    if report.mismatches:
+        parts.append(
+            f"{len(report.mismatches)} row(s) disagree with ACMG SF v{report.version}: "
+            + examples([gene for gene, _rows, _message in AcmgReport.by_gene(report.mismatches)])
+        )
+    if report.unverifiable:
+        parts.append(
+            f"{len(report.unverifiable)} disagreement(s) could not be settled, because the list read "
+            f"is v{report.version} and a newer one is published — they are outside the finding count "
+            f"rather than absent from it"
+        )
+    if report.notes:
+        parts.append(
+            f"{len(report.notes)} row(s) leave acmg_sf blank for a listed gene, which is legitimate "
+            f"and is a note rather than a finding"
+        )
+    return ran(
+        "acmg_secondary_findings",
+        subjects=report.checked,
+        findings=len(report.mismatches),
+        source="acmg",
+        release=report.version,
+        detail="; ".join(parts)
+        or f"every stated acmg_sf on {report.checked} row(s) agrees with ACMG SF v{report.version}",
+    )
