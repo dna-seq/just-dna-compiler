@@ -8,8 +8,17 @@ than accumulating in one document nobody can read as a plan.
 Everything here is **additive under Principles 3/4/8** — a new optional column or table — so none of it
 is waiting on a version. Each waits on a design question, a corpus, or a consumer.
 
+**Five of these were taken back into 0.6 on 2026-08-16, and this file no longer decides them.** RM55's
+fix, RM72, RM82, RM84 and RM87 were sorted into
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md), which re-asked whether the release they were filed against
+was still the right one now that 0.6 is uncut. **That document is authoritative for all five**; their
+entries below are kept as the record of what was observed, and where a probe overturned an entry the
+entry says so at the top. Nothing was taken on a legality argument — everything here was already legal
+in a minor — so what moved them is severity: a shipped thing that is silent, wrong or lying outranks a
+capability nobody has asked for.
+
 Indexed in [RM_TOC.md](RM_TOC.md). The 0.6 decisions that touched these items are in
-[PROPOSAL_0_6.md](PROPOSAL_0_6.md).
+[PROPOSAL_0_6.md](PROPOSAL_0_6.md) and [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md).
 
 ---
 
@@ -157,8 +166,23 @@ Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md); th
 
 ## RM55 — copy number and repeat count are not whole numbers (the usable fix)
 
-**Severity** high · **Status** 0.6 warns loudly; **the fix is here**; the removal is 1.0 · **Owner**
-format (schema) + compiler
+**Severity** high · **Status** **taken into 0.6 PT2 on 2026-08-16 — [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md)
+§ RM55 is authoritative and this entry is stale in its suggested fix**; the removal is still 1.0 ·
+**Owner** format (schema) + compiler
+
+> **Stale below.** The proposal's probe found the bin bounds are *already* `float | None`
+> (`binning.py:231`, `:238`), `_INTEGER_KINDS` has exactly one code reader (`binning.py:688`), and the
+> unstated half of the defect is that the shared-endpoint rule **refuses the continuous tiling that
+> would fix it** (`binning.py:666-677`). So "a parallel float column beside the integer one" names a
+> column that mostly does not exist. What was decided instead: an optional `measure_tiling` column
+> (`{quantised, continuous}`) for the tiling half, read as an **effective** tiling — declared, else
+> inferred from a fractional value (one-directional and announced, since fractional-ness is
+> incompatible with quantised semantics while integer-ness implies nothing), else the kind's current
+> default — **plus** the
+> parallel float column applied to `modifier_cn` — the one genuine `int` — as `modifier_copy_number`,
+> read through an effective-value alias that falls back to `float(modifier_cn)`, with `_KEY_FIELDS`
+> keying on the effective value so a key never holds two spellings. `modifier_cn` is deprecated in 0.6
+> and **removed** at 1.0, so the three-release route collapses to two.
 
 VCF 4.4 §7.2: *"Redefined INFO and FORMAT CN to support non-integer copy numbers"*, with fractional
 worked examples throughout, and §3 standardises the repeat count `RUC` as a **Float**. Both kinds sit in
@@ -576,7 +600,11 @@ model of that. Filed here rather than built for exactly that reason.
 
 ## RM72 — six verification members still emitted by nothing, and the "Writes nothing" contract
 
-**Severity** medium · **Status** deferred — four members blocked on a printed contract, two deliberately
+**Severity** medium · **Status** **taken into 0.6 PT2 on 2026-08-16** — the four are wired
+unconditionally, the merge rule is fixed, and the reword turns out to be **three sites, not the printed
+contract this entry feared** (the `create-module` skill annotates neither command). See
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM72; the two reserved members do not move. *Previously:*
+deferred — four members blocked on a printed contract, two deliberately
 reserved, one general question open · **Owner** enricher · **Found by** dogfooding on 2026-08-13,
 `reference_examples/hboc_palb2/`
 
@@ -734,9 +762,17 @@ Everything here is legal in a minor.
 
 ## RM82 — the attestation binds raw bytes, so an editor's line endings un-close a module
 
-**Severity** low-medium · **Status** **decided 2026-08-16 — normalize newlines, nothing else** —
-unbuilt · **Owner** format (schema: `verification.module_binding`) · **Found by** the §6.2 measurement,
-and sighted once before from the other side
+**Severity** low-medium · **Status** decided 2026-08-16 — normalize newlines, nothing else — **taken
+into 0.6 PT2 the same day**, still unbuilt · **Owner** format (schema: `verification.module_binding`) ·
+**Found by** the §6.2 measurement, and sighted once before from the other side
+
+> **One fact this entry does not carry, and it is the whole implementation.**
+> `module_binding` *is* `artifact_digest` (`verification.py:79-90`), and `size=stat().st_size` is inside
+> the hashed listing (`integrity.py:80-83`, `:106-112`). So normalizing the digest input while reporting
+> the on-disk size **still moves the binding** on exactly the CRLF files the fix exists for — the naive
+> implementation is a no-op that looks like a fix. The normalized length has to travel with the
+> normalized digest, through a builder used by the binding and by nothing else. See
+> [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM82.
 
 ### What was observed
 
@@ -855,7 +891,10 @@ parked co-authoring item wearing a different name.
 
 ## RM84 — a module has no version identity on the discovery path, and the publisher is the half we own
 
-**Severity** medium-high · **Status** open — **joint with the reference consumer, and their half is
+**Severity** medium-high · **Status** **our half taken into 0.6 PT2 on 2026-08-16** — dual-write
+`data/<name>/v<version>/` beside the flat path, so neither side waits for the other
+([PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM84); the exact segment spelling is an ask to the
+consumer. *Previously:* open — **joint with the reference consumer, and their half is
 already agreed in writing** · **Owner** enricher (`upload.upload_module`) + `just-dna-lite` discovery ·
 **Motivating case** a republished module on the HuggingFace path
 
@@ -1024,7 +1063,11 @@ is told how to run a review pass.
 ## RM87 — an expanded row is indistinguishable from an authored one in the artifact
 
 **Severity** medium-high (a consumer produced 3,762 false findings on it; caught before rendering) ·
-**Status** open — legal in a **minor**, not deferred to 1.0 · **Owner** format (schema) + compiler
+**Status** **taken into 0.6 PT2 on 2026-08-16** — `locus_index` **+** `locus_count`, both
+`stamped_identity_field` (`exclude=True`), stamped at the expansion loop
+(`resolution.py:178-188`); `locus_count` defaults to **1**, and reverse prefers the stored column over
+its encounter-order recompute. [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM87 is authoritative ·
+**Owner** format (schema) + compiler
 (materializer, reverse) · **Motivating case** S33 in
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md), from just-dna-lite
 

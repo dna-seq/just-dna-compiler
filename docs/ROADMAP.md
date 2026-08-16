@@ -21,8 +21,14 @@ deferral is filed against the release that will decide it:
   the entry below is stale** — several of these sections were written before the decision and describe
   a shape that was rejected. The proposal also carries RM53–RM67, from
   [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md), which are not repeated here.
+- **[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md)** — **the second 0.6 design round, decided 2026-08-16.**
+  Everything filed *behind* the first round accumulated in ROADMAP_0_7 because that was the next release
+  at the time; PT2 re-asked which release each belonged to now that 0.6 is uncut, and took five back:
+  RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
+  probe overturned what the roadmap entry says.
 - **[ROADMAP_0_7.md](ROADMAP_0_7.md)** — RM16, RM23, RM28 and the deferred halves of RM55, RM56, RM65,
-  plus RM66 and RM67. RM10 closed there, folded into RM28.
+  plus RM66 and RM67. RM10 closed there, folded into RM28. **Five of its entries are now records rather
+  than decisions** — see the line above.
 - **[ROADMAP_1_0.md](ROADMAP_1_0.md)** — RM15, RM52 and RM55's removal half, plus the upgrade ledger.
   **The 1.0 cleanup tracker below did not move** and stays the home for the unnumbered major-only items.
 

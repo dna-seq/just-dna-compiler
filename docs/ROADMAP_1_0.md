@@ -137,6 +137,24 @@ usable fix does not wait for it: 0.6 makes the defect loud, 0.7 adds a parallel 
 integer one (strictly additive, charter-clean) and deprecates the integer one, and 1.0 removes it along
 with the integer tiling semantics.
 
+**Re-dated on 2026-08-16, and the route is now two releases rather than three.**
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55 took the usable fix back into **0.6**, so what this
+entry calls "0.7" is 0.6, and what is left here is a **removal and nothing else**. Two corrections to
+the description above:
+
+- **The parallel-column shape does not apply to the bounds** — `measure_min`/`measure_max` have been
+  `float | None` since 0.4. What ships instead is an optional `measure_tiling` column
+  (`{quantised, continuous}`) that the gap and shared-endpoint rules read in place of `_INTEGER_KINDS`,
+  as an **effective** value: declared, else forced by a fractional value in the group, else the kind's
+  default. So 1.0 removes the kind-keyed tiling *defaults*, not a capability — by then the tiling is
+  either stated or forced by the data, and the default is the only part left that guesses.
+- **It does apply to `CopyNumberRow.modifier_cn`, which is the one genuine `int`** — 0.6 adds
+  `modifier_copy_number: float | None` beside it, read through an effective-value alias that falls back
+  to `float(modifier_cn)`, with both-set an error and `_KEY_FIELDS` keying on the effective value so the
+  key never holds two spellings. `modifier_cn` is **deprecated in 0.6** (actionable, so the amended
+  cadence permits it) and **removed here**. That is why 1.0 inherits a removal rather than the retype
+  this entry was written expecting.
+
 **Why the direct correction could not be taken in a minor**, recorded so it is not re-argued: it is a
 **retype** (`CopyNumberRow.modifier_cn: int` → float) *and* a change to what published bin tilings mean —
 `[2,2]` beside `[3,3]` is a legal integer tiling today, and under continuous rules both the
@@ -144,9 +162,13 @@ shared-endpoint rule and the gap warning change meaning. There were no published
 break, and the shortcut was declined anyway: that is the cost of holding a semi-immutable schema, and
 the implementation being wrong is not a licence to break the rule that keeps it trustworthy.
 
-Design detail carried forward from 0.7: whether quantised-versus-continuous is a **per-table
-declaration** or a **sixth measure kind** is still open at the point the integer column is removed, and
-the answer decides what the removal leaves behind. See [ROADMAP_0_7.md](ROADMAP_0_7.md) § RM55.
+Design detail, **settled on 2026-08-16 rather than carried forward**: quantised-versus-continuous is a
+**declaration**, not a sixth measure kind — `measure_kind` answers *what is measured* and tiling answers
+*how the axis is divided*, and folding the second into the first is the `state` anti-pattern the
+Constitution names by name (P5), besides being a product rather than a sum as kinds are added. It lands
+as `measure_tiling` in 0.6. So the removal here leaves behind a schema where the tiling is stated, not
+one where it has to be inferred from the kind. See
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55.
 
 ---
 

@@ -45,7 +45,7 @@ gotcha book: it is loaded into every session and has a size ceiling.
 | [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) | the runbook for answering an `Sn`, and the ledger | `grep -n '^## ' docs/CONSUMER_TRIAGE_LOOP.md` |
 | [USE_CASES.md](docs/USE_CASES.md) | a use case → enabled / consumer-side / gap. **Start a design task here** | `grep -n '^## ' docs/USE_CASES.md` |
 | [REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md) | how to author each case with today's bricks; indexes `reference_examples/` | `grep -n '^## ' docs/REFERENCE_EXAMPLES.md` |
-| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6].md | design threads with their charter checks and open questions | `grep -n '^## ' docs/PROPOSAL_0_6.md` |
+| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round | `grep -n '^## ' docs/PROPOSAL_0_6_PT2.md` |
 | [DOGFOOD_0_6.md](docs/DOGFOOD_0_6.md), [DOGFOOD_0_6_FINDINGS.md](docs/DOGFOOD_0_6_FINDINGS.md), [VCF_4_4_AUDIT.md](docs/VCF_4_4_AUDIT.md) | probe rounds and what they broke | `grep -n '^## ' docs/DOGFOOD_0_6_FINDINGS.md` |
 
 Cross-cutting greps worth knowing: an `RMn` or `Sn` anywhere → `grep -rn 'RM47' docs/`; a symbol's
