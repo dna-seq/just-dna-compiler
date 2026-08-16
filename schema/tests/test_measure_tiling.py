@@ -66,11 +66,19 @@ def _one_row_of(kind: str, **over) -> MeasureBinRow:
 
 
 def test_every_measure_kind_has_a_default_tiling_and_it_is_a_legal_answer() -> None:
-    """The registry-completeness shape: a sixth kind with no default would resolve to `None`
-    silently, i.e. would be read as `activity_score` is, which is a decision nobody made."""
+    """The registry-completeness shape, and the key check alone would not be it.
+
+    `DEFAULT_MEASURE_TILING` is a comprehension over `VALID_MEASURE_KINDS`, so its *keys* match by
+    construction and asserting only that proves nothing. What can go wrong is the **value**: a sixth
+    kind added to the vocabulary and to none of the three sets that build the table falls through to
+    `None`, i.e. is silently read the way `activity_score` is — no gap warning, a shared endpoint an
+    error — which is a decision nobody made. So the set that resolves to *neither* is pinned to the
+    one kind that means it, and a new kind has to be placed deliberately or fail here.
+    """
     assert set(DEFAULT_MEASURE_TILING) == VALID_MEASURE_KINDS
     for kind, tiling in DEFAULT_MEASURE_TILING.items():
         assert tiling is None or tiling in VALID_MEASURE_TILINGS, kind
+    assert {k for k, v in DEFAULT_MEASURE_TILING.items() if v is None} == {"activity_score"}
 
 
 @pytest.mark.parametrize("kind", sorted(VALID_MEASURE_KINDS))
