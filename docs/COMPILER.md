@@ -783,10 +783,25 @@ matches `"have no chrom+start"` to decide a trust badge; `compiler.UNJOINABLE_PH
 fragment and a test pins it, so a reword breaks this build rather than a catalog. Improve the rest of
 the sentence freely; move that fragment deliberately.
 
-**RM44 shipped in 0.6 and it retires only half of this.** `resolution_subjects` gives a consumer a
-structured field for *"was the flag about anything"*, so the vacuity no longer needs the prose — but
-the *unjoinable-row count* is a different question and still has only the sentence, since RM43 fills
-the rows rather than counting them into the manifest. The fragment and its test stay.
+**RM44 shipped in 0.6 and it retired half of this; S31 shipped the other half.**
+`resolution_subjects` gives a consumer a structured field for *"was the flag about anything"*, and
+**`positional_rows` / `positional_rows_placed`** now give the unjoinable-row count RM44 recorded as
+belonging with RM43 — the two counts, parts not a ratio, so "this table joins by position" is
+`positional_rows_placed == positional_rows` and needs no prose. **The fragment and its test still
+stay**, and not out of caution: every artifact published under 0.5 carries neither field, so for those
+manifests the sentence remains the only record. Retiring it is a decision to take once the published
+corpus has been recompiled.
+
+**Reading it from the consumer side, which is what these fields are for.** A module's rows join by
+position when `positional_rows_placed == positional_rows` (with `positional_rows == 0` meaning the
+module carries no such table, so the question does not arise) — and `variants.csv` is the separate
+question `fully_resolved` over `resolution_subjects` answers. **`None` on either field means the
+artifact was compiled before 0.6**, which did not fill those tables at all, so the honest reading is
+*unknown, and probably unfilled* rather than zero: a 1,482-row `pharm_variants` module compiled under
+0.5 has every coordinate null and no manifest field saying so. That is the state the reporting
+consumer had to discover by opening the parquet, and it does not change when a new compiler is
+installed — a published artifact only moves when it is recompiled **and** republished, which is the
+maintainer's action rather than the consumer's.
 
 **The joinability warning now reports the residue.** Every positional table is still checked for rows
 with no `chrom`+`start`, after the fill has run, and the finding is one aggregated line per table

@@ -247,6 +247,45 @@ class Compilation(BaseModel):
         default=0, description="Of those, how many carry a ga4gh:VA. allele id"
     )
 
+    # ── 0.6: how much of the 0.4 families a consumer can join by position (S31) ──
+    # The counterpart of `resolution_subjects` for the three positional table kinds
+    # (`pharm_variants.csv`, `haplotypes.csv`, `heteroplasmy.csv`), and the same parts-not-a-ratio
+    # shape: "complete" is `positional_rows_placed == positional_rows`, derived rather than stored.
+    #
+    # **This is the structured field `compiler.UNJOINABLE_PHRASE`'s comment has been promising.** RM44
+    # published `resolution_subjects` for `variants.csv` and recorded that the *positional* count
+    # belonged with RM43; RM43 then shipped the fill without it, so the only surviving record of how
+    # much of a PGx table joins to a VCF was still a **sentence** in `compilation.warnings`, which a
+    # catalog substring-matches. A count is what a catalog wanted, and it says more than the phrase
+    # ever did: the phrase says *some rows do not join*, these two say how many of how many.
+    #
+    # **`None` rather than `0` for both, and the distinction is the field's second job.** `0` is a real
+    # answer — a module carrying no positional table at all — so a legacy manifest defaulting to it
+    # would say "this module has no positional rows" about a 1,482-row `pharm_variants` artifact
+    # compiled before the fill existed. That is the vacuous-`fully_resolved` failure one block up,
+    # re-made in a field written to close it. `None` means *this compiler did not say*, which is what
+    # every pre-0.6 manifest honestly is (`resolution_mode`'s "None = legacy/skipped" is the
+    # precedent), and it lets a consumer tell the two eras apart from the manifest instead of probing
+    # the parquet for nulls — which is exactly how the reporting consumer had to find out.
+    #
+    # Making these `None`-able costs nothing the way it would have for `fully_resolved`: that flag is
+    # typed `bool` and consumers already branch on it, while nothing downstream reads a field that
+    # does not exist yet.
+    #
+    # Counted **after** the positional fill and over the authored rows, so the two are the same
+    # denominator the joinability warning uses. Not in `artifact.digest`, like every sibling here.
+    positional_rows: int | None = Field(
+        default=None,
+        description=(
+            "Rows across pharm_variants/haplotypes/heteroplasmy (None = compiled before 0.6, which "
+            "did not fill or count them; 0 = the module carries no such table)"
+        ),
+    )
+    positional_rows_placed: int | None = Field(
+        default=None,
+        description="Of those, how many carry chrom+start, hence join to a VCF by position",
+    )
+
 
 class Frequency(BaseModel):
     """Summary of a module's injected allele-frequency sidecar (0.5), out of `artifact.digest`.

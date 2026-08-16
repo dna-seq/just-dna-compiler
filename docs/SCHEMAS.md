@@ -1416,6 +1416,18 @@ one-to-many rsID expansion, because that is the list the flag iterates. `Stats.w
 to equal it today — do not key on that: `Stats` is card/detail display facets and promises no such
 relationship.
 
+**And the 0.4 families have their own denominator since 0.6 — `positional_rows` /
+`positional_rows_placed` (S31).** `fully_resolved` is about `variants.csv` only, so it says nothing
+whatever about a module whose rows all live in `pharm_variants.csv`; those tables gained coordinates in
+RM43, and these two counts are what publish how far the fill got. Same parts-not-a-ratio shape:
+"this table joins to a VCF by position" is `positional_rows_placed == positional_rows`. Both are
+**`int | None`** rather than defaulting to `0`, because `0` is a real answer — the module carries no
+positional table — and a legacy manifest defaulting to it would report "no positional rows" for a
+1,482-row artifact compiled before the fill existed, which is the vacuous-`fully_resolved` failure
+above re-made inside the field written to close it. `None` is *this compiler did not count*, the
+reading `resolution_mode`'s own "None = legacy/skipped" already uses, and it is how a consumer tells
+a pre-0.6 artifact from a module with nothing to place.
+
 **`derived` is a BYTE hash of the sidecar CSVs, and it is not their identity.** The derived-fact
 tables — `resolution.csv` plus `frequencies`/`gene_metrics`/`literature`/`sources` — are deliberately
 excluded from `inputs[]`, because they are multi-producer (the enricher, a human override and

@@ -1177,8 +1177,16 @@ def _apply_positional_resolution(
 #: annotate nothing. Rewording the phrase silently re-grants that trust.
 #:
 #: So it is named here rather than inlined: the rest of the sentence is free to improve, this fragment
-#: is not, and a change to it is a deliberate act with a consumer to tell. The real repair is a
-#: structured field a consumer can read instead of prose — RM44 — after which this can move again.
+#: is not, and a change to it is a deliberate act with a consumer to tell.
+#:
+#: **The structured repair landed in 0.6 and this still does not move (S31).**
+#: `manifest.compilation.positional_rows` / `positional_rows_placed` are the counts a catalog should
+#: read instead — RM44 shipped the same repair for `variants.csv` and recorded that the positional
+#: count belonged with RM43, which shipped the fill without it. What that does *not* do is retire the
+#: phrase: an artifact published under 0.5 carries neither field, so the sentence is still the only
+#: record those manifests have, and rewording it re-grants trust to modules already in a catalog.
+#: Retiring it is a decision to make once the published corpus has been recompiled, not a consequence
+#: of the field existing.
 UNJOINABLE_PHRASE = "have no chrom+start"
 
 
@@ -1298,6 +1306,27 @@ def _check_positional_joinability(
             f"{partial_note}"
         )
     return warnings
+
+
+def positional_placement(rows_by_csv: dict[str, list[Any]]) -> tuple[int, int]:
+    """`(rows, placed)` across the three positional table kinds — the counts the manifest publishes.
+
+    The structured half of `_check_positional_joinability`, which reports the same facts as prose per
+    table (S31). Public because the number is what a catalog wants: until 0.6 the only record of how
+    much of a PGx table joins to a VCF was `UNJOINABLE_PHRASE` inside `manifest.compilation.warnings`,
+    and a downstream registry substring-matched it. Anything a consumer can only learn from a warning
+    string is an unversioned interface (RM44).
+
+    **Call it after `_apply_positional_resolution`**, so `placed` counts what the artifact actually
+    carries rather than what the author typed — the fill is where an rsid-authored PGx module gets its
+    coordinates, and before it the answer is the pre-RM43 one.
+
+    A module carrying no positional table returns `(0, 0)`, which is a real answer and distinct from
+    the `None` the manifest holds for a compile that never counted; see `Compilation.positional_rows`.
+    """
+    rows = [row for csv_name, _model in _POSITIONAL_TABLE_KINDS for row in rows_by_csv.get(csv_name) or []]
+    placed = [row for row in rows if row.chrom is not None and row.start is not None]
+    return len(rows), len(placed)
 
 
 #: The binning table kinds, derived from the models for the same reason `_POSITIONAL_TABLE_KINDS` is:
@@ -3982,6 +4011,9 @@ def compile_module(
         )
         if w not in all_warnings
     )
+    # The same facts as counts rather than as a sentence, for the catalog that was reading the
+    # sentence (S31). Computed here, beside the check, so the two cannot describe different row sets.
+    positional_rows, positional_rows_placed = positional_placement(kind_rows)
     all_warnings.extend(
         w for w in _check_binning_grounding(kind_rows, studies) if w not in all_warnings
     )
@@ -4164,6 +4196,8 @@ def compile_module(
         resolution_mode=resolution_mode,
         fully_resolved=fully_resolved,
         resolution_subjects=resolution_subjects,
+        positional_rows=positional_rows,
+        positional_rows_placed=positional_rows_placed,
         vrs_alleles=vrs_alleles,
         vrs_alleles_identified=vrs_identified,
         resolution_sig=resolution_sig,
@@ -4705,6 +4739,8 @@ def _build_manifest(
     resolution_mode: str | None = None,
     fully_resolved: bool = False,
     resolution_subjects: int = 0,
+    positional_rows: int | None = None,
+    positional_rows_placed: int | None = None,
     resolution_sig: str | None = None,
     resolution_sources: list[str] | None = None,
     vrs_alleles: int = 0,
@@ -4760,6 +4796,8 @@ def _build_manifest(
             resolution_mode=resolution_mode,
             fully_resolved=fully_resolved,
             resolution_subjects=resolution_subjects,
+            positional_rows=positional_rows,
+            positional_rows_placed=positional_rows_placed,
             resolution_signature=resolution_sig,
             resolution_sources=resolution_sources or [],
             vrs_alleles=vrs_alleles,

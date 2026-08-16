@@ -108,6 +108,39 @@ splitting `genotype` on the same pass would make the whole artifact self-consist
 
 ## S31 — RM43 is built and unreleased, so a `pharm_variants` module still ships zero coordinates, and on an rsID-less genome that is zero annotations
 
+**Status — the field you guessed at did not exist and now does: `manifest.compilation.positional_rows`
+/ `positional_rows_placed`, shipped in 0.6.0.** You were right that `resolution_subjects` looks
+adjacent and right that it is not the answer — it counts `variants.csv`, which your module has none
+of. RM44's own entry recorded that the *positional* count "belongs with RM43", and RM43 then shipped
+the fill without it, so until this the only published record of whether a PGx table joins to a VCF was
+the warning sentence your registry substring-matches. Two counts, parts not a ratio, the
+`vrs_alleles`/`vrs_alleles_identified` shape: complete is `positional_rows_placed == positional_rows`.
+`pgx_slco1b1_simvastatin` now reports 9 of 9 while its `fully_resolved: true` still quantifies over
+zero variant rows, which is the pair of readings a catalog needs side by side.
+
+**The era question has a definite answer, and it is the reason both fields are nullable rather than
+`0`.** `None` means *this compiler did not count*, which is exactly what every pre-0.6 manifest
+honestly is; `0` means the module carries no positional table. Defaulting to `0` would have your 0.5
+artifact report "no positional rows" while its parquet holds 1,482 — the vacuous-`fully_resolved`
+failure re-made inside the field written to close it, so a test pins the distinction. Alongside that,
+`compiler_version` is the discriminator that exists in manifests already published. COMPILER.md's
+resolution section now carries the read-side rule, including the part that outlasts the release: a
+published artifact does not move when a consumer installs 0.6, only when its maintainer recompiles
+**and** republishes.
+
+`UNJOINABLE_PHRASE` and its test **stay**, and the comment claiming RM44 would retire them is
+corrected rather than deleted: manifests already on `just-dna-seq/annotators` carry neither new field,
+so for those the sentence is still the whole record. Retiring it is a decision for after the corpus is
+recompiled, not a consequence of the field existing.
+
+The rest is outside the format and stays there. Republishing the corpus is a maintainer action we do
+not control from here, and `trusted: false` is your registry's rendering of a true fact — the
+counts give it something better to render than a warning's prose, but what a badge *says* is a
+consumer contract (RM7). Your own bug — distinguishing "we could not test you" from "you carry none of
+these" — reads right to us, and it is the same tri-state discipline this repo applies everywhere: an
+unasked question is never a negative answer.
+<!-- triaged: 0.6.0 -->
+
 Reported from **just-dna-lite** (consuming 0.5.4), 2026-08-16, same round as S30 — the same module and
 the same run, one layer down. **We know RM43 shipped this in the 0.6 tree**; this is the field cost of
 it not being installable yet, plus one consequence we do not think RM43 alone closes.
