@@ -5037,6 +5037,16 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
                 # row it was written as. Without it `content_signature` moved on every round-trip of
                 # an rsid-authored module. See COMPILER.md § Resolution.
                 "authored_ident": v.authored_ident,
+                # The expansion marker (0.6, RM87). A one-to-many rsID is paired with every locus it
+                # resolves to, so only the member whose alleles can carry the genotype asserts
+                # anything; the others are ordinary rows with a real coordinate and the module's own
+                # conclusion. `locus_count > 1` is the predicate that identifies them from a single
+                # row — `locus_index` alone is 0 on a non-expanded row *and* on the first member.
+                # Read off the row rather than derived here, because this builder is a comprehension
+                # over `v.<field>` and has no side channel; both are `exclude=True`, so they reach
+                # parquet and no `content_signature`.
+                "locus_index": v.locus_index,
+                "locus_count": v.locus_count,
                 "genotype": _split_genotype(v.genotype),
                 # Phase bit: `genotype` is stored as an allele *list*, which cannot itself
                 # distinguish a phased A|G from an unphased (sorted) A/G — both split to ["A","G"].
@@ -5091,6 +5101,10 @@ def _build_weights(variants: list[VariantRow], config: ModuleSpecConfig) -> pl.D
         "rsid": pl.Utf8,
         "authored_ident": pl.List(pl.Utf8),
         "variant_key": pl.Utf8,
+        # RM87 — see the record dict above. Hand-listed twice because `_build_weights`, unlike
+        # `_build_table`, derives neither half from the model.
+        "locus_index": pl.UInt32,
+        "locus_count": pl.UInt32,
         "genotype": pl.List(pl.Utf8),
         "phased": pl.Boolean,
         "module": pl.Utf8,
@@ -6040,6 +6054,8 @@ def _write_resolution_csv(
     # round-trip.
     seen_rows: set[tuple] = set()
     locus_counter: dict[str, int] = {}
+    #: The ordinals already written under each key — see `_reverse_locus_index`.
+    emitted_indices: dict[str, set[int]] = {}
     emitted: list[dict[str, object]] = []
 
     for row in (weights_df.iter_rows(named=True) if weights_df is not None else ()):
@@ -6055,10 +6071,15 @@ def _write_resolution_csv(
         if fact in seen_rows:
             continue
         seen_rows.add(fact)
-        index = locus_counter.get(resolution_key, 0)
-        locus_counter[resolution_key] = index + 1
+        # The counter is maintained unconditionally even when the stored column answers, because the
+        # positional pass below uses **membership** in it to enforce weights-first: a key this pass
+        # emitted must never be re-emitted from a PGx table. Only the number written out switches.
+        locus_counter[resolution_key] = locus_counter.get(resolution_key, 0) + 1
         emitted.append(
-            _resolution_record(row, resolution_key, chrom, start, alts_cell, index, genome_build)
+            _resolution_record(
+                row, resolution_key, chrom, start, alts_cell,
+                _reverse_locus_index(row, resolution_key, emitted_indices), genome_build,
+            )
         )
 
     for _csv_name, table_df in positional:
@@ -6095,6 +6116,49 @@ def _write_resolution_csv(
         writer.writeheader()
         for record in emitted:
             writer.writerow(record)
+
+
+def _reverse_locus_index(
+    row: dict[str, Any], resolution_key: str, emitted: dict[str, set[int]]
+) -> int:
+    """The `locus_index` a re-emitted `resolution.csv` row gets: the stored one, else encounter order.
+
+    **Prefer the stored column (RM87), keep the recompute for a pre-0.6 artifact.** `weights.parquet`
+    has carried `locus_index` since 0.6 and it is the compiler's own answer; an artifact compiled
+    before the column existed has nothing to read, and Principle 3 requires it to keep reversing. On
+    every reference example the two agree — pinned by reversing each expanding module twice, once with
+    the column and once with it stripped — which is also what pins the sort dependency the recompute
+    silently relies on.
+
+    **Uniqueness is the guard, and it is not theoretical.** `ResolutionRow`'s own contract is several
+    rows sharing a `variant_key` with *distinct* `locus_index`, and `locus_index` is inside
+    `RESOLUTION_FACT_FIELDS`, so a duplicate is a malformed signed fact rather than a cosmetic slip.
+    Unconditional prefer-stored can produce one: the stamp counts within a single authored row's
+    hostable set, so two authored genotypes at one key that reach *different* sets — reachable only in
+    `best_effort`, since dropping a locus appends a strict error — number the same locus differently,
+    and this pass emits each locus once. The reproduced case is four loci where one genotype rejects
+    one of them: the second genotype's surviving locus arrives carrying an ordinal the first genotype
+    already spent.
+
+    So a stored value is taken when it is free under this key and the smallest unused ordinal
+    otherwise. That keeps the table well-formed, which is all it can do: in that case *no* numbering
+    lines every weights row up with a table row, because one locus genuinely holds two ordinals in the
+    artifact and the table has a single row for it. The clean case — every corpus module, and every
+    module under `strict` — is byte-identical to what the counter alone produced.
+    """
+    used = emitted.setdefault(resolution_key, set())
+    stored = row.get("locus_index")
+    index = int(stored) if stored is not None and int(stored) not in used else _smallest_free(used)
+    used.add(index)
+    return index
+
+
+def _smallest_free(used: set[int]) -> int:
+    """The lowest non-negative integer not in `used` — encounter order, with the holes filled."""
+    index = 0
+    while index in used:
+        index += 1
+    return index
 
 
 def _resolution_key(

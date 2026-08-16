@@ -200,14 +200,27 @@ def resolve_variants(
                         f"{v.rsid} maps to {len(usable)} loci in Ensembl; expanded to {len(usable)} "
                         f"rows (one per locus, each keyed by its coordinate — a consumer can count them)."
                     )
-                    for locus in usable:
+                    for index, locus in enumerate(usable):
                         # Redundant today (the function returns early above for any non-GRCh38 build),
                         # passed anyway — see the twin in `just_dna_compiler.resolution`.
                         key = derive_variant_key(
                             None, locus["chrom"], locus["start"], locus["ref"], locus["alts"],
                             build=genome_build,
                         )
-                        patched.append(v.model_copy(update={**locus, "variant_key": key}))
+                        # The expansion marker (RM87). Unlike the warning above, this half *is*
+                        # converged with the compiler's twin, and it has to be: **digest parity
+                        # between this path and the `resolution.csv` path is a documented guarantee**,
+                        # and these two columns reach `weights.parquet`. Leaving them at their
+                        # defaults here would make the deprecated path's artifact differ from the
+                        # supported path's on the same module — which is how two round-trip tests
+                        # caught it, since reverse writes a `resolution.csv` and the recompile then
+                        # takes the other branch.
+                        patched.append(v.model_copy(update={
+                            **locus,
+                            "variant_key": key,
+                            "locus_index": index,
+                            "locus_count": len(usable),
+                        }))
         elif v.rsid is None and v.chrom is not None:
             key = derive_variant_key(None, v.chrom, v.start, v.ref)
             if key in pos_to_rsid:

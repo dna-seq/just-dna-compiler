@@ -287,8 +287,8 @@ def derive_variant_key(
 IDENTITY_FIELDS: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
 
 
-def stamped_identity_field(description: str) -> Any:
-    """A `Field(...)` for a compiler-stamped identity column on a 0.4-family positional model.
+def stamped_identity_field(description: str, *, default: Any = None) -> Any:
+    """A `Field(...)` for a compiler-stamped column that is not part of the authored content.
 
     Three properties, and the middle one is the non-obvious one:
 
@@ -302,11 +302,20 @@ def stamped_identity_field(description: str) -> Any:
       parquet. `VariantRow.variant_key`/`authored_ident` are **not** excluded and are inside
       `content_signature` today; that is a grandfathered inconsistency, not a precedent — un-excluding
       them here, or excluding them there, moves published signatures either way, so the asymmetry is
-      carried until a major.
+      carried until a major. Anything declared *through this helper* is on the right side of it,
+      including `VariantRow`'s own `locus_index`/`locus_count` (RM87), which are stamped on the same
+      model without repeating the defect.
     * a fresh `FieldInfo` per call, because pydantic binds one to the model that declares it.
+
+    `default` is the **caller's**, not this helper's. It was hard-coded to `None` while the only users
+    were the three 0.4-family positional models (RM43), where an unstamped identity column genuinely
+    has no value. RM87's `locus_count` defaults to `1` instead, because a row that was never expanded
+    really does resolve to one locus and `locus_count > 1` has to be a predicate a reader can apply
+    while holding a single row — a `None`/`0` default would put a second "undetermined" state back
+    into the column the item exists to make determinate.
     """
     return Field(
-        default=None,
+        default=default,
         exclude=True,
         json_schema_extra=COMPILER_MANAGED,
         description=description,

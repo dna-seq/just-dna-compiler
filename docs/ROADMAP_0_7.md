@@ -241,6 +241,13 @@ describe rather than a gap"* is false for both. 0.6 fixes the comment.
 Without one it is scaffolding in thin air — and it is not free: it would put two more tables into RM43's
 coordinate-filling path, taking that lane from three tables to five.
 
+**And it carries an RM87 obligation, noticed while that lane was being built.** The reverse writer's
+positional-table pass hard-codes `locus_index = 0` (`_write_resolution_csv`, the second loop), which is
+honest only while those tables never expand — true today, since RM43's fill is one locus per row.
+Putting coordinates on the repeat and copy-number tables is exactly what could make one of them expand,
+and the `0` would then be a wrong number rather than a trivially correct one. Not a blocker for RM65;
+a line whoever implements it must clear.
+
 ## RM66 — one repeat locus, several motifs
 
 **Severity** medium · **Status** deferred here with RM65, same prerequisite · **Owner** format (schema)
@@ -1063,12 +1070,20 @@ is told how to run a review pass.
 ## RM87 — an expanded row is indistinguishable from an authored one in the artifact
 
 **Severity** medium-high (a consumer produced 3,762 false findings on it; caught before rendering) ·
-**Status** **taken into 0.6 PT2 on 2026-08-16** — `locus_index` **+** `locus_count`, both
-`stamped_identity_field` (`exclude=True`), stamped at the expansion loop
-(`resolution.py:178-188`); `locus_count` defaults to **1**, and reverse prefers the stored column over
-its encounter-order recompute. [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM87 is authoritative ·
-**Owner** format (schema) + compiler
-(materializer, reverse) · **Motivating case** S33 in
+**Status** **SHIPPED in 0.6 PT2 (lane B)** — `VariantRow.locus_index` **+** `locus_count`, both
+`stamped_identity_field` (`exclude=True`, so no `content_signature` moved anywhere), stamped at the
+expansion loop in `resolution.py` **and** at its twin in the deprecated `resolver.resolve_variants`
+(digest parity between the two paths is a guarantee, and two round-trip tests caught the omission);
+`locus_count` defaults to **1**; `_build_weights` materializes both as `UInt32`; reverse prefers the
+stored column over its encounter-order recompute and keeps the recompute for a pre-0.6 artifact.
+`_freeze_identity` overwrites an authored cell of either name, the way it already does for
+`variant_key`. Measured over the sixteen reference examples: `artifact.digest` moved on the **nine**
+carrying a `variants.csv` — hence a `weights.parquet` — and on nothing else; `content_signature`,
+`sources.signature`, `verification.signature` and `compilation.resolution_signature` all held on all
+sixteen. (The proposal predicted twelve and four; the real split is nine and seven, which is a
+miscount in the prediction and not a behaviour difference.)
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM87 is the design record · **Owner** format (schema) +
+compiler (materializer, reverse) · **Motivating case** S33 in
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md), from just-dna-lite
 
 A one-to-many rsID is paired with every locus it resolves to, so K authored genotypes at that key

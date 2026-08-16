@@ -1,15 +1,24 @@
-"""`expanded_keys` / `expanded_rows`: an artifact says whether it contains expansion rows (S33).
+"""Both halves of the expansion answer: the artifact-level counts (S33) and the row-level pair (RM87).
 
 A one-to-many rsID is paired with every locus it resolves to, so an authored genotype becomes N rows
 of which **one** can match. The other N-1 are well-formed: correct grammar, the module's own
 conclusion, a locus whose alleles cannot carry that genotype. A reporting consumer read 2,579 of them
 as reference genotypes their subject carried, caught before rendering — and could not have known from
-the artifact that any such row was there, because nothing in `weights.parquet` distinguishes an
+the artifact that any such row was there, because nothing in `weights.parquet` distinguished an
 expanded row from an authored one.
 
 The expansion itself is not the defect and is not changed here (COMPILER.md § Resolution says why, and
-Principle 7 forbids the obvious prune). What these two counts add is the artifact-level answer to
-*does this module contain them at all*.
+Principle 7 forbids the obvious prune). Two things were added instead, and the second half of this
+file is the one nobody had written:
+
+* `manifest.compilation.expanded_keys` / `expanded_rows` (0.6, S33) answer *does this module contain
+  such rows at all* — an artifact-level fact, whose own docstring says it deliberately does not
+  substitute for the row-level one.
+* `VariantRow.locus_index` / `locus_count` (0.6, RM87) answer it **while holding one row**, which is
+  the position a consumer reads from. `locus_count > 1` is the predicate; `locus_index` lines the row
+  up with its `resolution.csv` row. Neither alone is enough — `locus_index` is `0` on a non-expanded
+  row *and* on the first member of every expansion — and both are `exclude=True`, so no
+  `content_signature` moves.
 
 Every expectation is derived at runtime — from the module's own `resolution.csv`, from another
 manifest field, or from a fixture this file writes and can therefore count. Nothing is a number read
@@ -19,11 +28,15 @@ off a data dump.
 import csv
 import io
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
+import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module
+from just_dna_compiler.compiler import compile_module, content_signature, reverse_module
+from just_dna_format.base import authored_field_names
+from just_dna_format.integrity import content_signature as signature_over_rows
+from just_dna_format.spec import VariantRow
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
@@ -179,8 +192,6 @@ def test_the_row_count_is_the_product_not_the_locus_count(tmp_path: Path) -> Non
     assert result.manifest is not None
     compilation = result.manifest.compilation
 
-    import polars as pl
-
     weights = pl.read_parquet(out / "weights.parquet")
     assert compilation.expanded_keys == 1
     assert compilation.expanded_rows == weights.height
@@ -254,3 +265,311 @@ def test_resolution_switched_off_leaves_the_counts_unestablished(tmp_path: Path)
     assert result.manifest is not None
     assert result.manifest.compilation.expanded_keys is None
     assert result.manifest.compilation.expanded_rows is None
+
+
+# ── RM87: the row-level marker ──────────────────────────────────────────────────────────────────
+#
+# The counts above say *whether*; these say *which*. Written against real corpus modules rather than
+# only the fixture, because the shape that matters — several authored genotypes over several loci —
+# exists in `pathogenic_clinvar` (nine one-to-many keys) and `hboc_palb2` (two) and had never been
+# asserted anywhere: the single direct assertion in the suite was a one-locus `locus_index == "0"`.
+
+#: The columns that identify one authored row, so its expansion members group together. `rsid` alone
+#: is not enough — two authored genotypes at one rsID each expand onto the same loci, and their
+#: sequences are independent `0..N-1` runs rather than one `0..2N-1`.
+_MEMBER_GROUP = ("rsid", "genotype", "authored_ident")
+
+
+def _expansion_groups(weights: pl.DataFrame) -> dict[tuple, list[dict]]:
+    """Weights rows grouped by the authored row they came from, expanded members only."""
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for row in weights.iter_rows(named=True):
+        if row["locus_count"] <= 1:
+            continue
+        key = tuple(
+            tuple(row[c]) if isinstance(row[c], list) else row[c] for c in _MEMBER_GROUP
+        )
+        groups[key].append(row)
+    return groups
+
+
+def _expanding_examples() -> list[Path]:
+    """Corpus modules whose injected table resolves some key onto more than one locus."""
+    found = [d for d in _example_dirs() if _multi_locus_keys(d)]
+    assert found, "the corpus must keep a one-to-many module or these tests prove nothing"
+    return found
+
+
+@pytest.mark.parametrize("spec_dir", _expanding_examples(), ids=lambda d: d.name)
+def test_every_expanded_authored_row_carries_a_complete_zero_to_n_sequence(
+    spec_dir: Path, tmp_path: Path
+) -> None:
+    """`locus_index` covers `0..N-1` exactly once per expanded authored row, and `locus_count` is N.
+
+    Set equality rather than a count, so a sequence that repeats an ordinal or skips one fails even
+    where the length happens to come out right. The expected N is read off the group itself — the
+    number of members the compiler actually emitted — so nothing here is a literal.
+    """
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+    weights = pl.read_parquet(tmp_path / "out" / "weights.parquet")
+
+    groups = _expansion_groups(weights)
+    assert groups, f"{spec_dir.name} was selected as an expanding module and emitted no marked rows"
+    for key, members in groups.items():
+        counts = {m["locus_count"] for m in members}
+        assert counts == {len(members)}, f"{key}: locus_count {counts} for {len(members)} members"
+        assert {m["locus_index"] for m in members} == set(range(len(members))), key
+        # The members really are different loci — the marker would be worthless on duplicate rows.
+        assert len({(m["chrom"], m["start"], m["ref"]) for m in members}) == len(members), key
+
+    # And the row-level marker agrees with the artifact-level counts it does not substitute for.
+    assert result.manifest is not None
+    assert result.manifest.compilation.expanded_keys is not None
+    marked = weights.filter(pl.col("locus_count") > 1)
+    assert marked.height == result.manifest.compilation.expanded_rows
+
+
+@pytest.mark.parametrize("spec_dir", _example_dirs(), ids=lambda d: d.name)
+def test_a_row_that_was_not_expanded_says_exactly_that(spec_dir: Path, tmp_path: Path) -> None:
+    """`locus_count == 1` ⟺ `locus_index == 0`, on every module including the ones that never expand.
+
+    This is the half `locus_index` alone cannot express, and the reason the default is `1` and not
+    `0`: a reader holding one row must be able to separate "not expanded" from "first member of an
+    expansion", and a zero default would make the predicate read `> 1 or == 0`.
+    """
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+    weights_path = tmp_path / "out" / "weights.parquet"
+    if not weights_path.is_file():
+        return  # a table-only module — the columns live on the SNP core
+    weights = pl.read_parquet(weights_path)
+
+    unexpanded = weights.filter(pl.col("locus_count") == 1)
+    assert unexpanded["locus_index"].to_list() == [0] * unexpanded.height
+    # Nothing may claim membership of a zero-member expansion, or an ordinal outside its own run.
+    assert weights.filter(pl.col("locus_count") == 0).height == 0
+    assert weights.filter(pl.col("locus_index") >= pl.col("locus_count")).height == 0
+
+
+def test_the_sequence_survives_compile_reverse_compile(tmp_path: Path) -> None:
+    """The obligation P7 gained with the columns, on the corpus module that really has the shape.
+
+    `pathogenic_clinvar` carries nine one-to-many keys. Reverse collapses each expansion back to the
+    single authored row it was written as and rebuilds `resolution.csv` from the parquet, so the
+    second compile has to re-derive the whole sequence from a table it wrote itself. Comparing the
+    two frames column-for-column is stronger than comparing digests alone: it says *which* column
+    would have moved.
+    """
+    spec_dir = _EXAMPLES / "pathogenic_clinvar"
+    first = compile_module(spec_dir, tmp_path / "a1", resolve_with_ensembl=True)
+    assert first.success, first.errors
+    reverse_module(tmp_path / "a1", tmp_path / "rev")
+    second = compile_module(tmp_path / "rev", tmp_path / "a2", resolve_with_ensembl=True)
+    assert second.success, second.errors
+
+    w1 = pl.read_parquet(tmp_path / "a1" / "weights.parquet")
+    w2 = pl.read_parquet(tmp_path / "a2" / "weights.parquet")
+    assert w1["locus_index"].to_list() == w2["locus_index"].to_list()
+    assert w1["locus_count"].to_list() == w2["locus_count"].to_list()
+    assert _expansion_groups(w1).keys() == _expansion_groups(w2).keys()
+    assert max(w1["locus_count"].to_list()) > 1, "the fixture must actually expand"
+    assert first.manifest.artifact.digest == second.manifest.artifact.digest
+
+
+@pytest.mark.parametrize("spec_dir", _expanding_examples(), ids=lambda d: d.name)
+def test_reverse_prefers_the_stored_column_and_the_recompute_agrees_with_it(
+    spec_dir: Path, tmp_path: Path
+) -> None:
+    """Both halves of the P3 fallback in one comparison, on the real reverse path.
+
+    `_write_resolution_csv` reads `locus_index` off the parquet where it is present and falls back to
+    counting by encounter order, because an artifact compiled before 0.6 has no such column and has
+    to keep reversing. Stripping the column from a real `weights.parquet` is what a pre-0.6 artifact
+    looks like, so reversing the same artifact twice — once with the column, once without —
+    exercises the stored path, the fallback path, and the claim that they agree.
+
+    The agreement is not free: the recompute works only because the weights rows happen to be sorted
+    on the ordinal. That dependency was silent until this comparison existed.
+    """
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+    weights_path = tmp_path / "out" / "weights.parquet"
+    reverse_module(tmp_path / "out", tmp_path / "rev_stored")
+
+    stripped = pl.read_parquet(weights_path).drop("locus_index", "locus_count")
+    assert "locus_index" not in stripped.columns
+    stripped.write_parquet(weights_path)
+    reverse_module(tmp_path / "out", tmp_path / "rev_recomputed")
+
+    stored = (tmp_path / "rev_stored" / "resolution.csv").read_text(encoding="utf-8")
+    recomputed = (tmp_path / "rev_recomputed" / "resolution.csv").read_text(encoding="utf-8")
+    assert stored == recomputed
+    # And the comparison is about something: this module's table really does carry a non-zero index.
+    indices = {row["locus_index"] for row in csv.DictReader(io.StringIO(stored))}
+    assert indices > {"0"}
+
+
+def _divergent_expansion(spec_dir: Path) -> Path:
+    """One rsID, three loci, two authored genotypes that reach **different** hostable sets.
+
+    Built from `pathogenic_clinvar`'s `rs281864532`, the module's own three-way case: this repo's
+    notes record it as `G>GT`, `GT>G` **and** `GTT>G` under one rsID, and the example's injected table
+    carries the first two. The third is added here with the middle `locus_index`, which is what makes
+    the sets diverge in the order that matters:
+
+    * `G/GT` — the example's own authored genotype — cannot be hosted by `GTT>G`: re-anchoring moves
+      an indel but never changes how many bases it adds or removes, so a 1 bp insertion beside a 2 bp
+      deletion is a confident `False`. Its expansion is the two outer loci, stamped `0, 1`.
+    * `G/G` names only `G`, which every one of the three loci has, so its expansion is all three,
+      stamped `0, 1, 2`.
+
+    Reverse emits each locus once, so `GTT>G` arrives carrying ordinal 1 — already spent by the other
+    genotype's second member. `best_effort`, necessarily: dropping a locus appends a strict error.
+    """
+    source = _EXAMPLES / "pathogenic_clinvar"
+    rsid = "rs281864532"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    (spec_dir / "module_spec.yaml").write_text(
+        (source / "module_spec.yaml").read_text().replace("pathogenic_hbb", "divergent_probe")
+    )
+    variants = (source / "variants.csv").read_text().splitlines()
+    authored = [variants[0]] + [line for line in variants if line.startswith(f"{rsid},")]
+    assert len(authored) == 2, "the fixture assumes the example authors this rsID exactly once"
+    authored.append(authored[1].replace(",G/GT,", ",G/G,"))
+    (spec_dir / "variants.csv").write_text("\n".join(authored) + "\n")
+
+    resolution = (source / "resolution.csv").read_text().splitlines()
+    header = resolution[0].split(",")
+    loci = [line.split(",") for line in resolution if line.startswith(f"{rsid},")]
+    assert len(loci) == 2, "the fixture assumes this rsID resolves onto exactly two loci"
+    third = list(loci[0])
+    for column, value in (("ref", "GTT"), ("alts", "G"), ("locus_index", "1"), ("vrs_id", "")):
+        third[header.index(column)] = value
+    # The added locus takes the middle ordinal; the example's `GT>G` moves out to 2. `_sorted_loci`
+    # orders on `locus_index` first, so this is what puts the rejected locus between the survivors.
+    loci[1][header.index("locus_index")] = "2"
+    rows = [",".join(r) for r in (loci[0], third, loci[1])]
+    (spec_dir / "resolution.csv").write_text("\n".join([resolution[0], *rows]) + "\n")
+
+    (spec_dir / "studies.csv").write_text(f"rsid,chrom,start,ref,pmid\n{rsid},,,,29165669\n")
+    literature = (source / "literature.csv").read_text().splitlines()
+    (spec_dir / "literature.csv").write_text(
+        "\n".join([literature[0], *(x for x in literature if x.startswith("29165669,"))]) + "\n"
+    )
+    return spec_dir
+
+
+def test_a_reversed_table_never_files_two_loci_under_one_ordinal(tmp_path: Path) -> None:
+    """The uniqueness `ResolutionRow` documents, on the one shape that can break it.
+
+    `locus_index` is inside `RESOLUTION_FACT_FIELDS`, and the schema tier's contract is several rows
+    sharing a `variant_key` with **distinct** ordinals — so a duplicate is a malformed signed fact,
+    not a cosmetic slip. Unconditional prefer-stored produces one here, because the stamp counts
+    within a single authored row's hostable set while this writer emits each locus once. Nothing in
+    the corpus has the shape, which is exactly why the guard needs its own fixture.
+    """
+    spec_dir = _divergent_expansion(tmp_path / "spec")
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+
+    weights = pl.read_parquet(tmp_path / "out" / "weights.parquet")
+    # The premise: the two authored genotypes really did reach different-sized expansions.
+    assert set(weights["locus_count"].to_list()) == {2, 3}
+
+    reverse_module(tmp_path / "out", tmp_path / "rev")
+    rows = list(csv.DictReader(io.StringIO((tmp_path / "rev" / "resolution.csv").read_text())))
+    per_key: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        per_key[row["variant_key"]].append(row["locus_index"])
+    for key, indices in per_key.items():
+        assert len(set(indices)) == len(indices), f"{key} files two loci under one ordinal: {indices}"
+        assert sorted(int(i) for i in indices) == list(range(len(indices))), key
+
+    # The table still recompiles, and its own reverse is collision-free too. `artifact.digest` is
+    # deliberately **not** asserted across this round trip and the guard does not change that: the
+    # reversed table renumbers the loci relative to the injected one, so the second compile sorts the
+    # expansion differently. That is the pre-existing consequence of dropping a locus, which is why
+    # dropping one appends a strict error saying the compile is no longer reproducible from the
+    # injected table — the same numbers come out of the encounter-order counter alone.
+    again = compile_module(tmp_path / "rev", tmp_path / "out2", resolve_with_ensembl=True)
+    assert again.success, again.errors
+    reverse_module(tmp_path / "out2", tmp_path / "rev2")
+    second = list(csv.DictReader(io.StringIO((tmp_path / "rev2" / "resolution.csv").read_text())))
+    per_key_again: dict[str, list[str]] = defaultdict(list)
+    for row in second:
+        per_key_again[row["variant_key"]].append(row["locus_index"])
+    assert all(len(set(v)) == len(v) for v in per_key_again.values())
+
+
+def test_a_blank_stamped_cell_is_accepted_and_overwritten(tmp_path: Path) -> None:
+    """The accept-and-overwrite promise has to survive the loader, not just the constructor.
+
+    `load_csv_rows` turns an empty cell into `None` **and keeps the key**, so a bare `int` annotation
+    would make a blank `locus_count` column an `Input should be a valid integer` — a generic type
+    error where the sibling stamped columns give an author their value back. `variant_key` has been
+    accepted-and-overwritten since 0.5 on the no-foot-gun rule and these two match it.
+    """
+    from just_dna_compiler.compiler import load_csv_rows
+
+    path = tmp_path / "variants.csv"
+    path.write_text(
+        "rsid,genotype,state,conclusion,locus_index,locus_count\n"
+        "rs1801133,A/G,risk,c,,\n"
+        "rs4988235,C/T,protective,c,7,9\n",
+        encoding="utf-8",
+    )
+    rows, errors, _ = load_csv_rows(path, VariantRow, "variants.csv")
+    assert errors == []
+    assert [(r.locus_index, r.locus_count) for r in rows] == [(0, 1), (0, 1)]
+
+
+def test_the_marker_is_outside_content_signature() -> None:
+    """The load-bearing assertion: no already-published module's authored identity moves.
+
+    Asserted where it can actually fail — over the same rows with and without a stamp — rather than
+    by re-reading `exclude=True`. A plain (non-excluded) field here would move `content_signature` on
+    every SNP-core module ever published, to record something no human authored.
+    """
+    authored = VariantRow(rsid="rs1801133", genotype="A/G", state="risk", conclusion="c")
+    stamped = authored.model_copy(update={"locus_index": 2, "locus_count": 5})
+    assert (stamped.locus_index, stamped.locus_count) == (2, 5)
+    assert signature_over_rows({"variants.csv": [authored]}) == signature_over_rows(
+        {"variants.csv": [stamped]}
+    )
+
+    # Neither column is offered to an author, in either of the two surfaces that decide that.
+    assert {"locus_index", "locus_count"}.isdisjoint(authored_field_names(VariantRow))
+    assert {"locus_index", "locus_count"}.isdisjoint(stamped.model_dump())
+
+    # An authored cell is accepted and overwritten, the same treatment `variant_key` gets. The fields
+    # exist on the model, so `extra="forbid"` cannot see the column, and nothing else would ever
+    # correct it — a non-expanded row is marked by the defaults, with no stamp-at-load pass.
+    hand_written = VariantRow(
+        rsid="rs1801133", genotype="A/G", state="risk", conclusion="c",
+        locus_index=7, locus_count=9,
+    )
+    assert (hand_written.locus_index, hand_written.locus_count) == (0, 1)
+
+
+def test_the_columns_reach_the_parquet_and_not_a_reversed_variants_csv(tmp_path: Path) -> None:
+    """Compiler-managed means materialized *and* never written back — both directions, one test.
+
+    The house rule is that an authored column is three touch points with reverse's `fieldnames` list
+    as the one that gets missed. These are not authored, so the rule cuts the other way: re-emitting
+    them would put a compiler-stamped value into `variants.csv` as if a human had typed it, which is
+    exactly what `authored_ident` exists to prevent.
+    """
+    spec_dir = _EXAMPLES / "pathogenic_clinvar"
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+
+    weights = pl.read_parquet(tmp_path / "out" / "weights.parquet")
+    assert weights.schema["locus_index"] == pl.UInt32
+    assert weights.schema["locus_count"] == pl.UInt32
+
+    reverse_module(tmp_path / "out", tmp_path / "rev")
+    header = next(csv.reader(io.StringIO((tmp_path / "rev" / "variants.csv").read_text())))
+    assert {"locus_index", "locus_count"}.isdisjoint(header)
+    # The authored identity of the reversed module is the authored identity of the original.
+    assert content_signature(spec_dir) == content_signature(tmp_path / "rev")

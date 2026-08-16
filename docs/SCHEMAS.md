@@ -143,6 +143,16 @@ reason its `source` column is inside its fact set while everywhere else `source`
   from an authored coordinate. Without it reverse materialized resolved coordinates back into
   `variants.csv` and `content_signature` moved on every round-trip of an rsid-authored module. See
   [COMPILER.md § Resolution](COMPILER.md).
+- **Stamped `locus_index` + `locus_count` on `VariantRow` (RM87, 0.6).** The two columns that say a
+  weights row is one member of a one-to-many expansion rather than something an author wrote once:
+  `locus_count > 1` is the predicate, `locus_index` is the 0-based ordinal that lines the row up with
+  `resolution.csv`. Declared through `base.stamped_identity_field`, so unlike the two bullets above
+  they are `exclude=True` and reach **no** `content_signature` — that helper's `default` is the
+  caller's precisely so `locus_count` can default to `1` while the positional tables' stamped columns
+  default to `None`. Read them together and read the full contract in
+  [the consumer join contract](#a-row-asserts-something-about-a-locus-genotype-pair--and-one-rsid-can-produce-rows-for-pairs-the-author-never-wrote-06-s33)
+  below; `_build_weights` is hand-listed twice (a record dict *and* a polars schema), which is why
+  this pair is the one place a new weights column is two edits rather than none.
 - **Stamped identity on the positional tables (RM43, 0.6).** `PharmVariantRow`, `HaplotypeRow` and
   `HeteroplasmyRow` — the three tables that declare both `chrom` and `start` — each stamp
   `variant_key` **and** `authored_ident`, because the compiler now fills a resolved coordinate into
@@ -502,15 +512,41 @@ across the loci rather than testing each one. Dropping the non-fitting member wo
 `reverse_module` reads back, which Principle 7 forbids. So the rows stay, and this paragraph is the
 contract instead.
 
-**What an artifact tells you.** `manifest.compilation.expanded_keys` and `expanded_rows` say whether a
-module contains expansion rows and how many (both `None` where resolution did not run — never `0`,
-which would mean "looked and found none"), and `manifest.compilation.warnings` carries a sentence per
-expanded rsID. What the artifact does **not** carry is which row is which member: `locus_index` lives
-in `resolution.csv` and is not materialized into `weights.parquet`. Withholding on a locus whose `ref`
-differs from its siblings' is the obvious consumer-side workaround and it is **partial** — it catches
-the ClinVar dup/del shape and nothing else. A same-`ref` expansion is real: `--keep-par-twin` records
-a pseudoautosomal locus on both X and Y with identical alleles, and a paralogous rsID can name two
-positions carrying the same reference base. Carrying the index into the parquet is [ROADMAP_0_7 § RM87](ROADMAP_0_7.md#rm87--an-expanded-row-is-indistinguishable-from-an-authored-one-in-the-artifact).
+**What an artifact tells you, at two levels.** `manifest.compilation.expanded_keys` and
+`expanded_rows` say whether a module contains expansion rows and how many (both `None` where
+resolution did not run — never `0`, which would mean "looked and found none"), and
+`manifest.compilation.warnings` carries a sentence per expanded rsID. That is the artifact-level
+answer, and it deliberately does not substitute for the row-level one.
+
+**The row-level answer is two columns on `weights.parquet`: `locus_index` and `locus_count` (0.6,
+RM87).** `locus_count` is how many loci the authored key resolved onto — `1` on any row that was not
+expanded, `N` on every member of an `N`-way expansion — so **`locus_count > 1` is the predicate**, and
+a consumer holding one row can apply it without looking anywhere else. `locus_index` is that row's
+0-based ordinal within its expansion, which lines a weights row up with its `resolution.csv` row so
+the parquet and the lookup table are jointly readable — **on a `strict` compile**, where the two
+numberings coincide by construction. Under `best_effort` a locus the genotype contradicts is dropped
+before the ordinal is taken (that drop is itself a `strict` refusal), so the ordinal counts within
+what survived. Read the pair together: `locus_index` alone is `0` on a non-expanded row *and* on the
+first member of every expansion, which is exactly the under-determination the pair exists to remove.
+
+**And read the predicate against a run that resolved.** `locus_count` defaults to `1`, so a module
+compiled with no `resolution.csv` reads as "nothing expanded" when the honest answer is "nothing was
+checked". `manifest.compilation.expanded_keys` is the tri-state that separates them — `None` where
+resolution did not run — and a consumer scanning for expansion rows should gate on it, exactly as it
+already gates the artifact-level counts. The rows in that case carry no coordinate at all, so a
+position join excludes them anyway; the gate matters to anything that counts or classifies rows.
+
+Both are `pl.UInt32`, compiler-managed and stamped at the expansion — no author writes either, an
+authored cell of that name is overwritten, and `reverse_module` does not re-emit them into
+`variants.csv`. Both are **outside `content_signature`**: they record what resolution did, not what a
+human wrote, so adding them moved no module's authored identity (only a recompile's `artifact.digest`,
+which Principle 4 already scopes to a fixed `compiler_version`).
+
+The consumer-side workaround this replaces — withholding on a locus whose `ref` differs from its
+siblings' — was **partial**: it catches the ClinVar dup/del shape and nothing else. A same-`ref`
+expansion is real: `--keep-par-twin` records a pseudoautosomal locus on both X and Y with identical
+alleles, and a paralogous rsID can name two positions carrying the same reference base. The column
+does not have that gap.
 
 ### `*` in a call — the same rule arriving as a spelling (0.6, RM59)
 
