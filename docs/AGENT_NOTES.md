@@ -746,10 +746,15 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   - **`reference_examples/htt_repeat_expansion` stays uncited.** The example exists to show what the
     warning looks like, and grounding it would move its signatures for nothing.
 
-- `@dense-bin-boundary` — **A shared bin endpoint is a BOUNDARY on a dense measure, and the higher bin owns it** — the lookup
-  rule is *the row with the greatest `measure_min ≤ x`* (`binning._DENSE_KINDS`: `allele_fraction`,
-  `prs_percentile`). So the overlap test is `lo < prev_hi` there and stays `lo <= prev_hi` on
-  `repeat_count`/`copy_number`, where two integer bins sharing an endpoint really do both claim it.
+- `@dense-bin-boundary` — **A shared bin endpoint is a BOUNDARY under continuous tiling, and the higher bin owns it** — the
+  lookup rule is *the row with the greatest `measure_min ≤ x`*. So the overlap test is `lo < prev_hi`
+  there and stays `lo <= prev_hi` under quantised tiling, where two grid bins sharing an endpoint
+  really do both claim that value.
+  **Since 0.6 the rule keys on the group's effective `measure_tiling`, not on the kind** — see
+  `@measure-tiling` — so a `copy_number` table declaring itself continuous tiles like a fraction, and
+  `_DENSE_KINDS`/`_CONTINUOUS_GAP_KINDS`/`_INTEGER_KINDS` survive only as the inputs that build the
+  per-kind *default*. The old wording said "on a dense measure" and named the kind set, which is where
+  a reader would now look for a rule that has moved.
   `measure_max` is inclusive on **every** kind: half-open for continuous kinds only was the other
   candidate and lost on authorship, which is the charter's gate — it makes one column's meaning depend
   on `measure_kind` (P5), the number in the cell is then not in the bin, and a closed top bin can no
@@ -757,6 +762,77 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   identical authored bytes in the interior and need the same predicate. Also: two bins sharing a
   **lower** bound refuse on any kind — the tie-break has nothing to order — which is reachable only as
   a sharp `[0.1, 0.1]` beside a range starting there.
+
+- `@measure-tiling` — **How the axis is divided is a different question from what is measured, and the tiling rules read the
+  first (RM55, 0.6).** VCF 4.4 §7.2 made `CN` non-integral and §3 types `RUC` as a Float, so a copy
+  number of 2.4 matched **no bin at all**, silently, `--strict` included — and the half nobody had
+  written down is that the schema also **refused the tiling that would fix it**, since a shared
+  endpoint on those kinds was an overlap error. The roadmap entry's fix ("a parallel float column
+  beside the integer one") named a column that mostly does not exist: `measure_min`/`measure_max` have
+  been `float | None` since 0.4, so `measure_min=2.5` always loaded and was simply never answered.
+  What shipped:
+  - **`measure_tiling`, `{quantised, continuous}`, optional, on the binning base.** A sixth
+    `measure_kind` was refused under P5 — kind is *what*, tiling is *how divided*, and folding them is
+    a product rather than a sum (`copy_number_continuous`, then `activity_score_quantised`).
+  - **Absent means the kind's default, never a value** (`DEFAULT_MEASURE_TILING`, derived from the
+    three kind sets): `copy_number`/`repeat_count` → quantised, `allele_fraction`/`prs_percentile` →
+    continuous, `activity_score` → **neither**. That is what keeps it additive — no reference
+    example's `content_signature` moved, and only the five modules carrying a binning table moved
+    `artifact.digest`.
+  - **The inference fires only against a `quantised` default, and the proposal said "whatever its
+    kind's default says".** That is the one place the build departed from the decided design, and the
+    corpus is why: `activity_score` is fractional by nature (`cyp2d6_structural` bins at
+    0.25/0.5/1.25/2.25) and its `None` asserts *nothing* about the grid — it reports no interior hole
+    precisely because the score is summed onto a grid whose step the schema does not know. Reading it
+    as continuous produced three "coverage gap" warnings for intervals no activity score can land in.
+    The rule is **the data contradicts the reading**, not *the data is fractional*: only `quantised`
+    states a grid for a fraction to falsify. The proposal's own requirement that `activity_score`
+    keep its third behaviour *exactly* is the half that was kept.
+  - **The inference runs one way and announces itself.** Fractional-ness contradicts a stated grid;
+    integer-ness contradicts nothing, since `[0,1] [2,3]` is what a continuous measure looks like when
+    its author has only seen whole-number data — which is why deriving the tiling with *no* column was
+    refused. An explicit `quantised` beside a fractional value **stands** and warns.
+  - **It reads BOUNDS ONLY, and "the modifier is a copy number too, so surely it counts" is the
+    obvious wrong repair — it was in the first cut and review caught it.** `modifier_gene` + the
+    modifier dosage are *group-key* columns: they say which table you are in, not where a point sits
+    on the axis being tiled. Letting the dosage vote produced a **legality flip** (one identical pair
+    of SMN1 bins refused at `modifier_copy_number=2.0` and accepted at `2.5`, driven by an unrelated
+    column) and **invented coverage gaps** on genuinely integral bounds — the same false-positive
+    class `activity_score` is protected from, arriving through a different door. Generalize it:
+    *before feeding a number to an inference about an axis, ask whether the number is on that axis.*
+  - **`quantised`'s step is hardcoded to 1 and nothing can state another.** Right for
+    `copy_number`/`repeat_count`, the only kinds it defaults to; a limit elsewhere — declaring it on
+    `allele_fraction`'s `[0, 1]` switches interior gap reporting *off* rather than tightening it,
+    since no hole can exceed 1. Loud whenever a bound is fractional (the contradiction warning),
+    silent when they are integral. A `measure_step` column would close it and is a full-cost authored
+    column nobody has asked for, so it waits for the demand that would fix its shape. Documented on
+    the field description an author actually reads, not only here.
+  - **The group key's *rendering* is normalized (`format_group_key`).** Re-keying onto the coalesced
+    float would have turned every published `…for key ('SMN1', 'SMN2', 2, None)` into `2.0` on a
+    module nobody edited, and those strings are copied into `manifest.compilation.warnings`
+    (`@warning-text-is-api`). An integral float renders as an integer, so the coalesce is invisible to
+    a reader who never writes the new column. Grouping was never affected — `2 == 2.0` and they hash
+    equal — so this is a rendering rule and nothing else.
+  - **Two rows of one group declaring different tilings is an error**; a blank cell beside a declared
+    one is absence, not disagreement (`None` is never a value).
+  - **`modifier_copy_number` beside `modifier_cn`**, the one genuine `int`. Read through
+    `effective_modifier_copy_number`, which uses **`is not None`, not `or`** — SMN2 = 0 copies is a
+    real dosage and a truthiness fallback reads it as unset. Both set is an **error**, not a
+    precedence rule (the `vrs_id` desync shape). `_KEY_FIELDS` keys on the **effective** value, which
+    is what answers the RM81 objection: a coalesced value is one spelling by the time grouping and
+    dedup see it, so the key never holds the ambiguity. Both grouping sites read `_KEY_FIELDS` with
+    `getattr`, which resolves the property; the third read site is message text and now filters to
+    names that are real columns, because telling an author to look at
+    `effective_modifier_copy_number` is a finding no edit clears.
+  - **`modifier_cn` is deprecated warn-only, once per table**, naming its replacement — the 0.6
+    cadence amendment's actionability condition — so 1.0 inherits a **removal**, not a retype.
+  - **The 0.6 RM55 warning became conditional**: it fires per kind only where a group still reads as a
+    grid, because its central claim ("green and silently unanswerable at every one of its own
+    boundaries") stops being true of a continuous table. `FRACTIONAL_MEASURE_PHRASE` stays
+    byte-identical — a warning's text is an API — and only the sentence around it changed. It still
+    does not escalate under `strict`, but for a *different* reason than before: a genuinely quantised
+    catalog count is correct, so refusing would refuse a correct module over a property of its
+    source's type.
 
 - `@citation-existence` — **Existence vs retrievability for citations.** A paywall hides the *fulltext*, never the PubMed
   record — `exists` is answered for paywalled work. The real gaps, both now covered: citations PubMed

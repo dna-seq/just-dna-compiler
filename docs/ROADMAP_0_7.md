@@ -166,9 +166,21 @@ Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md); th
 
 ## RM55 — copy number and repeat count are not whole numbers (the usable fix)
 
-**Severity** high · **Status** **taken into 0.6 PT2 on 2026-08-16 — [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md)
-§ RM55 is authoritative and this entry is stale in its suggested fix**; the removal is still 1.0 ·
-**Owner** format (schema) + compiler
+**Severity** high · **Status** ✅ **shipped in 0.6** — built to
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55, which is authoritative and against which this entry
+is stale in its suggested fix; only the **removal** of `modifier_cn` is still 1.0
+([ROADMAP_1_0.md](ROADMAP_1_0.md)). Indexed in [RM_TOC.md](RM_TOC.md); the built shape is described in
+[SCHEMAS.md](SCHEMAS.md) · **Owner** format (schema) + compiler
+
+**One deviation from the proposal, taken while building and recorded here.** The proposal says a group
+carrying a fractional value is read under the continuous rules *"whatever its kind's default says"*.
+As built, the inference fires only where the kind would default to `quantised` — that is the only
+reading a fraction contradicts. `activity_score` defaults to *neither* precisely because the score is
+summed onto a grid whose step the schema does not know, and it is fractional by nature: reading it as
+continuous produced three "coverage gap" warnings on `reference_examples/cyp2d6_structural`, whose real
+bins sit at 0.25/0.5/1.25/2.25, for intervals no activity score can land in. The proposal's own
+sentence two paragraphs earlier — that `activity_score` *"keeps its third behaviour (no gap warning, a
+shared endpoint is an error)"* — is the half that was kept.
 
 > **Stale below.** The proposal's probe found the bin bounds are *already* `float | None`
 > (`binning.py:231`, `:238`), `_INTEGER_KINDS` has exactly one code reader (`binning.py:688`), and the

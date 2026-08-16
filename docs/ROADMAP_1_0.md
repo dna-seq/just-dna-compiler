@@ -119,25 +119,24 @@ breaking half, and the line is owed by whoever created the obligation.
 | 0.6.0 | **RM4** — the `module_spec.yaml` `panel:` block deprecated | the block stops being read | **Author:** delete it. Nothing replaces it — the enricher now records the drafted-from release into the licence row's `dataset` column itself, which is what the tautology check reads. Deleting it moves neither `artifact.digest` nor `content_signature`, measured on `reference_examples/apoe_epsilon` with the block appended. **Consumer: no action needed** — `manifest.panel` is passthrough metadata nothing derives from. |
 | 1.0 (planned) | **RM73** (gate half) — a closed authoring attestation becomes a **precondition of compiling** | a module with no closure stops compiling; since 0.6.0 it only warns. **Blocked, not merely planned — see § RM73 below: the gate refuses on step 3 of the round trip** | **Author:** run `just-dna-compiler close spec/` once the module is finished, and re-run it after any edit. It is a deliberate act by design — `validate` stays read-only, so nothing stamps behind your back. **Consumer:** no action; the artifact already carries `manifest.verification.closure` where a module was closed, and reading it is optional. The whole mechanism (`Closure`, `close`, the warning) **shipped additively in 0.6.0**; what waits for the major is only the promotion of the warning to a refusal, which is P8. |
 | 1.0 (planned) | **`fetched_at` → `updated_at`/`recorded_at`** on the seven sidecar models — bundled with the `sources.parquet` rename, which moves the same digests. Unnumbered; see the 1.0 cleanup tracker | the column name changes in six parquets and seven CSVs. **No signature moves** — it is outside all seven fact sets — so `content_signature` and every `*_signature` are untouched; only `artifact.digest` moves, on modules carrying a sidecar | **Author: no action needed.** The loader keeps accepting `fetched_at` as a deprecated input spelling through 1.x, so an existing sidecar loads unchanged; the writer emits the new name from the next pass that touches it. No 0.x deprecation warning is owed, because nobody authors this column and `extra="forbid"` means an author could not act on one. **Consumer:** re-read the column by its new name in `frequencies`/`gene_metrics`/`literature`/`gene_validity`/`clinical_assertions`/`sources.parquet`; nothing derives from it, and it is in no signature |
-| 0.7 (planned) | **RM55** — the integer copy-number / repeat-count columns deprecated in favour of float ones | the integer column and the integer tiling semantics are removed | **Author:** move the value to the float column; a whole number is still a whole number, so no re-authoring of the *values* is needed. **Consumer:** re-read the float column, and note that bin tiling for these two kinds becomes continuous — a shared endpoint is owned by the higher bin, and a gap is reportable. Written when the 0.7 half lands. |
+| 0.6.0 | **RM55** — `CopyNumberRow.modifier_cn` deprecated in favour of `modifier_copy_number` | the integer column is **removed** (not retyped — the float one has existed since 0.6), and with it the kind-keyed tiling defaults | **Author:** move the dosage to `modifier_copy_number`; a whole number is still a whole number, so no re-authoring of the *value* is needed, and setting both was always an error so there is nothing to reconcile. If your `copy_number`/`repeat_count` bins are a genuine grid, state `measure_tiling: quantised` before 1.0 removes the default that assumed it. **Consumer:** read `modifier_copy_number` (or `effective_modifier_copy_number`, which is what everything in-tier already reads) and take a group's tiling from `measure_tiling` rather than from `measure_kind`. |
 
 ---
 
 ## RM55 (removal half) — the integer copy-number and repeat-count columns
 
-**Severity** high · **Status** 0.6 warns loudly, 0.7 ships the additive float column, **1.0 removes the
-integer one** · **Owner** format (schema) + compiler
+**Severity** high · **Status** the whole usable fix **shipped in 0.6**, so what is left here is a
+removal and nothing else: `CopyNumberRow.modifier_cn`, deprecated warn-only since 0.6, and the
+kind-keyed tiling defaults · **Owner** format (schema) + compiler
 
 VCF 4.4 stopped treating copy number as an integer (§7.2, with fractional worked examples throughout)
 and standardises the repeat count as a Float (§3). Both kinds were modelled here as integral, so a
 fractional measurement matches **no bin at all**, silently, `--strict` included.
 
-**Only the removal is major.** The three-release route was decided on 2026-08-13 precisely so that the
-usable fix does not wait for it: 0.6 makes the defect loud, 0.7 adds a parallel float column beside the
-integer one (strictly additive, charter-clean) and deprecates the integer one, and 1.0 removes it along
-with the integer tiling semantics.
+**Only the removal is major.** The route was decided on 2026-08-13 as three releases precisely so that
+the usable fix would not wait for the major, and then collapsed to two when the fix landed in 0.6.
 
-**Re-dated on 2026-08-16, and the route is now two releases rather than three.**
+**Re-dated on 2026-08-16 and built the same week; the route is now two releases rather than three.**
 [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55 took the usable fix back into **0.6**, so what this
 entry calls "0.7" is 0.6, and what is left here is a **removal and nothing else**. Two corrections to
 the description above:
@@ -166,9 +165,12 @@ Design detail, **settled on 2026-08-16 rather than carried forward**: quantised-
 **declaration**, not a sixth measure kind — `measure_kind` answers *what is measured* and tiling answers
 *how the axis is divided*, and folding the second into the first is the `state` anti-pattern the
 Constitution names by name (P5), besides being a product rather than a sum as kinds are added. It lands
-as `measure_tiling` in 0.6. So the removal here leaves behind a schema where the tiling is stated, not
-one where it has to be inferred from the kind. See
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55.
+as `measure_tiling` in 0.6, shipped. So the removal here leaves behind a schema where the tiling is
+stated, not one where it has to be inferred from the kind. See
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55, and [SCHEMAS.md](SCHEMAS.md) for the built shape —
+including the one place the build departed from the proposal, which is that the fractional inference
+fires only against a `quantised` default (`activity_score` is fractional by nature and asserts nothing
+about the grid, so reading it as continuous invents coverage gaps rather than revealing them).
 
 ---
 

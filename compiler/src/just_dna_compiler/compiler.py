@@ -52,6 +52,8 @@ from just_dna_format.binning import (
     HeteroplasmyRow,
     MeasureBinRow,
     RepeatAlleleRow,
+    deprecation_warnings,
+    format_group_key,
     measurement_shape_warnings,
     validate_bins,
 )
@@ -1413,7 +1415,13 @@ def _check_binning_grounding(
             # did not exist, and repeating it would leave an author reading a finding no edit can clear
             # — the defect this codebase treats as a defect everywhere else. Say which route applies to
             # a gene-keyed kind, and say it in the affirmative.
-            key = ", ".join(f for f in model._KEY_FIELDS if f != "variant_key")
+            # Named in the author's own spelling: `_KEY_FIELDS` may hold a *derived* member — since
+            # 0.6 `CopyNumberRow` keys on `effective_modifier_copy_number`, which is a property over
+            # two columns and not a cell anyone can fill — and a remedy that tells an author to look
+            # at a column that is not in their CSV is the class of finding no edit clears.
+            key = ", ".join(
+                f for f in model._KEY_FIELDS if f != "variant_key" and f in model.model_fields
+            )
             remedy += (
                 f"; for a ({key}) row the bin's own pmid is the route, because a study row can only "
                 f"name a variant as its subject and never a bin, so it grounds the module while the "
@@ -1427,17 +1435,36 @@ def _check_binning_grounding(
 
 
 def _check_measure_shape(rows_by_csv: dict[str, list[Any]]) -> list[str]:
-    """Per binning table: what its integer tiling cannot express about its source measurement.
+    """Per binning table: what a quantised tiling cannot express about its source measurement.
 
-    A thin loop over `binning.measurement_shape_warnings`, which owns both findings (RM55, RM56) because
-    it owns `_INTEGER_KINDS` — the set whose premise VCF 4.4 withdrew. The kinds are derived from the
-    models via `_BINNING_TABLE_KINDS` for the same reason that tuple exists, so a sixth binning kind
-    cannot silently escape the check.
+    A thin loop over `binning.measurement_shape_warnings`, which owns both findings (RM55, RM56)
+    because it owns the tiling semantics whose premise VCF 4.4 withdrew. Since 0.6 the RM55 half is
+    **conditional** — it fires only for a kind that still has a quantised group — so a table declaring
+    `measure_tiling: continuous`, or carrying a fractional bound, is silent here. The kinds are derived
+    from the models via `_BINNING_TABLE_KINDS` for the same reason that tuple exists, so a sixth
+    binning kind cannot silently escape the check.
     """
     warnings: list[str] = []
     for csv_name, _model in _BINNING_TABLE_KINDS:
         rows = rows_by_csv.get(csv_name) or []
         warnings.extend(f"{csv_name}: {w}" for w in measurement_shape_warnings(rows))
+    return warnings
+
+
+def _check_binning_deprecations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
+    """Per binning table: a column this release still reads and an author should stop writing (RM55).
+
+    Separate from `_check_measure_shape` because it answers a different question — that one is about
+    what the *source measurement* is, this one about what the *schema* is retiring — and folding them
+    would put a deprecation notice inside a function documented as a VCF-conformance finding.
+
+    `binning.deprecation_warnings` emits at most one line per table, so a copy-number table stating
+    one dosage per modifier copy number gets one sentence rather than one per row.
+    """
+    warnings: list[str] = []
+    for csv_name, _model in _BINNING_TABLE_KINDS:
+        rows = rows_by_csv.get(csv_name) or []
+        warnings.extend(f"{csv_name}: {w}" for w in deprecation_warnings(rows))
     return warnings
 
 
@@ -3072,8 +3099,9 @@ def _validate_table_kind(
         for group, count in sentinels.items():
             if count > 1:
                 errors.append(
-                    f"{csv_name}: {count} unresolved sentinel rows for key {group} — a consumer "
-                    f"selects one when a measurement is absent, so at most one is allowed"
+                    f"{csv_name}: {count} unresolved sentinel rows for key "
+                    f"{format_group_key(group)} — a consumer selects one when a measurement is "
+                    f"absent, so at most one is allowed"
                 )
 
     keyfn = _TABLE_DUPE_KEYS.get(model)
@@ -3502,6 +3530,10 @@ def validate_spec(
     # fractional and interval-valued (RM55/RM56). Same rule for why it is here — pure computation over
     # authored bytes, no `output_dir`.
     all_warnings.extend(_check_measure_shape(loaded_kinds))
+    # And the column those tables are retiring (RM55's `modifier_cn`). Same rule again — it reads the
+    # authored rows and nothing else, so the pre-flight must say it too, or an author clears their
+    # `validate` and meets the notice for the first time at compile.
+    all_warnings.extend(_check_binning_deprecations(loaded_kinds))
     # `.` in an alts cell, on every table that has one (RM58). Also pure, also authored-only, and it
     # reads `loaded_kinds` plus `variants` rather than a table name, so a future kind with an `alts`
     # column joins the check by declaring the column.
@@ -4193,6 +4225,9 @@ def compile_module(
     # `kind_rows` is freshly loaded and never resolved, so re-running the binning check here produces
     # the identical sentence and the message-dedup above does its job.
     all_warnings.extend(w for w in _check_measure_shape(kind_rows) if w not in all_warnings)
+    all_warnings.extend(
+        w for w in _check_binning_deprecations(kind_rows) if w not in all_warnings
+    )
 
     # **THREE checks of this round are deliberately NOT re-run here, and that is the fix rather than an
     # omission.** `_check_missing_allele_marker`, `_check_quality_inversion` and `_check_vcf_pointers`

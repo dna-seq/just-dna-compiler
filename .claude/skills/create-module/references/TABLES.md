@@ -17,7 +17,7 @@ Run `just-dna-compiler describe <kind>` for the columns and vocabularies; this f
 | a **pair** of alleles (a diplotype) | `diplotypes.csv` | `pgx.DiplotypeRow` | `(gene, a, b, trait, drug, clinical_context)` |
 | one variant + one drug | `pharm_variants.csv` | `pgx.PharmVariantRow` | `(variant_key, drug, genotype, category, annotation_id)` |
 | a metabolizer **activity score** range | `activity_phenotype.csv` | `binning.ActivityPhenotypeRow` | `(gene)` |
-| a **copy number** range | `copynumbers.csv` | `binning.CopyNumberRow` | `(gene, modifier_gene, modifier_cn)` |
+| a **copy number** range | `copynumbers.csv` | `binning.CopyNumberRow` | `(gene, modifier_gene, modifier copy number)` |
 | a **repeat count** range | `repeat_alleles.csv` | `binning.RepeatAlleleRow` | `(gene, repeat_unit)` |
 | an mtDNA **heteroplasmy fraction** range | `heteroplasmy.csv` | `binning.HeteroplasmyRow` | `(gene, reference_sequence, tissue, variant_key)` |
 | a published polygenic score | `pgs.csv` | `pgs.PgsRow` | `(pgs_id, trait)` |
@@ -38,7 +38,9 @@ above stay beside `module_spec.yaml` — they have one legal place.
 **A quantity with a threshold is a binning table, not a variant row.** If the finding depends on *how
 much* — repeat length, copy number, heteroplasmy fraction, activity score — the subject is the
 measurement, and the module supplies the bins. Use inclusive `[measure_min, measure_max]`, `min == max`
-for a sharp value, a null bound for open-ended, and **always author the `unresolved` sentinel**.
+for a sharp value, a null bound for open-ended, and **always author the `unresolved` sentinel**. If the
+caller you expect reports the quantity as a decimal rather than a whole number, say so with
+`measure_tiling: continuous` and let the bins touch.
 
 **Two alleles on one chromosome vs one on each is a haplotype vs a diplotype.** `haplotypes.csv` is a
 junction table, so a haplotype defined by two SNPs is two rows — that is same-strand co-location, and

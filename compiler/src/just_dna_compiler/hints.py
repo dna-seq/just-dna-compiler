@@ -39,7 +39,7 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 from just_dna_format.base import authored_field_names, field_category, field_vocabularies
-from just_dna_format.binning import MeasureBinRow, validate_bins
+from just_dna_format.binning import MeasureBinRow, deprecation_warnings, validate_bins
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
 
@@ -551,10 +551,16 @@ def _check_duplicate_keys(parsed: list[BaseModel | None], report: HintReport) ->
 def _check_bins(
     parsed: list[BaseModel | None], model: type[BaseModel], report: HintReport
 ) -> None:
-    """Overlap and coverage gaps, via the schema tier's own `validate_bins`.
+    """Overlap, coverage gaps and the tiling notices, via the schema tier's own `validate_bins`.
 
     An overlap raises there and a gap is returned as a warning, so both are caught: the highest-value
-    hint for the binning family, and it needs nothing but the rows in hand."""
+    hint for the binning family, and it needs nothing but the rows in hand. Since 0.6 that function
+    also reports how the group's tiling was decided — inferred from a fractional value, or declared
+    `quantised` beside one — and conflicting declarations raise like an overlap does.
+
+    The deprecation notice rides here too, attached to its column, because this is the surface an
+    author reaches for while writing the file rather than after (`deprecation_warnings` emits it once
+    per table, not once per row)."""
     if not issubclass(model, MeasureBinRow):
         return
     rows = [r for r in parsed if r is not None]
@@ -565,6 +571,8 @@ def _check_bins(
             report.findings.append(Finding(None, None, "warning", warning))
     except ValueError as exc:
         report.findings.append(Finding(None, None, "error", str(exc)))
+    for warning in deprecation_warnings(rows):
+        report.findings.append(Finding(None, "modifier_cn", "warning", warning))
     if not any(getattr(r, "unresolved", False) for r in rows):
         report.findings.append(
             Finding(

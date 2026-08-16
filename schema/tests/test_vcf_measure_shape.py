@@ -82,6 +82,12 @@ def test_an_integer_tiling_silently_answers_nothing_for_a_fractional_measurement
 ) -> None:
     """The defect RM55 names, demonstrated rather than asserted.
 
+    Still true, and still the default reading, which is the point: `measure_tiling` did not repair
+    these tables, it gave their author a way to say they are not grids. Both fixtures leave the column
+    empty, so both resolve to their kind's `quantised` default and behave exactly as they did in 0.5 —
+    the additive clause, checked by the corpus rather than argued. `schema/tests/test_measure_tiling.py`
+    carries the other side: the same bounds declared continuous, answering the same measurement.
+
     `validate_bins` is *content*: the tiling is legal, gapless by its own rule and warning-free — and a
     measurement the source is entitled to produce selects no bin at all. Neither half is visible to an
     author, which is why the warning had to be added somewhere: the table is green and unanswerable.
@@ -102,10 +108,11 @@ def test_an_integer_tiling_silently_answers_nothing_for_a_fractional_measurement
 def test_the_gap_check_cannot_see_a_hole_of_one_on_an_integer_kind() -> None:
     """The second half of RM55: the hole a fractional measurement falls into is not reportable.
 
-    An integer kind only warns about a hole wider than a whole number, because on a genuinely integral
-    domain `[6,26]` beside `[27,35]` covers everything between them. Once the domain is fractional that
-    reasoning is void, and the check has no way to say so — which is exactly why the finding is stated
-    against the *kind* rather than derived from the bounds.
+    A quantised tiling only warns about a hole wider than a step, because on a genuine grid `[6,26]`
+    beside `[27,35]` covers everything between them. Once the domain is fractional that reasoning is
+    void — and the table cannot be *derived* out of it, because integer bounds are equally what a
+    continuous measure looks like when nobody has seen a fraction yet. That is why the kind still
+    defaults to a grid and the author gets a column to say otherwise, rather than the check guessing.
     """
     adjacent = _htt_bins()
     assert validate_bins(adjacent) == []
@@ -117,6 +124,12 @@ def test_both_integer_kinds_warn_and_nothing_else_does() -> None:
 
     Both were placed in `_INTEGER_KINDS` on one premise — an integral domain — and VCF 4.4 withdrew it
     for both, so the warning set and the integer-kind set must be the same set.
+
+    Since 0.6 `_INTEGER_KINDS` no longer decides a rule; it is one of the three inputs that build
+    `DEFAULT_MEASURE_TILING`, and the warning now keys on a group's **effective** tiling. The equality
+    below therefore says something slightly different and still worth pinning: the kinds VCF 4.4 types
+    as fractional are exactly the kinds this schema still defaults to a grid, which is the pair the
+    finding is about. The conditionality itself is pinned in `test_measure_tiling.py`.
     """
     assert set(_VCF_MEASURE_FIELDS) == _INTEGER_KINDS
     assert set(_VCF_MEASURE_FIELDS) <= VALID_MEASURE_KINDS

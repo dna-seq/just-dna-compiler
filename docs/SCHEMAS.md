@@ -385,13 +385,84 @@ hg19 coordinate, whose remedy is rsID recovery rather than a liftover.
 row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` carries no bounds — the
 mandatory no-call sentinel), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
 and the `source_field?` VCF pointer plus its `source_element?` rule, plus **`pmid?` — the boundary
-citation added in 0.6 (RM47)**, a free-form PubMed pointer under the same grammar as `StudyRow.pmid`.
+citation added in 0.6 (RM47)**, a free-form PubMed pointer under the same grammar as `StudyRow.pmid`,
+plus **`measure_tiling?` — how the axis is divided, added in 0.6 (RM55)**, described below.
 The bin row cites; the citation table describes, which is what keeps `StudyRow`'s provenance column set
 from migrating here one column at a time. Per-kind key fields: `ActivityPhenotypeRow`→`(gene)`;
-`CopyNumberRow`→`(gene, modifier_gene, modifier_cn)`; `RepeatAlleleRow`→`(gene, repeat_unit)`;
-`HeteroplasmyRow`→`(gene, reference_sequence, tissue, variant_key)` (rejects the legacy `NC_001807`
-mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping resolved ranges
-in a key group are a compile error; interior coverage gaps are warnings.
+`CopyNumberRow`→`(gene, modifier_gene, effective_modifier_copy_number)`; `RepeatAlleleRow`→`(gene,
+repeat_unit)`; `HeteroplasmyRow`→`(gene, reference_sequence, tissue, variant_key)` (rejects the legacy
+`NC_001807` mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping
+resolved ranges in a key group are a compile error; interior coverage gaps are warnings.
+
+**`measure_tiling` — how the axis is divided, which is not what is measured (RM55, 0.6).** A closed
+two-member vocabulary (`VALID_MEASURE_TILINGS` = `{quantised, continuous}`), optional, on the binning
+base so it reaches all four kinds. `quantised` means the axis is a grid: two bins may not share an
+endpoint, and a hole narrower than one step is not a hole. `continuous` means it is dense: adjacent
+bins share an endpoint and the higher one owns it, and any positive hole is reported. It is a separate
+column rather than a sixth `measure_kind` because kind answers *what is measured* and tiling answers
+*how the axis is divided* — folding them is the overloaded-field anti-pattern (P5), and a product
+rather than a sum.
+
+**Absent means the kind's default, never a value** — which is what makes the column additive, so every
+module published before 0.6 keeps its exact meaning:
+
+| `measure_kind` | default tiling | shared endpoint | interior hole |
+| --- | --- | --- | --- |
+| `copy_number` | `quantised` | overlap error | reported only when wider than one |
+| `repeat_count` | `quantised` | overlap error | reported only when wider than one |
+| `allele_fraction` | `continuous` | boundary, higher bin owns it | any positive hole reported |
+| `prs_percentile` | `continuous` | boundary, higher bin owns it | any positive hole reported |
+| `activity_score` | *neither* (`None`) | overlap error | never reported |
+
+`activity_score`'s third answer is deliberate and unchanged: the score is consumer-summed onto a grid
+whose step this schema does not know, so an interior hole is not a claim this tier can make.
+`binning.DEFAULT_MEASURE_TILING` is the table in code, derived from the three kind sets rather than
+restated beside them; a consumer implementing the lookup rule reads it.
+
+Two limits of the vocabulary, both deliberate. `quantised`'s step is **hardcoded to whole numbers** —
+right for `copy_number`/`repeat_count`, which is the only place its default applies, and a limit
+everywhere else: declaring it on a bounded domain like `allele_fraction` switches interior gap
+reporting *off* rather than tightening it, since no hole can exceed 1. A `measure_step` column would
+close it and is a full-cost authored column nobody has asked for, so it waits for the demand that
+would fix its shape (P5's one-way door); a fractional bound still raises the contradiction warning, so
+the realistic case is loud. And a kind that genuinely answered the two underlying questions apart —
+dense but coarsely gapped — would need a third vocabulary member, which is additive and a deliberate
+act.
+
+**The tiling is per bin group, and a fractional bound settles it.** Two rows of one group declaring
+different tilings are an **error** — the rules run per group, so a group has one tiling or none it can
+run under — while an empty cell beside a declared one is absence, not disagreement. Where a kind would
+default to `quantised` and the group carries a **bound** no grid of whole numbers can hold
+(`measure_min` or `measure_max`), the group is read as `continuous` anyway and the compiler **says
+that it did**, naming the group and the triggering value.
+
+**The modifier dosage is not evidence here, and "it is a copy number too" is the wrong repair.**
+`modifier_gene` and the modifier copy number are *group-key* columns: they say which table you are in,
+not where a point sits on the axis being tiled. On `copynumbers.csv` the tiled axis is the SMN1 copy
+number and the SMN2 dosage is the condition the bins are read under, so a fractional SMN2 value
+contradicts nothing about how the SMN1 axis is divided. Letting it vote produced a **legality flip**
+(one identical pair of bins refused at `modifier_copy_number=2.0` and accepted at `2.5`) and
+**invented coverage gaps** on genuinely integral bounds — the same false-positive class
+`activity_score` is protected from. A group whose dosage is fractional and whose axis really is
+continuous declares `measure_tiling`, like any other group departing from its default.
+
+The inference runs one way only:
+fractional-ness contradicts a stated grid, integer-ness contradicts nothing, since `[0,1] [2,3]` is
+what a continuous measure looks like when its author has only seen whole-number data. It fires only
+against a `quantised` default for the same reason — that is the only reading a fraction falsifies;
+`continuous` already agrees and `activity_score`'s `None` asserts nothing about the grid. An explicit
+`measure_tiling: quantised` beside a fractional value **stands** and warns that the data contradicts
+it: neither side silently overrides the other.
+
+**`modifier_copy_number` replaces `modifier_cn`, which is deprecated (RM55, 0.6; removed at 1.0).**
+VCF 4.4 §7.2 redefined `CN` to support non-integer copy numbers, so an `int` cannot hold a real
+modifier dosage — and retyping is major-only, which is what the companion exists to avoid. Everything
+reads `CopyNumberRow.effective_modifier_copy_number`, which returns `modifier_copy_number` if set, else
+`float(modifier_cn)` if set, else `None` (`is not None`, not `or` — SMN2 = 0 copies is a real dosage).
+**Setting both is an error**, not a precedence rule. `_KEY_FIELDS` keys on the effective value, so a
+coalesced dosage is one spelling by the time grouping and dedup see it and the key never holds the
+ambiguity. `modifier_cn` still reads and behaves exactly as before; the warning is emitted once per
+table, and 1.0 inherits a removal rather than a retype.
 
 `HeteroplasmyRow`'s **`variant_key` joined the key in 0.5** and closed a blocking gap. A mitochondrial
 gene carries several pathogenic variants with different thresholds — MT-TL1 has m.3243A>G *and*
@@ -413,9 +484,11 @@ overlap-is-an-error + any-hole-is-a-warning were jointly **unsatisfiable** on `a
 epsilon — so every such table carried a finding forever. `measure_max` stays inclusive on **every**
 kind: half-open for continuous kinds only would make one column's meaning depend on `measure_kind` (P5)
 and would put the domain's top value (AF `1.0` is homoplasmy) out of reach of a closed top bin.
-Discrete kinds are unchanged — `repeat_count`/`copy_number` tile cleanly under inclusive bounds, which
-is where the convention came from, so for them a shared endpoint is still a real overlap and an error.
-Two bins sharing a *lower* bound refuse on any kind: the tie-break has nothing to order.
+Since 0.6 the rule keys on the group's **effective `measure_tiling`** rather than on the kind, so a
+`copy_number` or `repeat_count` table that declares itself continuous — or that carries a fractional
+bound — tiles the same way; left at its default it is still a grid, so a shared endpoint there is
+still a real overlap and an error. Two bins sharing a *lower* bound refuse whatever the tiling: the
+tie-break has nothing to order.
 
 **PGx rows** (`pgx.py`). `HaplotypeRow` (variant↔`allele` junction; the allele is bases or a symbolic
 structural allele — see *The allele grammar* above);

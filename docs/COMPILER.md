@@ -333,16 +333,24 @@ Same class as the bin-boundary gap above — limits of the **schema**, not of th
 for the same reason: so they are not mistaken for the other kind, and so the warning a reader meets on a
 real module has somewhere to point. All three warn in **both** modes and none changes a verdict.
 
-**The two integer measure kinds are not integral (RM55).** VCF 4.4 §7.2 redefined `CN` to support
-non-integer copy numbers and §3 types `RUC` as a `Float`, so the premise `repeat_count` and
-`copy_number` were placed in `binning._INTEGER_KINDS` on has been withdrawn for both. The consequence is
-RM35's unsatisfiable triangle re-instantiated on the kinds RM35 exempted, and worse: on an integer kind a
-hole of exactly one is not reported at all, so `[0,0] [1,1] [2,2] [3,∞)` is a legal, gapless, green
-tiling under `--strict` that answers nothing for a CN of 2.4. `binning.measurement_shape_warnings` says
-so once per table. The fix is a three-release route — 0.6 warns, 0.7 adds a parallel float column beside
-the integer one with the integer deprecated, 1.0 removes it — because the direct correction is a
-**retype** (`CopyNumberRow.modifier_cn: int` → float) plus a change to what already-published bin
-tilings mean, and retyping is major-only.
+**The two integer measure kinds are not integral (RM55) — warned, and then fixed in the same line.**
+VCF 4.4 §7.2 redefined `CN` to support non-integer copy numbers and §3 types `RUC` as a `Float`, so the
+premise `repeat_count` and `copy_number` were placed in `binning._INTEGER_KINDS` on has been withdrawn
+for both. The consequence was RM35's unsatisfiable triangle re-instantiated on the kinds RM35 exempted,
+and worse: under a grid a hole of exactly one is not reported at all, so `[0,0] [1,1] [2,2] [3,∞)` is a
+legal, gapless, green tiling under `--strict` that answers nothing for a CN of 2.4 — and the schema also
+**refused the tiling that would fix it**, since a shared endpoint on those kinds was an overlap error.
+
+The usable fix landed in 0.6 rather than 0.7: an optional `measure_tiling` column (`{quantised,
+continuous}`) that the shared-endpoint and gap rules read instead of the kind, with **absent meaning
+the kind's default** so no published table is re-read; `modifier_copy_number` beside the one genuine
+`int`, `modifier_cn` deprecated; and a fractional value switching a would-be-quantised group to the
+continuous rules by itself, saying so in a warning. See [SCHEMAS.md](SCHEMAS.md) for the per-kind
+default table and the resolution order. `binning.measurement_shape_warnings` still says the RM55
+sentence once per table, but **only where it is still true** — a kind VCF 4.4 types as fractional that
+still has a group reading as a grid. A table declaring itself continuous, or carrying a fractional
+bound, answers its own boundaries and is silent. Only the removal of `modifier_cn` stays at 1.0, so
+1.0 inherits a removal rather than the retype the original route named.
 
 **A measurement can span several bins (RM56).** The same two fields carry confidence intervals (`CIRUC`,
 `CICN`) whose missing bound means *unbounded*, so a real measurement is an interval; `htt_repeat_

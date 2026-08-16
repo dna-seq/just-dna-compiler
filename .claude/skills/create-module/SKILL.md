@@ -451,21 +451,55 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
 - **`measure_max` is inclusive on every kind.** A bounded domain's top value (allele fraction `1.0` is
   homoplasmy, and real) has to be reachable. Use `min == max` for a sharp value and a null bound for
   open-ended.
-- **Whether adjacent bins may share an endpoint depends on the kind, and the two cases are opposite.**
-  - **Dense — `allele_fraction`, `prs_percentile`: bounds must touch**, e.g. `0.0–0.1` then `0.1–0.3`.
-    A shared endpoint is a *boundary*, not an overlap, and the higher bin owns it (lookup selects the
-    row with the greatest `measure_min ≤ x`). A hole between bins warns, because on a continuous
-    measure it can be arbitrarily small.
-  - **Integer — `repeat_count`, `copy_number`: bounds must NOT touch**, e.g. `[27,35]` then `[36,39]`.
-    Adjacent integer bins are already contiguous, so a shared endpoint is a real overlap — both bins
-    claim that integer — and it is refused.
-  - **`activity_score` is in neither set.** It is a consumer-summed value on a coarse grid, so interior
-    holes are not meaningful (no gap warning) and bins do not touch.
-- **Two bins sharing a *lower* bound refuse on every kind** — the boundary rule selects the greatest
-  `measure_min ≤ x` and these two are the same, so there is nothing to order. Reachable as a sharp
-  `[0.1, 0.1]` beside a range starting at `0.1`.
+- **Whether adjacent bins may share an endpoint depends on how the axis is divided, and the two cases
+  are opposite.** That is `measure_tiling`, an optional column with two values:
+  - **`continuous` — a dense axis: bounds must touch**, e.g. `0.0–0.1` then `0.1–0.3`. A shared
+    endpoint is a *boundary*, not an overlap, and the higher bin owns it (lookup selects the row with
+    the greatest `measure_min ≤ x`). A hole between bins warns, because on a dense axis it can be
+    arbitrarily small.
+  - **`quantised` — a grid: bounds must NOT touch**, e.g. `[27,35]` then `[36,39]`. Adjacent grid bins
+    are already contiguous, so a shared endpoint is a real overlap — both bins claim that value — and
+    it is refused. Only a hole wider than one step is reported.
+- **Leave `measure_tiling` empty and you get your kind's default**, which is what every table written
+  before the column existed still means:
+
+  | `measure_kind` | default | shared endpoint | interior hole |
+  | --- | --- | --- | --- |
+  | `allele_fraction`, `prs_percentile` | `continuous` | boundary | any hole warns |
+  | `copy_number`, `repeat_count` | `quantised` | overlap, refused | only a hole wider than one |
+  | `activity_score` | *neither* | overlap, refused | never reported |
+
+  `activity_score` is the third case on purpose: it is a consumer-summed value on a grid the format
+  does not know the step of, so an interior hole is not something it can claim.
+- **Write `measure_tiling: continuous` when your copy numbers or repeat counts are not whole
+  numbers.** A caller reporting a segment mean, or a repeat count as a decimal, produces values like
+  `2.4`, and a grid of `[0,0] [1,1] [2,2] [3,∞)` answers nothing for one. Declaring the axis
+  continuous lets you tile it properly — `[0,1.5] [1.5,2.5] [2.5,]` — and the compiler will then also
+  tell you about any hole you leave. **Write `measure_tiling` on every row of the group**, or on none
+  of them: two rows of one group declaring *different* tilings is an error, while a blank cell beside
+  a declared one is simply absence.
+- **A fractional bound switches the group by itself, and the compiler says so.** If you write a
+  `measure_min` or `measure_max` that is not a whole number on a copy-number or repeat-count table,
+  that group is read as continuous whether or not you said so, and the compile prints a line naming
+  the value that decided it. The inference only runs that way: whole-number bounds say nothing, since
+  a continuous measure whose author has only seen whole numbers looks exactly the same. Declaring
+  `quantised` beside a fractional bound keeps your declaration and warns that the data disagrees.
+  **A fractional `modifier_copy_number` does not switch anything** — the modifier is a key column, so
+  it says which table you are in rather than where a point sits on the axis you are tiling. If that
+  table's axis is continuous, declare it.
+- **`quantised` means a grid of whole numbers, and there is no way to state a finer step.** That is
+  right for copy numbers and repeat counts, and it is the reason not to reach for `quantised` on a
+  fraction: on a `[0,1]` axis nothing can be more than one step apart, so declaring it switches gap
+  reporting off instead of tightening it.
+- **Two bins sharing a *lower* bound refuse whatever the tiling** — the boundary rule selects the
+  greatest `measure_min ≤ x` and these two are the same, so there is nothing to order. Reachable as a
+  sharp `[0.1, 0.1]` beside a range starting at `0.1`.
 - Bins are grouped by the kind's key columns **plus** `trait_efo_id`. If two different variants collide
   in a heteroplasmy table, give each its own variant identity — that is what the key is for.
+- **On `copynumbers.csv`, write a modifier dosage in `modifier_copy_number`, not `modifier_cn`.**
+  `modifier_cn` is an integer and is deprecated — it still works, and it goes away at 1.0. The new
+  column is a number that may be fractional, which is what a real copy-number caller reports. Set one
+  or the other; setting both is an error, because two spellings of one dosage can disagree.
 
 ## PGx and star alleles
 
