@@ -38,12 +38,21 @@ from just_dna_format.integrity import build_artifact, verify_manifest
 artifact = build_artifact(output_dir, ["weights.parquet", "annotations.parquet", "studies.parquet"])
 
 # Downloader side: verify before installing (raises IntegrityError on any mismatch).
-verify_manifest(module_dir, read_manifest(module_dir / "manifest.json"))
+manifest = read_manifest(module_dir / "manifest.json")
+verify_manifest(module_dir, manifest)                            # a registry install
+verify_manifest(module_dir, manifest, require_marketplace=False)  # a locally-compiled module
 ```
+
+**Those two calls are different policies, not a strict and a lax mode** — pick per install route
+rather than picking one. The default additionally requires `compiled_by == "marketplace-server"`, so
+it rejects any module compiled anywhere else, this project's own compiler included (it leaves
+`compiled_by` null on purpose). Both check every file hash and the digest in full.
 
 All hashes are SHA-256, lowercase hex, prefixed `sha256:`. The `artifact.digest` is a Merkle-style
 root over the canonical file listing — verifying it verifies the whole set and is the version's
-immutable content identity.
+**byte** identity: these bytes, from this compiler. The *content* identity is `content_signature`,
+over the authored rows and independent of the reference that resolved them, so a rebuild that moves
+the digest while leaving the signature still means the data did not change.
 
 ## Develop
 

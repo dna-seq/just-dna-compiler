@@ -326,6 +326,23 @@ def verify_manifest(
     """
     Verify a downloaded module against its manifest (SPEC §5 verify-then-install).
 
+    **`require_marketplace` is a policy switch and its default is the registry one (S34).** Step 3
+    demands `compiled_by == "marketplace-server"`, so with the default a consumer that wires exactly
+    one call site rejects **every locally-compiled module** — including one this project's own
+    compiler produced, which leaves `compiled_by` null by design. That is correct behaviour and a
+    surprising default to meet through a parameter named for a requirement rather than for a policy.
+    A consumer that installs from both places needs two call sites, not one:
+
+    * `require_marketplace=True` — a registry install. The bytes came from a party you are trusting to
+      have compiled them, so "who compiled this" is part of what you are checking.
+    * `require_marketplace=False` — a local compile, a sideloaded directory, a file a user handed you.
+      The hashes and the digest are still checked in full; only the *provenance* claim is dropped,
+      because there is no registry to have made it.
+
+    Nothing weaker is on offer and nothing here is a trust root: `compiled_by` is an unsigned string in
+    a file the same party wrote. The real guarantee is `public_key` below — a detached Ed25519
+    signature over `artifact.digest` by a key the client pins.
+
     Steps:
       1. Every `artifact.files[]` present on disk hashes to its declared value.
       2. The recomputed `artifact.digest` matches the manifest.
