@@ -69,6 +69,42 @@ def test_the_compiler_reads_this_leaf_and_not_a_copy_of_it() -> None:
     assert resolution_module.split_genotype is split_genotype
 
 
+#: Where a genotype-separator character class is legitimate, and why. Everything else is a fourth copy.
+_SEPARATOR_CLASS = re.compile(r"\[[/|]{2}\]")
+_ALLOWED = {
+    # The leaf itself, which is what everything else must call.
+    ("just_dna_format", "alleles.py"),
+    # `_GT_INDEX_CELL` — the pasted-VCF-`GT` diagnosis (RM77). It matches a cell of allele *indices*
+    # in order to refuse it, so it is a grammar for what a genotype is not, and splitting is not what
+    # it does. Sharing the leaf with it would tie a refusal to a reader.
+    ("just_dna_format", "base.py"),
+}
+
+
+def test_no_fourth_copy_of_the_separator_rule_can_arrive_quietly() -> None:
+    """The identity test above pins the two call sites that exist; this pins the ones that do not.
+
+    Three copies had accumulated before anyone looked, each written by someone who needed to split a
+    genotype and had no public function to call — and a copy does not fail when it drifts, it silently
+    matches a different set. A static scan is the only thing that catches the *fourth*, which no
+    behavioural test can anticipate. Adding an exemption is then a visible decision with a reason
+    beside it, the shape `test_build_call_sites.py` already uses for identity minting.
+    """
+    root = Path(__file__).resolve().parents[2]
+    offenders = [
+        f"{path.relative_to(root)}:{i}"
+        for package in ("schema/src/just_dna_format", "compiler/src/just_dna_compiler", "enricher/src/just_dna_enricher")
+        for path in sorted((root / package).rglob("*.py"))
+        if (path.parent.name, path.name) not in _ALLOWED
+        for i, line in enumerate(path.read_text().splitlines(), start=1)
+        if _SEPARATOR_CLASS.search(line)
+    ]
+    assert offenders == [], (
+        "a genotype separator class outside alleles.py — call alleles.split_genotype instead, or add "
+        f"an exemption to _ALLOWED with the reason: {offenders}"
+    )
+
+
 @pytest.mark.parametrize(
     "spec_dir", sorted(p.name for p in REFERENCE_EXAMPLES.iterdir() if (p / "variants.csv").exists())
 )
