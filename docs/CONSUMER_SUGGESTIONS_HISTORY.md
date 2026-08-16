@@ -56,6 +56,8 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S30** one artifact spells a genotype two ways — leaf 0.6.0; artifact RM81
 - **S31** no manifest field says a PGx table joins by position — 0.6.0
 - **S32** nothing reports a site's missing genotypes — 0.6.0; callset half deflected
+- **S33** an expansion's other rows look authored — 0.6.0; row marker RM87
+- **S34** brief promised uninstallable fields — docs fixed; §4 RM84
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2697,3 +2699,333 @@ sequenced one. Recording it here only so the ordering is on the record.
 **For the 0.4 families this is blocked behind S31.** `pharm_variants` carries no `ref` at all pre-RM43,
 so a consumer cannot even classify the rows. RM43's fill unblocks the classification; the callability
 half is unchanged by it.
+
+# just-dna-lite, the same migration read once more — and a brief answered (2026-08-16)
+
+*Reported against 0.5.4, later the same day as S30–S32 and out of the same twelve-module annotation.
+S33 came from building the reference-genotype restoration feature S32's reply discusses, so it is that
+group's fourth run rather than a new investigation; S34 is the line-per-section answer to a brief this
+repository put to them, and it carries their reply about our own documentation being wrong on what a
+consumer could install. Both are answered.*
+
+## S33 — "exactly one of those rows can match" is true, and the other rows are not inert to a reader
+
+**Status — accepted, both halves. Ask 1 and ask 2 are in the tree for 0.6; ask 2's bigger sibling is
+filed as [RM87](ROADMAP_0_7.md#rm87--an-expanded-row-is-indistinguishable-from-an-authored-one-in-the-artifact),
+and the reason you gave for not asking for it is wrong — it is minor-legal, not a 1.0 conversation.**
+You are also owed a correction about your mitigation, which is narrower than you think for a reason
+that is instantiated in our own corpus.
+
+**Reproduced, from our corpus rather than from your report.** `pathogenic_clinvar` has **9**
+`variant_key`s resolving onto more than one locus (of 328) and `hboc_palb2` has **2** (of 16); every
+one is same-position, different-`ref`, matching your table's last column. Authoring both genotypes at
+your `rs1554917888` — `T/TA` and `TA/TA`, rsid-only, against that module's own two resolution rows —
+compiles to exactly the four rows you describe, and the fourth is `variant_key=11:5226675:TA:T`,
+`ref=TA`, `alts=[T]`, `genotype=[TA,TA]`, `conclusion=pathogenic`. A well-formed reference homozygote
+asserting a pathogenic finding, exactly as you said. That fixture is now
+`compiler/tests/test_expansion_counts.py`, so the row is a regression test rather than a description.
+
+**Ask 1 — the read-side sentence — shipped, and it is a section rather than a sentence.** It went into
+SCHEMAS.md § *the consumer join contract*, which is the normative consumer-facing part of that
+document and already carries the callable/no-call obligation; a new subsection states that a row
+asserts about a **(locus, genotype) pair**, that only the matching member of an expansion asserts
+anything, and — because it is the question a reader has next — that the expansion is not going to be
+filtered and why. COMPILER.md's paragraph now says the same thing from the other side: the "exactly
+one can match" sentence is right about *matching* and was written in a frame where an unmatchable row
+is inert, which it is not to a reader.
+
+**Ask 2 — the manifest count — shipped as two: `expanded_keys` and `expanded_rows`.** RM44's shape,
+and neither derives the other (one key over three loci and three keys over two are different
+situations). Both are `None` where resolution did not run — no `variants.csv`, no injected table, or a
+non-GRCh38 module — deliberately not `0`, since a catalog that cannot tell "no expansion" from "no
+measurement" will badge the second as the first. One caveat worth stating because it is tempting:
+**`expanded_rows - expanded_keys` is not the number of unmatchable rows.** That needs the authored
+genotype count per key, which is per-row information the manifest does not carry.
+
+**Probing your report turned up two defects in our own reporting, both fixed here.** The expansion
+warning was emitted inside the per-authored-row loop, so the fixture above published the identical
+sentence **twice** into `manifest.compilation.warnings` and each copy said *"expanded to 2 rows"* of an
+artifact that had gained four — a published surface (RM44) giving a wrong count, not merely a repeated
+one. It is now one sentence per rsID with the true total, and it says what the extra rows are. And
+`_check_genotype_coverage` — the check S32 produced, three days old — fired on your exact site with the
+reason *"no ref is authored or resolved here"*, of a site the table resolves onto **two** refs. Right
+conclusion, false stated cause, and it would have sent an author to fill a cell that is already
+answered twice over.
+
+**Your adjacent question, answered by running it.** `_check_genotype_coverage` runs in `validate_spec`
+and **only** there, in front of resolution — deliberately, because its message embeds a count and a
+post-resolution re-run would count the expanded rows and publish a second, differently-numbered copy
+of the same finding. So it never sees the four rows; it sees your two authored ones as a single site,
+because the site key is position-level. It fires once, reporting the missing `T/T`. The
+reference-homozygote reason **cannot** fire there, and there are two independent guards:
+`_site_reference_allele` takes the ref from the injected table only when the loci agree on one, and
+withholds on a disagreement; and were the check ever moved behind resolution, the expanded rows carry
+`ref` themselves and it withholds again on the same disagreement, by its other branch. You were right
+that the two features touch the same rows, and right to ask.
+
+**The correction you are owed on your mitigation.** "Withhold any locus the artifact spells with more
+than one `ref`" is, as you say, not a guarantee the format makes — and the shape it misses is not
+hypothetical here. `enrich --keep-par-twin` records a pseudoautosomal locus on **both X and Y with
+identical alleles**: `reference_examples/shox_par1/` was built from that (nine of ten SHOX variants,
+20 rows for 10 findings), and it is the same-`ref`, same-alleles expansion your check cannot see. A
+paralogous rsID naming two positions that carry the same reference base is the other. Both are rarer
+than the ClinVar dup/del pair and neither is excluded by anything.
+
+**And the premise behind your own deferral is wrong, which is our fault for not saying so plainly.**
+You wrote that carrying `locus_index` into the parquet is *"a 1.0 conversation"* because *"the 0.5
+digest window is closed and a new column moves every module's digest"*. Under our charter it is a
+**minor**: Principle 3 says a new optional column is additive and lands in one, with the authored
+identity — `content_signature` and the per-input hashes — unchanged and only a recompile's
+`artifact.digest` moving; Principle 4 scopes byte-reproducibility to a fixed `compiler_version`
+anyway; and the 0.6 cost amendment prices a stamped compiler-managed parquet column as *"approximately
+free… the cheapest thing this format can add"*. "It moves `artifact.digest`" has not been a reason to
+defer since 2026-08-11. So the thing you actually want is legal and cheap.
+
+It is filed rather than built because **`locus_index` alone does not answer your question**: it is `0`
+on every non-expanded row *and* on the first member of every expansion, so a reader holding one row
+cannot tell them apart. It needs a `locus_count` beside it, or to be a `locus_count` instead — and a
+plain boolean forecloses the ordinal permanently under P5. That choice is one-way inside the major and
+RM87 carries the three candidates with what each costs. **If you have a preference, say so there** —
+you are the reader, and this is a decision that should be made by the party who has to use it.
+
+**Nothing here changes what you should do now.** Your withholding rule is right to keep. `expanded_keys
+> 0` tells you an artifact has these rows at all, which lets you scope the rule instead of running it
+everywhere. All of it is 0.6, and 0.6 is still uncut.
+<!-- triaged: 0.6.0 · sha 8f9daad34977 -->
+
+Reported from **just-dna-lite** (consuming 0.5.4), 2026-08-16, from the same run as S31 and S32 and
+found while building the restoration feature S32's reply discusses.
+
+**We know this one is documented, and we are not asking for the expansion to change.**
+[COMPILER.md](COMPILER.md) says it plainly: *"one-to-many rsid reverses into N rows that each carry
+their own locus's alleles beside the **one** genotype the author wrote; exactly one of those rows can
+match"* — with an unconditional error rejected because it would break P7's fixed point, and the
+`{ref} ∪ alts` membership check deliberately unioned across loci because a short alt list is a gap in
+the source at least as often as a defect in the module. We think all of that is right. This report is
+about the scope of the word **match**.
+
+**What we ran.** The same twelve-module annotation of Anton Kulaga's variant-only WGS genome, with the
+first cut of reference-genotype restoration: reporting a module's authored *reference* genotype at
+sites the callset emitted no record for.
+
+**What happened.** It would have emitted **2,579** rows into that genome's `pathogenic` section and
+**1,183** into `cancer`, each telling the reader they carry a pathogenic variant they do not have.
+Caught before rendering. Every one came from a one-to-many expansion.
+
+**The trace**, given in full because we first blamed our own panel builder and were wrong:
+
+1. **ClinVar holds two real records** at 5:112767222 under one rsID — Variation 428095, the
+   duplication `T → TA`, and Variation 2583495, the deletion `TA → T`, both pathogenic. Correct data.
+2. **Our panel authors it faithfully, rsid-only.** `variants.csv` has exactly two rows, no
+   coordinates: `T/TA` and `TA/TA`, both meaning the duplication ("genotype: homozygous (two
+   copies)").
+3. **`resolution.csv` records both loci** under one `variant_key`, `locus_index` 0 and 1,
+   `status=resolved` on both.
+4. **The compiler pairs each authored genotype with each resolved locus.** 2 × 2 = four rows in
+   `weights.parquet`, so `TA/TA` also lands beside `ref=TA`.
+
+**Where the scope assumption breaks.** Against a position join, row 4 is exactly as harmless as the
+prose says — nothing matches it. But it is not silent. `TA/TA` beside `ref=TA` is a **well-formed
+reference genotype**, and a consumer doing anything other than a position join — classifying a row,
+counting rows, or asking "what does this module say about someone who is reference here" — reads it
+as a statement the module never made. Ours read it as *"the reference genotype at this locus is
+pathogenic"*: syntactically valid, and false.
+
+Nothing on the row marks it as the non-matching member, though the compiler knew which it was at emit
+time. We checked: `locus_index` is **not carried into `weights.parquet`** (the artifact has
+`variant_key` and `authored_ident`), and SCHEMAS.md is explicit that `resolution.csv` is a lookup
+rather than a consumer contract — so from the artifact alone a reader cannot tell an expanded row from
+an authored one.
+
+**Scale in our corpus**, `variant_key`s resolving to more than one locus:
+
+| module | variant_keys | multi-locus | same position | same `ref` |
+|---|---:|---:|---:|---:|
+| `cancer` | 68,331 | **1,296 (1.9%)** | 1,296 | **0** |
+| `pathogenic` | 305,850 | **2,730 (0.9%)** | 2,728 | **0** |
+| `cardio` | 57,055 | **540 (0.9%)** | 540 | **0** |
+| `longevitymap` / `coronary` and the other curated modules | 528 / 27 | **0** | — | — |
+
+Those match the false reference-genotype rows we measured (1,296 / 2,727 / 539) one for one, which is
+what identified the mechanism rather than merely correlating with it. Only the ClinVar-derived panels
+are affected, and the corresponding shape is in your corpus too —
+`reference_examples/pathogenic_clinvar/` is named in COMPILER.md as having three variants of it.
+
+**What we did meanwhile, and why it is not a fix.** Withhold any locus the artifact spells with more
+than one `ref`. That took the three panels to 0 and left every curated module untouched. It works
+**because of the last column above** — every expansion we hold is same-position/different-`ref`, which
+is a property of ClinVar's duplication/deletion pairs and not a guarantee the format makes. A
+same-`ref` expansion (two loci differing only in `alts`, or at two positions) is invisible to our check
+and to any consumer's, and we would have no way to know it had happened.
+
+**An argument against the repair we would have proposed first.** "Emit the genotype only at the locus
+where it fits `{ref} ∪ alts`" is wrong for the reason COMPILER.md already gives — `alts` came from a
+source, ClinVar carries only submitted alleles, so a genotype not fitting a locus is a gap in the
+source at least as often as a fact about the module, which is why the check unions across loci in the
+first place. Dropping rows would also change what `reverse_module` reads back, which P7 forbids. We do
+not think the expansion should be filtered.
+
+**The ask, both halves small.**
+
+1. **A read-side sentence.** The statement quoted above lives in the authoring/validation discussion,
+   where "can match" is the natural frame. A consumer reading SCHEMAS.md § weights gets no signal that
+   a row may be a non-matching member of an expansion, and the natural reading of a parquet row is
+   that it is a standalone assertion. One sentence on the read side — *a row asserts something about a
+   (locus, genotype) pair, and only the matching member of a one-to-many expansion asserts anything* —
+   would have saved us the incident.
+2. **A count on the manifest, the RM44 / `positional_rows` shape.** A count of expanded keys (or rows)
+   would let a consumer know an artifact contains expansion rows at all, and act on it, without
+   touching `artifact.digest`. Carrying `locus_index` into the parquet is what we actually want and we
+   are explicitly **not** asking for it in a minor — the 0.5 digest window is closed and a new column
+   moves every module's digest, so that is a 1.0 conversation if it is one at all.
+
+**One adjacent question we cannot answer from 0.5.4.** S32's reply says `_check_genotype_coverage`
+"takes the reference allele from the row or from `resolution.csv`" and fires at a site annotated for
+two or more genotypes. At an expanded locus there are two reference alleles at one position and four
+rows. If that check runs post-expansion, does it see one site with two genotypes under each `ref`, and
+does the reference-homozygote reason fire on the row that *is* the other locus's hom-alt? We may be
+wrong about the ordering — we cannot run 0.6 — but the two features touch the same rows and it seemed
+better to ask than to find out after recompiling the corpus.
+
+## S34 — reply to CONSUMER_BRIEF_LITE: two gaps (both now closed), two deliberate, one joint
+
+**Status — every section answered; §1 fixed here as a documentation defect, §2 fixed as one already,
+§4 filed as [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
+§3 and §5 need nothing from us. And your opening complaint is upheld: the brief was wrong about what
+you could install.**
+
+**The version fact — you are right, and it is worse than a wording slip.** The brief presented a table
+of 0.6 fields as *"also shipped since you last synced"*, which is a claim about installability, and
+this file's own S25/S26 note says the opposite. Confirmed as you describe: `resolution_subjects`,
+`positional_rows`/`positional_rows_placed`, `gene_validity`, `clinical_assertions`, `derived`,
+`readme`, `verification` and `just_dna_format.layout` are all 0.6, and **0.6 is still uncut today** —
+every `pyproject.toml` reads `0.6.0`, and `git tag` stops at `v0.5.4`. So the sentence you asked for
+is now the standing rule for anything we write to you: *"in the tree" means the code and tests are
+committed and nothing more; check [CHANGELOG.md](CHANGELOG.md) for whether the version it names was
+cut.* We cannot put it in the brief — that file was removed in `6c9db05`, as your own note records —
+so it goes here, and into the next one. Sorry for the afternoon.
+
+**§1 — accepted as a documentation defect, fixed in the same pass.** Confirmed: no call site anywhere
+in this workspace, and `compiled_by` appears only as a value we write. Your trap reproduces exactly and
+it is the better half of the report — the default *is* the marketplace policy, so one naive call site
+rejects every locally-compiled module, ours included, since our compiler leaves `compiled_by` null by
+design. The contract is right and the surface was not saying so: `verify_manifest`'s docstring listed
+`require_marketplace` among the optional steps rather than as the fork it is, and `schema/README.md`'s
+example used the default with no comment. Both now state the two policies, one per install route, and
+say that neither is a strict/lax pair — the hashes and the digest are checked in full either way, and
+only the provenance claim is dropped. Both also point at the guarantee that is actually load-bearing,
+since `compiled_by` is an unsigned string in a file its own claimant wrote: a pinned `public_key`.
+Marking the flow unimplemented in your spec rather than letting it describe behaviour you do not have
+is the right call and we would make the same one.
+
+Probing that turned up an adjacent defect and it is one you should know about: **`schema/README.md`
+still called `artifact.digest` "the version's immutable content identity"** — the exact wording S7 was
+filed against, and the opposite of what the charter says (the digest is the *byte* identity;
+`content_signature` is the content one). SCHEMAS.md was corrected when S7 was answered and this copy
+was missed. If any of your reasoning about when a module "changed" came from that README rather than
+from SCHEMAS.md, it was reading a false statement.
+
+**§2 — deliberate, and your guess was right; the docs were the defect and they are fixed.** Your
+`_lead_join_strategy` argument is better than the trust rule and we have adopted it as the reason
+rather than merely accepting the outcome: reading the artifact's own null coordinates is authoritative
+for the bytes in hand, needs no trust rule, and works on a module whose manifest was never fetched,
+which on your discovery path is all of them. Both SCHEMAS.md and `manifest.py`'s own comment said *a
+consumer* should apply the trust rule, which is what sent you looking for a read path you had
+deliberately not built; they now say the reader is a **catalog** — a server projecting a badge over
+many modules cannot open every artifact, and that is who those fields are for. Same correction applied
+to `positional_rows_placed == positional_rows`, and your reading of it as the manifest-side twin of a
+test you already run is exactly right.
+
+**§3 — nothing owed, and the three choices you flag are all the ones we would defend.** Tri-state with
+`None` meaning *not established* is this project's own house algebra, so it needs no argument here.
+Recording the digest the module **claims** rather than one you recomputed is the honest thing while §1
+is open — and note that §1 being fixed does not by itself close it: `verify_manifest` verifies bytes
+against a manifest, so a recomputed digest still tells you the artifact matches its own manifest, not
+that either is the module you meant to install. That is what a pinned key is for. Your `module.version:
+null` finding is yours, as you say, and we are only glad it surfaced in your pipeline rather than in a
+reader's report.
+
+**§4 — joint, agreed, and filed on our side as [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own).**
+Our half is `upload.upload_module`, which writes the flat `data/<name>/` layout with no version
+segment; the item records your §4 statement — that you will follow a version segment in discovery if
+the publisher grows one — as the consumer half already agreed in writing, so whoever picks it up does
+not have to re-negotiate it. Your point that the §3 fields record *where* and not *which build* is
+right and is written into the item as the reason a partial mitigation does not close it.
+
+**§5 — nothing owed, and the traced consequence is the useful part.** An installed PGx module being
+undiscoverable to the publish/edit pane is a sharper version of the bug than the brief guessed, and
+one shared `find_lead_table()`/`has_lead_table()` over `LEAD_TABLES` is the same repair we would have
+made — the two-predicates-for-one-question shape is a defect this repository keeps finding in itself
+(S30 had three copies of one rule). Nothing to do here.
+<!-- triaged: 0.6.0 · sha e1630101892d -->
+
+Reported from **just-dna-lite** (consuming 0.5.4), 2026-08-16. This is the line-per-section answer
+`CONSUMER_BRIEF_LITE.md` asked for, plus what we changed on our side. Every grep in the brief
+reproduced exactly as written. *(The brief itself was removed in `6c9db05`, the commit that filed this
+answer — recover it from git history if you need the questions it put.)*
+
+**A version fact that gates half of it, and that we could not tell from outside.** We are on
+**0.5.4** of all three packages. The installed `Compilation` model carries `compile_success`,
+`compiled_at`, `compiled_by`, `compiler_version`, `ensembl_reference`, `fully_resolved`,
+`resolution_mode`, `resolution_signature`, `resolution_sources`, `vrs_alleles`,
+`vrs_alleles_identified`, `warnings` — and nothing else. So `resolution_subjects`,
+`positional_rows`/`positional_rows_placed`, `gene_validity`, `clinical_assertions`, `derived`,
+`readme`, `verification` and `just_dna_format.layout` do not exist in any version a consumer can
+install. The brief presents that table as *"also shipped since you last synced"*, which reads as
+"pip and you have it"; this file's own S25/S26 note says the opposite and is right. Worth one
+sentence in the brief saying the table is 0.6 and 0.6 is uncut, because we spent a while looking for
+fields that were never going to be there.
+
+**§1 `verify_manifest` — gap, and the spec is the first half of it.** Confirmed: no call site,
+and `compiled_by` appears only as a value we write. One thing to know that the brief does not
+mention: the 0.5.4 signature is `verify_manifest(module_dir, manifest, *, require_marketplace=True,
+…)`, so the *default* is the marketplace policy. A naive single call site would reject every
+locally-compiled module, since our own compiler leaves `compiled_by` null by design. Wiring it means
+two policies — `True` for a registry install, `False` for a local compile — which is a fine contract,
+just not the one the parameter name advertises at a glance. Meanwhile we have marked the
+verify-then-install flow in our `docs/MODULE_MARKETPLACE_SPEC.md` as unimplemented rather than let it
+keep describing behaviour we do not have.
+
+**§2 `resolution_mode` / `fully_resolved` — deliberate, and your guess is right: the docs are what
+needs fixing.** Registry-projected `resolution.trusted` is the only path we intend to support. The
+stronger reason than "the registry already evaluated it": for the question the annotating engine
+actually asks — *can this table join to a VCF by position* — we read the artifact's own null
+coordinates (`_lead_join_strategy` in `hf_logic.py`) rather than any manifest field. That is
+authoritative for the bytes in hand, needs no trust rule, and works on a module whose manifest we
+never fetched, which on the HuggingFace path is all of them. By the same argument we do not expect to
+need `positional_rows_placed == positional_rows`: it is the manifest-side twin of a test we already
+run against the data.
+
+**§3 no module version on an annotation run — gap, and the only one of the five that touched the
+report. Closed.** `ModuleOutputMapping` gained `version`, `digest` and `source_url`, filled by a new
+`read_module_provenance()`, and the report renders a "Modules in this report" table from them. Three
+choices worth stating because they are the honest half:
+
+- All three are **tri-state**. `None` means *not established*, never "unversioned" and never
+  "unverified". A module discovered on HuggingFace has no manifest fetched at all, so only
+  `source_url` is knowable there, and the template renders the other two as *Not stated*.
+- The digest recorded is the one the module **claims** — read from `manifest.json`, not recomputed —
+  precisely because §1 is still open. It ties a report to a stated identity, not a checked one, and
+  the docstring and the template both say so.
+- Version falls back from `identity.version` to the authored spec, as the brief suggests. Doing it
+  surfaced something on our side rather than yours: six of our own Gen-I ports author
+  `module.version: null` (longevitymap among them), so *Not stated* is the common case across our
+  corpus today. That is ours to fix in the porting pipeline, not a format issue — recording it here
+  only so a reader of the next brief does not read those blanks as a contract failure.
+
+**§4 flat HF layout — joint, and we agree it wants agreeing.** Confirmed on our side exactly as
+described: no version segment, no digest check, and the only invalidation keyed on our own package
+version. The §3 fields are a partial mitigation and we want to be clear about how partial: on the
+HuggingFace path they record *where* a module came from and nothing about *which build*, so a
+silent republish is still invisible to a saved report. If the publisher grows a version segment we
+will follow it in discovery; the `vN` fallback in our generic fsspec scan is already the shape.
+
+**§5 two predicates for "is this a module" — gap. Closed.** Your reading is right: `weights.parquet`
+was standing in for "has a lead table" in all three places, not meaning "SNP-core module". Traced
+consequence, which is worse than the brief guessed: a `pharm_variants`-led install was discovered
+and annotated fine, but invisible to `module list-custom`, unbadged in the module list, and — the
+real one — **absent from the publish/edit pane, so an installed PGx module could not be published or
+edited from the UI at all**. Same failure mode as the discovery bug that made such a module
+unpublishable in the first place. Fixed with one shared `find_lead_table()`/`has_lead_table()` over
+`LEAD_TABLES` in `module_config`, so the local-filesystem predicate and the fsspec one now answer the
+same question, and a new family is one edit for both.

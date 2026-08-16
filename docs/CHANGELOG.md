@@ -64,6 +64,74 @@ then stamps. Runbook §6 has both, and the gist has the correction that went the
 had already checked and refuted — `fingerprint()` ends in `.strip()`, so an injected heading below a
 section's prose leaves its hash alone.
 
+## 2026-08-16 (later) — 0.6.0: S33 and S34, and a premise of ours that a consumer had believed
+
+Two more field notes from **just-dna-lite**, from the same twelve-module annotation as S30–S32. One is
+a real defect with 3,762 false findings behind it; the other is a five-section reply in which four
+sections needed nothing built and the fifth was a doc of ours being wrong. Both are archived to
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md).
+
+**S33 — a one-to-many expansion's other rows are well-formed, and nothing said they were there.**
+An rsID resolving onto N loci is paired with each, so K authored genotypes become K×N rows and only the
+member whose alleles can carry a genotype can match it. COMPILER.md has said so for a release, in the
+authoring frame where an unmatchable row is inert. It is not inert to a *reader*: `TA/TA` beside
+`ref=TA` at a ClinVar duplication/deletion pair is a well-formed reference homozygote carrying the
+module's conclusion, and the reporting consumer queued 2,579 of them into one genome's `pathogenic`
+section and 1,183 into `cancer` before catching it. Reproduced from our own corpus — nine multi-locus
+keys in `pathogenic_clinvar`, two in `hboc_palb2`, every one same-position/different-`ref` — and the
+fixture is now `compiler/tests/test_expansion_counts.py`.
+
+The expansion stays; filtering it is refused for the two reasons already on record, and the reporter
+argued that case themselves. What ships is `manifest.compilation.expanded_keys` / `expanded_rows`
+(RM44's two-counts shape, `None` where resolution did not run so a catalog can tell "no expansion" from
+"no measurement", out of `artifact.digest` and pinned by a recompile test) and the **read-side
+contract** in SCHEMAS § *the consumer join contract*, where a consumer meets it rather than in the
+validation discussion. Note that `expanded_rows - expanded_keys` is **not** the unmatchable-row count —
+that needs a per-key authored-genotype number the manifest does not carry.
+
+**Probing the report found two defects in our own reporting.** The expansion warning was emitted inside
+the per-authored-row loop, so a site with two authored genotypes published the identical sentence twice
+and each copy said *"expanded to 2 rows"* of an artifact that had gained four — `compilation.warnings`
+is a published surface (RM44), so that is a wrong answer, not a repeated one. And
+`_check_genotype_coverage`, the check S32 produced three days earlier, fired on that exact site with the
+reason *"no ref is authored or resolved here"* of a site the table resolves onto two disagreeing refs.
+Turning a new check on the new report is what found the second; it is the standing advice and it paid
+again.
+
+**RM87 is filed to correct a premise, not to defer one.** S33 declined to ask for `locus_index` in
+`weights.parquet` on the grounds that a new column moves every module's digest and is therefore a 1.0
+conversation. Under P3 it is a **minor** — the authored identity does not move — P4 scopes
+byte-reproducibility to a fixed `compiler_version` anyway, and the 0.6 cost amendment prices a stamped
+compiler-managed parquet column as *"approximately free… the cheapest thing this format can add"*. A
+consumer talked themselves out of the right fix using a rule we retired on 2026-08-11, which is a
+communication failure on our side. What is genuinely open is *which* column: `locus_index` alone is `0`
+on a non-expanded row and on an expansion's first member both, so it needs `locus_count` beside it, and
+a bare boolean forecloses the ordinal permanently under P5. The reporter is asked to state a preference.
+
+Also corrected for them: their mitigation (withhold any locus spelled with more than one `ref`) misses
+same-`ref` expansions, and one is instantiated here — `enrich --keep-par-twin` records a pseudoautosomal
+locus on X and Y with identical alleles, which is what `reference_examples/shox_par1/` was built from.
+
+**S34 — the brief promised fields nobody could install.** The consumer's own opening complaint, upheld:
+a table of 0.6 fields was presented as *"also shipped since you last synced"*, and 0.6 is uncut (every
+`pyproject.toml` reads `0.6.0`; `git tag` stops at `v0.5.4`). The standing rule, now written into the
+reply: *"in the tree" means committed and nothing more* — check this file for whether the version was
+cut. Of the five sections, §3 and §5 were closed consumer-side and needed nothing, §4 was already filed
+as RM84 with their agreement recorded in it, and §2 was a documentation defect the previous session had
+already fixed (SCHEMAS.md and `manifest.py` both said *a consumer* should apply the `fully_resolved`
+trust rule; the reader is a **catalog**, and saying "a consumer" sent one hunting for a read path they
+had deliberately not built).
+
+**§1 is the one with work in it.** `verify_manifest` has no call site anywhere, and its
+`require_marketplace` **defaults to the marketplace policy** — so one naive call site rejects every
+locally-compiled module, ours included, since our compiler leaves `compiled_by` null by design. The
+contract is right; the docstring listed the flag among the optional steps rather than as the fork it is,
+and `schema/README.md`'s example used the default silently. Both now state the two policies, one per
+install route, and both point at the pinned `public_key` as the guarantee that is actually load-bearing.
+Beside it, `schema/README.md` still called `artifact.digest` *"the version's immutable content
+identity"* — the exact wording S7 was filed against; SCHEMAS.md was corrected then and this copy was
+missed. Last one in the tree.
+
 ## 2026-08-16 — 0.6.0: a consumer round, S30–S32
 
 Three field notes from **just-dna-lite**, all out of one annotation of one WGS genome against twelve
