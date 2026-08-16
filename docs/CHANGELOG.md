@@ -76,6 +76,27 @@ delivered shape. But a *refusal* is not free the way a warning is: under the 1.0
 unclosed by construction, so step 3 would refuse for every module. That is filed with three undecided
 candidate answers in [ROADMAP_1_0 § RM73 (gate half)](ROADMAP_1_0.md).
 
+**Dogfooding the closure against 61 foreign modules turned up three fixes, one of them unrelated and
+bigger than the two that were.** `just-dna-compiler close` was run over every module spec directory in
+`just-dna-registry`, `just-dna-lite`, `just-module-creator`, `clawbio` and `dna-agents` — copies, never
+their trees. 30 closed and 29 refused, and **26 of the 29 refused because `module.version: 3` is an
+`int` by the time YAML hands it over**, while RM17's SemVer coercion — written expressly to accept the
+pre-0.4 corpus's `v2` and `3` — is a `mode="after"` validator the field's `str` check never lets it
+reach. Quoted `'3'` coerced; unquoted `3` refused with *Input should be a valid string*, and unquoted
+is the only way YAML spells a number. Widened at `mode="before"` (P3-legal — previously-refused values
+become legal and nothing accepted changes); a **float** stays refused with the reason, since YAML reads
+`1.10` as `1.1` and the authored text is gone before any validator runs. Every one of this repo's
+sixteen reference examples quotes its version, so no corpus here could have found it.
+
+The two closure bugs: `close` printed *Run `just-dna-compiler close`* as the first line of every
+refusal, having faithfully echoed the pre-flight's warning to the one caller for whom it is already
+answered (the RM77 class); and a module closed straight from its authored state published
+`produced_at` beside `producer: null` and no checks — a timestamp for a run that never happened. After
+the three, the same sweep closes 54 of 59 and the five refusals are real: two modules with no
+`studies.csv`, two published registry modules carrying *inconsistent reference allele* contradictions
+that `validate` and `compile` refuse identically, and one `<<REPLACE>>` template. Findings in
+[DOGFOOD_0_6_FINDINGS § Round 3](DOGFOOD_0_6_FINDINGS.md).
+
 **RM73 (provenance half) — a drafted value that has not moved is a copy that can be *established*.**
 Shipped the same day, and the half four separate items were actually asking for; it needed no phase
 boundary to answer.

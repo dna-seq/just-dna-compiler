@@ -4238,7 +4238,12 @@ def close_module(
                 "Fix the errors below and close it afterwards.",
                 *validation.errors,
             ],
-            warnings=validation.warnings,
+            # Everything the pre-flight found, except its reminder to run *this command* — which is
+            # what an author was being told, as the first line of output, while running it. The
+            # pre-flight is right to say it and this caller is the one context where it is answered
+            # by definition. Filtered on the phrase rather than by re-deciding, so the two cannot
+            # drift apart.
+            warnings=[w for w in validation.warnings if UNCLOSED_PHRASE not in w],
         )
 
     try:
@@ -4273,10 +4278,13 @@ def close_module(
         # Either there was no document, or it no longer describes these bytes. Its records are dropped
         # rather than re-attested: re-binding them would claim a check was put against rows it never
         # saw, which is the failure `module_hash` exists to catch, committed by the tool instead of by
-        # an edit. `producer` stays unset for the same reason — nobody put a check into this document.
-        doc = attest(
-            [], binding, produced_at=stamp, difficulty=difficulty, closure=statement
-        )
+        # an edit.
+        #
+        # `producer` and `produced_at` both stay unset, as a pair: they describe the run that put the
+        # checks, and this document has none. Stamping the time here left a closure-only manifest
+        # reading `producer: null, produced_at: <now>, checks: []` — a timestamp for a run that did not
+        # happen, beside the closure's own `closed_at` saying the same thing about the act that did.
+        doc = attest([], binding, difficulty=difficulty, closure=statement)
     dropped = sorted(r.check for r in previous.records) if previous is not None and not held else []
     write_verification(doc, path)
     return ClosureResult(

@@ -204,6 +204,44 @@ class ModuleInfo(Display):
         `normalize.reject_authority_keys`."""
         return reject_authority_keys(data)
 
+    @field_validator("version", mode="before")
+    @classmethod
+    def _accept_the_number_yaml_read(cls, value: object) -> object:
+        """A bare `version: 3` is an **int** by the time YAML hands it over, and RM17 meant to take it.
+
+        The coercion below was written to accept "the pre-0.4 corpus full of `v2` and `3`" — but it is
+        `mode="after"`, so an int never reaches it and the field refused with pydantic's *Input should
+        be a valid string*, which names the type rather than the fix. Quoted `'3'` coerced; unquoted
+        `3` did not, and unquoted is the only way YAML spells a number. The guard the corpus needed was
+        unreachable from the file format the corpus is written in.
+
+        Measured before changing it: of 61 foreign modules swept through `close_module`, **26 refused
+        on exactly this** — every one an integer (`1`, `2`, `3`, `5`), across three independent
+        toolchains. That was 90% of all refusals.
+
+        Widening only, so P3 holds: a value that was refused is now read the way its quoted twin
+        already was, and `version_coerced_from` reports the rewrite exactly as before.
+
+        **A float is refused, deliberately, and the message is the point.** YAML reads `1.10` as
+        `1.1`, so the author's text is gone before this code runs and coercing would publish a version
+        they did not write. No instantiation in the corpus — all 26 are ints — but the fix above
+        creates the neighbour: once `version: 1` works, `version: 1.0` failing with a type name would
+        be the surprise. `bool` is an `int` subclass and is left to the string check, since `version:
+        true` is not a version anyone meant.
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            raise ValueError(
+                f"version {value!r} was read by YAML as a number, and the text you wrote cannot be "
+                f"recovered from it — YAML reads 1.10 as 1.1, so a version is quoted or it is guessed. "
+                f'Write it as a string: version: "{value}". An integer needs no quotes; a version with '
+                f"a dot does."
+            )
+        return value
+
     @model_validator(mode="after")
     def _enforce_semver(self) -> "ModuleInfo":
         """Coerce `version` to SemVer, recording what it was coerced *from* (RM17).

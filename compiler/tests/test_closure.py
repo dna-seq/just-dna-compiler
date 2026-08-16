@@ -175,6 +175,42 @@ def test_closing_refuses_a_spec_that_does_not_validate(tmp_path: Path) -> None:
     assert not (spec / VERIFICATION_JSON).exists(), "and nothing was written"
 
 
+def test_a_refusal_does_not_tell_the_author_to_run_the_command_they_are_running(
+    tmp_path: Path,
+) -> None:
+    """Found by dogfooding, on the first foreign module that failed to close.
+
+    `close_module` runs the pre-flight and reports what it found, and the pre-flight rightly warns
+    that the module is not closed — so the first line an author saw, while running `close`, was *Run
+    `just-dna-compiler close`*. The warning is correct and its reader is wrong here, which is the RM77
+    class: a correct sentence aimed at the wrong thing sends someone to do what they already did.
+    """
+    spec = _open_module(tmp_path)
+    (spec / "variants.csv").write_text("rsid,genotype\nrs1799945,not-a-genotype\n")
+
+    result = close_module(spec)
+    assert not result.closed
+    assert _closure_warnings(result.warnings) == [], result.warnings
+    # And the pre-flight it delegates to still says it, so this is a filter, not a silencing.
+    assert len(_closure_warnings(validate_spec(spec).warnings)) == 1
+
+
+def test_a_closure_only_document_dates_the_closure_and_nothing_else(tmp_path: Path) -> None:
+    """`producer`/`produced_at` describe the run that put the checks, and there was none.
+
+    Also from the dogfood: a foreign module closed straight from its authored state published
+    `producer: null, produced_at: <now>, checks: []` — a timestamp for a run that never happened,
+    sitting beside the closure's own `closed_at` recording the act that did. The two fields are a
+    pair and they move together.
+    """
+    spec = _open_module(tmp_path)
+    assert close_module(spec).closed
+
+    doc = read_verification(spec / VERIFICATION_JSON)
+    assert (doc.producer, doc.produced_at) == (None, None)
+    assert doc.closure.closed_at and doc.records == []
+
+
 def test_closing_does_not_refuse_on_a_warning(tmp_path: Path) -> None:
     """A warning is not an unfinished module, and treating it as one makes closure unreachable.
 

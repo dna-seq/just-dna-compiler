@@ -413,3 +413,56 @@ Three entries above were wrong in some part, and re-verification rather than rel
   verbatim, because `C|C` loads and the "heterozygous" half is false of it — which is now R2-14.
 - **Unit 11's brief was wrong about where the rsid↔coordinate check ran**, and the check turned out to
   be unreachable from `enrich()` entirely. That is R2-15, and it is the round's most valuable finding.
+
+---
+
+## Round 3 — closing a foreign module (2026-08-16)
+
+Different provenance again, and it is the one this file was short of: **someone else's modules,
+through the shipped CLI, on the surface that shipped hours earlier.** RM73's closure was built and
+tested against this repository's own sixteen reference examples, which are the modules its author
+wrote. Round 3 ran `just-dna-compiler close` over **61 module spec directories from three other
+repositories** — `just-dna-registry`'s published mirror, `just-dna-lite`'s generated modules,
+`just-module-creator`'s assets, `clawbio`'s extracts, `dna-agents`' evals — each copied first, since
+dogfooding must not edit someone else's tree. Two were skipped as too large to sweep (180 MB and
+221 MB); the other 59 were closed for real.
+
+**The headline number is the finding.** 30 closed, 29 refused — and **26 of the 29 refused for one
+reason that has nothing to do with closure**, which is what makes the sweep worth more than the five
+modules it started with.
+
+| id | finding | class | severity |
+|---|---|---|---|
+| **D7-1** | **`close` told the author to run `close`.** `close_module` runs the pre-flight and reports what it found, and the pre-flight rightly warns that the module records no closure — so on every refusal the *first line of output*, while the author was running `close`, was *Run `just-dna-compiler close <spec-dir>`*. Reproduced on the first foreign module that failed. The RM77 class exactly: a correct sentence aimed at the wrong reader, and the one context where it is answered by definition. Filtered on `UNCLOSED_PHRASE` rather than by re-deciding, so the two cannot drift. | fix (done) | medium |
+| **D7-2** | **A closure-only document dated a run that never happened.** A module closed straight from its authored state published `producer: null, produced_at: <now>, checks: []` into `manifest.verification` — a timestamp for a check-putting run that did not occur, sitting beside the closure's own `closed_at` recording the act that did. The two fields are a pair describing the same run; they now move together, and a closure-only document leaves both unset. Invisible on this repo's corpus, where three of sixteen examples carry enricher records and the rest were closed in the same batch. | fix (done) | low |
+| **D7-3** | **`module.version: 3` — the spelling YAML actually produces — could not be read, and RM17's coercion exists to read exactly that.** `_enforce_semver` coerces the pre-0.4 corpus's informal versions (`v2`, `3`) to SemVer and is `mode="after"`, so an unquoted YAML number arrives as an **int** and the field refuses it first with *Input should be a valid string*: a message naming the type rather than the fix. Quoted `'3'` coerced; unquoted `3` did not — and unquoted is the only way YAML spells a number, so the guard the corpus needed was unreachable from the file format the corpus is written in. **26 of 61 foreign modules**, across three independent toolchains, refused on this and nothing else; every authored value was an integer (`1` ×13, `2` ×9, `3` ×3, `5` ×1). Widened at `mode="before"`, which is P3-legal in the only direction it moves. A **float** stays refused, now with the reason: YAML reads `1.10` as `1.1`, so the author's text is gone before any validator runs and coercing would publish a version nobody wrote. | fix (done) | **high** |
+
+**After the three fixes, the same sweep closes 54 of 59 and the five refusals are all real.** Two
+modules are missing `studies.csv` (grounding evidence is mandatory), two are the published registry
+modules carrying *inconsistent reference allele* contradictions — 748 and 1,834 errors, the same
+verdict `validate` and `compile` give them today, so `close` is refusing exactly what the tier already
+refuses — and one is a `just-module-creator` template still holding `<<REPLACE>>`, which is RM76's
+guarantee working as designed on a module this repo did not write.
+
+**What the round says about the closure design, beyond the bugs.** Three things held up under foreign
+data and are worth recording as confirmations rather than assumed:
+
+- **The refusal rule is consistent with the tier, measured rather than argued.** `validate`, `compile`
+  and `close` produce byte-identical 1,084-line output on `registry_cardio`. A published module that
+  the compiler will not accept is one `close` will not declare finished, and that turns out to be the
+  same set rather than a stricter one.
+- **`sidecar_write_path` does the right thing on a foreign layout.** A module keeping its sidecars
+  under `derived/` is closed *there*, and a module carrying both copies is refused with the RM51
+  message naming both paths and exit 1 — neither case had a test written from a real module before.
+- **The full flow survives.** Closing a foreign module, compiling it, reversing it and then enriching
+  it offline all behave: the closure reaches `manifest.verification.closure`, reverse names the closure
+  it is dropping (and does *not* tell the author to re-run the enricher, since there were no checks),
+  and an offline `enrich` adds five check records while leaving the closure standing and correctly
+  restamping `producer` to the enricher that put them.
+
+**One thing the round did not find, and the reason is worth naming.** Nothing broke in the closure
+*mechanism* on foreign data — no binding mismatch, no unreadable document, no collision this repo had
+not already anticipated. That is a weak result rather than a strong one: the mechanism is four days
+old and every foreign module met it for the first time in an already-closed state of the tool's
+choosing. The sharper test is a module closed by one release and read by the next, which no corpus can
+supply yet.

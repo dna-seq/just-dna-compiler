@@ -129,6 +129,41 @@ def test_version_is_accepted_not_diagnosed() -> None:
     assert info.version_coerced_from == "v2"
 
 
+def test_the_version_yaml_actually_hands_over_is_the_one_that_has_to_work() -> None:
+    """RM17's coercion was written for `3` and could not be reached from a YAML file.
+
+    `_enforce_semver` is `mode="after"`, so a bare `version: 3` — which YAML types as an **int** —
+    was refused by the field before the coercion ran, with *Input should be a valid string*: a message
+    naming the type rather than the fix. The quoted twin `'3'` coerced perfectly, and unquoted is the
+    only way YAML spells a number, so the guard the pre-0.4 corpus needed was unreachable from the
+    file format that corpus is written in.
+
+    Measured before it was changed, by sweeping 61 modules from three other repositories through
+    `close_module`: **26 refused on exactly this**, every one an integer, which was 90% of all
+    refusals. The parametrization asserts the int and its quoted twin land on the same value, since
+    "these two spellings are one version" is the actual claim.
+    """
+    for authored in (1, 2, 3, 5):
+        from_int = ModuleInfo(**_module_block(version=authored))
+        from_str = ModuleInfo(**_module_block(version=str(authored)))
+        assert from_int.version == from_str.version == f"{authored}.0.0"
+        assert from_int.version_coerced_from == str(authored)
+
+
+def test_a_yaml_float_version_is_refused_with_the_reason_rather_than_the_type() -> None:
+    """The neighbour the fix above creates, and the one case where withholding is right.
+
+    YAML reads `1.10` as `1.1`, so an author's text is gone before any validator sees it and coercing
+    would publish a version they did not write. No module in the swept corpus writes one — all 26 are
+    ints — but once `version: 1` works, `version: 1.0` failing with a bare type name is the surprise.
+    """
+    with pytest.raises(ValidationError) as exc:
+        ModuleInfo(**_module_block(version=1.10))
+    message = str(exc.value)
+    assert "read by YAML as a number" in message
+    assert 'version: "1.1"' in message, "and it shows the spelling that works"
+
+
 def test_stripping_first_leaves_a_valid_block() -> None:
     """The two halves compose: strip (opt-in) then validate, which is the consumer's real path."""
     block = _module_block(namespace="acme", owner="acme", canonical_id="acme/m@1.0.0", version="v2")

@@ -1179,6 +1179,19 @@ last-resort resolver link, a `frequencies.csv` pass, an offline-capable `gene_me
     half) — do not build the gate before picking one.
   Measured, not argued: all sixteen reference examples compile byte-identically on `artifact.digest`
   and `content_signature` before and after being closed.
+- **`version: 3` in YAML is an INT, and RM17's coercion could not reach it — found by closing 61
+  foreign modules (0.6).** `_enforce_semver` coerces the pre-0.4 corpus's `v2`/`3` to SemVer and is
+  `mode="after"`, so the field's `str | None` refused an unquoted YAML number first, with *Input should
+  be a valid string*. Quoted `'3'` coerced, unquoted `3` did not, and **unquoted is the only way YAML
+  spells a number** — the guard written for a corpus was unreachable from the file format that corpus
+  is written in. **26 of 61** foreign modules from three other repositories refused on this and nothing
+  else, all integers. Now widened at `mode="before"` (P3-legal — it only makes refused values legal).
+  A **float** stays refused *with the reason*: YAML reads `1.10` as `1.1`, so the authored text is gone
+  before any validator runs and coercing would publish a version nobody wrote — and once `version: 1`
+  works, `version: 1.0` failing on a bare type name is the surprise the fix creates. Two general
+  lessons: **a `mode="after"` validator cannot rescue a value the field's type rejects first**, so
+  check which layer sees the raw input; and **run the corpus you did not write** — this repo's sixteen
+  examples all quote their version, so no reference example could ever have caught it.
 - **`annotations.parquet` carries `genotype` AND keys on it (RM80, 0.6).** `variant_key` is not unique
   there and never could be — poly-effect is real — so the consumer's other option (carry what
   distinguishes the rows) was the only one. Carrying it *without* keying on it would be worse than the
