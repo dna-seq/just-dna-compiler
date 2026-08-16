@@ -566,7 +566,7 @@ surface that answers a question about a value owes nothing.
 ## RM82 — the attestation binds raw bytes, and `size` is inside the binding
 
 **Severity** low-medium · **Owner** format (`verification.module_binding`) · **Decided** 2026-08-16,
-unbuilt · **Entry** [ROADMAP_0_7.md § RM82](ROADMAP_0_7.md#rm82--the-attestation-binds-raw-bytes-so-an-editors-line-endings-un-close-a-module)
+**built 2026-08-17** · **Entry** [ROADMAP_0_7.md § RM82](ROADMAP_0_7.md#rm82--the-attestation-binds-raw-bytes-so-an-editors-line-endings-un-close-a-module)
 
 ### The problem and the standing decision
 
@@ -623,7 +623,11 @@ not edit; the others are things a human typed. If a real case arrives for one of
 - **All sixteen reference examples are closed** (16 of 16 carry a `verification.json` with a real
   `closure`), so all sixteen re-close, in the same commit as the change.
 - **A one-time invalidation of every `module_hash` in existence**, and it is a **soft** break: a stale
-  attestation warns and is dropped (`compiler.py:4780-4834`), it never fails a build.
+  attestation warns and is dropped (`compiler.py:4780-4834`), it never fails a build. **Measured on
+  build: 7 of 16, not 16 of 16** — a binding moves only where an authored file really carries `\r\n`,
+  and the nine that did not kept their records, producer and nonce verbatim through the re-close.
+  Which half of the corpus is CRLF is the surprise: `csv.writer`'s default terminator is `\r\n`, so it
+  is the *machine-written* files, and the rewrite an author really performs is the normalization to LF.
 - **No test fixture needs rewriting.** No test anywhere hardcodes a real digest — the only constant is
   synthetic (`schema/tests/test_verification.py:35`, `"sha256:" + "ab" * 32`), and every other test
   recomputes the binding from its fixture. The one test whose *semantics* shift is

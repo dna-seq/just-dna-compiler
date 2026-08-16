@@ -537,7 +537,9 @@ and still publishes `manifest.sources`. Both of those are renames only a major m
    raises). The readme is discovered from `manifest.README_CANDIDATES` and hashed into
    `manifest.readme`, outside `artifact.files` — so it is attested without being content (S25).
 10. **Read the verification attestation** (`verification.json`, RM45): recompute the binding over the
-    authored inputs, re-check the proof-of-work, and either carry the block into the manifest or
+    authored inputs — with `\r\n` read as `\n` since 0.6 (RM82), so an editor's line endings are not an
+    edit, while `manifest.inputs[]` keeps listing the raw bytes and raw sizes because it answers *are
+    these the exact bytes* — re-check the proof-of-work, and either carry the block into the manifest or
     **warn and drop it**. A stale attestation never fails a compile — the goal is that it never
     becomes a published claim, not that it be impossible to write while editing. Nothing here is
     trusted; see SCHEMAS.md. **The same read decides the closure (RM73, 0.6)**: if the block that

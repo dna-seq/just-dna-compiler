@@ -63,6 +63,7 @@ from just_dna_format.integrity import (
     build_artifact,
     file_entries,
     file_entry,
+    newline_normalized_file_entries,
     sha256_file,
 )
 from just_dna_format.integrity import (
@@ -330,20 +331,31 @@ _DERIVED_FILES: tuple[str, ...] = (
 
 
 def authored_input_entries(spec_dir: Path) -> list[FileEntry]:
-    """The authored files a module is made of, hashed — `manifest.inputs`, and the verification binding.
+    """The authored files a module is made of, hashed for the verification binding.
 
-    Public because **two tiers must agree on it byte for byte** (the RM41 lesson): the compiler hashes
-    these into `manifest.inputs`, and the enricher hashes the identical set into the attestation's
-    `module_hash` so a later compile can tell whether the spec has been edited since the checks ran. A
-    private symbol here would leave the enricher choosing between reaching into a private name and
-    re-implementing the list, and a re-implementation is a place for the two to drift — at which point
-    every attestation this workspace writes reads as stale to its own compiler.
+    Public because **two tiers must agree on it byte for byte** (the RM41 lesson): the compiler
+    recomputes the binding from this set when it decides whether to publish `manifest.verification`,
+    and the enricher hashes the identical set into the attestation's `module_hash` so a later compile
+    can tell whether the spec has been edited since the checks ran. A private symbol here would leave
+    the enricher choosing between reaching into a private name and re-implementing the list, and a
+    re-implementation is a place for the two to drift — at which point every attestation this
+    workspace writes reads as stale to its own compiler.
 
     **Authored files only**, which is the boundary `just_dna_format.verification` argues at length:
     the derived sidecars carry per-run noise (`fetched_at`) that would invalidate an attestation on a
     re-enrichment that changed nothing anyone claimed.
+
+    **The bytes are newline-normalized, and `manifest.inputs[]` is deliberately not (RM82).** This
+    docstring said the compiler hashes *these* into `manifest.inputs`; it never did — that field is
+    filled independently, by `file_entries(spec_dir, _INPUT_FILES)` over the raw bytes, and the two
+    were only ever equal by coincidence of computing the same thing. Since 0.6 they are two different
+    questions asked of one file set. `manifest.inputs[]` and `artifact.digest` answer *are these the
+    exact bytes*, so they follow every byte, line endings included. The binding answers *is this still
+    the module those checks were put against*, and an editor rewriting `\\r\\n` as `\\n` changes no
+    value, so it must not un-close a module. The asymmetry is the decision, not an inconsistency to
+    tidy: see `integrity.newline_normalized_file_entry` for the transform and where it stops.
     """
-    return file_entries(Path(spec_dir), list(_INPUT_FILES))
+    return newline_normalized_file_entries(Path(spec_dir), list(_INPUT_FILES))
 
 
 def _locate_sidecar(spec_dir: Path, csv_name: str) -> tuple[Path | None, list[str], list[str]]:
@@ -4796,9 +4808,12 @@ def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[
       as a pass.
     * an attestation that holds → `(block, [])`.
 
-    The binding is recomputed from `authored_input_entries`, the same function that fills
-    `manifest.inputs`, so "the spec was edited" and "the inputs listing changed" are one fact rather
-    than two that can disagree.
+    The binding is recomputed from `authored_input_entries`, over the same file set `manifest.inputs`
+    lists — but **not over the same bytes, and that is deliberate (RM82)**. The binding reads `\\r\\n`
+    as `\\n`; the inputs listing reads every byte as it lies. So a file rewritten with different line
+    endings moves the listing and leaves the attestation standing, which is the one way these two facts
+    are meant to disagree: the listing says *these are the exact bytes*, the binding says *this is
+    still the module those checks were put against*.
     """
     path, spelling_warnings, spelling_errors = _locate_sidecar(spec_dir, VERIFICATION_JSON)
     # A collision (root *and* `derived/`) is reported rather than raised, and it lands as a warning

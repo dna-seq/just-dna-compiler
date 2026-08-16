@@ -762,9 +762,10 @@ Everything here is legal in a minor.
 
 ## RM82 — the attestation binds raw bytes, so an editor's line endings un-close a module
 
-**Severity** low-medium · **Status** decided 2026-08-16 — normalize newlines, nothing else — **taken
-into 0.6 PT2 the same day**, still unbuilt · **Owner** format (schema: `verification.module_binding`) ·
-**Found by** the §6.2 measurement, and sighted once before from the other side
+**Severity** low-medium · **Status** **shipped in 0.6 (2026-08-17)** — `\r\n` → `\n` before hashing,
+nothing else; `integrity.newline_normalized_file_entry`, used by the binding and by nothing else ·
+**Owner** format (schema: `verification.module_binding`) · **Found by** the §6.2 measurement, and
+sighted once before from the other side
 
 > **One fact this entry does not carry, and it is the whole implementation.**
 > `module_binding` *is* `artifact_digest` (`verification.py:79-90`), and `size=stat().st_size` is inside
@@ -806,6 +807,17 @@ Three things settled with it, because each is a way the fix could go wrong:
 - **`manifest.inputs[]` must not follow it.** Those raw-byte hashes answer *are these the exact bytes*,
   which is a different question — so normalizing one and not the other is coherent, not an
   inconsistency to tidy up later.
+
+**As built, and where the prediction was wrong.** The invalidation is **not** universal: a binding moves
+only for a module that actually carries `\r\n` in one of the twelve authored files, so **7 of the 16
+reference examples re-bound and 9 were byte-identical** — for those nine `close_module` took its
+`held` branch and kept records, producer and nonce verbatim. Which way round the corpus was CRLF is the
+part worth keeping: `csv.writer`'s default line terminator **is** `\r\n`, so the machine-written half of
+the corpus ships CRLF and the edit an author really makes is *normalizing to LF*. Two modules lost four
+attested check records each (`cyp2c9_warfarin_grch37`, `hboc_palb2`) — dropped rather than re-bound,
+which is the rule working. Nothing else moved: `artifact.digest`, `content_signature`,
+`source_signature` and `resolution_signature` are byte-identical across all sixteen, measured before and
+after.
 
 ### It was sighted once before, from the other side
 

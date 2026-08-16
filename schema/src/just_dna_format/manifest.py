@@ -955,9 +955,10 @@ class VerificationDoc(BaseModel):
 
     module_hash: str = Field(
         description=(
-            "The authored bytes this attestation was computed over "
+            "The authored bytes this attestation was computed over, read with `\\r\\n` as `\\n` "
             "(`verification.module_binding`). The compiler recomputes it and drops the whole block "
-            "when it no longer matches."
+            "when it no longer matches. Line endings are normalized out because rewriting them "
+            "changes no value an attestation could be about (RM82); every other byte counts."
         )
     )
     signature: str = Field(

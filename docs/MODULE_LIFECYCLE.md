@@ -343,7 +343,7 @@ comparing `artifact.digest`, top-level `content_signature`, and whether the mani
 | recompile, nothing touched | same | same | kept | kept |
 | `README.md` edited | same | same | kept | kept |
 | **an `authorship:` entry appended** | **same** | **same** | **dropped** | **dropped** |
-| **line endings normalized in `variants.csv`** | **same** | **same** | **dropped** | **dropped** |
+| line endings normalized in `variants.csv` | same | same | kept (RM82) | kept (RM82) |
 | **`fetched_at` hand-edited in the licence table** | **moved** | same | kept | kept |
 | a `conclusion` reworded | moved | moved | dropped | dropped |
 
@@ -364,14 +364,22 @@ matrix is unreadable without them; the first two are not stated anywhere:
   the person who should re-close. The remedy — re-run the checks, close again — is not a workaround; it
   is the review being recorded. §6.6 states the resulting four-step pass. What is **not** settled is what
   a catalog does with two versions whose data is byte-identical and which differ only in who signed off.
-- **The binding is over bytes, so a formatting change costs the same — and there the surprise is real.**
-  Rewriting `variants.csv` with a different line ending changed no value, no digest and no signature,
-  and still dropped the attestation and the closure. Unlike the row above, no human made a claim here:
-  an editor did, or Git did. Filed as
-  [RM82](ROADMAP_0_7.md#rm82--the-attestation-binds-raw-bytes-so-an-editors-line-endings-un-close-a-module)
-  and **decided** — normalize `\r\n` → `\n` on the bytes before hashing, and stop there, which needs no
-  loader and so is not the content-aware binding that was rightly refused. The wider trade stands: a
-  stale claim is worse than a re-run.
+- **Line endings used to cost the same as an edit, and since 0.6 they cost nothing (RM82).** Rewriting
+  `variants.csv` with a different line ending changes no value, no digest and no signature, and it used
+  to drop the attestation and the closure anyway. Unlike the row above, no human made a claim there: an
+  editor did, or Git did through `core.autocrlf`. The binding now reads `\r\n` as `\n` — a byte
+  transform needing no loader and no parse, which is what separates it from the content-aware binding
+  that was rightly refused. **It stops at newlines**: a BOM, trailing whitespace and a missing final
+  newline are still edits, because those are things a human typed. And it is the *binding* only —
+  `manifest.inputs[]` still lists the file's raw hash and raw size, so that entry does move on a
+  rewrite. The two answer different questions (*is this the same module* versus *are these the exact
+  bytes*), and the asymmetry is the decision rather than an inconsistency to tidy. The wider trade for
+  everything the binding still covers stands: a stale claim is worse than a re-run.
+
+  So what un-closes a module is exactly what it should: any changed *value* in `module_spec.yaml` or an
+  authored CSV, a row added or removed, a column reordered, a cell requoted — and an `authorship:`
+  entry, per the row above. What no longer does: the line endings, and (since the binding was drawn) a
+  re-enrichment that rewrites a derived sidecar.
 - **A provenance column moves the digest and no signature.** `fetched_at` is outside every fact set,
   so nothing hashes it — and `sources.parquet` is inside the Merkle root, so the bytes count. Note
   the row says *hand-edited*: this is the mechanism, demonstrated deliberately, **not** what a re-run
@@ -459,8 +467,10 @@ two releases has no single release to name.
 ### 6.5 The attestation and the closure across passes
 
 - The attestation binds authored bytes, so **enrichment never invalidates it** (the sidecars are
-  outside the binding) and **any authored edit does** (§6.2). Currency of the *source* is a different
-  question entirely and is read off each record's own `release`, never off the binding.
+  outside the binding) and **any authored edit does** (§6.2) — *edit* meaning a changed value, since
+  0.6 reads `\r\n` as `\n` (RM82) and a line-ending rewrite is therefore not one. Currency of the
+  *source* is a different question entirely and is read off each record's own `release`, never off the
+  binding.
 - `record_verification` carries the author's **closure** across a re-run only while the binding
   holds, and **drops rather than re-binds** it otherwise: re-binding would have a machine assert
   *a human declared these bytes final* about bytes that human never saw.
@@ -656,7 +666,8 @@ as a reference example whose README names what it broke.
 is the one this repo has twice found to be wrong — a question filed against a release is findable, and
 a question at the bottom of a prose document is a backlog nobody reads. Five became
 [RM82–RM86](ROADMAP_0_7.md#the-lifecycle-items--what-writing-down-the-second-pass-surfaced), two of them
-carrying a decision rather than a fork. Two did not become items and are recorded where they belong
+carrying a decision rather than a fork — and RM82's shipped in 0.6, which is why §6.2's line-ending row
+now reads *kept*. Two did not become items and are recorded where they belong
 instead: the published trust rule addresses *"a consumer"* while its reader is a catalog, which
 dissolved into a documentation fix (§6.8, and SCHEMAS.md); and the review pass costing the attestation,
 **decided** — a review that changes nothing is an attestation of zero changes, so un-closing is correct

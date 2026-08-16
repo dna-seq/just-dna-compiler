@@ -162,6 +162,55 @@ def test_a_derived_sidecar_does_not_un_close_a_module(tmp_path: Path) -> None:
     assert _closure_warnings(_compile(spec, tmp_path / "out").warnings) == []
 
 
+def test_rewriting_an_authored_file_s_line_endings_does_not_un_close_it(tmp_path: Path) -> None:
+    """RM82, end to end on a real module and in both directions.
+
+    Before this, an author whose editor normalizes newlines — or whose Git does it through
+    `core.autocrlf` — un-closed a module without touching a cell, and the compile said the spec had
+    been edited since the checks ran. `hfe_hemochromatosis` is the honest fixture for it: its
+    `variants.csv` ships CRLF-terminated (that is `csv.writer`'s default), so *normalizing* it is the
+    edit an author really makes, and putting the endings back is the same non-edit from the other side.
+    """
+    spec = _open_module(tmp_path)
+    variants = spec / "variants.csv"
+    assert b"\r\n" in variants.read_bytes(), "the fixture is only interesting while it ships CRLF"
+    assert close_module(spec).closed
+
+    lf = variants.read_bytes().replace(b"\r\n", b"\n")
+    variants.write_bytes(lf)
+    normalized = _compile(spec, tmp_path / "lf")
+    assert _closure_warnings(normalized.warnings) == []
+    assert normalized.manifest.verification is not None
+
+    variants.write_bytes(lf.replace(b"\n", b"\r\n"))
+    assert _closure_warnings(_compile(spec, tmp_path / "crlf").warnings) == []
+
+
+def test_the_inputs_listing_still_follows_the_line_endings_the_binding_ignores(
+    tmp_path: Path,
+) -> None:
+    """The asymmetry RM82 chose, measured on one compile rather than argued.
+
+    `manifest.inputs[]` answers *are these the exact bytes* and must keep moving; the binding answers
+    *is this the same module* and must not. A reader who tidies the two builders into one breaks the
+    first question, so it is pinned beside the second.
+    """
+    spec = _open_module(tmp_path)
+    variants = spec / "variants.csv"
+    assert close_module(spec).closed
+    before = _compile(spec, tmp_path / "before")
+
+    variants.write_bytes(variants.read_bytes().replace(b"\r\n", b"\n"))
+    after = _compile(spec, tmp_path / "after")
+
+    listed = {e.name: (e.sha256, e.size) for e in after.manifest.inputs}
+    was = {e.name: (e.sha256, e.size) for e in before.manifest.inputs}
+    assert listed["variants.csv"] != was["variants.csv"], "the raw-byte listing must follow the bytes"
+    assert listed["studies.csv"] == was["studies.csv"], "and only for the file that was rewritten"
+    assert after.manifest.verification is not None
+    assert after.manifest.verification.module_hash == before.manifest.verification.module_hash
+
+
 # ── What closing refuses, and what it does not ───────────────────────────────────────────────────
 
 

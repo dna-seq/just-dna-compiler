@@ -23,6 +23,14 @@ enricher against a fresher ClinVar leaves the attestation matching, so a consume
 release each check was put against from the record's own `release` field rather than inferring
 currency from the binding.
 
+**Line endings are outside it too (RM82, 0.6).** The binding reads `\r\n` as `\n`, so an editor that
+normalizes newlines, or a Git checkout with `core.autocrlf`, no longer un-closes a module in which no
+value moved. It stops there: a BOM, trailing whitespace and a missing final newline are all still
+edits, because those are things a human typed rather than things a tool did on their behalf. The
+transform lives in `integrity.newline_normalized_file_entry`, and it is used by this binding and by
+nothing else — `manifest.inputs[]` and `artifact.digest` still follow every byte, because they answer
+*are these the exact bytes* rather than *is this the same module*.
+
 **The closure (RM73, 0.6) rides this document, and that is the whole design.** RM73 asked for a phase
 boundary: an attestation that authoring is finished, which a later edit invalidates rather than
 silently outliving. Everything that needs is already here — `module_hash` binds the authored bytes,
@@ -85,6 +93,12 @@ def module_binding(entries: Sequence[FileEntry]) -> str:
     parties end up disagreeing about a digest. The caller decides *which* entries — see this module's
     docstring for why that is the authored set, and `just_dna_compiler.compiler.authored_input_entries`
     for the one function both tiers ask.
+
+    The caller also decides *how* the entries were read, and for the binding that is
+    `integrity.newline_normalized_file_entry` rather than `file_entry` (RM82): the digest **and** the
+    size are taken over bytes in which `\\r\\n` reads as `\\n`, so an editor or a `core.autocrlf`
+    checkout cannot un-close a module it did not change. Passing raw entries here still works and
+    still hashes fine — it just answers the byte question instead, which is `manifest.inputs[]`'s job.
     """
     return artifact_digest(list(entries))
 
