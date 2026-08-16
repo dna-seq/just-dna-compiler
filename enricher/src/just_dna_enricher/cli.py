@@ -996,7 +996,10 @@ def upload_(
     name: str | None = typer.Option(
         None,
         "--name",
-        help="Module name under data/<name>/ in the repo. Default: the directory basename.",
+        help=(
+            "Module name under data/<name>/ (and data/<name>/v<version>/) in the repo. "
+            "Default: the directory basename."
+        ),
     ),
     commit_message: str | None = typer.Option(
         None,
@@ -1010,7 +1013,13 @@ def upload_(
         help="Show what would be uploaded without contacting HuggingFace.",
     ),
 ) -> None:
-    """Upload a compiled module to a HuggingFace dataset collection (publisher/dev surface)."""
+    """Upload a compiled module to a HuggingFace dataset collection (publisher/dev surface).
+
+    Writes data/<name>/, which keeps meaning "latest", and — when the
+    manifest states a version — data/<name>/v<version>/ under it, in
+    that order, as two commits. With no version, the flat path alone,
+    and the reason why.
+    """
     from just_dna_enricher.upload import plan_upload, upload_module
 
     module_name = name or module_dir.name
@@ -1019,6 +1028,14 @@ def upload_(
         typer.echo(f"Would upload to {plan.repo_id} at {plan.path_in_repo}/:")
         for f in plan.files:
             typer.echo(f"  • {f}")
+        if plan.versioned_path_in_repo is not None:
+            typer.echo(f"…and the same files to {plan.versioned_path_in_repo}/")
+        else:
+            typer.secho(
+                f"no versioned copy: {plan.version_unknown_reason}",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
         return
 
     try:
@@ -1035,6 +1052,18 @@ def upload_(
         f"uploaded: {module_name} → {plan.repo_id}/{plan.path_in_repo} ({len(plan.files)} files)",
         fg=typer.colors.GREEN,
     )
+    if plan.versioned_path_in_repo is not None:
+        typer.secho(
+            f"uploaded: {module_name} → {plan.repo_id}/{plan.versioned_path_in_repo} "
+            f"({len(plan.files)} files)",
+            fg=typer.colors.GREEN,
+        )
+    else:
+        typer.secho(
+            f"no versioned copy: {plan.version_unknown_reason}",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
 
 # ── clinvar reference snapshot (build + publish, publisher/dev surface) ─────────────────────────

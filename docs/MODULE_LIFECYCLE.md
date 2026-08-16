@@ -543,13 +543,28 @@ Installed-vs-current is decided by exact version-string equality, a new version 
 in place (`rmtree` then extract — two versions of one module cannot coexist locally), and the user has
 to notice and choose.
 
-**Modules discovered by path** (the HuggingFace layout the reference consumer defaults to) have **no
-version identity at all**. There is no version in the path, no manifest fetch, no digest check. A
-republished module keeps the same URL, so the cached copy shadows it; the only invalidation is a purge
+**Modules discovered by path** (the HuggingFace layout the reference consumer defaults to) had **no
+version identity at all**. There was no version in the path, no manifest fetch, no digest check. A
+republished module kept the same URL, so the cached copy shadowed it; the only invalidation is a purge
 keyed on the *consumer application's own package version*. Stated plainly: on that path, the identity
-used to detect "the module changed" is a property of the reader, not of the module. A module
+used to detect "the module changed" was a property of the reader, not of the module. A module
 republished with new science while the app stays pinned is invisible, and an app patch release with no
 module change purges everything.
+
+**The publisher half of that is closed in 0.6 (RM84); the reader half is theirs.** `upload_module` now
+writes the same files twice — the flat `data/<name>/`, unchanged in meaning and still *latest*, and
+`data/<name>/v<version>/` (a subdirectory of it) whenever the manifest states a version, so the path
+can finally name a release. That is deliberately the cheaper half: a version segment nobody reads is dead bytes and a
+reader looking for a segment nobody writes finds nothing, so writing both is what lets the two sides
+land independently and leaves everything already published exactly where it is. Three things it does
+**not** do, and none of them is an oversight: it adds no manifest fetch and no digest check to the
+discovery path (both are the consumer's step), it is two HuggingFace commits rather than one, and it
+falls back to the flat path alone for a module whose `identity.version` is null — which, until the
+registry stamps one on publish, is most of them. Two questions stay open, both asked of the consumer in
+[ENRICHER § the publisher surface](ENRICHER.md#a-module-is-published-twice-and-the-second-path-is-the-one-that-can-name-a-release-rm84):
+whether their `vN` fsspec fallback matches `v1.0.0`, and whether a subdirectory inside `data/<name>/`
+disturbs a scan of a directory that until now held files only. Both are facts about their code rather
+than things this repository can assert, and either answer is one line here.
 
 Three further facts about the seam, all verified in the consumer's tree rather than inferred:
 
@@ -569,7 +584,9 @@ Three further facts about the seam, all verified in the consumer's tree rather t
   module bytes that produced it, and nothing can answer "which of my saved results are stale".
   **Closed on the consumer's side** in the same round (S34 §3): `ModuleOutputMapping` gained
   tri-state `version`/`digest`/`source_url`. Partial by construction on the discovery path, where only
-  `source_url` is knowable — which is RM84 again.
+  `source_url` was knowable — which is RM84 again, and the publisher half now makes a *versioned*
+  `source_url` available to a consumer that follows the new segment: the URL then carries the version
+  it used to be silent about.
 
 Meaning-drift between versions is absorbed **at read time, by shape**: the consumer detects which
 generation of artifact it is holding from the columns present (three are in circulation at once) and
@@ -621,9 +638,10 @@ Stated plainly, because each of these is currently an absence a reader has to in
 - **The artifact records no predecessor.** `manifest.json` carries `identity.version` and nothing
   linking it to the version before it — no parent digest, no previous `content_signature`. The
   registry knows the history; a module handed to you on a disk does not.
-- **Nothing notifies a consumer.** Both acquisition paths are pull, and one of them has no version to
-  pull against (§6.8) — [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
-  whose publisher half is ours.
+- **Nothing notifies a consumer.** Both acquisition paths are pull. One of them had no version to pull
+  against at all (§6.8) — [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
+  whose publisher half shipped in 0.6: the path can now express a version. It is still pull, and the
+  reader half is the consumer's.
 - **No results are traceable to the module version that produced them** (§6.8), which is the missing
   prerequisite under both [RM7](ROADMAP.md#rm7--evaluation-output--report-card-schema) and the
   verification-harness idea — both of which are consumer scope by charter, and are named here only so

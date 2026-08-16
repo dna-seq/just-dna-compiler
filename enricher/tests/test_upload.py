@@ -1,10 +1,15 @@
 """Unit tests for the HF module-upload publisher surface (no network)."""
 
+import json
+import shutil
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
+from just_dna_compiler.compiler import compile_module
+from just_dna_enricher.cli import app
 from just_dna_enricher.upload import (
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_REPO_ID,
@@ -14,19 +19,68 @@ from just_dna_enricher.upload import (
     publish_reference_snapshot,
     upload_module,
 )
-from just_dna_format.manifest import README_CANDIDATES
+from just_dna_format.layout import VERIFICATION_JSON
+from just_dna_format.manifest import (
+    README_CANDIDATES,
+    Artifact,
+    Display,
+    Identity,
+    ModuleManifest,
+    read_manifest,
+    write_manifest,
+)
+from typer.testing import CliRunner
 
 _REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
+_EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
+# `plan_upload` requires the three SNP-core parquets, so the fixture has to be a module that carries
+# `variants.csv` — which rules out both reference examples that state a `version:` today
+# (`htt_repeat_expansion`, `pgx_slco1b1_simvastatin` are table-only). The version is therefore written
+# into a copy of this spec, which is the same path an author takes: `module_spec.yaml`'s `version:` →
+# the compiler's SemVer gate → `manifest.identity.version`.
+_EXAMPLE = "hfe_hemochromatosis"
+_AUTHORED_VERSION = "2.1.0"
 
 
-def _compiled_module(d: Path, *, logo: bool = False) -> Path:
+def _manifest(name: str, version: str | None) -> ModuleManifest:
+    """The smallest manifest that validates — identity, display, artifact."""
+    return ModuleManifest(
+        identity=Identity(name=name, version=version),
+        display=Display(title=name, description=name, report_title=name),
+        artifact=Artifact(digest="sha256:" + "0" * 64),
+    )
+
+
+def _compiled_module(
+    d: Path, *, logo: bool = False, version: str | None = "1.2.3", manifest_bytes: str | None = None
+) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     for name in _REQUIRED:
         (d / name).write_bytes(b"parquet-placeholder")
-    (d / "manifest.json").write_text("{}", encoding="utf-8")
+    if manifest_bytes is None:
+        write_manifest(_manifest("test_module", version), d / "manifest.json")
+    else:
+        (d / "manifest.json").write_text(manifest_bytes, encoding="utf-8")
     if logo:
         (d / "logo.png").write_bytes(b"png")
     return d
+
+
+def _compile_example(tmp_path: Path, *, version: str | None = None) -> Path:
+    """Compile a real reference example, optionally authoring a `version:` first, and return the
+    artifact directory."""
+    spec = tmp_path / "spec"
+    shutil.copytree(_EXAMPLES / _EXAMPLE, spec)
+    if version is not None:
+        spec_file = spec / "module_spec.yaml"
+        document = yaml.safe_load(spec_file.read_text(encoding="utf-8"))
+        document["module"]["version"] = version
+        spec_file.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+        # The closure is bound to the authored bytes, and this rewrote one of them (RM73).
+        (spec / VERIFICATION_JSON).unlink(missing_ok=True)
+    out = tmp_path / "out"
+    compile_module(spec, out)
+    return out
 
 
 def _snapshot(d: Path) -> Path:
@@ -37,12 +91,14 @@ def _snapshot(d: Path) -> Path:
 
 
 def test_plan_upload_lists_present_artifacts(tmp_path: Path) -> None:
-    module_dir = _compiled_module(tmp_path / "coronary", logo=True)
+    module_dir = _compiled_module(tmp_path / "coronary", logo=True, version="2.0.1")
     plan = plan_upload(module_dir, "coronary")
     assert plan == UploadPlan(
         module="coronary",
         repo_id=DEFAULT_REPO_ID,
         path_in_repo="data/coronary",
+        versioned_path_in_repo="data/coronary/v2.0.1",
+        version_unknown_reason=None,
         files=[
             "weights.parquet",
             "annotations.parquet",
@@ -86,8 +142,91 @@ def test_plan_upload_honours_repo_override(tmp_path: Path) -> None:
     assert plan.path_in_repo == "data/vo2max"
 
 
+# ── the version segment (RM84) ──────────────────────────────────────────────────────────────────
+
+
+def test_a_real_compiled_module_plans_both_paths(tmp_path: Path) -> None:
+    """The flat path keeps meaning *latest*; the versioned one is the only thing on the discovery
+    path that can name a release, so a republished module stops shadowing itself (RM84).
+
+    Compiled from the real spec rather than a hand-written manifest, because the version has to come
+    out of the same place a published module's does: `module_spec.yaml`'s `version:` → the compiler's
+    SemVer gate → `manifest.identity.version`.
+    """
+    out = _compile_example(tmp_path, version=_AUTHORED_VERSION)
+    version = read_manifest(out / "manifest.json").identity.version
+    assert version == _AUTHORED_VERSION, "the compiler must carry the authored SemVer through"
+
+    plan = plan_upload(out, _EXAMPLE)
+    assert plan.path_in_repo == f"data/{_EXAMPLE}"
+    assert plan.versioned_path_in_repo == f"data/{_EXAMPLE}/v{version}"
+    assert plan.version_unknown_reason is None
+    # Verbatim, never a bare major segment: two patch releases of one module would otherwise collide
+    # at one path, which is the defect being fixed rather than a smaller version of it.
+    assert plan.versioned_path_in_repo.endswith(f"/v{version}")
+
+
+def test_a_module_with_no_version_gets_the_flat_path_alone(tmp_path: Path) -> None:
+    """`Identity.version` is null until the registry stamps one, so most compiled modules have none —
+    and `data/<name>/vNone/` would be a path asserting a version that does not exist."""
+    out = _compile_example(tmp_path)
+    assert read_manifest(out / "manifest.json").identity.version is None
+
+    plan = plan_upload(out, _EXAMPLE)
+    assert plan.path_in_repo == f"data/{_EXAMPLE}"
+    assert plan.versioned_path_in_repo is None
+    assert plan.version_unknown_reason == "manifest.json states no identity.version"
+
+
+def test_the_reasons_a_version_is_unknown_are_told_apart(tmp_path: Path) -> None:
+    """A bare null cannot say whether the manifest was missing, unparseable, silent about the version,
+    or carrying something that is not one — four different things for an author to do about it.
+
+    None of them refuses: `manifest.json` is in `_ALLOW_PATTERNS` and **not** in `_REQUIRED`, so this
+    publisher has always accepted a directory without one, and closing RM84 is not a licence to
+    tighten what it accepts.
+    """
+    absent = _compiled_module(tmp_path / "absent")
+    (absent / "manifest.json").unlink()
+    unparseable = _compiled_module(tmp_path / "unparseable", manifest_bytes="{")
+    silent = _compiled_module(tmp_path / "silent", version=None)
+    freeform = _compiled_module(tmp_path / "freeform", manifest_bytes='{"identity": {"version": "v2"}}')
+    dirs = (absent, unparseable, silent, freeform)
+
+    assert {d.name: plan_upload(d, d.name).version_unknown_reason for d in dirs} == {
+        "absent": "no manifest.json in the module directory",
+        "unparseable": "manifest.json could not be read as JSON",
+        "silent": "manifest.json states no identity.version",
+        "freeform": "manifest.json's identity.version is not MAJOR.MINOR.PATCH: 'v2'",
+    }
+    for d in dirs:
+        plan = plan_upload(d, d.name)
+        assert plan.versioned_path_in_repo is None
+        assert plan.files[:3] == list(_REQUIRED)
+
+
+def test_an_unrelated_manifest_defect_does_not_withhold_a_legible_version(tmp_path: Path) -> None:
+    """Reading the one field, rather than validating the whole `ModuleManifest` to reach it.
+
+    A hyphen in `identity.name` or an `icon_set` outside the vocabulary fails `read_manifest` while
+    saying nothing about the version, which is right there and canonical — and the refusal that follows
+    would name neither the field nor the value. Demonstrated on the old behaviour by checking that the
+    model really does reject this document.
+    """
+    module_dir = _compiled_module(
+        tmp_path / "foreign",
+        manifest_bytes=json.dumps({"identity": {"name": "not-a-legal-name", "version": "3.1.4"}}),
+    )
+    with pytest.raises(ValueError):
+        read_manifest(module_dir / "manifest.json")
+
+    plan = plan_upload(module_dir, "foreign")
+    assert plan.versioned_path_in_repo == "data/foreign/v3.1.4"
+    assert plan.version_unknown_reason is None
+
+
 def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
-    module_dir = _compiled_module(tmp_path / "lipidmetabolism")
+    module_dir = _compiled_module(tmp_path / "lipidmetabolism", version="0.4.0")
     mock_api = MagicMock()
     with (
         patch("huggingface_hub.HfApi", return_value=mock_api) as api_cls,
@@ -99,18 +238,81 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
             commit_message="Port lipidmetabolism",
         )
     api_cls.assert_called_once_with(token="hf_test_token")
-    # upload now routes through ensure_repo → create-or-update the repo, then upload in one commit.
+    # upload routes through ensure_repo → create-or-update the repo, then writes both paths.
     mock_api.create_repo.assert_called_once_with(
         repo_id=DEFAULT_REPO_ID, repo_type="dataset", exist_ok=True
     )
-    mock_api.upload_folder.assert_called_once()
-    kwargs: dict[str, Any] = mock_api.upload_folder.call_args.kwargs
-    assert kwargs["folder_path"] == str(module_dir)
-    assert kwargs["path_in_repo"] == "data/lipidmetabolism"
-    assert kwargs["repo_id"] == DEFAULT_REPO_ID
-    assert kwargs["repo_type"] == "dataset"
-    assert kwargs["commit_message"] == "Port lipidmetabolism"
+    # Two calls, flat first: `upload_folder` commits per call, so this is deliberately two commits and
+    # the path everything reads today is the one refreshed first.
+    assert [c.kwargs["path_in_repo"] for c in mock_api.upload_folder.call_args_list] == [
+        "data/lipidmetabolism",
+        "data/lipidmetabolism/v0.4.0",
+    ]
+    for call in mock_api.upload_folder.call_args_list:
+        kwargs: dict[str, Any] = call.kwargs
+        assert kwargs["folder_path"] == str(module_dir)
+        assert kwargs["repo_id"] == DEFAULT_REPO_ID
+        assert kwargs["repo_type"] == "dataset"
+        # An explicit message is the caller's and is used verbatim for both commits.
+        assert kwargs["commit_message"] == "Port lipidmetabolism"
+    # The same allowlist both times — a versioned copy carrying a different file set would not be a
+    # copy of the thing at the flat path.
+    patterns = {tuple(c.kwargs["allow_patterns"]) for c in mock_api.upload_folder.call_args_list}
+    assert len(patterns) == 1
+    assert set(_REQUIRED) <= set(next(iter(patterns)))
     assert plan.module == "lipidmetabolism"
+    assert plan.versioned_path_in_repo == "data/lipidmetabolism/v0.4.0"
+
+
+def test_upload_module_writes_one_path_when_the_version_is_unknown(tmp_path: Path) -> None:
+    """The dual write is the fix; a `vNone` directory would be the defect wearing a version."""
+    module_dir = _compiled_module(tmp_path / "superhuman", version=None)
+    mock_api = MagicMock()
+    with (
+        patch("huggingface_hub.HfApi", return_value=mock_api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        plan = upload_module(module_dir, "superhuman")
+    mock_api.upload_folder.assert_called_once()
+    assert mock_api.upload_folder.call_args.kwargs["path_in_repo"] == "data/superhuman"
+    assert plan.versioned_path_in_repo is None
+
+
+def test_the_default_commit_messages_name_which_copy_they_are(tmp_path: Path) -> None:
+    """Two commits land in one repo history; identical default messages would make the versioned copy
+    unreadable as a separate act."""
+    module_dir = _compiled_module(tmp_path / "coronary", version="1.0.0")
+    mock_api = MagicMock()
+    with (
+        patch("huggingface_hub.HfApi", return_value=mock_api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        upload_module(module_dir, "coronary")
+    assert [c.kwargs["commit_message"] for c in mock_api.upload_folder.call_args_list] == [
+        "Add coronary module",
+        "Add coronary module v1.0.0",
+    ]
+
+
+def test_the_dry_run_names_both_destinations(tmp_path: Path) -> None:
+    """`--dry-run` is what an author reads before publishing, so it has to show the second path — a
+    destination nobody is told about is one nobody checks."""
+    out = _compile_example(tmp_path, version=_AUTHORED_VERSION)
+    version = read_manifest(out / "manifest.json").identity.version
+    result = CliRunner().invoke(app, ["upload", str(out), "--name", "hfe", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "data/hfe/" in result.output
+    assert f"data/hfe/v{version}/" in result.output
+
+
+def test_the_dry_run_says_why_there_is_no_versioned_copy(tmp_path: Path) -> None:
+    out = _compile_example(tmp_path)
+    result = CliRunner().invoke(app, ["upload", str(out), "--name", "hfe", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    printed = result.output + (result.stderr if result.stderr_bytes else "")
+    assert "data/hfe/" in printed
+    assert "states no identity.version" in printed
+    assert "/vNone" not in printed
 
 
 def test_upload_module_requires_token(tmp_path: Path) -> None:

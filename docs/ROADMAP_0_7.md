@@ -936,11 +936,12 @@ parked co-authoring item wearing a different name.
 
 ## RM84 — a module has no version identity on the discovery path, and the publisher is the half we own
 
-**Severity** medium-high · **Status** **our half taken into 0.6 PT2 on 2026-08-16** — dual-write
-`data/<name>/v<version>/` beside the flat path, so neither side waits for the other
-([PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM84); the exact segment spelling is an ask to the
-consumer. *Previously:* open — **joint with the reference consumer, and their half is
-already agreed in writing** · **Owner** enricher (`upload.upload_module`) + `just-dna-lite` discovery ·
+**Severity** medium-high · **Status** **our half SHIPPED in the 0.6 PT2 batch (lane D, 2026-08-17)** —
+`upload_module` writes `data/<name>/` and `data/<name>/v<version>/`; the consumer's half and the segment
+spelling are open, which is why this entry stays here. *Previously:* our half taken into 0.6 PT2 on
+2026-08-16 ([PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM84); before that, open — **joint with the
+reference consumer, and their half is already agreed in writing** · **Owner** enricher
+(`upload.upload_module`) + `just-dna-lite` discovery ·
 **Motivating case** a republished module on the HuggingFace path
 
 ### What was observed
@@ -969,9 +970,32 @@ than "wants agreeing" implied when it was first written down.
 
 ### What is undecided
 
-The layout itself — a `vN` segment, a digest segment, or a pointer file — and what happens to every
-module already published flat, which is all of them. Whatever is chosen has to leave an unversioned path
-working, because that is what is deployed.
+*Was:* the layout itself — a `vN` segment, a digest segment, or a pointer file — and what happens to
+every module already published flat, which is all of them. Whatever is chosen has to leave an
+unversioned path working, because that is what is deployed.
+
+**Settled on our side.** The layout is the dual write, decided in PROPOSAL_0_6_PT2 § RM84 and built in
+lane D. Nothing already published moves, because the flat path keeps being written and keeps meaning
+*latest*. The full behaviour, including the null-version fallback and the two-commit caveat, is
+[ENRICHER § the publisher surface](ENRICHER.md#a-module-is-published-twice-and-the-second-path-is-the-one-that-can-name-a-release-rm84).
+
+### The one open thing, and it is an ask (RM27's shape)
+
+**To just-dna-lite, two questions.** *(1)* **Does your discovery scan match `v1.0.0`, or only a
+`v`-plus-integer segment?** [S34 § 4](CONSUMER_SUGGESTIONS_HISTORY.md) says the `vN` fallback in the
+generic fsspec scan "is already the shape", and whether that regex accepts a full SemVer is a fact about
+their code, not something this repository can assert from its own rules. *(2)* **Does a subdirectory
+under `data/<name>/` disturb that scan?** — added because the decided layout nests the versioned copy
+inside the scanned directory, which until now held files only, so a recursive listing would see a full
+artifact set per release. That is the one part of this change that could regress a consumer who never
+adopts it, and it is precisely the part their pre-agreement did not cover.
+
+The publisher writes `v<version>` verbatim today — the proposal's own default, chosen because a bare
+major segment collides two patch releases at one path — and either answer is a one-line change here.
+Questions, not implications: nothing else in the decision depends on them, and the flat path is
+unchanged either way. **They are delivered in ENRICHER.md rather than into their tree**, because
+`just-dna-lite` carries no consumer inbox to write into; putting them in front of that team is the
+reader's step, not this lane's.
 
 **Confirmed by exhaustive search to have had no `Sn` and no `RMn`** before this entry, which is why it
 is filed rather than cross-referenced.
