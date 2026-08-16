@@ -1,55 +1,14 @@
 {
-  "module_hash": "sha256:0524c8c55d3a62bf4a0adb0bbcf9c2f8a0304f1d49751c0b9be8e3ee75272149",
-  "signature": "sha256:7a66d3bdfbbb73346ea415e046a3543cfd50e64a6d64f9af07f1680aebec8d8b",
+  "module_hash": "sha256:12d20abec921b327eca095aad3b8dfd931d6ae2f9dea82fe9c73664fd55b225d",
+  "signature": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "difficulty": 20,
-  "nonce": 486811,
-  "producer": "just-dna-enricher 0.6.0",
-  "produced_at": "2026-08-13T23:13:14Z",
+  "nonce": 373090,
+  "producer": null,
+  "produced_at": null,
   "closure": {
-    "closed_at": "2026-08-15T23:27:13Z",
+    "closed_at": "2026-08-16T21:47:17Z",
     "closed_by": "just-dna-format reference corpus",
     "signature": null
   },
-  "records": [
-    {
-      "check": "clinical_significance",
-      "subjects": 0,
-      "findings": 0,
-      "skipped": "no_reference",
-      "detail": "no_snapshot",
-      "source": "clinvar",
-      "release": null,
-      "checked_at": "2026-08-13T23:13:14Z"
-    },
-    {
-      "check": "genome_build_agreement",
-      "subjects": 0,
-      "findings": 0,
-      "skipped": "unsupported",
-      "detail": "the reference-allele check did not run, so there was no mismatched row to diagnose — this says nothing about whether the coordinates are on the declared assembly",
-      "source": "ensembl-grch37",
-      "release": null,
-      "checked_at": "2026-08-13T23:13:14Z"
-    },
-    {
-      "check": "reference_allele",
-      "subjects": 0,
-      "findings": 0,
-      "skipped": "unsupported",
-      "detail": "this tier has a refget table for GRCh38 only, so an authored ref on another assembly has nothing to be compared against (RM15)",
-      "source": "seqrepo",
-      "release": null,
-      "checked_at": "2026-08-13T23:13:14Z"
-    },
-    {
-      "check": "rsid_currency",
-      "subjects": 5,
-      "findings": 0,
-      "skipped": null,
-      "detail": null,
-      "source": "dbsnp",
-      "release": null,
-      "checked_at": "2026-08-13T23:13:14Z"
-    }
-  ]
+  "records": []
 }
