@@ -93,10 +93,23 @@ unfindable.
 3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what actually shipped, newest first (shared across the
    ecosystem repos that consume these libs).
 4. **Per-package references** — [docs/SCHEMAS.md](docs/SCHEMAS.md) (the schema tier: models, the CSV
-   families, conventions, the seven hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
+   families, conventions, the nine hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
    compile pipeline, the Resolution section + its round-trip matrix, reverse, the coverage table), and
    [docs/ENRICHER.md](docs/ENRICHER.md) (the network tier: the resolver chain, Ensembl V2→V1, snapshot
    download + module upload). Read the tier your task touches.
+5. **[docs/FAQ.md](docs/FAQ.md)** — settled questions, keyed by **question** rather than by item, one
+   line plus a pointer each. RM_TOC and CONSUMER_SUGGESTIONS_HISTORY index by `RMn`/`Sn`, which is no
+   help to someone holding *"why did my digest move?"* — this is that index, and it exists because
+   writing the lifecycle doc re-derived `S7` from scratch with the same probe. **Check it before
+   designing anything**; most entries are a repair somebody proposed that was checked and refused.
+6. **[docs/MODULE_LIFECYCLE.md](docs/MODULE_LIFECYCLE.md)** — the *cross-tier* view those three cannot
+   give: a module from origin to publish to a consumer's join, which surface each stage touches, and
+   **what a second, third and twenty-fifth pass does** (what a re-draft moves that a recompile does
+   not, which sidecars must be deleted rather than re-run, what an authorship-only edit costs — that
+   one is measured, not derived — and what the registry and the reference consumer do with a v2). Read
+   it before reasoning about updates, versioning or anything downstream of publish; it also carries the
+   honest note that **no module in this repo has ever had a second version**, so its pass-2 half rests
+   on the rules plus six measurements rather than on a run.
 
 ## 0.5 enricher — current state & gotchas (read before touching resolution)
 
