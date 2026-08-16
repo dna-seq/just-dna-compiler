@@ -256,8 +256,11 @@ a workaround. → [RM_TOC.md](RM_TOC.md) for what any given number is.
 **I edited `module_spec.yaml` and the compile says my attestation is stale — is that a bug?**
 No, it is the design: `verification.json`'s `module_hash` binds the **authored** bytes, so any authored
 edit un-closes the module and drops the block, deliberately and for free. Note the reach — appending
-an `authorship:` entry counts, and so does a change of line endings, neither of which moves any
-identity. → [SCHEMAS § the closure](SCHEMAS.md#the-closure-rm73--the-authoring-phase-ended) and
+an `authorship:` entry counts, though it moves no identity. What no longer counts is a change of
+**line endings**: since 0.6 the binding reads `\r\n` as `\n` (RM82), because an editor or
+`core.autocrlf` rewriting them is not an edit anybody made. It stops at newlines — a BOM, trailing
+whitespace and a missing final newline are still edits. → [SCHEMAS § the
+closure](SCHEMAS.md#the-closure-rm73--the-authoring-phase-ended) and
 [MODULE_LIFECYCLE § 6.2](MODULE_LIFECYCLE.md), where both are measured.
 
 **Why does the binding cover only the authored files and not the sidecars?**

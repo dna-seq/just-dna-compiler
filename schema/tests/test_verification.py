@@ -11,7 +11,14 @@ with one case exercising the shipped value so nobody can lower it to nothing and
 import json
 
 import pytest
-from just_dna_format.integrity import file_entries
+from just_dna_format import integrity
+from just_dna_format.integrity import (
+    artifact_digest,
+    file_entries,
+    newline_normalized_file_entries,
+    newline_normalized_file_entry,
+    sha256_bytes,
+)
 from just_dna_format.manifest import VerificationDoc, VerificationRecord
 from just_dna_format.verification import (
     VERIFICATION_DIFFICULTY_BITS,
@@ -263,13 +270,123 @@ def test_an_answer_about_bytes_that_have_moved_does_not_outrank_this_run() -> No
 
 
 def test_the_binding_follows_the_bytes_it_hashes(tmp_path) -> None:
+    """A changed value moves the binding — over the entry builder the binding actually uses (RM82)."""
     spec = tmp_path / "spec"
     spec.mkdir()
-    (spec / "variants.csv").write_text("rsid\nrs777\n")
+    (spec / "variants.csv").write_bytes(b"rsid\nrs777\n")
     names = ["variants.csv"]
-    before = module_binding(file_entries(spec, names))
-    (spec / "variants.csv").write_text("rsid\nrs778\n")
-    assert module_binding(file_entries(spec, names)) != before
+    before = module_binding(newline_normalized_file_entries(spec, names))
+    (spec / "variants.csv").write_bytes(b"rsid\nrs778\n")
+    assert module_binding(newline_normalized_file_entries(spec, names)) != before
+
+
+def test_a_crlf_rewrite_does_not_move_the_binding(tmp_path) -> None:
+    """The whole of RM82: an editor's line endings are not an edit.
+
+    Both halves of the entry have to follow, which is why this asserts on the binding rather than on
+    the digest alone — `artifact_digest` hashes `size` beside `sha256`, so a builder that normalized
+    only the bytes it hashed would still move the binding by one byte per line.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    csv = spec / "variants.csv"
+    csv.write_bytes(b"rsid,genotype\nrs777,A/G\nrs778,C/T\n")
+    names = ["variants.csv"]
+    before = module_binding(newline_normalized_file_entries(spec, names))
+
+    csv.write_bytes(csv.read_bytes().replace(b"\n", b"\r\n"))
+    assert csv.stat().st_size != len(csv.read_bytes().replace(b"\r\n", b"\n"))  # really rewritten
+    assert module_binding(newline_normalized_file_entries(spec, names)) == before
+
+
+def test_the_raw_entries_still_move_on_a_crlf_rewrite(tmp_path) -> None:
+    """The asymmetry is the decision: `manifest.inputs[]`/`artifact.digest` still follow every byte.
+
+    Without this the next reader tidies the two builders into one, and a registry loses its answer to
+    *are these the exact bytes I was served*.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    csv = spec / "variants.csv"
+    csv.write_bytes(b"rsid,genotype\nrs777,A/G\n")
+    names = ["variants.csv"]
+    before = file_entries(spec, names)
+
+    csv.write_bytes(csv.read_bytes().replace(b"\n", b"\r\n"))
+    after = file_entries(spec, names)
+    assert (after[0].sha256, after[0].size) != (before[0].sha256, before[0].size)
+    assert artifact_digest(after) != artifact_digest(before)
+
+
+def test_the_normalized_entry_reports_the_normalized_length(tmp_path) -> None:
+    """`size` is the normalized stream's length, not `stat().st_size` — the trap, asserted directly."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    body = b"rsid\nrs777\nrs778\n"
+    (spec / "variants.csv").write_bytes(body.replace(b"\n", b"\r\n"))
+    entry = newline_normalized_file_entry(spec, "variants.csv")
+    assert entry.size == len(body) < (spec / "variants.csv").stat().st_size
+    assert entry.sha256 == sha256_bytes(body)
+
+
+def test_a_lone_carriage_return_is_left_alone(tmp_path) -> None:
+    """`\\r` on its own is not what a tool writes when it normalizes, so it stays an edit."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    csv = spec / "variants.csv"
+    csv.write_bytes(b"rsid\nrs777\n")
+    names = ["variants.csv"]
+    before = module_binding(newline_normalized_file_entries(spec, names))
+    csv.write_bytes(b"rsid\rrs777\n")
+    assert module_binding(newline_normalized_file_entries(spec, names)) != before
+
+
+def test_mixed_endings_normalize_to_the_all_lf_spelling(tmp_path) -> None:
+    """Half-converted files are the realistic shape of the bug — one appended row, one editor."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    csv = spec / "variants.csv"
+    lf = b"rsid,genotype\nrs777,A/G\nrs778,C/T\n"
+    csv.write_bytes(b"rsid,genotype\r\nrs777,A/G\nrs778,C/T\r\n")
+    mixed = newline_normalized_file_entry(spec, "variants.csv")
+    csv.write_bytes(lf)
+    assert (mixed.sha256, mixed.size) == (sha256_bytes(lf), len(lf))
+    assert mixed == newline_normalized_file_entry(spec, "variants.csv")
+
+
+def test_a_crlf_split_across_a_read_boundary_still_normalizes(tmp_path, monkeypatch) -> None:
+    """The one thing a chunked rewrite gets wrong: `\\r` ending a read, `\\n` starting the next.
+
+    The chunk size is monkeypatched rather than parameterized so the *public* function is what runs —
+    a boundary the caller cannot choose is exactly the one that must not need choosing.
+    """
+    monkeypatch.setattr(integrity, "_CHUNK", 8)
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    lf = b"".join(b"rs%03d\n" % n for n in range(40))  # every chunk boundary lands somewhere new
+    (spec / "variants.csv").write_bytes(lf.replace(b"\n", b"\r\n"))
+    entry = newline_normalized_file_entry(spec, "variants.csv")
+    assert (entry.sha256, entry.size) == (sha256_bytes(lf), len(lf))
+
+
+def test_a_file_ending_in_a_bare_carriage_return_keeps_it(tmp_path, monkeypatch) -> None:
+    """The carry has nothing to pair with at EOF, so it must be emitted rather than swallowed."""
+    monkeypatch.setattr(integrity, "_CHUNK", 4)
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    body = b"rsid\r\nrs777\r"
+    (spec / "variants.csv").write_bytes(body)
+    entry = newline_normalized_file_entry(spec, "variants.csv")
+    assert (entry.sha256, entry.size) == (sha256_bytes(b"rsid\nrs777\r"), len(b"rsid\nrs777\r"))
+
+
+def test_the_normalized_builder_skips_a_file_the_module_does_not_carry(tmp_path) -> None:
+    """The skip-missing contract `file_entries` has — a module carries only the kinds it uses."""
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_bytes(b"rsid\nrs777\n")
+    entries = newline_normalized_file_entries(spec, ["variants.csv", "diplotypes.csv"])
+    assert [e.name for e in entries] == ["variants.csv"]
 
 
 def test_a_document_round_trips_through_the_file(tmp_path) -> None:

@@ -1461,6 +1461,36 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   Measured, not argued: all sixteen reference examples compile byte-identically on `artifact.digest`
   and `content_signature` before and after being closed.
 
+- `@binding-normalizes-newlines` — **The binding reads `\r\n` as `\n`, and the naive way to build that is a
+  no-op that looks like a fix (RM82, 0.6).** Rewriting an authored CSV's line endings changed no value, no
+  digest and no signature, and still dropped the attestation and the closure — so an author whose editor
+  normalizes newlines, or whose Git does through `core.autocrlf`, un-closed a module without touching a
+  cell. Fixed as a byte transform, which is what separates it from the content-aware binding RM45 refused:
+  no loader, no parse, no schema knowledge. Five things worth keeping:
+  - **`size` is inside the hashed listing, and that is the trap.** `module_binding` *is*
+    `artifact_digest`, which hashes `{"name", "sha256", "size"}` per file, and `file_entry` stamps
+    `stat().st_size`. A builder that normalized the bytes it hashed while reporting the on-disk size would
+    still move the binding — by one byte per line, on **exactly** the files the fix exists for. So
+    `integrity.newline_normalized_file_entry` reports the normalized length beside the normalized digest.
+    Generalize it: before normalizing a hash's input, list everything else that feeds the same hash.
+  - **A distinct function, never a `normalize=True` flag on `file_entries`.** A flag must mean the same
+    thing in every function that takes one, and a boolean that silently changes *what a hash is over* ends
+    up re-baselining `manifest.inputs[]` for a caller who passed it by habit, with no error and no warning.
+  - **The stopping point is chosen, not inherited.** A BOM, trailing whitespace and a missing final newline
+    are the obvious next steps and are all refused: newlines are the one difference a *tool* introduces on
+    a file the author did not edit, the others are things a human typed. A lone `\r` is left alone for the
+    same reason.
+  - **`manifest.inputs[]` and `artifact.digest` deliberately do not follow**, so the two now disagree on a
+    line-ending rewrite — which is the decision, not an inconsistency to tidy. They answer *are these the
+    exact bytes*; the binding answers *is this the same module*. `_read_verification_block`'s docstring
+    said the two were "one fact rather than two that can disagree" and had to be corrected with the change.
+  - **The cost was predicted as every `module_hash` in existence and measured at 7 of 16.** A binding moves
+    only where an authored file really carries `\r\n`, and the corpus half that does is the
+    **machine-written** one — `csv.writer` terminates with `\r\n`, so the rewrite an author actually
+    performs is the normalization *to* LF. The nine unmoved kept their records, producer and nonce verbatim
+    through the re-close; two of the seven dropped four attested check records each, which is the rule
+    working rather than a loss to avoid.
+
 - `@rm4-dataset-marker` — **The marker for that skip is MACHINE-written, and `panel:` is deprecated with it (RM4, 0.6).** The
   skip used to key on the author's `panel:` pin. The claim being established is *provenance* — these
   rows came from this snapshot — and the tool that copied them is the authority on it, so

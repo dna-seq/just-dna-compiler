@@ -89,6 +89,73 @@ def file_entries(directory: Path, names: list[str]) -> list[FileEntry]:
     return [file_entry(directory, name) for name in names if (directory / name).is_file()]
 
 
+def newline_normalized_file_entry(directory: Path, name: str) -> FileEntry:
+    """A `FileEntry` over `directory/name` with `\\r\\n` read as `\\n` — for the binding only (RM82).
+
+    Rewriting an authored CSV with different line endings changes no value, no digest and no
+    signature, and used to drop the whole verification attestation and the closure with it: an author
+    whose editor normalizes newlines, or whose Git does it through `core.autocrlf`, un-closed a module
+    without touching a cell. This entry builder is what `verification.module_binding` is computed over,
+    through `just_dna_compiler.compiler.authored_input_entries`, so that rewrite is no longer an edit.
+
+    **Both halves are normalized, and the second one is the whole trap.** `artifact_digest` hashes
+    `{"name", "sha256", "size"}` per file, so a builder that normalized the bytes it hashed while
+    reporting `stat().st_size` would still move the binding — by one byte per line, on exactly the
+    files this exists to protect. So `size` here is the length of the *normalized* stream, not the
+    length on disk. That is sound because these entries are only ever fed to `module_binding`: they are
+    hashed, never published as a listing, and nothing reads them as a claim about a file's size. The
+    entries that *are* published — `manifest.inputs[]` and `artifact.files[]` — keep coming from
+    `file_entry`/`file_entries` with the on-disk bytes and the on-disk size.
+
+    **A separate function rather than a `normalize=True` flag on `file_entries`.** A flag must mean the
+    same thing in every function that takes one, and a boolean that silently changes *what a hash is
+    over* is the opposite of that: a caller passing it by habit would re-baseline `manifest.inputs[]`
+    with no error and no warning. Two functions cannot be confused at a call site.
+
+    **The stopping point is newlines, and it is chosen rather than inherited.** A BOM, trailing
+    whitespace and a missing final newline are the obvious next steps, and each makes the binding more
+    content-ish without making it content — this deliberately implements none of them. Newlines are the
+    one difference a *tool* introduces on a file the author did not edit; the others are things a human
+    typed. A lone `\\r` is left exactly as it is, for the same reason: it is not what an editor or Git
+    writes when it normalizes. If a real case arrives for one of the others it is additive and gets
+    argued then, on its own evidence.
+    """
+    path = Path(directory) / name
+    digest = hashlib.sha256()
+    size = 0
+    carry = b""
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(_CHUNK), b""):
+            data = carry + chunk
+            # A trailing `\r` may be the first half of a `\r\n` split across the read boundary, so it
+            # is held back rather than judged now — the one thing a chunked rewrite can get wrong.
+            if data.endswith(b"\r"):
+                data, carry = data[:-1], b"\r"
+            else:
+                carry = b""
+            normalized = data.replace(b"\r\n", b"\n")
+            digest.update(normalized)
+            size += len(normalized)
+    if carry:  # a file ending in a bare `\r`: nothing followed it, so it stands
+        digest.update(carry)
+        size += len(carry)
+    return FileEntry(name=name, sha256=SHA256_PREFIX + digest.hexdigest(), size=size)
+
+
+def newline_normalized_file_entries(directory: Path, names: list[str]) -> list[FileEntry]:
+    """`newline_normalized_file_entry` for each existing name under `directory` (skips missing).
+
+    The sibling of `file_entries`, with the same skip-missing contract — a module carries only the
+    table kinds it uses, so an absent name is the ordinary case rather than a failure.
+    """
+    directory = Path(directory)
+    return [
+        newline_normalized_file_entry(directory, name)
+        for name in names
+        if (directory / name).is_file()
+    ]
+
+
 def artifact_digest(files: list[FileEntry]) -> str:
     """
     Merkle-style root over the file set (SPEC §5): build the JSON array

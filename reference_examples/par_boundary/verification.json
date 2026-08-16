@@ -1,12 +1,12 @@
 {
-  "module_hash": "sha256:1b3dbd878df49ef6b45efd873251abfa833327a1ae1175c9bef403d9365835fe",
+  "module_hash": "sha256:c79ac24200b9d04fff281bf2518c5bed4e39f60795c51a11c7d38220d887ff9a",
   "signature": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
   "difficulty": 20,
-  "nonce": 1014019,
+  "nonce": 652667,
   "producer": null,
-  "produced_at": "2026-08-15T23:27:24Z",
+  "produced_at": null,
   "closure": {
-    "closed_at": "2026-08-15T23:27:24Z",
+    "closed_at": "2026-08-16T21:47:23Z",
     "closed_by": "just-dna-format reference corpus",
     "signature": null
   },

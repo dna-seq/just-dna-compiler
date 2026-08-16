@@ -241,6 +241,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Report a ragged row's field-count mismatch before the type error it explains. `@ragged-csv-row`
 - A drafted value that has not moved is an establishable copy — digest the *checked column*. `@draft-digest`
 - Authoring has an end: `close` + `VerificationDoc.closure`; `validate` stays read-only. `@closure-phase-boundary`
+- The attestation binds newline-normalized bytes and their normalized `size`; `manifest.inputs[]` stays raw. `@binding-normalizes-newlines`
 - The draft marker is machine-written into `dataset`; a stale one is withdrawn, never re-labelled. `@rm4-dataset-marker`
 
 ### Schema evolution

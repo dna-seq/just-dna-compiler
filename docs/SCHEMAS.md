@@ -1324,6 +1324,15 @@ everywhere else. The compiler confirms it and stamps `manifest.verification`.
   them would perish the attestation on a re-enrichment that changed nothing anyone claimed. The cost is
   real and stated rather than hidden: re-running the enricher against a fresher ClinVar leaves the
   attestation matching, so read **currency off each record's `release`**, never off the binding.
+- **Line endings are outside it too, and nothing else about the bytes is (RM82, 0.6).** The binding
+  reads `\r\n` as `\n`, so an editor that normalizes newlines — or a checkout with `core.autocrlf` —
+  no longer un-closes a module in which no value moved. It stops there on purpose: a BOM, trailing
+  whitespace and a missing final newline are things a human typed, so they remain edits. The transform
+  is `integrity.newline_normalized_file_entry`, used by this binding and by nothing else, and it
+  normalizes the **size** as well as the digest — `artifact_digest` hashes `size` beside `sha256`, so
+  normalizing only the bytes would have moved the binding on exactly the files the change exists for.
+  `manifest.inputs[]` and `artifact.digest` keep following every byte: they answer *are these the exact
+  bytes*, which is a different question and keeps a different answer.
 - **The proof-of-work is one per document per run, ~0.7s at 20 bits, and the nonce is the smallest one
   counting up from zero.** Smallest, never random: a random nonce gives the file different bytes every
   run for the same content. Per row or per check it would turn a ClinVar-scale build into days.
