@@ -34,7 +34,67 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-16 (latest) — 0.6.0: RM73 closed, both halves, and RM80
+## 2026-08-16 (latest) — 0.6.0: a consumer round, S30–S32
+
+Three field notes from **just-dna-lite**, all out of one annotation of one WGS genome against twelve
+modules. Two shipped whole, one shipped its authored half and routed the rest; the routing is the part
+worth reading, because in each case the reported symptom and the fixable defect were not the same size.
+
+**S30 — the genotype split had three copies, and the consumer's was the only one with no code to read.**
+`_split_genotype` was private to the compiler, so a consumer joining `weights.parquet` re-derived the
+rule from prose, got it wrong twice in opposite directions, and had no failing run either time to say
+which was right — sorting the alleles raises nothing, it just matches a quietly larger set on phased
+data. `just_dna_format.alleles.split_genotype` is the leaf now (format tier, stdlib, the
+`parsimony_reduce` precedent), and probing turned up a **third** copy in `resolution.py`; both of ours
+call it and a test asserts they are the same object. Contract: *a validated cell in, alleles in authored
+order out*, never sorted. Dropping empty fragments makes the split total over any string and is **not** a
+widening — `|A|G` splits here and is still refused by `_validate_genotype` (RM67), pinned by a test so
+nobody reaches for this as a validator. The artifact half — `weights.parquet` splits, the 0.4 families
+keep the string — is [RM81](ROADMAP_1_0.md#rm81--one-artifact-spells-a-genotype-two-ways), 1.0: it is a
+retype of a published column, and the minor-legal parallel-column workaround is refused there as two
+spellings of one value in one table.
+
+**S31 — the unjoinable count RM44 filed against RM43, published as a number.**
+`manifest.compilation.positional_rows` / `positional_rows_placed`, the same parts-not-a-ratio shape as
+`vrs_alleles`: complete is `placed == rows`. Until now the only published record of whether a PGx table
+joins to a VCF was the warning sentence a downstream registry substring-matches, which RM44 established
+is an unversioned interface. `pgx_slco1b1_simvastatin` reports 9 of 9 beside a `fully_resolved: true`
+that quantifies over zero variant rows. **Both fields are `int | None`**, and that is the second half of
+the item: `0` is a real answer (no positional table), so defaulting to it would have a pre-0.6 manifest
+report "no positional rows" for a 1,482-row artifact with every coordinate null — the vacuous-
+`fully_resolved` failure re-made inside the field written to close it. `None` is *this compiler did not
+count*, which is what every pre-0.6 manifest honestly is, and it is how a consumer tells the eras apart
+without probing parquet. `UNJOINABLE_PHRASE` and its test **stay**: already-published artifacts carry
+neither field.
+
+**S32 — a site annotated for some of its genotypes and not the rest.** A consumer matches on
+`(variant, genotype)`, so a genotype with no row is a subject with no answer; the reporter's curated
+520-site module authors no homozygous-alternate genotype at 208 of them, with their subject homozygous
+at 74. `_check_genotype_coverage` reports the missing members by reason, with both counts (genotypes and
+sites, since one two-alternate locus can be missing two). It fires **only where the module already
+annotates a site for two or more genotypes** — one genotype at a site is a rule that fires on the call
+the author cares about, and `pathogenic_clinvar` is in that shape at 326 of its 327 sites, so the wider
+version is a line on nearly every module ever drafted. Dogfooded on our own corpus first and it found
+three true instances there, including `pathogenic_clinvar` stating both HBB heterozygotes at 11:5225715
+and neither homozygote. Never demands an alt/alt pair (RM35), never guesses the reference, and skips
+sites whose genotypes are not diploid nucleotide pairs — which keeps MT and non-PAR Y out with no contig
+list. Warning in both modes, `validate_spec` only (its message carries a count, and a post-resolution
+re-run would publish a second differently-numbered copy of the same finding).
+
+**What S32 did *not* get, and why it is a routing decision rather than a deferral.** Whether a hom-ref
+row can ever match is a property of the file a consumer brings — a variant-only VCF emits no record where
+the sample matches the reference, a gVCF and an array do — so **which annotation path works against a
+chosen data input is the annotator's call, not this format's**. No module-level "evaluate me against a
+callset that can express the reference genotype" claim was built, the *presence* of hom-ref rows is never
+reported (they are correct, and are what make a module work on array data), and restoration and
+imputation stay on the consumer side. The item's second ask turned out to be already satisfied:
+`mt_common_deletion`, `mt_heteroplasmy` and `shox_par1` populate `requires_callable` — the PGx half is
+RM70.
+
+Also corrected: the authoring skill's joinability symptom still described the pre-RM43 world and told
+authors there was nothing they could do about it.
+
+## 2026-08-16 — 0.6.0: RM73 closed, both halves, and RM80
 
 **RM73 (phase boundary) — authoring is a process, and it now has an end.** A module could not say it
 was finished, so every check that needed to know where a value came from was guessing. The mechanism
