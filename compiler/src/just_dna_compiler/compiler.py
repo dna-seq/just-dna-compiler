@@ -35,6 +35,7 @@ from just_dna_format.alleles import (
     is_symbolic_allele,
     is_unobservable_allele,
     non_nucleotide_reason,
+    split_genotype,
     symbolic_allele_defect,
 )
 from just_dna_format.assertions import ClinicalAssertionRow
@@ -58,17 +59,6 @@ from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.identity import is_valid_version
-from just_dna_format.layout import (
-    DERIVED_SUBDIR,
-    SOURCES_CSV,
-    VERIFICATION_JSON,
-    SidecarCollision,
-    deprecation_notice,
-    resolve_sidecar,
-    sidecar_relative_names,
-    sidecar_spellings,
-    sidecar_write_path,
-)
 from just_dna_format.integrity import (
     build_artifact,
     file_entries,
@@ -76,13 +66,13 @@ from just_dna_format.integrity import (
     sha256_file,
 )
 from just_dna_format.integrity import (
+    clinical_assertion_signature as _clinical_assertion_signature,
+)
+from just_dna_format.integrity import (
     content_signature as _content_signature,
 )
 from just_dna_format.integrity import (
     frequency_signature as _frequency_signature,
-)
-from just_dna_format.integrity import (
-    clinical_assertion_signature as _clinical_assertion_signature,
 )
 from just_dna_format.integrity import (
     gene_metrics_signature as _gene_metrics_signature,
@@ -98,6 +88,17 @@ from just_dna_format.integrity import (
 )
 from just_dna_format.integrity import (
     source_signature as _source_signature,
+)
+from just_dna_format.layout import (
+    DERIVED_SUBDIR,
+    SOURCES_CSV,
+    VERIFICATION_JSON,
+    SidecarCollision,
+    deprecation_notice,
+    resolve_sidecar,
+    sidecar_relative_names,
+    sidecar_spellings,
+    sidecar_write_path,
 )
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import (
@@ -133,6 +134,14 @@ from just_dna_format.pgx import (
 )
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use, taints_redistribution
+from just_dna_format.spec import (
+    RESERVED_FLAGS,
+    Defaults,
+    ModuleSpecConfig,
+    StudyRow,
+    VariantRow,
+    extract_pmids,
+)
 from just_dna_format.verification import (
     attest,
     attestation_failure,
@@ -141,14 +150,6 @@ from just_dna_format.verification import (
     read_verification,
     verification_block,
     write_verification,
-)
-from just_dna_format.spec import (
-    RESERVED_FLAGS,
-    Defaults,
-    ModuleSpecConfig,
-    StudyRow,
-    VariantRow,
-    extract_pmids,
 )
 from just_dna_format.vocab import (
     VALID_ELEMENT_RULES,
@@ -188,17 +189,17 @@ from just_dna_compiler.resolution import (
 # handler, so a CLI that sets nothing up does not swallow it.
 logger = logging.getLogger(__name__)
 
-# Genotype allele separators: `/` (unphased), `|` (phased). See ROADMAP 0.3 item 5b. Splitting on
-# both yields the allele list; this function discards the `|` vs `/` distinction. Phase itself is
-# preserved separately via the `phased` column (materialized in `_build_weights`, re-emitted in
-# `reverse_module`), so the round-trip is lossless — see docs/COMPILER.md and CONSTITUTION Principle 7.
-_GENOTYPE_SEP: re.Pattern[str] = re.compile(r"[/|]")
-
-
-def _split_genotype(genotype: str) -> list[str]:
-    """Split a genotype string into its alleles, accepting single-allele (hemizygous),
-    slash-separated (unphased), and pipe-separated (phased) forms."""
-    return [allele for allele in _GENOTYPE_SEP.split(genotype) if allele]
+# Genotype allele separators: `/` (unphased), `|` (phased). See ROADMAP 0.3 item 5b. The split
+# discards the `|` vs `/` distinction; phase itself is preserved separately via the `phased` column
+# (materialized in `_build_weights`, re-emitted in `reverse_module`), so the round-trip is lossless —
+# see docs/COMPILER.md and CONSTITUTION Principle 7.
+#
+# **Imported, not re-implemented (S30).** This was a private copy here, which left every consumer of
+# `weights.parquet` re-deriving the rule from prose — and one of them got it wrong twice, in opposite
+# directions, with nothing failing either time to say which was right. One function serving writer and
+# reader is the `clinvar_dataset_label` rule: two that agree today do not fail when they drift, they
+# just stop matching. The alias keeps this module's call sites reading as they did.
+_split_genotype = split_genotype
 
 
 # ACMG's BA1 default: an allele above 5% in a general population is stand-alone evidence of benign

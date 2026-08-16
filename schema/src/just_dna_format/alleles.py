@@ -249,6 +249,43 @@ def is_unobservable_allele(value: str | None) -> bool:
     return value is not None and value.strip() == UNOBSERVABLE_ALLELE
 
 
+#: The two separators a genotype cell may use: `/` unphased, `|` phased. Named here because the split
+#: below and every reader that reasons about phase have to mean the same two characters.
+GENOTYPE_SEPARATORS: str = "/|"
+
+_GENOTYPE_SEP: re.Pattern[str] = re.compile(f"[{re.escape(GENOTYPE_SEPARATORS)}]")
+
+
+def split_genotype(genotype: str) -> list[str]:
+    """The alleles a genotype cell names, in the order they were written (S30).
+
+    **Never sorted.** `weights.parquet` stores exactly this list, so a consumer that sorts is giving one
+    artifact two spellings of a genotype and will match a phased row a weights-led module would not. The
+    order is the authored order and nothing else is read into it: whether a pipe *addresses* a homolog is
+    a separate question the format does not answer (RM63 — phase is recorded, not addressable), and the
+    answer does not change what this function returns.
+
+    Public because it was being re-derived. The rule lives in three places that must agree — the
+    validator's grammar, the compiler's materializer, and every consumer that reads a 0.4-family table —
+    and the third had only prose to work from: a consumer reimplemented it, twice, in opposite directions,
+    with no failing run either time to tell them which was right. A reimplementation that is slightly
+    wrong raises nothing; it just matches a quietly larger set. So this is the leaf they call instead,
+    the same way `derive.direction_from_state` is the leaf for a derivation the format owns the rule for.
+
+    **The contract is "a validated genotype cell in, alleles out", and the input half is load-bearing.**
+    Empty fragments are dropped, which makes the split total over any string — `|A|G` yields
+    `['A', 'G']` — and `AuthoredModel._validate_genotype` **refuses** that cell (VCF 4.4's optional
+    leading phasing indicator is one of RM67's two recorded divergences). Dropping empties is right for a
+    cell the models have already accepted, and it is not a widening of what they accept: this function
+    decides nothing about legality, so do not reach for it as a validator.
+
+    Hemizygous cells are one allele (`'G'` → `['G']`), which is how every haploid contig in the corpus is
+    authored, and symbolic or unobservable members come back verbatim (`'*/T'` → `['*', 'T']`) — this is
+    a split, not a grammar.
+    """
+    return [allele for allele in _GENOTYPE_SEP.split(genotype) if allele]
+
+
 def non_nucleotide_reason(allele: str | None) -> str | None:
     """Why `allele` is not a nucleotide string, or `None` when it is one.
 

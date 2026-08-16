@@ -149,6 +149,48 @@ the answer decides what the removal leaves behind. See [ROADMAP_0_7.md](ROADMAP_
 
 ---
 
+## RM81 — one artifact spells a genotype two ways
+
+**Severity** medium · **Status** open — 1.0 (a retype of a published parquet column) · **Owner** format
+(schema) + compiler · **Motivating case** S30 in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md)
+
+`weights.parquet` stores `genotype` as `List(Utf8)` — the compiler splits the authored cell on
+`/`/`|` — while the 0.4-family tables (`pharm_variants.parquet` and the rest) are materialized verbatim
+from their authored CSV and keep the string `"C/C"`. Both are documented and neither is wrong on its
+own, but a consumer joining either family to the same VCF meets two representations of one concept, and
+the split is invisible until the join raises:
+
+```
+SchemaError: datatypes of join keys don't match - `genotype`: list[str] on left
+does not match `genotype`: str on right
+```
+
+The report that produced this is the same one that produced `alleles.split_genotype` (S30, shipped in
+0.6): the reader half — *how do I split it* — is closed, because there is now one public leaf every
+tier and every consumer calls. What is left is the artifact half, and it is major-only.
+
+**Why not a minor.** Changing `pharm_variants.parquet.genotype` from `Utf8` to `List(Utf8)` is a
+**retype of a published column**, which P3/P8 put in a major exactly because it breaks an existing
+reader — and here the reader is not hypothetical: the reporting consumer reads that column as a string
+today and normalizes it themselves. RM43's fill was additive (stamped columns that were not there
+before); this is not the same move.
+
+**Why not the additive workaround.** Adding a parallel `genotype_alleles: List(Utf8)` beside the string
+is minor-legal and is the wrong shape: it puts two spellings of one value in one table, which is the
+desync failure `ResolutionRow.vrs_id` needed two guards for, and it leaves the original defect — *this
+artifact spells a genotype two ways* — in place with a third spelling added to it. A consumer meeting
+both columns has to know which is authoritative, and nothing in the parquet says.
+
+**What to decide at 1.0**, since the direction is not obvious: unify **up** (split everywhere, so every
+table matches `weights.parquet`) or **down** (store the cell verbatim everywhere and let each reader
+call `split_genotype`). Up is what the reporting consumer implemented and what a join wants; down is
+what `reverse_module` wants, since the 0.4 families re-emit their cell byte-for-byte and a split column
+has to be rejoined — and a rejoin must reproduce the authored separator, which means the `phased` bit
+travels too, as it already does for `weights.parquet`. Whichever is taken, it is one rule for the whole
+artifact, and `split_genotype`'s "never sorted" contract holds under both.
+
+---
+
 ## RM73 (gate half) — the closure gate refuses on step 3 of the round trip
 
 **Severity** high, and **release-blocking for the gate itself** · **Status** open; a precondition of the

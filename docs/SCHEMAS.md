@@ -20,7 +20,7 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 | `derive` | Legacy→0.3 column derivations + read-time aliases | — (stdlib leaf) |
 | `normalize` | Inject-only authority-key stripper, `normalize_version` | — (stdlib leaf) |
 | `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table, the `vrs_id` cell codec and the PAR geometry (stdlib only) | — (stdlib leaf) |
-| `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) | — (stdlib leaf) |
+| `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
 | `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |
@@ -593,6 +593,19 @@ claim is about the **homolog**, not about zygosity: `1|1` is an ordinary phased 
 grammar accepts its transcription, so "a pipe means heterozygous" — which this passage used to say, and
 which the comment above `_validate_genotype` still says — is false of `C|C`. The printed column
 descriptions carry the narrower reading; the comment is due the same edit.
+
+**Splitting a genotype cell is `alleles.split_genotype`, and a consumer must not sort the result
+(S30).** `weights.parquet` stores `genotype` as the allele **list** this function returns, in authored
+order; the 0.4-family tables store the cell verbatim as a string, so a consumer joining either family
+to a VCF meets two representations of one concept and the split is invisible until the join raises.
+The rule therefore lives in one place rather than being re-derived from the paragraph above: it was
+private to the compiler until 0.6, and a consumer reimplementing it from prose got it wrong twice in
+opposite directions, with no failing run either time to say which was right — sorting raises nothing,
+it just matches a quietly larger set on phased data. Note which argument decides it. Whatever a pipe
+*means*, the compiler does not sort, so a reader that does is the one giving the artifact two
+spellings; self-consistency settles it and is stable under RM63. The parquet asymmetry itself is
+[RM81](ROADMAP_1_0.md#rm81--one-artifact-spells-a-genotype-two-ways) — unifying the representation is a
+retype of a published column, so it waits for 1.0.
 
 **Two alleles is the ceiling, and VCF's is not (RM67).** §7.2 permits any ploidy and adds *partial*
 phasing on top of it — `GT |0|0/1/2`, where the leading indicator is optional and each separator says

@@ -83,7 +83,7 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
     "variants.csv": VariantRow,
     "studies.csv": StudyRow,
     **{csv_name: model for csv_name, _, model in _TABLE_KINDS},
-    **{name: SourceRow for name in sidecar_spellings(SOURCES_CSV)},
+    **dict.fromkeys(sidecar_spellings(SOURCES_CSV), SourceRow),
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks

@@ -14,7 +14,6 @@ rows on `(locus_index, chrom, start, ref)`, matching the resolver's `ORDER BY id
 """
 
 import logging
-import re
 from dataclasses import dataclass, field
 
 from just_dna_format.alleles import (
@@ -22,6 +21,7 @@ from just_dna_format.alleles import (
     is_unobservable_allele,
     non_nucleotide_alleles,
     parsimony_reduce,
+    split_genotype,
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
@@ -405,9 +405,6 @@ def _coord_update(row: ResolutionRow) -> dict[str, object]:
     return {"chrom": row.chrom, "start": row.start, "ref": row.ref, "alts": row.alts}
 
 
-_GENOTYPE_SEP = re.compile(r"[/|]")
-
-
 def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | None:
     """Can a locus spelling `{ref} ∪ alts` host `genotype`? **Three-valued** (RM31).
 
@@ -483,7 +480,7 @@ def hosting_verdict(genotype: str, ref: str | None, alts: str | None) -> bool | 
     if not ref or not alts:
         return True
     locus = {ref.strip().upper()} | {a.strip().upper() for a in alts.split(",") if a.strip()}
-    called = {a.upper() for a in _GENOTYPE_SEP.split(genotype) if a}
+    called = {a.upper() for a in split_genotype(genotype)}
 
     # RM59, and kept visibly separate from the RM5 guard below it because they are separate axes: this
     # one drops a *member* that makes no claim, that one withholds the whole *verdict* because a claim
@@ -564,7 +561,7 @@ def undecided_reason(genotype: str, ref: str | None, alts: str | None) -> str:
     of the pair.
     """
     locus = {a.strip().upper() for a in (ref or "", *(alts or "").split(",")) if a.strip()}
-    called = {a.upper() for a in _GENOTYPE_SEP.split(genotype) if a}
+    called = {a.upper() for a in split_genotype(genotype)}
     observable_called = {a for a in called if not is_unobservable_allele(a)}
     observable_locus = {a for a in locus if not is_unobservable_allele(a)}
 
