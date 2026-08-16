@@ -1,8 +1,18 @@
 # Agent notes — the long-form gotcha book
 
 Every entry here was a real defect, a real probe, or a repair that was considered and refused. The
-operative one-line rule for each lives in `CLAUDE.md`, which links to the section it sits in; this
-file carries the reasoning — what broke, what was measured, and why the obvious fix is wrong.
+operative one-line rule for each lives in `CLAUDE.md`; this file carries the reasoning — what broke,
+what was measured, and why the obvious fix is wrong.
+
+**Each entry opens with a `@tag`, and that tag is the key `CLAUDE.md` cites**, so the round trip is:
+
+```bash
+grep -A25 '^- .@start-1based' docs/AGENT_NOTES.md   # the entry; 4–60 lines, -A60 for big ones
+grep -n  '^- .@' docs/AGENT_NOTES.md            # every tag in order, with its headline
+```
+
+Tags are stable: rename one only by renaming its `CLAUDE.md` citation in the same commit. No test
+enforces it, so the invariant to keep green by hand is that the two tag sets match exactly.
 
 Two conventions, both inherited from `CLAUDE.md`:
 
@@ -39,7 +49,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Identity: `variant_key`, VRS ids, and what a digest is a function of
 
-- **`variant_key` is the rsid FIRST, and the VRS allele id only for a coordinate-authored substitution
+- `@vkey-precedence` — **`variant_key` is the rsid FIRST, and the VRS allele id only for a coordinate-authored substitution
   (0.5) — read the precedence, not this headline.** An earlier wording led with the VRS half and a
   consumer read it as the rule, then filed "`variant_key` = rsid" as 0.4-era drift on four modules where
   it is exactly right.
@@ -54,7 +64,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   variant at `chrom:start:ref` regardless of allele). Mixing these up would orphan every study *and*
   reintroduce the same-locus allele collision.
 
-- **`ResolutionRow.vrs_id` is ONE ID PER ALT, positionally aligned with `alts` — and the rule it used to
+- `@vrsid-per-alt` — **`ResolutionRow.vrs_id` is ONE ID PER ALT, positionally aligned with `alts` — and the rule it used to
   follow was borrowed from the wrong function.** The mint pass abstained on any comma-joined cell,
   quoting `derive_variant_key`'s reason ("a VA names exactly one allele; picking one would be a data
   error wearing an identifier"). True *there* — `variant_key` is one column naming one thing, so a plural
@@ -74,7 +84,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   - **It moves nothing.** `vrs_id` is outside every signature and `reverse_module` never re-emits it —
     verified byte-identical `artifact.digest`/`content_signature`/`resolution_signature` on five modules.
 
-- **A pass that only checks what is PRESENT must also count what is ABSENT — `_vrs_coverage`,
+- `@vrs-coverage` — **A pass that only checks what is PRESENT must also count what is ABSENT — `_vrs_coverage`,
   `MintResult.coverage_warnings`.** `_verify_vrs_ids` verifies stored ids, so "a row with no `vrs_id` is
   skipped entirely" and a table where nothing was minted verified flawlessly. Fine for a decorative
   cross-reference, wrong for an identity a consumer may key on: coverage of an unstated fraction is not
@@ -87,7 +97,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   artifact", an unrelated axis. Generalize it: when you add a check that inspects recorded values, ask
   what it says about the records that carry none.
 
-- **A VA does not encode `ref`.** VRS names the place and the alt; the reference base is determined by
+- `@va-omits-ref` — **A VA does not encode `ref`.** VRS names the place and the alt; the reference base is determined by
   the accession + interval, so it is not a digest component. Two consequences, both guarded, both of
   which must stay: the compiler has an **"inconsistent reference allele"** error (two rows sharing a key
   while disagreeing on `ref` — internal contradiction, catchable offline), and the enricher has
@@ -95,7 +105,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   online only). A *single-base* wrong ref still mints the correct id, so **only** the enricher check can
   find it; a *multi-base* wrong ref mints a different allele entirely.
 
-- **The compiler's VRS check has THREE outcomes, and NONE of them is a mode ladder.** *verified*
+- `@vrs-three-outcomes` — **The compiler's VRS check has THREE outcomes, and NONE of them is a mode ladder.** *verified*
   (silent), *mismatch* (recomputed and different — **error in both modes**, since a substitution's id
   is deterministic here so a difference can only be corruption), and *unverifiable* (**could not be
   recomputed at all**), whose severity comes from **whose limit it is** rather than from the mode:
@@ -145,13 +155,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   and `compile_module`, its warnings are **de-duplicated on the message** the way ploidy's already
   were — otherwise 185 alleles print 370 lines.
 
-- **`ga4gh.vrs` is a CORE enricher dependency, not `[dev]`.** Substitution minting is stdlib in the
+- `@ga4gh-vrs-core-dep` — **`ga4gh.vrs` is a CORE enricher dependency, not `[dev]`.** Substitution minting is stdlib in the
   format tier; indel normalization goes over the **seqrepo REST** proxy (14 pure-Python packages — the
   plan's `[extras]`/`pysam`/multi-GB-seqrepo assumption was wrong). `--offline` is the only thing that
   degrades minting to substitutions-only. Never add `ga4gh.vrs` to format or compiler: the compiler's
   verify pass is stdlib on purpose.
 
-- **`refget_accession` RAISES for a non-GRCh38 build** (it must — a caller asking for GRCh37 should
+- `@refget-raises` — **`refget_accession` RAISES for a non-GRCh38 build** (it must — a caller asking for GRCh37 should
   hear "not built", not get a GRCh38 answer). Every call site therefore has to catch
   `UnsupportedBuildError`; one that didn't used to abort a whole compile over a single row.
   **`refget_supports_build` is the yes/no form and the two now read ONE predicate** — they disagreed on
@@ -166,7 +176,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Coordinates and the genome build
 
-- **Every `start` in this codebase is the 1-based VCF position — do NOT convert.** The pipeline stores
+- `@start-1based` — **Every `start` in this codebase is the 1-based VCF position — do NOT convert.** The pipeline stores
   Ensembl's position (`rs1135071` → 5226799 everywhere), CPIC `sequence_location.position` and PharmVar
   `NC_……:g.` use the same convention, and `derive_vrs_allele_id` does the interbase conversion itself,
   once. The instinctive `-1` introduces an off-by-one. **This bullet used to open "Despite the `start`
@@ -188,7 +198,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   CYP2D6 draft. And activity scores are **inequality strings** (`"≥3.0"`), not numbers, so they don't drop
   into `MeasureBinRow`'s numeric bounds.
 
-- **A row is stamped before the module is known — so anything build-dependent must be re-derived by
+- `@restamp-for-build` — **A row is stamped before the module is known — so anything build-dependent must be re-derived by
   the compiler.** `VariantRow._freeze_identity` runs at construction, where `module_spec.yaml` is not
   in scope, so it always took `derive_variant_key`'s GRCh38 default. A `genome_build: GRCh37` module
   therefore minted GRCh38 VRS ids, silently, for years of the design — the `build` parameter and its
@@ -197,7 +207,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `compile_module` each read their own copy; fixing one leaves the artifact wrong). When adding
   anything else that depends on the spec, check whether the model can possibly know it.
 
-- **`genome_build` is in `manifest.json` and NO parquet column — so anything rebuilding a spec must
+- `@build-in-manifest-only` — **`genome_build` is in `manifest.json` and NO parquet column — so anything rebuilding a spec must
   read it, and three things didn't.** The bug above was fixed on the forward path and then re-entered
   twice more, because a corpus where **every** reference example is GRCh38 cannot tell "reads the
   module's build" from "writes `GRCh38`". `reverse_module` hardcoded the constant into both the rebuilt
@@ -220,7 +230,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   one build is represented for exactly that reason. `test_build_call_sites.py` walks the AST and fails on
   a call that hands over an allele without a build, so a *sixth* site cannot arrive silently.
 
-- **The build is INJECTED into a row, never authored on one — `AuthoredModel._genome_build` (RM36).** A
+- `@build-injected` — **The build is INJECTED into a row, never authored on one — `AuthoredModel._genome_build` (RM36).** A
   model built from a CSV dict has no `module_spec.yaml` in scope, and a *property* (unlike
   `VariantRow.variant_key`) has no stored field for `_restamp_for_build` to correct afterwards — which is
   why `HeteroplasmyRow.variant_key` minted a GRCh38 VA on a GRCh37 module. `load_csv_rows` tells every
@@ -232,7 +242,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   knows the build from the yaml. The rule generalizes: **anything module-wide that a row needs is told to
   the row at load, not stated on the row.**
 
-- **`content_signature` is reference-independent, NOT build-independent — the docstring said the wrong
+- `@sig-not-build-independent` — **`content_signature` is reference-independent, NOT build-independent — the docstring said the wrong
   one.** True of the reference used to *resolve*; false of the *declared assembly*, which for a
   coordinate-authored module is the frame the numbers are in. Two modules with byte-identical CSVs and
   different builds describe loci 228 bp apart, and the content-dedup key hashed them equal — reachable by
@@ -240,7 +250,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   non-default**, which is the existing omit-the-default normalization, not an exception: every GRCh38
   module keeps its signature byte for byte, so a 0.4 module still links to its own 0.5 recompile.
 
-- **A "ref mismatch" has three causes, and the coordinate one is the common one.** `verify_reference_alleles`
+- `@ref-mismatch-causes` — **A "ref mismatch" has three causes, and the coordinate one is the common one.** `verify_reference_alleles`
   reads **one window** spanning a base either side of the claimed span (not three reads — the rows needing
   the diagnosis arrive in thousands) and reports a shifted `start` when exactly one neighbour carries the
   authored `ref`. Both neighbours matching is ambiguous, so it withholds — tri-state, as everywhere else.
@@ -253,7 +263,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   Findings are grouped by **reason** via `summarize_ref_mismatches`; 56 lines became 2 on a 69-variant
   module.
 
-- **The ±1 shift reading is CONFIDENT AND WRONG on an old-assembly coordinate — RM48 is what orders the
+- `@old-assembly-vs-shift` — **The ±1 shift reading is CONFIDENT AND WRONG on an old-assembly coordinate — RM48 is what orders the
   two (0.6).** Real instance, not hypothetical: take `reference_examples/grch37_build/`'s own two HFE
   rows (`6:26093141 G>A`, `6:26091179 C>G`) and declare `genome_build: GRCh38` — the RM48 scenario
   exactly — and `_read_with_neighbours` reports "coordinate shifted 1 base to the right" for **both**,
@@ -277,7 +287,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Alleles: grammar, spelling, hosting
 
-- **A non-nucleotide allele in `ref`/`alts` is a SPELLING defect, and the tempting repair is illegal
+- `@non-nucleotide-spelling` — **A non-nucleotide allele in `ref`/`alts` is a SPELLING defect, and the tempting repair is illegal
   three ways.** `hosting_verdict("C/T", "T", "Y")` is `False` and rightly so — a substitution locus has
   no shared flank, which is what keeps the strand-flip check sharp — but the message then blamed the
   *genotype* ("the row contradicts itself" / "the source's allele list is incomplete"), both false when
@@ -300,7 +310,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   (`VariantRow` required, `PharmVariantRow` optional). `docs/ROADMAP.md` and `docs/CHANGELOG.md` still
   carry the old claim in their historical entries — leave those, they record what was believed then.
 
-- **A symbolic/structural allele is HELD by the grammar since 0.6, and its length rides in the token
+- `@symbolic-alleles` — **A symbolic/structural allele is HELD by the grammar since 0.6, and its length rides in the token
   (RM5).** `<DEL:1500>`, `<CNV:TR:30>` — VCF 4.4's closed five (`DEL/INS/DUP/INV/CNV`) at the first
   level, open subtypes below it. Five things not to redo:
   - **The length is in the token because SVLEN is `Number=A` — one value per ALT.** A scalar authored
@@ -326,7 +336,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     authored as a plain **indel** (its sequence is known, so the standard says spell it) and CPIC's
     IUPAC codes stay unexpressible. `<*>` is *not* one of the five — it is an observability claim.
 
-- **Hosting is a THREE-valued question — `hosting_verdict`, not `genotype_fits` (RM31, shipped).** One
+- `@hosting-tri-state` — **Hosting is a THREE-valued question — `hosting_verdict`, not `genotype_fits` (RM31, shipped).** One
   indel has several valid spellings: ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the
   same 2 bp deletion, and comparing allele *strings* resolved it to `not_found` while asserting a dbSNP
   merge that does not exist. `alleles.parsimony_reduce` (format tier, stdlib) strips the flank a
@@ -348,14 +358,14 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `ref=AGAG`. A consumer applies the same reduction (`just_dna_format.alleles` is public for that);
   rewriting the authored cell is the parked co-authoring item.
 
-- **An rsID is position/multi-allelic-level, not per-allele.** One rsID (`rs33922842`) legitimately spans
+- `@rsid-not-per-allele` — **An rsID is position/multi-allelic-level, not per-allele.** One rsID (`rs33922842`) legitimately spans
   pathogenic + benign + uncertain alleles at one locus, so clinical identity keys on `variant_key`+
   genotype, never rsID. The reverse pos→rsID back-fill is therefore **allele-aware**
   (`resolver._lookup_rsid_candidates`, shared by `clinvar`): 0 allele-exact candidates → leave `rsid`
   null (don't guess); 1 → attach; ≥2 (a dbSNP merge) → deterministic pick + `status="ambiguous"` +
   `ResolutionRow.rsid_alternates`.
 
-- **`absent` for an rsID means typo *or* withdrawn, and the API cannot separate them.** `rs11273140`
+- `@rsid-absent-two-readings` — **`absent` for an rsID means typo *or* withdrawn, and the API cannot separate them.** `rs11273140`
   (withdrawn) and `rs2000000000` (never assigned) return byte-identical responses, so
   `identifiers.classify_rsid` answers `absent` and the message names **both** readings rather than
   guessing — a typo is fixed, a retraction may leave the annotation describing nothing. A test asserts
@@ -368,7 +378,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   otherwise make a one-way door. Its severity is not `absent`'s either: see the `withdrawn` bullet under
   Resolution, which is fatal in **both** modes.
 
-- **For rsID merge status, NCBI is the oracle — not Ensembl.** Ensembl resolves *some* merged rsIDs
+- `@ncbi-merge-oracle` — **For rsID merge status, NCBI is the oracle — not Ensembl.** Ensembl resolves *some* merged rsIDs
   (`rs77121243` → `rs334`) and returns **HTTP 400 on others** (`rs3216883`, which dbSNP correctly
   reports as merged into `rs3051860`), so Ensembl alone would misclassify a merged rsID as
   unresolvable. `esummary db=snp` is batched and authoritative: `snp_id` != requested + `merged_sort=1`
@@ -383,7 +393,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Resolution and the round trip
 
-- **Resolution must be REVERSIBLE — read [COMPILER.md § Resolution](COMPILER.md) before touching
+- `@resolution-reversible` — **Resolution must be REVERSIBLE — read [COMPILER.md § Resolution](COMPILER.md) before touching
   it.** One rule: `compile → reverse → compile` reproduces the module, or `strict` refuses. The finite
   matrix of authored-shape × mishap is enumerated and enforced in
   `compiler/tests/test_resolution_matrix.py`; a new resolution behaviour adds a row there.
@@ -408,11 +418,11 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     pick + `rsid_alternates`); a two-row fixture is fabricated and will invent an instability that does
     not exist. Strict refuses because a pick among equals is not a finding, not because anything is lost.
 
-- **The allele-membership check compares against the UNION of every locus a key resolves to**, on the
+- `@membership-union` — **The allele-membership check compares against the UNION of every locus a key resolves to**, on the
   authored rows before `resolve_from_table` — a per-expanded-row comparison flags the siblings the
   genotype was never about. Severity is the mode ladder, never an unconditional error. Pinned by tests.
 
-- **The Ensembl snapshot's `alt` is PIPE-joined; every other link uses commas.** A multi-allelic site
+- `@snapshot-pipe-alt` — **The Ensembl snapshot's `alt` is PIPE-joined; every other link uses commas.** A multi-allelic site
   is one snapshot row (`A|C|T`), not one row per alt. `resolver._snapshot_alleles` normalizes at that
   boundary — don't remove it, and don't "fix" it by widening the hosting predicate instead (the locus-dict
   contract is comma-separated, and the snapshot is the deviation). This silently broke *all*
@@ -421,13 +431,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `not_found`. Unit fixtures were comma-separated, so only a real cache showed it — when adding a
   resolver fixture, use the pipe shape for multi-allelic sites.
 
-- **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
+- `@resolution-reads-pgx-tables` — **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
   `enrich._collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty
   `resolution.csv`. Subjects dedupe by `variant_key` with **`variants.csv` first** — it alone carries
   `alts`, a fact column, so a PGx row winning would move `artifact.digest`. PGx tables key **without**
   `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `hosting_verdict`.
 
-- **Reverse dropping `rsid_alternates` is NOT a bug — closed, don't re-flag it.** This was filed as an
+- `@rsid-alternates-closed` — **Reverse dropping `rsid_alternates` is NOT a bug — closed, don't re-flag it.** This was filed as an
   open loose end and is neither open nor fixable in the writer. `_write_resolution_csv` rebuilds the
   table from `weights.parquet`, which by design carries **no provenance at all** (it already resets
   `source="reversed"`, `status="resolved"`, blank `fetched_at`). `rsid_alternates`/`rsid_current`/
@@ -435,12 +445,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   not exist for reverse to emit; adding the column names would produce a permanently empty header.
   Recovering them after a round-trip means re-running the enricher.
 
-- **`enrich()` treats an existing `resolution.csv` beside the spec as authoritative** (merged, never
+- `@sidecar-authoritative` — **`enrich()` treats an existing `resolution.csv` beside the spec as authoritative** (merged, never
   clobbered) — and so do the two new passes for `frequencies.csv` / `gene_metrics.csv`, and VRS minting
   for an existing `vrs_id`. To regenerate after a machinery change you MUST **delete the sidecar first**,
   or stale rows silently persist (this bit me while regenerating the reference example).
 
-- **Resolution reaches the SNP core ONLY, and the naive repair breaks P7 (RM43, surfaced in 0.5.3).**
+- `@rm43-snp-core-only` — **Resolution reaches the SNP core ONLY, and the naive repair breaks P7 (RM43, surfaced in 0.5.3).**
   `_build_table` is `model_dump()` → parquet, so a `pharm_variants.csv`/`haplotypes.csv`/
   `heteroplasmy.csv` row keeps the coordinates its author typed — none, for an rsid-authored module —
   and the table joins to no VCF. Before proposing "just join `resolution.csv` on `variant_key`":
@@ -459,7 +469,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   enriched" from "the answer exists and this tier does not apply it". Warning in both modes, because
   rsid-only identity is legal by the models' own rule and the remedy is a compiler change.
 
-- **An UNREACHABLE source is unchecked, never absent — and the artifact must not say otherwise (S20,
+- `@unreachable-not-absent` — **An UNREACHABLE source is unchecked, never absent — and the artifact must not say otherwise (S20,
   0.5.4).** `EnsemblResolver.resolve_rsid` returned `([], None)` both when Ensembl answered with no
   GRCh38 locus and when the request never completed, so a failed lookup rendered as a definite negative:
   `loci: []` plus "live Ensembl has no GRCh38 locus for it either". That pair is exactly the fingerprint
@@ -481,7 +491,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Checks: where they run, and what severity means
 
-- **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**
+- `@parity-by-check` — **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**
   `_check_allele_membership` stayed compile-only through the pass that fixed `_verify_vrs_ids` and
   `_check_p_value_num`, because that pass asked *which tables does validate read* and this check reads
   **authored** rows. It is a mode ladder, so `validate --strict` blessed modules `compile --strict`
@@ -491,7 +501,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   side must still re-run the check to reach the real severity, and its warnings need de-duplicating on
   the message (`_check_contig_ploidy` is the existing model).
 
-- **Know the validation ceiling before adding a check.** [COMPILER.md](COMPILER.md) opens with
+- `@validation-ceiling` — **Know the validation ceiling before adding a check.** [COMPILER.md](COMPILER.md) opens with
   *What the compiler can and cannot validate*: three strengthening classes it **can** do (formal
   conformance → validate-by-redundancy → content-addressed self-verification, which is the class VRS
   moved `vrs_id` into) and a table of **inescapable blind spots** that follow from what the tier is.
@@ -501,13 +511,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `status`, `authorship.kind`, the signatures). Adding a check that needs a reference means adding it
   to the **enricher**, not the compiler.
 
-- **Enrichment is partly validation, by design.** The enricher is the only tier that can compare
+- `@enrichment-is-validation` — **Enrichment is partly validation, by design.** The enricher is the only tier that can compare
   authored data against reality (format/compiler are inject-only). Every such check **reports, never
   repairs** — rewriting an authored value destroys the evidence of an upstream bug — and severity
   follows the mode (`best_effort` warns, `strict` refuses). Add new checks in that shape; see the table
   at the top of [ENRICHER.md](ENRICHER.md).
 
-- **`validate` must refuse everything `compile` refuses — it exempted four of the twelve tables.** Both
+- `@validate-refuses-all` — **`validate` must refuse everything `compile` refuses — it exempted four of the twelve tables.** Both
   loops in `validate_spec` iterate `_TABLE_KINDS`; `resolution.csv` and the four fact sidecars are
   `_FACT_TABLES`, which it never read, though `compile_module` refuses on a bad row in any of them.
   The authoring skill's step 6 puts `validate` immediately before `compile`, making it the author's
@@ -517,13 +527,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   over injected bytes and needs no `output_dir`, it belongs in `validate_spec` too. What stays
   compile-only is anything reading *resolved* rows.
 
-- **A warning computed post-resolution is discarded — the second `_cross_validate_variants` call takes
+- `@ploidy-behind-resolution` — **A warning computed post-resolution is discarded — the second `_cross_validate_variants` call takes
   errors only.** That is right for a warning about authored cells and wrong for any whose input
   resolution fills. It made the non-diploid guardrail invisible to every rsID-authored row, i.e. to
   everything a drafting provider emits. `_check_contig_ploidy` now runs where `chrom` is final and
   keeps a pass inside `validate_spec` (which has no resolution step), de-duplicated on the message.
 
-- **The converse of that bullet, and the one it was read as denying: a check whose input resolution does
+- `@no-rerun-with-counts` — **The converse of that bullet, and the one it was read as denying: a check whose input resolution does
   NOT fill must run on ONE side, and de-duplicating on the message cannot save it (0.6).** The rule that
   covers both is **re-run a check after resolution exactly when resolution changes its input, and never
   when the message embeds a count.** By the second pass `variants` is `outcome.variants` — the
@@ -541,11 +551,11 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   opposite answer from a different input. Ask what fills the input before choosing a side, and if the
   message carries a count, that alone settles it.
 
-- **The ClinVar `clin_sig` cross-check is the one check where `strict` does NOT escalate** — it warns in
+- `@clinsig-never-escalates` — **The ClinVar `clin_sig` cross-check is the one check where `strict` does NOT escalate** — it warns in
   both modes, deliberately, because failing would make the format arbitrate a clinical dispute. The
   reason is documented at the call site; don't "fix" the inconsistency.
 
-- **A check that cannot fail must not report a zero — `clinical.tautology_reason` (0.5.2).** A panel
+- `@tautology-zero` — **A check that cannot fail must not report a zero — `clinical.tautology_reason` (0.5.2).** A panel
   drafted by `draft_gene_panel` copied its `clin_sig` out of the snapshot the cross-check reads, so the
   comparison is a value against itself: 0 conflicts, necessarily, at 90% of the resolve time. The zero
   is the defect, not the cost — it looks like evidence. The skip keys on an **established** match, and
@@ -554,12 +564,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   both "compared everything" and "never compared". Generalize it: **when a check's inputs can share a
   source, ask whether a pass is structurally guaranteed before reporting one.**
 
-- **Before adding a table-level check, ask whether its rules are jointly satisfiable.** Inclusive
+- `@jointly-satisfiable` — **Before adding a table-level check, ask whether its rules are jointly satisfiable.** Inclusive
   bounds + overlap-is-an-error + any-hole-is-a-warning cannot all hold on a continuous measure, so
   every `allele_fraction` table warned forever (RM35, now fixed). Integer kinds tile cleanly, which is
   why nobody noticed.
 
-- **A genotype that is all digits is a pasted VCF `GT`, and the diagnosis runs before the arity check
+- `@gt-indices` — **A genotype that is all digits is a pasted VCF `GT`, and the diagnosis runs before the arity check
   (RM77).** `0/1` used to hit the nucleotide-grammar wall, which never says those are **indices** into
   the record's REF/ALT list — the single likeliest mistake in that column. `0/1/1` was worse *because
   of* 0.6: the ploidy fix gave it a confident, correct explanation of the two-allele ceiling, which is
@@ -569,7 +579,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   turn of one screw and the standing warning that *a correction is where this happens, because the
   reviewer checks the claim being removed, not the one going in.*
 
-- **Two true halves can make a false row — check the RELATIONSHIP, not the members (S24, 0.5.4).**
+- `@gene-locus-relationship` — **Two true halves can make a false row — check the RELATIONSHIP, not the members (S24, 0.5.4).**
   `variants.csv` carries a `gene` column and nothing compared it to anything: `identifiers` asked HGNC
   whether a symbol was *approved*, which is a different question (`FTO` is approved whatever variant
   sits beside it), so a row pairing a real gene with a variant on another chromosome passed every check.
@@ -591,7 +601,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `clin_sig_not_checked`, because an empty conflict list otherwise says both "compared everything" and
   "never compared".
 
-- **Unknown files in a spec directory are tolerated — and probing that contract found the case where
+- `@misspelled-tables` — **Unknown files in a spec directory are tolerated — and probing that contract found the case where
   tolerance is wrong (S16, 0.5.4).** A module may carry a README (every reference example does), curation
   notes, or a registry's `published.json` receipt, whose keys cannot go in `module_spec.yaml` because
   `extra="forbid"` rightly rejects them; none is read, hashed, or in `artifact.files`, so none can move
@@ -601,7 +611,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the name set from the table registries. Keyed on **near miss** rather than "any unknown csv" on purpose
   — warning about every unrecognised file would undo the tolerance it sits beside.
 
-- **A warning's TEXT became an API, because the manifest carries prose and no field (RM44).**
+- `@warning-text-is-api` — **A warning's TEXT became an API, because the manifest carries prose and no field (RM44).**
   `compile_module` copies its warnings into `manifest.compilation.warnings` → `manifest.json`, and a
   catalog reindexing from a published manifest has nothing else: `fully_resolved` is `all()` over
   `variants.csv`, so it is **vacuously `true`** for a table-only module and the documented trust rule
@@ -627,7 +637,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   *display* facets), but **before adding a computed field, check whether another block already carries
   the number, and if it does, say in the code why the new home is the right one.**
 
-- **The compiler DISCARDS a literature row no study and no bin cites; `literature.csv` keeps it
+- `@uncited-literature-dropped` — **The compiler DISCARDS a literature row no study and no bin cites; `literature.csv` keeps it
   (RM79).** Two honest counters disagreed —`manifest.literature.missing_count` over the whole table,
   the `citation_existence` record over current citations — and merge-not-clobber makes that gap normal.
   The filed question (*which subject should the block describe?*) was the wrong one: both already
@@ -641,11 +651,11 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## PAR loci and contig ploidy
 
-- **`chrom=Y` is NOT "never diploid" — PAR1 and PAR2 are diploid in every karyotype.**
+- `@y-not-haploid` — **`chrom=Y` is NOT "never diploid" — PAR1 and PAR2 are diploid in every karyotype.**
   `vrs.in_pseudoautosomal_region` is three-valued and `vrs.PAR_GRCh38` holds the intervals; they are
   assembly constants of the same class as `REFGET_GRCh38`, not an un-injected reference.
 
-- **A PAR locus is ONE place on two contigs, and the enricher records the X spelling (RM32, shipped).**
+- `@par-one-place` — **A PAR locus is ONE place on two contigs, and the enricher records the X spelling (RM32, shipped).**
   `vrs.par_partner` maps a PAR locus to its twin by **index-matched offset** — PAR1 at 0, PAR2 at
   98,813,480 — so never compare "the same base on X and Y": that passes PAR1 and silently fails PAR2,
   where `rs184115031` is X:155773979 **and** Y:56960499. `enrich.select_par_representative` keeps X and
@@ -668,7 +678,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     citation, and `_check_contig_ploidy` only branches on `{MT, Y}` so selecting X makes it quiet rather
     than wrong. It stays, for hand-authored and `--keep-par-twin` modules.
 
-- **gnomAD does not cover the Y PAR, and an absence there is not a fact.** `frequencies.csv` wrote
+- `@gnomad-no-y-par` — **gnomAD does not cover the Y PAR, and an absence there is not a fact.** `frequencies.csv` wrote
   `status="not_found"` for it — an absence nobody established. `gnomad.covers_locus` (the source
   convention, so enricher-only; the PAR *geometry* stays in `vrs`) gates it, such a locus is not queried
   at all, and the outcome is **`not_covered`** — a third `VALID_FREQUENCY_STATUS` member, distinct from
@@ -678,7 +688,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Binning bounds, citations and literature
 
-- **A bin boundary is the most interpretive claim the format carries and it has nowhere to cite —
+- `@bin-grounding` — **A bin boundary is the most interpretive claim the format carries and it has nowhere to cite —
   a SCHEMA limit, not a tier limit (S19/RM47, 0.5.4).** `studies.csv` names a variant (`rsid`, or
   `chrom`+`start`) and a `repeat_alleles.csv` row is keyed `(gene, repeat_unit)`, so nothing can point at
   it: `reference_examples/htt_repeat_expansion` compiles green under `--strict` asserting where
@@ -697,7 +707,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   reason is that for a gene-keyed table the requirement would be **unsatisfiable** rather than merely
   unmet.
 
-- **RM47 SHIPPED in 0.6 — the bin row cites, the citation table describes.** That sentence is the whole
+- `@rm47-bin-cites` — **RM47 SHIPPED in 0.6 — the bin row cites, the citation table describes.** That sentence is the whole
   design and it is what stops `StudyRow`'s column set (population, `p_value_num`, `effect_size`,
   `provenance_quote`) migrating onto binning rows one column at a time. Two additive halves:
   `MeasureBinRow.pmid`, one optional column on the base reaching all four kinds; and `StudyRow`'s
@@ -736,7 +746,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   - **`reference_examples/htt_repeat_expansion` stays uncited.** The example exists to show what the
     warning looks like, and grounding it would move its signatures for nothing.
 
-- **A shared bin endpoint is a BOUNDARY on a dense measure, and the higher bin owns it** — the lookup
+- `@dense-bin-boundary` — **A shared bin endpoint is a BOUNDARY on a dense measure, and the higher bin owns it** — the lookup
   rule is *the row with the greatest `measure_min ≤ x`* (`binning._DENSE_KINDS`: `allele_fraction`,
   `prs_percentile`). So the overlap test is `lo < prev_hi` there and stays `lo <= prev_hi` on
   `repeat_count`/`copy_number`, where two integer bins sharing an endpoint really do both claim it.
@@ -748,7 +758,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **lower** bound refuse on any kind — the tie-break has nothing to order — which is reachable only as
   a sharp `[0.1, 0.1]` beside a range starting there.
 
-- **Existence vs retrievability for citations.** A paywall hides the *fulltext*, never the PubMed
+- `@citation-existence` — **Existence vs retrievability for citations.** A paywall hides the *fulltext*, never the PubMed
   record — `exists` is answered for paywalled work. The real gaps, both now covered: citations PubMed
   does not index at all (preprints/books/datasets → **Crossref**, checking the *authored* DOI, since
   the derived one exists by construction) and quote-checking for paywalled papers (→ the **abstract**,
@@ -756,7 +766,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   search reached because a hit and a miss are not symmetric — an abstract miss is not a verdict.
   Google Scholar is rejected, not deferred: no API, and automated querying violates its terms.
 
-- **Existence is not identity — a lookup that answers "does this exist" must say *what* it found (S12,
+- `@existence-not-identity` — **Existence is not identity — a lookup that answers "does this exist" must say *what* it found (S12,
   0.5.4).** PMIDs are densely allocated, so a recalled or invented 8-digit number is usually a real record
   for a different paper, and `pmid_exists=True` could never catch a fabricated citation; the surrounding
   docs treated existence as the guard, and a consumer's skill had to retract a rule its surface could not
@@ -766,7 +776,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `LiteratureRow`: that table records what was *checked*, not bibliography. Generalize it: when a check
   answers a yes/no about an identifier, ask whether "yes" could be true of the wrong thing.
 
-- **A quote is an ATTESTATION, which is a sharper refusal than a spent comparison (S11, 0.5.4).**
+- `@quote-attestation` — **A quote is an ATTESTATION, which is a sharper refusal than a spent comparison (S11, 0.5.4).**
   `provenance_quote`/`provenance_regex` were missing from `hints.REDUNDANCY_BEARING` although
   `literature._study_quote_found` compares both against the fulltext — exactly the drift that map's
   docstring predicts. Both are registered now, **plus** a fifth `REFUSAL_REASONS` member,
@@ -776,7 +786,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   reach a refusal. And the consequence, now in ENRICHER.md: once a machine has retrieved the text,
   `quotes_found` shows the quote **pairs with the PMID**, not that a human read the paper.
 
-- **PubMed and PubMed Central ids are one letter apart, and the outcome turned on a space (RM50,
+- `@pmid-vs-pmcid` — **PubMed and PubMed Central ids are one letter apart, and the outcome turned on a space (RM50,
   0.6).** `PMID_PATTERN` is `\b(\d{1,8})\b`, so `PMC3110566` → `[]` (no word boundary between `C` and a
   digit) but **`PMC 3110566` → `['3110566']`** — a real PMID for an unrelated article, since PMIDs are
   densely allocated (the S12 class). One spelling was refused with a message that never said "PMCID";
@@ -803,12 +813,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     become legal in 0.6 whatever column is added — the authoring half is 1.0. An optional authored
     `pmcid` is full cost for content the enricher fills free and still does not help that row.
 
-- **A thread-based regex timeout is a trap.** `re` cannot be interrupted, threads cannot be killed, and
+- `@regex-timeout-process` — **A thread-based regex timeout is a trap.** `re` cannot be interrupted, threads cannot be killed, and
   the interpreter joins `ThreadPoolExecutor` threads at exit — so the obvious implementation returns
   `None` on schedule and then hangs the process on the way out. `literature.regex_matches` uses a
   killable child process. Don't "simplify" it back to a thread.
 
-- **The enricher's `literature.csv` writer is derived from the model.** `_FIELDNAMES` was a hand-kept
+- `@literature-writer-derived` — **The enricher's `literature.csv` writer is derived from the model.** `_FIELDNAMES` was a hand-kept
   literal and `_write_literature_csv` a per-column dict — the `SOURCES_FIELDNAMES` shape, which lost
   `redistribution` from every `sources.csv` ever written. `LiteratureRow` has no compiler-stamped
   fields, so `list(LiteratureRow.model_fields)` is exactly right, and the renderer is generic.
@@ -817,7 +827,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Licensing, sources and the compile gate
 
-- **A machine-written sidecar has two legal names and two legal places — never join one onto a spec
+- `@sidecar-name-and-place` — **A machine-written sidecar has two legal names and two legal places — never join one onto a spec
   directory by hand (RM51 + RM49, 0.6).** `just_dna_format.layout` is the single resolver, in the schema
   tier because *four* parties must agree: compiler reads, enricher writes, publisher uploads, registry
   re-splits. The licence table is `licensing.csv` (the old `sources.csv` is deprecated, warn-only,
@@ -862,7 +872,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `merge_sources_file` take the **spec directory** now. A count of call sites is exactly the thing that
   goes stale; routing them through one function is the durable form.
 
-- **Licensing lives as DATA in the licence table, never as a table in the compiler.** A source→licence map
+- `@licensing-as-data` — **Licensing lives as DATA in the licence table, never as a table in the compiler.** A source→licence map
   in `just_dna_compiler` would give it a source convention (Principle 2, tightened in 0.5) and an
   un-injected reference — and it goes stale (both halves of one did inside 0.5). The enricher reads the
   terms from the bytes it downloaded and pins them with `license_sha256`. Three rules the tests pin,
@@ -871,7 +881,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   (a permissive source can't launder a restricted one); and **`None` ≠ `False`** on
   `share_alike`/`commercial_use` (unknown terms are undetermined, never permitted).
 
-- **A pass that consults a source must WRITE its `SourceRow` — use `licensing.record_source_terms`.**
+- `@write-the-sourcerow` — **A pass that consults a source must WRITE its `SourceRow` — use `licensing.record_source_terms`.**
   Building the row is half the job; the compile gate and `manifest.sources` read `sources.csv` and
   nothing else, so a row that is only returned is a source the module cannot account for. `clingen.py`
   returned one and never wrote it — permissive terms (CC0) made it look harmless, but CC0 still asks
@@ -882,7 +892,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   Corollary: **a fact-layer row cannot taint a module**, so what it carries is *attribution*, which is
   as much the table's purpose as the prohibitions are.
 
-- **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
+- `@fieldnames-from-model` — **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
   was a literal and omitted `redistribution`, so every `sources.csv` ever written recorded *unknown* for
   an axis the terms constants state as `True`, and `merge_sources_file` dropped it again on each merge —
   RM27 is a gate designed to read a column that had reached no file. `SourceRow` has no
@@ -890,7 +900,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   *does* have stamped fields, that is what `base.authored_field_names` and the `COMPILER_MANAGED` marker
   are for — the rule is the same one, never hand-keep a list of a model's columns.
 
-- **`source` names the licensed source in every fact table; only `resolution.csv` also records the
+- `@source-vs-authority` — **`source` names the licensed source in every fact table; only `resolution.csv` also records the
   link.** `resolution.csv`'s `source` is *which link answered* (`ensembl-rest`, `cache`, `clinvar`) and
   `authority` is what `sources.csv` joins on (`ensembl`, `clinvar`, `gnomad`), empty for
   `authored`/`reversed`/`manual` because the module's own bytes are not a licensed source. The
@@ -900,7 +910,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   it records `gnomad`, and the route stays in `dataset`, which is inside the fact set where `source` is
   not. This was RM33.
 
-- **A layer with no `source` column to join is exempt from the orphan check, structurally — and that is
+- `@orphan-check-exempt` — **A layer with no `source` column to join is exempt from the orphan check, structurally — and that is
   now TWO layers, not one (S23, 0.5.4).** "No table used it" is decided by reading fact tables' `source`
   columns, and `annotation` *is* `variants.csv`/`diplotypes.csv`, which carry none — so the check
   reported the one row the licence gate keys on as probably stale, on every drafted module. `literature`
@@ -915,7 +925,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `frequency` still warns, because `frequencies.csv` *is* machine-written with a `source` column, so a
   frequency declaration in a module with no frequencies really is stale. Don't "restore" either half.
 
-- **The compile gate is data-driven; a `--non-commercial` CLI flag would be charter-illegal.** It
+- `@gate-is-data-driven` — **The compile gate is data-driven; a `--non-commercial` CLI flag would be charter-illegal.** It
   refuses when an annotation-layer source forbids sale and the module records no declaration, reading
   only injected `sources.csv`. A *flag* cannot be recorded in the artifact — `reverse_module` rebuilds
   `module_spec.yaml` from parquet alone — so `compile → reverse → compile` would refuse on the third
@@ -923,17 +933,17 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   parsed there rather than with the other fact tables (they load after mkdir). It refuses in **both**
   modes; `strict` means "reproducible artifact", an unrelated axis (P5).
 
-- **`declared_use` (`--use`) is a THIRD axis, not a mode.** `mode` says how hard to fail on a finding;
+- `@declared-use-third-axis` — **`declared_use` (`--use`) is a THIRD axis, not a mode.** `mode` says how hard to fail on a finding;
   `declared_use` says who is using the data. Three states, so not a bool pair — defaulting either way
   would make the tool assert a purpose for the user. A forbidding source is *skipped* on `unstated`
   and *refused* on `commercial`, at acquisition (nothing is fetched), in both modes.
 
-- **`redistribution` is a third licensing axis, recorded but NOT gated.** CC BY-NC forbids sale and
+- `@redistribution-ungated` — **`redistribution` is a third licensing axis, recorded but NOT gated.** CC BY-NC forbids sale and
   allows sharing; academic-use-only (OMIM, dbNSFP) forbids both. The compile gate deliberately keys
   only on `commercial_use` — a distribution right is not a *use*, so `declared_use` is the wrong axis
   to resolve it against (RM27). Don't "finish" the gate without doing that design.
 
-- **A literature source's terms are PER ARTICLE, and that is why there is no `pubmed` row (RM46,
+- `@per-article-terms` — **A literature source's terms are PER ARTICLE, and that is why there is no `pubmed` row (RM46,
   0.6).** `enrich_literature` writes `source="pubmed"` into every row, `TERMS_BY_SOURCE` has no entry
   for it, and `_source_checks` therefore named `pubmed` as undeclared on every literature-enriched
   module — the tier introducing a source, declining to record it, and landing the finding on the
@@ -964,7 +974,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     `literature`-layer `sources.csv` row any more, so that layer is **unconditionally** exempt from the
     orphan check (S23's conditional could no longer distinguish anything). `frequency` still warns.
 
-- **PharmGKB is now ClinPGx, and every PGx upstream is research-only.** `api.pharmgkb.org` was
+- `@pgx-research-only` — **PharmGKB is now ClinPGx, and every PGx upstream is research-only.** `api.pharmgkb.org` was
   **retired 2026-07-20** and no longer resolves; the successor is `api.clinpgx.org` with paths and
   formats unchanged. ClinPGx is the umbrella that merged PharmGKB + CPIC + PharmCAT, so **CPIC is not
   an unrestricted alternative** — `cpicpgx.org/license/` 302-redirects to the ClinPGx data usage
@@ -976,7 +986,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   makes the key personal — never bake one into a module, fixture, or snapshot. API schema:
   `docs/pharmvar_api_docs.json`.
 
-- **Every gated source now has a cache, and PharmVar's is deliberately unpublishable (RM38, shipped in
+- `@gated-source-caches` — **Every gated source now has a cache, and PharmVar's is deliberately unpublishable (RM38, shipped in
   enricher 0.5.1).** The three PGx sources were the only `commercial_use=False` entries *and* the only
   ones with no cache — the same set, because every ungated link was already snapshot-first. A hosted
   surface therefore had two options, fetch live per request on the operator's own credentials or skip
@@ -1011,7 +1021,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## PGx sources: ClinPGx, CPIC, PharmVar
 
-- **PharmGKB clinical annotations are per-genotype — `(variant_key, drug)` is not a key.** 4,618 of
+- `@clinpgx-per-genotype` — **PharmGKB clinical annotations are per-genotype — `(variant_key, drug)` is not a key.** 4,618 of
   5,113 carry exactly three genotype rows, sometimes opposed (rs4149056/simvastatin: CC/CT
   "decreased", TT "increased"), so `PharmVariantRow.genotype` is in the dedup key. Its grammar lives
   on `AuthoredModel` — shared with `VariantRow`, so don't re-declare it. Route haplotype-keyed
@@ -1019,7 +1029,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   than widening the nucleotide grammar. PharmGKB writes `CC`; canonical form is `C/C`, since `CC`
   would otherwise parse as a single two-base allele — disambiguate using the *resolved* ref/alt.
 
-- **`(variant_key, drug, genotype)` is STILL not a PharmGKB key** — one variant+drug carries several
+- `@clinpgx-full-key` — **`(variant_key, drug, genotype)` is STILL not a PharmGKB key** — one variant+drug carries several
   distinct annotations (rs4149056+simvastatin is Metabolism/PK 1A, Efficacy 3 AND Toxicity 1A). 1,199
   of 17,380 triples collide; 839 separate by `phenotype_category`, 283 only by `annotation_id`. The key
   is `(variant_key, drug, genotype, phenotype_category, annotation_id)`. **Any code that indexes
@@ -1027,14 +1037,14 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   levels as stale. Look it up by `annotation_id`, then category, and report ambiguity rather than
   comparing against an arbitrary candidate.
 
-- **A negative finding about a source is only as wide as the table you looked at — say which.** The
+- `@probe-names-the-table` — **A negative finding about a source is only as wide as the table you looked at — say which.** The
   comment "CPIC publishes no chromosome" was true of `sequence_location` and false of CPIC: `gene.chr`
   has it, and the drafting provider had been skipping 36 real defining variants (18 CYP2C9, 14 TPMT, 4
   NUDT15) for a year on the strength of a probe that named no table. Joining `gene.chr` on the symbol the
   location row already carries is a **lookup in the source's own tables**, not the inference the original
   comment rightly refused — that distinction is the whole difference between the two.
 
-- **A source that publishes both assemblies will list the wrong one first.** PharmVar emits each defining
+- `@assembly-first-wins` — **A source that publishes both assemblies will list the wrong one first.** PharmVar emits each defining
   variant once per reference sequence — transcript, GRCh37, GRCh38 — with **GRCh37 first**, and
   `_merge_variants` was first-wins, so 451 of 739 rsID-keyed variants carried a GRCh37 coordinate. The
   accession *version* cannot separate them (chr10 is `.10`/`.11`, and so is chr22); `referenceCollections`
@@ -1044,13 +1054,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   time something persists it. `pharmvar.PHARMVAR_GENOME_BUILD` is the named constant (fourth build
   confusion here; `gnomad.FREQUENCY_GENOME_BUILD` is the precedent).
 
-- **A credential must be loaded where it is read.** `PharmVarClient` read `os.environ` and `.env` only
+- `@credential-where-read` — **A credential must be loaded where it is read.** `PharmVarClient` read `os.environ` and `.env` only
   ever reached it as a side effect of some *other* call resolving a cache path — which worked for
   `enrich_pgx` by accident and not at all for `pharmvar build`, which resolves nothing and reported "no
   PharmVar API key" on a machine that had one. `load_env()` now runs in `__init__`, `override=False`, so
   a real environment variable and a test's neutralizing `""` both still win.
 
-- **Which columns may become several rows is decided by the DEDUP KEY, not by the source's dialect
+- `@dedup-key-decides-rows` — **Which columns may become several rows is decided by the DEDUP KEY, not by the source's dialect
   (R2-1).** ClinPGx `;`-joins both `drugs` and `gene`. `drug` is *in* `PharmVariantRow`'s dedup key, so
   one record legitimately becomes one row per drug; `gene` is **outside** it, so the same move makes
   copies that collide on `(variant_key, drug, genotype, phenotype_category, annotation_id)` and the
@@ -1060,7 +1070,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   check filter ordering while you are there: `skipped_unidentified` was counted *before* the `--gene`
   filter, so a "records the source could not identify" count was inflated by the whole database.
 
-- **A large star-allele gene is drafted with `draft --allele`, and the filter covers all three tables.**
+- `@draft-allele-filter` — **A large star-allele gene is drafted with `draft --allele`, and the filter covers all three tables.**
   Unfiltered CYP2D6 is 16,290 diplotype rows (73% `Indeterminate`); the author's real bound is the allele
   set their caller emits, and *n* alleles is *n(n+1)/2* pairs. Filtering `diplotypes.csv` alone would
   leave a module naming alleles `haplotypes.csv` never defines — the thing
@@ -1071,7 +1081,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   rows the filter actually judged: tallying the copy-number rows it deliberately passes through read
   "567 of 16836" for a six-allele set.
 
-- **An incidental call must not be able to discard finished work (R2-4).** `cpic.knows_drug` is asked
+- `@incidental-call-isolated` — **An incidental call must not be able to discard finished work (R2-4).** `cpic.knows_drug` is asked
   only to sharpen the sentence explaining an empty result, and by then every substantive query has
   returned — so its failure is caught and rendered as the tri-state's *could not ask*, with its **own**
   wording: "the snapshot cannot answer" is fixed by going live and "the request failed" by re-running,
@@ -1079,7 +1089,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `bool | None` had been *designed and never delivered from the live client*, which is exactly why the
   raise escaped: the handling existed and nothing could reach it.
 
-- **A client that leaks its transport library's exception type has no contract (R2-13).**
+- `@client-exception-contract` — **A client that leaks its transport library's exception type has no contract (R2-13).**
   `CpicClient._get` called `raise_for_status()` and wrapped only *shape* failures, so an exhausted
   retry ladder left a raw `httpx.HTTPStatusError` that walked through both of `enrich_pgx`'s per-leg
   handlers — written under *"One source failing must not sink the pass"* — and took the other source's
@@ -1092,7 +1102,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Drafting and the authoring surfaces
 
-- **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
+- `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
   appends rows into an authored CSV at **row** granularity (a file-level "refuse if it exists" rule
   self-defuses after the first gene and makes a multi-gene module unbuildable). A row whose key exists
   is reported (`already_present` / `differs`), never rewritten; drift on existing rows is
@@ -1101,7 +1111,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   load-bearing for the digest. This is *not* the parked enricher-co-authoring item: appending leaves
   `content_signature` a function of the authored bytes; editing a cell a human wrote would not.
 
-- **A partial row is validated by OMISSION, and matches on `match_on`, not the natural key.**
+- `@partial-row-omission` — **A partial row is validated by OMISSION, and matches on `match_on`, not the natural key.**
   `draft.PartialRow` exists because ClinVar publishes **alleles, not genotypes**, and
   `VariantRow.genotype` is required: zygosity is inheritance-mode interpretation the source does not
   state, so `clinvar_draft` writes what is published and leaves `genotype` as `TEMPLATE_PLACEHOLDER`.
@@ -1111,7 +1121,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   decide sameness; `match_on` (the identity columns) does, which is what makes a re-draft after the
   human fills the genotype report `already_present` instead of appending the stub a second time.
 
-- **A placeholder protects a DECISION; where the contig leaves none, filling it is not pre-empting
+- `@placeholder-protects-decision` — **A placeholder protects a DECISION; where the contig leaves none, filling it is not pre-empting
   anything (S6, 0.5.2).** `draft_gene_panel` stubs `genotype` because zygosity follows from the
   inheritance mode and the source does not state it — true on a diploid contig, vacuous on MT (haploid)
   and chrY outside PAR1/PAR2 (hemizygous), where exactly one genotype is expressible.
@@ -1125,12 +1135,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   through the compiler exactly as MT does — so nothing in the ploidy check moved; check a claim about a
   guard before adjusting the guard.
 
-- **A drafting provider fills identity WHOLE or not at all.** rsID, else the complete
+- `@identity-whole-or-none` — **A drafting provider fills identity WHOLE or not at all.** rsID, else the complete
   `chrom`/`start`/`ref`/`alts` — never a subset. A lone `alts` on a position-only row makes
   `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref`, so a partial
   coordinate silently changes *which variant the row is*.
 
-- **`SourceRow` carries the placeholder guard, and the "a generated stub cannot compile" guarantee is
+- `@sourcerow-placeholder-guard` — **`SourceRow` carries the placeholder guard, and the "a generated stub cannot compile" guarantee is
   now tested over every `DRAFTABLE` kind (RM76).** It is a plain `BaseModel` — a machine-produced
   reference fact, like the other four sidecars — *and* the one a human starts from a template (S21),
   and nobody had reconciled the two: `source=<<REPLACE>>` compiled green under `--strict` and reached
@@ -1141,20 +1151,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the unfixed code, asserting only that some error mentioned the token. And a printed guarantee that
   holds "wherever a model inherits the right base" is not a guarantee; parametrize over the registry.
 
-- **A generated stub must be unable to compile — `vocab.TEMPLATE_PLACEHOLDER`, guarded before
+- `@stub-cannot-compile` — **A generated stub must be unable to compile — `vocab.TEMPLATE_PLACEHOLDER`, guarded before
   coercion.** The guard is `mode="before"` on purpose: an unreplaced stub in `start: int` then reads
   as "unreplaced template placeholder in column start", not "Input should be a valid integer". Do
   **not** reuse `MeasureBinRow.unresolved` for this — that sentinel means "no measurement at read
   time" and is designed to *compile*; two opposite lifecycles on one field is the overloaded-axis
   anti-pattern (P5).
 
-- **Scaffolding refuses per FILE; drafting refuses per ROW — and the difference is derivable.** A
+- `@file-vs-row-refusal` — **Scaffolding refuses per FILE; drafting refuses per ROW — and the difference is derivable.** A
   file-level rule self-defuses for `draft` (you re-run it per gene), but you scaffold a module once,
   and a stub row has no natural key to merge on because its key columns *are* the placeholder.
   Refusal is per file, not per run, or a module could never gain a second table kind. Both use the
   same definition of absent — a zero-byte file counts as missing.
 
-- **Requiredness has THREE shapes, and the middle one is invisible to pydantic.** `is_required()` is
+- `@requiredness-three-shapes` — **Requiredness has THREE shapes, and the middle one is invisible to pydantic.** `is_required()` is
   false for `MeasureBinRow.measure_kind` and `unresolved` — they have defaults — but they are not
   `Optional`, and `load_csv_rows` turns an empty cell into `None` **and keeps the key**, so the model
   gets `None` instead of its default and fails on type. `blank_template` + `required_fields` therefore
@@ -1163,7 +1173,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   — which also reports `REQUIRED_ANY_OF`, the "rsid **or** chrom+start" rule that is a model validator
   and which no per-field flag can express.
 
-- **`sources.csv` is draftable, and the exception is the rule's own point (S21, 0.5.4).**
+- `@sources-csv-draftable` — **`sources.csv` is draftable, and the exception is the rule's own point (S21, 0.5.4).**
   `draft.blank_template("sources.csv")` used to answer *"is not an authored table of this format"* — a
   false claim, made by the surface an author reaches for *instead of* reading the models. It is in
   `DRAFTABLE` now with `(source, layer)` as its natural key, borrowed from
@@ -1172,7 +1182,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   legitimately appears at two layers. The other three fact sidecars stay out — they are produced by an
   enricher pass, so an author never starts one by hand.
 
-- **A guard that iterates a model registry is only as complete as the registry — and one omission hid
+- `@registry-completeness` — **A guard that iterates a model registry is only as complete as the registry — and one omission hid
   another (S21, 0.5.4).** `SourceRow.layer` and `.declared_use` ran closed-vocabulary validators while
   carrying no `vocabulary=` marker, so `authoring_reference()` did not describe `sources.csv` at all —
   and the guard that exists for exactly that
@@ -1187,7 +1197,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   rather than false — not a guessable shape. The reporter got it right only by reading
   `SourceRow.model_fields`, i.e. reading our source to learn our schema.
 
-- **A vocabulary binding lives on the FIELD, and it carries the members — `base.vocabulary`.** The
+- `@vocabulary-on-field` — **A vocabulary binding lives on the FIELD, and it carries the members — `base.vocabulary`.** The
   authoring reference's vocabulary block used to be a hand-kept dict and drifted twice: it never
   learned about `recommendation_strength`/`phenotype_category` (0.5), and it filed `actionability`
   under `open_recommended` while `VariantRow` *rejects* a non-member — a drift in **closedness**, not
@@ -1199,7 +1209,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   field nothing enforces: `StudyRow.chrom` and the PGx `chrom`s run no chrom validator, so they carry
   no marker, and the guard test catches it in both directions.
 
-- **A closed vocabulary accepts `-` where `_` goes, and canonicalizes — `vocab.match_vocab` (0.6).**
+- `@vocab-separator-slip` — **A closed vocabulary accepts `-` where `_` goes, and canonicalizes — `vocab.match_vocab` (0.6).**
   The enricher CLI normalized `--use non-commercial` on its way in while `SourceRow` refused the
   identical string in a cell, so the surface an author learns the vocabulary from taught a spelling the
   file rejected. A separator slip is *the* slip a hand-written CSV makes, and the human-authorable gate
@@ -1212,7 +1222,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `test_validate_agrees_with_compile` had been using `non-commercial` as its example of an *invalid*
   value.
 
-- **`model_fields` is NOT the authored surface — generators must use `base.authored_field_names`.**
+- `@authored-field-names` — **`model_fields` is NOT the authored surface — generators must use `base.authored_field_names`.**
   `VariantRow.variant_key` and `authored_ident` are declared fields (carried in memory, materialized
   to `weights.parquet`) that the compiler *stamps* and `reverse_module` deliberately never writes
   back. Anything that turns a model into CSV columns for a human — `draft.blank_template`,
@@ -1226,7 +1236,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   binning table, and no model but `VariantRow` has a stamped field. **When adding a drafting provider
   or any new model-driven generator, test it against `variants.csv` specifically.**
 
-- **A generic rejection is a dead end where a specific one is a fix, and the reason lives beside the
+- `@specific-rejection` — **A generic rejection is a dead end where a specific one is a fix, and the reason lives beside the
   constant (0.5.4).** `extra="forbid"` refuses every unknown column identically, so three different
   mistakes read the same. There are now three guards layered on it, all the same shape — a
   `mode="before"` validator that raises a *diagnosis* and changes no verdict: `vocab.reject_reserved` (a
@@ -1242,7 +1252,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   markers avoid) and a hand-kept model list is the drift being unwound; a sentence about a stable table
   role does not rot the way a column list does.
 
-- **A hint may not fill a cell a Class-2 check cross-examines — `hints.REDUNDANCY_BEARING`.** Class 2
+- `@hint-redundancy-bearing` — **A hint may not fill a cell a Class-2 check cross-examines — `hints.REDUNDANCY_BEARING`.** Class 2
   works because two *independently-authored* things must agree. Fill `chrom`/`start` from Ensembl and
   `resolution._verify` compares Ensembl with Ensembl; worse, for an rsid-only row that check never
   runs at all, so the row moves from honestly unverified to apparently verified and the compile
@@ -1253,7 +1263,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   already performs silently on load (`DiplotypeRow` swaps its haplotype pair). A `--apply` flag on a
   lookup would ship the parked enricher-co-authoring item without deciding to.
 
-- **"It moves the digest" is NOT a reason to refuse a row move — that argument was checked and it
+- `@row-move-allowed` — **"It moves the digest" is NOT a reason to refuse a row move — that argument was checked and it
   failed.** Probed: a pure reorder moves `artifact.digest` but leaves `content_signature` untouched
   (order-independent by construction), the compile → reverse → compile fixed point still holds,
   duplicate keys are rejected so order can disambiguate nothing, and **nothing reads the append-only
@@ -1266,7 +1276,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `place_rows`: **the tool picks where, the caller never supplies an index.** Shifted rows keep their
   cells byte-for-byte — `_render_existing` re-reads them as text — and `DraftReport.shifted` names them.
 
-- **A ragged CSV row misdiagnoses the column *after* the mistake, and both coordinates were wrong
+- `@ragged-csv-row` — **A ragged CSV row misdiagnoses the column *after* the mistake, and both coordinates were wrong
   (S18, 0.5.4).** `hints.inspect_rows` padded a short row with `""` (indistinguishable from cells left
   empty) and, for a long one, shifted every column from the offender onward and dropped the overflow — so
   an unquoted comma in `conclusion` produced `Input should be a valid boolean` against `unresolved`, whose
@@ -1279,7 +1289,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   compiler's own loader had the ragged case right all along (`more values than header columns`, with a
   line number), which is what made the hints surface the odd one out.
 
-- **A drafted value that has not moved is a copy that can be ESTABLISHED, and the digest is scoped to
+- `@draft-digest` — **A drafted value that has not moved is a copy that can be ESTABLISHED, and the digest is scoped to
   the CHECKED COLUMN (RM73 provenance half, 0.6).** RM4's skip was a module-level guess keyed on the
   release label, and it named its own hole: a cell edited after the draft is no longer a copy and no
   module-level fact can see it. Each provider now hashes the table it wrote, projected onto the column
@@ -1318,7 +1328,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     a row hand-authored **before** a later re-draft is covered by the new stamp and escapes.
   **The phase boundary shipped too** — see the next bullet.
 
-- **Authoring now has an END, and it cost one optional block on a document that already existed
+- `@closure-phase-boundary` — **Authoring now has an END, and it cost one optional block on a document that already existed
   (RM73's phase boundary, 0.6).** RM45 had built almost all of it for another purpose: `verification.json`
   binds `module_hash` over the authored files, the compiler recomputes it every compile, and a mismatch
   drops the whole block. What was missing was a record saying *a human declared this final* rather than
@@ -1375,7 +1385,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   Measured, not argued: all sixteen reference examples compile byte-identically on `artifact.digest`
   and `content_signature` before and after being closed.
 
-- **The marker for that skip is MACHINE-written, and `panel:` is deprecated with it (RM4, 0.6).** The
+- `@rm4-dataset-marker` — **The marker for that skip is MACHINE-written, and `panel:` is deprecated with it (RM4, 0.6).** The
   skip used to key on the author's `panel:` pin. The claim being established is *provenance* — these
   rows came from this snapshot — and the tool that copied them is the authority on it, so
   `clinvar_draft` stamps the release into the `dataset` column of the `clinvar`/**`annotation`** licence
@@ -1418,7 +1428,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Schema evolution: columns, signatures, materialization
 
-- **A new OPTIONAL column is minor-legal, and the "digest window" that said otherwise rested on a
+- `@optional-column-legal` — **A new OPTIONAL column is minor-legal, and the "digest window" that said otherwise rested on a
   premise that expired in 0.4.1.** The charter now states the rule (P3/P4): a new optional column or
   table is additive; **removal, promotion to required, and retyping** are the major-only moves,
   because those are what break a reader or invalidate published data. Two mechanics behind it, both
@@ -1441,21 +1451,21 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   this does **not** license: a required column, a retype, a removal, or filling values into an existing
   column (that one is `reverse`'s problem — see RM43).
 
-- **Adding an authored column is exactly three touch points, and the third is the one that gets
+- `@three-touch-points` — **Adding an authored column is exactly three touch points, and the third is the one that gets
   missed.** The pydantic model; the compile-side row dict + polars schema in `compiler.py`; and the
   **reverse-side `fieldnames` list + `_scalar_cell` mapping**. A column missing from the reverse list
   round-trips as silent data loss, which is why every new column gets a round-trip test. Table kinds
   under `_TABLE_KINDS` are exempt — `_build_table`/`_write_table_csv` are generic over `model_fields`,
   so `DiplotypeRow.recommendation_strength` needed no compiler change at all.
 
-- **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
+- `@derived-not-stored` — **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
   CSV, materialize the derived value into parquet as a `@property`, and let it fall away on reverse
   because it is not a model field. `FrequencyRow.allele_frequency` (AC/AN) and
   `StudyRow.neg_log10_p` (mantissa/exponent) both do this. For p-values it is load-bearing rather than
   cosmetic: float64 goes subnormal below ~1e-308 and is flatly `0.0` below ~5e-324, so a single float
   column would render a panel's strongest association as its weakest.
 
-- **Store a source's value verbatim — EXCEPT when the encoding lies about its own order.** ClinGen's
+- `@verbatim-except-order` — **Store a source's value verbatim — EXCEPT when the encoding lies about its own order.** ClinGen's
   dosage codes are `{0,1,2,3,30,40}` where `30` = "autosomal recessive" and `40` = "dosage sensitivity
   unlikely", so sorting the raw numbers ranks `40` above `3` (sufficient evidence). They are decoded to
   `VALID_DOSAGE_SENSITIVITY` terms at the enricher boundary (`vocab.DOSAGE_SENSITIVITY_BY_CODE` holds
@@ -1463,7 +1473,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   for a code a consumer will sort. Also: that file writes `"Not yet evaluated"` in the
   triplosensitivity column for 210 of 1,520 genes — an absence, and what makes `int(cell)` crash.
 
-- **The 0.3 axes are a materialized PASSTHROUGH; the derivation is read-time and Python-only.** The
+- `@axes-passthrough` — **The 0.3 axes are a materialized PASSTHROUGH; the derivation is read-time and Python-only.** The
   compiler copies `direction`/`stat_significance`/`clin_sig` into `weights.parquet` verbatim and never
   fills a blank from `state` — `derive.direction_from_state` invents a direction from the weight sign
   for `state='significant'`, which is sound as a consumer's fallback and a fabricated fact in a
@@ -1475,7 +1485,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   coverage row ticks both tiers and reads *complete*; filed for 0.5.2 as docs (ROADMAP 0.6 idea-book,
   CONSUMER_SUGGESTIONS S5).
 
-- **`annotations.parquet` carries `genotype` AND keys on it (RM80, 0.6).** `variant_key` is not unique
+- `@annotations-keys-genotype` — **`annotations.parquet` carries `genotype` AND keys on it (RM80, 0.6).** `variant_key` is not unique
   there and never could be — poly-effect is real — so the consumer's other option (carry what
   distinguishes the rows) was the only one. Carrying it *without* keying on it would be worse than the
   gap: two genotypes sharing a conclusion collapse under the old variant-effect key, so the survivor
@@ -1486,7 +1496,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   and the genotype reconstruction had to move *above* the annotation probe, since `weights.parquet`
   stores the allele list plus `phased` rather than the authored cell.
 
-- **`version: 3` in YAML is an INT, and RM17's coercion could not reach it — found by closing 61
+- `@yaml-version-int` — **`version: 3` in YAML is an INT, and RM17's coercion could not reach it — found by closing 61
   foreign modules (0.6).** `_enforce_semver` coerces the pre-0.4 corpus's `v2`/`3` to SemVer and is
   `mode="after"`, so the field's `str | None` refused an unquoted YAML number first, with *Input should
   be a valid string*. Quoted `'3'` coerced, unquoted `3` did not, and **unquoted is the only way YAML
@@ -1500,7 +1510,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   check which layer sees the raw input; and **run the corpus you did not write** — this repo's sixteen
   examples all quote their version, so no reference example could ever have caught it.
 
-- **`content_signature` hashes a variant row's EFFECTIVE `curator`/`method`/`priority`, not its cell
+- `@effective-defaults-hash` — **`content_signature` hashes a variant row's EFFECTIVE `curator`/`method`/`priority`, not its cell
   (RM37, shipped).** `defaults:` in `module_spec.yaml` and a per-row cell are two spellings of one value,
   and `reverse_module` re-emits it in the other place (it infers the module default via `_most_common`
   and blanks the matching cells), so hashing the cell made `compile → reverse → compile` move the
@@ -1517,7 +1527,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Snapshots, caches and network clients
 
-- **Rate limits are load-bearing in `gnomad.py`.** 10 requests/IP/60s, so everything is batched (20
+- `@gnomad-rate-limits` — **Rate limits are load-bearing in `gnomad.py`.** 10 requests/IP/60s, so everything is batched (20
   aliases; 29 returns HTTP 400) behind a 6s pacing gate on an **injectable clock** — tests prove the
   interval without really sleeping. Per-alias GraphQL errors must never sink a batch; a *pathless* error
   must raise (it's our broken query, and swallowing it looks like "nothing found") — **except a pathless
@@ -1530,11 +1540,11 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   general lesson: "pathless ⇒ our bug" was a premise about the API, not a law — check what the API
   actually does before deriving severity from a field's absence.
 
-- **The two gene-constraint routes are different releases.** The live `gnomad_constraint` API field
+- `@constraint-two-releases` — **The two gene-constraint routes are different releases.** The live `gnomad_constraint` API field
   serves **v2.1.1**; v4.1 ships only in the bulk TSV. They carry different `dataset` labels, and
   `dataset` is inside the fact set. Don't "fix" a test that asserts they differ.
 
-- **Read snapshots with duckdb, not polars — but NOT for the reason this bullet used to give.**
+- `@duckdb-vs-polars` — **Read snapshots with duckdb, not polars — but NOT for the reason this bullet used to give.**
   `polars` is `[dev]` in the enricher (builders only) and `duckdb` is core, so the convention is: builder
   in polars, runtime pass in duckdb. `clinvar.py` had it right; `clinpgx.py` first read its snapshot with
   polars. **The stated justification was checked in the 0.5 audit and is false**: `just-dna-compiler`
@@ -1545,7 +1555,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   transitively without every pass breaking — but do not repeat the broken-install claim, and do not
   reason from it when judging a new pass.
 
-- **A batch lookup must HASH its probe, and the cost is in the BINDING, not the join (0.5.2).** DuckDB
+- `@hash-the-probe` — **A batch lookup must HASH its probe, and the cost is in the BINDING, not the join (0.5.2).** DuckDB
   cannot fold a disjunction of equality *conjunctions* into a hash probe, so
   `WHERE (chrom=? AND start=? AND ref=? AND alt=?) OR …` is evaluated against every row: cost grows
   with `alleles × rows` and a 297-gene panel ran two hours at 12% CPU looking like a deadlock. Fixed by
@@ -1561,7 +1571,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `test_query_shapes.py` asserts `EXPLAIN` contains a hash join, and separately times both shapes in
   one process so a slow runner moves both numbers together.
 
-- **`_cache_dir` loads the `.env` itself, and that one ordering fixed three reports (0.5.2).**
+- `@default-arg-before-setup` — **`_cache_dir` loads the `.env` itself, and that one ordering fixed three reports (0.5.2).**
   `_resolve_parquet_cache` calls `load_env()` inside itself, but each `resolve_*_reference` passed
   `default_*_cache_dir()` as an *argument* — evaluated first — so with the base set only in `.env` the
   **first** resolve in a process returned `None` and every later one was correct. That asymmetry is the
@@ -1570,13 +1580,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   rule: **a default computed as an argument is computed before the callee's setup runs** — if the callee
   loads configuration, the default belongs inside it.
 
-- **Dogfood data is git-ignored** (`/data/` now in `.gitignore`): local ClinVar VCF at
+- `@dogfood-data-ignored` — **Dogfood data is git-ignored** (`/data/` now in `.gitignore`): local ClinVar VCF at
   `/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz` (2026-06-27); the built snapshot the example used
   is `data/interim/clinvar`. (`resolution.csv` was provisional while 0.5 was unpublished, which is what
   made `artifact.digest` changes for alt-bearing coordinate modules acceptable. **0.5.0 shipped on
   2026-08-07 and it is frozen now** — see *A new OPTIONAL column is minor-legal* under **Schema evolution** below.)
 
-- **A PUBLISHED snapshot accumulates — provisioning must fetch only its own files.** The publisher adds
+- `@snapshot-accumulates` — **A PUBLISHED snapshot accumulates — provisioning must fetch only its own files.** The publisher adds
   and never deletes, so `just-dna-seq/clinvar/data` still carries a 159 MB `clinvar.parquet` from the
   single-file era beside the 25 `clinvar-chr*.parquet`; its columns are the raw VCF INFO fields
   (`clnsig`, `clnrevstat`), the readers glob `data/*.parquet`, and one foreign file therefore puts two
@@ -1585,7 +1595,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   to `*.parquet`. The same failure arrives locally from an **old builder** — if a cache errors with
   "present but not queryable", check `data/` for a file the current builder would not write, and rebuild.
 
-- **The snapshot layout lives in `locations`, because FOUR parties must agree on it.** Builder writes,
+- `@snapshot-layout-locations` — **The snapshot layout lives in `locations`, because FOUR parties must agree on it.** Builder writes,
   publisher uploads, provisioner fetches, reader queries — `SNAPSHOT_DATA_DIRNAME`,
   `SNAPSHOT_SIDECAR_DIRNAMES`, `CITATIONS_DIRNAME`, `RELEASE_FILENAME`. Every disagreement so far was
   silent: `release.json` was uploaded and never fetched, `citations/` was built and never published (so a
@@ -1594,7 +1604,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   it — the readers glob `data/*.parquet`. Absence is normal at both ends: only ClinVar has a sidecar, and
   only after `clinvar citations`.
 
-- **Publishing a second artifact makes provenance a question — answer it in `release.json`.** ClinVar
+- `@release-json-provenance` — **Publishing a second artifact makes provenance a question — answer it in `release.json`.** ClinVar
   publishes `var_citations.txt` on its own cadence, so a snapshot can carry records and citations from
   different releases; `build_citations` merges its own block (read-modify-write, so the VCF's keys
   survive) and hashes the input when no caller supplied a digest. Recording `null` with the bytes on disk
@@ -1602,7 +1612,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   against. An unreadable `release.json` is reported and left alone — a provenance failure is not a data
   failure, so the table is still written.
 
-- **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.** Three
+- `@ensure-must-be-called` — **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.** Three
   instances so far, all the same shape. `ensure_constraint_snapshot` shipped with the ClinVar
   generalization and had no caller for a whole release, so `gene-metrics` on a plain install skipped the
   v4.1 snapshot entirely and recorded the live API's **v2.1.1** numbers while warning about the
@@ -1617,10 +1627,10 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   (`locations.RELEASE_FILENAME`, shared by `upload` and `download`) because `source_sha256` is what RM4's
   `reference_sha256` pins against; a cache that cannot state its release is not a pinnable reference.
 
-- **Network tests are opt-in:** `JUST_DNA_NETWORK_TESTS=1` runs the live gnomAD query, the seqrepo
+- `@network-tests-optin` — **Network tests are opt-in:** `JUST_DNA_NETWORK_TESTS=1` runs the live gnomAD query, the seqrepo
   refget re-derivation, and indel-normalization round-trips. They pass; they just aren't run by default.
 
-- **A flag must mean the same thing in every function that takes one (RM39).** `enrich_dosage_sensitivity`
+- `@flag-means-same` — **A flag must mean the same thing in every function that takes one (RM39).** `enrich_dosage_sensitivity`
   was the only pass without `offline`, so a caller running the family under one switch had to know, out
   of band, that one member ignored it — and the cost of forgetting was silent egress from a path the
   docs call zero-egress. The shape to copy is `enrich_frequencies`: a **no-op with a warning**, reported
@@ -1631,7 +1641,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   was the standing reason `enrich_clinpgx` had no `offline`, and RM38 gave it a second value the same
   week — re-ask the question whenever the wiring changes.
 
-- **A number this workspace computes and discards gets recomputed by every consumer (RM40/RM41).** Two
+- `@dont-discard-computed` — **A number this workspace computes and discards gets recomputed by every consumer (RM40/RM41).** Two
   instances, one argument. `enrich()` computed the `MintResult` the compiler later stamps into the
   manifest and dropped it, so a pre-compile consumer re-implemented per-ALT-slot counting and could
   disagree with the manifest a publish would produce; it is now `EnrichmentResult.vrs` (`None` when the
@@ -1642,7 +1652,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `variants=` (**exactly one, never both** — a caller passing both has two answers in mind). Before
   logging a computed value and returning, ask whether a caller would have to recompute it.
 
-- **A constant two deployment shapes want different values of is a knob (RM42).** Nine
+- `@retry-attempt-floor` — **A constant two deployment shapes want different values of is a knob (RM42).** Nine
   `stop_after_attempt(3..4)` were decorator arguments evaluated at import, so a *server* inside an
   unattended publish could not ask for more persistence than an author at a terminal wants — and a
   consumer was walking the package reassigning `policy.stop`. `net.attempt_floor` reads
@@ -1652,7 +1662,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   and **leave a composed policy alone** (`stop_after_attempt(3) | stop_after_delay(60)` means both, and
   raising one term changes something whose author meant the conjunction).
 
-- **A rate limiter the injection API tells callers to share must be safe to share (S15, 0.5.4).**
+- `@shared-pacing-gate` — **A rate limiter the injection API tells callers to share must be safe to share (S15, 0.5.4).**
   `PacingGate.wait()` read `last`, slept, then wrote it with no lock, so two threads could both find the
   interval elapsed, both skip the sleep, and turn a published 3/s budget into 6/s — a budget someone else
   enforces by blocking the operator's IP. What decides it is not thread-safety in the abstract but that
@@ -1664,7 +1674,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   axis, and a semaphore's job (P5). Proven on a frozen clock: four threads at a barrier must come out
   spaced by the interval, and the old code yields gaps of `[6.0, 0.0, 0.0]`.
 
-- **Probe a source's real file before modelling it; the docs lie by omission.** Every non-obvious
+- `@probe-the-real-file` — **Probe a source's real file before modelling it; the docs lie by omission.** Every non-obvious
   decision in this round came from a probe, not from a spec: CPIC's recommendation classifications
   (five values, `n/a` among them), ClinGen's non-ordinal codes, the ACMG SF list existing only as an
   HTML table (so the check was deferred rather than built on a scrape), and Orphanet's IRI — `ORPHA:558`
@@ -1674,7 +1684,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Dogfooding, adversarial probing, and how a finding gets filed
 
-- **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is
+- `@dogfood-lacks-are-results` — **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is
   the result, not an obstacle to route around.** The moment you reach for an ad-hoc script, a raw
   `httpx` call, or a hand-written query to get past something the product cannot do, the exercise has
   stopped producing its signal: you have proven the task is possible with *general* tooling, which was
@@ -1689,13 +1699,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   naming two alts collapsed to a single row and silently lost an allele, and that got fixed in
   `clinvar_draft`.)
 
-- **Dogfooding is not validation.** Validation is what tests do — real fixtures, computed
+- `@dogfood-not-validation` — **Dogfooding is not validation.** Validation is what tests do — real fixtures, computed
   expectations, adversarial cases. Dogfooding asks a different question: *is this usable, and what is
   missing?* So do not "verify the tool's answers" with a second, independent implementation while
   dogfooding; that is a test, and it belongs in the suite. Use the tool, notice the friction, and
   write down what was not there.
 
-- **The adversarial role, and why it pays.** Dogfooding finds friction; the sharper yield comes from
+- `@adversarial-role` — **The adversarial role, and why it pays.** Dogfooding finds friction; the sharper yield comes from
   switching roles deliberately — *be a beta-tester trying to show the libraries fail at something they
   advertise*, then switch back and fix. Two rules keep it honest, and both matter. **Attack claims,
   not gaps**: a documented deferral (RM5's symbolic alleles, VRS-for-indels) is a decision, and
@@ -1707,7 +1717,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   PAR1 is diploid in everyone; `draft-panel` asked for a `genotype` and supplied neither `ref` nor
   `alts`.
 
-- **Pick the probe by where the schema generalized from one case.** The two blocking defects that
+- `@probe-uniform-corpus` — **Pick the probe by where the schema generalized from one case.** The two blocking defects that
   round were both "the documented example only ever showed one": `REFERENCE_EXAMPLES.md` §4 shows one
   MT variant per gene, so `HeteroplasmyRow` keyed on the gene and a second real MELAS variant made the
   module uncompilable; the binning bounds were generalized from integer kinds, so a continuous measure
@@ -1715,26 +1725,26 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   of, and a case at the edge of a stated convention (a PAR locus for "Y is not diploid", a non-GRCh38
   build for "the key names its build").
 
-- **Turn the tool on the work you just did.** A check written in the morning is the best candidate for
+- `@probe-your-own-work` — **Turn the tool on the work you just did.** A check written in the morning is the best candidate for
   the afternoon's probe, and it will be wrong in a way its tests were not. The phase-ambiguity check
   shipped, then reported 595 ambiguities in a CYP2C19 module that has none (grouped by row instead of
   by haplotype pair), then — once fixed — told CYP2D6 authors that phase would resolve alleles the
   module defines *identically*, which phase cannot. Both were found by running it on a real 16k-row
   module, neither by re-reading it.
 
-- **Finish each probe as a reference example with a README that names what it broke.** The module is
+- `@probe-becomes-example` — **Finish each probe as a reference example with a README that names what it broke.** The module is
   the regression test and the README is the evidence; a finding recorded only in a commit message is
   not reproducible. Keep the failing observation in the test suite by demonstrating it on the *old*
   behaviour (strip the column, watch the compiler reject the real rows) rather than asserting that it
   used to fail.
 
-- **Separate "fix it" from "surface it" before writing any code, and be strict about the line.** Fix a
+- `@fix-vs-surface` — **Separate "fix it" from "surface it" before writing any code, and be strict about the line.** Fix a
   false claim, a misdiagnosis, a wall of un-aggregated warnings, a guard that is never reached. Surface
   anything where the obvious repair is itself a design decision — and say *why each candidate repair is
   wrong*, because that is the part that makes the item actionable later. RM31/32/33/35 each carry that
   paragraph; RM33's is the cleanest, since one of its two obvious fixes is charter-illegal.
 
-- **Dogfood a P7/dedup finding before you report it — construct a *real, sensible* example against
+- `@dedup-finding-needs-example` — **Dogfood a P7/dedup finding before you report it — construct a *real, sensible* example against
   the actual code paths, or it is not a finding.** A round-trip/dedup "loss" that is mechanically
   possible but has no real instantiation is noise; walk the data model with a biologist's eye before
   flagging it. The standing example: `annotations.parquet` dedups on the **variant-effect pair**
@@ -1753,7 +1763,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Testing traps
 
-- **A test that means "no credential" must SAY so — `api_key=None` does not, and `.env` leaks across
+- `@test-no-credential` — **A test that means "no credential" must SAY so — `api_key=None` does not, and `.env` leaks across
   the whole session.** Two mechanisms compound here, and neither is visible on CI:
   - **`api_key=None` is indistinguishable from "not passed."** `PharmVarClient.__init__` does
     `api_key or os.environ.get(API_KEY_ENV)` (`EutilsSettings` the same for `NCBI_API_KEY`), so an
