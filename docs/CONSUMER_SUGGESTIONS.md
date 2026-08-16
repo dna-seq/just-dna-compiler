@@ -24,8 +24,9 @@ a recycled id would collide with it.
 ## S34 — reply to CONSUMER_BRIEF_LITE: two gaps (both now closed), two deliberate, one joint
 
 Reported from **just-dna-lite** (consuming 0.5.4), 2026-08-16. This is the line-per-section answer
-[CONSUMER_BRIEF_LITE.md](CONSUMER_BRIEF_LITE.md) asked for, plus what we changed on our side. Every
-grep in the brief reproduced exactly as written.
+`CONSUMER_BRIEF_LITE.md` asked for, plus what we changed on our side. Every grep in the brief
+reproduced exactly as written. *(The brief itself was removed in `6c9db05`, the commit that filed this
+answer — recover it from git history if you need the questions it put.)*
 
 **A version fact that gates half of it, and that we could not tell from outside.** We are on
 **0.5.4** of all three packages. The installed `Compilation` model carries `compile_success`,

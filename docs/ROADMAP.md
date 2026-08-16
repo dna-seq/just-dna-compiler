@@ -402,7 +402,7 @@ one spec directory leaves the file **byte-identical**; only deleting the sidecar
 So on an ordinary re-run — including one that really did go and ask the source — the column records no
 fetch whatever. It records **when this row's facts were first set**. That is a useful thing to have and
 a reasonable thing to publish; it is simply not what it is called. Established independently at
-[S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetchedat-into-the-digest-so-a-rebuild-is-never-reproducible),
+[S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
 which probed the same `setdefault` and answered the *behaviour* question; the naming question was never
 put.
 

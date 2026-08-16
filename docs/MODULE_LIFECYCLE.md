@@ -187,6 +187,17 @@ already published, under any name), `validate` (server gates, no network), and `
 network tier). `would_publish_module_level` composes three gates only and means *nothing
 module-level blocks this*, never *this will publish*.
 
+**And on one scenario it is not merely weaker than the gate, it disagrees with it** — found by reading
+the registry on 2026-08-16, in the course of settling §6.6. Publishing a later version whose data is
+unchanged (a review pass, the commonest case there is) is **allowed** by the gate, which carves out
+*"a collision under the same module"* by comparing `(namespace, name)`. The pre-flight computes the
+same lookup with **no carve-out at all**, and the namespace is never threaded into it, so it reports
+`published_as: [the predecessor]` and `would_publish: false` for a publish that then succeeds. A
+publisher branching on that field — the field the API docs say to branch on — refuses its own legal
+publish. Recorded as an ask to the registry in
+[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published);
+their own test file states the standard it violates.
+
 The irreversibility is the point of the rehearsal. On production a version is immutable, and the
 authored data is claimed by a name-independent content hash that **`yank` does not release** — so a
 botched publish spends the version number *and* the right to publish that data under any other name.
@@ -220,10 +231,10 @@ Three readings that this document exists to make explicit, because each has cost
   description is accurate: *"when this row was last written by a pass, not when the source published
   anything"*. The merge is `setdefault`, measured — `record_source_terms` twice against one spec
   leaves the file byte-identical; **only deleting it re-stamps.** This is
-  [S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetchedat-into-the-digest-so-a-rebuild-is-never-reproducible),
+  [S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
   answered as a non-issue in 0.5.4 with the same probe — which settled the *behaviour* question and
   left the naming one unasked. It is asked now: the rename is planned in
-  [ROADMAP § the 1.0 cleanup](ROADMAP.md#fetchedat--the-column-says-fetch-the-value-means-write),
+  [ROADMAP § the 1.0 cleanup](ROADMAP.md#fetched_at--the-column-says-fetch-the-value-means-write),
   major-only (a column rename is a removal plus an addition under P3) and dispositioned to **ride
   along with the `sources.parquet` rename** rather than to spend a digest move of its own.
 - **Reproducibility identity is a triple**: `(content_signature, resolution_signature,
@@ -284,8 +295,8 @@ nothing at all — no stamp, no signature, no digest. Detecting upstream drift t
 delete-and-re-derive: note the fact signature, delete the sidecar, re-derive, compare. If it moved,
 the source changed its answer under you. No command performs that sequence, and deleting the sidecar
 is also what discards any curator overrides in it (§6.3) — which is why this and the override problem
-are one open question with one plausible shape, a `--refresh` that re-asks and reports rather than
-merging (§9).
+are one item with one plausible shape, a `--refresh` that re-asks and reports rather than merging
+([RM83](ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)).
 
 ## 6. Pass two and beyond
 
@@ -339,20 +350,28 @@ comparing `artifact.digest`, top-level `content_signature`, and whether the mani
 Four readings. The last two are already documented elsewhere and are repeated here because the
 matrix is unreadable without them; the first two are not stated anywhere:
 
-- **A review pass moves no identity and destroys both claims.** Appending a reviewer to `authorship`
-  leaves the compiled bytes byte-identical — `authorship` is manifest-only, in neither identity — and
-  yet the compile warns *"verification.json is stale: the attestation was computed over different
-  module bytes"* and drops the whole block, plus the closure. This follows correctly from each rule
-  in isolation (`module_spec.yaml` is an authored input; the binding is over authored bytes; an
-  authored edit un-closes the module), and the composite is still a surprise: **the one pass the
-  trust model is built on — recording who reviewed this — is the pass that silently discards the
-  module's record of having been checked.** The remedy is to re-run the checks and re-close, which is right — but nothing tells the
-  author that recording a human reviewer will cost them the attestation until the compile says so.
-- **The binding is over bytes, so a formatting change costs the same.** Rewriting `variants.csv` with
-  a different line ending changed no value, no digest and no signature, and still dropped the
-  attestation and the closure. That is the intended trade (a content-aware binding would need a
-  loader, and a stale claim is worse than a re-run), but an author who opens a CSV in an editor that
-  normalizes newlines will un-close their module without touching a cell.
+- **A review pass moves no identity and destroys both claims — and that is correct.** Appending a
+  reviewer to `authorship` leaves the compiled bytes byte-identical — `authorship` is manifest-only, in
+  neither identity — and yet the compile warns *"verification.json is stale: the attestation was
+  computed over different module bytes"* and drops the whole block, plus the closure. It follows from
+  each rule in isolation (`module_spec.yaml` is an authored input; the binding is over authored bytes;
+  an authored edit un-closes the module), and the composite reads at first as a defect: the one pass
+  the trust model is built on appears to discard the module's record of having been checked. **Decided
+  on 2026-08-16 that it is not a defect, and the reason is worth stating rather than merely living in
+  the rules.** A review that changes nothing is not a no-op — it is an attestation *of* zero changes,
+  a reviewer saying *I submit this exactly as received*. That is a new claim about the bytes, made by
+  someone who had not made it before, so the old closure is genuinely spent and the reviewer is exactly
+  the person who should re-close. The remedy — re-run the checks, close again — is not a workaround; it
+  is the review being recorded. §6.6 states the resulting four-step pass. What is **not** settled is what
+  a catalog does with two versions whose data is byte-identical and which differ only in who signed off.
+- **The binding is over bytes, so a formatting change costs the same — and there the surprise is real.**
+  Rewriting `variants.csv` with a different line ending changed no value, no digest and no signature,
+  and still dropped the attestation and the closure. Unlike the row above, no human made a claim here:
+  an editor did, or Git did. Filed as
+  [RM82](ROADMAP_0_7.md#rm82--the-attestation-binds-raw-bytes-so-an-editors-line-endings-un-close-a-module)
+  and **decided** — normalize `\r\n` → `\n` on the bytes before hashing, and stop there, which needs no
+  loader and so is not the content-aware binding that was rightly refused. The wider trade stands: a
+  stale claim is worse than a re-run.
 - **A provenance column moves the digest and no signature.** `fetched_at` is outside every fact set,
   so nothing hashes it — and `sources.parquet` is inside the Merkle root, so the bytes count. Note
   the row says *hand-edited*: this is the mechanism, demonstrated deliberately, **not** what a re-run
@@ -461,7 +480,26 @@ never come. And since `authorship` sits outside both identities, a pure review i
 without pretending the data changed — two versions with identical rows and different authorship share
 a `content_signature`, which the registry's duplicate-content gate explicitly permits **within the
 same module**. What it does cost is the attestation and the closure, measured in §6.2 — so a review
-pass is: append the entry, re-run the checks, close again, publish.
+pass is: **append the entry, re-run the checks, close again, publish.**
+
+That cost is the design working, not a wrinkle in it. A review that changes nothing still asserts
+something nothing had asserted before — *I read these exact bytes and they needed no change* — and the
+closure is a record of a human declaring bytes final, so the person making the new claim is the person
+who must make it. There is no version of this where the old closure survives and still means what it
+says.
+
+**What is not settled is what happens to that pass downstream, and reading the registry to find out
+made it the sharper half of the question.** Three findings, all verified in
+`just-dna-registry`'s tree on 2026-08-16 and filed as
+[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published):
+the publish **succeeds** and the same-module carve-out is real code rather than prose (so the sentence
+above is confirmed, not merely believed); the **pre-flight refuses it anyway**, disagreeing with the
+gate it exists to predict (§ stages 7–8); and the closure reaches **nothing** — `verification.json` is
+uploaded, stored, and then read by no code path, absent from `RECOGNIZED_SPEC_FILES`, so it is dropped
+by every server-side rebuild and served by no endpoint. The re-close is right and currently costs a
+version number for a record nothing downstream can see. That registry also has a **`reviews` table**
+of its own, projected onto module cards and costing no version at all — so *whether a review should be
+a version* is a live question rather than the settled one this section used to imply.
 
 ### 6.7 What the registry does with v2
 
@@ -519,12 +557,19 @@ Three further facts about the seam, all verified in the consumer's tree rather t
   re-hashing `artifact.files[]` or recomputing the digest — even though the consumer's own spec
   document specifies a six-step verify-then-install flow. The format supplies the verification; the
   consumer does not run it.
-- **`resolution_mode` and `fully_resolved` are never read.** We publish a documented trust rule over
-  them and the reference consumer does not apply it. (It reads the registry's projected
-  `resolution.trusted` instead, which is that rule evaluated server-side.)
+- **`resolution_mode` and `fully_resolved` are never read — deliberately, and the docs were the thing
+  at fault.** The reference consumer reads the registry's projected `resolution.trusted` where it wants
+  a verdict at all, and for the question its engine actually puts — *can this table join to a VCF by
+  position* — it reads the artifact's own null coordinates, which is authoritative for the bytes in hand
+  and works on a module whose manifest was never fetched. Answered as [S34](CONSUMER_SUGGESTIONS.md);
+  the fields address *"a consumer"* in SCHEMAS.md and in `manifest.py`'s own comment while their reader
+  is a **catalog**, and both now say so. No item: it dissolved into a documentation fix.
 - **An annotation run records no module version.** The output manifest names each module by *name*
   and carries no version, no digest and no source URL, so a rendered report cannot be tied to the
   module bytes that produced it, and nothing can answer "which of my saved results are stale".
+  **Closed on the consumer's side** in the same round (S34 §3): `ModuleOutputMapping` gained
+  tri-state `version`/`digest`/`source_url`. Partial by construction on the discovery path, where only
+  `source_url` is knowable — which is RM84 again.
 
 Meaning-drift between versions is absorbed **at read time, by shape**: the consumer detects which
 generation of artifact it is holding from the columns present (three are in circulation at once) and
@@ -565,12 +610,20 @@ Stated plainly, because each of these is currently an absence a reader has to in
 - **Nothing tells an author their source has moved on.** The tautology skip reads the release the
   module was drafted from, and `withdraw_stale_dataset` handles a module that ends up mixing two.
   Neither answers *"ClinVar has published since you drafted this"*, which is the actual trigger for a
-  source-refresh pass. Today the author has to know.
+  source-refresh pass. Today the author has to know. Filed as
+  [RM85](ROADMAP_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it),
+  where the tempting repair — a column recording the origin — is refused on RM71's argument.
+- **Nothing re-asks a question already answered.** Merge-not-clobber means a source that revised a row
+  it already gave us moves no signature at all, and the only refresh is `rm`, which discards the
+  curator's overrides with the stale rows.
+  [RM83](ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)
+  is that gap, and §5.1's canary is unperformable until it closes.
 - **The artifact records no predecessor.** `manifest.json` carries `identity.version` and nothing
   linking it to the version before it — no parent digest, no previous `content_signature`. The
   registry knows the history; a module handed to you on a disk does not.
 - **Nothing notifies a consumer.** Both acquisition paths are pull, and one of them has no version to
-  pull against (§6.8).
+  pull against (§6.8) — [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
+  whose publisher half is ours.
 - **No results are traceable to the module version that produced them** (§6.8), which is the missing
   prerequisite under both [RM7](ROADMAP.md#rm7--evaluation-output--report-card-schema) and the
   verification-harness idea — both of which are consumer scope by charter, and are named here only so
@@ -598,74 +651,16 @@ The obvious way to close that gap is the way the first pass was closed: take one
 example through a real v2 — a review pass on one, a source refresh on another — and keep the result
 as a reference example whose README names what it broke.
 
-## 9. What this exploration surfaced
-
-Open questions, distinct from the tracked `RMn` deferrals. Recorded here rather than filed, because
-each needs a decision before it needs an item.
-
-1. **A review pass costs the attestation, and nothing warns before the fact.** Measured in §6.2:
-   appending an `authorship` entry moves no identity and drops both the verification block and the
-   closure. Every rule involved is individually right. The question is whether the composite is —
-   whether `authorship` (which is manifest-only, in no identity, and whose whole purpose is to record
-   review) should be inside the authored-bytes binding at all, and if it should, whether the closure
-   warning should say *this is what recording a reviewer costs you*.
-2. **The binding hashes raw bytes, so a line-ending change un-closes a module — normalize before
-   hashing?** The same measurement as above from the other side, and unlike (1) this one has an
-   obvious shape: normalizing `\r\n` → `\n` on the bytes before `module_binding` hashes them needs no
-   loader, no schema knowledge and no parse — which is what makes it different from the
-   content-aware binding that was rightly refused. Three things to settle before doing it. **The
-   cost is a one-time invalidation of every `module_hash` in existence**, including all sixteen
-   closed reference examples; that is a soft break rather than a hard one (a stale attestation warns
-   and is dropped, it never fails a build), but it is still every module in the wild re-attesting
-   once. **It was sighted once before, from the other side** — [DOGFOOD_0_6.md](DOGFOOD_0_6.md)'s lane
-   plan asked whether "a round-tripped spec's attestation may read as stale **to its own compiler**
-   with nothing edited", since `reverse` normalizes cell formatting and column order, and closed with
-   *"Both are legitimate outcomes; neither is documented."* Same mechanism, different trigger; the
-   editor case is the one an author meets. **The stopping point is the actual question** — newlines only, or also a BOM, trailing
-   whitespace, a missing final newline? Each step makes the binding more content-ish without making
-   it content, and the line has to be drawn deliberately rather than at whatever the first reported
-   symptom was. And **`manifest.inputs[]` should not follow it**: those raw-byte hashes answer *are
-   these the exact bytes*, which is a different question, so normalizing one and not the other is
-   coherent rather than inconsistent. Precedent is on the side of doing it: normalize-before-hashing
-   is already the house move for `content_signature` (defaults folded in, `exclude_none`, the default
-   build omitted).
-3. **Delete-to-regenerate is in tension with human-overridable sidecars, and the charter already
-   knows it.** The 0.6 amendment says a derived table that is both machine-written and
-   human-overridable "wants a mechanism rather than a convention" — and RM45 discharged it for
-   **exactly one** table: `verification.json` is "the one derived artifact whose human-overridability
-   must not be a feature", which is why it is a JSON document rather than a fifth fact CSV. Nothing
-   discharges it for the six where overriding *is* the intended feature. The second pass is where the
-   convention fails: the only refresh operation is `rm`, and it takes the curator's rows with it —
-   including hand-authored resolution rows that re-running cannot reproduce. There is no
-   *"re-derive the machine-written rows and keep the overrides"* anywhere in the tier.
-4. **Nothing in the ecosystem says what changed.** §5.1 gets a reader as far as *which layer* moved,
-   which is real and is the best instrument available — but between that, the registry changelog
-   (free prose) and CSV diffing (raw), nothing answers *what*. And §5.1's own blind spot is the
-   sharper half: merge-not-clobber means a source that silently revised an existing row moves no
-   signature at all, so the canary cannot fire without a delete-and-re-derive that no command
-   performs. A `--refresh` that re-asks and reports the diff rather than merging is the shape that
-   would close both this and (3); whether it belongs here or in the enricher is undecided.
-5. **`fully_resolved` and `resolution_mode` are published, documented with a trust rule, and unread by
-   the reference consumer — now confirmed deliberate, so the remaining work is ours.** Answered in
-   [S34](CONSUMER_SUGGESTIONS.md): registry-projected `resolution.trusted` is the only path that
-   consumer intends to support, and for the question its engine actually asks — *can this table join
-   to a VCF by position* — it reads the artifact's own null coordinates rather than any manifest
-   field, which is authoritative for the bytes in hand and works on a module whose manifest was never
-   fetched. By the same argument they do not expect to need
-   `positional_rows_placed == positional_rows`. What is left is a **documentation fix**: the fields
-   address "a consumer" and their reader is the registry.
-6. **A module has no version identity on the discovery path at all**, so half the installed base
-   cannot tell v1 from v2 (§6.8). Half of that is **ours**: `just_dna_enricher.upload.upload_module`
-   writes the flat `data/<name>/` layout, so the format tier publishes the shape that cannot express a
-   version. A pinning surface would be a change to our publisher and to the consumer's discovery in the
-   same breath, which is why it wants agreeing rather than deciding on one side. Confirmed by
-   exhaustive search to have no `Sn` and no `RMn` anywhere.
-7. **The origin of a module predicts the shape of its second pass, and nothing records it.** A
-   source-drafted module needs a refresh pass when the source moves; a paper-grounded module needs an
-   evidence pass when the literature moves. `SourceRow.dataset` records the release, so the fact is
-   nearly there — what is missing is anything that acts on it. The class is already named in
-   [RM71](ROADMAP_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file),
-   which rejects a comment column partly because it would be "a statement about a snapshot release,
-   and a re-draft from a newer one leaves it naming the old alleles — exactly the staleness
-   `licensing.withdraw_stale_dataset` had to be built for on `dataset`, on a column where nothing could
-   notice." Same shape one table over; also confirmed to have no `Sn` and no `RMn` of its own.
+**Where the questions this document raised went.** It closed with an open-questions section until
+**2026-08-16**, on the reasoning that each needed a decision before it needed an item. That reasoning
+is the one this repo has twice found to be wrong — a question filed against a release is findable, and
+a question at the bottom of a prose document is a backlog nobody reads. Five became
+[RM82–RM86](ROADMAP_0_7.md#the-lifecycle-items--what-writing-down-the-second-pass-surfaced), two of them
+carrying a decision rather than a fork. Two did not become items and are recorded where they belong
+instead: the published trust rule addresses *"a consumer"* while its reader is a catalog, which
+dissolved into a documentation fix (§6.8, and SCHEMAS.md); and the review pass costing the attestation,
+**decided** — a review that changes nothing is an attestation of zero changes, so un-closing is correct
+(§6.2, §6.6). That second decision spawned RM86 rather than closing flat, which is the one thing this
+exercise did not predict: settling the format side is what sent someone to read what the catalog does
+with the result, and the catalog turned out to refuse the publish in its pre-flight and drop the
+closure on the floor. Nothing was dropped from the section itself.

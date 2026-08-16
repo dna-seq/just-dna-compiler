@@ -33,7 +33,7 @@ Because the digest is the **byte** identity — *these bytes, from this compiler
 identity. `content_signature` is the content one. A moved digest beside an unmoved signature is a
 provenance-only change and is the intended reading.
 → [SCHEMAS § Identity & integrity](SCHEMAS.md#identity--integrity), and
-[S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetchedat-into-the-digest-so-a-rebuild-is-never-reproducible),
+[S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
 which was filed after somebody spent an afternoon looking for the content change that had not happened.
 
 **Then should the digest exclude the timestamp column, the way a build system excludes mtimes?**
@@ -51,7 +51,7 @@ which is why P4 scopes the guarantee to a fixed `compiler_version`.
 **Does re-running the enricher restamp `fetched_at` and churn my digest?**
 No. Every sidecar merge is never-clobber, so a recorded row wins and its stamp is never rewritten;
 only deleting the sidecar re-stamps. → S7. (The *name* is wrong and the rename is planned for 1.0 —
-[ROADMAP § the 1.0 cleanup](ROADMAP.md#fetchedat--the-column-says-fetch-the-value-means-write).)
+[ROADMAP § the 1.0 cleanup](ROADMAP.md#fetched_at--the-column-says-fetch-the-value-means-write).)
 
 **Which identity should a dedup or find-by-hash surface key on?**
 `content_signature`, and `just-dna-compiler signature <spec>` computes it without compiling. Key a
