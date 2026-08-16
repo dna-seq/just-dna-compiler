@@ -34,9 +34,10 @@ number written in the cell is then not in the bin, and a bounded domain's top va
 homoplasmy, and real) becomes unreachable unless the last bin is authored open. Here `measure_max` means
 the same thing on every kind and the top bin stays closed.
 
-**Discrete kinds tile the other way.** `repeat_count`/`copy_number` tile exactly under inclusive bounds
-— HTT `[6,35]`, `[36,39]`, `[40,∞)` is gapless *if* the domain is integral — so for them a shared
-endpoint is a real **overlap** and stays an error.
+**Discrete kinds tile the other way, and that is still their default.** `repeat_count`/`copy_number`
+tile exactly under inclusive bounds — HTT `[6,35]`, `[36,39]`, `[40,∞)` is gapless *if* the domain is
+integral — so for them a shared endpoint is a real **overlap** and an error unless the table says
+otherwise.
 
 **…except that the domain is not integral, and the spec says so (RM55).** VCF 4.4 §7.2 *"Redefined INFO
 and FORMAT CN to support non-integer copy numbers"* and its worked examples are fractional throughout
@@ -57,9 +58,11 @@ tiling (`resolve_tiling`): the declared value, else `continuous` where the kind 
 `quantised` and the group carries a value no grid of whole numbers can hold, else the kind's default
 (`DEFAULT_MEASURE_TILING`). **Absence means the kind's default, never a value**, which is what makes the
 column additive — every module published before 0.6 keeps its exact meaning, and an author meets the
-column only when departing from it. The inference announces itself and runs one way only:
+column only when departing from it. The inference announces itself, runs one way only —
 fractional-ness contradicts a stated grid, integer-ness contradicts nothing, since `[0,1] [2,3]` is what
-a continuous measure looks like when its author has only seen whole-number data.
+a continuous measure looks like when its author has only seen whole-number data — and fires **only
+against a `quantised` default**, because that is the only reading a fraction falsifies. See
+`resolve_tiling` for why `activity_score`, which is fractional by nature, must not be moved by it.
 
 Three repairs were refused. Moving the kinds into `_DENSE_KINDS` is one line and silently re-reads every
 published table (`[2,2]` beside `[3,3]` is a legal quantised tiling, and both rules change meaning under
