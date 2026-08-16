@@ -19,9 +19,12 @@ Verdicts:
     revised         marker, fingerprint moved -> consumer edited a replied item, re-triage
     current         marker matches            -> nothing to do
 
+This file is Python with a `.py` extension for a reason — see the `bash` trap in
+docs/CONSUMER_TRIAGE_LOOP.md § 6. Run it, never `bash` it.
+
 Usage:
-    .claude/triage-state.sh [path] [--pending] [--backfill]
-    .claude/triage-state.sh --next        # the next unclaimed Sn, over the live + history files
+    .claude/triage-state.py [path] [--pending] [--backfill]
+    .claude/triage-state.py --next        # the next unclaimed Sn, over the live + history files
 """
 
 import hashlib

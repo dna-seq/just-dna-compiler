@@ -34,7 +34,37 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-16 (latest) — 0.6.0: a consumer round, S30–S32
+## 2026-08-16 (latest) — the triage loop's two Python tools are `.py`, and why that mattered
+
+No library change; repo tooling only. `.claude/triage-state.sh` and `.claude/triage-archive.sh` are
+**`.claude/triage-state.py` and `.claude/triage-archive.py`** — they were always Python with a
+`#!/usr/bin/env python3` shebang, and the extension was a standing invitation to run them the one way
+that breaks: `bash` ignores a shebang, reads the module docstring as commands, and reaches
+`import hashlib`, where `/usr/bin/import` is **ImageMagick's screen-capture tool** and treats its
+argument as an output filename. One such run left four empty files named `hashlib`, `pathlib`, `re` and
+`sys` in the repository root — the script's own imports, in order — and left them *silently*, because
+`import` writes the file before failing on its security policy. Entries below this one name the old
+`.sh` paths; they record what the files were called then and are left alone.
+
+The rename is the fix — nobody types `bash foo.py` — but the same class of failure had two other
+doors, now shut: `triage-archive.py` invokes the ledger through `sys.executable` and
+`watch-suggestions.sh` through `$PYTHON`, so neither the exec bit nor the shebang is load-bearing at
+any call site. `watch-suggestions.sh` stays bash, because it really is bash.
+
+Three fixes came back the other way, from the generalized copy of this loop published as a
+[gist](https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254): the archiver now refuses
+when the history file is missing rather than dying in `read_text`, the watcher's event-line cap is
+`CAP` rather than a hardcoded 8, and `stat -f %m` is tried where `stat -c %Y` fails. Two gotchas came
+with them, both found while adopting the loop into a second repository and neither reachable here —
+**the archiver verifies the move, not the verdict** (it will archive a section the ledger calls `new`;
+the lint is running the ledger against the *history* file afterwards), and **a preamble line beginning
+`**Status` is read as a block reply**, which marks every id it names answered and which `--backfill`
+then stamps. Runbook §6 has both, and the gist has the correction that went the other way: its
+`group_span` docstring claimed archiving shifts the *preceding* section's fingerprint, which this repo
+had already checked and refuted — `fingerprint()` ends in `.strip()`, so an injected heading below a
+section's prose leaves its hash alone.
+
+## 2026-08-16 — 0.6.0: a consumer round, S30–S32
 
 Three field notes from **just-dna-lite**, all out of one annotation of one WGS genome against twelve
 modules. Two shipped whole, one shipped its authored half and routed the rest; the routing is the part

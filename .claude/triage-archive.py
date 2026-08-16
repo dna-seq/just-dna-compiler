@@ -6,6 +6,10 @@ property that matters is easy to break by hand: the consumer's prose must move *
 move is verified rather than trusted — a section's fingerprint is computed before and after, and the
 write is refused if any of them changed.
 
+It verifies the *move*, not the *verdict*: a section the ledger still calls `new` archives without
+complaint. Run the ledger against the history file afterwards — a well-formed archived section reads
+`current` there, so a `new` or `unmarked-reply` means something was archived unanswered.
+
 A section is moved together with its group heading and dateline when the history file is not already
 under that group. A group whose items split across the two files therefore keeps its dateline in both,
 which is the documented shape (S7/S9 answered, S8 open).
@@ -13,8 +17,11 @@ which is the documented shape (S7/S9 answered, S8 open).
 The index row is deliberately NOT written: what a section is, who reported it, the verdict and where it
 landed are editorial, and a generated row would be a worse version of the thing the index exists for.
 
+This file is Python with a `.py` extension for a reason — see the `bash` trap in
+docs/CONSUMER_TRIAGE_LOOP.md § 6. Run it, never `bash` it.
+
 Usage:
-    .claude/triage-archive.sh S8 S10 [--dry-run]
+    .claude/triage-archive.py S8 S10 [--dry-run]
 """
 
 import pathlib
@@ -26,7 +33,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 DOCS = HERE.parent / "docs"
 LIVE = DOCS / "CONSUMER_SUGGESTIONS.md"
 HISTORY = DOCS / "CONSUMER_SUGGESTIONS_HISTORY.md"
-LEDGER = HERE / "triage-state.sh"
+LEDGER = HERE / "triage-state.py"
 
 SECTION_RE = re.compile(r"^## +S(\d+)\b")
 GROUP_RE = re.compile(r"^# +\S")
@@ -86,9 +93,13 @@ def current_group(lines: list[str]) -> str | None:
 
 
 def fingerprints(doc: pathlib.Path) -> dict[str, str]:
-    """`{id: sha}` as the ledger reports it, so before/after can be compared on its own terms."""
+    """`{id: sha}` as the ledger reports it, so before/after can be compared on its own terms.
+
+    Run through `sys.executable` rather than as a bare path, so neither the ledger's exec bit nor the
+    shebang is load-bearing here — the same class of failure as running it under `bash` (§ 6).
+    """
     out = subprocess.run(
-        [str(LEDGER), str(doc)], capture_output=True, text=True, check=True
+        [sys.executable, str(LEDGER), str(doc)], capture_output=True, text=True, check=True
     ).stdout
     return {
         m.group(1): m.group(2)
@@ -102,6 +113,8 @@ def main() -> int:
     idents = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not idents:
         raise SystemExit(__doc__)
+    if not HISTORY.is_file():
+        raise SystemExit(f"no history file at {HISTORY} — create it first")
 
     before = fingerprints(LIVE)
     missing = [i for i in idents if i not in before]

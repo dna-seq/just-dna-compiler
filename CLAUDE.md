@@ -1629,9 +1629,13 @@ in order rather than jumping to code:
    **Every `Sn` gets a `**Status —**` reply written back into the document, and the runbook for that is
    [docs/CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md)** — read it before answering one. It
    holds the four routes (fix / non-issue / doc fix / surface-only), the rule that **legality sizes the
-   release while severity only orders the queue**, and the ledger (`.claude/triage-state.sh`) that says
+   release while severity only orders the queue**, and the ledger (`.claude/triage-state.py`) that says
    which items are unanswered. `.claude/watch-suggestions.sh` under `Monitor` is what notices a consumer
-   has written; if a notification says a section settled, that doc is the brief.
+   has written; if a notification says a section settled, that doc is the brief. **The two `.py` tools
+   are executed or run under `python3` — never `bash`**: they were named `.sh` until 2026-08-16, and a
+   single `bash .claude/triage-state.sh` littered the repo root with empty files called `hashlib`,
+   `pathlib`, `re` and `sys`, because bash reads `import x` as ImageMagick's screen-capture tool
+   (runbook §6).
    **CONSUMER_SUGGESTIONS.md is the OPEN inbox only** — an answered item moves to
    [docs/CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md) (byte-for-byte, plus a row
    in that file's index), the same split as ROADMAP/ROADMAP_HISTORY. So an empty live file means nothing

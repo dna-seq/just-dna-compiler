@@ -15,7 +15,7 @@ history file, so an empty inbox says nothing about how many ids are taken — nu
 the next report is a second S1. The number is computed rather than remembered:
 
 ```
-.claude/triage-state.sh --next        # scans this file AND the history file
+.claude/triage-state.py --next        # scans this file AND the history file
 ```
 
 Ids are never reused, including for an item answered as a non-issue: the reply is part of the record and

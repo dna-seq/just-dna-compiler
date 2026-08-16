@@ -269,4 +269,4 @@ record's own `release`, never off the binding. → SCHEMAS § the verification a
 No. An answered item moves byte-for-byte to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) with a row in its index. An empty
 live file means nothing is owed. And never read the next free `Sn` off a written-down number; run
-`.claude/triage-state.sh --next`.
+`.claude/triage-state.py --next`.

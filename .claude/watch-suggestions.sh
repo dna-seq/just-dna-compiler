@@ -8,7 +8,11 @@
 #
 # It never fires for a change that predates it: `last` is seeded from the current mtime
 # and `dirty` starts clear, so an already-settled edit stays quiet. Run the ledger
-# (.claude/triage-state.sh) once at startup to pick up whatever is already pending.
+# (.claude/triage-state.py) once at startup to pick up whatever is already pending.
+#
+# This is the only one of the three that is really bash; the ledger and the archiver are
+# Python, and are invoked through $PYTHON below rather than as bare paths so that neither
+# their exec bit nor their shebang is load-bearing (§ 6 of the runbook — the `bash` trap).
 #
 # COOLDOWN is set for an agent author, not a human one: consumers write these notes
 # through an agent, so the pattern is a burst of edits (five in a minute is normal) with
@@ -22,18 +26,21 @@
 # BRANCH_PAUSE instead of POLL, says so once, and says so again when it resumes; it does
 # not touch `last`, so an edit made during the pause is still detected on the way back.
 #
-#   FILE=<path> COOLDOWN=<seconds> POLL=<seconds> BRANCH_PAUSE=<seconds> \
+#   FILE=<path> COOLDOWN=<seconds> POLL=<seconds> BRANCH_PAUSE=<seconds> CAP=<n> \
 #     .claude/watch-suggestions.sh
 set -uo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 FILE=${FILE:-$REPO/docs/CONSUMER_SUGGESTIONS.md}
+PYTHON=${PYTHON:-python3}
+LEDGER=${LEDGER:-$REPO/.claude/triage-state.py}
 COOLDOWN=${COOLDOWN:-150}
 POLL=${POLL:-10}
 BRANCH_PAUSE=${BRANCH_PAUSE:-900}
 BRANCH=${BRANCH:-main}
+CAP=${CAP:-8}
 
-mtime() { stat -c %Y "$FILE" 2>/dev/null || echo 0; }
+mtime() { stat -c %Y "$FILE" 2>/dev/null || stat -f %m "$FILE" 2>/dev/null || echo 0; }
 # A detached HEAD has no symbolic ref, and is no more a place to commit than a branch is.
 current_branch() { git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached HEAD)"; }
 
@@ -71,9 +78,10 @@ while true; do
     [ $(($(date +%s) - last)) -ge "$COOLDOWN" ] || continue
     dirty=0
 
-    pending=$("$REPO/.claude/triage-state.sh" "$FILE" --pending 2>/dev/null |
-              awk 'NF { n++; if (n <= 8) { printf "%s%s(%s)", sep, $2, $1; sep = " " } }
-                   END { if (n > 8) printf " +%d more", n - 8 }')
+    # The event line is capped: with a 17-item backlog an uncapped one listed every single item.
+    pending=$("$PYTHON" "$LEDGER" "$FILE" --pending 2>/dev/null |
+              awk -v cap="$CAP" 'NF { n++; if (n <= cap) { printf "%s%s(%s)", sep, $2, $1; sep = " " } }
+                   END { if (n > cap) printf " +%d more", n - cap }')
     if [ -z "$pending" ]; then
         echo "${FILE##*/} settled: nothing pending"
     else

@@ -31,9 +31,13 @@ Three scripts, all in `.claude/`, none packaged:
 
 | | |
 |---|---|
-| `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing |
-| `.claude/triage-state.sh` | the ledger: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn` |
-| `.claude/triage-archive.sh` | moves answered sections into the history file and **verifies** each fingerprint survived the move |
+| `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing. The only one that is really bash |
+| `.claude/triage-state.py` | the ledger: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn` |
+| `.claude/triage-archive.py` | moves answered sections into the history file and **verifies** each fingerprint survived the move |
+
+**Run the two Python ones, never `bash` them** — `./.claude/triage-state.py` or
+`python3 .claude/triage-state.py`. They carried a `.sh` extension until 2026-08-16 and the mismatch had
+a cost; §6 has it.
 
 Arm the watcher with the `Monitor` tool, which turns each stdout line into a notification that
 re-invokes the agent:
@@ -81,8 +85,8 @@ The watcher seeds itself from the current mtime with the dirty flag clear, so **
 change that predates it**. Run the ledger once at startup to pick up the standing backlog:
 
 ```
-.claude/triage-state.sh            # every section and its verdict
-.claude/triage-state.sh --pending  # just the ones needing work
+.claude/triage-state.py            # every section and its verdict
+.claude/triage-state.py --pending  # just the ones needing work
 ```
 
 ---
@@ -252,7 +256,7 @@ shape and marks each covered section individually, since one paragraph cannot ca
 ### Step 4 — move the answered item to the history file
 
 ```
-.claude/triage-archive.sh S14 S15 [--dry-run]
+.claude/triage-archive.py S14 S15 [--dry-run]
 ```
 
 It cuts each section — heading, consumer prose, reply and marker — out of
@@ -431,7 +435,7 @@ Each of these was a bug in the loop, not a hypothetical:
   top-level section.
 - **The event line needs a cap.** With a 17-item backlog the notification listed every one; it now shows
   eight and `+N more`.
-- **A document's own title is not a group heading, and `triage-archive.sh` thought it was.** It took the
+- **A document's own title is not a group heading, and `triage-archive.py` thought it was.** It took the
   *last* `# ` heading before a section as that section's group; for an item filed under no group — the
   normal shape once the split made the inbox empty, since a consumer appending one report writes no
   group heading — the last `# ` before it is the live file's own `# Consumer suggestions`, whose span
@@ -458,6 +462,41 @@ Each of these was a bug in the loop, not a hypothetical:
   do this — it only touches `unmarked-reply`, because silently restamping a `revised` section is exactly
   how a genuine re-triage signal would be erased — so it is a hand edit, and it needs the prose-unchanged
   check first. If you cannot show the prose is unchanged, the verdict is honest and you re-triage.
+- **A Python script named `.sh` gets run as bash sooner or later, and `import` is an ImageMagick
+  binary.** Both tools shipped as `triage-state.sh` / `triage-archive.sh` with a
+  `#!/usr/bin/env python3` shebang, which is correct only for a caller who *executes* them. Someone —
+  a person, or an agent going by the extension — eventually types `bash .claude/triage-state.sh`. Bash
+  ignores the shebang, reads the docstring as commands, and reaches `import hashlib`, where
+  `/usr/bin/import` is **ImageMagick's screen-capture tool** and takes its argument as an output
+  filename. The repository root grew four empty files named `hashlib`, `pathlib`, `re` and `sys` — the
+  script's own imports, in order. `triage-archive` writes a `subprocess` instead, which is how you tell
+  which of the two was run. Renamed to `.py` on 2026-08-16.
+
+  Two things make this worth recording rather than just fixing. **It is silent**: `import` creates the
+  output file and *then* fails on its security policy, so nothing announces a write, and the litter is
+  0 bytes with plausible names — a stray `re` in a project root reads as a vendored module, not as
+  debris. And **the extension was the entire invitation**: nobody types `bash foo.py`. So the fix is
+  the rename; a guard would be defending the wrong door. Established before being written down —
+  `bash -c 'import sys'` in an empty directory creates `sys`, and running the real script under `bash`
+  reproduces the full set.
+
+  The same reasoning removed every bare-path invocation: `triage-archive.py` shells out to the ledger
+  through `sys.executable` and `watch-suggestions.sh` through `$PYTHON`, so neither the exec bit nor
+  the shebang is load-bearing anywhere any more.
+- **The archiver verifies the move, not the verdict.** It will archive a section the ledger still calls
+  `new` without complaint: it checks that the prose arrived byte-for-byte, not that anyone answered it.
+  The lint is the ledger itself pointed at the *history* file — a well-formed archived section reads
+  `current` there, so anything reading `new` or `unmarked-reply` was either archived unanswered or lost
+  its marker in transit. Two seconds, and it is the only thing between a silent mis-archive and a
+  permanently lost item.
+- **A preamble line beginning `**Status` is read as a block reply**, and marks every id it names
+  answered. `**Status:** intake for field notes — S1 and S2 are open` is an entirely ordinary thing to
+  write at the top of an inbox and collides with the reply idiom exactly; `--backfill` then stamps both
+  untriaged sections `current`. The loop's one job, inverted, by a line of prose nobody would look at
+  twice. The block-reply rule is right — a release note under a `#` heading really does answer items by
+  name — so the fix is on the writing side: **do not open a preamble line with `**Status`** unless it
+  is a real reply; a blockquote (`> **Status:** …`) is enough. Found while adopting the loop into a
+  second repository rather than here, which is the argument for keeping the published copy in sync.
 
 ---
 
@@ -469,9 +508,9 @@ consumer item is **S19** and the next roadmap item is **RM47** — but read both
 off this sentence, which is exactly the kind that goes stale:
 
 ```
-.claude/triage-state.sh                                    # the live inbox — empty means nothing owed
-.claude/triage-state.sh docs/CONSUMER_SUGGESTIONS_HISTORY.md   # every answered item, all `current`
-.claude/triage-state.sh --next                             # the next unclaimed Sn, over BOTH files
+.claude/triage-state.py                                    # the live inbox — empty means nothing owed
+.claude/triage-state.py docs/CONSUMER_SUGGESTIONS_HISTORY.md   # every answered item, all `current`
+.claude/triage-state.py --next                             # the next unclaimed Sn, over BOTH files
 ```
 
 **An emptied inbox breaks id numbering unless the next id is pinned, and this is the one hazard the
