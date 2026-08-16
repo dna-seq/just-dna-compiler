@@ -190,6 +190,12 @@ def resolve_variants(
                 elif len(usable) == 1:
                     patched.append(v.model_copy(update=usable[0]))
                 else:
+                    # Still per authored row, and deliberately not converged with the compiler's twin,
+                    # which S33 moved to one accumulated sentence per rsID with the real row total.
+                    # This whole path is the deprecated `ensembl_cache` route, removed at 1.0; porting
+                    # the accumulator here would duplicate it into a function that is going away, and
+                    # the modules that reach it report `expanded_keys`/`expanded_rows` as `None`
+                    # (not established) for the same reason.
                     warnings.append(
                         f"{v.rsid} maps to {len(usable)} loci in Ensembl; expanded to {len(usable)} "
                         f"rows (one per locus, each keyed by its coordinate — a consumer can count them)."

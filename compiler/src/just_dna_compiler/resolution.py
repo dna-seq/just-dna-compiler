@@ -45,12 +45,24 @@ class ResolutionOutcome:
       artifact, refuses.
     * `errors` — fatal in **both** modes. Only `withdrawn` lands here: every other finding leaves the
       annotation intact, while a retracted variant may leave it describing nothing.
+
+    `expanded_keys` / `expanded_rows` are the one-to-many expansion's two counts, carried out for
+    `manifest.compilation` (S33). Two numbers rather than one, and never a ratio, for RM44's reason:
+    one authored key can expand to any number of rows, and a consumer told only "3 rows are expansion
+    members" cannot tell three keys of one locus each from one key of three. Rows are counted in the
+    artifact's own unit — a `weights.parquet` row — so the number is checkable against the file.
+
+    They are `None` on the non-GRCh38 early return and nowhere else: that path resolves nothing, so
+    `0` would say "looked, found no expansion" of a module nothing looked at. Same tri-state as every
+    other unknown here — withhold rather than negate.
     """
 
     variants: list[VariantRow]
     warnings: list[str] = field(default_factory=list)
     strict_errors: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    expanded_keys: int | None = None
+    expanded_rows: int | None = None
 
 
 def resolve_from_table(
@@ -94,6 +106,11 @@ def resolve_from_table(
     # coordinate-authored module — the row already has its identity, and an rsID is a convenience label
     # — so it earns one counted line, not a line each.
     no_rsid: list[str] = []
+    # rsID → the usable loci found for each authored row carrying it, one entry per authored row. So
+    # `len(entry)` is how many rows the author wrote at that key and `sum(map(len, entry))` is how
+    # many artifact rows they became. Collected rather than reported in place — see the expansion
+    # branch below.
+    expansions: dict[str, list[list[ResolutionRow]]] = {}
     for v in variants:
         rows = resolution.get(v.variant_key or "")
         loci = _usable_loci(rows, genome_build)
@@ -149,7 +166,15 @@ def resolve_from_table(
                 elif len(usable) == 1:
                     patched.append(v.model_copy(update=_coord_update(usable[0])))
                 else:
-                    warnings.append(_expansion_warning(v.rsid, usable, genome_build))
+                    # Accumulated per rsID, reported once after the loop. Emitting here put the same
+                    # sentence in `manifest.compilation.warnings` once per *authored row* — a site with
+                    # two authored genotypes published it twice — and each copy said "expanded to 2
+                    # rows" while the artifact gained four. Same rule as the counted line below: a
+                    # message that embeds a count is owed the whole denominator, and the whole
+                    # denominator is not known until every authored row at this key has been judged
+                    # (which loci are usable depends on the genotype, so two rows at one key can
+                    # legitimately expand onto different loci).
+                    expansions.setdefault(v.rsid, []).append(usable)
                     for locus in _sorted_loci(usable):
                         update = _coord_update(locus)
                         # `build=` is redundant *today* — the function returns early for any other
@@ -199,6 +224,11 @@ def resolve_from_table(
             f"back-filled."
         )
 
+    expanded_rows = 0
+    for rsid, per_row in expansions.items():
+        expanded_rows += sum(len(u) for u in per_row)
+        warnings.append(_expansion_warning(rsid, per_row, genome_build))
+
     for variant in patched:
         for locus in resolution.get(variant.variant_key or "", []):
             if locus.rsid_status == "withdrawn":
@@ -232,7 +262,8 @@ def resolve_from_table(
                 break
 
     return ResolutionOutcome(
-        variants=patched, warnings=warnings, strict_errors=strict_errors, errors=errors
+        variants=patched, warnings=warnings, strict_errors=strict_errors, errors=errors,
+        expanded_keys=len(expansions), expanded_rows=expanded_rows,
     )
 
 
@@ -666,7 +697,9 @@ def _par_pairs(loci: list[ResolutionRow], genome_build: str) -> list[tuple[str, 
     return pairs
 
 
-def _expansion_warning(rsid: str, usable: list[ResolutionRow], genome_build: str) -> str:
+def _expansion_warning(
+    rsid: str, per_row: list[list[ResolutionRow]], genome_build: str
+) -> str:
     """Describe a one-to-many expansion — and say which KIND of many it is.
 
     A paralogous rsID and a pseudoautosomal one produce the same row count for opposite reasons: the
@@ -675,25 +708,51 @@ def _expansion_warning(rsid: str, usable: list[ResolutionRow], genome_build: str
     can tell them apart offline — `chrom`, `start` and the PAR intervals are all it needs — so it says
     which.
 
+    **One sentence per rsID, over every authored row at it** (S33). `per_row` carries the usable loci
+    judged for each authored row separately, because `_hostable_loci` asks the question per genotype
+    and two rows at one key can legitimately reach different loci. The union is what "maps to N loci"
+    means; the sum is what "expanded to M rows" means, and the two come apart exactly when the author
+    wrote more than one genotype — the shape that made the old per-row copy say "2 rows" of an
+    artifact that gained four.
+
+    **And it says what those rows are, because that is the half a reader gets wrong.** Only one member
+    of an expansion can match a given genotype; the rest are well-formed rows asserting the authored
+    conclusion beside a locus that cannot carry it. A reader doing anything but a position join —
+    counting rows, classifying them, asking what the module says about a reference-homozygous subject
+    — reads those as claims the module never made.
+
     The compiler only *describes* this; it never drops the locus. Which loci reach the table is the
     enricher's decision (`enrich.select_par_representative`, which keeps the X spelling by default),
     because that choice has to be recorded in injected data to survive
     `compile → reverse → compile` — a compiler-side prune would fail Principle 7.
     """
-    pairs = _par_pairs(usable, genome_build)
-    if len(pairs) * 2 == len(usable):
+    seen: dict[tuple, ResolutionRow] = {}
+    for usable in per_row:
+        for lo in usable:
+            seen.setdefault((lo.locus_index, lo.chrom, lo.start, lo.ref, lo.alts), lo)
+    loci = _sorted_loci(list(seen.values()))
+    rows = sum(len(u) for u in per_row)
+    authored = len(per_row)
+    # "N rows from M authored genotype(s)" only earns its place when M > 1; on the ordinary
+    # single-genotype expansion the two numbers are the same and the clause is noise.
+    from_clause = f" from {authored} authored genotype(s)" if authored > 1 else ""
+    pairs = _par_pairs(loci, genome_build)
+    if len(pairs) * 2 == len(loci):
         spellings = "; ".join(f"{x} and {y}" for x, y in pairs)
         return (
-            f"{rsid} is pseudoautosomal: it maps to {len(usable)} loci ({spellings}) that are "
+            f"{rsid} is pseudoautosomal: it maps to {len(loci)} loci ({spellings}) that are "
             f"{len(pairs)} place(s), because PAR1/PAR2 are shared between X and Y. Expanded to "
-            f"{len(usable)} rows, so count distinct findings by rsid rather than by row — and note "
-            f"that a standard GRCh38 analysis set hard-masks the Y PAR, so the Y row matches nothing "
-            f"there. Re-run the enricher without --keep-par-twin to record the X spelling alone."
+            f"{rows} rows{from_clause}, so count distinct findings by rsid rather than by row — and "
+            f"note that a standard GRCh38 analysis set hard-masks the Y PAR, so the Y row matches "
+            f"nothing there. Re-run the enricher without --keep-par-twin to record the X spelling "
+            f"alone."
         )
     return (
-        f"{rsid} maps to {len(usable)} loci in the resolution table; expanded to "
-        f"{len(usable)} rows (one per locus, each keyed by its coordinate — a consumer "
-        f"can count them)."
+        f"{rsid} maps to {len(loci)} loci in the resolution table; expanded to {rows} rows"
+        f"{from_clause}, one per (authored genotype, locus) pair and each keyed by its coordinate. "
+        f"Only the locus whose alleles can carry a given genotype can match it, so the rest are "
+        f"well-formed rows that assert nothing about a subject — count findings by rsid, and do not "
+        f"read a row as a standalone claim about its locus."
     )
 
 

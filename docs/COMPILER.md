@@ -154,6 +154,26 @@ ClinVar carries only its submitted alleles while Ensembl carries every allele db
 alt list is a gap in the source at least as often as a defect in the module. The comparison is also made
 against the **union** of every locus a key resolves to, never per-expanded-row, for the same reason.
 
+**"Exactly one of those rows can match" is a statement about matching, and a reader does more than
+match (S33).** The sentence above is right and the expansion is staying, but it was written in the
+authoring/validation frame, where an unmatchable row is inert. It is not inert to a consumer *reading*
+the artifact: `TA/TA` beside `ref=TA` is a well-formed reference homozygote carrying the module's
+conclusion, and a reporting consumer classified 2,579 of them as pathogenic genotypes a subject
+carried. Two things came out of that, neither of them a filter. The read-side contract is now stated
+where a consumer will meet it — [SCHEMAS § the consumer join contract](SCHEMAS.md#a-row-asserts-something-about-a-locus-genotype-pair--and-one-rsid-can-produce-rows-for-pairs-the-author-never-wrote-06-s33)
+— and `manifest.compilation.expanded_keys`/`expanded_rows` publish whether an artifact contains such
+rows at all. Marking *which* row is which member needs `locus_index` in `weights.parquet`; that is
+RM87, and it is minor-legal rather than a 1.0 item.
+
+**The expansion warning is one sentence per rsID, over every authored row at it.** It used to be
+emitted inside the per-row loop, so a site with two authored genotypes published the identical
+sentence twice and each copy said "expanded to 2 rows" of an artifact that had gained four. The union
+of loci is what "maps to N loci" counts and the sum over authored rows is what "expanded to M rows"
+counts — the two come apart exactly when an author writes more than one genotype at a key, since
+`_hostable_loci` judges hostability per genotype and two rows at one key can legitimately reach
+different loci. The deprecated `ensembl_cache` path keeps the old per-row shape deliberately; it is
+removed at 1.0 and its modules report the counts as `None`.
+
 **BA1 is a warning in both modes and its threshold is a parameter** (`compile_module(ba1_threshold=…)`,
 default 5%). The right cutoff is disease-specific — sickle-cell's `rs334` sits at a filtering AF of
 ~0.048 in African-ancestry groups, just under the line, and a common recessive carrier allele

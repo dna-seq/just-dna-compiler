@@ -199,7 +199,7 @@ def _locus(chrom: str, start: int, ref: str, alts: str, index: int) -> Resolutio
 def test_a_pseudoautosomal_expansion_is_named_as_one_place() -> None:
     """PAR1, where the two contigs share a coordinate. `rs137852556`, a real SHOX variant."""
     loci = [_locus("X", 640851, "C", "T", 0), _locus("Y", 640851, "C", "T", 1)]
-    message = _expansion_warning("rs137852556", loci, "GRCh38")
+    message = _expansion_warning("rs137852556", [loci], "GRCh38")
     assert "pseudoautosomal" in message
     assert "2 loci (X:640851 and Y:640851) that are 1 place(s)" in message
     assert "count distinct findings by rsid" in message
@@ -210,7 +210,7 @@ def test_a_par2_expansion_is_recognised_at_its_own_coordinates() -> None:
     """The two contigs do NOT share a coordinate in PAR2, so nothing about "the same base" finds this.
     `rs184115031`, a real SPRY3 variant: X:155773979 and Y:56960499."""
     loci = [_locus("X", 155773979, "A", "G", 0), _locus("Y", 56960499, "A", "G", 1)]
-    message = _expansion_warning("rs184115031", loci, "GRCh38")
+    message = _expansion_warning("rs184115031", [loci], "GRCh38")
     assert "pseudoautosomal" in message and "X:155773979 and Y:56960499" in message
 
 
@@ -218,7 +218,7 @@ def test_a_paralogous_expansion_keeps_the_generic_message() -> None:
     """Two genuinely distinct places, which is what the expansion was built for. Claiming these were
     one place would be the same error in the other direction."""
     loci = [_locus("5", 500, "A", "T", 0), _locus("6", 600, "A", "T", 1)]
-    message = _expansion_warning("rs999", loci, "GRCh38")
+    message = _expansion_warning("rs999", [loci], "GRCh38")
     assert "pseudoautosomal" not in message
     assert "maps to 2 loci in the resolution table" in message
 
@@ -231,18 +231,18 @@ def test_a_par_pair_beside_a_third_locus_is_not_called_a_pure_par_expansion() ->
         _locus("Y", 640851, "C", "T", 1),
         _locus("5", 500, "C", "T", 2),
     ]
-    assert "pseudoautosomal" not in _expansion_warning("rs1", loci, "GRCh38")
+    assert "pseudoautosomal" not in _expansion_warning("rs1", [loci], "GRCh38")
 
 
 def test_a_differing_allele_at_the_partner_position_is_not_one_place() -> None:
     """Same reasoning as the enricher's fusion guard: partner coordinates say "same place", not "same
     variant", and the message must not assert the stronger claim."""
     loci = [_locus("X", 640851, "C", "T", 0), _locus("Y", 640851, "C", "G", 1)]
-    assert "pseudoautosomal" not in _expansion_warning("rs1", loci, "GRCh38")
+    assert "pseudoautosomal" not in _expansion_warning("rs1", [loci], "GRCh38")
 
 
 def test_an_unknown_build_falls_back_to_the_generic_message() -> None:
     """PAR intervals are per-assembly (RM15), so on another build the compiler cannot claim these are
     one place — and must not."""
     loci = [_locus("X", 640851, "C", "T", 0), _locus("Y", 640851, "C", "T", 1)]
-    assert "pseudoautosomal" not in _expansion_warning("rs1", loci, "GRCh37")
+    assert "pseudoautosomal" not in _expansion_warning("rs1", [loci], "GRCh37")

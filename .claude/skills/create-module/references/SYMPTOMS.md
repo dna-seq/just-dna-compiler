@@ -92,10 +92,19 @@ telling those apart needs the reference sequence. **The locus is kept** — noth
 `--strict` still compiles. Run the enricher (it has sequence access) if you want the ambiguity
 resolved; do not edit an allele to silence it.
 
-**`maps to N loci in the resolution table; expanded to N rows`**
+**`maps to N loci in the resolution table; expanded to M rows`**
 Normal for a **paralogous** rsID — one id, several genuinely distinct places. Expected, not an error; do
 not delete rows to suppress it. To count *findings* rather than rows, count distinct `rsid` in
-`weights.parquet` — the expanded rows keep it.
+`weights.parquet` — the expanded rows keep it. `M` exceeds `N` when you authored more than one genotype
+at that rsID: the expansion pairs each authored genotype with each locus.
+
+Worth knowing before you read the compiled table: **only one member of an expansion can match a given
+genotype**, and the others are still well-formed rows. A genotype written for the duplication at a
+ClinVar dup/del pair lands beside the deletion's reference allele too, where it reads as an ordinary
+row and asserts nothing. That is by design — the alleles a source publishes are often incomplete, so a
+genotype that does not fit a locus is at least as often a gap in the source as a defect in your module,
+and the compiler will not drop rows on that evidence. Nothing you can author changes it; it matters
+only if you go on to read `weights.parquet` row by row.
 
 **`rsN is pseudoautosomal: it maps to 2 loci (X:… and Y:…) that are 1 place(s)`**
 A different message for a different situation, and the wording is the point: PAR1/PAR2 are shared

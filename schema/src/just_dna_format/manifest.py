@@ -188,9 +188,19 @@ class Compilation(BaseModel):
 
     # ── 0.5 resolution provenance (all optional, out of artifact.digest) ──
     # Policy vs outcome are orthogonal axes (Principle 5), not one overloaded flag: `resolution_mode`
-    # is what was *requested*, `fully_resolved` is what was *achieved*. A consumer trusts a module when
-    # `resolution_mode == "strict" or fully_resolved`; the "half-baked" product is
+    # is what was *requested*, `fully_resolved` is what was *achieved*. The trust rule over the pair is
+    # `resolution_subjects > 0 and (resolution_mode == "strict" or fully_resolved)` — the count is not
+    # optional, for the reason the RM44 comment below gives; the "half-baked" product is
     # `best_effort and not fully_resolved`.
+    #
+    # **The reader of that rule is a CATALOG, not the annotating consumer** (S34, 2026-08-16). Asked
+    # directly, the reference consumer reads a registry-projected verdict where it wants one at all, and
+    # for the question its engine actually puts — *can this table join to a VCF by position* — it reads
+    # the artifact's own null coordinates instead: authoritative for the bytes in hand, needing no trust
+    # rule, and answerable on a module whose manifest was never fetched, which on a path-discovery
+    # install is all of them. Both fields are still right to publish; the audience is a server projecting
+    # a badge over many modules. Saying "a consumer" here sent one hunting for a read path they had
+    # deliberately not built. Same correction applies to `positional_rows`/`positional_rows_placed`.
     resolution_mode: str | None = Field(
         default=None, description="Resolution policy used: 'strict' | 'best_effort' (None = legacy/skipped)"
     )
@@ -199,8 +209,9 @@ class Compilation(BaseModel):
     )
     # The denominator `fully_resolved` quantifies over (RM44). That flag is `all(...)` over the module's
     # `VariantRow`s, so on a module carrying no `variants.csv` it is `all()` over an empty list —
-    # **vacuously true**, and the trust rule three lines up then reads as a verdict about a module that
-    # resolves nothing. It is not wrong; it simply cannot say which question it answered. Recording the
+    # **vacuously true**, and the pre-0.6 rule (`resolution_mode == "strict" or fully_resolved`, with no
+    # denominator) then reads as a verdict about a module that resolves nothing. It is not wrong; it
+    # simply cannot say which question it answered. Recording the
     # count beside it makes `fully_resolved=true, resolution_subjects=0` self-evidently vacuous, with no
     # new vocabulary and nothing for a consumer to parse out of prose.
     #
@@ -224,6 +235,39 @@ class Compilation(BaseModel):
     resolution_subjects: int = Field(
         default=0,
         description="Variant rows fully_resolved was evaluated over, after rsID expansion (0 = nothing attempted)",
+    )
+    # How much of `resolution_subjects` is one-to-many expansion (S33, 0.6). A rsID that resolves to
+    # several loci is paired with each of them, so an authored genotype reaches N rows of which **one**
+    # can match; the others are well-formed rows beside a locus whose alleles cannot carry that
+    # genotype. That is deliberate and stays — the alleles a source publishes are routinely incomplete,
+    # so a genotype not fitting a locus is at least as often a gap in the source as a defect in the
+    # module, and dropping rows on that evidence would also break Principle 7's fixed point. What was
+    # missing is any way to know an artifact *contains* such rows: a reporting consumer read 2,579 of
+    # them as reference genotypes their subject carried, caught before rendering.
+    #
+    # Two counts, RM44's shape, and neither is derivable from the other: `expanded_keys` says how many
+    # authored identities did it, `expanded_rows` how many `weights.parquet` rows they became. One key
+    # of three loci and three keys of two are different situations and a single number cannot tell
+    # them apart. `expanded_rows - expanded_keys` is **not** the count of non-matching rows — that
+    # needs the authored genotype count per key, which is per-row information this block does not
+    # carry.
+    #
+    # **`None` is not `0`.** `0` is a module the compiler resolved and found no expansion in; `None` is
+    # a module where resolution did not run, or ran through the deprecated `ensembl_cache` path that
+    # does not report the split. The house tri-state, and the reason the pair is typed `int | None`
+    # while `resolution_subjects` beside it is a plain `int` — that one has a meaningful zero.
+    #
+    # **This is the artifact-level answer, not the row-level one.** A consumer that wants to know
+    # *which* row is which member needs `locus_index` in the parquet, which these counts deliberately
+    # do not substitute for — see ROADMAP_0_7 § RM87, where the premise that it must wait for 1.0 is
+    # corrected rather than accepted.
+    expanded_keys: int | None = Field(
+        default=None,
+        description="Authored keys expanded onto >1 locus (None = resolution skipped or legacy path)",
+    )
+    expanded_rows: int | None = Field(
+        default=None,
+        description="weights.parquet rows those keys produced; only one member per genotype can match",
     )
     resolution_signature: str | None = Field(
         default=None,

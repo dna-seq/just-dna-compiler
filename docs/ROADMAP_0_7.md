@@ -713,3 +713,384 @@ against what a source says?* — and then answer it only to a terminal.
 
 **What would unblock it:** a decision on that line, which then settles the reword. The four members
 follow mechanically once it is made; the two reserved ones do not move either way.
+
+---
+
+# The lifecycle items — what writing down the second pass surfaced
+
+Filed on **2026-08-16** out of [MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md), which mapped a module from
+origin to publish to a consumer's join and found that **the second pass had never been written down at
+all**. Four items, none of them a defect in a rule: each is a place where two individually-correct rules
+compose into something nobody chose, or where an absence only bites the second time somebody opens a
+module. The document keeps the measurements (§5.1 the canary, §6.2 the six-edit consequence matrix, §6.3
+what deleting a sidecar costs); these entries keep the decisions and the refused repairs, and do not
+restate the numbers.
+
+They were the closing section of that document — an "open questions" list — which is exactly the shape
+this repo has twice found to be a backlog nobody reads. A question filed against a release is findable;
+a question at the bottom of a prose document is not.
+
+Everything here is legal in a minor.
+
+## RM82 — the attestation binds raw bytes, so an editor's line endings un-close a module
+
+**Severity** low-medium · **Status** **decided 2026-08-16 — normalize newlines, nothing else** —
+unbuilt · **Owner** format (schema: `verification.module_binding`) · **Found by** the §6.2 measurement,
+and sighted once before from the other side
+
+### What was observed
+
+Measured in [MODULE_LIFECYCLE § 6.2](MODULE_LIFECYCLE.md#62-the-consequence-matrix--measured-not-derived):
+rewriting `variants.csv` with a different line ending changed no value, no digest and no signature —
+and still dropped the attestation **and** the closure. `verification.json`'s `module_hash` binds the raw
+bytes of the authored files, so a formatting change an author never intended costs exactly what a
+re-authored conclusion costs. An author whose editor normalizes newlines un-closes their module without
+touching a cell.
+
+### The decision
+
+**Normalize `\r\n` → `\n` on the bytes before `module_binding` hashes them.** What separates this from
+the content-aware binding RM45 rightly refused is that it needs **no loader, no schema knowledge and no
+parse** — it is a byte transform, and the binding stays a byte binding. Precedent is on its side:
+normalize-before-hashing is already the house move for `content_signature` (defaults folded in,
+`exclude_none`, the default build omitted).
+
+Three things settled with it, because each is a way the fix could go wrong:
+
+- **The stopping point is newlines, and it is chosen rather than inherited from the first symptom
+  reported.** A BOM, trailing whitespace and a missing final newline are the obvious next steps, and
+  each makes the binding more content-ish without making it content. Newlines are the one difference a
+  *tool* introduces on a file the author did not edit — an editor's default, or Git itself through
+  `core.autocrlf`; the others are things a human typed. If a real case arrives for one of them it is
+  additive (P3) and gets argued then, on its own evidence.
+- **The cost is a one-time invalidation of every `module_hash` in existence**, all sixteen closed
+  reference examples included. That is a **soft** break: a stale attestation warns and is dropped, it
+  never fails a build. But it is every module in the wild re-attesting once, and the corpus re-closing
+  in the same commit as the change.
+- **`manifest.inputs[]` must not follow it.** Those raw-byte hashes answer *are these the exact bytes*,
+  which is a different question — so normalizing one and not the other is coherent, not an
+  inconsistency to tidy up later.
+
+### It was sighted once before, from the other side
+
+[DOGFOOD_0_6.md](DOGFOOD_0_6.md)'s lane plan asked whether a round-tripped spec's attestation may read
+as stale **to its own compiler** with nothing edited, since `reverse` normalizes cell formatting and
+column order, and closed with *"Both are legitimate outcomes; neither is documented."* Same mechanism,
+different trigger. The editor case is the one an author actually meets, which is what promoted the
+question from an observation to a decision.
+
+### What this is not
+
+A change to **which files** the binding covers. That question — should the `authorship:` block be inside
+it, given that appending a reviewer drops the attestation while moving no identity — was asked beside
+this one and **answered the other way** on 2026-08-16: a review stamp is an attestation that zero
+changes were needed, so un-closing is exactly correct and the reviewer re-closes. Recorded in
+[MODULE_LIFECYCLE § 6.6](MODULE_LIFECYCLE.md#66-authorship-across-passes). Do not re-open it as a
+by-product of building this.
+
+## RM83 — a derived sidecar can only be refreshed by deleting it, which discards the overrides it exists to hold
+
+**Severity** medium-high · **Status** open — one shape named, tier undecided · **Owner** enricher
+(probably; see below) · **Motivating case** every second pass; upstream-drift detection
+
+### The two halves, which are one mechanism
+
+**The refresh half.** Every derived sidecar is merge-not-clobber: an existing row is authoritative and a
+re-run adds to it rather than replacing it. The rule exists because these tables are human-overridable
+by design. Its consequence is the single most important operational fact about a second pass, and
+[MODULE_LIFECYCLE § 6.3](MODULE_LIFECYCLE.md#63-what-must-be-deleted-and-what-deleting-costs) tabulates
+it per table: **to re-derive a sidecar you delete it first, and deleting it discards every hand-curated
+row in it along with the stale ones.** For `resolution.csv` those rows are real and not reproducible by
+re-running — `reference_examples/cyp2c9_warfarin_grch37/` carries three hand-authored `source=manual`
+rows — and for `literature.csv` the loss includes a curator's deliberate blank, which a merge cannot
+distinguish from an absent value in the first place.
+
+**The drift half.** Merge-not-clobber also means a re-run never re-asks about a row already recorded, so
+a source that quietly **revised** an existing answer moves nothing at all: no `fetched_at`, no fact
+signature, no digest. §5.1's canary — *content unchanged, a fact signature moved, therefore the world
+moved* — is a real instrument and it cannot fire on its own. Detecting upstream drift **is** the
+delete-and-re-derive: note the signature, delete the sidecar, re-derive, compare. No command performs
+that sequence, and the sequence is the one that discards the overrides.
+
+So they are not two items. The same missing operation causes both, and one shape closes both.
+
+### The charter already knows about this, and discharged it exactly once
+
+The 2026-08-12 amendment says a derived table that is both machine-written and human-overridable *wants
+a mechanism rather than a convention*. RM45 discharged that for **one** table: `verification.json` is
+"the one derived artifact whose human-overridability must not be a feature", which is why it is a JSON
+document rather than a fifth fact CSV. Nothing discharges it for the six tables where overriding **is**
+the intended feature. The second pass is where the convention fails, and `rm` is the whole of the
+current mechanism.
+
+### The shape
+
+A `--refresh` that **re-asks and reports the difference rather than merging**. It re-puts the question
+to the source for rows already recorded, and renders what changed instead of silently taking either
+side — which keeps the standing rule that a pass reports and never repairs, and makes the canary
+performable rather than merely readable.
+
+### The open questions, which are why this is filed rather than built
+
+- **Which tier owns it.** The enricher is what re-asks, so the refresh belongs there; but "tell me what
+  moved between this sidecar and a freshly derived one" is a comparison over injected bytes, which is
+  compiler-shaped. Splitting it wrongly gives two half-commands.
+- **What it does with a difference.** Report only and leave the file untouched is the conservative
+  answer and consistent with every other check; it also means the author is back to `rm` if they want
+  the new value. A third file (a proposed table beside the current one) is the other shape and needs a
+  name, a lifecycle and a rule about what compiles.
+- **The blocking one: on most sidecars nothing records that a row was overridden.** `source` is an open
+  provenance column that *can* say `manual` — `ResolutionRow`'s does, on real rows — but nothing sets it
+  when a human edits a cell of an existing machine-written row in place, so that row still reads
+  `source=gnomad`. "Re-derive the machine rows and keep the overrides" is therefore **not implementable
+  today**: the tier cannot tell a curator's edit from what the source said last time. Either the refresh
+  compares against the source and reports every difference without classifying it, or something has to
+  start recording the edit — and that second option is a schema question with the usual cost, not a flag.
+
+### What it must not become
+
+A pass that **applies** the newer value. Rewriting an authored or curator-set cell destroys the evidence
+of the upstream change, which is the rule every cross-check in this tier already follows, and it is the
+parked co-authoring item wearing a different name.
+
+## RM84 — a module has no version identity on the discovery path, and the publisher is the half we own
+
+**Severity** medium-high · **Status** open — **joint with the reference consumer, and their half is
+already agreed in writing** · **Owner** enricher (`upload.upload_module`) + `just-dna-lite` discovery ·
+**Motivating case** a republished module on the HuggingFace path
+
+### What was observed
+
+[MODULE_LIFECYCLE § 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) traces two
+acquisition paths with two entirely different notions of "updated", and neither delivers a notification.
+The registry path at least has a per-version audit. The **discovery path has no version identity at
+all**: no version in the path, no manifest fetch, no digest check. A republished module keeps the same
+URL, so a cached copy shadows it, and the only invalidation is a purge keyed on the *consumer
+application's own package version*. Stated plainly: on that path the identity used to detect "the module
+changed" is a property of the reader, not of the module. A module republished with new science while the
+app stays pinned is invisible; an app patch release with no module change purges everything.
+
+**Half of that is ours.** `just_dna_enricher.upload.upload_module` writes the flat `data/<name>/` layout
+— so this tier publishes the shape that cannot express a version, and no amount of consumer-side work
+invents one.
+
+### Why it is joint rather than ours alone
+
+A pinning surface is a change to our publisher **and** to their discovery in the same breath: a version
+segment nobody reads is dead bytes, and a reader looking for a segment nobody writes finds nothing.
+[S34 § 4](CONSUMER_SUGGESTIONS.md) is the consumer's half, already stated: *"If the publisher grows a
+version segment we will follow it in discovery; the `vN` fallback in our generic fsspec scan is already
+the shape."* That is as close to a pre-agreement as a cross-repo item gets, and it makes this cheaper
+than "wants agreeing" implied when it was first written down.
+
+### What is undecided
+
+The layout itself — a `vN` segment, a digest segment, or a pointer file — and what happens to every
+module already published flat, which is all of them. Whatever is chosen has to leave an unversioned path
+working, because that is what is deployed.
+
+**Confirmed by exhaustive search to have had no `Sn` and no `RMn`** before this entry, which is why it
+is filed rather than cross-referenced.
+
+## RM85 — the origin of a module predicts the shape of its second pass, and nothing records it
+
+**Severity** low-medium · **Status** open — the fact is nearly recorded already; nothing acts on it ·
+**Owner** format (a column) or enricher (a report) — undecided, and that is the item · **Motivating
+case** a source-drafted panel two ClinVar releases later
+
+### The observation
+
+A module drafted from a source (ClinVar, CPIC, ClinPGx) inherits that source's release cadence and will
+need a **source-refresh pass**. A module built from one paper the author read inherits the *literature's*
+cadence and needs an **evidence pass** when the preprint is published or a replication lands. The origin
+picks the shape of the second pass, and
+[MODULE_LIFECYCLE § 7](MODULE_LIFECYCLE.md#7-what-no-stage-owns) records the consequence: **nothing tells
+an author their source has moved on.** The tautology skip reads the release the module was drafted from
+and `withdraw_stale_dataset` handles a module that ends up mixing two, but neither answers *"ClinVar has
+published since you drafted this"*. Today the author has to know.
+
+`SourceRow.dataset` records the release, so the fact is nearly there. What is missing is anything that
+acts on it.
+
+### Why the obvious repair is not obvious
+
+The tempting shape is a column saying what this module was made from and what would age it — and the
+identical proposal is already refused one table over, in
+[RM71](ROADMAP_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file):
+a comment column would be *"a statement about a snapshot release, and a re-draft from a newer one leaves
+it naming the old alleles — exactly the staleness `licensing.withdraw_stale_dataset` had to be built for
+on `dataset`, on a column where nothing could notice."* Same shape one table over. A column that states
+what `dataset` already states, and rots where `dataset` is maintained, is the wrong half of the answer.
+
+So the live candidates are the ones that read rather than write:
+
+- **A check that compares `SourceRow.dataset` against the source's current release** and reports the
+  gap. Needs the network, so it is an enricher check, and it is the cheapest thing that answers the
+  actual question. It is also RM83's neighbour — the same "has the world moved" question, asked about
+  the release label instead of about the rows.
+- **A publish-time or catalog-side signal**, which puts the notice where a reader is rather than where
+  an author is, and is out of these packages' scope.
+- **Nothing, deliberately** — the author knows their sources. This is the status quo, and it is only
+  defensible while modules have one author who remembers; it fails exactly when a module outlives its
+  curator, which is the case the whole lifecycle document was written for.
+
+**Confirmed to have no `Sn` and no `RMn`** of its own before this entry.
+
+## RM86 — a review pass is legal at the gate, refused by the pre-flight, and invisible once published
+
+**Severity** medium-high · **Status** open — **filed with the registry on 2026-08-16 as their S10, S11
+and S12**, one item per finding; the question that is ours waits on their answer to S12 · **Owner**
+`just-dna-registry`, with a documentation half here · **Found by** reading the registry tree on
+2026-08-16, while settling whether a review pass costing the attestation is a defect (it is not — see
+[MODULE_LIFECYCLE § 6.6](MODULE_LIFECYCLE.md#66-authorship-across-passes))
+
+**Where the report lives:** `../just-dna-marketplace/docs/CONSUMER_SUGGESTIONS.md`, under *Field notes
+from just-dna-format — the second pass*. It carries the standing caveat that **0.6 is not published and
+not finished**, so the half of S11 that needs a reader of ours is explicitly filed as *do not build
+against this yet* — the recognition half, which is independent of our release, is the only thing asked
+for now. This entry is the tracking record; their file is the authoritative report, and the citations
+below were each verified in their tree first-hand rather than taken second-hand.
+
+### Why this was looked at
+
+The decision that a review stamp is an attestation of zero changes settles the *format* side and
+immediately raises the downstream one: a review pass publishes a version whose `content_signature`
+**and** `artifact.digest` are byte-identical to its predecessor, differing only in `authorship` and
+`verification.json`, neither of which is in either identity. Whether a catalog can even represent that
+is not something this repository can assert from its own rules, so the registry was read. RM27's shape
+applies — a finding about a downstream enforcer is filed as an **explicit ask**, not as an implication.
+
+### What the publish actually does
+
+**It succeeds, and the gate is right.** The duplicate-content check is keyed on `content_signature`
+alone, enforced in the service layer before enrich/compile, and the same-module carve-out is real code
+rather than prose — it compares `(namespace, name)` and is pinned by a test. Nothing else can bite:
+there is no unique index on the digest or the content hash, and storage keys are
+`namespace/name/version`, deliberately **not** content-addressed, with a comment giving this exact
+reason. `latest` advances normally. `find-by-hash` returns both versions in a deterministic list, which
+is the one place the shared digest is visible and is by design.
+
+So the §6.6 sentence this document has carried — that the gate permits identical content within one
+module — is now **confirmed against code** rather than believed.
+
+### The three things that are wrong
+
+- **The pre-flight disagrees with the gate on precisely this case.** `validation_report` computes
+  `published_as` from the raw content lookup with **no same-module carve-out**, and the namespace is
+  never threaded into the worker — so `validate` and `check` report the predecessor and answer
+  `would_publish: false` for a publish that then succeeds. The registry's own test file states the
+  standard this breaks (*"a pre-check that disagreed with the gate would be worse than none, because it
+  would give a publisher confidence before taking it away"*), and its coverage tests only the
+  different-name direction. **This is the one with a blast radius**: an automated publisher branching on
+  the field the API documentation says to branch on refuses a legal publish, and a review pass is the
+  commonest way to reach it.
+- **The closure reaches nothing.** `verification.json` is uploaded by the client and copied into
+  storage, and then read by no code path: it is not in `RECOGNIZED_SPEC_FILES`, so every server-side
+  spec rebuild (`revalidate`, `upgrade`) drops it, and it is outside the served allow-list so no
+  endpoint hands it back. `provenance.json`, one file over, *is* recognised and *is* served — so this
+  is an omission rather than a policy. Compounded but not caused by a version lag: the registry pins
+  **0.5.4**, where `manifest.verification` does not exist and `close_module` does not either, and the
+  server regenerates `manifest.json` from its own compile — so today the closure cannot appear even in
+  principle. The recognition gap outlives that upgrade; the pin does not.
+- **The review is served but unsurfaced.** `authorship` does reach the published manifest and is
+  readable two ways, but no projected field, column, filter or card element carries it, so seeing who
+  reviewed a module means parsing the manifest — and only for the latest version without a second
+  request. The registry's own schema states the policy this follows (*"a column is for something you
+  filter or sort by; the rest is payload"*), naming `authorship` as payload.
+
+### The question that is ours, not theirs
+
+The registry already has a **`reviews` table** with a verdict tier and a `highlighted` flag, projected
+onto module cards, costing no version number at all. This document has been saying that a pure review
+is *"a real version bump without pretending the data changed"* — which is true of the format and may be
+the wrong instrument on that catalog. The two mechanisms record different things (an `authorship` entry
+travels **inside the module**, survives a download and a hand-off on disk, and is signed by the same
+key; a registry review lives in the catalog and does not travel), so this is not a case of one being
+redundant. What is undecided is what an author should be told to do, and whether both should be
+recorded — and it is a **documentation** decision here, not a schema one: nothing in the format changes
+either way.
+
+### What this is not
+
+A reason to re-open the binding question. Un-closing on a review is correct
+([MODULE_LIFECYCLE § 6.2](MODULE_LIFECYCLE.md#62-the-consequence-matrix--measured-not-derived)); every
+finding here is about what a catalog does with the result, and none of them would be fixed by keeping a
+closure the reviewer did not make.
+
+**What would unblock it:** the pre-flight carve-out and the `verification.json` recognition are theirs
+and are small; the review-versus-version guidance is ours and needs deciding once, wherever an author
+is told how to run a review pass.
+
+## RM87 — an expanded row is indistinguishable from an authored one in the artifact
+
+**Severity** medium-high (a consumer produced 3,762 false findings on it; caught before rendering) ·
+**Status** open — legal in a **minor**, not deferred to 1.0 · **Owner** format (schema) + compiler
+(materializer, reverse) · **Motivating case** S33 in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md), from just-dna-lite
+
+A one-to-many rsID is paired with every locus it resolves to, so K authored genotypes at that key
+become K×N rows in `weights.parquet` and only the member whose alleles can carry a given genotype can
+match it. The others are ordinary well-formed rows — real coordinate, real reference allele, the
+module's own conclusion — and **nothing on the row says so**. `locus_index` lives in `resolution.csv`,
+which SCHEMAS.md states is a lookup rather than a consumer contract and which gets no parquet by
+design; the artifact carries `variant_key` and `authored_ident` and neither separates the members.
+
+The reporting consumer that found this measured 2,579 rows into one genome's `pathogenic` section and
+1,183 into `cancer`, each stating that a subject carried a pathogenic variant they do not have, all
+from `TA/TA`-beside-`ref=TA` reference homozygotes at ClinVar duplication/deletion pairs. Their
+mitigation — withhold any locus the artifact spells with more than one `ref` — took those to zero and
+is **partial by their own account**, because same-`ref` expansions are invisible to it. They are real
+here: `--keep-par-twin` records a pseudoautosomal locus on X and Y with identical alleles, which is
+what `reference_examples/shox_par1/` was built from (nine of ten SHOX variants, 20 rows for 10
+findings — RM32), and a paralogous rsID can name two positions carrying the same reference base.
+
+**0.6 shipped the artifact-level half** — `manifest.compilation.expanded_keys`/`expanded_rows`, plus
+the read-side contract in SCHEMAS § *the consumer join contract* and one expansion warning per rsID
+carrying the true row total. Those answer *does this artifact contain expansion rows*. They do not
+answer *is this row one*, which is the question a row-by-row reader actually has.
+
+### The premise this item exists to correct
+
+S33 declines to ask for the parquet column: *"the 0.5 digest window is closed and a new column moves
+every module's digest, so that is a 1.0 conversation if it is one at all."* **That is wrong under our
+own charter, and the mistake is ours for not having said so plainly enough.** Principle 3: *"A new
+optional column, or a new optional table, is additive and lands in a minor: the authored identity —
+`content_signature` and the per-input hashes — is unchanged, and only a recompile's `artifact.digest`
+moves."* Principle 4 scopes byte-reproducibility to a fixed `compiler_version` in the first place, so a
+digest that moves between compiler versions is the documented behaviour rather than a cost. And the
+0.6 cost amendment prices this exact object at the bottom of its scale: *"Parquet columns —
+approximately free. Materialized and derived; no human ever types one, and an author cannot see one. A
+stamped, compiler-managed column is the cheapest thing this format can add."*
+
+So the thing the reporter says they actually want is both **legal in a minor** and the cheapest class
+of change the charter recognises. It is filed rather than shipped in the same pass for one reason
+only, and it is not legality.
+
+### The open design question — `locus_index` alone does not answer it
+
+`locus_index` is what S33 names, and taken by itself it is under-determined: it is `0` on every
+non-expanded row *and* on the first member of every expansion, so a reader holding one row cannot tell
+the two apart. Making it answerable needs one of:
+
+- **`locus_index` + `locus_count`** — index within the key's expansion, and how many members that key
+  has. `locus_count > 1` is then the row-level predicate, self-sufficient and mirroring what
+  `resolution.csv` already records. Two columns for one fact, which is the cost.
+- **`locus_count` alone** — the predicate without the ordinal. Cheaper, and it loses the ability to
+  line a weights row up with its `resolution.csv` row, which is the other thing an index buys.
+- **A single boolean `expanded`** — cheapest to read, and it forecloses both of the above under
+  Principle 5's one-way-door rule: a `bool` cannot later carry an ordinal without a retype, which is
+  major-only.
+
+None of these is obviously right, the name is permanent within the major (P5), and picking one during
+a triage pass is exactly the kind of decision this repository files instead of guessing. Whichever
+lands, it is compiler-managed and stamped, so it needs the three touch points — model, compile-side
+row dict plus polars schema, and the reverse `fieldnames`/`_scalar_cell` pair — plus a round-trip test:
+reverse currently *recomputes* `locus_index` by encounter order over the weights rows (which works only
+because those rows are sorted on it), and a stored column would have to be shown either to agree with
+that or to supersede it.
+
+**What it does not change.** The expansion stays. Filtering the non-matching member is refused for the
+two reasons COMPILER.md § Resolution already gives — a source's allele list is incomplete at least as
+often as a module is wrong, and dropping rows changes what `reverse_module` reads back, which
+Principle 7 forbids. The reporter argued the same case against their own first candidate, and they are
+right.

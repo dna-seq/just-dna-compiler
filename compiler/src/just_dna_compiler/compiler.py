@@ -2143,6 +2143,17 @@ def _check_genotype_coverage(
                 )
             elif ref:
                 reason = "a heterozygous genotype has no row, so a carrier matches nothing in this module"
+            elif len({r.ref.upper() for r in resolution_table.get(site_key, []) if r.ref}) > 1:
+                # A one-to-many rsID: the table resolves this key onto several loci and they disagree
+                # about the reference, which is the *normal* shape of a ClinVar duplication/deletion
+                # pair. `_site_reference_allele` withholds, correctly — but the generic wording below
+                # then says "no ref is authored or resolved here" of a site with two of them, which
+                # sends an author to fill in a cell that is already answered twice over (S33).
+                reason = (
+                    "a genotype expressible from the alleles this site already names has no row, and "
+                    "this rsID resolves onto loci that disagree about the reference allele, so which "
+                    "reading it is cannot be said here — a one-to-many expansion, not a missing fact"
+                )
             else:
                 reason = (
                     "a genotype expressible from the alleles this site already names has no row, and "
@@ -3937,6 +3948,10 @@ def compile_module(
         return CompilationResult(success=False, errors=p_value_errors, warnings=all_warnings)
 
     resolution_mode: str | None = None
+    # `None` until the injected-table path runs and reports them (S33) — see the assignment below for
+    # why no other branch can.
+    expanded_keys: int | None = None
+    expanded_rows: int | None = None
     # The flag reads as "do not use Ensembl", and since 0.5 made the compiler inject-only that is
     # exactly what a consumer migrating to `resolution.csv` expects it to mean. It is actually the
     # master switch for resolution *of any kind*, so turning it off with a complete, correct table
@@ -3968,6 +3983,13 @@ def compile_module(
             variants = outcome.variants
             resolve_warnings = outcome.warnings
             resolve_strict_errors = outcome.strict_errors
+            # S33. Only this branch can answer it: the deprecated `ensembl_cache` path returns a bare
+            # (variants, warnings) pair and is removed at 1.0, so its modules keep `None` — "not
+            # established", never "no expansion". Assigned here rather than derived from `variants`
+            # further down, because after the expansion an expanded row is indistinguishable from an
+            # ordinary coordinate-keyed one; the fact only exists while the loop is running.
+            expanded_keys = outcome.expanded_keys
+            expanded_rows = outcome.expanded_rows
             if outcome.errors:
                 # Fatal in both modes — today only a curator-recorded `withdrawn` rsID. See
                 # `ResolutionOutcome`.
@@ -4347,6 +4369,8 @@ def compile_module(
         resolution_mode=resolution_mode,
         fully_resolved=fully_resolved,
         resolution_subjects=resolution_subjects,
+        expanded_keys=expanded_keys,
+        expanded_rows=expanded_rows,
         positional_rows=positional_rows,
         positional_rows_placed=positional_rows_placed,
         vrs_alleles=vrs_alleles,
@@ -4890,6 +4914,8 @@ def _build_manifest(
     resolution_mode: str | None = None,
     fully_resolved: bool = False,
     resolution_subjects: int = 0,
+    expanded_keys: int | None = None,
+    expanded_rows: int | None = None,
     positional_rows: int | None = None,
     positional_rows_placed: int | None = None,
     resolution_sig: str | None = None,
@@ -4947,6 +4973,8 @@ def _build_manifest(
             resolution_mode=resolution_mode,
             fully_resolved=fully_resolved,
             resolution_subjects=resolution_subjects,
+            expanded_keys=expanded_keys,
+            expanded_rows=expanded_rows,
             positional_rows=positional_rows,
             positional_rows_placed=positional_rows_placed,
             resolution_signature=resolution_sig,

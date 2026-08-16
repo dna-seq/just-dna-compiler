@@ -476,6 +476,42 @@ of them measures anything:
 | `VariantRow.quality_from` + `min_quality` | the floor below which what *was* seen is not good enough to act on. A consumer that cannot read the field **withholds** — an unevaluable floor is unknown, never satisfied |
 | `MeasureBinRow.unresolved` | the mandatory no-call sentinel on every binning table: a missing measurement selects it and **never** the lowest or reference bin |
 
+### A row asserts something about a (locus, genotype) PAIR — and one rsID can produce rows for pairs the author never wrote (0.6, S33)
+
+The second obligation on the consumer's side, and the one a reader of `weights.parquet` alone cannot
+infer: **a row states its conclusion about the pair of (that locus, that genotype), and where a
+one-to-many rsID expanded, only the member whose alleles can carry the genotype asserts anything at
+all.** The others are not markers, flags or malformed rows. They are ordinary rows — real coordinate,
+real reference allele, the module's own conclusion — describing a pair the module never made a claim
+about.
+
+The mechanism is the expansion described in [COMPILER.md](COMPILER.md) § Resolution: an rsID that
+resolves onto N loci is paired with each of them, so K authored genotypes at that rsID become K×N
+rows. ClinVar's reciprocal duplication/deletion pairs are the common instance — one rsID over
+`T→TA` and `TA→T` at one position — and there a genotype written for the duplication lands beside the
+deletion's `ref=TA` as a **well-formed reference homozygote**. A consumer joining by position is
+unaffected, which is why this went unnoticed: nothing matches that row. A consumer doing anything else
+— classifying rows, counting them, or asking "what does this module say about someone who is reference
+here" — reads it as a statement, and it is a false one. The reporting consumer that found this had
+2,579 such rows queued into a genome's pathogenic section, caught before rendering.
+
+**The expansion is not going to be filtered, and the reason is in the source data.** `alts` comes from
+a source that publishes submitted alleles, so a genotype not fitting a locus is at least as often a
+gap in that source as a defect in the module — which is why the membership check unions `{ref} ∪ alts`
+across the loci rather than testing each one. Dropping the non-fitting member would also change what
+`reverse_module` reads back, which Principle 7 forbids. So the rows stay, and this paragraph is the
+contract instead.
+
+**What an artifact tells you.** `manifest.compilation.expanded_keys` and `expanded_rows` say whether a
+module contains expansion rows and how many (both `None` where resolution did not run — never `0`,
+which would mean "looked and found none"), and `manifest.compilation.warnings` carries a sentence per
+expanded rsID. What the artifact does **not** carry is which row is which member: `locus_index` lives
+in `resolution.csv` and is not materialized into `weights.parquet`. Withholding on a locus whose `ref`
+differs from its siblings' is the obvious consumer-side workaround and it is **partial** — it catches
+the ClinVar dup/del shape and nothing else. A same-`ref` expansion is real: `--keep-par-twin` records
+a pseudoautosomal locus on both X and Y with identical alleles, and a paralogous rsID can name two
+positions carrying the same reference base. Carrying the index into the parquet is [ROADMAP_0_7 § RM87](ROADMAP_0_7.md#rm87--an-expanded-row-is-indistinguishable-from-an-authored-one-in-the-artifact).
+
 ### `*` in a call — the same rule arriving as a spelling (0.6, RM59)
 
 The obligation above is usually met by reading `DP`/`GQ`/`FT`. There is one case where the callset
@@ -1399,8 +1435,8 @@ something anything can filter on.
 
 The 0.5 additions on **`Compilation`** are two groups, and they answer different questions.
 Resolution *policy and outcome*: `resolution_mode?` (`strict`/`best_effort`), `fully_resolved`
-(outcome — orthogonal axis, P5), `resolution_subjects` (0.6), `resolution_signature?`,
-`resolution_sources`. Allele-identity *coverage*: `vrs_alleles` and `vrs_alleles_identified`, the
+(outcome — orthogonal axis, P5), `resolution_subjects` (0.6), `expanded_keys?`/`expanded_rows?` (0.6),
+`resolution_signature?`, `resolution_sources`. Allele-identity *coverage*: `vrs_alleles` and `vrs_alleles_identified`, the
 counts `_vrs_coverage_warnings` reports, so a consumer can read how completely the identity scheme
 names this module's alleles instead of inferring it from the absence of warnings. "Complete" is
 `identified == alleles`, derived rather than stored twice.
@@ -1415,6 +1451,29 @@ means nothing was attempted, which is not the same as nothing achieved. The coun
 one-to-many rsID expansion, because that is the list the flag iterates. `Stats.weights_rows` happens
 to equal it today — do not key on that: `Stats` is card/detail display facets and promises no such
 relationship.
+
+**And the reader of that rule is a CATALOG, not the annotating consumer (S34, 0.6).** Worth stating
+because the paragraph above and the model's own comment both said *a consumer*, and one went looking
+for a read path it had deliberately not built. Asked directly, the reference consumer reads a
+registry-projected verdict where it wants one at all; for the question its engine actually puts —
+*can this table join to a VCF by position* — it reads **the artifact's own null coordinates**, which
+is authoritative for the bytes in hand, needs no trust rule, and is answerable on a module whose
+manifest was never fetched (on a path-discovery install, all of them). By the same argument it does
+not expect to need `positional_rows_placed == positional_rows`: that is the manifest-side twin of a
+test it already runs against the data. Neither field is thereby wrong to publish — a server
+projecting a badge over many modules cannot open every artifact, and that is who they are for.
+
+**How much of that denominator is expansion — `expanded_keys` / `expanded_rows` (S33, 0.6).**
+`resolution_subjects` is counted after the one-to-many expansion, so on a ClinVar-derived panel it
+exceeds the authored row count and nothing said by how much or why. These two say it: how many
+authored identities resolved onto several loci, and how many `weights.parquet` rows they became. Two
+numbers because neither implies the other — one key over three loci and three keys over two are
+different situations — and **`expanded_rows - expanded_keys` is not the count of unmatchable rows**,
+which needs the per-key authored genotype count this block does not carry. `None` on both where
+resolution did not run (no `variants.csv`, no injected table, or a non-GRCh38 module), which is not
+`0`: a catalog must be able to tell "no expansion" from "no measurement". What they are *for* is the
+read-side contract above — an artifact with `expanded_keys > 0` contains rows that assert nothing, and
+one with `expanded_keys == 0` does not.
 
 **And the 0.4 families have their own denominator since 0.6 — `positional_rows` /
 `positional_rows_placed` (S31).** `fully_resolved` is about `variants.csv` only, so it says nothing
