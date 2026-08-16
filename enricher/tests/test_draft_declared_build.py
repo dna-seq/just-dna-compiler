@@ -161,9 +161,8 @@ def test_an_unreadable_spec_exits_cleanly_rather_than_tracebacking(tmp_path: Pat
     now keeps them together. `draft-panel` runs `--offline`: the raise must land before any snapshot
     is provisioned, so this passes with no cache on the machine.
     """
-    from typer.testing import CliRunner
-
     from just_dna_enricher.cli import app
+    from typer.testing import CliRunner
 
     spec = tmp_path / "half-authored"
     spec.mkdir()

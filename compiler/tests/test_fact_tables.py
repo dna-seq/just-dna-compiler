@@ -734,7 +734,7 @@ def test_a_symbolic_allele_on_a_non_grch38_module_reports_the_permanent_reason()
     in both `_vrs_gap_reason` and `_recompute_vrs_id` — the one branch those two functions must order
     identically, since they otherwise interleave their checks differently.
     """
-    from just_dna_compiler.compiler import _vrs_coverage, _verify_vrs_ids
+    from just_dna_compiler.compiler import _verify_vrs_ids, _vrs_coverage
 
     row = _res_row(ref="N", alts="<DEL:4977>", genome_build="GRCh37", vrs_id=None)
     _alleles, _identified, gaps = _vrs_coverage([row])

@@ -21,11 +21,11 @@ from just_dna_enricher.clinvar_draft import (
     draft_gene_panel,
     sole_expressible_genotype,
 )
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from just_dna_format.vrs import in_pseudoautosomal_region
 from pydantic import ValidationError
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 
 #: The licence sidecar's current filename, derived rather than named: it gained a second
 #: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test

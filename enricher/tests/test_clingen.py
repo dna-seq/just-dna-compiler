@@ -17,9 +17,9 @@ from just_dna_enricher.clingen import (
     parse_curation_list,
 )
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE, VALID_DOSAGE_SENSITIVITY
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 
 #: The licence sidecar's current filename, derived rather than named: it gained a second
 #: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test

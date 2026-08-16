@@ -138,7 +138,7 @@ def test_the_licence_gate_still_refuses_under_the_new_spelling(tmp_path: Path) -
         rows = (spec_dir / name).read_text().splitlines()
         header = rows[0].split(",")
         # A commercial-use-forbidding annotation row with no declaration is the gate's trigger.
-        row = {field: "" for field in header}
+        row = dict.fromkeys(header, "")
         row.update(
             {"source": "cpic", "layer": "annotation", "commercial_use": "false", "declared_use": "commercial"}
         )

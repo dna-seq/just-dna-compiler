@@ -19,10 +19,10 @@ from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient
 from just_dna_enricher.net import PacingGate
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow, taints_commercial_use
 from just_dna_format.vrs import derive_vrs_allele_id
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 
 #: The licence sidecar's current filename, derived rather than named: it gained a second
 #: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test

@@ -34,9 +34,9 @@ from just_dna_enricher.pharmvar import (
     parse_allele,
 )
 from just_dna_format import verification as verification_module
+from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.sources import SourceRow
-from just_dna_format.layout import SOURCES_CSV, VERIFICATION_JSON, preferred_spelling
 from just_dna_format.verification import read_verification
 from pydantic import ValidationError
 

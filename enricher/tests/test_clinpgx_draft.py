@@ -19,8 +19,8 @@ from just_dna_enricher.clinpgx_draft import (
     _symbolic_types,
     draft_pharm_variants,
 )
-from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
+from just_dna_format.pgx import PharmVariantRow
 
 #: The licence sidecar's current filename, derived rather than named: it gained a second
 #: spelling in 0.6 (RM51) and the older one retires at 1.0, so a literal here would pin a test
