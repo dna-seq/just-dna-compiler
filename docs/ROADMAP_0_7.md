@@ -1012,6 +1012,20 @@ reader's step, not this lane's.
 **Confirmed by exhaustive search to have had no `Sn` and no `RMn`** before this entry, which is why it
 is filed rather than cross-referenced.
 
+### Two items building this surfaced, filed 2026-08-17 rather than folded in
+
+Both were found by writing the code, not by planning it, and neither is a defect in what shipped —
+recorded here because this entry is where a reader meets the publisher.
+
+- **[RM88](ROADMAP.md#rm88--republishing-without-bumping-version-overwrites-a-versioned-path-with-different-bytes)** — the versioned path cannot notice that the version has *not* moved, so a republish
+  without a `version:` bump overwrites it with different bytes. Refusing needs a remote read *and* an
+  undecided policy (warn / refuse / `--force`), which is why it is an item and not a fix.
+- **[RM89](ROADMAP.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)** — `_REQUIRED`
+  still demands all three SNP-core parquets, so a table-only module cannot be published at all: seven of
+  the sixteen reference examples, measured. Its open question — what the discovery path actually needs
+  open — is for the same team as the two asks above, and belongs with them rather than as a third
+  message.
+
 ## RM85 — the origin of a module predicts the shape of its second pass, and nothing records it
 
 **Severity** low-medium · **Status** open — the fact is nearly recorded already; nothing acts on it ·
