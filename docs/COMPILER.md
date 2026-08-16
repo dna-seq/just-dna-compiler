@@ -162,8 +162,34 @@ conclusion, and a reporting consumer classified 2,579 of them as pathogenic geno
 carried. Two things came out of that, neither of them a filter. The read-side contract is now stated
 where a consumer will meet it — [SCHEMAS § the consumer join contract](SCHEMAS.md#a-row-asserts-something-about-a-locus-genotype-pair--and-one-rsid-can-produce-rows-for-pairs-the-author-never-wrote-06-s33)
 — and `manifest.compilation.expanded_keys`/`expanded_rows` publish whether an artifact contains such
-rows at all. Marking *which* row is which member needs `locus_index` in `weights.parquet`; that is
-RM87, and it is minor-legal rather than a 1.0 item.
+rows at all.
+
+**And since RM87 an expanded row says so about itself.** `weights.parquet` carries `locus_index` and
+`locus_count`, stamped at the expansion loop, which is the only site that knows a row is a member of
+anything — after it the row is ordinary, with a real coordinate, a real reference allele and the
+module's own conclusion. `locus_count > 1` is the predicate a consumer applies while holding a single
+row; `locus_index` is the 0-based ordinal that lines that row up with its `resolution.csv` row. Four
+things about the pair:
+
+- **The ordinal counts within `usable`**, i.e. after `_hostable_loci` dropped any locus that positively
+  contradicts the genotype — not within the injected table's own `locus_index`, which `_sorted_loci`
+  only *orders* by. Under `strict` a dropped locus is a refusal, so the two coincide there.
+- **`locus_count` defaults to `1`, not `0`.** A row that was never expanded genuinely resolves to one
+  locus. A zero default would make the predicate read `locus_count > 1 or locus_count == 0`, which is
+  the same under-determination `locus_index` alone has and which the columns exist to remove.
+- **Reverse prefers the stored column and keeps its encounter-order recompute as the fallback.** An
+  artifact compiled before 0.6 has no column and Principle 3 requires it to keep reversing, so
+  `_write_resolution_csv` reads `locus_index` where it is present and counts where it is not. A test
+  reverses each expanding reference example twice — once with the column, once with it stripped — and
+  asserts the two `resolution.csv` files are byte-identical; that comparison is what pins the sort
+  dependency the recompute silently relies on. The counter itself is maintained either way, because
+  the positional pass below uses membership in it to enforce weights-first.
+- **Neither column moves a `content_signature`**, and neither is re-emitted into `variants.csv`. They
+  are `exclude=True` compiler-managed columns recording what resolution did.
+
+**The positional tables' pass still writes a hard-coded `0`,** and that is honest only while those
+tables never expand — true today, since RM43's fill is one locus per row. It stops being true if RM65
+ever puts coordinates on the repeat and copy-number tables, and the RM65 entry carries that line.
 
 **The expansion warning is one sentence per rsID, over every authored row at it.** It used to be
 emitted inside the per-row loop, so a site with two authored genotypes published the identical
@@ -1328,6 +1354,7 @@ would break scripts for no gain.
 | authoring reference + palette (`reference.authoring_reference()`/`json_schemas()`) | ✅ generated from live models (drift-proof) | n/a | **shipped** (RM8/RM9) |
 | frozen `variant_key` identity (`base.derive_variant_key`) | ✅ stamped once, never re-keyed by resolution (P7); excluded from `authoring_reference()` | ✅ `weights.parquet` (compiler-managed) | **shipped** |
 | rsid↔coord resolution: one-to-many expansion, deterministic order, inject-only consistency check | ✅ `ORDER BY`; disagreement → warning; non-GRCh38 skipped | ✅ N coord-keyed rows per one-to-many rsid; idempotent | **shipped** (the DuckDB engine now lives in `just-dna-enricher`; GRCh38-only; multi-build RM15) |
+| **expansion marker: `VariantRow.locus_index` + `locus_count` (0.6, RM87)** | ✅ stamped at the expansion loop, authored cells overwritten by `_freeze_identity`; `exclude=True`, so no `content_signature` moves | ✅ `weights.parquet` (`UInt32` ×2, hand-listed in `_build_weights`); reverse prefers the stored index over its recompute and never re-emits either column into `variants.csv` | **shipped** — `locus_count > 1` is the row-level predicate; the positional pass's hard-coded `0` is honest only while those tables never expand (a line on RM65) |
 | **VCF pointer namespace + cardinality (0.6, RM53/RM54/RM61)** | ✅ `INFO/`/`FORMAT/` qualifier and the spec's key charset accepted (widening only); `_check_vcf_pointers` warns in **both** modes on a bare colliding key and on a spec-multi-valued target with no element rule, aggregated by reason | ✅ `source_element` → the binning parquets via the generic materializer; round-trips through `reverse` unchanged | **shipped** (`source_element` on `MeasureBinRow`; `callable_element`/`quality_element` **reserved**, not built) |
 
 ## Upgrade derivation (`state`/booleans → 0.3 axes)

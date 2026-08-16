@@ -175,7 +175,7 @@ def resolve_from_table(
                     # (which loci are usable depends on the genotype, so two rows at one key can
                     # legitimately expand onto different loci).
                     expansions.setdefault(v.rsid, []).append(usable)
-                    for locus in _sorted_loci(usable):
+                    for index, locus in enumerate(_sorted_loci(usable)):
                         update = _coord_update(locus)
                         # `build=` is redundant *today* — the function returns early for any other
                         # build 70 lines up — and is passed anyway: correct-by-construction beats
@@ -185,6 +185,19 @@ def resolve_from_table(
                             None, locus.chrom, locus.start, locus.ref, locus.alts,
                             build=genome_build,
                         )
+                        # The expansion marker (RM87). This is the only site that knows a row is a
+                        # member of anything — after here it is an ordinary well-formed row with a
+                        # real coordinate, and nothing on it said so. Both numbers were already in
+                        # scope: the ordinal is the `enumerate`, the total is `len(usable)`.
+                        #
+                        # The ordinal counts within `usable`, i.e. after `_hostable_loci` dropped any
+                        # locus that positively contradicts the genotype — not within the injected
+                        # table's own `locus_index`, which `_sorted_loci` only *orders* by. The two
+                        # coincide under `strict`, where a dropped locus is a refusal, and that is
+                        # also exactly what `reverse_module` recomputes by encounter order, so the
+                        # round trip is a fixed point either way.
+                        update["locus_index"] = index
+                        update["locus_count"] = len(usable)
                         patched.append(v.model_copy(update=update))
 
         elif v.rsid is None and v.chrom is not None:

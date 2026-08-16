@@ -23,7 +23,13 @@ from pydantic import (
     model_validator,
 )
 
-from just_dna_format.base import COMPILER_MANAGED, AuthoredModel, derive_variant_key, vocabulary
+from just_dna_format.base import (
+    COMPILER_MANAGED,
+    AuthoredModel,
+    derive_variant_key,
+    stamped_identity_field,
+    vocabulary,
+)
 from just_dna_format.derive import (
     benign_from_clin_sig,
     clin_sig_from_booleans,
@@ -422,6 +428,40 @@ class VariantRow(AuthoredModel):
             "what keeps `content_signature` stable across a round-trip."
         ),
     )
+    # ── The expansion marker (0.6, RM87) ──────────────────────────────────────────────────────────
+    # Two columns rather than one, and the pair is the design. `locus_count` alone carries the
+    # predicate but loses the ability to line a weights row up with its `resolution.csv` row;
+    # `locus_index` alone is `0` on a non-expanded row *and* on the first member of every expansion,
+    # so a reader holding one row cannot tell those apart. A single `expanded: bool` was refused under
+    # P5 — it cannot later carry an ordinal without a retype, which is major-only.
+    #
+    # Declared through `stamped_identity_field`, so both are `exclude=True` and reach no
+    # `content_signature`: they record what resolution did, which no human authored. `_build_weights`
+    # reads them off the row by attribute, which is how they still reach `weights.parquet`.
+    # `int | None`, not bare `int`, and the reason is the loader rather than the value: `load_csv_rows`
+    # turns an empty cell into `None` **and keeps the key**, so a bare `int` makes a blank
+    # `locus_count` column a type error instead of the accept-and-overwrite `_freeze_identity`
+    # promises. The runtime value is never `None` — the validator resets both on every construction —
+    # so `_build_weights` still writes two non-null `UInt32` columns.
+    locus_index: int | None = stamped_identity_field(
+        default=0,
+        description=(
+            "Which member of a one-to-many expansion this row is: the ordinal of its locus within the "
+            "expansion of its authored key, 0-based. 0 on any row that was not expanded — read it "
+            "with `locus_count`, never alone. Compiler-managed: not authored, materialized to "
+            "weights.parquet, never written back by reverse_module."
+        ),
+    )
+    locus_count: int | None = stamped_identity_field(
+        default=1,
+        description=(
+            "How many loci the authored key resolved onto: 1 on any row that was not expanded, N on "
+            "every member of an N-way expansion. `locus_count > 1` is the row-level predicate for "
+            "'this row is one of several the module's author wrote once' — only the member whose "
+            "alleles can carry the genotype asserts anything. Compiler-managed: not authored, "
+            "materialized to weights.parquet, never written back by reverse_module."
+        ),
+    )
     #: rsid, or a full coordinate. Mirrors `_validate_identification` below; pinned to it by test.
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
         frozenset({"rsid"}),
@@ -629,12 +669,22 @@ class VariantRow(AuthoredModel):
         locus from a coordinate the author wrote — so it materialized resolved coordinates into
         `variants.csv` and `content_signature` moved across every round-trip of an rsid-authored
         module. See `base.derive_variant_key` and COMPILER.md § Resolution.
+
+        The RM87 pair is reset here for the same "no foot-gun" reason, and it is not decoration: the
+        fields exist on the model, so `extra="forbid"` cannot see a `locus_count` column in someone's
+        `variants.csv`, and nothing else would ever overwrite it — a non-expanded row is marked by the
+        field *defaults*, with no stamp-at-load pass to correct an authored cell. An accepted
+        `locus_count=5` would reach `weights.parquet` unhashed and vanish on reverse, so
+        `compile → reverse → compile` would stop being a fixed point. Accepted-and-overwritten is the
+        same treatment `variant_key` gets one line up.
         """
         self.variant_key = derive_variant_key(self.rsid, self.chrom, self.start, self.ref, self.alts)
         self.authored_ident = [
             name for name in ("rsid", "chrom", "start", "ref", "alts")
             if getattr(self, name) is not None
         ]
+        self.locus_index = 0
+        self.locus_count = 1
         return self
 
     # `authored_key` — "the identity the author wrote, recomputed from `authored_ident`" — lived here

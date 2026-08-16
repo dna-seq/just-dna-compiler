@@ -352,7 +352,9 @@ and spelling the same concept differently in the parquet would be the `vrs_id` d
 
 Additive under P3, and the cheapest class the 0.6 amendment recognises (*"a stamped, compiler-managed
 column is the cheapest thing this format can add"*). No requiredness change (P8). `artifact.digest`
-moves on twelve of sixteen examples, which P4 already scopes to a fixed `compiler_version`. P7 gains an
+moves on ~~twelve~~ **nine** of sixteen examples, which P4 already scopes to a fixed
+`compiler_version`. *(Measured when the lane landed: nine reference examples carry a `variants.csv`,
+not twelve — the other seven are table-only. Nothing else moved on any of the sixteen.)* P7 gains an
 obligation rather than losing one: the round trip must now preserve a real `0..N-1` sequence, and a test
 must say so.
 
