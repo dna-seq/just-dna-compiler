@@ -479,12 +479,18 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
   of them: two rows of one group declaring *different* tilings is an error, while a blank cell beside
   a declared one is simply absence.
 - **A fractional bound switches the group by itself, and the compiler says so.** If you write a
-  `measure_min`, `measure_max` or modifier dosage that is not a whole number on a copy-number or
-  repeat-count table, that group is read as continuous whether or not you said so, and the compile
-  prints a line naming the value that decided it. The inference only runs that way: whole-number
-  bounds say nothing, since a continuous measure whose author has only seen whole numbers looks
-  exactly the same. Declaring `quantised` beside a fractional value keeps your declaration and warns
-  that the data disagrees with it.
+  `measure_min` or `measure_max` that is not a whole number on a copy-number or repeat-count table,
+  that group is read as continuous whether or not you said so, and the compile prints a line naming
+  the value that decided it. The inference only runs that way: whole-number bounds say nothing, since
+  a continuous measure whose author has only seen whole numbers looks exactly the same. Declaring
+  `quantised` beside a fractional bound keeps your declaration and warns that the data disagrees.
+  **A fractional `modifier_copy_number` does not switch anything** — the modifier is a key column, so
+  it says which table you are in rather than where a point sits on the axis you are tiling. If that
+  table's axis is continuous, declare it.
+- **`quantised` means a grid of whole numbers, and there is no way to state a finer step.** That is
+  right for copy numbers and repeat counts, and it is the reason not to reach for `quantised` on a
+  fraction: on a `[0,1]` axis nothing can be more than one step apart, so declaring it switches gap
+  reporting off instead of tightening it.
 - **Two bins sharing a *lower* bound refuse whatever the tiling** — the boundary rule selects the
   greatest `measure_min ≤ x` and these two are the same, so there is nothing to order. Reachable as a
   sharp `[0.1, 0.1]` beside a range starting at `0.1`.

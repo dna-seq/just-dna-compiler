@@ -369,7 +369,9 @@ hole nothing warns about.
 whole number on a table that would otherwise be read as a grid, so the group was read as continuous
 instead: adjacent bins may share an endpoint and any hole is reported. Nothing is wrong; the point of
 the line is that you can see it happened. Write `measure_tiling: continuous` on those rows to state it
-yourself, and the line stops.
+yourself, and the line stops. Only `measure_min` and `measure_max` trigger it — a fractional
+`modifier_copy_number` does not, because the modifier says which table you are in rather than where a
+point sits on the axis being tiled.
 
 **`measure_tiling for key (…) is declared 'quantised' and the data contradicts it`**
 You said the axis is a grid and then wrote a value that is not on it. **Your declaration stands** —

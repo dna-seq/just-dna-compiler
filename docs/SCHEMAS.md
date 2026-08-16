@@ -409,12 +409,34 @@ whose step this schema does not know, so an interior hole is not a claim this ti
 `binning.DEFAULT_MEASURE_TILING` is the table in code, derived from the three kind sets rather than
 restated beside them; a consumer implementing the lookup rule reads it.
 
-**The tiling is per bin group, and a fractional value settles it.** Two rows of one group declaring
+Two limits of the vocabulary, both deliberate. `quantised`'s step is **hardcoded to whole numbers** —
+right for `copy_number`/`repeat_count`, which is the only place its default applies, and a limit
+everywhere else: declaring it on a bounded domain like `allele_fraction` switches interior gap
+reporting *off* rather than tightening it, since no hole can exceed 1. A `measure_step` column would
+close it and is a full-cost authored column nobody has asked for, so it waits for the demand that
+would fix its shape (P5's one-way door); a fractional bound still raises the contradiction warning, so
+the realistic case is loud. And a kind that genuinely answered the two underlying questions apart —
+dense but coarsely gapped — would need a third vocabulary member, which is additive and a deliberate
+act.
+
+**The tiling is per bin group, and a fractional bound settles it.** Two rows of one group declaring
 different tilings are an **error** — the rules run per group, so a group has one tiling or none it can
 run under — while an empty cell beside a declared one is absence, not disagreement. Where a kind would
-default to `quantised` and the group carries a value no grid of whole numbers can hold (`measure_min`,
-`measure_max`, or the modifier dosage), the group is read as `continuous` anyway and the compiler
-**says that it did**, naming the group and the triggering value. The inference runs one way only:
+default to `quantised` and the group carries a **bound** no grid of whole numbers can hold
+(`measure_min` or `measure_max`), the group is read as `continuous` anyway and the compiler **says
+that it did**, naming the group and the triggering value.
+
+**The modifier dosage is not evidence here, and "it is a copy number too" is the wrong repair.**
+`modifier_gene` and the modifier copy number are *group-key* columns: they say which table you are in,
+not where a point sits on the axis being tiled. On `copynumbers.csv` the tiled axis is the SMN1 copy
+number and the SMN2 dosage is the condition the bins are read under, so a fractional SMN2 value
+contradicts nothing about how the SMN1 axis is divided. Letting it vote produced a **legality flip**
+(one identical pair of bins refused at `modifier_copy_number=2.0` and accepted at `2.5`) and
+**invented coverage gaps** on genuinely integral bounds — the same false-positive class
+`activity_score` is protected from. A group whose dosage is fractional and whose axis really is
+continuous declares `measure_tiling`, like any other group departing from its default.
+
+The inference runs one way only:
 fractional-ness contradicts a stated grid, integer-ness contradicts nothing, since `[0,1] [2,3]` is
 what a continuous measure looks like when its author has only seen whole-number data. It fires only
 against a `quantised` default for the same reason — that is the only reading a fraction falsifies;

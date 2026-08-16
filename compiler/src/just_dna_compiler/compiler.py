@@ -53,6 +53,7 @@ from just_dna_format.binning import (
     MeasureBinRow,
     RepeatAlleleRow,
     deprecation_warnings,
+    format_group_key,
     measurement_shape_warnings,
     validate_bins,
 )
@@ -3098,8 +3099,9 @@ def _validate_table_kind(
         for group, count in sentinels.items():
             if count > 1:
                 errors.append(
-                    f"{csv_name}: {count} unresolved sentinel rows for key {group} — a consumer "
-                    f"selects one when a measurement is absent, so at most one is allowed"
+                    f"{csv_name}: {count} unresolved sentinel rows for key "
+                    f"{format_group_key(group)} — a consumer selects one when a measurement is "
+                    f"absent, so at most one is allowed"
                 )
 
     keyfn = _TABLE_DUPE_KEYS.get(model)

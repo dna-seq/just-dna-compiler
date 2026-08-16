@@ -792,6 +792,27 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     integer-ness contradicts nothing, since `[0,1] [2,3]` is what a continuous measure looks like when
     its author has only seen whole-number data — which is why deriving the tiling with *no* column was
     refused. An explicit `quantised` beside a fractional value **stands** and warns.
+  - **It reads BOUNDS ONLY, and "the modifier is a copy number too, so surely it counts" is the
+    obvious wrong repair — it was in the first cut and review caught it.** `modifier_gene` + the
+    modifier dosage are *group-key* columns: they say which table you are in, not where a point sits
+    on the axis being tiled. Letting the dosage vote produced a **legality flip** (one identical pair
+    of SMN1 bins refused at `modifier_copy_number=2.0` and accepted at `2.5`, driven by an unrelated
+    column) and **invented coverage gaps** on genuinely integral bounds — the same false-positive
+    class `activity_score` is protected from, arriving through a different door. Generalize it:
+    *before feeding a number to an inference about an axis, ask whether the number is on that axis.*
+  - **`quantised`'s step is hardcoded to 1 and nothing can state another.** Right for
+    `copy_number`/`repeat_count`, the only kinds it defaults to; a limit elsewhere — declaring it on
+    `allele_fraction`'s `[0, 1]` switches interior gap reporting *off* rather than tightening it,
+    since no hole can exceed 1. Loud whenever a bound is fractional (the contradiction warning),
+    silent when they are integral. A `measure_step` column would close it and is a full-cost authored
+    column nobody has asked for, so it waits for the demand that would fix its shape. Documented on
+    the field description an author actually reads, not only here.
+  - **The group key's *rendering* is normalized (`format_group_key`).** Re-keying onto the coalesced
+    float would have turned every published `…for key ('SMN1', 'SMN2', 2, None)` into `2.0` on a
+    module nobody edited, and those strings are copied into `manifest.compilation.warnings`
+    (`@warning-text-is-api`). An integral float renders as an integer, so the coalesce is invisible to
+    a reader who never writes the new column. Grouping was never affected — `2 == 2.0` and they hash
+    equal — so this is a rendering rule and nothing else.
   - **Two rows of one group declaring different tilings is an error**; a blank cell beside a declared
     one is absence, not disagreement (`None` is never a value).
   - **`modifier_copy_number` beside `modifier_cn`**, the one genuine `int`. Read through

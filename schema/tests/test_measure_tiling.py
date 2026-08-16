@@ -125,21 +125,38 @@ def test_a_fractional_value_moves_a_quantised_group_and_leaves_the_others_alone(
             assert not fractional.inferred
 
 
-def test_a_fractional_modifier_dosage_is_evidence_too() -> None:
-    """The companion column is a number on the row, so it counts — that is (b′) applying to (b).
+def test_a_fractional_modifier_dosage_is_not_evidence_about_the_tiled_axis() -> None:
+    """The modifier is a *group-key* column: it says which table you are in, not where a point sits.
 
-    Shipping the float column without the semantics would ship a way to write a value the schema
-    still could not answer for, which is the current defect wearing a new column.
+    On `copynumbers.csv` the tiled axis is the SMN1 copy number and the SMN2 dosage is the condition
+    the bins are read under, so a fractional SMN2 value contradicts nothing about how the SMN1 axis
+    is divided — which is the rule the inference actually runs on. "It is a copy number too, so
+    surely it counts" is the obvious wrong repair, and it was in the first cut of this lane; the two
+    behaviours below are why it came out.
     """
-    rows = [
-        CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_copy_number=2.5,
-            measure_min=0, measure_max=0, conclusion="x",
-        )
-    ]
-    resolution = resolve_tiling(rows)
-    assert resolution.value == "continuous"
-    assert resolution.fractional == ("modifier copy number", 2.5)
+    def bins(dosage: float, spans):
+        return [
+            CopyNumberRow(
+                gene="SMN1", modifier_gene="SMN2", modifier_copy_number=dosage,
+                measure_min=lo, measure_max=hi, conclusion="x",
+            )
+            for lo, hi in spans
+        ]
+
+    assert resolve_tiling(bins(2.5, [(0, 0)])).value == "quantised"
+    assert resolve_tiling(bins(2.5, [(0, 0)])).fractional is None
+
+    # **No legality flip.** One identical pair of bins must get one verdict, whatever an unrelated
+    # key column happens to hold — letting the dosage vote made 2.0 refuse and 2.5 accept.
+    for dosage in (2.0, 2.5):
+        with pytest.raises(ValueError, match="overlapping bins"):
+            validate_bins(bins(dosage, [(1, 2), (2, 3)]))
+
+    # **No invented gaps.** Genuinely integral bounds under a fractional dosage tile exactly; read
+    # as continuous they reported three holes no copy number can land in — the same false-positive
+    # class `activity_score` is protected from, arriving through a different door.
+    sharp = bins(2.5, [(0, 0), (1, 1), (2, 2), (3, None)])
+    assert [w for w in validate_bins(sharp) if "coverage gap" in w] == []
 
 
 def test_a_whole_number_says_nothing_about_the_tiling() -> None:
@@ -499,6 +516,37 @@ def test_nothing_is_deprecated_on_a_table_that_does_not_use_it() -> None:
             )
         ]
     ) == []
+
+
+def test_the_coalesce_does_not_move_a_published_warning_string() -> None:
+    """A warning's text is an API, and re-keying onto a float would have moved it silently.
+
+    `_KEY_FIELDS` now names `effective_modifier_copy_number`, which coalesces the deprecated `int`
+    to a `float`, so every message naming the key would have turned `('SMN1', 'SMN2', 2, None)` into
+    `2.0` on a module nobody edited — and `compile_module` copies its warnings into
+    `manifest.compilation.warnings`. `format_group_key` normalizes the rendering, so the coalesce is
+    invisible to a reader who never writes the new column and new text appears only where genuinely
+    fractional data exists.
+    """
+    legacy = [
+        CopyNumberRow(
+            gene="SMN1", modifier_gene="SMN2", modifier_cn=2,
+            measure_min=lo, measure_max=hi, conclusion="x",
+        )
+        for lo, hi in ((1, 1), (3, 3))
+    ]
+    gaps = [w for w in validate_bins(legacy) if "coverage gap" in w]
+    assert len(gaps) == 1
+    assert "'SMN2', 2, None)" in gaps[0], gaps[0]
+    assert "2.0" not in gaps[0], gaps[0]
+
+    # The same rows written the new way render identically — one dosage, one spelling downstream.
+    modern = [r.model_copy(update={"modifier_cn": None, "modifier_copy_number": 2.0}) for r in legacy]
+    assert validate_bins(modern) == gaps
+
+    # …and a genuinely fractional dosage is still shown as one, because that is not a whole number.
+    fractional = [r.model_copy(update={"modifier_copy_number": 2.5}) for r in modern]
+    assert "'SMN2', 2.5, None)" in validate_bins(fractional)[0]
 
 
 def test_the_deprecated_column_still_behaves_exactly_as_before() -> None:

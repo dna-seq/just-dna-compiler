@@ -155,10 +155,10 @@ A two-allele genotype on `MT` still raises the item-5b guardrail warning (MT is 
 
 `CopyNumberRow`, keyed on `gene`. A sharp dosage is `measure_min == measure_max` (0 copies = `[0,0]`);
 `3+` is `measure_min=3` with an empty `measure_max`. SMA severity depends on **SMN1 and SMN2** copy
-number, so SMN2 rides in the explicit `modifier_gene`/`modifier_cn` columns (multicolumn keying —
-never a packed tuple). Single-gene rows leave the modifier null.
+number, so SMN2 rides in the explicit `modifier_gene`/`modifier_copy_number` columns (multicolumn
+keying — never a packed tuple). Single-gene rows leave the modifier null.
 ```csv
-gene,measure_kind,measure_min,measure_max,modifier_gene,modifier_cn,direction,clin_sig,phenotype,trait_efo_id,conclusion,unresolved
+gene,measure_kind,measure_min,measure_max,modifier_gene,modifier_copy_number,direction,clin_sig,phenotype,trait_efo_id,conclusion,unresolved
 SMN1,copy_number,0,0,SMN2,3,risk,pathogenic,Spinal muscular atrophy,MONDO_0001516,"0 SMN1 / 3 SMN2 — milder",false
 SMN1,copy_number,0,0,SMN2,1,risk,pathogenic,Spinal muscular atrophy,MONDO_0001516,"0 SMN1 / 1 SMN2 — severe",false
 SMN1,copy_number,1,1,,,risk,pathogenic,Spinal muscular atrophy,MONDO_0001516,"1 copy — carrier",false
@@ -168,6 +168,19 @@ SMN1,copy_number,,,,,,,Spinal muscular atrophy,MONDO_0001516,"CN not resolved (s
 ```
 Inert until a consumer supplies a CNV call. There is no `copy_number` column — a sharp value is
 `measure_min == measure_max`.
+
+**`modifier_copy_number`, not `modifier_cn` (RM55, 0.6).** The integer column is deprecated and goes
+at 1.0; the float one holds the non-integer dosages VCF 4.4 §7.2 allows. Setting both is an error.
+Everything reads `CopyNumberRow.effective_modifier_copy_number`, and the group key is that value, so
+the two spellings never split a group.
+
+This table tiles as a **grid**, which is `copy_number`'s default and correct for a caller that reports
+whole copies. A caller reporting a **segment mean** does not: write `measure_tiling: continuous` on
+every row of the group and let the bounds touch (`[0,1.5] [1.5,2.5] [2.5,]`), or the fractional value
+matches no bin. A fractional *bound* switches the group by itself and says so; a fractional
+*modifier dosage* does not, because the modifier is a key column — it says which table you are in,
+not where a point sits on the axis being tiled. See [SCHEMAS.md](SCHEMAS.md) for the per-kind
+defaults.
 
 ---
 

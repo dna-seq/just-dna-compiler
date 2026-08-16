@@ -305,7 +305,9 @@ class MeasureBinRow(AuthoredModel):
             "repeat_count, continuous for allele_fraction and prs_percentile, neither for "
             "activity_score. Constant within a bin group. A group left empty on a kind that defaults "
             "to quantised is read as continuous anyway if it carries a fractional bound — nothing on "
-            "a grid of whole numbers can hold one — and the compiler says when it did that."
+            "a grid of whole numbers can hold one — and the compiler says when it did that. Note "
+            "quantised assumes a grid of WHOLE numbers: there is no way to state a finer step, so on "
+            "a bounded domain like allele_fraction it switches interior gap reporting off entirely."
         ),
     )
     direction: str | None = Field(
@@ -690,19 +692,54 @@ def _bin_groups(rows: Sequence[MeasureBinRow]) -> dict[tuple, list[MeasureBinRow
     return groups
 
 
+def format_group_key(group_key: tuple) -> str:
+    """A bin group's key as it appears in a message, with an integral float rendered as an integer.
+
+    **A warning's text is an API** — `compile_module` copies its warnings into
+    `manifest.compilation.warnings`, and a catalog reindexing from a published manifest has nothing
+    else — so recompiling an *unchanged* module must not move the string. `CopyNumberRow._KEY_FIELDS`
+    keys on `effective_modifier_copy_number` since 0.6, which coalesces the deprecated `int` column
+    to a `float`, and a bare interpolation would have turned every published
+    `…for key ('SMN1', 'SMN2', 2, None)` into `2.0` with no other change in the module. Normalizing
+    here keeps the coalesce invisible to a reader who never writes the new column, and leaves new
+    text appearing only where genuinely fractional data exists.
+
+    Grouping itself is unaffected either way — `2 == 2.0` and they hash equal, so the two spellings
+    were always one dict key. This is a rendering rule and nothing else. Same normalization
+    `just_dna_compiler.compiler._scalar_cell` applies to a parquet value on the way back to a CSV,
+    for the same reason: a whole number should read as one.
+    """
+    members = tuple(
+        int(v) if isinstance(v, float) and math.isfinite(v) and v.is_integer() else v
+        for v in group_key
+    )
+    return repr(members)
+
+
 def _fractional_values(row: MeasureBinRow) -> list[tuple[str, float]]:
-    """The numbers on one row that a quantised reading cannot hold, in a fixed column order.
+    """The **bounds** on one row that a quantised reading cannot hold, in a fixed column order.
 
     `float.is_integer()` rather than `% 1` or an epsilon: the question is exactly *does this decimal
     name a grid point*, and the representation answers it. Non-finite values are already refused at
     load, so the guard here is belt-and-braces for a row built in code.
+
+    **The modifier dosage is deliberately NOT read here, and "it is a copy number too, so surely it
+    counts" is the obvious wrong repair.** `modifier_gene` + the modifier copy number are *group-key*
+    columns: they are constant within a group and they say *which table you are in*, not where a
+    point sits on the axis being tiled. On `copynumbers.csv` the tiled axis is the SMN1 copy number
+    and the SMN2 dosage is the condition the bins are read under, so a fractional SMN2 value
+    contradicts nothing about how the SMN1 axis is divided — which is `resolve_tiling`'s stated rule.
+    Letting it vote produced two disqualifying results on real shapes: a **legality flip**, where one
+    identical pair of bins is refused at `modifier_copy_number=2.0` and accepted at `2.5`, and
+    **invented coverage gaps** on genuinely integral bounds — the same false-positive class
+    `resolve_tiling` refuses for `activity_score`, arriving through a different door. A group whose
+    dosage is fractional and whose axis really is continuous says so with `measure_tiling`, like any
+    other group departing from its kind's default.
     """
     candidates: list[tuple[str, float | None]] = [
         ("measure_min", row.measure_min),
         ("measure_max", row.measure_max),
     ]
-    if isinstance(row, CopyNumberRow):
-        candidates.append(("modifier copy number", row.effective_modifier_copy_number))
     return [
         (name, float(v))
         for name, v in candidates
@@ -950,11 +987,14 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
             ),
             key=lambda t: (t[0], t[1]),
         )
+        # Rendered once per group: every message below names the key, and an integral effective
+        # modifier dosage must not start printing as `2.0` on a module nobody edited.
+        shown_key = format_group_key(group_key)
         tiling = resolve_tiling(grp)
         if tiling.disagreement is not None:
             first, second = tiling.disagreement
             raise ValueError(
-                f"conflicting measure_tiling for key {group_key}: the rows of one bin group are "
+                f"conflicting measure_tiling for key {shown_key}: the rows of one bin group are "
                 f"read under one tiling and these declare two, got {first!r} and {second!r} "
                 f"(leave the column empty on the rows that do not state it — empty means the "
                 f"kind's default, not a third answer)"
@@ -963,7 +1003,7 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
         if tiling.inferred:
             column, value = tiling.fractional
             warnings.append(
-                f"tiling inferred for key {group_key}: {column} is {value}, which no quantised "
+                f"tiling inferred for key {shown_key}: {column} is {value}, which no quantised "
                 f"reading can hold, so this group was read as continuous — adjacent bins may share "
                 f"an endpoint (the higher one owns it) and any positive hole is reported. Declare "
                 f"`measure_tiling` on these rows to state it rather than have it read off the data."
@@ -971,7 +1011,7 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
         elif tiling.contradicted:
             column, value = tiling.fractional
             warnings.append(
-                f"measure_tiling for key {group_key} is declared 'quantised' and the data "
+                f"measure_tiling for key {shown_key} is declared 'quantised' and the data "
                 f"contradicts it: {column} is {value}, which is not a grid point. The declaration "
                 f"stands — nothing here overrides it either way — so these bins are still read "
                 f"under the quantised rules and that value sits between two of them."
@@ -981,7 +1021,7 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
             lo, hi = spans[i]
             if lo < prev_hi or (lo == prev_hi and not dense):
                 raise ValueError(
-                    f"overlapping bins for key {group_key}: [{prev_lo}, {prev_hi}] and "
+                    f"overlapping bins for key {shown_key}: [{prev_lo}, {prev_hi}] and "
                     f"[{lo}, {hi}] both select a phenotype for a measurement in the overlap"
                 )
             if lo == prev_lo:
@@ -992,7 +1032,7 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
                 # measurement of exactly 0.1 has two answers and no rule to pick between them. That is
                 # an ambiguous selection, so it refuses like any other overlap rather than warning.
                 raise ValueError(
-                    f"bins with the same lower bound for key {group_key}: [{prev_lo}, {prev_hi}] and "
+                    f"bins with the same lower bound for key {shown_key}: [{prev_lo}, {prev_hi}] and "
                     f"[{lo}, {hi}] both start at {lo}, so a measurement of {lo} selects two phenotypes "
                     f"and the shared-endpoint rule (the higher bin owns it) cannot separate them"
                 )
@@ -1000,6 +1040,17 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
             # One step wide is not a hole on a grid, and any hole at all is one on a dense axis. The
             # third state reports neither: `activity_score` is summed onto a coarse grid the schema
             # does not know the step of, so a hole there is not a claim this tier can make.
+            #
+            # **`quantised`'s step is hardcoded to 1, and the schema has no way to state another.**
+            # Right for `copy_number`/`repeat_count`, which is where the branch came from and the
+            # only place its default applies; a limit everywhere else. Declaring `quantised` on a
+            # bounded domain — `allele_fraction` in `[0, 1]` — therefore switches interior gap
+            # reporting off entirely rather than tightening it, since no hole can exceed 1. Loud in
+            # the realistic case (a fractional bound raises the `contradicted` warning) and silent
+            # when the bounds happen to be integral. Closing it means a `measure_step` column, which
+            # is a full-cost authored column nobody has asked for, so it waits for the demand that
+            # would fix its shape (P5's one-way door). Documented on `measure_tiling`'s description,
+            # which is what an author reads, rather than left as a surprise here.
             if tiling.value == "continuous":
                 is_gap = hole > 1e-9
             elif tiling.value == "quantised":
@@ -1008,6 +1059,6 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
                 is_gap = False
             if is_gap:
                 warnings.append(
-                    f"coverage gap for key {group_key}: no bin covers ({prev_hi}, {lo})"
+                    f"coverage gap for key {shown_key}: no bin covers ({prev_hi}, {lo})"
                 )
     return warnings
