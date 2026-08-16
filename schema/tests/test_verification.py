@@ -213,6 +213,52 @@ def test_merged_records_are_emitted_in_one_stable_order() -> None:
     assert [r.check for r in merge_records([a], [b])] == [r.check for r in merge_records([b], [a])]
 
 
+def test_a_skip_does_not_replace_an_answer_the_document_already_holds() -> None:
+    """RM72. `check-acmg --offline` after a real run must not turn a verdict into 'never asked'.
+
+    The argument is the one the function already makes for a check *absent* from `fresh`: a skip is a
+    run that did not put the question, spelled as a record instead of as a silence, so the same
+    protection applies. Under the old unconditional `dict.update` this assertion read
+    `subjects == 0, skipped == 'offline'`.
+    """
+    answered, _ = _records()
+    stale = VerificationRecord(
+        check=answered.check, skipped="offline", detail="no snapshot and no egress",
+    )
+    kept = {r.check: r for r in merge_records([answered], [stale])}[answered.check]
+    assert (kept.subjects, kept.findings, kept.skipped) == (12, 1, None)
+
+
+def test_newest_wins_between_two_records_of_the_same_disposition() -> None:
+    """The protection is only across dispositions — re-running is still how a record is updated."""
+    answered, skipped_record = _records()
+    newer_answer = VerificationRecord(check=answered.check, subjects=30, findings=2)
+    newer_skip = VerificationRecord(check=skipped_record.check, skipped="not_requested")
+
+    by_check = {
+        r.check: r
+        for r in merge_records([answered, skipped_record], [newer_answer, newer_skip])
+    }
+    assert (by_check[answered.check].subjects, by_check[answered.check].findings) == (30, 2)
+    assert by_check[skipped_record.check].skipped == "not_requested"
+
+
+def test_an_answer_about_bytes_that_have_moved_does_not_outrank_this_run() -> None:
+    """The condition on the protection, and the case that makes it necessary rather than tidy.
+
+    An answer earns its protection by still being an answer about *this* module. Once the authored
+    rows have changed it describes rows that no longer exist, and keeping it over a fresh "could not
+    ask" republishes a stale finding — which is how `literature` behaves when a module's citations
+    change, and precisely the defect an earlier round fixed by writing the skip.
+    """
+    answered, _ = _records()
+    fresh = VerificationRecord(check=answered.check, skipped="offline", detail="rows changed")
+    kept = {
+        r.check: r for r in merge_records([answered], [fresh], existing_still_binds=False)
+    }[answered.check]
+    assert kept.skipped == "offline" and kept.subjects == 0
+
+
 # ── the binding, and the document on disk ────────────────────────────────────────────────────────
 
 

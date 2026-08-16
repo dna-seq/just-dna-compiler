@@ -21,6 +21,8 @@ from just_dna_enricher.identifiers import (
     check_rsids,
     classify_rsid,
     module_trait_ids,
+    unreachable_records,
+    verification_records,
 )
 from just_dna_enricher.net import PacingGate
 from just_dna_format.resolution import ResolutionRow
@@ -549,3 +551,149 @@ def test_a_pseudoautosomal_gene_is_not_a_conflict() -> None:
         check_traits=False, client=_hgnc_with_locations(),
     )
     assert report.gene_loci == []
+
+
+# ── what the pass attests (RM72) ────────────────────────────────────────────────────────────────
+
+
+def _by_check(records) -> dict:
+    return {r.check: r for r in records}
+
+
+def test_the_three_records_carry_their_own_denominators() -> None:
+    """Three questions, three subject sets — never one number averaging them.
+
+    Every count is read off the report the check produced, which is the rule the whole family
+    follows: a denominator recomputed beside a check can disagree with it.
+    """
+    variants = [
+        _variant(rsid="rs1", gene="MLL", trait_efo_id="EFO_0001645"),
+        _variant(rsid="rs2", gene="BRCA1", trait_efo_id="EFO_0004340"),
+    ]
+    report = check_identifiers(variants, client=_ontology())
+    records = _by_check(verification_records(report, check_traits=True, check_genes=True))
+
+    traits = records["trait_currency"]
+    genes = records["gene_symbol_currency"]
+    assert (traits.subjects, traits.findings) == (len(report.traits), len(report.stale_traits))
+    assert (genes.subjects, genes.findings) == (len(report.genes), len(report.stale_genes))
+    assert traits.source == "ols4" and genes.source == "hgnc"
+    # The stale symbol is named, and the sentence is a summary rather than one line per row.
+    assert "MLL" in (genes.detail or "")
+
+
+def test_a_row_the_comparison_could_not_judge_is_outside_the_denominator() -> None:
+    """`gene_locus_agreement` counts the rows where both halves were known, and no others.
+
+    The FTO row is comparable and agrees; the CADM2 row is comparable and does not; the rsID-only row
+    has no chromosome anywhere, so nobody compared it and counting it would publish a coverage figure
+    larger than the question that was put.
+    """
+    variants = [
+        _row("rs1421085", "FTO", "16", 53767042),
+        _row("rs13010010", "CADM2", "2", 100),
+        _row("rs2252481", "NEGR1"),
+    ]
+    report = check_identifiers(variants=variants, check_traits=False, client=_hgnc_with_locations())
+    record = _by_check(
+        verification_records(report, check_traits=False, check_genes=True)
+    )["gene_locus_agreement"]
+
+    assert report.gene_loci_compared == 2
+    assert (record.subjects, record.findings) == (2, len(report.gene_loci)) == (2, 1)
+    assert record.skipped is None and "CADM2" in (record.detail or "")
+
+
+def test_a_comparison_that_never_ran_is_a_skip_and_never_a_clean_zero() -> None:
+    """`ran(0, 0)` reads as a clean bill, which is the confusion the whole attestation exists to end.
+
+    The reason the report already wrote in prose travels in `detail`; the closed member beside it is
+    what a consumer branches on.
+    """
+    report = check_identifiers(
+        variants=[_row("rs13010010", "CADM2")],  # rsID only: no chromosome anywhere yet
+        check_traits=False, client=_hgnc_with_locations(),
+    )
+    record = _by_check(
+        verification_records(report, check_traits=False, check_genes=True)
+    )["gene_locus_agreement"]
+
+    assert record.skipped == "no_reference"
+    assert record.detail == report.gene_loci_not_checked
+    assert (record.subjects, record.findings) == (0, 0)
+
+
+def test_a_check_switched_off_is_not_requested_and_not_an_absence() -> None:
+    """`--no-traits` is a caller's choice, which is cleared by a flag rather than by egress — so it
+    must not read as the same absence as a source that could not be reached."""
+    report = check_identifiers(
+        variants=[_row("rs1421085", "FTO", "16", 53767042)],
+        check_traits=False, client=_hgnc_with_locations(),
+    )
+    records = _by_check(verification_records(report, check_traits=False, check_genes=True))
+
+    assert records["trait_currency"].skipped == "not_requested"
+    assert records["gene_symbol_currency"].skipped is None
+
+
+def test_a_curie_ols4_was_never_asked_about_stays_out_of_the_denominator() -> None:
+    """A prefix outside `_ONTOLOGY_IRI` short-circuits to `unchecked` before any request is sent.
+
+    It is excluded from `stale_traits`, so counting it as a subject would put a term nobody asked
+    about into the denominator and never into the numerator — and "every one of 2 … is current in
+    OLS4" would be a claim OLS4 never made, hashed into `manifest.verification` as a fact.
+    """
+    variants = [
+        _variant(rsid="rs1", trait_efo_id="EFO_0004340"),   # current, and really asked
+        _variant(rsid="rs2", trait_efo_id="DOID:1612"),     # a prefix this check cannot resolve
+    ]
+    report = check_identifiers(variants, check_genes=False, client=_ontology())
+    record = _by_check(
+        verification_records(report, check_traits=True, check_genes=False)
+    )["trait_currency"]
+
+    assert [t.state for t in report.traits] == ["current", "unchecked"]
+    assert (record.subjects, record.findings) == (1, 0)
+    assert "DOID:1612" in (record.detail or "") and "outside this denominator" in (record.detail or "")
+
+
+def test_a_module_whose_every_curie_is_unresolvable_records_a_skip() -> None:
+    """Nothing was asked, so `ran(0, 0)` would read as a clean bill over an empty scope.
+
+    `unsupported` rather than `no_reference`: OLS4 is reachable and fine, this tier simply cannot put
+    the question for these rows — which is what the member says.
+    """
+    report = check_identifiers(
+        [_variant(rsid="rs1", trait_efo_id="DOID:1612")], check_genes=False, client=_ontology()
+    )
+    record = _by_check(
+        verification_records(report, check_traits=True, check_genes=False)
+    )["trait_currency"]
+    assert record.skipped == "unsupported" and "DOID:1612" in (record.detail or "")
+
+
+def test_a_registry_that_never_answered_is_unreachable_and_not_an_absence() -> None:
+    """S20's distinction, and the run on which the record matters most: there is no report at all.
+
+    A check the caller switched off keeps `not_requested` — a source being down does not turn
+    `--no-traits` into a network problem, and only one of the two is cleared by re-running.
+    """
+    records = _by_check(
+        unreachable_records(check_traits=False, check_genes=True, detail="connection refused")
+    )
+    assert records["trait_currency"].skipped == "not_requested"
+    assert {records["gene_symbol_currency"].skipped, records["gene_locus_agreement"].skipped} == {
+        "unreachable"
+    }
+    assert records["gene_symbol_currency"].detail == "connection refused"
+    assert records["gene_symbol_currency"].source == "hgnc"
+
+
+def test_a_module_naming_no_gene_has_nothing_to_check_rather_than_nothing_to_report() -> None:
+    variants = [_variant(rsid="rs1", trait_efo_id="EFO_0004340")]
+    report = check_identifiers(variants, client=_ontology())
+    records = _by_check(verification_records(report, check_traits=True, check_genes=True))
+
+    assert records["gene_symbol_currency"].skipped == "nothing_to_check"
+    assert records["gene_locus_agreement"].skipped == "nothing_to_check"
+    assert records["trait_currency"].skipped is None

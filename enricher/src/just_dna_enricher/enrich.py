@@ -63,7 +63,13 @@ from just_dna_enricher.sequences import (
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
-from just_dna_enricher.verification import ran, record_verification, skipped
+from just_dna_enricher.verification import (
+    DETAIL_LIMIT,
+    examples,
+    ran,
+    record_verification,
+    skipped,
+)
 from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger(__name__)
@@ -209,17 +215,9 @@ def _authored_alt(v: _Subject) -> str | None:
     return None
 
 
-#: How many per-row sentences a record's `detail` carries before it becomes a count. The field is
-#: prose a human reads, and a module whose whole panel disagrees would otherwise put one sentence per
-#: row into `manifest.verification` — the un-aggregated wall this tree collapses everywhere else. The
-#: log still names every one.
-_DETAIL_LIMIT = 5
-
-
-def _examples(names: Sequence[str], limit: int = _DETAIL_LIMIT) -> str:
-    """A few names and a count, so a per-row list cannot become the message (the CPIC lesson)."""
-    shown = ", ".join(names[:limit])
-    return shown if len(names) <= limit else f"{shown} and {len(names) - limit} more"
+# The aggregation rule for a record's `detail` — `verification.DETAIL_LIMIT` / `verification.examples`.
+# It moved there when `identifiers` became the second attesting pass that wanted it (RM72): a
+# formatting rule with two copies has one that is about to be wrong.
 
 
 def _check_authored_pairs(
@@ -1068,14 +1066,14 @@ def enrich(
             "rsid↔coordinate: %d authored pair(s) were not compared — the injected Ensembl snapshot "
             "carries no record for %s. Not in the snapshot is not 'not in Ensembl'; the pair is "
             "unchecked rather than disagreeing.",
-            len(pair_check.unknown), _examples(sorted(set(pair_check.unknown))),
+            len(pair_check.unknown), examples(sorted(set(pair_check.unknown))),
         )
     if pair_check.undecided:
         logger.info(
             "rsid↔coordinate: %d authored pair(s) could not be decided — %s name an indel, and one "
             "deletion has several valid spellings whose anchors sit a base or two apart (RM31), so a "
             "differing position is not a contradiction. Undecided, never reported as a disagreement.",
-            len(pair_check.undecided), _examples(sorted(set(pair_check.undecided))),
+            len(pair_check.undecided), examples(sorted(set(pair_check.undecided))),
         )
 
     # Which licensed source each link speaks for (RM33). **Derived, never fetched** — read off the
@@ -1382,8 +1380,8 @@ def _verification_records(
     # over the injected table), so one name covers both and this record covers **this** half: the
     # authored pair against the Ensembl snapshot the chain opened. `source` is the authority the
     # licence table joins on, not the link that answered — the `gene_metrics.csv` rule from RM33.
-    unplaced = _examples(sorted(set(pairs.unknown)))
-    unsettled = _examples(sorted(set(pairs.undecided)))
+    unplaced = examples(sorted(set(pairs.unknown)))
+    unsettled = examples(sorted(set(pairs.undecided)))
     # What was not compared, and why, in one sentence per reason — never one per row.
     not_compared = [
         note for note in (
@@ -1422,10 +1420,10 @@ def _verification_records(
     else:
         # What was NOT compared travels with what was: coverage of an unstated fraction is the defect
         # `_vrs_coverage` exists for, one check over.
-        notes = list(pairs.disagreements[:_DETAIL_LIMIT])
-        if len(pairs.disagreements) > _DETAIL_LIMIT:
+        notes = list(pairs.disagreements[:DETAIL_LIMIT])
+        if len(pairs.disagreements) > DETAIL_LIMIT:
             notes.append(
-                f"({len(pairs.disagreements) - _DETAIL_LIMIT} further disagreement(s) not listed "
+                f"({len(pairs.disagreements) - DETAIL_LIMIT} further disagreement(s) not listed "
                 f"here; the run's log names every one.)"
             )
         if not_compared:

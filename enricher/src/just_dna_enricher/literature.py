@@ -1149,11 +1149,20 @@ def _verification_records(
 
     **An offline run that has a pin records nothing at all**, and that is the point rather than an
     omission. `--offline` is a documented no-op: it fetches nothing and re-examines nothing, so it
-    has put no question and has nothing to say. Writing a skip would be worse than silence, because
-    `merge_records` replaces per check — the skip would overwrite a true `subjects=5, findings=1`
-    from an earlier online run with `subjects=0, skipped=offline`, turning an answer into "never
-    asked" on a run that changed nothing. With no pin at all there is no earlier answer to protect
-    and nothing this run could learn, so the three skips are written and say why.
+    has put no question and has nothing to say, and a record of having said nothing is worse than
+    silence. With no pin at all there is no earlier answer to protect and nothing this run could
+    learn, so the three skips are written and say why.
+
+    This paragraph used to carry a second reason — that the skip would *overwrite* a true
+    `subjects=5, findings=1` from an earlier online run, because `merge_records` replaced per check.
+    RM72 narrowed that: a skip no longer displaces a real answer **while the authored bytes stand
+    still**. It still does when they have moved, which is the only way this branch is reached with an
+    earlier record in the file at all — the skips here are written when no pinned row covers the
+    citations the module makes *now*, and after an online run that is true only because the citations
+    changed. So the displacement is deliberate here rather than a defect: the earlier answer is about
+    a citation this module no longer makes, and a finding no authored edit could clear is what the
+    round before RM72 removed. What is left of the paragraph is the half that never depended on
+    either: a no-op has nothing to say.
 
     `release` is null on all three. PubMed and Europe PMC are continuously updated and publish no
     release a run could pin, and inventing a date here would make a re-run look like a different

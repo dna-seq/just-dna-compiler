@@ -15,11 +15,15 @@ wrong place or clobbering the other's block.
 import shutil
 from pathlib import Path
 
+import httpx
 import pytest
 from just_dna_compiler.compiler import authored_input_entries, compile_module
+from just_dna_enricher import identifiers as identifiers_module
 from just_dna_enricher.cli import app
 from just_dna_enricher.enrich import _verification_records, enrich
+from just_dna_enricher.identifiers import OntologyClient
 from just_dna_enricher.literature import enrich_literature
+from just_dna_enricher.net import PacingGate
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
@@ -468,3 +472,205 @@ def test_pgx_then_vrs_mint_land_in_one_document(tmp_path: Path) -> None:
     # Offline with nothing declared: PharmVar and CPIC both forbid sale, so the pass consulted
     # neither — and that is a permission, not a network problem.
     assert by_check["allele_function"].skipped == "not_permitted"
+
+
+# ── the two check commands (RM72) ───────────────────────────────────────────────────────────────
+
+
+_HGNC_BANDS = {"HFE": "6p22.2"}
+
+
+@pytest.fixture
+def hgnc(monkeypatch):
+    """HGNC over a mock transport, so the real `check_identifiers` path runs with no egress.
+
+    The client is what is faked, never the pass: `check_identifiers` builds its own
+    (`client or OntologyClient()`), so replacing the name in its module is what lets the command —
+    argument parsing, report, records, write — run exactly as it does in production.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        symbol = str(request.url).rsplit("/", 1)[-1]
+        band = _HGNC_BANDS.get(symbol)
+        if band is None or "prev_symbol" in str(request.url):
+            return httpx.Response(200, json={"response": {"numFound": 0, "docs": []}})
+        return httpx.Response(200, json={"response": {"numFound": 1, "docs": [
+            {"symbol": symbol, "status": "Approved", "hgnc_id": "HGNC:4886", "location": band}
+        ]}})
+
+    def build() -> OntologyClient:
+        client = OntologyClient()
+        client._client = httpx.Client(transport=httpx.MockTransport(handler))
+        client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+        return client
+
+    monkeypatch.setattr(identifiers_module, "OntologyClient", build)
+
+
+def _acmg_snapshot(tmp_path: Path) -> Path:
+    from just_dna_enricher.acmg_build import build_acmg_snapshot
+
+    out = tmp_path / "acmg"
+    build_acmg_snapshot(Path(__file__).resolve().parents[2] / "assets" / "acmg_sf_v3.3.xlsx", out)
+    return out
+
+
+def test_check_identifiers_records_the_three_questions_it_put(tmp_path: Path, hgnc) -> None:
+    """Wired in RM72. Until then the command reported to stdout and let the record die.
+
+    `--no-traits` is passed so the run needs HGNC alone, and it doubles as the `not_requested`
+    case: a check the caller switched off is cleared by a flag, never by egress, so it must not read
+    as the same absence as a source that could not be reached.
+    """
+    spec = _module(tmp_path, "grch37_build")
+    result = CliRunner().invoke(app, ["check-identifiers", str(spec), "--no-traits"])
+    assert result.exit_code == 0, result.output
+
+    by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    assert by_check["trait_currency"].skipped == "not_requested"
+    symbols = by_check["gene_symbol_currency"]
+    loci = by_check["gene_locus_agreement"]
+    assert (symbols.subjects, symbols.findings, symbols.skipped) == (1, 0, None)
+    # Three authored rows, every one of them carrying both a gene and a chromosome.
+    assert (loci.subjects, loci.findings, loci.skipped) == (3, 0, None)
+    assert (symbols.source, loci.source) == ("hgnc", "hgnc")
+
+
+def test_check_identifiers_records_nothing_to_check_apart_from_not_requested(
+    tmp_path: Path, hgnc
+) -> None:
+    """A module authoring no trait CURIE has nothing to ask OLS4 — which is not the same absence.
+
+    Both spellings live in one document here on purpose: `not_requested` is a caller's choice and
+    `nothing_to_check` is a property of the module, and a consumer branches on the difference.
+    """
+    spec = _module(tmp_path)
+    result = CliRunner().invoke(app, ["check-identifiers", str(spec)])
+    assert result.exit_code == 0, result.output
+
+    doc = read_verification(spec / VERIFICATION_JSON)
+    by_check = {r.check: r for r in doc.records}
+    assert by_check["trait_currency"].skipped == "nothing_to_check"
+    assert by_check["gene_symbol_currency"].subjects == 1  # HFE, and it is current
+    # Every reference example is closed (RM73) and this command writes only a derived sidecar, so the
+    # author's closure must come through untouched — a new writer that un-closed a module would train
+    # an author to stop closing.
+    assert doc.closure is not None
+
+
+def test_check_identifiers_attests_when_the_registry_never_answers(tmp_path: Path, monkeypatch) -> None:
+    """The run where the record matters most is the one with no report to print.
+
+    A promise to *record that the question was put* has to hold when the question went unanswered, or
+    it is false exactly where a reader needs it. The command exits 1 and says which registry failed;
+    the document says `unreachable`, which is not the same as an absence (S20).
+    """
+    def refuse(*_args, **_kwargs):
+        raise httpx.ConnectError("connection refused")
+
+    def build() -> OntologyClient:
+        client = OntologyClient()
+        client._client = httpx.Client(transport=httpx.MockTransport(refuse))
+        client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+        return client
+
+    monkeypatch.setattr(identifiers_module, "OntologyClient", build)
+    spec = _module(tmp_path, "grch37_build")
+    result = CliRunner().invoke(app, ["check-identifiers", str(spec), "--no-traits"])
+    assert result.exit_code == 1
+
+    by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
+    assert by_check["gene_symbol_currency"].skipped == "unreachable"
+    assert by_check["gene_locus_agreement"].skipped == "unreachable"
+    # A flag the caller set is still the truer reason: a registry being down does not make
+    # `--no-traits` a network problem, and only one of the two is cleared by re-running.
+    assert by_check["trait_currency"].skipped == "not_requested"
+
+
+def test_a_module_with_no_variants_csv_is_not_attested_at_all(tmp_path: Path) -> None:
+    """The check does not APPLY, which is not a skip — `enrich_clinpgx`'s rule, one command over.
+
+    `acmg_sf`, `gene` and `trait_efo_id` are all `variants.csv` columns, so with no such file there
+    is no claim for these checks to have an opinion about. Recording one would mine a nonce and put a
+    `verification.json` on a module that never asked for one; `nothing_to_check` stays for a table
+    that is there and carries no row in scope.
+    """
+    spec = _module(tmp_path, "cyp2c19_star_alleles")
+    assert not (spec / "variants.csv").exists()
+    (spec / VERIFICATION_JSON).unlink(missing_ok=True)
+
+    for argv in (["check-identifiers", str(spec)], ["check-acmg", str(spec), "--offline"]):
+        result = CliRunner().invoke(app, argv)
+        assert result.exit_code == 0, result.output
+    assert not (spec / VERIFICATION_JSON).exists()
+
+
+def test_check_acmg_records_the_list_it_read_and_the_rows_it_asked_about(tmp_path: Path) -> None:
+    spec = _module(tmp_path)
+    result = CliRunner().invoke(
+        app, ["check-acmg", str(spec), "--offline", "--sf-list", str(_acmg_snapshot(tmp_path))]
+    )
+    assert result.exit_code == 0, result.output
+
+    record = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}[
+        "acmg_secondary_findings"
+    ]
+    assert record.skipped is None and record.source == "acmg"
+    # HFE is on the list and the example leaves the column blank throughout: every row is a note.
+    assert record.findings == 0 and record.subjects > 0
+    assert record.release and "note" in (record.detail or "")
+
+
+def test_an_offline_re_run_does_not_downgrade_the_answer_the_document_holds(tmp_path: Path) -> None:
+    """RM72(c), end to end and over unchanged authored bytes.
+
+    Under the old unconditional newest-wins this second command rewrote a true
+    `subjects=13, findings=0` verdict to `subjects=0, skipped=offline` — an answer turned into "never
+    asked" by a run that learned nothing and changed nothing. Demonstrated on that rule before it was
+    changed: with `merge_records` restored to a plain `dict.update`, the last two assertions fail
+    with `skipped == 'offline'`.
+    """
+    spec = _module(tmp_path)
+    snapshot = _acmg_snapshot(tmp_path)
+    assert CliRunner().invoke(
+        app, ["check-acmg", str(spec), "--offline", "--sf-list", str(snapshot)]
+    ).exit_code == 0
+    answered = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}[
+        "acmg_secondary_findings"
+    ]
+    assert answered.skipped is None and answered.subjects > 0
+
+    # The same module, untouched, checked again with no list to check against.
+    result = CliRunner().invoke(app, ["check-acmg", str(spec), "--offline"])
+    assert result.exit_code == 0, result.output
+
+    kept = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}[
+        "acmg_secondary_findings"
+    ]
+    assert kept.skipped is None
+    assert (kept.subjects, kept.findings, kept.release) == (
+        answered.subjects, answered.findings, answered.release
+    )
+
+
+def test_an_answer_over_bytes_that_moved_gives_way_to_this_runs_skip(tmp_path: Path) -> None:
+    """The condition on that protection, and it is what keeps the fix from being a regression.
+
+    A record earns its place by describing *this* module. Once `variants.csv` has changed it is about
+    rows that no longer exist, so a fresh "could not ask" is the more honest of the two — the same
+    test the closure already applies, and the behaviour `literature` relies on when a module's
+    citations change.
+    """
+    spec = _module(tmp_path)
+    snapshot = _acmg_snapshot(tmp_path)
+    assert CliRunner().invoke(
+        app, ["check-acmg", str(spec), "--offline", "--sf-list", str(snapshot)]
+    ).exit_code == 0
+
+    rows = (spec / "variants.csv").read_text(encoding="utf-8").splitlines(keepends=True)
+    (spec / "variants.csv").write_text("".join(rows[:-1]), encoding="utf-8")
+
+    assert CliRunner().invoke(app, ["check-acmg", str(spec), "--offline"]).exit_code == 0
+    kept = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}[
+        "acmg_secondary_findings"
+    ]
+    assert kept.skipped == "offline"

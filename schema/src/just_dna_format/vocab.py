@@ -657,25 +657,41 @@ VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
 # ClinVar says and adjudicates nothing" — a member for it would let a manifest report a check where no
 # question was put, the exact confusion this block exists to end. `frequencies.csv`,
 # `gene_metrics.csv` and the article-licence columns are the same class and have no member either.
+#
+# **Every member says on its own line what puts it, or that nothing does (RM72).** Two of the
+# seventeen are reserved — a member with no emitter is legitimate on the `withdrawn` precedent above,
+# and the defect was that only one of the two said so, which is how a headline count of unreachable
+# members read wrong. A comment per member, and it is free: the emitter is the first thing a reader
+# asking "was this check run" needs, and it is the first thing to rot when a pass moves.
 VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
     {
-        "reference_allele",           # authored `ref` vs the actual reference sequence
-        "rsid_currency",              # authored rsID vs dbSNP (live / merged / absent)
-        "clinical_significance",      # authored `clin_sig` vs ClinVar's own, allele-exactly
-        "acmg_secondary_findings",    # authored `acmg_sf` vs the published ACMG SF gene list
-        "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous symbols
-        "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement)
-        "gene_locus_agreement",       # the gene a row names vs the chromosome its variant sits on
-        "citation_existence",         # an authored `pmid`/`doi` vs PubMed and Crossref
-        "citation_identifier",        # an authored `doi` vs the registry's own for that PMID
-        "provenance_quote",           # `provenance_quote`/`provenance_regex` vs the retrieved text
-        "dosage_sensitivity",         # an authored dosage claim vs ClinGen's curation
-        "allele_function",            # authored `function_status` vs PharmVar and CPIC
-        "vrs_allele_id",              # a recorded `ga4gh:VA.…` vs the locally re-minted one
-        "pgx_evidence_level",         # authored `evidence_level` vs ClinPGx's own for that annotation
-        "rsid_coordinate_agreement",  # an authored rsID+coordinate PAIR vs what the reference says
-        "gene_disease_validity",      # an authored gene/phenotype pair vs ClinGen/GenCC/HPO
-        "genome_build_agreement",     # authored coordinates vs the declared assembly
+        # ── wired: `enrich` writes these five at the end of its run ──
+        "reference_allele",           # authored `ref` vs the actual reference sequence — `enrich`
+        "rsid_currency",              # authored rsID vs dbSNP (live / merged / absent) — `enrich`
+        "clinical_significance",      # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
+        "rsid_coordinate_agreement",  # an authored rsID+coordinate PAIR vs the reference — `enrich`
+        "genome_build_agreement",     # authored coordinates vs the declared assembly — `enrich`
+        # ── wired: one command each ──
+        "citation_existence",         # an authored `pmid`/`doi` vs PubMed and Crossref — `literature`
+        "citation_identifier",        # an authored `doi` vs the registry's own for that PMID — `literature`
+        "provenance_quote",           # `provenance_quote`/`provenance_regex` vs the text — `literature`
+        "allele_function",            # authored `function_status` vs PharmVar and CPIC — `pgx`
+        "pgx_evidence_level",         # authored `evidence_level` vs ClinPGx's own — `clinpgx check`
+        "vrs_allele_id",              # a recorded `ga4gh:VA.…` vs the re-minted one — `vrs mint`
+        "acmg_secondary_findings",    # authored `acmg_sf` vs the published SF gene list — `check-acmg`
+        "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous — `check-identifiers`
+        "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement) — `check-identifiers`
+        "gene_locus_agreement",       # the row's `gene` vs the chromosome its variant sits on — `check-identifiers`
+        # ── RESERVED: no emitter, deliberately. Adding one later is legal; adding the *name* late
+        #    would leave the release that needs it with nothing to write (the `withdrawn` precedent).
+        "gene_disease_validity",      # RESERVED — see the bullet above: `enrich_gene_validity` RECORDS
+                                      #   ClinGen/GenCC verdicts into a derived table and compares
+                                      #   nothing authored, so it does not emit this. The member is for
+                                      #   a future pass that checks an authored gene/phenotype pair.
+        "dosage_sensitivity",         # RESERVED — `enrich_dosage_sensitivity` is the same shape: it
+                                      #   records ClinGen's haplo/triplo curation into `gene_metrics.csv`
+                                      #   and no model carries an authored dosage claim to compare it
+                                      #   against. The member is for the pass that gains one.
     }
 )
 

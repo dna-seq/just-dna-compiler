@@ -607,13 +607,23 @@ model of that. Filed here rather than built for exactly that reason.
 
 ## RM72 — six verification members still emitted by nothing, and the "Writes nothing" contract
 
-**Severity** medium · **Status** **taken into 0.6 PT2 on 2026-08-16** — the four are wired
-unconditionally, the merge rule is fixed, and the reword turns out to be **three sites, not the printed
-contract this entry feared** (the `create-module` skill annotates neither command). See
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM72; the two reserved members do not move. *Previously:*
+**Severity** medium · **Status** **SHIPPED in 0.6 PT2 (lane C), 2026-08-17.** The four members are
+wired unconditionally (`check-identifiers` three, `check-acmg` one), the reword landed at the three
+sites that carry *this* promise, every member of `VALID_VERIFICATION_CHECKS` now says on its own line
+whether it is wired or reserved, and `merge_records` no longer lets a `skipped` record displace a
+`ran` one. The merge rule gained a condition the proposal did not anticipate and the implementation
+found: the protection holds **while the authored bytes stand still**, because an answer over bytes the
+author has since edited is not an answer this document may keep asserting — without it the fix
+re-opened a defect an earlier `literature` round had closed. The `create-module` skill needed no edit,
+as predicted: its rows for both commands carry no "Writes nothing" annotation. See
+[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM72; the two reserved members did not move. *Previously:*
 deferred — four members blocked on a printed contract, two deliberately
 reserved, one general question open · **Owner** enricher · **Found by** dogfooding on 2026-08-13,
 `reference_examples/hboc_palb2/`
+
+**The quoted docstrings below are the pre-RM72 text, kept because they are what the item was about.**
+The citations in this entry had already drifted to lines that no longer held them once, so they now
+name the command or the symbol rather than a line number.
 
 **Scope.** This is the surfaced remainder of the D4-1 finding. That finding counted **twelve** of
 seventeen `VALID_VERIFICATION_CHECKS` members as emitted by nothing; six of them were wired in the same
@@ -631,14 +641,14 @@ write**:
 
 > `check-identifiers`: *"Writes nothing: unlike the rsID check (whose verdict lands on resolution.csv),
 > these are module-level identifiers with no sidecar column to record, so the report is the whole
-> output."* (`enricher/src/just_dna_enricher/cli.py:740-741`)
+> output."* (`enricher/src/just_dna_enricher/cli.py`, `check_identifiers_`)
 >
 > `check-acmg`: *"Writes nothing, for the same reason `check-identifiers` writes nothing: `acmg_sf` is
 > an authored cell this asks a registry about, not a fact this pass contributes. Filling it here would
-> break the check — see `hints.REDUNDANCY_BEARING`."* (`cli.py:782-784`)
+> break the check — see `hints.REDUNDANCY_BEARING`."* (same file, `check_acmg_`)
 
-The same promise is made by `hint` in both CLIs (`enricher .../cli.py:1447`,
-`compiler .../cli.py:533`), by `lookup`'s module docstring, and — the part that decides how expensive a
+The same promise is made by `hint` in both CLIs (`hint_app`'s help in each `cli.py`), by `lookup`'s
+module docstring, and — the part that decides how expensive a
 reword is — by `docs/ENRICHER.md`, `docs/COMPILER.md`'s coverage table and the `create-module` skill's
 command tables, which are printed for an author who has `pip install`ed the package and has no checkout.
 It is a published contract in both CLIs, both package references and the skill, not an implementation
@@ -688,7 +698,7 @@ design, never conditional on a switch.
 
 ### The two deliberately reserved — not gaps, and not to be "wired too"
 
-**`gene_disease_validity`.** Argued in the code at `schema/src/just_dna_format/vocab.py:637-642`: it
+**`gene_disease_validity`.** Argued in the code beside `vocab.VALID_VERIFICATION_CHECKS`: it
 *"has **no emitter yet** and is kept on the `withdrawn` precedent … 0.6's `enrich_gene_validity`
 **records** ClinGen/GenCC verdicts into a derived table and compares nothing authored, so it does not
 emit this. The member is for a future pass that checks an authored gene/phenotype pair against those
@@ -702,10 +712,10 @@ the schema — `haploinsufficiency` and `triplosensitivity` are columns on the *
 `GeneMetricsRow`. So it is reserved for a pass that does not exist, exactly like `gene_disease_validity`,
 and unlike it nothing states so. That asymmetry is the small concrete deliverable this item carries: a
 member should say on its own line whether it is *wired* or *reserved*, which is what would have made the
-D4-1 headline count of twelve read correctly the first time.
+D4-1 headline count of twelve read correctly the first time. **Both now do**, and both stay reserved.
 
 The exclusion half is already tested in one direction.
-`schema/tests/test_verification.py:276`'s `test_a_pass_that_only_records_a_source_gets_no_member` pins
+`schema/tests/test_verification.py`'s `test_a_pass_that_only_records_a_source_gets_no_member` pins
 that `clinvar_assertion_tier`, `clinical_assertions`, `allele_frequency`, `gene_constraint` and
 `article_license` are **not** members, on the rule the `assertions` command states about itself: *"It
 records; it does not adjudicate."* Nothing tests the other direction, which is where the two reserved
@@ -737,6 +747,17 @@ the merge rule a design question rather than a bug: whether "newest wins" should
 hold only between two `ran` records, or be replaced by something that keeps both facts. It reaches
 every check wired from here on, so it wants deciding once.
 
+**Decided and shipped in 0.6 PT2.** Newest-wins holds between two records of the same disposition; a
+skip does not displace an answer. The counter-argument above is answered rather than dismissed — a
+skip is a fact about the **run** and `verification.json` is a per-check document, so a run-level fact
+needs a run-level place, which is a separate question and was not opened. The stale-verdict half of
+the counter-argument turned out to be the real constraint and is handled by a condition the
+implementation added: the protection applies only while the earlier record still describes the
+module's authored bytes (`existing_still_binds`). Once they have moved the older record is about rows
+that no longer exist, and this run's honest "could not ask" wins — which is what `literature` relies
+on when a module's citations change, and without it this fix would have re-opened a defect an earlier
+round had closed.
+
 ### The general question
 
 Is a check that reports to stdout and writes no record a **defect**, or a legitimate **read-only
@@ -748,6 +769,11 @@ against what a source says?* — and then answer it only to a terminal.
 
 **What would unblock it:** a decision on that line, which then settles the reword. The four members
 follow mechanically once it is made; the two reserved ones do not move either way.
+
+**Decided for these two commands, and only for them.** The line is not *does it write* but *does it
+compare something the module asserts against what a source says* — a surface that puts that question
+owes a record of having put it; a surface that answers a question about a value owes nothing. So
+`hint` and `lookup` stay read-only on purpose, and their "writes nothing" is untouched.
 
 ---
 

@@ -17,16 +17,25 @@ extra guarantee. `enrich()` therefore collects its records and writes once at th
 writes its own three, `clinpgx` its one, and the merge below is what keeps several commands' records
 in one document instead of overwriting each other.
 
-**Which commands actually call this, as of 0.6.** `enrich` (four checks), `literature` (three) and
-`clinpgx` (one). `check-identifiers` and `check-acmg` still write nothing, and their own docstrings
-say so — a tracked gap, not a claim this module gets to make on their behalf. That distinction is
-worth keeping sharp here, because the sentence this paragraph replaced named `check-identifiers` as a
-second writer and it never was one: the merge was built and tested against a document no two commands
-produced, which is exactly the shape of unverified machinery this module exists to end.
+**Which commands actually call this, as of 0.6 — seven of them, for fifteen of the seventeen check
+members.** `enrich` (five: reference allele, wrong build, clinical significance, rsID currency,
+rsid↔coordinate), `literature` (three), `check-identifiers` (three: gene symbol currency, trait
+currency, gene↔locus agreement), `clinpgx check`, `pgx`, `vrs mint` and `check-acmg` (one each). The
+two remaining members, `gene_disease_validity` and `dosage_sensitivity`, are reserved and each says so
+beside itself in `vocab.VALID_VERIFICATION_CHECKS`.
+
+**Count the call sites before you edit that paragraph, and edit it whenever you add one.** The
+sentence it replaces said *"`enrich` (four checks), `literature` (three) and `clinpgx` (one)"* and was
+wrong three ways at once — `enrich` emits five, and `pgx` and `vrs mint` had been wired for a release
+without the sentence learning about them. Its own predecessor was wrong the other way, naming
+`check-identifiers` as a writer years before it was one, so the merge was machinery tested against a
+document no two commands produced. A count of call sites is exactly the thing that goes stale, which
+is this module's own argument for being one function; the honest version of that argument is to derive
+the list with a grep rather than from memory.
 """
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -43,6 +52,23 @@ from just_dna_format.verification import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: How many per-row sentences a record's `detail` carries before it becomes a count. The field is
+#: prose a human reads, and a module whose whole panel disagrees would otherwise put one sentence per
+#: row into `manifest.verification` — the un-aggregated wall this tree collapses everywhere else. The
+#: log and the command's own report still name every one.
+DETAIL_LIMIT = 5
+
+
+def examples(names: Sequence[str], limit: int = DETAIL_LIMIT) -> str:
+    """A few names and a count, so a per-row list cannot become the message (the CPIC lesson).
+
+    Here rather than beside one caller, for this module's own stated reason: the second pass that
+    wanted it (`identifiers`, RM72) would otherwise have kept a private copy of the aggregation rule,
+    and a rule with two copies has one that is about to be wrong.
+    """
+    shown = ", ".join(names[:limit])
+    return shown if len(names) <= limit else f"{shown} and {len(names) - limit} more"
 
 
 def producer_label() -> str:
@@ -78,6 +104,10 @@ def record_verification(
     Existing records for checks this run did not put are kept (`verification.merge_records`) — a run
     that did not ask a question has said nothing about it, and dropping the earlier answer would turn
     "not asked this time" into "never asked", which is the collapse this whole item exists to undo.
+    Since RM72 a *skip* this run writes does not displace an earlier real answer either, for the same
+    reason one step further out — but only while the earlier answer still describes the module's
+    current authored bytes, which is what `existing_still_binds` carries. Where they have moved, the
+    older record is about rows that no longer exist and this run's honest "could not ask" wins.
 
     **An existing closure (RM73) is carried across, but only while the binding holds.** Enrichment
     writes derived sidecars, which are outside the authored set, so the ordinary case is that a run
@@ -97,6 +127,11 @@ def record_verification(
 
     binding = module_binding(authored_input_entries(spec_dir))
     existing: list[VerificationRecord] = []
+    # Whether those existing records are about the bytes being written over now. It gates RM72's
+    # skip-does-not-displace-an-answer rule, and it is the same test the closure below applies, for a
+    # weaker version of the same reason: an answer over bytes the author has since edited is not an
+    # answer this document may keep asserting.
+    existing_still_binds = False
     closure: Closure | None = None
     if path.is_file():
         # A document that will not parse is replaced rather than merged into: it records nothing this
@@ -112,6 +147,7 @@ def record_verification(
             )
         else:
             existing = previous.records
+            existing_still_binds = previous.module_hash == binding
             # The closure (RM73) is carried across only while the authored bytes stand still. This is
             # the never-clobber trap one column over from `SourceRow.dataset` and `draft_digest`: a
             # rebuild that quietly *kept* it would have this pass re-bind a human's "I am finished"
@@ -127,7 +163,7 @@ def record_verification(
                 )
 
     doc = attest(
-        merge_records(existing, fresh),
+        merge_records(existing, fresh, existing_still_binds=existing_still_binds),
         binding,
         producer=producer_label(),
         produced_at=now or now_utc_iso(),
