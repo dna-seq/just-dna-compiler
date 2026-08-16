@@ -1,0 +1,10 @@
+# The reference corpus is a byte-level fixture, so Git must never rewrite its line endings.
+#
+# Tests read these files as bytes and compare hashes against them: the per-input `FileEntry` sizes in
+# `manifest.inputs[]`, `artifact.digest` through the compiled parquet, and — since RM82 — the
+# verification binding, whose whole subject is that a CRLF rewrite is not an edit. The regression test
+# for it (`compiler/tests/test_closure.py`) needs a real CRLF file to normalize, and
+# `hfe_hemochromatosis/variants.csv` is one because `csv.writer` wrote it. A contributor with
+# `core.autocrlf=true` or `=input` would silently renormalize the corpus on `git add`, moving seven
+# closures and defeating that test on its own precondition.
+reference_examples/** -text
