@@ -34,7 +34,69 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-16 (latest) — the triage loop's two Python tools are `.py`, and why that mattered
+## 2026-08-17 (latest) — the 0.6 PT2 batch: five items built, and three of the proposal's own numbers corrected
+
+The second 0.6 design round ([PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md), decided 2026-08-16) sorted
+twenty-one open items into five to build and sixteen to defer. All five are here, built as five
+independent lanes and merged in the order the proposal fixed. **Everything is additive under P3/P8 and
+all three packages stay at 0.6.0**, which is uncut — no version moves.
+
+**What shipped.**
+
+- **RM55** — a fractional copy number matched no bin, silently, `--strict` included. The defect was
+  never a type (the bin bounds have been `float | None` since 0.4) but three semantic rules keyed on
+  the measure kind. `MeasureBinRow` gains an optional `measure_tiling` (`{quantised, continuous}`) and
+  `CopyNumberRow` gains `modifier_copy_number` beside `modifier_cn`, read through
+  `effective_modifier_copy_number`. The shared-endpoint and gap rules now read an **effective tiling**
+  resolved per bin group — declared, else inferred from a fractional bound on a `quantised`-defaulting
+  kind, else the kind's default — and the inference announces itself. `modifier_cn` is deprecated
+  warn-only and goes at 1.0. The unconditional 0.6 warning is now conditional;
+  `FRACTIONAL_MEASURE_PHRASE` is byte-identical, because a warning's text is an API.
+- **RM87** — an expanded row was indistinguishable from an authored one, and a consumer produced 3,762
+  false findings from it. `VariantRow` gains stamped, compiler-managed `locus_index` and `locus_count`
+  (defaulting to `0` and **`1`**, so `locus_count > 1` is a predicate a reader can apply holding one
+  row). Both are `exclude=True`, so no `content_signature` moves. Reverse prefers the stored column and
+  keeps the encounter-order recompute for a pre-0.6 artifact.
+- **RM72** — four `VALID_VERIFICATION_CHECKS` members were emitted by nothing. `check-identifiers` now
+  records `gene_symbol_currency`, `trait_currency` and `gene_locus_agreement`; `check-acmg` records
+  `acmg_secondary_findings`. Unconditional, no flag: an optional record is ambiguous between "not run"
+  and "ran without the flag". **Both commands' "Writes nothing" promise is reworded** — they write no
+  authored cell and record that the question was put. `merge_records` no longer lets a `skipped` record
+  displace a `ran` one.
+- **RM84** — the publisher now writes `data/<name>/v<version>/` alongside the flat `data/<name>/`,
+  which keeps meaning *latest*. Enricher-only; no schema, no digest, no signature.
+- **RM82** — an editor's line endings un-closed a module. The attestation binding now normalizes
+  `\r\n` → `\n` before hashing, through a **separate** entry builder: `manifest.inputs[]` and
+  `artifact.digest` deliberately keep following raw bytes, because they answer a different question.
+  The trap was that `size` is inside the hashed listing, so normalizing only the digest input would
+  have been a no-op that looked like a fix.
+
+**Three of the proposal's own claims were measured and found wrong.** They are corrected in place, and
+they are the reason the batch's standing rule is that every claimed movement is measured rather than
+predicted:
+
+- RM82's *"a one-time invalidation of every `module_hash` in existence"* is **7 of 16**. A binding
+  moves only where an authored file really carries `\r\n`, and the half of the corpus that does is the
+  **machine-written** half — `csv.writer`'s default terminator is `\r\n`, so the rewrite an author
+  actually performs is normalization *toward* LF.
+- RM87's *"twelve of sixteen"* is **nine**. Exactly nine reference examples carry a `variants.csv`, and
+  those nine are exactly the nine whose digest moved; seven are table-only.
+- RM55's evidence rule contradicted itself on `activity_score`: read broadly, a fractional value
+  switches the rules "whatever its kind's default says", which produced **three false coverage gaps on
+  a shipped module** (`cyp2d6_structural` bins activity scores at 0.25/0.5/1.25/2.25). The inference
+  fires only against a `quantised` default — only `quantised` states a grid to contradict.
+
+**Measured signature movement for the whole batch**, taken per lane against a baseline so each move is
+attributable: `artifact.digest` moves on **eleven** modules (RM55's five ∪ RM87's nine, three
+overlapping) and `manifest.verification.signature` on two, where re-closing dropped records attested
+over the old bytes. **No `content_signature`, no `sources.signature` and no `resolution_signature`
+moved anywhere.** P4 scopes the digest movement to a fixed `compiler_version`.
+
+Two smaller repairs rode along because they are the drift their own neighbours warn about: the
+enricher's verification-recorder docstring named three call sites where there are now seven, and
+`authored_input_entries` claimed a coupling to `manifest.inputs` that the code has never had.
+
+## 2026-08-16 — the triage loop's two Python tools are `.py`, and why that mattered
 
 No library change; repo tooling only. `.claude/triage-state.sh` and `.claude/triage-archive.sh` are
 **`.claude/triage-state.py` and `.claude/triage-archive.py`** — they were always Python with a
