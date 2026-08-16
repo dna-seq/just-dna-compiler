@@ -383,6 +383,78 @@ RM33 settled it to mean.
 Note what this does **not** unblock: the file's shape is already right. A rename is legibility only,
 which is exactly why it waits for a major rather than justifying one.
 
+### `fetched_at` — the column says *fetch*, the value means *write*
+
+**Severity** low (nothing has broken; the name mis-describes what is in the cell) · **Status** queued
+for 1.0 — **bundle with the `sources.parquet` rename above, or decline explicitly**
+
+Seven sidecar models carry `fetched_at` — `ResolutionRow`, `FrequencyRow`, `GeneMetricsRow`,
+`LiteratureRow`, `GeneValidityRow`, `ClinicalAssertionRow`, `SourceRow`. The name says the row records
+when a source was fetched. It does not. Its own field description has to correct it in prose —
+*"records when this row was last written by a pass, not when the source published anything"* — and a
+description that opens by contradicting its field name is the tell, the same one the `sources.csv`
+entry above is built on.
+
+**What the value actually is, measured rather than argued.** Every sidecar merge is never-clobber, so
+an already-recorded row wins and its stamp is never rewritten. `record_source_terms` run twice against
+one spec directory leaves the file **byte-identical**; only deleting the sidecar re-stamps
+(`2026-08-16T02:02:24Z` → `…02:02:27Z`, with `source_signature` unchanged across all three states).
+So on an ordinary re-run — including one that really did go and ask the source — the column records no
+fetch whatever. It records **when this row's facts were first set**. That is a useful thing to have and
+a reasonable thing to publish; it is simply not what it is called. Established independently at
+[S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetchedat-into-the-digest-so-a-rebuild-is-never-reproducible),
+which probed the same `setdefault` and answered the *behaviour* question; the naming question was never
+put.
+
+**Be honest about the evidence: no incident is attributable to the name.** S7's proximate cause was
+SCHEMAS.md calling `artifact_digest` the "content identity", and it was fixed there. Nothing has
+misread `fetched_at` itself. That is exactly why this is low severity and why it does **not** justify a
+major on its own — and why the disposition below is *ride along*, not *schedule*.
+
+**What it costs, checked.** `fetched_at` is outside all seven fact sets (verified against
+`RESOLUTION_FACT_FIELDS` and its six siblings), so **no signature moves** — not `content_signature`, not
+any `*_signature`. It is a column in six parquets (`resolution.csv` alone has none by design), so
+**`artifact.digest` moves on every module carrying a sidecar**. Blast radius at 0.6: 36 occurrences in
+`schema/src`, 5 in `compiler/src`, 34 in `enricher/src`, 51 across the suites, and 27 reference-example
+files.
+
+**The rename obliges one semantic decision, and it is the substance of the item.** Two writers rewrite a
+recorded row without touching the stamp: `licensing.withdraw_stale_dataset` blanks `dataset`, and
+`provenance.stamp_draft_digest` re-labels `draft_digest`. Under `fetched_at` that silence is plainly
+correct — nothing was fetched. Under `updated_at` the row was *updated* and the stamp did not move,
+which is a new small untruth. **Recommendation: leave both silent and say so in the description** — the
+value dates the row's **facts**, and a provenance-column rewrite is not a new fact. That reading is also
+what keeps the delete-and-re-derive drift check sharp (see
+[MODULE_LIFECYCLE § 5.1](MODULE_LIFECYCLE.md#51-reading-a-digest-move--the-canary)): a stamp that moved
+whenever any cell was rewritten would stop separating "these facts are from that moment" from "somebody
+touched this row". If that reading is adopted, the honest name is arguably `recorded_at` rather than
+`updated_at`, and the choice should be made deliberately rather than by reaching for the database
+convention.
+
+**No 0.x deprecation step, and the cadence's own condition is the reason.** Principle 3's 0.6 amendment
+puts a deprecation in a minor **only where its audience can act on it**. Nobody authors this column —
+all seven writers are machine passes — and an author *cannot* pre-emptively rename it, because
+`extra="forbid"` rejects the unknown column. A 0.x warning would therefore be a finding no authored edit
+can clear, which this project treats as a defect wherever else it appears (P5). So: a straight rename at
+the major, mitigated on the input side rather than by a warning.
+
+**Mitigation — accept the old spelling on read through the 1.x line.** The writer emits the new name; the
+loader keeps accepting `fetched_at` as a deprecated input spelling, so a hand-maintained or downloaded
+0.x sidecar keeps loading and the author-side upgrade route is *no action needed*. This is RM51's shape
+one layer down, and it is what makes the ledger line below cheap.
+
+**Why this is not the column rename the entry above declines.** That one refuses to touch
+`SourceRow.source` because it "is inside its own fact set, so it is the row's key". `fetched_at` is
+the exact opposite: outside every fact set, keyed by nothing, joined on by nothing, derived from by
+nothing. The stated reason for declining there is the reason this one is cheap.
+
+**Disposition:** rename at 1.0, **in the same change as `sources.parquet` → `licensing.parquet`**. That
+item already moves `artifact.digest` on exactly the modules this one would, so bundling spends a cost
+already being spent and the two share one upgrade line; taken alone this item would be a digest move for
+legibility, which is not a trade worth making. Decide `updated_at` vs `recorded_at` when the semantic
+question above is settled — the two names encode different answers to it. If the `sources.parquet`
+rename is declined, decline this one with it.
+
 ### Deprecated flag/vocab aliases
 
 **Severity** low · **Status** queued for 1.0 — collapse to the canonical vocab

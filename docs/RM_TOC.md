@@ -252,6 +252,7 @@ line under **RM52**, which is release-blocking for 1.0.
 - `ModuleManifest.authors` + free-form `curator` — fold into RM14's structured record
 - `StudyRow.pmid` required — **doi-first**: require ≥1 of `{doi, pmid}`; a requiredness demotion. Pairs with RM50, which carries the PMCID axis and the `LiteratureRow` key
 - `sources.csv` — **rename** (recommendation: `licensing.csv`). The *input* half is RM51 and shipped in 0.6.0; what waits for the major is `sources.parquet` (inside `artifact.digest`) and the `manifest.sources` key — both removals. The old CSV spelling is deprecated in 0.6 beside the alias and **removed at 1.0**, on the amended cadence this item prompted. It is a licensing/attribution ledger whose name collides with the `source` *column* meaning "which link answered" (the overload RM33 had to split) and with the ordinary sense in which `studies.csv`/`literature.csv` are sources too
+- `fetched_at` — **rename** on all seven sidecar models (`updated_at` or `recorded_at`; the choice encodes a semantic decision about whether a provenance-column rewrite restamps). The name says *fetch*; measured, a re-run never restamps, so the value dates when the row's **facts** were set. Outside every fact set, so no signature moves and only `artifact.digest` does — which is why the disposition is to **bundle it with the `sources.parquet` rename above**, not to schedule it alone
 - Compiler `ensembl_cache` shim — remove the deprecated parameter outright
 - ~~Coordinate-first identity~~ — **resolved in 0.5** by VRS; kept struck through for traceability
 
