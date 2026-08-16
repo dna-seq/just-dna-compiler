@@ -1145,7 +1145,8 @@ publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_messag
 
 `upload_module` uploads `weights/annotations/studies.parquet` (required) + `manifest.json` + optional
 logo to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
-just-dna-lite's discovery layout. `publish_reference_snapshot` uploads a built `data/*.parquet` + its
+just-dna-lite's discovery layout, **and the same files again to `data/<name>/v<version>/`** (RM84 —
+see below). `publish_reference_snapshot` uploads a built `data/*.parquet` + its
 parquet **sidecars** + `release.json` to the **root** of a dataset repo (default `just-dna-seq/clinvar`),
 matching the `download.ensure_*_snapshot` layout. Both go through `ensure_repo` — one
 create-or-update-then-upload pathway (`create_repo` was added here; the origin `v1_port.publish` assumed
@@ -1163,6 +1164,69 @@ the repo pre-existed).
 > `clinvar citations`), so neither end treats it as an error.
 Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`;
 `huggingface_hub` is a guarded lazy import.
+
+### A module is published twice, and the second path is the one that can name a release (RM84)
+
+On the discovery path there is no version in the path, no manifest fetch and no digest check, so a
+republished module keeps the same URL and a cached copy shadows it — the only invalidation a consumer
+has is keyed on *its own* package version, which makes the identity of "the module changed" a property
+of the reader. The half this tier owns is the layout, and it is written twice now:
+
+| path | what it means | when it is written |
+| --- | --- | --- |
+| `data/<name>/` | **latest** — the deployed path, unchanged in meaning, and what discovery scans | always |
+| `data/<name>/v<version>/` | *this release* — a subdirectory **inside** the flat path, not a sibling | when the manifest states a version |
+
+- **`v<version>` verbatim, never a bare `vN`.** `v0.6.0`, not `v0`. A bare major segment throws the
+  rest away, so two patch releases of one module would collide at one path — the defect being fixed
+  rather than a smaller version of it.
+- **A module with no version gets the flat path alone, and says which of four reasons applies.**
+  `Identity.version` is `str | None` and stays null unless `module_spec.yaml` states a canonical SemVer
+  (the registry stamps one on publish), so most locally-compiled modules have none. `UploadPlan` carries
+  `versioned_path_in_repo=None` plus `version_unknown_reason` — *no `manifest.json`*, *not readable as
+  JSON*, *no `identity.version`*, or *not `MAJOR.MINOR.PATCH`* — so a caller reads the reason as a field
+  and `--dry-run` prints it before anything is sent. A `data/<name>/vNone/` directory is never
+  constructed.
+- **One field is read out of the JSON, not the whole manifest through `read_manifest`.** Validating the
+  full `ModuleManifest` to reach one string lets an unrelated defect — a hyphen in `identity.name`, an
+  `icon_set` outside the vocabulary — withhold a version that is right there and legible, and the
+  refusal then names neither field nor value. The SemVer gate is `identity.is_valid_version`, the same
+  predicate `Identity.version`'s own validator calls, which is also what keeps a stray `/` out of a path
+  segment.
+- **It never refuses.** `manifest.json` is in the allow-patterns and **not** in the required set, so a
+  directory without one has always been publishable; RM84 is not a licence to tighten what the publisher
+  accepts. An unreadable manifest is a withheld version, not a failed upload.
+- **Two commits, not one — and the docs say so rather than implying an atomicity the code lacks.**
+  `upload_folder` commits per call, so a reader can briefly see the flat path refreshed while the
+  versioned copy is not there yet. The flat path goes first, because it is the one anything reads today.
+  If the second call fails, the first has already landed: latest is the new release and the versioned
+  copy is absent until a re-run, which is idempotent. Making it atomic means `create_commit` over an
+  explicit operation list, a different shape from the allow-pattern plumbing every publish here uses; it
+  was not worth holding the fix for, and if the window ever matters that is the change to make.
+- **A versioned path is only as stable as the author's `version:` is.** Nothing reads the remote before
+  writing, so re-publishing without bumping the version overwrites `data/<name>/v<version>/` with
+  different bytes. That is the same overwrite the flat path has always done, but under a name that
+  invites caching, so it is worth saying rather than implying immutability the publisher does not
+  enforce. Refusing it needs a remote read plus a policy (warn / refuse / `--force`), which is a
+  decision and not part of RM84.
+- **Nothing already published moves.** The flat path keeps being written, so every module published
+  under the old layout stays exactly where it is and keeps resolving. That is the argument for writing
+  both rather than migrating.
+
+> **To just-dna-lite, concretely — two questions, not an implication.**
+> [S34 § 4](CONSUMER_SUGGESTIONS_HISTORY.md) says *"if the publisher
+> grows a version segment we will follow it in discovery; the `vN` fallback in our generic fsspec scan
+> is already the shape."* The publisher now grows one, spelled `v<version>` (`v1.0.0`) as a
+> subdirectory of `data/<name>/`.
+> 1. **Does your scan match `v1.0.0`, or only a `v`-plus-integer segment?** Whichever you confirm is
+>    what this publisher writes — it is one line here, and nothing else in the decision depends on it.
+> 2. **Does a subdirectory under `data/<name>/` disturb your current scan?** That path used to hold
+>    files only. A recursive listing or a `**` glob would now also see a full copy of the artifacts per
+>    published version. If that is a problem, say so and the copy moves out of the scanned directory —
+>    it is the same one line.
+>
+> Until you answer, treat the versioned directory as written-but-not-yet-contracted: the flat path is
+> unchanged and remains *latest*, so following it is still correct.
 
 ## ClinVar reference snapshot (`clinvar_build.py`, `[dev]`)
 
@@ -2224,8 +2288,8 @@ just-dna-enricher hint citation --pmcid PMC3110566           # the PubMed id for
 just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent
 just-dna-enricher hint gene MTHFR                            # approved | retired | unknown
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
-just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev])
-just-dna-enricher upload out/coronary              # push compiled artifacts to the HF collection
+just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev]); names both paths
+just-dna-enricher upload out/coronary              # push to data/coronary/ and data/coronary/v<version>/
 just-dna-enricher clinvar build --vcf clinvar.vcf.gz --out cv/   # VCF → snapshot parquet ([dev])
 just-dna-enricher clinvar build --download --out cv/            # fetch the NCBI VCF first, then build
 just-dna-enricher clinvar publish cv/ --dry-run                 # plan the reference-snapshot upload
