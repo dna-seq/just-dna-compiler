@@ -925,7 +925,7 @@ def upload_(
     """Upload a compiled module to a HuggingFace dataset collection (publisher/dev surface).
 
     Writes data/<name>/, which keeps meaning "latest", and — when the
-    manifest states a version — data/<name>/v<version>/ beside it, in
+    manifest states a version — data/<name>/v<version>/ under it, in
     that order, as two commits. With no version, the flat path alone,
     and the reason why.
     """
