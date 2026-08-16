@@ -987,7 +987,7 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
             if lo == prev_lo:
                 # Equal *lower* bounds, which the boundary rule cannot resolve: it selects the greatest
                 # `measure_min` at or below the measurement, and these two are the same. Only reachable
-                # on a dense kind and only when the earlier bin is a single point (anything wider would
+                # under continuous tiling and only when the earlier bin is a single point (anything wider would
                 # have tripped `lo < prev_hi` above) — e.g. `[0.1, 0.1]` beside `[0.1, 0.3]`, where a
                 # measurement of exactly 0.1 has two answers and no rule to pick between them. That is
                 # an ambiguous selection, so it refuses like any other overlap rather than warning.
