@@ -299,7 +299,8 @@ The fix is to **make the bounds touch**: write `0.0–0.1` and `0.1–0.3` rathe
 continuous measure two bins may share an endpoint and the higher bin owns it, so a measurement of
 exactly `0.1` selects the second row. Author the top bin **closed** (`0.3–1.0`) — the top of the domain
 is a real measurement. On `repeat_count` / `copy_number` a shared endpoint is still an overlap and still
-an error, because there the bins genuinely both claim that integer.
+an error *by default*, because there the bins are read as a grid and genuinely both claim that integer —
+write `measure_tiling: continuous` on the group if that axis is not a grid.
 
 **`bins with the same lower bound for key (…)`** — an **error**
 Two bins in one group start at the same number, so the shared-endpoint rule has nothing to order and a
@@ -346,17 +347,43 @@ An annotation-layer source forbids sale and the module records no declaration. D
 `--use non-commercial` so the terms are recorded, or drop the source. There is no compiler flag for this
 by design — a flag cannot survive `reverse`, so the third compile would refuse.
 
-**`copy_number bins are tiled as whole numbers, but the field a consumer reads the measurement from
-(CN) is not a whole number in VCF 4.4`** *(same for `repeat_count` and `RUC`)*
-**Not a defect in your module and nothing to fix by hand.** VCF 4.4 made both fields fractional — a copy
-number may be a segment mean, and a repeat count is typed as a decimal — while `copynumbers.csv` and
-`repeat_alleles.csv` still bin them as integers. The consequence to know about: a fractional measurement
-*between* two of your bins matches neither, and the coverage check cannot report that hole, because on
-an integer kind it only reports one wider than a whole number. So `[0,0] [1,1] [2,2] [3,∞)` is a legal
-and silent tiling that answers nothing for a measured 2.4. A caller that rounds will hit your bins; a
-segment-mean caller will fall between them. Author the bins you mean; the schema fix is a tracked
-upstream item (a decimal column beside the integer one), so do not distort your bounds to work around it
-— `[0, 0.999]` is arbitrary and leaves a hole nothing warns about.
+**`copy_number bins here are tiled as whole numbers, but the field a consumer reads the measurement
+from (CN) is not a whole number in VCF 4.4`** *(same for `repeat_count` and `RUC`)*
+**Not a defect, and there is now something you can do about it.** VCF 4.4 made both fields fractional —
+a copy number may be a segment mean, and a repeat count is typed as a decimal — while these two kinds
+are read as a grid unless you say otherwise. The consequence: a fractional measurement *between* two of
+your bins matches neither, and the coverage check will not report that hole, because on a grid it only
+reports one wider than a step. So `[0,0] [1,1] [2,2] [3,∞)` is a legal, silent tiling that answers
+nothing for a measured 2.4.
+
+Decide which your table is. If the caller you expect rounds to whole numbers — a catalog count, a star
+allele's copy number — the grid is correct and this line is a notice, not a finding; leave it. If the
+caller reports a segment mean or a decimal repeat count, write **`measure_tiling: continuous` on every
+row of the group** and tile the axis properly: `[0,1.5] [1.5,2.5] [2.5,]`, bounds touching, the higher
+bin owning the shared value. The bounds have always accepted decimals, so nothing else changes, and the
+line stops. Do **not** work around it with `[0, 0.999]` — that is an arbitrary number and it leaves a
+hole nothing warns about.
+
+**`tiling inferred for key (…): measure_max is 2.5, which no quantised reading can hold`**
+**Informational, and it is telling you the compiler made a decision.** You wrote a bound that is not a
+whole number on a table that would otherwise be read as a grid, so the group was read as continuous
+instead: adjacent bins may share an endpoint and any hole is reported. Nothing is wrong; the point of
+the line is that you can see it happened. Write `measure_tiling: continuous` on those rows to state it
+yourself, and the line stops.
+
+**`measure_tiling for key (…) is declared 'quantised' and the data contradicts it`**
+You said the axis is a grid and then wrote a value that is not on it. **Your declaration stands** —
+nothing overrides it — so the bins are still read as a grid and that value sits between two of them.
+Either round the bound to a whole number or change the declaration to `continuous`.
+
+**`conflicting measure_tiling for key (…)`** — an **error**
+Two rows of one bin group declare different tilings, and the group is read under one. Leave the column
+empty on the rows that do not state it: empty means the kind's default, not a third answer.
+
+**`` `modifier_cn` is deprecated and is removed at 1.0 ``**
+Move the dosage to `modifier_copy_number`, which is a number that may be fractional. A whole number is
+still a whole number, so the value does not change. Set one column or the other — setting both is an
+error, because two spellings of one dosage can disagree.
 
 **`copy_number bins: one measurement can span several bins`** *(same for `repeat_count`)*
 **Also nothing to fix, and this one is a statement to a consumer rather than to you.** A real copy-number
