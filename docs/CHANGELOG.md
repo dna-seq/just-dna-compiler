@@ -34,11 +34,80 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-17 (latest) — the triage loop's own lint found two bad markers, and a link guard that was editing consumer prose
+## 2026-08-18 (latest) — 0.6.1: nine defects a code-first reading of the documents found
 
-**Unreleased — after `v0.6.0`, and no version was bumped for it.** Loop maintenance rather than format
-work: nothing here touches a model, a parquet, a manifest field or any published signature, so it will
-ride along with the next patch whenever one is cut. The live consumer inbox is empty and stayed empty;
+**`just-dna-format` + `just-dna-compiler` + `just-dna-enricher` 0.6.1 — cut and tagged `v0.6.1`.** A
+documentation pass regenerated SCHEMAS/COMPILER/ENRICHER from the source alone, read the result against
+the shipped documents, and asked which of the two was wrong. Eight times it was the code (RM93–RM100,
+filed as eight items; RM100 grew a fifth defect while the first four were being fixed, so nine
+defects in eight entries). **No schema surface moves, `schema_version` stays `"1.0"`, and all sixteen
+reference examples recompile byte-identical** — verified against a worktree at `5c1ea87`, the state
+before the first fix, rather than inferred from the absence of a model change. The suite went
+**2568 → 2714**, and every new regression test was demonstrated failing on the pre-fix tree before
+being claimed as a guard. The seven doc commits that landed after `v0.6.0` ride along, as the entry
+below said they would.
+
+**Every one of the eight broke a rule this repo had already written down, and in four of them the file
+carrying the violation also carried the rule — sometimes in an adjacent comment.** That is the finding
+underneath the release rather than a remark about it: `@validate-refuses-all`, `@vocab-separator-slip`,
+`@registry-completeness`, `@client-exception-contract`, `@unreachable-not-absent`,
+`@sidecar-name-and-place`, `@credential-where-read`. **The gotcha book is not the thing that catches a
+regression.** So the durable half of every item is a test, and in six of the nine that test walks a
+registry rather than a list.
+
+**Five of the nine are the same failure at five scales: a hand-kept list standing in for a registry.**
+`_ALL_MODELS` missing five row models; `test_validate_agrees_with_compile` missing four of the seven
+fact tables; `net.py`'s "nine policies" against a tree of twelve; a sidecar resolver three passes did
+not call; a client contract two of four clients honoured. None is a hard bug in a clever place — all
+five are a number or a list somebody had to remember.
+
+**The two parity gaps (RM93/RM94, compiler).** `_check_study_effect_alleles` sat inside `validate_spec`'s
+`if variants:` block and ran unconditionally on the compile side, so it never ran for the composition it
+was written for — a table-only module with `studies.csv` and `resolution.csv`. `_check_frequency_arithmetic`
+was never called from `validate_spec` at all, and its integer half returns errors, so a plain `validate`
+blessed a module a plain `compile` refused. Both reproduced on real specs first. The compile-side
+`_check_p_value_num` re-run also published its warning twice into `manifest.compilation.warnings`;
+the re-run was examined and **kept**, because the inner `validate_spec` always runs in best_effort and
+the second pass is the only thing that lets `--strict` escalate.
+
+**The vocabulary and registry items (RM95/RM96, format).** A closed vocabulary is supposed to accept
+`-` for `_` **and store the declared member**; three validators called `check_vocab` for its raising
+side effect and returned the raw input, so `measure_kind="copy-number"` was stored inside
+`content_signature` and then rejected by every subclass. And `_ALL_MODELS` was missing `ResolutionRow`,
+`FrequencyRow`, `GeneMetricsRow`, `LiteratureRow` and `GwasEffectRow` — five, where the filing named
+three. Admitting them turned the existing guards on and found **seven** more fields enforcing a
+vocabulary without declaring it.
+
+**One consumer-visible surface grows, deliberately:** `authoring_reference()`, `describe`,
+`requirements` and `json_schemas()` render **28 models where they rendered 23**. Additive under
+Principle 3, and the trade is stated where the registry is — a wider printed reference in exchange for
+guards that cannot miss a model again. `INTEGRATION_0_6 § 7` tells a consumer so.
+
+**The four network-tier items (RM97–RM100, enricher).** `gnomad` and `eutils` leaked raw `httpx`
+exceptions past handlers written to catch this tier's own error types, while `cpic` and `pharmvar` had
+carried the repair *and* its narrative for a release. Two `--offline` paths wrote `not_found` naming a
+cache and a release nobody opened — a fabricated negative, guaranteed rather than incidental in the one
+mode a consumer runs when they cannot reach the source. Three passes joined a sidecar filename onto
+`spec_dir` by hand, and five more sites did the same in the CLI's success lines. And five small surface
+defects, of which the sharpest is that `python -m just_dna_enricher.cli` exposed 23 of 26 commands
+because `if __name__ == "__main__"` sat two-thirds down the file.
+
+**Five filings understated what was there, and the entries in ROADMAP_HISTORY say so** — the user's
+call was to correct them as they moved rather than preserve the filing verbatim. RM93's guard was
+missing four fact tables, not one; RM96's registry five models, not three; RM99 had five more sites in
+the reporting layer; RM100 stranded a fourth command. The fifth is a correction in the other direction:
+RM98's `SourceRow` claim was right, but by way of `authority` rather than `source`.
+
+**One fix broke a test, and that is the release in miniature.** Making `EutilsSettings` call `load_env()`
+where it reads `NCBI_API_KEY` turned `test_eutils.py` red on a machine with a key in `.env`: it used
+`monkeypatch.delenv`, and `@test-no-credential` says `setenv(VAR, "")` — a rule written down, explained,
+and violated one file away from where `test_literature_terms.py` states it beside its own fixture.
+
+## 2026-08-17 — the triage loop's own lint found two bad markers, and a link guard that was editing consumer prose
+
+**Shipped in 0.6.1**, which is the "next patch whenever one is cut" this paragraph promised. Loop
+maintenance rather than format work: nothing here touches a model, a parquet, a manifest field or any
+published signature. The live consumer inbox is empty and stayed empty;
 all of this came from running the ledger against the **history** file, which is the check that an empty
 inbox is not an all-clear.
 

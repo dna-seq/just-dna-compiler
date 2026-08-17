@@ -11,25 +11,12 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 > network tier), **[CONSTITUTION.md](CONSTITUTION.md)** (the invariants every model upholds).
 > `__init__.py` carries no re-exports by design — import from the submodule where a symbol lives.
 
-## Known deviations — where 0.6.0 does not yet do what this document says
-
-**This document describes intended behaviour.** Where the shipped code differs, the difference is a
-filed defect rather than a second contract, and it is named here so nobody has to discover it twice. A
-document that writes a bug down teaches it; one that hides it wastes the reader's afternoon. Both are
-fixed in 0.6.1.
-
-- **[RM95](ROADMAP.md#rm95--a-canonicalized-vocabulary-value-is-discarded-so-the-slip-is-stored-and-then-rejected)**
-  — the separator rule below (`-` for `_`, storing the declared member) holds everywhere except
-  `MeasureBinRow.measure_kind`, which stores the slip and whose subclasses then reject it.
-- **[RM96](ROADMAP.md#rm96--three-model-guards-that-a-registry-iterating-audit-would-have-caught)** —
-  `GeneMetricsRow.status` enforces no vocabulary despite naming one; `GwasEffectRow`'s finite check
-  blames a bad `standard_error` on `effect_size`; `start` carries its lower bound on two of the five
-  models with a position.
+## Read beside this: the 2026-08-18 code-first re-derivation
 
 **A second reading of this tier, written from the code alone on 2026-08-18, is in
 [audit/SCHEMAS_FROM_CODE.md](audit/SCHEMAS_FROM_CODE.md)** — field-by-field over every row model, and
-the instrument that found the two items above. Evidence, not contract: this document is the maintained
-one.
+the instrument that found RM95 and RM96, both fixed in 0.6.1. Evidence, not contract: this document
+is the maintained one, and where the two disagree this one is what a consumer may rely on.
 
 ## Module map (dependency tiers, leaf → aggregate)
 

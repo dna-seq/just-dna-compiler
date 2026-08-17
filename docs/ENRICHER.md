@@ -269,32 +269,12 @@ lazy import* on its deprecated `ensembl_cache` path — it declares no dependenc
 > **[SCHEMAS.md](SCHEMAS.md)** (`ResolutionRow` and the three hashes), **[CONSTITUTION.md](CONSTITUTION.md)**
 > (the 0.5 amendment). Import from the submodule where a symbol lives; `__init__.py` has no re-exports.
 
-## Known deviations — where 0.6.0 does not yet do what this document says
-
-**This document describes intended behaviour.** Where the shipped code differs, the difference is a
-filed defect rather than a second contract, and all four are fixed in 0.6.1. Three of them matter most
-in exactly the situation a reader reaches for this tier's guarantees — a source that will not answer.
-
-- **[RM97](ROADMAP.md#rm97--two-clients-still-leak-the-transport-exception-the-other-two-document-repairing)**
-  — the exception contract described below (retry, then translate, both legs) is honoured by `cpic` and
-  `pharmvar` and not yet by `gnomad` or `eutils`, where a 5xx escapes as a raw `httpx` exception past
-  handlers written to catch this tier's own error types. `CpicClient.row_count` bypasses its own
-  transport for the same reason.
-- **[RM98](ROADMAP.md#rm98--two-passes-record-an-absence-nobody-established-under---offline)** — the
-  *unreachable is not absent* rule holds everywhere except two `--offline` paths, which write
-  `not_found` against a cache or a release they never opened.
-- **[RM99](ROADMAP.md#rm99--three-passes-bypass-the-sidecar-resolver-so-one-family-writes-to-two-places)**
-  — `gene_metrics`, `clingen` and `literature` write their sidecar to the spec root even on a module
-  whose other sidecars live under `derived/`.
-- **[RM100](ROADMAP.md#rm100--five-enricher-surface-defects-with-no-common-cause)** — five small ones,
-  including that `python -m just_dna_enricher.cli` exposes 23 of the 26 commands (use the
-  `just-dna-enricher` entry point, which is what every example here uses) and that `NCBI_API_KEY` is
-  read without `load_env()`, so a `.env`-only key may silently leave the rate gate at 1/3 s.
+## Read beside this: the 2026-08-18 code-first re-derivation
 
 **A second reading of this tier, written from the code alone on 2026-08-18, is in
 [audit/ENRICHER_FROM_CODE.md](audit/ENRICHER_FROM_CODE.md)** — all 37 commands, the resolver chain with
-what `--offline` changes per pass, and the six caches. It found all four items above. Evidence, not
-contract: this document is the maintained one.
+what `--offline` changes per pass, and the six caches. It found RM97–RM100, all fixed in 0.6.1.
+Evidence, not contract: this document is the maintained one.
 
 ## Install
 
@@ -2532,7 +2512,7 @@ place where the code and a stated rule disagree, and these are places where noth
 - **`enrich_gwas(mode=…)`.** Accepted, defaulted, never read; the CLI's `--strict` help promises a
   "severity ladder" and the pass docstring describes none. Whether the intent was a `strict` refusal on
   `missing` (as the sibling passes have) or no ladder at all is undetermined, and no test covers either.
-  The dead parameter itself is filed as part of [RM100](ROADMAP.md#rm100--five-enricher-surface-defects-with-no-common-cause);
+  The dead parameter itself is filed as part of [RM100](ROADMAP_HISTORY.md#rm100--five-enricher-surface-defects-with-no-common-cause);
   what it *should* do is this question.
 - **`identifiers.IdentifierCheckError`** is declared with a docstring and never raised anywhere, in
   `src` or in the tests.

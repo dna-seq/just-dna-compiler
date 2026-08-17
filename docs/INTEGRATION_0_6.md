@@ -17,11 +17,14 @@ it is installable from PyPI is a separate step and the maintainer's call, so che
 field to anyone. That distinction is S34's, and it is the standing rule for every claim in this
 document — *answered* and *in the tree* and *cut* and *installable* are four different states.
 
-**Eight defects are known and unfixed, all scheduled for 0.6.1** — RM93–RM100, filed 2026-08-18 from a
+**Eight defects were found in 0.6.0 and are fixed in `v0.6.1`** — RM93–RM100, filed 2026-08-18 from a
 pass that regenerated the tier references from source and read them against the shipped documents.
-Four are worth knowing *before* you integrate rather than after; they are in
-[§ 7](#7-known-defects-in-060-and-what-they-mean-for-you) below with what each means for a consumer.
-None of them changes a schema surface, so nothing in the delta below moves.
+**Take 0.6.1, not 0.6.0**, and read [§ 7](#7-what-060-got-wrong-and-061-fixed) if you are pinned to
+0.6.0 for any reason: four of the eight change what you should expect from a surface this document
+told you to adopt. None of them changes a schema surface, so nothing in the delta below moves — the
+one thing 0.6.1 *adds* is that `authoring_reference()`, `describe`, `requirements` and
+`json_schemas()` now render **28 models rather than 23** (RM96), the five machine-written sidecar row
+models that were outside the registry. Additive, and worth knowing if you snapshot that output.
 
 ---
 
@@ -502,21 +505,22 @@ State these to anyone who asks, because each is a repair somebody has proposed:
   VCF emits no such record, a gVCF and an array do — so that is the annotator's call, not this
   format's. Restoration and imputation stay consumer-side.
 
-## 7. Known defects in 0.6.0, and what they mean for you
+## 7. What 0.6.0 got wrong, and 0.6.1 fixed
 
-Filed 2026-08-18 as RM93–RM100, all scheduled for **0.6.1**. Listed here rather than left in the
-roadmap because four of them change what you should expect from a surface this document told you to
-adopt, and none of them is visible as a schema difference. **No schema surface moves**, so § 2's delta
-stands unchanged; what moves is behaviour.
+Filed 2026-08-18 as RM93–RM100 and **all shipped in `v0.6.1` the same day**. Kept here rather than
+deleted with the fix, because a consumer pinned to 0.6.0 still meets every one of them and the table
+below is the only place that says what to do about it. **The action for everyone else is one line:
+take 0.6.1.** No schema surface moved in either direction, so § 2's delta stands unchanged; what
+moved is behaviour.
 
-| Item | Who hits it | What to do until 0.6.1 |
+| Item | Who hits it on 0.6.0 | What to do if you are pinned to 0.6.0 |
 | --- | --- | --- |
-| [RM93](ROADMAP.md#rm93--two-checks-refuse-in-compile-and-report-nothing-in-validate) | anyone using `validate` as a pre-flight for `compile` | **The one to know.** `validate` is not currently a complete pre-flight: a module with `frequencies.csv`, or a table-only module with `studies.csv`, can pass `validate --strict` and then be refused by `compile --strict`. If your pipeline gates on `validate` and treats a later `compile` failure as an infrastructure error, it will misclassify these two. Gate on `compile` into a temporary directory if you need certainty today. |
-| [RM94](ROADMAP.md#rm94--the-p-value-re-run-publishes-its-warning-twice-into-the-manifest) | anyone reading `manifest.compilation.warnings` | A `p_value`/`p_value_num` disagreement appears **twice**, byte-identical. If you count warnings or show them to a user, dedupe on the string — which is worth doing regardless, since the field has never promised uniqueness. |
-| [RM97](ROADMAP.md#rm97--two-clients-still-leak-the-transport-exception-the-other-two-document-repairing) | anyone calling the enricher against gnomAD or dbSNP | A 5xx from either escapes as a raw `httpx.HTTPStatusError` rather than as this tier's own error type, so `except GnomadError` / `except EutilsError` does not hold it and a dbSNP 5xx can abort a run. Catch `httpx.HTTPError` alongside the tier's exceptions until this lands. |
-| [RM98](ROADMAP.md#rm98--two-passes-record-an-absence-nobody-established-under---offline) | anyone running `enrich --offline` or `gene-metrics --offline` without a cache | The artifact records `status="not_found"` — a definite negative — where nothing was consulted. **Do not read a `not_found` from an offline run with no cache as evidence the source lacks the record.** With a cache present the behaviour is correct; it is the empty-cache case that fabricates. |
-| [RM95](ROADMAP.md#rm95--a-canonicalized-vocabulary-value-is-discarded-so-the-slip-is-stored-and-then-rejected), [RM96](ROADMAP.md#rm96--three-model-guards-that-a-registry-iterating-audit-would-have-caught) | module authors | `measure_kind=copy-number` is accepted by `MeasureBinRow` and rejected by its subclasses; write the underscore spelling. Two unenforced/misattributed model guards, neither of which lets bad data into a surface you read. |
-| [RM99](ROADMAP.md#rm99--three-passes-bypass-the-sidecar-resolver-so-one-family-writes-to-two-places), [RM100](ROADMAP.md#rm100--five-enricher-surface-defects-with-no-common-cause) | registries serving a `derived/` layout; anyone invoking the enricher as a module | Three passes write their sidecar to the spec root regardless of layout, so an `enrich` run can leave one module with both. And use the `just-dna-enricher` entry point rather than `python -m just_dna_enricher.cli`, which is missing three commands. |
+| [RM93](ROADMAP_HISTORY.md#rm93--two-checks-refuse-in-compile-and-report-nothing-in-validate) | anyone using `validate` as a pre-flight for `compile` | **The one to know.** `validate` is not currently a complete pre-flight: a module with `frequencies.csv`, or a table-only module with `studies.csv`, can pass `validate --strict` and then be refused by `compile --strict`. If your pipeline gates on `validate` and treats a later `compile` failure as an infrastructure error, it will misclassify these two. Gate on `compile` into a temporary directory if you need certainty today. |
+| [RM94](ROADMAP_HISTORY.md#rm94--the-p-value-re-run-publishes-its-warning-twice-into-the-manifest) | anyone reading `manifest.compilation.warnings` | A `p_value`/`p_value_num` disagreement appears **twice**, byte-identical. If you count warnings or show them to a user, dedupe on the string — which is worth doing regardless, since the field has never promised uniqueness. |
+| [RM97](ROADMAP_HISTORY.md#rm97--two-clients-leak-the-transport-exception-the-other-two-document-repairing) | anyone calling the enricher against gnomAD or dbSNP | A 5xx from either escapes as a raw `httpx.HTTPStatusError` rather than as this tier's own error type, so `except GnomadError` / `except EutilsError` does not hold it and a dbSNP 5xx can abort a run. Catch `httpx.HTTPError` alongside the tier's exceptions until this lands. |
+| [RM98](ROADMAP_HISTORY.md#rm98--two-passes-record-an-absence-nobody-established-under---offline) | anyone running `enrich --offline` or `gene-metrics --offline` without a cache | The artifact records `status="not_found"` — a definite negative — where nothing was consulted. **Do not read a `not_found` from an offline run with no cache as evidence the source lacks the record.** With a cache present the behaviour is correct; it is the empty-cache case that fabricates. |
+| [RM95](ROADMAP_HISTORY.md#rm95--a-canonicalized-vocabulary-value-is-discarded-so-the-slip-is-stored-and-then-rejected), [RM96](ROADMAP_HISTORY.md#rm96--the-registry-an-audit-iterates-was-missing-five-of-the-models) | module authors | `measure_kind=copy-number` is accepted by `MeasureBinRow` and rejected by its subclasses; write the underscore spelling. Two unenforced/misattributed model guards, neither of which lets bad data into a surface you read. |
+| [RM99](ROADMAP_HISTORY.md#rm99--three-passes-bypass-the-sidecar-resolver-so-one-family-writes-to-two-places), [RM100](ROADMAP_HISTORY.md#rm100--five-enricher-surface-defects-with-no-common-cause) | registries serving a `derived/` layout; anyone invoking the enricher as a module | Three passes write their sidecar to the spec root regardless of layout, so an `enrich` run can leave one module with both. And use the `just-dna-enricher` entry point rather than `python -m just_dna_enricher.cli`, which is missing three commands. |
 
 **What this list is not.** None of these is a regression against 0.5.4 — RM93's two checks and RM98's
 offline paths behaved this way before 0.6 as well, and RM95's vocabulary slip has been there since the

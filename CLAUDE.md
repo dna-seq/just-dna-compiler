@@ -137,7 +137,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 
 ### Coordinates and the genome build
 
-- `start` is the 1-based VCF position — never `-1` it. `@start-1based`
+- `start` is the 1-based VCF position — never `-1` it. Bounded `ge=0`, not `ge=1`: VCF permits POS 0. `@start-1based`
 - A row is stamped before the module is known; re-derive build-dependent stamps at both load sites. `@restamp-for-build`
 - `genome_build` is in the manifest and no parquet column — pass the row's build to every mint call. `@build-in-manifest-only`
 - The build is injected at load, never authored on a row. `@build-injected`
@@ -164,6 +164,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A sidecar is merged, never clobbered — delete it to regenerate after a machinery change. `@sidecar-authoritative`
 - Resolution reaches the positional tables too since 0.6; `authored_ident` is what keeps the fill out of `content_signature`. `@rm43-positional-fill`
 - Unreachable is not absent: write no row, name it separately, warn in both modes. `@unreachable-not-absent`
+- **Nobody-asked is a third state** beside asked-and-failed and asked-and-absent; `--offline` is where it bites. `@unreachable-not-absent`
 
 ### Checks: placement and severity
 
@@ -173,6 +174,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Enricher checks report, never repair; severity follows the mode. `@enrichment-is-validation`
 - Move a check behind resolution when resolution fills its input (`chrom` for ploidy). `@ploidy-behind-resolution`
 - Never re-run a check whose message embeds a count — the manifest then publishes two numbers. `@no-rerun-with-counts`
+- A check running on both sides dedupes on the message; re-running is the normal case. `@no-rerun-with-counts`
 - The ClinVar `clin_sig` cross-check never escalates under `strict`, deliberately. `@clinsig-never-escalates`
 - A check that cannot fail must not report a zero. `@tautology-zero`
 - Ask whether a table-level check's rules are jointly satisfiable. `@jointly-satisfiable`
@@ -230,6 +232,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `draft --allele` filters all three tables; `*1` is always kept. `@draft-allele-filter`
 - An incidental call must not be able to discard finished work. `@incidental-call-isolated`
 - A client leaking its transport library's exception has no contract; retry, then translate, both legs. `@client-exception-contract`
+- Test the contract over every client, not the method on one. `@client-exception-contract`
 
 ### Drafting and the authoring surfaces
 
@@ -243,8 +246,9 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Requiredness has three shapes; use `field_category` / `authoring_requirements`. `@requiredness-three-shapes`
 - `sources.csv` is draftable, keyed `(source, layer)`. `@sources-csv-draftable`
 - A registry-iterating guard is only as complete as its registry — add new models to `_ALL_MODELS`. `@registry-completeness`
+- Assert an **equality over a walked set**, never a floor or a count in prose. `@registry-completeness`
 - A vocabulary binding lives on the field and carries its members *and* its closedness. `@vocabulary-on-field`
-- A closed vocabulary accepts `-` for `_` and stores the declared member. `@vocab-separator-slip`
+- A closed vocabulary accepts `-` for `_` and stores the declared member — **return `check_vocab`, never just call it**. `@vocab-separator-slip`
 - `model_fields` is not the authored surface; skip by `COMPILER_MANAGED`, never by name. `@authored-field-names`
 - A generic rejection is a dead end where a specific one is a fix — diagnose, don't apply. `@specific-rejection`
 - A hint may not fill a cell a Class-2 check cross-examines. `@hint-redundancy-bearing`

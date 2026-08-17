@@ -35,11 +35,17 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.5.0 is the published line** — tagged `v0.5.0`, built into `dist/`, and released to PyPI
-on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package. `schema_version` stays
-`"1.0"`.
+**Status:** **0.6.1 is the current line** — all three packages read `0.6.1`, tagged and built into
+`dist/`. `schema_version` stays `"1.0"` and has since 0.4. **Tagged is not published**: whether a
+version is installable from PyPI is a separate step and the maintainer's call, so check
+[CHANGELOG.md](CHANGELOG.md) before promising a field to anyone. 0.5.0 was released to PyPI on
+2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package.
 
-**0.6.0 is open on the `0.6` branch, unreleased.** All three packages read `0.6.0`. Landed so far:
+**0.6.0 was cut and tagged `v0.6.0` on 2026-08-17**, and `0.6.1` followed on 2026-08-18 with RM93–RM100
+(see [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-and-the-two-the-fixes-found)).
+This paragraph read *"open on the `0.6` branch, unreleased"* for a release and a half
+after that stopped being true, which is the same failure the *Active items* heading had — a status line
+nobody re-reads is a status line that lies. What 0.6.0 landed:
 `manifest.readme` (S25), `manifest.derived` (S26), then
 [RM44](history/ROADMAP_HISTORY_PRE_0_6.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one),
 [RM51](history/ROADMAP_HISTORY_PRE_0_6.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
@@ -156,17 +162,14 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Nine: RM88, and RM93–RM100 filed 2026-08-18.** The eight are the code half of a documentation pass
-that regenerated SCHEMAS/COMPILER/ENRICHER from the source alone and read the result against the
-shipped documents; where the two disagreed, the question was which of them was wrong. Eight times it
-was the code. **Every one of them violates a rule this repo had already written down** — the tags are
-`@validate-refuses-all`, `@vocab-separator-slip`, `@registry-completeness`, `@client-exception-contract`,
-`@unreachable-not-absent`, `@sidecar-name-and-place`, `@credential-where-read` — which is the finding
-underneath the eight: the gotcha book is not the thing that catches a regression, and in four of these
-the file carrying the violation also carries the rule, sometimes in an adjacent comment. Five were
-reproduced against real specs; three are read off the code with the contradicting comment named. **The
-docs describe the behaviour these items will restore, not the behaviour as shipped** — a doc that
-documents a bug teaches it.
+**One: RM88.** RM93–RM100, the code half of the 2026-08-18 documentation pass, **shipped in 0.6.1** and
+moved to [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-and-the-two-the-fixes-found)
+with their rationale and with the five places the filings turned out to understate what was there.
+Every one of them broke a rule this repo had already written down — which is the finding worth keeping
+out of the item entries and stating once: **the gotcha book is not the thing that catches a
+regression.** In four of the eight the file carrying the violation also carried the rule, sometimes in
+an adjacent comment. So the durable half of each is a test, and in six of the nine that test walks a
+registry rather than a list.
 
 **RM88** was filed 2026-08-17 out of the 0.6 PT2 batch's lane D together with RM89, both
 *found by building RM84 rather than by planning it* — neither a defect in what shipped, and neither a
@@ -229,185 +232,6 @@ apart is how one gets a shape the other has to undo — the same pairing note RM
 **Not a repair:** making the compiler bump `version:` automatically. A version is an authored claim about
 compatibility, and a tool that increments it is asserting something only the author knows. The repo
 already refused the neighbouring move for `SourceRow.dataset` in RM85.
-
-## RM93 — two checks refuse in `compile` and report nothing in `validate`
-
-**Severity** high · **Status** open — 0.6.1 · **Owner** compiler (`validate_spec` / `compile_module`) ·
-**Motivating case** a table-only module with `studies.csv`; any module with `frequencies.csv` ·
-**Filed** 2026-08-18 from the code-first documentation pass
-
-`@validate-refuses-all` is the rule and both halves break it, reproduced against real specs rather than
-argued:
-
-- **`_check_study_effect_alleles` is inside `if variants:`** on the validate side (`compiler.py:3692`)
-  and runs unconditionally on the compile side. So it never runs for the composition it was written
-  for — a module with a table kind, `studies.csv` and `resolution.csv` and **no** `variants.csv`.
-  Measured on `fmr1_cgg_repeat` plus one study row naming an allele its locus cannot host:
-  `validate(strict).valid=True`, `compile(strict).success=False`. The comment three lines above the
-  call says it is there "for the same parity reason", so the code contradicts its own stated intent.
-- **`_check_frequency_arithmetic` is never called from `validate_spec` at all.** Measured on
-  `hboc_palb2` with `allele_count=500, allele_number=100`: `validate.valid=True`,
-  `compile.success=False` on *"a count cannot be larger than its own denominator"*.
-
-Both are the defect the 2026-08-07 audit fixed for `_verify_vrs_ids` and `_check_p_value_num` and that
-`compiler/tests/test_validate_agrees_with_compile.py` exists to prevent. **The repair is not just the
-two call sites** — the test walks the checks it knows about, so it passed while two of them were
-missing, and the durable half is making that guard enumerate rather than list. `@parity-by-check`: audit
-by check, never by table, which is exactly how the first of these was missed.
-
-## RM94 — the p-value re-run publishes its warning twice into the manifest
-
-**Severity** medium · **Status** open — 0.6.1 · **Owner** compiler (`compile_module`) ·
-**Motivating case** any module whose `p_value` and `p_value_num` disagree · **Filed** 2026-08-18 from
-the code-first documentation pass
-
-`_check_p_value_num` runs in `validate_spec` and again in `compile_module`, and the compile-side
-`all_warnings.extend(p_value_warnings)` (`compiler.py:4097`) carries **no** `if w not in all_warnings`
-filter — which every neighbouring re-run does, including the study-allele block four lines above it.
-Reproduced on `hboc_palb2`: one authored disagreement, two byte-identical sentences in
-`manifest.compilation.warnings`.
-
-This is the near neighbour of `@no-rerun-with-counts` rather than an instance of it: the message embeds
-no count, so the two copies agree and the published field is redundant instead of self-contradicting.
-That is why it survived — the failure it was guarded against was two *different* numbers. The rule
-worth taking from it is the wider one the neighbours already follow: **a check that runs on both sides
-dedupes on the message, and re-running it is the normal case rather than the exception.** Worth asking
-during the fix whether the re-run earns its place at all; the check reads only authored rows, so
-resolution cannot change its input, which is the standing test for whether a second pass is warranted.
-
-## RM95 — a canonicalized vocabulary value is discarded, so the slip is stored and then rejected
-
-**Severity** medium · **Status** open — 0.6.1 · **Owner** format (`binning.MeasureBinRow`) ·
-**Motivating case** an author writing `measure_kind=copy-number` · **Filed** 2026-08-18 from the
-code-first documentation pass
-
-`@vocab-separator-slip` says a closed vocabulary accepts `-` for `_` **and stores the declared member**.
-`MeasureBinRow._validate_measure_kind` calls `check_vocab` for its raising side effect and then returns
-the *uncanonicalized* `v`, so the rule holds for every other field and fails for this one. Two
-consequences, both reproduced:
-
-- `MeasureBinRow(measure_kind="copy-number", …)` validates and stores `'copy-number'` — a member that
-  is not in the vocabulary, inside `content_signature`.
-- Every subclass then **rejects** the same input, because `_EXPECTED_KIND` is compared against the
-  uncanonicalized value: `CopyNumberRow requires measure_kind='copy_number', got: 'copy-number'`. So the
-  base class accepts what the subclass refuses, and the error names the canonical form the author's
-  input already denotes.
-
-The neighbouring `_validate_measure_tiling` one line above returns `check_vocab`'s result, which is what
-makes this a slip rather than a decision. `Contribution._check_role` and `PgsRow._validate_ancestry`
-discard the same return and are latent only because no member of either vocabulary contains a separator
-— fix all three, since the latency is a property of today's members and not of the code.
-
-## RM96 — three model guards that a registry-iterating audit would have caught
-
-**Severity** low · **Status** open — 0.6.1 · **Owner** format · **Motivating case** each named below ·
-**Filed** 2026-08-18 from the code-first documentation pass
-
-Three small, unrelated-looking holes with one shape: a rule stated in one place and enforced in another,
-or not at all.
-
-- **`GeneMetricsRow.status` has no validator.** Its own description names the `ResolutionRow`
-  vocabulary, and `status="totally-made-up"` validates. Every sibling fact table enforces its status.
-  This is `@registry-completeness` from the other side: the model is outside `reference._ALL_MODELS`,
-  so the guards that iterate the registry cannot see it, and `reference.py:105` already records that it
-  is outside while carrying an enforced vocabulary — the note is right and the enforcement is missing.
-- **`GwasEffectRow._check_finite` covers two fields and hardcodes one name.** An infinite
-  `standard_error` raises *"effect_size must be a finite number"*. `gene_metrics.py` passes
-  `info.field_name` for the identical validator, so the correct idiom is one file over. Note this
-  lands on RM92's fresh surface.
-- **`start` carries `ge=0` on `VariantRow`/`StudyRow` only.** `HaplotypeRow`, `PharmVariantRow` and
-  `HeteroplasmyRow` accept `start=-5`, though the reason the bound exists (the parquet column is
-  unsigned) applies to all five. Check whether the bound should be `ge=1` while it is being moved —
-  `start` is the 1-based VCF position (`@start-1based`), so `0` is already not a coordinate.
-
-## RM97 — two clients still leak the transport exception the other two document repairing
-
-**Severity** high · **Status** open — 0.6.1 · **Owner** enricher (`gnomad`, `eutils`, `cpic`) ·
-**Motivating case** a gnomAD or dbSNP 5xx mid-enrichment · **Filed** 2026-08-18 from the code-first
-documentation pass
-
-`@client-exception-contract`: retry, then translate, both legs. `cpic.py` and `pharmvar.py` carry the
-repair *and* the narrative of why it was needed (R2-13). `gnomad._post` and `eutils._get` have the
-unrepaired shape — `response.raise_for_status()` sits **after** the `try/except`, and `HTTPStatusError`
-is in neither retry list — so a 5xx raises a raw `httpx` exception that is neither retried nor
-translated. Two live consequences: `enrich()` catches `GnomadError` under the comment *"a last-resort
-link must not sink the whole enrichment"* and a 502 sinks it anyway; the `check_rsids` call has no
-handler at all, so a dbSNP 5xx aborts the run with a traceback the CLI cannot render.
-
-Beside it, the same rule from the other direction: **`CpicClient.row_count` bypasses its own `_get`**,
-calling `self._client.get` directly, so the one method with no retry and no translation is the one the
-snapshot builder uses to refuse a short read — and a raw `httpx` exception escapes past
-`cli.cpic_build_`'s `except (CpicError, CpicBuildError)`. A client that documents its contract in two
-places and violates it in a third is the argument for testing the contract rather than the method.
-
-## RM98 — two passes record an absence nobody established under `--offline`
-
-**Severity** high · **Status** open — 0.6.1 · **Owner** enricher (`enrich`, `gene_metrics`) ·
-**Motivating case** `enrich --offline` on a machine with no cache · **Filed** 2026-08-18 from the
-code-first documentation pass
-
-`@unreachable-not-absent`: unreachable is not absent — write no row, name it separately. `enrich.py`
-holds the rule twice in adjacent branches, each with a comment spelling out that writing `not_found`
-would state "the source was asked and does not have this rsID", a negative nobody established. The
-branch **between** them does exactly that: with `--offline` and no Ensembl cache at all, it writes
-`status="not_found"` with `source="cache"` — naming a cache that was never opened — and a `SourceRow`
-for a source never read (`@write-the-sourcerow` inverted: the row is written *because* the pass ran, not
-because the source was consulted).
-
-`gene_metrics` has the same shape: offline with no constraint snapshot it logs *"gene metrics will be
-empty"* and then writes a `not_found` row per module gene labelled `gnomad_v4.1_constraint`, asserting a
-release was consulted when nothing was. `test_fact_passes.py` pins the `not_found` status — so the test
-falsifies the log line rather than the behaviour, and the fix has to move the test with it.
-
-The `--offline` case is the one where this matters most, because it is the mode a consumer runs when
-they *cannot* reach the source, so the fabricated negative is guaranteed rather than incidental.
-
-## RM99 — three passes bypass the sidecar resolver, so one family writes to two places
-
-**Severity** medium · **Status** open — 0.6.1 · **Owner** enricher (`gene_metrics`, `clingen`,
-`literature`) · **Motivating case** a module downloaded in the registry's `derived/` layout ·
-**Filed** 2026-08-18 from the code-first documentation pass
-
-`@sidecar-name-and-place`: resolve a sidecar's name and place through `layout`; write to the file you
-read. RM49 shipped that resolver for exactly this reason. Three passes join the filename onto `spec_dir`
-by hand and never call `sidecar_path`, so on a module keeping its sidecars under `derived/` they write
-`gene_metrics.csv` and `literature.csv` at the root while six other passes write under `derived/`.
-
-The sharp part is that it is inconsistent **inside one family**: `gene_validity` — `gene_metrics`'
-sibling, sharing `module_genes` — does use the resolver. So one `enrich` run on one module can produce
-both layouts, which is the both-copies-present collision RM49 named as an error rather than a
-preference. A test that asserts every pass writing a sidecar resolves it the same way is the durable
-half; per-pass repair alone leaves the next pass free to make the same choice.
-
-## RM100 — five enricher surface defects with no common cause
-
-**Severity** low · **Status** open — 0.6.1 · **Owner** enricher · **Motivating case** each named below ·
-**Filed** 2026-08-18 from the code-first documentation pass
-
-Filed together because each is a few lines and none is worth its own entry, not because they share a
-root:
-
-- **`python -m just_dna_enricher.cli` is missing three commands.** `if __name__ == "__main__": app()`
-  sits at `cli.py:1688`, *above* the registrations for the `hint` sub-app, `draft-clinpgx` and
-  `draft-panel`. Measured: the console script lists 26 commands, the module form 23. Harmless through
-  the entry point `[project.scripts]` owns, wrong for anyone invoking the module directly.
-- **`clinvar_build._sha256_file` is defined twice** (lines 252 and 445). The second shadows the first
-  and returns `str | None`, which flows into `_write_release_json(source_sha256: str)` and
-  `BuildResult(source_sha256: str)`, both annotated non-optional. The first definition is dead.
-- **`enrich_gwas` leaks its client and ignores `mode`.** The close is a bare `if client is None:
-  catalog.close()` outside any `try/finally` — every sibling pass uses one — and `mode` is accepted,
-  never read, while the CLI advertises `--strict` as a severity ladder. RM90's surface, one day old.
-- **`NCBI_API_KEY` and `JUST_DNA_CONTACT_EMAIL` are read without `load_env()`.** `@credential-where-read`
-  says load a credential where it is read; `PharmVarClient` calls `load_env()` with a comment describing
-  this exact failure, and `eutils` and both literature clients read `os.environ` directly. Live effect: a
-  `.env`-only NCBI key is honoured or ignored depending on call order, silently leaving the rate gate at
-  1/3 s instead of 10/s.
-- **`net.py` says "nine policies" twice and the tree carries twelve** (`ensembl` ×2, `literature` ×3,
-  `eutils`, `gnomad`, `grch37`, `identifiers`, `cpic`, `pharmvar`, `gwas`). The guard cannot catch the
-  drift on either axis: `test_gated_snapshots.py:416` asserts `len(found) >= 9` — a floor, so three new
-  policies pass it — while walking seven of the ten modules that carry one (`grch37` and `gwas` are
-  absent from its list). Fix the count, and make the assertion an equality against a walked set rather
-  than a floor, which is the same `@registry-completeness` shape as RM96's `_ALL_MODELS` hole.
 
 # Not format scope
 

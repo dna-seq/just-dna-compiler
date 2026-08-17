@@ -20,6 +20,324 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 [RM_TOC.md](RM_TOC.md) indexes both halves plus the open roadmap, so it is where to look an item up.
 
 
+# 0.6.1 — the eight the documents caught, and the two the fixes found
+
+**A documentation pass regenerated SCHEMAS/COMPILER/ENRICHER from the source alone on 2026-08-18, read
+the result against the shipped documents, and asked which of the two was wrong.** Eight times it was
+the code. That is the whole of this release: no schema surface moves, `schema_version` stays `"1.0"`,
+and all sixteen reference examples recompile byte-identical — verified against a worktree at `5c1ea87`,
+the state before the first fix, rather than assumed from the absence of a model change.
+
+**Every one of the eight broke a rule this repo had already written down**, and in four of them the
+file carrying the violation also carried the rule, sometimes in an adjacent comment: `@validate-refuses-all`,
+`@vocab-separator-slip`, `@registry-completeness`, `@client-exception-contract`, `@unreachable-not-absent`,
+`@sidecar-name-and-place`, `@credential-where-read`. **That is the finding underneath the eight, and it
+is the one worth keeping: the gotcha book is not the thing that catches a regression.** So the durable
+half of every item below is a *test*, and in six of the nine that test walks a registry rather than a
+list — the `@registry-completeness` shape turned on the guards themselves.
+
+**Five of them were found by the same failure mode, at five different scales**, which is the second
+thing worth recording. A hand-kept list stands in for a registry, and then the list is only as complete
+as whoever last remembered it: `_ALL_MODELS` missing five row models (RM96), `test_validate_agrees_with_compile`
+missing four of the seven fact tables (RM93), `net.py`'s "nine policies" against a tree of twelve
+(RM100), the sidecar resolver three passes did not call (RM99), and the client contract two of four
+clients honoured (RM97). None of these is a hard bug in a clever place. All five are a number or a list
+somebody had to remember.
+
+**What the items said and what was actually there differed five times**, and the differences are folded
+into the entries below rather than left as a filing to reconcile. Four made the item bigger — RM93's
+guard was missing four fact tables and not one, RM96's registry was missing five models and not three,
+RM99 had five more sites in the CLI's own reporting, RM100 stranded a fourth command — and one made a
+claim right for a different reason than stated (RM98's `SourceRow`, which follows from `authority`
+rather than from `source`). RM100 also grew a fifth defect on 2026-08-18, after four of them had
+shipped.
+
+**One consumer-visible surface grows, deliberately and with the trade stated** (RM96): `authoring_reference()`,
+`describe`, `requirements` and `json_schemas()` now render 28 models where they rendered 23. That is
+additive under Principle 3 and buys guards that cannot miss a model again, which is the trade — a wider
+printed reference in exchange for a registry that iterates itself.
+
+The suite went **2568 → 2714**. Every new regression test was demonstrated failing on the pre-fix tree
+before being claimed as a guard.
+
+## RM93 — two checks refuse in `compile` and report nothing in `validate`
+
+✅ **Shipped in 0.6.1.** `@validate-refuses-all`, broken twice, and reproduced against real specs before
+being fixed rather than argued from the source.
+
+`_check_study_effect_alleles` sat inside `validate_spec`'s `if variants:` block and ran unconditionally
+on the compile side, so it never ran for the one composition it was written for: a module with a table
+kind, `studies.csv` and `resolution.csv` and **no** `variants.csv`. The comment three lines above the
+call claimed it was "audited by check, not by table (`@parity-by-check`)" while the gate did the
+opposite. Measured on `cyp2c19_star_alleles` plus one study row naming `C` at an `A/G` locus:
+`validate(strict).valid=True` beside `compile(strict).success=False`. The repair is a move and nothing
+more — `membership_table` is filled from `resolution.csv` in the sidecar loop far above and is in scope
+whether or not a variant was authored, which is the thing worth checking before assuming the hoist needs
+an input rebuilt.
+
+`_check_frequency_arithmetic` was never called from `validate_spec` at all. It lives in a per-model
+closure on the compile side, so a pass auditing table by table saw `frequencies.csv` loaded and stopped.
+Its integer half returns **errors**, so this was the plain-mode variety of the gap — measured on
+`hboc_palb2` with `allele_count=500` against `allele_number=100`.
+
+**The durable half is that the guard now enumerates**, and this is where the item was bigger than filed.
+`test_validate_agrees_with_compile.py` walked a literal list of four filenames — **four of the seven
+fact tables were missing**, not one — and every case in it was a *row-level pydantic* failure, the kind
+both sides already catch, so no table-level check had a path through it at all. Separately, every study
+fixture wrote `variants.csv` beside `studies.csv`, so `if variants:` was always true and the shape the
+gate excluded was never constructed: the suite only ever asked well-composed questions. The list is now
+a module constant checked against `_FACT_TABLES`, and the four missing tables have cases.
+
+## RM94 — the p-value re-run publishes its warning twice into the manifest
+
+✅ **Shipped in 0.6.1.** The compile-side `_check_p_value_num` re-run extended `all_warnings` with no
+`if w not in all_warnings` filter, which every neighbouring re-run has, including the study-allele block
+four lines above it. Reproduced: one authored disagreement, two byte-identical sentences in
+`manifest.compilation.warnings`.
+
+**Why it survived is the part worth keeping.** `@no-rerun-with-counts` guards against a re-run whose
+message embeds a count, because the two copies then *disagree* and the manifest publishes two numbers —
+a self-contradiction somebody notices. This message carries no count, so the copies agreed and the field
+was merely redundant. The wider rule the neighbours already followed is now written beside the fix: **a
+check that runs on both sides dedupes on the message, and re-running it is the normal case rather than
+the exception.**
+
+**The re-run itself was examined and kept**, against the entry's own suggestion that it might not earn
+its place. It does: `compile_module` runs `validate_spec` in best_effort *regardless of this compile's
+mode*, so the second pass in the caller's mode is the only thing that lets `--strict` escalate the
+warning into a refusal. Dropping it would have disarmed the strict gate silently — which is the answer
+to "does this pass need to run twice" that the standing test (does resolution change its input?) does
+not reach on its own.
+
+## RM95 — a canonicalized vocabulary value is discarded, so the slip is stored and then rejected
+
+✅ **Shipped in 0.6.1.** `@vocab-separator-slip` says a closed vocabulary accepts `-` for `_` **and
+stores the declared member**. `MeasureBinRow._validate_measure_kind` called `check_vocab` for its raising
+side effect and returned the uncanonicalized value, so the rule held for every other field and failed
+for this one. Both halves of the consequence needed fixing: `measure_kind="copy-number"` validated and
+stored `'copy-number'` — a value not in the vocabulary, inside `content_signature` — and `_EXPECTED_KIND`
+was compared against that same raw string, so every subclass rejected exactly what the base class had
+just accepted, with an error naming the canonical form the input already denoted.
+`_validate_measure_tiling`, one line above, always returned the result, which is what makes this a slip
+rather than a decision.
+
+`Contribution._check_role` and `PgsRow._validate_ancestry` discarded the same return and are fixed with
+it. They were latent only because no member of either vocabulary contains a separator *today* — a
+property of the current members, not of the code. The list case in `PgsRow` was the sharpest: it
+canonicalized per element and returned the original list, so a slip in a multi-valued cell survived whole.
+
+**The durable half reads storage rather than acceptance.** `test_vocab_separator.py` proved `check_vocab`
+canonicalizes and could not see a validator that ignored the answer. It now walks every closed-vocabulary
+field in the schema — discovered through `field_vocabularies` and pydantic's own decorator registry, so a
+new one is covered without editing the file — and drives each validator with both spellings. Five of its
+cases fail on the pre-fix tree: `MeasureBinRow` and all four subclasses.
+
+**No signature moved**: every `measure_kind` across the sixteen reference examples was already canonical,
+checked rather than assumed.
+
+## RM96 — the registry an audit iterates was missing five of the models
+
+✅ **Shipped in 0.6.1, wider than filed.** `GeneMetricsRow.status` named the `ResolutionRow` vocabulary
+in its own description and enforced nothing, so `status="totally-made-up"` validated while every sibling
+fact table refused it. `@registry-completeness` from the other side: the model sat outside
+`reference._ALL_MODELS`, so the guard that discovers an unenforced vocabulary *by iterating the registry*
+could not see it, and `reference.py` recorded the exclusion in a comment while the enforcement stayed
+missing.
+
+**The entry named three models outside the registry. There were five.** `ResolutionRow` was outside too
+— the canonical holder of `VALID_RESOLUTION_STATUS`, the vocabulary three of the others point at by name
+— and `GwasEffectRow` (RM90) landed outside it a day before the audit that found this. So the registry
+was falling behind faster than it was being caught up, which is the argument for the fix being the
+registry rather than the validator.
+
+Admitting them turned the existing guards on, which is the point, and they immediately found **seven
+fields enforcing a vocabulary without declaring it**: `ResolutionRow.status`/`.rsid_status`,
+`FrequencyRow.status`, `GeneMetricsRow.haploinsufficiency`/`.triplosensitivity`,
+`LiteratureRow.quote_source`/`.status`. Each now carries its marker, so `authoring_reference()` prints
+what each cell may contain instead of leaving a consumer to read `model_fields` — the S21 hole, seven
+more times.
+
+**The price was accepted knowingly and is the one consumer-visible change in this release**:
+`authoring_reference()`, `describe`, `requirements` and `json_schemas()` render 28 models where they
+rendered 23. Additive under Principle 3, no schema surface moves, and `INTEGRATION_0_6 § 7` says so.
+
+Two smaller ones alongside. `GwasEffectRow._check_finite` is registered for `effect_size` *and*
+`standard_error` and reported `"effect_size"` for both, sending an author to the column that was fine;
+`gene_metrics.py` passes `info.field_name` for the identical validator across nine fields, so the idiom
+was one file over. And `start` carried `ge=0` on five of the eight models with a position —
+`HaplotypeRow`, `PharmVariantRow` and `HeteroplasmyRow` accepted `start=-5`.
+
+**The bound stays `ge=0` and deliberately does not tighten to `ge=1`.** The entry asked the question, and
+the answer was already recorded: VCF 4.4 §1.6.1.2/§5.4.5 permit POS 0 for a **telomeric breakend**, and
+[VCF_4_4_AUDIT § 9](probes/VCF_4_4_AUDIT.md) filed it under *checked, and not a finding* — `VariantRow.start`'s
+`ge=0` is what lets such a record load, while `derive_vrs_allele_id` returns `None` below 1 rather than
+minting an id for a position that does not exist. Tightening would have re-broken something a probe round
+deliberately left alone, so the reasoning now sits in a test rather than in a probe document.
+
+## RM97 — two clients leak the transport exception the other two document repairing
+
+✅ **Shipped in 0.6.1.** `@client-exception-contract`: retry, then translate, **both legs**. `cpic.py`
+and `pharmvar.py` carried the repair *and* the narrative of why it was needed (R2-13) for a whole release
+while `gnomad._post` and `eutils._get` kept the unrepaired shape. Both leaked twice over, not once:
+`raise_for_status()` sat outside the `try` **and** `httpx.HTTPStatusError` was in neither retry list, so a
+5xx escaped raw and unretried; and the transport leg was re-raised bare on purpose, for the decorator to
+match, then escaped just as raw once `reraise=True` exhausted the attempts. gnomAD leaked `ValueError`
+from `response.json()` past both, while eutils already translated that one leg — the asymmetry that made
+it easy to read as fixed.
+
+Both now use cpic's split. **The one deliberate deviation from copying that idiom verbatim** is that each
+client's `429 → RateLimitedError` branch stays inside the retried half and before `raise_for_status()`:
+those types are what the retry predicate matches and what drives the pacing, and cpic has no such branch
+to copy.
+
+`CpicClient.row_count` bypassed its own `_get` entirely, so the one method with no retry and no
+translation was the one the snapshot builder uses to refuse a short read: a transport failure raised raw
+httpx past `cli.cpic_build_`'s handler, and a 5xx returned `None`, which the builder reads as *"CPIC gave
+no count"* — a wrong answer rather than an error.
+
+**Both call sites the entry names are repaired, not just the clients.** `enrich()`'s `check_rsids` had no
+handler at all and runs after every other pass has finished and *before* `resolution.csv` is written, so
+an NCBI outage threw away work that had already succeeded. It now warns and continues with no verdicts,
+matching the gnomAD block above it — and withholding is the outcome rather than a fallback: `rsid_status`
+stays unset, which says nobody asked, where stamping `absent` would assert a negative the run never
+established.
+
+**The durable half tests the contract, not the method** — that is the finding underneath the item. One
+file parametrized over gnomad / eutils / cpic / `cpic.row_count` / pharmvar, both legs plus the
+swallow-into-a-wrong-answer case, with a guard that walks the tier for `*Client` classes so a sixth
+cannot ship without joining it (the four left out are *named in the assertion*, not skipped). Nine of its
+sixteen cases fail on the pre-fix tree — and the seven that pass are cpic and pharmvar, which is the
+finding restated.
+
+## RM98 — two passes record an absence nobody established under `--offline`
+
+✅ **Shipped in 0.6.1.** `@unreachable-not-absent`: unreachable is not absent — write no row, name it
+separately, warn in both modes.
+
+`enrich.py` holds that rule twice, in the branches on either side of the one that broke it, each with a
+comment spelling out that writing `not_found` would state *"the source was asked and does not have this
+rsID"*, a negative nobody established. The branch **between** them did exactly that: with `--offline` and
+no Ensembl and no ClinVar cache, it wrote `status="not_found", source="cache"`, naming a cache that was
+never opened. `gene_metrics` had the same shape: having logged *"gene metrics will be empty"* it wrote a
+`not_found` row per module gene labelled `gnomad_v4.1_constraint`, asserting a release was consulted when
+nothing was, three lines below its own comment drawing exactly that distinction.
+
+**The filing's `SourceRow` claim was right for a different reason than stated, and the correction is
+worth having**: the fabricated row carries `authority='ensembl'`, and `record_source_terms` keys on
+`authority` rather than `source` — so a `SourceRow` for a source never read really did follow, by a route
+the entry did not name.
+
+Both passes now compute a *was any route consulted at all* predicate from the gates that already exist —
+a resolved cache reference, or `not offline` — and withhold when every gate is shut. The result is named
+**separately** rather than folded into a neighbour: `EnrichResult.unconsulted_rsids` and
+`GeneMetricsResult.unconsulted` are a third state beside `unreachable_rsids` ("the request was made and
+failed") and `missing` ("asked, and the source has none"). Collapsing them would have replaced one small
+untruth with another. Both warn in both modes and both stay inside the strict refusal, since a run that
+established nothing must still refuse.
+
+**`test_fact_passes.py` pinned the wrong behaviour in two places** — it asserted `[r.status for r in
+result.rows] == ["not_found"]`, so it was falsifying the log line rather than the behaviour and the suite
+was green either way. Those moved with the fix, and each gained a negative control: offline **with** a
+cache that genuinely lacks the rsID still writes `not_found`, because that is a real fact and the repair
+must not throw it away. Without those, *"stop writing not_found offline"* would have passed.
+
+The `--offline` case is where this matters most, because it is the mode a consumer runs when they
+*cannot* reach the source: the fabricated negative is guaranteed there rather than incidental.
+
+## RM99 — three passes bypass the sidecar resolver, so one family writes to two places
+
+✅ **Shipped in 0.6.1, with five more sites than filed.** `@sidecar-name-and-place`: resolve a sidecar's
+name and place through the resolver, and **write to the file you read**. RM49 shipped
+`licensing.sidecar_path` for exactly this, and nine `sources.csv` writers were converted to it in one go.
+`gene_metrics`, `clingen` and `literature` kept their own `spec_dir / "<name>.csv"` literal.
+
+The sharp part is that it was inconsistent **inside one family**: `gene_validity` — `gene_metrics`'
+sibling, sharing `module_genes` — did use the resolver. And `gene_metrics` and `clingen` write the *same
+file*, both read-merge-write, so one `enrich` run on one module produced two copies of `gene_metrics.csv`
+that each dropped the other authority's rows. That is the both-copies-present collision RM49 made an
+error rather than a preference, arrived at by following the documented workflow.
+
+**Five more sites turned up in the reporting layer.** `cli.py` printed `spec_dir / 'resolution.csv'` and
+four more like it in its success lines, so even where the pass wrote to the right place the CLI sent the
+author to a file that had not changed. Two commands already carried the fix with a comment saying why;
+the other five did not — which is the same "the rule is written down beside the violation" shape as the
+rest of this release.
+
+`literature.py`'s hand-joined `studies.csv` **read** is deliberately left alone and now says so: that is
+an *authored* table living in the spec root, and `sidecar_path` is for the machine-written files RM49
+allowed under `derived/`.
+
+**The durable half does not test three passes.** Per-pass repair leaves the next pass free to make the
+same choice, and these three were written *after* the rule was.
+`test_sidecar_resolution_is_uniform.py` walks the enricher's AST for `spec_dir / "<a sidecar name>"` — an
+AST rather than lines, so a filename inside a docstring is not a false positive — with `identifiers.py`'s
+documented read-only fallback **named** as the one exemption rather than pattern-matched away. Beside it
+the behavioural half: the resolver really does follow `derived/` for every sidecar the schema knows
+about, and a flat module still gets the flat path, since `derived/` is tolerated and not canonical. The
+roster is checked against `layout.SIDECAR_SPELLINGS`, so a ninth sidecar fails there.
+
+## RM100 — five enricher surface defects with no common cause
+
+✅ **Shipped in 0.6.1.** Filed together because each is a few lines, not because they share a root. What
+they do share is that every one is invisible from the happy path — which is why the fifth was still
+arriving while the first four were being fixed.
+
+**`python -m just_dna_enricher.cli` was missing commands.** `if __name__ == "__main__": app()` sat
+two-thirds down the file, above the `hint` sub-app, `draft-clinpgx`, `draft-panel` and — not in the
+filing — `clinvar citations`, so the module form called `app()` before those registrations ran. Measured
+before and after: 23 vs 26 top-level commands, now 26 vs 26. The guard is structural as well as
+behavioural, since the AST test fails the moment a registration is appended below the block, which is
+exactly how this arose.
+
+**`clinvar_build._sha256_file` was defined twice.** The second shadowed the first at module load, so the
+one that always ran returned `str | None` while the **dead** one returned `str` — and the annotations
+downstream had been written against the dead one. `BuildResult.source_sha256` and
+`_write_release_json(source_sha256=)` both said `str` while a `None` really could reach them; both now
+say `str | None`, which is the house algebra rather than a typing nicety: an unhashable source file is an
+unknown digest, not a missing one.
+
+**`enrich_gwas` leaked its client and ignored `mode`.** The close was a bare `if client is None:
+catalog.close()` after ~80 lines of fetching and writing, so any exception in between leaked the httpx
+client while every sibling pass already used `try/finally`.
+
+`mode` was accepted and never read while the CLI advertised `--strict` as a severity ladder, so the flag
+was inert. **What it escalates is deliberately not `missing`**, and the reasoning sits where the raise is:
+the Catalog holding nothing for a variant is a fact *about the variant* — recorded as a `not_found` row,
+true of most variants, and the pass's own docstring says so — so escalating it would refuse nearly every
+module and mean nothing. `strict` reads the two counts that say the artifact does not hold what the
+Catalog **did** publish: associations served without an id to key on, and p-values below float64 whose
+queryable number is withheld.
+
+**`NCBI_API_KEY` and `JUST_DNA_CONTACT_EMAIL` were read without `load_env()`** (`@credential-where-read`).
+`PharmVarClient` calls it with a comment describing this exact failure; `eutils` and both literature
+clients read `os.environ` directly, so a `.env`-only key was honoured or ignored by call order and the
+NCBI rate gate silently stayed at 1/3 s instead of 10/s.
+
+That fix immediately broke `test_eutils.py`, and **that is the interesting part rather than collateral**:
+it used `monkeypatch.delenv("NCBI_API_KEY")` and passed only because nothing had loaded `.env` yet.
+`@test-no-credential` says `setenv(VAR, "")`, never `delenv` — `load_dotenv` skips a variable that is
+merely present — and `test_literature_terms.py` states the same rule beside its own fixture. So the rule
+was already written, already explained, and already violated one file over; the fix made it fire. Both
+call sites move to the documented idiom.
+
+**The fifth, filed after the first four had shipped: `net.py` documented "the nine policies" in two
+places while the tree carries twelve**, across nine modules. The guard meant to hold that claim was blind
+on both axes at once — `assert len(found) >= 9` is a floor, so three new policies pass it, and it walked
+a hand-kept list of seven module names.
+
+The measurement is sharper than the filing. The old walk reported 12, the right number, **by accident**:
+it counted a client once per module that *imports* it, so the inflation from double-counting happened to
+cancel the two modules it never opened. Filtering by defining module, it saw ten distinct policies and
+was blind to `grch37.Grch37Client._get` and `gwas.GwasCatalogClient._get` entirely. **A guard whose number
+is right for the wrong reason is worse than one that is merely wrong, because the number reads as
+confirmation.**
+
+The fix is an equality over a walked set, not a corrected count: the test discovers modules through
+`pkgutil`, filters owners by `__module__` so an import cannot double-count, and asserts set equality
+against the twelve by name. The prose loses its number rather than gaining a corrected one, and says why
+— a count in a docstring is a registry nothing iterates, which is RM96's finding arriving in a docstring
+instead of a `dict`.
+
 # 0.6.0 — the design round, built
 
 **The whole of [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md)'s decision list, implemented.** Sixteen items were

@@ -1291,6 +1291,24 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   rather than false — not a guessable shape. The reporter got it right only by reading
   `SourceRow.model_fields`, i.e. reading our source to learn our schema.
 
+  **It happened again in 0.6.1, five models wide and in three different shapes (RM93/RM96/RM100), which
+  is why this entry is now about the SHAPE rather than about `_ALL_MODELS`.** `_ALL_MODELS` was missing
+  `ResolutionRow`, `FrequencyRow`, `GeneMetricsRow`, `LiteratureRow` and `GwasEffectRow` — the last
+  added one day before the audit that found the hole, so the registry was falling behind faster than it
+  was being caught up. Admitting them turned the guard on and it immediately found **seven** more
+  fields enforcing a vocabulary without declaring it. The other two shapes are the same failure wearing
+  different clothes: `test_validate_agrees_with_compile` walked a literal list of four filenames while
+  the registry held seven fact tables, and `net.py` said "the nine policies" in prose while the tree
+  carried twelve. **All three are a number or a list somebody has to remember.**
+
+  Two rules fall out, and they are the operative ones now. **Assert an equality over a walked set, never
+  a floor** — `assert len(found) >= 9` cannot see three new policies, and the one in `net.py` reported
+  the *right* number by accident, because it double-counted a client once per importing module and the
+  inflation cancelled the two modules it never opened. A guard whose number is right for the wrong
+  reason is worse than one that is merely wrong, because the number reads as confirmation. And **a
+  count in prose is a registry nothing iterates**: the fix removed the number from the docstring rather
+  than correcting it.
+
 - `@vocabulary-on-field` — **A vocabulary binding lives on the FIELD, and it carries the members — `base.vocabulary`.** The
   authoring reference's vocabulary block used to be a hand-kept dict and drifted twice: it never
   learned about `recommendation_strength`/`phenotype_category` (0.5), and it filed `actionability`
@@ -1307,7 +1325,18 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   The enricher CLI normalized `--use non-commercial` on its way in while `SourceRow` refused the
   identical string in a cell, so the surface an author learns the vocabulary from taught a spelling the
   file rejected. A separator slip is *the* slip a hand-written CSV makes, and the human-authorable gate
-  says the schema absorbs that cost rather than charging it. `check_vocab` runs the matcher, so every
+  says the schema absorbs that cost rather than charging it.
+
+  **The rule has two halves and only the first was being tested (RM95, 0.6.1): accept the slip, and
+  STORE the declared member.** Three validators called `check_vocab` for its raising side effect and
+  returned the raw input, so `MeasureBinRow(measure_kind="copy-number")` validated and stored a value
+  that is not in the vocabulary, *inside `content_signature`* — and then every subclass rejected it,
+  because `_EXPECTED_KIND` was compared against that same raw string. The base class accepted what its
+  own subclasses refused, with an error naming the canonical form the input already denoted. So: bind
+  the return, and compare against the bound value, not the argument. The test that could not see this
+  proved `check_vocab` canonicalizes and never asked whether anyone kept the answer; it now walks every
+  closed-vocabulary field in the schema through `field_vocabularies` plus pydantic's decorator registry
+  and drives each validator with both spellings. `check_vocab` runs the matcher, so every
   vocabulary gets it and nothing keeps a private copy — the CLI's `_use` delegates now. Three
   properties to preserve: the value **as written is tried first** and both swap directions after (a
   future hyphenated member cannot be broken by this); the match **returns the declared member**, so
@@ -1927,10 +1956,21 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   So neutralize the variable in an autouse fixture, and **`setenv(VAR, "")`, not `delenv`**:
   `load_dotenv(override=False)` skips a key that is merely *present*, so an empty value survives a
   later reload where a deleted one is silently restored. Every reader treats empty as absent
-  (`x or environ.get(...)`). `test_eutils.py` had the idiom right for `NCBI_API_KEY` all along;
+  (`x or environ.get(...)`). `test_eutils.py` was believed to have the idiom right for `NCBI_API_KEY`
+  all along — see the correction below, it did not;
   `test_pgx_licensing.py` now carries it for `PHARMVAR_API_KEY`. Three real credentials sit in `.env`
   (`HF_TOKEN`, `PHARMVAR_API_KEY`, `NCBI_API_KEY`), so this applies to any new test that asserts
   unkeyed behaviour — a pacing interval, a skip, a degradation warning.
+
+  **Confirmed in 0.6.1, one file away from where the rule is written.**
+  RM100 made `EutilsSettings` call `load_env()` where it reads `NCBI_API_KEY` (`@credential-where-read`),
+  and `test_eutils.py` went red on a developer machine with a key in `.env`: it used
+  `monkeypatch.delenv("NCBI_API_KEY")` and had only ever passed because nothing had loaded `.env` yet.
+  `test_literature_terms.py` states the rule beside its own fixture, in this repo, in prose. So the
+  rule was written down, explained, and violated one file over — which is the 0.6.1 finding in
+  miniature: **a written rule is not what catches a regression; a test is.** Worth the confirmation
+  because it also validates the *reason* for the spelling: `load_dotenv` skips a variable that is
+  merely present, so `setenv(VAR, "")` is the only thing that holds once anything loads `.env`.
 
 - `@weight-has-no-unit` — **`VariantRow.weight` is the one magnitude in the format with no unit column, and
   filling it from a source is barred (RM90/RM92, S36).** `effect_size` has `effect_measure`; `weight` has
