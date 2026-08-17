@@ -286,7 +286,7 @@ in exactly the situation a reader reaches for this tier's guarantees — a sourc
 - **[RM99](ROADMAP.md#rm99--three-passes-bypass-the-sidecar-resolver-so-one-family-writes-to-two-places)**
   — `gene_metrics`, `clingen` and `literature` write their sidecar to the spec root even on a module
   whose other sidecars live under `derived/`.
-- **[RM100](ROADMAP.md#rm100--four-enricher-surface-defects-with-no-common-cause)** — four small ones,
+- **[RM100](ROADMAP.md#rm100--five-enricher-surface-defects-with-no-common-cause)** — five small ones,
   including that `python -m just_dna_enricher.cli` exposes 23 of the 26 commands (use the
   `just-dna-enricher` entry point, which is what every example here uses) and that `NCBI_API_KEY` is
   read without `load_env()`, so a `.env`-only key may silently leave the rate gate at 1/3 s.
@@ -2512,6 +2512,35 @@ The enricher is the single source of truth for variant resolution. The intended 
 - **just-dna-lite / just-dna-pipelines** drops its resolver shim + HF download/upload copies and imports
   the enricher (`just_dna_enricher.upload` is the canonical publisher API; pipelines still carries a local
   copy while it is pinned to format/compiler `<0.4` and cannot import the 0.5 enricher yet).
+
+## Open questions the code does not answer
+
+Written down because each was reached for and not found, and a reader who reaches for the same thing
+deserves to know it is absent rather than hidden. None is a defect with a filed `RMn` — a defect is a
+place where the code and a stated rule disagree, and these are places where nothing states a rule.
+
+- **The Ensembl snapshot's builder and its `release.json`.** `download.ensure_snapshot` provisions
+  `datasets/just-dna-seq/ensembl_variations/data/homo_sapiens-*.parquet` and `resolver.py` reads a fixed
+  column set from it (`id`, `chrom`, `start`, `ref`, `alt`), but **nothing in this package builds that
+  snapshot**, unlike the ClinVar and gnomAD ones. `enrich._snapshot_release` reads a `dataset` key no
+  builder here writes, so `rsid_coordinate_agreement.release` is `None` in practice unless something
+  outside this repo produces one. Worth knowing before treating that field as provenance.
+- **What the ClinVar snapshot's `cache status` label should be.** `clinvar_build._write_release_json`
+  writes no `dataset` key and `cache status` prints `release.get("dataset") or ""`, so a correctly built
+  ClinVar snapshot shows a blank label. Whether that is intended — ClinVar has its own richer
+  `clinvar_dataset_label` — or an oversight is not decidable from the code.
+- **`enrich_gwas(mode=…)`.** Accepted, defaulted, never read; the CLI's `--strict` help promises a
+  "severity ladder" and the pass docstring describes none. Whether the intent was a `strict` refusal on
+  `missing` (as the sibling passes have) or no ladder at all is undetermined, and no test covers either.
+  The dead parameter itself is filed as part of [RM100](ROADMAP.md#rm100--five-enricher-surface-defects-with-no-common-cause);
+  what it *should* do is this question.
+- **`identifiers.IdentifierCheckError`** is declared with a docstring and never raised anywhere, in
+  `src` or in the tests.
+- **`CpicClient.knows_drug`'s return type.** Annotated `bool | None`; the live client can only return
+  `bool` or raise, and only `CpicSnapshotClient` returns `None`. `pgx_draft` handles all three, so the
+  widening looks deliberate — the live client's docstring just does not say so.
+- **Whether `check-identifiers` is meant to have an `--offline`.** `identifiers.verification_records`
+  argues it must not; its sibling `check-acmg` has one. Self-consistent, undecided as policy.
 
 ## Testing
 

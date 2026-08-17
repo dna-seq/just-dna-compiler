@@ -379,7 +379,7 @@ both layouts, which is the both-copies-present collision RM49 named as an error 
 preference. A test that asserts every pass writing a sidecar resolves it the same way is the durable
 half; per-pass repair alone leaves the next pass free to make the same choice.
 
-## RM100 — four enricher surface defects with no common cause
+## RM100 — five enricher surface defects with no common cause
 
 **Severity** low · **Status** open — 0.6.1 · **Owner** enricher · **Motivating case** each named below ·
 **Filed** 2026-08-18 from the code-first documentation pass
@@ -402,6 +402,12 @@ root:
   this exact failure, and `eutils` and both literature clients read `os.environ` directly. Live effect: a
   `.env`-only NCBI key is honoured or ignored depending on call order, silently leaving the rate gate at
   1/3 s instead of 10/s.
+- **`net.py` says "nine policies" twice and the tree carries twelve** (`ensembl` ×2, `literature` ×3,
+  `eutils`, `gnomad`, `grch37`, `identifiers`, `cpic`, `pharmvar`, `gwas`). The guard cannot catch the
+  drift on either axis: `test_gated_snapshots.py:416` asserts `len(found) >= 9` — a floor, so three new
+  policies pass it — while walking seven of the ten modules that carry one (`grch37` and `gwas` are
+  absent from its list). Fix the count, and make the assertion an equality against a walked set rather
+  than a floor, which is the same `@registry-completeness` shape as RM96's `_ALL_MODELS` hole.
 
 # Not format scope
 
