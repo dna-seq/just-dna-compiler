@@ -291,6 +291,11 @@ in exactly the situation a reader reaches for this tier's guarantees — a sourc
   `just-dna-enricher` entry point, which is what every example here uses) and that `NCBI_API_KEY` is
   read without `load_env()`, so a `.env`-only key may silently leave the rate gate at 1/3 s.
 
+**A second reading of this tier, written from the code alone on 2026-08-18, is in
+[audit/ENRICHER_FROM_CODE.md](audit/ENRICHER_FROM_CODE.md)** — all 37 commands, the resolver chain with
+what `--offline` changes per pass, and the six caches. It found all four items above. Evidence, not
+contract: this document is the maintained one.
+
 ## Install
 
 ```

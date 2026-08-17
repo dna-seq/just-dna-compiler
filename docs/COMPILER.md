@@ -31,6 +31,11 @@ exactly the case where reading the code instead would teach the wrong rule. Both
 - **[RM94](ROADMAP.md#rm94--the-p-value-re-run-publishes-its-warning-twice-into-the-manifest)** — a
   `p_value`/`p_value_num` disagreement is published twice into `manifest.compilation.warnings`.
 
+**A second reading of this tier, written from the code alone on 2026-08-18, is in
+[audit/COMPILER_FROM_CODE.md](audit/COMPILER_FROM_CODE.md)** — the 17-step pipeline, per-parquet column
+lists, and a validation table with validate/compile/severity columns. It is the instrument that found
+both items above. Evidence, not contract: this document is the maintained one.
+
 ## Public API
 
 Import from `just_dna_compiler.compiler`.

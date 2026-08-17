@@ -26,11 +26,13 @@ gotcha book: it is loaded into every session and has a size ceiling.
 
 ## The doc map — what each answers, and what to grep
 
-**`docs/` root holds only what is still live.** Four subfolders hold the rest, and nothing in them is
+**`docs/` root holds only what is still live.** Five subfolders hold the rest, and nothing in them is
 edited as routine work: `docs/history/` (the closed record — the pre-0.6 halves of the three history
 files, plus the round-2 consumer thread), `docs/proposals/` (the five `PROPOSAL_*` design threads,
-all of them concluded), `docs/probes/` (the dogfood and VCF audit rounds), `docs/vendor/` (two
-upstream files kept for reference, PharmVar's OpenAPI document and its licence text).
+all of them concluded), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
+references re-derived from the code on 2026-08-18 — **evidence, never contract**; the maintained
+reference is the one in `docs/` root), `docs/vendor/` (two upstream files kept for reference,
+PharmVar's OpenAPI document and its licence text).
 
 | Doc | Answers | Grep for |
 | --- | --- | --- |
@@ -54,6 +56,7 @@ upstream files kept for reference, PharmVar's OpenAPI document and its licence t
 | [REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md) | how to author each case with today's bricks; indexes `reference_examples/` | `grep -n '^## ' docs/REFERENCE_EXAMPLES.md` |
 | PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round | `grep -n '^## ' docs/proposals/PROPOSAL_0_6_PT2.md` |
 | [DOGFOOD_0_6.md](docs/probes/DOGFOOD_0_6.md), [DOGFOOD_0_6_FINDINGS.md](docs/probes/DOGFOOD_0_6_FINDINGS.md), [VCF_4_4_AUDIT.md](docs/probes/VCF_4_4_AUDIT.md) | probe rounds and what they broke | `grep -n '^## ' docs/probes/DOGFOOD_0_6_FINDINGS.md` |
+| [audit/](docs/audit/README.md) | the 2026-08-18 code-first re-derivation of all three tier references. Often **more complete** than the maintained doc — the source for a merge nobody has done. Never edit one to record a fact | `grep -rn '<symbol>' docs/audit/` |
 
 Cross-cutting greps worth knowing: an `RMn` or `Sn` anywhere → `grep -rn 'RM47' docs/`; a symbol's
 rule → `grep -rn 'hosting_verdict' docs/ schema/ compiler/ enricher/`; a warning a consumer quoted →

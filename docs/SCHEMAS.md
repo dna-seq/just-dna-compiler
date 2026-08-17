@@ -26,6 +26,11 @@ fixed in 0.6.1.
   blames a bad `standard_error` on `effect_size`; `start` carries its lower bound on two of the five
   models with a position.
 
+**A second reading of this tier, written from the code alone on 2026-08-18, is in
+[audit/SCHEMAS_FROM_CODE.md](audit/SCHEMAS_FROM_CODE.md)** — field-by-field over every row model, and
+the instrument that found the two items above. Evidence, not contract: this document is the maintained
+one.
+
 ## Module map (dependency tiers, leaf → aggregate)
 
 | Module | Purpose | Imports (intra-package) |

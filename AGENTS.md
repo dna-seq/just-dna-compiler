@@ -37,11 +37,14 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
 3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what actually shipped, newest first (shared across the
    ecosystem repos that consume these libs).
 
-   **`docs/` root holds only what is still live.** Four subfolders hold the rest, and none of it is
+   **`docs/` root holds only what is still live.** Five subfolders hold the rest, and none of it is
    edited as routine work: `docs/history/` (the closed record — the pre-0.6 halves of the changelog,
    the roadmap history and the consumer-suggestion history, split off on 2026-08-17, plus the round-2
    consumer thread), `docs/proposals/` (the five concluded `PROPOSAL_*` threads), `docs/probes/` (the
-   dogfood and VCF-audit rounds), `docs/vendor/` (PharmVar's OpenAPI document and licence text).
+   dogfood and VCF-audit rounds), [`docs/audit/`](docs/audit/README.md) (the tier references
+   re-derived from the code alone on 2026-08-18 — evidence for reading against the maintained docs,
+   never a contract, and never the file to patch a fact into), `docs/vendor/` (PharmVar's OpenAPI
+   document and licence text).
    [docs/RM_TOC.md](docs/RM_TOC.md) indexes every `RMn` across the live and archived halves, so look an
    item up there rather than guessing which file holds it.
 4. **Per-package references** — [docs/SCHEMAS.md](docs/SCHEMAS.md) (the schema tier: models, the CSV
