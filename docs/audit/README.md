@@ -52,5 +52,16 @@ field-by-field tables for every authored row model, the complete 37-command enri
 resolver chain with what `--offline` changes per pass, and the hash family with exactly what bytes
 enter each one.
 
-**Folding that material into the maintained docs is a real merge and has not been done.** Treat these
-as the source for it when someone takes that on.
+**The merge was done on 2026-08-18, and it was deliberately partial.** What moved into the maintained
+docs is the material that is durable and hard to re-derive: COMPILER gained the deterministic-ordering
+rules, the warning-text catalogue (`@warning-text-is-api` had a rule and no catalogue) and
+`ARTIFACT_PARQUETS` in digest order; SCHEMAS gained the tri-state inventory — the ~18 concrete sites the
+house algebra actually lands on — and the full fourteen-function hash roster, which corrected the doc
+map's "nine"; ENRICHER gained the six open questions, one of which turned out to be a defect and became
+RM100's fifth bullet.
+
+What stayed here is what would **rot** in a maintained document: per-parquet column lists, per-command
+flag tables, field-by-field model dumps. Those are derivable from the models and the CLI, and a
+hand-kept copy of one is exactly how `SOURCES_FIELDNAMES` lost a column — so the maintained docs point
+at `just-dna-compiler describe`, `--help` and the models, and at this snapshot for a dated listing.
+That split is the reason these files can be kept at all without becoming the second thing to update.

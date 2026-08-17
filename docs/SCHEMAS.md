@@ -257,6 +257,39 @@ reason its `source` column is inside its fact set while everywhere else `source`
   rejects any unknown column). (`callable_from` was reserved for RM6 and is now **built**, so it left
   the set: a reserved name is refused at author time, which would make the built column unwritable.)
 
+## Where the three-valued algebra actually lands
+
+The house rule is *true / false / unknown, and `None` is never `False`* — combined with **Kleene**
+semantics rather than withhold-on-any-unknown, because `unknown AND false` really is `false`. Stated as
+a principle it is easy to agree with and easy to violate; this is the inventory of concrete sites, which
+is what makes it checkable. **When adding a field that answers a question, find its row here first.**
+
+| Site | What the third state means |
+| --- | --- |
+| `SourceRow.share_alike` / `.commercial_use` / `.redistribution` | `None` = terms could not be established. Never rendered as "does not forbid" |
+| `Sources.commercial_use` / `.redistribution` (manifest) | `null` = undetermined, never permitted |
+| `LiteratureRow.exists`, `.doi_exists` | `False` is a fact — the citation does not resolve. `None` is never-checked |
+| `LiteratureRow.quotes_found` | `None` = nothing retrievable to check against; `0` = something *was* read and the quote was not in it |
+| `LiteratureRow.quote_source` | a **hit** is conclusive from either source; a **miss** is conclusive only against fulltext |
+| `VALID_FREQUENCY_STATUS` | `not_found` (locus covered, allele absent) vs `not_covered` (the source's scope excludes the locus) |
+| `FrequencyRow.allele_frequency` | `None` when `AN` is 0 — "no information", not "frequency zero" |
+| `vrs.in_pseudoautosomal_region` / `.par_partner` / `.contig_length` / `.sole_build_naming_contig` | `None` = cannot say; a caller must not read it as `False` |
+| `vocab.vcf_field_number` | `None` for a key the reserved tables do not carry, **and** for a bare colliding key whose two namespaces disagree |
+| `vocab.is_multi_valued_number` | `None` is not "multi-valued" — withhold, never negate |
+| `alleles.event_profile` | `None` = the frame is unknown, which is not "the profile is empty" |
+| `binning.DEFAULT_MEASURE_TILING["activity_score"]` | `None` = neither dense nor gap-checked |
+| `AuthoredModel._KEY_INCLUDES_ALTS` | `None` = stamps nothing, distinguishable from `False` = stamps without `alts` |
+| `Compilation.expanded_keys` / `.expanded_rows` / `.positional_rows` / `.positional_rows_placed` | `None` = this compiler did not say; `0` = it said zero. **Do not coalesce** — it is how the eras are told apart |
+| `ClinicalAssertions.min_review_stars` / `.max_review_stars`, `ClinicalAssertionRow.review_stars` | `null` = no rated record; `0` = the real rating *"no assertion criteria provided"* |
+| `derive.pathogenic_from_clin_sig` / `benign_from_clin_sig` | returns `True` or `None` — never a fabricated `False` |
+| `MeasureBinRow.unresolved` vs "no matching bin" | measurement **absent** and measurement **present but unbinned** are different states |
+| `check_vocab(None, …)` | absent = unknown, and never becomes a member |
+
+The pattern worth extracting: in almost every row the `0`/`False` case is a *real observation* and the
+`None` case is *the question was not put*. Collapsing them is not a rounding error — it converts silence
+into evidence, which is the failure `@unreachable-not-absent` names on the enricher side and
+`@tautology-zero` names on the compiler side.
+
 ## The allele grammar — bases, and the five structural types (RM5, 0.6)
 
 An allele is a nucleotide string, or a **symbolic/structural allele carrying its length**:
@@ -1490,6 +1523,35 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
 > wholesale** during 0.5 development, and is expected to take a few run-overs before it settles. Treat
 > everything in this section as provisional until 0.5 ships. The stable parts of the contract
 > (`variant_key` identity, `artifact.digest`, `content_signature`) are unaffected by resolution's shape.
+
+## The hash family — the complete roster
+
+Fourteen functions, in three groups. The doc map's shorthand is *"the nine hashes"*, which is the
+**fact-signature** family below; the other five are real and are listed because a reader counting to
+nine and stopping will miss `module_binding` and `pow_digest` entirely.
+
+**Content and byte identity** — `content_signature` (`integrity.py`) over the authored rows,
+independent of the reference that resolved them and of the module's name and display metadata; and
+`artifact.digest`, the Merkle root the *compiler* builds over `ARTIFACT_PARQUETS`. These are the two
+halves of Principle 4 and they answer different questions: *this data, however compiled* versus *these
+bytes, from this compiler*.
+
+**The fact-signature family** — one shared discipline, `fact_signature`, and the per-table functions
+built on it: `frequency_signature`, `gene_metrics_signature`, `literature_signature`,
+`gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`, `source_signature`,
+`resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
+whole point — these tables are multi-producer (enricher, human, `reverse`), so a raw-bytes hash would be
+unstable across producers writing the same facts. It is also why none of them appears in
+`manifest.inputs`, which *is* raw-bytes hashed.
+
+**The verification side** (`verification.py`, 0.6) — `module_binding` over the attested `FileEntry`
+list, `verification_signature` over the records, and `pow_digest(module_hash, signature, nonce)`. These
+bind an attestation to the bytes it was made about; `@binding-normalizes-newlines` is the rule that the
+binding hashes newline-normalized bytes and their normalized `size` while `manifest.inputs[]` stays raw,
+and the two must not be conflated.
+
+Beside them `verify_signature` is not a hash at all — it is the Ed25519 *verify*, and its hardcoded
+failure message is a known wrinkle where `attestation_failure` reuses it for a closure signature.
 
 ## Identity & integrity
 
