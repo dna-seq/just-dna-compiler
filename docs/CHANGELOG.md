@@ -34,9 +34,51 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-17 (latest) — weights declare a scale, and GWAS effects get their own table (S36 / RM90–RM92)
+## 2026-08-17 (latest) — the triage loop's own lint found two bad markers, and a link guard that was editing consumer prose
 
-**`just-dna-format` + `just-dna-compiler` + `just-dna-enricher` 0.6.0, uncut.** Three items from one
+**Unreleased — after `v0.6.0`, and no version was bumped for it.** Loop maintenance rather than format
+work: nothing here touches a model, a parquet, a manifest field or any published signature, so it will
+ride along with the next patch whenever one is cut. The live consumer inbox is empty and stayed empty;
+all of this came from running the ledger against the **history** file, which is the check that an empty
+inbox is not an all-clear.
+
+**A link guard was quietly rewriting what a consumer said, and the ledger caught it.**
+`schema/tests/test_doc_links.py` requires every relative markdown link to resolve, and it exists because
+an item moving live→history breaks every pointer at it. Consumers have started citing `RMn` items by
+link inside their reports, so when RM89 shipped, S35's quoted prose held a link the guard called dead —
+and the pass that archived the next item retargeted it to keep the suite green. That is the one edit the
+triage loop forbids: a report is evidence and moves byte-for-byte. It also moved S35's fingerprint, so
+the section read `revised`, our own edit impersonating a consumer revision. The prose is restored to what
+was written, and the guard now exempts everything below a section's `<!-- triaged: -->` marker in both
+consumer documents — replies stay checked, since they sit above it. A new test asserts a genuinely dead
+anchor still survives inside quoted prose, so the exemption cannot rot into a no-op.
+
+**A marker held a git commit sha instead of a fingerprint, and it failed twice.** S36's read
+`sha cbeeb8f` — a real commit here, seven characters where `MARKER_RE` wants twelve, which made the
+marker invisible and the section indistinguishable from one answered before the ledger existed. The
+compounding half is the one to remember: with no marker visible, `reply_end()` falls back to the
+single-paragraph rule, so paragraphs two onward of the reply leaked into the fingerprint and the value
+the ledger *reported* was wrong too. Restamped, then re-run until it read `current`.
+
+**Fixes adopted inward from the published gist.** The generalized copy of this loop is where other
+repositories' fixes arrive, and two had been sitting there: `RULE_RE`, so a trailing horizontal rule is
+no longer hashed as if a consumer had written it, and the archiver's closing line, which still told you
+to add a row to an index table that became a contents list. Adopting `RULE_RE` re-scored four markers
+(S2, S6, S7, S12 — the reports ending in a `---`); they were restamped on the proof that the ledger read
+all-`current` immediately before, which shows the delta is the function and not the prose.
+[CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md) gains the sync-in procedure, including the one gate
+on auto-adopting — does it move a fingerprint — and the standing outward debt (the watcher's
+branch-pause has not reached the gist).
+
+**Three stale "0.6.0 is not cut" claims corrected**, in both S35's and S36's replies and in the live
+inbox's preamble, which told consumers the newest tag was `v0.5.4`. `v0.6.0` is tagged at the commit
+this batch sits on. Tagged is still not published, so the rule those paragraphs exist to teach —
+answered is not installable — is unchanged, and only its example moved.
+
+## 2026-08-17 — weights declare a scale, and GWAS effects get their own table (S36 / RM90–RM92)
+
+**`just-dna-format` + `just-dna-compiler` + `just-dna-enricher` 0.6.0 — cut and tagged `v0.6.0` later
+the same day; this entry read "uncut" until then.** Three items from one
 consumer note about authored `weight` values: the column declares no scale, every module means
 something different by it, and published GWAS effects are often better grounded than a hand-set
 curator score. The note asked for one specific repair, which is barred; what shipped is the machinery

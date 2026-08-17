@@ -33,9 +33,10 @@ design round on 2026-08-13; **S29** spawned **RM80**, shipped 2026-08-16. [RM_TO
 **Answered is not installable, and this is the standing rule for every reply in both files (S34).**
 A reply that says "shipped in the tree" means the code and tests are committed, never that a consumer
 can `pip install` it — check [CHANGELOG.md](CHANGELOG.md) for whether the version it names has actually
-been cut. S25 and S26 were the first replies to carry that state; **everything labelled 0.6.0 is in it
-today**, because all three packages read `0.6.0` while the newest tag is `v0.5.4` — cutting a release
-is the maintainer's call. S34 is here because a document of ours presented a table of 0.6 fields as
+been cut. S25 and S26 were the first replies to carry that state; everything labelled 0.6.0 sat in it
+until **2026-08-17, when 0.6.0 was cut and tagged `v0.6.0`** across all three packages. Tagged is still
+not installed — publishing is a separate step and the maintainer's call — so the rule is unchanged and
+only the example moved. S34 is here because a document of ours presented a table of 0.6 fields as
 "also shipped since you last synced", and a consumer spent an afternoon looking for fields no version
 they could install has. Write the version, and write whether it was cut.
 

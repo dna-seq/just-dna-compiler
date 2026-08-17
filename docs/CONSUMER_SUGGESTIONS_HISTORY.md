@@ -186,7 +186,7 @@ instance, and it made RM27 a gate reading a column that had reached no file.
 So `registry upgrade --trim --force` stays the right home for the lossy half, and an operator planning a
 `--trim` pass reads the legal key set from `reference --summary` rather than reconstructing it from a
 changelog diff. Nothing filed.
-<!-- triaged: 0.5.4 · sha a19316700932 -->
+<!-- triaged: 0.5.4 · sha 14a34ed6c8fd -->
 
 The `module.version` case surfaced only because the registry runs the *whole* corpus through
 `validate_spec` on every publish/import/upgrade — it's a good fuzzer for "authored shapes that were
@@ -416,7 +416,7 @@ author steps on once, and (1) removes it for all of them.
 
 ---
 
-<!-- triaged: backfilled · sha 3f48bba94f04 -->
+<!-- triaged: backfilled · sha 0cc2920e68c8 -->
 
 # Field notes from the registry — adopting 0.5.2
 
@@ -466,7 +466,7 @@ under P3, and is lossy in a way the manifest cannot absorb: `fetched_at` is **pe
 sources, five fetch times — while `built_at` is one instant per run. (3) as worded would be actively
 misleading, since a rebuild does *not* necessarily mint a new digest; what was missing was where to look,
 which is now written down.
-<!-- triaged: 0.5.4 · sha 25cfaae82d29 -->
+<!-- triaged: 0.5.4 · sha 2b65e459cccb -->
 
 *Written 2026-08-11, adopting 0.5.2 and re-deriving why three panel digests moved.*
 
@@ -1080,7 +1080,7 @@ separate them and the title provably can. It uses the actual field names (`fullj
 but a stored title is a fact that can drift from its source, and `literature.csv` exists to record what
 was *checked*, not to cache bibliography. If you want titles in the artifact, that is a separate ask and
 worth filing as one.
-<!-- triaged: 0.5.4 · sha 3cc1b2e4a6e7 -->
+<!-- triaged: 0.5.4 · sha 1b34ea0fdde5 -->
 
 `CitationHint` carries `pmid_exists`, `doi`, `registry_doi`, `pmcid`, `open_access`,
 `abstract_available`. It carries no **title**, journal or year.
@@ -3041,9 +3041,10 @@ line. The finding it carries is the by-product, and it is the half that mattered
 ## S35 — answering RM84's two questions and RM89's one, and a second gate under RM89 that `_REQUIRED` is hiding
 
 **Status — accepted whole; all three answers taken, the finding confirmed and it is larger than
-reported. Fixed in the tree on 2026-08-17, in `just-dna-compiler` + `just-dna-enricher` 0.6.0, which is
-NOT cut — the newest tag is `v0.5.4`, so check [CHANGELOG.md](CHANGELOG.md) before building against
-it.** [RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all) is closed
+reported. Fixed in the tree on 2026-08-17, in `just-dna-compiler` + `just-dna-enricher` 0.6.0, which
+has since been cut and tagged `v0.6.0` — this line said "NOT cut, the newest tag is `v0.5.4`" when it
+was written and was corrected on 2026-08-17 once the tag landed. Tagged is not published, so check
+[CHANGELOG.md](CHANGELOG.md) and the index before building against it.** [RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all) is closed
 by this and moved to history; RM84 keeps only its consumer half, which is yours.
 
 **Your finding is right, and probing it found the consequence neither of us had stated: the published
@@ -3085,7 +3086,7 @@ consequence rather than an item: retention is the collection owner's call, not t
 **Reporter** `just-dna-lite` · **Date** 2026-08-17 · **Answers**
 [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 § *The one open thing* and
-[RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)
+[RM89](ROADMAP.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)
 § *The open question* · **Read as** three answers and one finding, not a request
 
 ENRICHER.md put three questions in front of us and said delivering them into our tree was the reader's
@@ -3229,8 +3230,9 @@ and the specific repair proposed with it was not.
 
 **Status — accepted, and the diagnosis is right; the specific repair you proposed is refused, and the
 three items that make the underlying want satisfiable shipped in the tree on 2026-08-17.** All three
-packages read **0.6.0, which is NOT cut** — the newest tag is `v0.5.4`, so check
-[CHANGELOG.md](CHANGELOG.md) before building against any of this.
+packages read **0.6.0, which has since been cut and tagged `v0.6.0`** — this line said "NOT cut, the
+newest tag is `v0.5.4`" when it was written and was corrected on 2026-08-17 once the tag landed.
+Tagged is not published, so check [CHANGELOG.md](CHANGELOG.md) before building against any of this.
 [RM90](ROADMAP_HISTORY.md#rm90--gwas-effect-sizes-as-a-derived-fact-table-because-they-may-not-go-in-weight),
 [RM91](ROADMAP_HISTORY.md#rm91--a-study-states-an-effect-magnitude-relative-to-no-allele) and
 [RM92](ROADMAP_HISTORY.md#rm92--the-one-magnitude-in-the-format-with-no-unit-beside-it).
@@ -3278,7 +3280,7 @@ where you want published effects, and read them per trait. Note the request budg
 variant and measured at 382 requests for that one module, so `--no-study-facts` exists if you only
 want the effects.
 
-<!-- triaged: 0.6.0 · sha cbeeb8f -->
+<!-- triaged: 0.6.0 · sha f3ed632b2b17 -->
 
 Reported 2026-08-17 by Anton Kulaga, over chat, in Russian, from the consumer side (the app that reads
 `weights.parquet` and combines the column). Not a bug report — field feedback after living with the
