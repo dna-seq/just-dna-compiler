@@ -294,8 +294,12 @@ class GwasEffectRow(BaseModel):
 
     @field_validator("effect_size", "standard_error")
     @classmethod
-    def _check_finite(cls, v: float | None) -> float | None:
-        return validate_finite(v, "effect_size")
+    def _check_finite(cls, v: float | None, info) -> float | None:
+        # `info.field_name`, not a hardcoded name: registered for two fields, this reported
+        # "effect_size must be a finite number" for an infinite `standard_error` and sent the author
+        # to the wrong column (RM96). `gene_metrics._check_finite` passes `info.field_name` across
+        # nine fields, so the correct idiom was one file over.
+        return validate_finite(v, info.field_name or "effect_size")
 
     @field_validator("fetched_at", mode="before")
     @classmethod

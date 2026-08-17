@@ -41,9 +41,14 @@ rather than storing a float.
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.base import vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.spec import DOI_PATTERN
-from just_dna_format.vocab import VALID_QUOTE_SOURCE, VALID_RESOLUTION_STATUS, check_vocab
+from just_dna_format.vocab import (
+    VALID_QUOTE_SOURCE,
+    VALID_RESOLUTION_STATUS,
+    check_vocab,
+)
 
 # Fact columns feeding `integrity.literature_signature`. Deliberately narrow, and the exclusions carry
 # the argument:
@@ -172,6 +177,7 @@ class LiteratureRow(BaseModel):
             "retrieved. A hit is conclusive from either, but a *miss* is only conclusive against "
             "fulltext — which is why the two are recorded rather than collapsed."
         ),
+        json_schema_extra=vocabulary("quote_source", VALID_QUOTE_SOURCE),
     )
     doi_exists: bool | None = Field(
         default=None,
@@ -197,7 +203,9 @@ class LiteratureRow(BaseModel):
         description="Which service answered: pubmed|pmc-idconv|europepmc (open, like every source column).",
     )
     status: str | None = Field(
-        default=None, description="Lookup outcome: resolved|not_found|ambiguous"
+        default=None,
+        description="Lookup outcome: resolved|not_found|ambiguous",
+        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
     )
     fetched_at: str | None = Field(
         default=None,

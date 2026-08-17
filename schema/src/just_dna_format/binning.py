@@ -616,7 +616,9 @@ class HeteroplasmyRow(MeasureBinRow):
     )
     chrom: str | None = Field(default=None, description="Contig (MT), for a position-only variant")
     start: int | None = Field(
-        default=None, description="Position of the variant, e.g. 3243 for m.3243A>G"
+        default=None,
+        ge=0,  # 1-based VCF POS; POS 0 is legal for a telomeric breakend (RM96, VCF_4_4_AUDIT s9)
+        description="Position of the variant, e.g. 3243 for m.3243A>G",
     )
     ref: str | None = Field(default=None, description="Reference allele, e.g. A")
     alts: str | None = Field(default=None, description="Alternate allele(s), e.g. G")

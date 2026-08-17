@@ -18,8 +18,14 @@ rather than to one column, and the reverse writer's round-trip is covered by a t
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.base import vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
-from just_dna_format.vocab import VALID_DOSAGE_SENSITIVITY, check_vocab, validate_finite
+from just_dna_format.vocab import (
+    VALID_DOSAGE_SENSITIVITY,
+    VALID_RESOLUTION_STATUS,
+    check_vocab,
+    validate_finite,
+)
 
 # Fact columns feeding `integrity.gene_metrics_signature` — everything but `source`/`status`/
 # `fetched_at`. `dataset` is inside the set for the same reason it is in `FREQUENCY_FACT_FIELDS`: a
@@ -131,6 +137,7 @@ class GeneMetricsRow(BaseModel):
             "sufficient_evidence|autosomal_recessive|dosage_sensitivity_unlikely. NOT an ordinal — "
             "see VALID_DOSAGE_SENSITIVITY. A FACT."
         ),
+        json_schema_extra=vocabulary("dosage_sensitivity", VALID_DOSAGE_SENSITIVITY),
     )
     triplosensitivity: str | None = Field(
         default=None,
@@ -138,6 +145,7 @@ class GeneMetricsRow(BaseModel):
             "ClinGen triplosensitivity rating, same vocabulary. Empty where ClinGen says 'Not yet "
             "evaluated' — an absence, not a rating. A FACT."
         ),
+        json_schema_extra=vocabulary("dosage_sensitivity", VALID_DOSAGE_SENSITIVITY),
     )
     dataset: str = Field(
         description="Which release these metrics are from, e.g. 'gnomad_v4.1_constraint'. A FACT."
@@ -154,7 +162,9 @@ class GeneMetricsRow(BaseModel):
         ),
     )
     status: str | None = Field(
-        default=None, description="Outcome: resolved|not_found (the ResolutionRow vocabulary)"
+        default=None,
+        description="Outcome: resolved|not_found (the ResolutionRow vocabulary)",
+        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
     )
     fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
@@ -162,6 +172,17 @@ class GeneMetricsRow(BaseModel):
     @classmethod
     def _check_dosage(cls, v: str | None, info) -> str | None:
         return check_vocab(v, VALID_DOSAGE_SENSITIVITY, info.field_name or "dosage sensitivity")
+
+    @field_validator("status")
+    @classmethod
+    def _check_status(cls, v: str | None) -> str | None:
+        # The field's own description named this vocabulary and nothing enforced it, so
+        # `status="totally-made-up"` validated while every sibling fact table refused the same cell
+        # (RM96). `@registry-completeness` from the other side: this model sat outside
+        # `reference._ALL_MODELS`, so the guard that discovers an unenforced vocabulary by iterating
+        # the registry could not see it. Both halves are fixed together — the model is inside the
+        # registry now, which is what stops the next one.
+        return check_vocab(v, VALID_RESOLUTION_STATUS, "status")
 
     @field_validator("gene")
     @classmethod

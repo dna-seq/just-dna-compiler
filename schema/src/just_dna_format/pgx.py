@@ -101,6 +101,7 @@ class HaplotypeRow(AuthoredModel):
     chrom: str | None = Field(default=None, description="Chromosome (position-only variants)")
     start: int | None = Field(
         default=None,
+        ge=0,  # 1-based VCF POS; POS 0 is legal for a telomeric breakend (RM96, VCF_4_4_AUDIT s9)
         description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
         "this convention and it is stored as-is; do not subtract one",
     )
@@ -350,6 +351,7 @@ class PharmVariantRow(AuthoredModel):
     chrom: str | None = Field(default=None, description="Chromosome (position-only variants)")
     start: int | None = Field(
         default=None,
+        ge=0,  # 1-based VCF POS; POS 0 is legal for a telomeric breakend (RM96, VCF_4_4_AUDIT s9)
         description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
         "this convention and it is stored as-is; do not subtract one",
     )

@@ -25,7 +25,11 @@ from just_dna_format.binning import (
     MeasureBinRow,
     RepeatAlleleRow,
 )
+from just_dna_format.frequency import FrequencyRow
+from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
+from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import (
     RECOMMENDED_COLORS,
     RECOMMENDED_ICONS,
@@ -46,6 +50,7 @@ from just_dna_format.pgx import (
     HaplotypeRow,
     PharmVariantRow,
 )
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import (
     Defaults,
@@ -101,10 +106,24 @@ _PGS_MODELS: dict[str, type[BaseModel]] = {"PgsRow": PgsRow}
 # with the other machine-written sidecars — but each introduces a *new closed vocabulary*
 # (`gene_validity`, `inheritance_mode`), and the only guard that discovers an undeclared one does so
 # by behaviour while iterating this registry. A vocabulary the guard cannot see is precisely the S21
-# hole, so a model carrying a new one belongs here whoever writes its rows. `FrequencyRow`,
-# `GeneMetricsRow` and `LiteratureRow` are still outside and still carry enforced vocabularies of
-# their own — a real gap, and a wider change than this one, since adding them alters what every
-# existing consumer of `authoring_reference()` renders.
+# hole, so a model carrying a new one belongs here whoever writes its rows.
+#
+# **The remaining five joined them in 0.6.1, and the gap they left is the whole of RM96.** This comment
+# used to end by naming `FrequencyRow`, `GeneMetricsRow` and `LiteratureRow` as "still outside … a real
+# gap, and a wider change than this one" — correctly, and then nothing happened for a release, which is
+# how a note about a gap becomes a record of one. Two things it did not say. `ResolutionRow` was
+# outside too, and it is the *canonical* holder of `VALID_RESOLUTION_STATUS` — the vocabulary three of
+# the others point at by name. And `GwasEffectRow` (RM90) landed outside a day before the audit that
+# found this, so the registry was already falling behind faster than it was being caught up.
+#
+# What the gap cost, measured rather than argued: `GeneMetricsRow.status` names the `ResolutionRow`
+# vocabulary in its own description and enforced nothing at all, so `status="totally-made-up"`
+# validated. Every sibling fact table enforces its status. `@registry-completeness` from the other
+# side — a registry-iterating guard is only as complete as its registry, and the audit that would have
+# caught this could not see the model. The price of admitting them is real and was accepted knowingly:
+# `authoring_reference()`, `describe`, `requirements` and `json_schemas()` all render five more models,
+# which is additive (Principle 3) and changes what a consumer reads. That is the trade — a wider
+# printed reference in exchange for guards that cannot miss a model again.
 #
 # `VerificationRecord` (RM45) is here on exactly that second argument — it carries `verification_check`
 # and `verification_skip`, two closed vocabularies whose whole purpose is to be the machine keys a
@@ -114,8 +133,13 @@ _PGS_MODELS: dict[str, type[BaseModel]] = {"PgsRow": PgsRow}
 # describing its shape is a description of what a consumer will read, never an invitation to author it.
 _FACT_MODELS: dict[str, type[BaseModel]] = {
     "SourceRow": SourceRow,
+    "ResolutionRow": ResolutionRow,
+    "FrequencyRow": FrequencyRow,
+    "GeneMetricsRow": GeneMetricsRow,
+    "LiteratureRow": LiteratureRow,
     "GeneValidityRow": GeneValidityRow,
     "ClinicalAssertionRow": ClinicalAssertionRow,
+    "GwasEffectRow": GwasEffectRow,
     "VerificationRecord": VerificationRecord,
 }
 

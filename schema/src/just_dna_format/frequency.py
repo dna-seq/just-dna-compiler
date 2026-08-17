@@ -26,6 +26,7 @@ unavoidable stored float, and it is canonicalized on write and covered by a roun
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from just_dna_format.base import vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_FREQUENCY_STATUS,
@@ -150,6 +151,7 @@ class FrequencyRow(BaseModel):
     status: str | None = Field(
         default=None,
         description="Outcome: resolved|not_found|not_covered (VALID_FREQUENCY_STATUS)",
+        json_schema_extra=vocabulary("frequency_status", VALID_FREQUENCY_STATUS),
     )
     fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 

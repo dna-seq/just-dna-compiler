@@ -102,3 +102,95 @@ def test_authored_and_resolved_start_share_one_convention() -> None:
     )
     assert authored.start == resolved.start
     assert "1-based" in (ResolutionRow.model_fields["start"].description or "")
+
+
+# ── RM96: the same convention, enforced — every model with a position carries the same lower bound ──
+
+#: Every model in the schema with a genomic `start`, authored or machine-written. Wider than
+#: `AUTHORED_START_FIELDS` above on purpose: the reason the bound exists (the parquet column is
+#: unsigned, and a negative number is not a coordinate under any convention) does not care who wrote
+#: the row.
+ALL_START_MODELS = [
+    "VariantRow",
+    "StudyRow",
+    "HaplotypeRow",
+    "PharmVariantRow",
+    "HeteroplasmyRow",
+    "ResolutionRow",
+    "FrequencyRow",
+    "ClinicalAssertionRow",
+]
+
+
+def _start_models() -> list[tuple[str, type]]:
+    from just_dna_format.assertions import ClinicalAssertionRow
+    from just_dna_format.binning import HeteroplasmyRow
+    from just_dna_format.frequency import FrequencyRow
+    from just_dna_format.resolution import ResolutionRow
+
+    found = {
+        "VariantRow": VariantRow,
+        "StudyRow": StudyRow,
+        "HaplotypeRow": HaplotypeRow,
+        "PharmVariantRow": PharmVariantRow,
+        "HeteroplasmyRow": HeteroplasmyRow,
+        "ResolutionRow": ResolutionRow,
+        "FrequencyRow": FrequencyRow,
+        "ClinicalAssertionRow": ClinicalAssertionRow,
+    }
+    assert sorted(found) == sorted(ALL_START_MODELS), "the roster above drifted from the imports"
+    return sorted(found.items())
+
+
+@pytest.mark.parametrize("name,model", _start_models(), ids=sorted(ALL_START_MODELS))
+def test_every_model_with_a_position_rejects_a_negative_one(name: str, model: type) -> None:
+    """`ge=0` on all eight, not on five of them (RM96).
+
+    `HaplotypeRow`, `PharmVariantRow` and `HeteroplasmyRow` accepted `start=-5` while the other five
+    refused it, for no reason a reader could derive — and the reason the bound exists applies to all
+    of them equally: the parquet column is unsigned, and a negative number is not a genomic position
+    under any convention this format supports.
+
+    Read off the field constraint rather than by constructing a row, since the required fields differ
+    across eight models and the constraint is what the authoring reference prints.
+    """
+    bounds = [m for m in model.model_fields["start"].metadata if hasattr(m, "ge")]
+    assert bounds, f"{name}.start carries no lower bound; a negative coordinate would validate"
+    assert bounds[0].ge == 0, f"{name}.start bounds at {bounds[0].ge}, not 0"
+
+
+def test_position_zero_still_loads_because_vcf_permits_it() -> None:
+    """The bound is `ge=0` and deliberately not `ge=1` — checked, not assumed.
+
+    `start` is the 1-based VCF POS (`@start-1based`), so `0` looks like it should be excluded, and
+    tightening it while adding the bound to three more models is the obvious next move. It is wrong:
+    VCF 4.4 §1.6.1.2/§5.4.5 use POS 0 for a **telomeric breakend**, and the 4.4 audit recorded this
+    under "checked, and *not* a finding" — `VariantRow.start`'s `ge=0` is what lets such a record
+    load, and `derive_vrs_allele_id` returns `None` for `start < 1` rather than minting an id for a
+    position that does not exist. Both halves are pinned here so the reasoning survives the next
+    reader who notices the mismatch.
+    """
+    from just_dna_format.vrs import derive_vrs_allele_id
+
+    telomeric = VariantRow(
+        chrom="1",
+        start=0,
+        ref="N",
+        alts="<DEL>",
+        genotype="<DEL>/<DEL>",
+        state="risk",
+        conclusion="A telomeric record, POS 0 per VCF 4.4 s1.6.1.2.",
+    )
+    assert telomeric.start == 0
+    assert derive_vrs_allele_id("1", 0, "N", "A") is None, "no id may be minted for a non-position"
+
+    with pytest.raises(ValueError):
+        VariantRow(
+            chrom="1",
+            start=-1,
+            ref="G",
+            alts="A",
+            genotype="A/G",
+            state="risk",
+            conclusion="Not a coordinate.",
+        )

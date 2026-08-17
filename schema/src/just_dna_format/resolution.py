@@ -20,6 +20,7 @@ must hash equal — see `RESOLUTION_FACT_FIELDS`).
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from just_dna_format.base import vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_RESOLUTION_STATUS,
@@ -139,7 +140,9 @@ class ResolutionRow(BaseModel):
         ),
     )
     status: str | None = Field(
-        default=None, description="Resolution outcome: resolved|not_found|ambiguous"
+        default=None,
+        description="Resolution outcome: resolved|not_found|ambiguous",
+        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
     )
     rsid_alternates: str | None = Field(
         default=None,
@@ -170,6 +173,7 @@ class ResolutionRow(BaseModel):
             "invalidate the annotation rather than merely dating it. "
             "Provenance — EXCLUDED from resolution_signature (time-varying external state)."
         ),
+        json_schema_extra=vocabulary("rsid_status", VALID_RSID_STATUS),
     )
     fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
