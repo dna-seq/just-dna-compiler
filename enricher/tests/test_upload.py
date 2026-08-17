@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-from just_dna_compiler.compiler import compile_module
+from just_dna_compiler.compiler import ARTIFACT_PARQUETS, compile_module
 from just_dna_enricher.cli import app
 from just_dna_enricher.upload import (
     DEFAULT_CLINVAR_REPO_ID,
@@ -19,6 +19,7 @@ from just_dna_enricher.upload import (
     publish_reference_snapshot,
     upload_module,
 )
+from just_dna_format.integrity import build_artifact
 from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.manifest import (
     README_CANDIDATES,
@@ -31,15 +32,18 @@ from just_dna_format.manifest import (
 )
 from typer.testing import CliRunner
 
-_REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
+_SNP_CORE = ("weights.parquet", "annotations.parquet", "studies.parquet")
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
-# `plan_upload` requires the three SNP-core parquets, so the fixture has to be a module that carries
-# `variants.csv` — which rules out both reference examples that state a `version:` today
-# (`htt_repeat_expansion`, `pgx_slco1b1_simvastatin` are table-only). The version is therefore written
-# into a copy of this spec, which is the same path an author takes: `module_spec.yaml`'s `version:` →
-# the compiler's SemVer gate → `manifest.identity.version`.
+# The RM84 fixtures write a SNP core because that is the commonest shape, not because the publisher
+# demands one any more (RM89). The version is written into a copy of this spec, which is the same path
+# an author takes: `module_spec.yaml`'s `version:` → the compiler's SemVer gate →
+# `manifest.identity.version`.
 _EXAMPLE = "hfe_hemochromatosis"
 _AUTHORED_VERSION = "2.1.0"
+# One real example per publishable shape, chosen to cover both halves of S35: a table-only module (no
+# SNP core at all — the seven the old rule refused outright) and a weights-led one carrying a
+# `sources.parquet` (the licence table the old allowlist dropped).
+_SHAPES = ("pgx_slco1b1_simvastatin", "hfe_hemochromatosis")
 
 
 def _manifest(name: str, version: str | None) -> ModuleManifest:
@@ -55,7 +59,7 @@ def _compiled_module(
     d: Path, *, logo: bool = False, version: str | None = "1.2.3", manifest_bytes: str | None = None
 ) -> Path:
     d.mkdir(parents=True, exist_ok=True)
-    for name in _REQUIRED:
+    for name in _SNP_CORE:
         (d / name).write_bytes(b"parquet-placeholder")
     if manifest_bytes is None:
         write_manifest(_manifest("test_module", version), d / "manifest.json")
@@ -127,12 +131,107 @@ def test_plan_upload_carries_the_readme_the_compiler_attests(tmp_path: Path) -> 
         assert name in plan_upload(alt, "m").files, name
 
 
-def test_plan_upload_rejects_missing_required(tmp_path: Path) -> None:
+def test_weights_parquet_never_travels_alone(tmp_path: Path) -> None:
+    """A SNP core compiles to all three, so `weights.parquet` by itself is an interrupted compile.
+
+    This is the one half of the old blanket rule that survives RM89, and it is scoped to the
+    weights-led shape on purpose — the test below shows what the same demand did to every other shape.
+    """
     module_dir = tmp_path / "half"
     module_dir.mkdir()
     (module_dir / "weights.parquet").write_bytes(b"x")
     with pytest.raises(FileNotFoundError, match="annotations.parquet"):
         plan_upload(module_dir, "half")
+
+
+def test_a_directory_with_no_annotation_table_is_not_a_module(tmp_path: Path) -> None:
+    """The failure a bare widening of the old rule would have produced, and it would have been silent.
+
+    Dropping the required set without putting a positive rule in its place lets a directory publish as
+    `manifest.json` + README with no data in it at all, which discovery then correctly ignores — worse
+    than the refusal it replaced, because it leaves a directory behind and says nothing.
+    """
+    module_dir = tmp_path / "empty"
+    module_dir.mkdir()
+    write_manifest(_manifest("empty", "1.0.0"), module_dir / "manifest.json")
+    (module_dir / "README.md").write_text("prose\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="no annotation table"):
+        plan_upload(module_dir, "empty")
+
+
+def test_a_module_may_carry_no_snp_core_at_all(tmp_path: Path) -> None:
+    """RM2 made the SNP core optional four releases ago; `upload._REQUIRED` kept demanding it (S35).
+
+    Measured on 2026-08-17 before the fix: seven of the sixteen reference examples raised here, which
+    is every module whose lead table is a 0.4 family rather than `variants.csv`.
+    """
+    spec = tmp_path / "spec"
+    shutil.copytree(_EXAMPLES / "pgx_slco1b1_simvastatin", spec)
+    out = tmp_path / "out"
+    compile_module(spec, out)
+    assert not (out / "weights.parquet").exists(), "the fixture must be a genuinely table-only module"
+
+    plan = plan_upload(out, "slco1b1")
+    assert "pharm_variants.parquet" in plan.files
+    assert plan.path_in_repo == "data/slco1b1"
+
+
+def test_the_plan_carries_every_file_the_artifact_attests(tmp_path: Path) -> None:
+    """`manifest.artifact.files` names a parquet, its sha256 and its size, and `artifact.digest` is a
+    Merkle root over exactly those — so a file attested and not uploaded makes the published manifest a
+    false claim about bytes that are not there (S35).
+
+    Measured before the fix over the same corpus: eight of the sixteen examples published a manifest
+    whose digest the uploaded bytes could not reproduce, `sources.parquet` — the licence and
+    attribution table — among the dropped ones every time it existed. Both assertions are computed at
+    runtime from the manifest the compiler wrote, never from a copied list of filenames.
+    """
+    for example in _SHAPES:
+        spec = tmp_path / example / "spec"
+        shutil.copytree(_EXAMPLES / example, spec)
+        out = tmp_path / example / "out"
+        compile_module(spec, out)
+
+        manifest = read_manifest(out / "manifest.json")
+        attested = {entry.name for entry in manifest.artifact.files}
+        assert attested, f"{example}: the fixture must attest at least one parquet"
+        plan = plan_upload(out, example)
+        assert attested <= set(plan.files), f"{example}: {attested - set(plan.files)} would be dropped"
+
+        # And the consequence that makes it matter: a downloader holding only what was sent recomputes
+        # the digest the manifest states.
+        received = tmp_path / example / "received"
+        received.mkdir()
+        for name in plan.files:
+            (received / name).write_bytes((out / name).read_bytes())
+        assert build_artifact(received, list(ARTIFACT_PARQUETS)).digest == manifest.artifact.digest
+
+
+def test_an_attested_file_missing_from_disk_refuses(tmp_path: Path) -> None:
+    """The general guard, and it is a self-check as much as a module check: it fires whether the file
+    was deleted from the directory or this publisher's allowlist fell behind the compiler's."""
+    spec = tmp_path / "spec"
+    shutil.copytree(_EXAMPLES / _EXAMPLE, spec)
+    out = tmp_path / "out"
+    compile_module(spec, out)
+    (out / "sources.parquet").unlink()
+
+    with pytest.raises(FileNotFoundError, match="sources.parquet"):
+        plan_upload(out, _EXAMPLE)
+
+
+def test_an_unreadable_manifest_withholds_rather_than_refusing(tmp_path: Path) -> None:
+    """Tri-state, the same as `version_unknown_reason` beside it: a manifest that cannot say what the
+    artifact contains has said *unknown*, not *contains nothing*, and an unknown is never a finding.
+
+    This is what keeps RM84's four reasons four reasons — a directory with no manifest at all is still
+    publishable, exactly as it was before this guard existed.
+    """
+    absent = _compiled_module(tmp_path / "absent")
+    (absent / "manifest.json").unlink()
+    unparseable = _compiled_module(tmp_path / "unparseable", manifest_bytes="{")
+    for module_dir in (absent, unparseable):
+        assert set(_SNP_CORE) <= set(plan_upload(module_dir, module_dir.name).files)
 
 
 def test_plan_upload_honours_repo_override(tmp_path: Path) -> None:
@@ -182,8 +281,8 @@ def test_the_reasons_a_version_is_unknown_are_told_apart(tmp_path: Path) -> None
     """A bare null cannot say whether the manifest was missing, unparseable, silent about the version,
     or carrying something that is not one — four different things for an author to do about it.
 
-    None of them refuses: `manifest.json` is in `_ALLOW_PATTERNS` and **not** in `_REQUIRED`, so this
-    publisher has always accepted a directory without one, and closing RM84 is not a licence to
+    None of them refuses: `manifest.json` is in `_ALLOW_PATTERNS` and is not required, so this
+    publisher has always accepted a directory without one, and neither RM84 nor RM89 is a licence to
     tighten what it accepts.
     """
     absent = _compiled_module(tmp_path / "absent")
@@ -202,7 +301,7 @@ def test_the_reasons_a_version_is_unknown_are_told_apart(tmp_path: Path) -> None
     for d in dirs:
         plan = plan_upload(d, d.name)
         assert plan.versioned_path_in_repo is None
-        assert plan.files[:3] == list(_REQUIRED)
+        assert plan.files[:3] == list(_SNP_CORE)
 
 
 def test_an_unrelated_manifest_defect_does_not_withhold_a_legible_version(tmp_path: Path) -> None:
@@ -259,7 +358,7 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
     # copy of the thing at the flat path.
     patterns = {tuple(c.kwargs["allow_patterns"]) for c in mock_api.upload_folder.call_args_list}
     assert len(patterns) == 1
-    assert set(_REQUIRED) <= set(next(iter(patterns)))
+    assert set(_SNP_CORE) <= set(next(iter(patterns)))
     assert plan.module == "lipidmetabolism"
     assert plan.versioned_path_in_repo == "data/lipidmetabolism/v0.4.0"
 

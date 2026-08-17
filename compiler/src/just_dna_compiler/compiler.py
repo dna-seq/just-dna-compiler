@@ -265,12 +265,17 @@ _INPUT_FILES: tuple[str, ...] = (
     "studies.csv",
     *_TABLE_KIND_CSVS,
 )
-_OUTPUT_FILES: tuple[str, ...] = (
+# PUBLIC, and the reason is a defect this list caused while it was private (S35). Every parquet a
+# compiled artifact may carry, in `artifact.digest` order — so it is also exactly what
+# `manifest.artifact.files` attests. `just_dna_enricher.upload` derives its allow-patterns from this
+# tuple instead of hand-keeping a parallel one; the hand-kept copy covered three of the sixteen names
+# and silently dropped the rest at publish, which is `@fieldnames-from-model` one tier out.
+ARTIFACT_PARQUETS: tuple[str, ...] = (
     "weights.parquet",
     "annotations.parquet",
     "studies.parquet",
     *(parquet for _, parquet, _ in _TABLE_KINDS),
-    # The 0.5 derived-fact tables. In `_OUTPUT_FILES` (so a module that carries them has a different
+    # The 0.5 derived-fact tables. In `ARTIFACT_PARQUETS` (so a module that carries them has a different
     # content identity — correct: different content, different artifact) but deliberately NOT in
     # `_INPUT_FILES`: like `resolution.csv`, their authored CSVs are multi-producer and are hashed by
     # FACTS (`integrity.frequency_signature` / `gene_metrics_signature`) rather than raw bytes, so a
@@ -283,6 +288,17 @@ _OUTPUT_FILES: tuple[str, ...] = (
     "gene_validity.parquet",
     "clinical_assertions.parquet",
     "sources.parquet",
+)
+
+# The **lead** parquets: the ten that carry a module's own annotation rows, one per authored table
+# family. Everything else in `ARTIFACT_PARQUETS` is a side table — `annotations`/`studies`, and the six
+# derived-fact tables — which describes or cites the rows rather than being them. The distinction is
+# not ours: it is what the reference consumer's discovery probes to decide "is this directory a
+# module" (S35), and RM2 made it the honest publish gate too, since a module carries only the kinds it
+# uses and `weights.parquet` has been optional for four releases.
+LEAD_PARQUETS: tuple[str, ...] = (
+    "weights.parquet",
+    *(parquet for _, parquet, _ in _TABLE_KINDS),
 )
 
 # The 0.5 derived-fact sidecars: (authored CSV, compiled parquet, row model). Deliberately NOT
@@ -305,7 +321,7 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("sources.csv", "sources.parquet", SourceRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
-# shipped like logs, kept OUT of `artifact.digest` (it is not in `_OUTPUT_FILES`).
+# shipped like logs, kept OUT of `artifact.digest` (it is not in `ARTIFACT_PARQUETS`).
 _PROVENANCE_FILE: str = "provenance.json"
 
 # The sidecar CSVs byte-hashed into `manifest.derived` (S26): `resolution.csv` plus every fact table.
@@ -5054,7 +5070,7 @@ def _build_manifest(
             spec_dir, [name for csv in _DERIVED_FILES for name in sidecar_relative_names(csv)]
         ),
         content_signature=content_sig,
-        artifact=build_artifact(output_dir, list(_OUTPUT_FILES)),
+        artifact=build_artifact(output_dir, list(ARTIFACT_PARQUETS)),
         logs=logs,
         provenance=provenance,
         panel=config.panel,

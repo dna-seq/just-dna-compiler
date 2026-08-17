@@ -2,7 +2,7 @@
 
 Two publish shapes share one create-or-update pathway (``ensure_repo``):
 
-* **module** — a compiled module's artifacts (weights/annotations/studies.parquet + manifest.json,
+* **module** — a compiled module's artifacts (**every parquet the artifact carries** + manifest.json,
   and a logo and readme if present) to ``datasets/<repo>/data/<name>/``, matching the layout
   just-dna-lite's discovery scans, **and** to ``data/<name>/v<version>/`` when the manifest states a
   version, so the discovery path can address a particular release rather than only "whatever is there
@@ -23,6 +23,7 @@ Extracted from ``just_dna_pipelines.v1_port.publish`` (just-dna-lite); ``create_
 import json
 from pathlib import Path
 
+from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
 from just_dna_format.manifest import README_CANDIDATES
 from pydantic import BaseModel, Field
@@ -34,8 +35,6 @@ from just_dna_enricher.locations import (
     SNAPSHOT_SIDECAR_DIRNAMES,
 )
 
-# weights/annotations/studies are what discovery needs; manifest.json + logo + readme are additive.
-_REQUIRED = ("weights.parquet", "annotations.parquet", "studies.parquet")
 # Named once because two things now have to agree about it: the allowlist that uploads the file, and
 # the reader below that takes the module's version out of it.
 _MANIFEST_FILENAME = "manifest.json"
@@ -46,13 +45,27 @@ _MANIFEST_FILENAME = "manifest.json"
 # set the compiler can produce, or an author who wrote `README.rst` publishes a manifest attesting a
 # file the repo does not carry. `logo.jpeg` is a pre-existing instance of that same skew, left alone
 # here because widening it is not this item's decision.
+#
+# **The parquet half is derived from the compiler's own list, never restated here (S35, RM89).** It
+# used to be the hand-kept triple `weights`/`annotations`/`studies`, written when a module *meant* a
+# SNP core; RM2 made the SNP core optional four releases ago and the constant stayed. Measured on
+# 2026-08-17 against the sixteen reference examples: seven could not be published at all and eight
+# published an artifact whose `manifest.artifact.files` attests, by name and sha256, six kinds of
+# parquet this allowlist dropped — so the digest a consumer recomputes over what arrived cannot match
+# the digest the manifest states. `sources.parquet` is the worst of them, because the licence terms and
+# attribution a downstream report is obliged to render are in it.
 _ALLOW_PATTERNS = [
-    *_REQUIRED,
+    *ARTIFACT_PARQUETS,
     _MANIFEST_FILENAME,
     "logo.png",
     "logo.jpg",
     *README_CANDIDATES,
 ]
+# `weights.parquet` is the one lead table the compiler never emits alone: a SNP core always produces
+# all three, so either of the others missing beside it is an interrupted compile rather than a module
+# shape. Scoped to the weights-led case deliberately — a `pharm_variants`-led module legitimately has
+# neither, which is what made the old blanket rule refuse seven of sixteen.
+_EXPECTED_WITH_WEIGHTS = ("annotations.parquet", "studies.parquet")
 # A reference snapshot is `data/*.parquet` + its optional parquet sidecars + `release.json` — the
 # `ensure_*_snapshot` layout, defined once in `locations` so the publisher and the provisioner cannot
 # disagree about it. **The sidecars were the gap this closes:** ClinVar's `citations/` was built and
@@ -148,9 +161,10 @@ def _module_version(module_dir: Path) -> tuple[str | None, str | None]:
     ``Identity.version``'s own validator calls, and it is what keeps a stray ``/`` or ``..`` out of a
     path segment.
 
-    Never raises: ``manifest.json`` is in ``_ALLOW_PATTERNS`` and **not** in ``_REQUIRED``, so this
-    publisher has always accepted a module directory without one, and RM84 is not a licence to tighten
-    what it accepts.
+    Never raises: ``manifest.json`` is in ``_ALLOW_PATTERNS`` and is not required, so this publisher
+    has always accepted a module directory without one, and neither RM84 nor RM89 is a licence to
+    tighten what it accepts. The attestation check in ``plan_upload`` withholds for the same reason a
+    version does — an unreadable manifest is an unknown, and an unknown is never a finding.
     """
     path = module_dir / _MANIFEST_FILENAME
     if not path.is_file():
@@ -166,6 +180,32 @@ def _module_version(module_dir: Path) -> tuple[str | None, str | None]:
     if not isinstance(version, str) or not is_valid_version(version):
         return None, f"{_MANIFEST_FILENAME}'s identity.version is not MAJOR.MINOR.PATCH: {version!r}"
     return version, None
+
+
+def _attested_parquets(module_dir: Path) -> list[str] | None:
+    """The parquets ``manifest.artifact.files`` names, or ``None`` when the manifest cannot say.
+
+    Tri-state, like ``_module_version`` beside it and for the same reason: a missing or unreadable
+    manifest is *unknown*, not *attests nothing*, and an unknown withholds rather than refusing. Read
+    field by field out of the JSON rather than through ``read_manifest`` — an unrelated model defect
+    must not be able to turn a legible file list into a failed publish.
+    """
+    path = module_dir / _MANIFEST_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    artifact = document.get("artifact") if isinstance(document, dict) else None
+    entries = artifact.get("files") if isinstance(artifact, dict) else None
+    if not isinstance(entries, list):
+        return None
+    return [
+        entry["name"]
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+    ]
 
 
 def plan_upload(
@@ -184,15 +224,48 @@ def plan_upload(
     field rather than a log line for the reason every other withheld answer here is
     (`clin_sig_not_checked`, `skipped_offline`): a caller that has to parse prose to learn what
     happened has not been told.
+
+    **What it refuses is three positive rules, not one required list (RM89).** The old rule demanded
+    the three SNP-core parquets, which RM2 made optional four releases ago, so seven of the sixteen
+    reference examples could not be published at all. In their place, ordered most specific first so a
+    refusal names the actual fault:
+
+    1. **The plan carries everything the artifact attests.** `manifest.artifact.files` states a name,
+       a sha256 and a size per parquet, and `artifact.digest` is a Merkle root over exactly those — so
+       a file attested and not sent makes the published manifest a false claim about bytes that are not
+       there. This is the general guard, and it is a self-check as much as a module check: it fires if
+       this publisher's allowlist ever falls behind the compiler's output list again.
+    2. **`weights.parquet` never travels alone.** A SNP core compiles to all three, so a missing
+       `annotations`/`studies` beside it is an interrupted compile.
+    3. **At least one lead table.** A directory with a manifest, a readme and no annotation rows is not
+       a module; publishing one is the silent failure a bare widening of the old rule would have
+       produced, and it is what discovery would then be unable to see.
     """
     resolved_repo = repo_id or DEFAULT_REPO_ID
     present = [f for f in _ALLOW_PATTERNS if (module_dir / f).exists()]
-    missing = [f for f in _REQUIRED if f not in present]
-    if missing:
+    attested = _attested_parquets(module_dir)
+    unsent = [] if attested is None else [f for f in attested if f not in present]
+    if unsent:
         raise FileNotFoundError(
-            f"{name}: missing compiled artifact(s) {missing} in {module_dir} — "
-            f"compile the module first (e.g. `just-dna-enricher enrich-and-compile` "
-            f"or `just-dna-compiler compile`)"
+            f"{name}: {_MANIFEST_FILENAME} attests {unsent} but the upload would not carry "
+            f"{'it' if len(unsent) == 1 else 'them'} — `artifact.digest` is computed over the "
+            f"attested files, so what arrives could not be verified against the manifest that "
+            f"describes it. Re-compile {module_dir} if the file is missing."
+        )
+    if "weights.parquet" in present:
+        half = [f for f in _EXPECTED_WITH_WEIGHTS if f not in present]
+        if half:
+            raise FileNotFoundError(
+                f"{name}: missing compiled artifact(s) {half} in {module_dir} beside "
+                f"weights.parquet — a SNP core compiles to all three, so this directory is a "
+                f"half-finished compile. Re-run `just-dna-enricher enrich-and-compile` "
+                f"or `just-dna-compiler compile`."
+            )
+    if not any(f in LEAD_PARQUETS for f in present):
+        raise FileNotFoundError(
+            f"{name}: no annotation table in {module_dir} — a module carries at least one of "
+            f"{list(LEAD_PARQUETS)}. Compile the module first (e.g. "
+            f"`just-dna-enricher enrich-and-compile` or `just-dna-compiler compile`)."
         )
     flat = f"data/{name}"
     version, reason = _module_version(module_dir)

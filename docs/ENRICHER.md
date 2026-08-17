@@ -1188,10 +1188,12 @@ plan_reference_snapshot(snapshot_dir, repo_id=None) -> SnapshotPlan     # dry-ru
 publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_message=None) -> SnapshotPlan
 ```
 
-`upload_module` uploads `weights/annotations/studies.parquet` (required) + `manifest.json` + optional
-logo to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
+`upload_module` uploads **every parquet the compiled artifact carries** + `manifest.json` + optional
+logo and readme to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
 just-dna-lite's discovery layout, **and the same files again to `data/<name>/v<version>/`** (RM84 —
-see below). `publish_reference_snapshot` uploads a built `data/*.parquet` + its
+see below). The parquet half of the allowlist is `just_dna_compiler.compiler.ARTIFACT_PARQUETS`,
+imported rather than restated — see *what publishes, and what refuses* below for why that is a rule
+rather than a tidiness. `publish_reference_snapshot` uploads a built `data/*.parquet` + its
 parquet **sidecars** + `release.json` to the **root** of a dataset repo (default `just-dna-seq/clinvar`),
 matching the `download.ensure_*_snapshot` layout. Both go through `ensure_repo` — one
 create-or-update-then-upload pathway (`create_repo` was added here; the origin `v1_port.publish` assumed
@@ -1209,6 +1211,43 @@ the repo pre-existed).
 > `clinvar citations`), so neither end treats it as an error.
 Each needs a write token (`hf auth login` or `HF_TOKEN`) — a missing one raises `PermissionError`;
 `huggingface_hub` is a guarded lazy import.
+
+### What publishes, and what refuses (RM89)
+
+Until 0.6 the publisher demanded `weights`/`annotations`/`studies.parquet` and uploaded those three and
+nothing else. Both halves were written when a module *meant* a SNP core; RM2 made the SNP core optional
+in 0.4 and the constants stayed. Measured against the sixteen reference examples on 2026-08-17: **seven
+could not be published at all**, and **eight of the remaining nine published an artifact whose
+`manifest.artifact.files` attests parquets that were never uploaded** — so the `artifact.digest` in the
+manifest cannot be reproduced from what arrived. Only `grch37_build`, a bare SNP core with no sidecar
+and no 0.4-family table, was correct. Reported as S35 by just-dna-lite, who found the `sources.parquet`
+half of it from the other end: their report footer renders *"Not stated"* for a module's licence terms
+because the table carrying them was dropped at upload.
+
+- **The allowlist is derived, never hand-kept.** `_ALLOW_PATTERNS` is
+  `just_dna_compiler.compiler.ARTIFACT_PARQUETS` plus `manifest.json`, the two logo spellings and
+  `README_CANDIDATES`. A new table kind therefore reaches the publisher in the commit that adds it. The
+  hand-kept version of this list is the same defect as a hand-kept `fieldnames` — `@fieldnames-from-model`
+  one tier further out, and the consumer named the property they most wanted preserved as *"adding a
+  family becomes one edit that discovery and the publisher learn together"*.
+- **Three positive rules replace the required triple**, ordered most specific first so a refusal names
+  the actual fault:
+
+  | rule | refuses | why it is not the old rule |
+  | --- | --- | --- |
+  | the plan carries every file `manifest.artifact.files` attests | a deleted parquet; an allowlist that has fallen behind the compiler | the artifact's own attestation is the comparator, so it needs no list of its own |
+  | `weights.parquet` never travels alone | a half-finished SNP-core compile | scoped to the weights-led shape — a `pharm_variants`-led module legitimately has neither companion |
+  | at least one **lead** parquet (`LEAD_PARQUETS`: `weights` + the nine 0.4 families) | a directory of `manifest.json` + README with no data | this is what discovery actually probes to decide a directory is a module |
+
+- **The first rule is a self-check as much as a module check**, which is why it is worth having on top
+  of a derived allowlist: it compares what would be sent against what the artifact says it contains, so
+  the two can never drift apart silently again.
+- **An unreadable or absent `manifest.json` withholds, it does not refuse.** Same tri-state as
+  `version_unknown_reason` below, and the same reason: a manifest that cannot say what the artifact
+  contains has said *unknown*. A directory with no manifest is still publishable, exactly as before.
+- **Nothing that published before stops publishing.** The change is a widening on both axes — more
+  module shapes accepted, more files sent — and the only new refusals are the two shapes that were
+  never a publishable module (weights alone; no lead table at all).
 
 ### A module is published twice, and the second path is the one that can name a release (RM84)
 
@@ -1258,20 +1297,30 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   under the old layout stays exactly where it is and keeps resolving. That is the argument for writing
   both rather than migrating.
 
-> **To just-dna-lite, concretely — two questions, not an implication.**
-> [S34 § 4](CONSUMER_SUGGESTIONS_HISTORY.md) says *"if the publisher
-> grows a version segment we will follow it in discovery; the `vN` fallback in our generic fsspec scan
-> is already the shape."* The publisher now grows one, spelled `v<version>` (`v1.0.0`) as a
-> subdirectory of `data/<name>/`.
-> 1. **Does your scan match `v1.0.0`, or only a `v`-plus-integer segment?** Whichever you confirm is
->    what this publisher writes — it is one line here, and nothing else in the decision depends on it.
-> 2. **Does a subdirectory under `data/<name>/` disturb your current scan?** That path used to hold
->    files only. A recursive listing or a `**` glob would now also see a full copy of the artifacts per
->    published version. If that is a problem, say so and the copy moves out of the scanned directory —
->    it is the same one line.
+- **Nothing prunes the versioned copies.** The dual write leaves one full artifact set per release in
+  the collection forever, which a consumer mirroring it pays for. Raised by just-dna-lite in
+  [S35](CONSUMER_SUGGESTIONS_HISTORY.md) as a consequence rather than an objection — it does not affect
+  discovery — and recorded here rather than fixed, because a retention policy is the collection owner's
+  decision and not the publisher's.
+
+> **Both questions above were answered by just-dna-lite on 2026-08-17**
+> ([S35](CONSUMER_SUGGESTIONS_HISTORY.md)), and the segment spelling is settled: **`v<version>`
+> verbatim stays.**
+> 1. **Their scan matches only `v`-plus-integer** (`^v(\d+)$`, compared with `int()`), so `v1.0.0` does
+>    not match and `v10` would sort under `v9` — but the correction that decides it is that the fallback
+>    lives only in their *generic fsspec* branch. HuggingFace has its own discovery branch with no
+>    version fallback at all, so on this path no spelling is read today and the segment cannot be chosen
+>    to suit one. A bare `vN` would collide two patch releases at one path and buy nothing, so verbatim
+>    it stays. Both halves of their fix are theirs, and they are unscheduled: teach the HF branch a
+>    versioned fallback, and replace the regex with `just_dna_format.identity.Version`, which already
+>    parses and orders.
+> 2. **No, and by construction.** Both of their discovery branches call `fs.ls` at exactly one level,
+>    never `fs.find`, a `**` glob or a recursive listing, and their probe asks `fs.exists` on named files
+>    rather than listing the directory — so a nested `data/<name>/v<version>/` is never enumerated.
+>    Verified in their tree by search rather than assumed.
 >
-> Until you answer, treat the versioned directory as written-but-not-yet-contracted: the flat path is
-> unchanged and remains *latest*, so following it is still correct.
+> Until their discovery half lands, the versioned directory is written-but-not-yet-read: the flat path
+> is unchanged and remains *latest*, so following it is still correct.
 
 ## ClinVar reference snapshot (`clinvar_build.py`, `[dev]`)
 

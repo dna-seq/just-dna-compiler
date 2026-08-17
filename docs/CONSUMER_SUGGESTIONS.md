@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S35
+## The next item is S36
 
 **Claim ids from here, never from what this file shows.** S1–S29 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or

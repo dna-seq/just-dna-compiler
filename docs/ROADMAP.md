@@ -156,8 +156,12 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Two: RM88 and RM89**, both filed 2026-08-17 out of the 0.6 PT2 batch's lane D, and both *found by
-building RM84 rather than by planning it* — neither is a defect in what shipped, and neither blocked it.
+**One: RM88.** It was filed 2026-08-17 out of the 0.6 PT2 batch's lane D together with RM89, both
+*found by building RM84 rather than by planning it* — neither a defect in what shipped, and neither a
+blocker for it. **RM89 closed the same week**: the consumer's answer arrived as
+[S35](CONSUMER_SUGGESTIONS_HISTORY.md) the day after it was filed, the open question it was waiting on
+was the only thing holding it, and building the answer found the defect underneath it — see
+[ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all).
 RM74–RM79, the whole 0.6 dogfooding fix round, shipped on 2026-08-15 and moved
 to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired) — but
 read that as *the sprouts are repaired*, and the ground with them: RM76's narrow repair is what shipped
@@ -213,42 +217,6 @@ apart is how one gets a shape the other has to undo — the same pairing note RM
 **Not a repair:** making the compiler bump `version:` automatically. A version is an authored claim about
 compatibility, and a tool that increments it is asserting something only the author knows. The repo
 already refused the neighbouring move for `SourceRow.dataset` in RM85.
-
-## RM89 — the publisher cannot upload a table-only module at all
-
-**Severity** medium · **Status** open — a widening, blocked on nothing but a decision about what
-discovery needs · **Owner** enricher (`upload._REQUIRED`) · **Motivating case** seven of the sixteen
-reference examples · **Filed** 2026-08-17 from the 0.6 PT2 batch, lane D
-
-`upload._REQUIRED` is `("weights.parquet", "annotations.parquet", "studies.parquet")` and `plan_upload`
-raises `FileNotFoundError` when any is absent. Since RM2 a module carries **only the table kinds it
-uses**, so a module with no `variants.csv` produces none of those three and **cannot be published by
-this tier at all**. Measured against the corpus on 2026-08-17: **seven of sixteen** reference examples
-are unpublishable — `apoe_epsilon`, `cyp2c19_star_alleles`, `cyp2c9_warfarin_grch37`, `fmr1_cgg_repeat`,
-`hfe_compound_het`, `htt_repeat_expansion`, `pgx_slco1b1_simvastatin`. Note `fmr1_cgg_repeat` is the
-instructive one: it *has* `studies.parquet` and lacks the other two, so the rule is not "no SNP core" but
-"not all three", and a repair phrased as *"exempt a module with no `variants.csv`"* would still refuse it.
-
-The comment above the constant says *"weights/annotations/studies are what discovery needs"*, and that
-premise is what expired: it was written when a module meant a SNP core, and RM2 made the SNP core
-optional four releases ago. This is the same class of finding as RM55's `_INTEGER_KINDS` — a rule whose
-premise the format withdrew, with the rule left in place.
-
-**The open question, and it is genuinely open.** Whether the required set should become *"`manifest.json`
-plus at least one parquet"*, or the parquet requirement should be dropped entirely and the manifest made
-the only required file, depends on what the consuming discovery path actually opens — and that is
-`just-dna-lite`'s and the registry's answer, not ours. Asking it belongs with RM84's outstanding ask to
-the same team rather than as a second message.
-
-**Why it is a widening and not a fix to rush.** Nothing published today stops publishing, so P3 is not
-engaged in the dangerous direction; the risk runs the other way, that loosening the guard lets a
-half-compiled directory upload. Whatever replaces `_REQUIRED` has to still refuse *that*, which is an
-argument for a positive rule (at least one parquet **and** a readable manifest) rather than for deleting
-the constant.
-
-**Related, not the same:** RM84's null-version fallback deliberately does **not** refuse a directory
-without a `manifest.json`, because `manifest.json` is in the allow-patterns and not in `_REQUIRED`. If
-this item makes the manifest required, that interaction is the thing to re-read first.
 
 # Not format scope
 

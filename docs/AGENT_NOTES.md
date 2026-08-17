@@ -1718,6 +1718,28 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   against. An unreadable `release.json` is reported and left alone — a provenance failure is not a data
   failure, so the table is still written.
 
+- `@publisher-allowlist-derived` — **The publisher's allowlist is DERIVED from the artifact's own file
+  list, never hand-kept — and what it drops, the manifest still attests.** `upload._ALLOW_PATTERNS` was
+  `weights`/`annotations`/`studies.parquet` plus the manifest, logo and readme: written when a module
+  *meant* a SNP core, and left standing when RM2 made the SNP core optional four releases earlier. So
+  neither of the nine 0.4-family parquets nor any of the six derived-fact tables was ever uploaded.
+  Measured over the sixteen reference examples (S35/RM89): **seven refused outright** and **eight
+  published an artifact whose digest could not be verified**, because `manifest.artifact.files` states a
+  name, a sha256 and a size per parquet and `artifact.digest` is a Merkle root over exactly those — so
+  the manifest was a **false claim about bytes that are not there**. Only a bare SNP core with no
+  sidecar was correct. `sources.parquet` was dropped every time it existed, taking the licence terms and
+  the attribution obligation with it, which is the half the consumer found from their end.
+  **Three things to carry.** *(1)* It is `@fieldnames-from-model` one tier out: `_ALLOW_PATTERNS` now
+  imports `compiler.ARTIFACT_PARQUETS`, so a new table family reaches the publisher in the commit that
+  adds it. *(2)* **Widen a stale gate with a POSITIVE rule, never by deleting the constant** — dropping
+  the required set alone would have published `manifest.json` + README with no data, silent and worse
+  than the refusal. The three that replaced it: the plan carries everything the manifest attests;
+  `weights.parquet` never travels alone; at least one `LEAD_PARQUETS` member is present. *(3)* The first
+  of those is a **self-check** — comparing the plan against the artifact's own attestation is what makes
+  a second drift impossible rather than merely unlikely. An absent or unreadable `manifest.json` still
+  **withholds** (tri-state, like RM84's `version_unknown_reason`), so a directory without one stays
+  publishable.
+
 - `@ensure-must-be-called` — **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.** Three
   instances so far, all the same shape. `ensure_constraint_snapshot` shipped with the ClinVar
   generalization and had no caller for a whole release, so `gene-metrics` on a plain install skipped the

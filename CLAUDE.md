@@ -264,6 +264,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A default computed as an argument runs before the callee's setup. `@default-arg-before-setup`
 - Dogfood data is git-ignored, and 0.5.0's published digests are frozen. `@dogfood-data-ignored`
 - A published snapshot accumulates — provision only your own files. `@snapshot-accumulates`
+- The publisher's allowlist is derived from the artifact's file list; what it drops, the manifest still attests. `@publisher-allowlist-derived`
 - The snapshot layout lives in `locations`; a sidecar is a sibling of `data/`. `@snapshot-layout-locations`
 - A second published artifact makes provenance a question — answer it in `release.json`. `@release-json-provenance`
 - An `ensure_*` must actually be called; `--offline` is the only switch. `@ensure-must-be-called`

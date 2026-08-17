@@ -986,7 +986,7 @@ def upload_(
         ...,
         exists=True,
         file_okay=False,
-        help="Compiled module directory (weights/annotations/studies.parquet + manifest.json).",
+        help="Compiled module directory (at least one annotation parquet + manifest.json).",
     ),
     repo_id: str | None = typer.Option(
         None,

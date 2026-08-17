@@ -58,6 +58,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S32** nothing reports a site's missing genotypes — 0.6.0; callset half deflected
 - **S33** an expansion's other rows look authored — 0.6.0; row marker RM87
 - **S34** brief promised uninstallable fields — docs fixed; §4 RM84
+- **S35** answers RM84+RM89; publisher dropped most of the artifact — 0.6.0
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -3029,3 +3030,190 @@ edited from the UI at all**. Same failure mode as the discovery bug that made su
 unpublishable in the first place. Fixed with one shared `find_lead_table()`/`has_lead_table()` over
 `LEAD_TABLES` in `module_config`, so the local-filesystem predicate and the fsspec one now answer the
 same question, and a new family is one edit for both.
+
+# just-dna-lite, answering three asks and reporting a gate under one of them (2026-08-17)
+
+The first item in this file that is mostly *answers* rather than a report: ENRICHER.md had put two
+questions to them under RM84 and one under RM89, and this is the reply — read off their code file and
+line. The finding it carries is the by-product, and it is the half that mattered most.
+
+## S35 — answering RM84's two questions and RM89's one, and a second gate under RM89 that `_REQUIRED` is hiding
+
+**Status — accepted whole; all three answers taken, the finding confirmed and it is larger than
+reported. Fixed in the tree on 2026-08-17, in `just-dna-compiler` + `just-dna-enricher` 0.6.0, which is
+NOT cut — the newest tag is `v0.5.4`, so check [CHANGELOG.md](CHANGELOG.md) before building against
+it.** [RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all) is closed
+by this and moved to history; RM84 keeps only its consumer half, which is yours.
+
+**Your finding is right, and probing it found the consequence neither of us had stated: the published
+manifest becomes a false claim.** `manifest.artifact.files` lists a name, a sha256 and a size per
+parquet, and `artifact.digest` is a Merkle root over exactly those — so a file attested and not
+uploaded means the digest in the manifest cannot be reproduced from the bytes that arrive. Measured
+over the sixteen reference examples, compiled and run through `plan_upload`: **seven refused outright**
+(your `_REQUIRED` half) and **eight of the remaining nine published an artifact whose own digest did not
+verify**. Only `grch37_build` — a bare SNP core with no sidecar and no 0.4-family table — was correct.
+`hboc_palb2` dropped six parquets. So 15 of 16, and `sources.parquet` was in the dropped set every time
+it existed, which is the half you found from the other end. Nothing is known to have been published
+through this surface, so this is *would publish*, not *has published*.
+
+**What was built, and it takes your design.** The allowlist's parquet half is now derived from
+`just_dna_compiler.compiler.ARTIFACT_PARQUETS` — the compiler's own `artifact.digest` list, made public
+for this — so a new table family reaches the publisher in the commit that adds it, which is the property
+you asked to have preserved. `_REQUIRED` is replaced by three positive rules, most specific first: the
+plan must carry every file the manifest attests; `weights.parquet` never travels alone (your
+`_EXPECTED_WITH_WEIGHTS`, kept and scoped exactly as you scoped it); and at least one **lead** parquet
+must be present — `LEAD_PARQUETS` is `weights` plus the nine 0.4 families, matching what
+`_find_lead_table` probes. An absent or unreadable `manifest.json` still withholds rather than refusing,
+so RM84's four version reasons are untouched. Re-measured after: 16 of 16 publish, and all 16 digests
+verify against what would be sent.
+
+**Your two RM84 answers are recorded in
+[ENRICHER § the publisher surface](ENRICHER.md#a-module-is-published-twice-and-the-second-path-is-the-one-that-can-name-a-release-rm84), and
+`v<version>` verbatim stays.** The deciding half is your correction, not the regex: with no version
+fallback in `_discover_hf_source` at all, no spelling is read on this path today, so there is nothing to
+suit — and a bare `vN` would still collide two patch releases at one path. Q2's "no, by construction"
+is recorded as you established it. The dual write's unbounded growth is recorded there too, as a
+consequence rather than an item: retention is the collection owner's call, not the publisher's.
+
+**What to do now: nothing is blocked, and nothing changes for you until you adopt
+`just-dna-enricher upload`.** When you do, the gate is "at least one lead parquet" — the same question
+`_find_lead_table` asks — and every family you probe is a family that now travels.
+
+<!-- triaged: 0.6.0 · sha ba8028800470 -->
+
+**Reporter** `just-dna-lite` · **Date** 2026-08-17 · **Answers**
+[RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
+§ *The one open thing* and
+[RM89](ROADMAP.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)
+§ *The open question* · **Read as** three answers and one finding, not a request
+
+ENRICHER.md put three questions in front of us and said delivering them into our tree was the reader's
+step. This is the reply, in one item because RM84 asked us to keep them together. Everything below is
+read off `just-dna-lite@ui-store`, file and line, not recalled.
+
+### RM84 Q1 — does our discovery scan match `v1.0.0`, or only a `v`-plus-integer segment?
+
+Only `v`-plus-integer, and the ordering is worse than the matching. `annotation/hf_modules.py:251`:
+
+```python
+_VERSION_RE = re.compile(r"^v(\d+)$")
+...
+if m and int(m.group(1)) > best_version:
+```
+
+Anchored and integer-only, so `v1.0.0` does not match; and even if it did, `int()` is not a SemVer
+comparator, so `v10` would sort under `v9`.
+
+**The correction that matters more than the regex: that fallback is on the wrong path for this item.**
+It lives only in `_discover_fsspec_source` — the generic github/http/s3 branch. HuggingFace has its own
+branch, `_discover_hf_source` (`hf_modules.py:198-211`), which lists `datasets/<repo>/data` one level
+and flat-probes each subfolder with `_probe_module_at_path`. There is **no version fallback there at
+all**. So on the HuggingFace path, which is RM84's own motivating case, `v<version>` is invisible in
+every spelling, and the segment you chose cannot be the reason.
+
+[S34 § 4](CONSUMER_SUGGESTIONS_HISTORY.md)'s "the `vN` fallback in our generic fsspec scan is already the
+shape" was accurate about the shape and was quoted about a branch that does not serve HF. That is our
+error in the original suggestion, not a misreading in RM84.
+
+**So: keep writing `v<version>` verbatim.** A bare major segment would collide two patch releases at one
+path — the reason the proposal already rejected it — and would buy us nothing anyway, since the code
+that would read it is not on this path. Both halves of the fix are ours: teach `_discover_hf_source` a
+versioned fallback, and replace the regex and `int()` with `just_dna_format.identity.Version`, which
+already gives us parsing and ordering. Not scheduled yet; the flat path resolves, so nothing is broken
+today, only unimproved.
+
+### RM84 Q2 — does a subdirectory under `data/<name>/` disturb that scan?
+
+No, and by construction rather than by luck, which is the part worth having in writing.
+
+Both discovery branches call `fs.ls` at exactly one level and never `fs.find`, `glob` or a recursive
+listing, and `_probe_module_at_path` (`hf_modules.py:117-170`) asks `fs.exists` on named files instead of
+listing the directory it is probing. A nested `data/<name>/v<version>/` is therefore never enumerated and
+never probed. On the fsspec branch the flat probe runs first and `continue`s on success
+(`hf_modules.py:260-263`), so under the dual write the versioned copy is not reached even there. Nothing
+else in our tree recursively lists or folder-downloads a module directory — `scan_module_table` opens the
+remote parquet URL directly.
+
+**Verified by search, not assumed**: no `fs.find`, `recursive=True`, `maxdepth` or `snapshot_download`
+against a module path anywhere in `annotation/` or `module_registry.py`.
+
+One consequence rather than an objection, since Q2 asked what could regress: the dual write doubles the
+collection's bytes and nothing prunes `data/<name>/v<version>/`, so the repo grows one full artifact set
+per release forever. That is your call and it does not affect discovery; recorded because a consumer
+mirroring the collection pays it.
+
+### RM89 — what the consuming discovery path actually opens
+
+**Exactly one lead-family parquet.** `_find_lead_table` (`hf_modules.py:109-114`) probes
+`{base}/{family}.parquet` across the ten families in `module_config.LEAD_TABLES` and returns the first
+hit; that single existence probe **is** our "is this a module" test. Everything else is `fs.exists`-gated
+and optional: `annotations.parquet`, `studies.parquet`, `sources.parquet`, `metadata.json`/`.yaml`,
+`logo.{png,jpg,jpeg}`. `manifest.json` is not opened by discovery at any point.
+
+Of your two candidates, **"`manifest.json` plus at least one parquet" is the one we can consume**;
+"manifest as the only required file" would let a directory publish that our scan cannot see at all. We
+also share your instinct that the replacement be a positive rule — the guard against a half-compiled
+directory uploading is the reason to rewrite `_REQUIRED` rather than delete it.
+
+### The finding: `_REQUIRED` is not what blocks a table-only module — `_ALLOW_PATTERNS` is
+
+RM89 names `upload._REQUIRED` as the widening. Reading `upload.py:49-55`, the allowlist handed to
+`upload_folder` is `*_REQUIRED + manifest.json + logo.png + logo.jpg + README_CANDIDATES`. Not one 0.4
+family is in it — `pharm_variants.parquet`, `diplotypes.parquet`, `haplotypes.parquet`,
+`repeat_alleles.parquet`, `allele_function.parquet` and the rest appear in neither constant.
+
+So relaxing `_REQUIRED` alone converts *"a table-only module cannot be published"* into *"a table-only
+module publishes as `manifest.json` + README + logo, with no data"* — which our discovery then correctly
+ignores, and which is a worse failure than the current one because it is silent and leaves a directory
+behind. We checked the seven measured examples against the allowlist as well as against `_REQUIRED`:
+all seven fail both gates. `fmr1_cgg_repeat` stays the instructive one for the same reason it is in
+RM89 — it has `studies.parquet`, which *is* in the allowlist, so it would publish exactly one side table
+and no lead table.
+
+**We are not asking for a design, because we shipped one and it is running.**
+`just_dna_pipelines.v1_port.publish` (`publish.py:22-35`) derives its allowlist from the same list
+discovery probes:
+
+```python
+_LEAD_PARQUETS = tuple(f"{t}.parquet" for t in LEAD_TABLES)
+_SIDE_TABLES = ("annotations.parquet", "studies.parquet",
+                "sources.parquet", "literature.parquet",
+                "frequencies.parquet", "gene_metrics.parquet")
+_ALLOW_PATTERNS = [*_LEAD_PARQUETS, *_SIDE_TABLES, "manifest.json", "logo.png", "logo.jpg"]
+_EXPECTED_WITH_WEIGHTS = ("annotations.parquet", "studies.parquet")
+```
+
+The gate is "carries a lead table", and `_EXPECTED_WITH_WEIGHTS` keeps the half-compiled-directory
+refusal you want, scoped to the weights-led shape where a missing side table really does mean an
+interrupted compile — a `pharm_variants`-led module legitimately has neither. This is what publishes
+`pharmgkb` today, so RM89 does **not** block us; it blocks you, and it blocks us on the day we adopt
+`just-dna-enricher upload` as the canonical path, which `publish.py`'s own docstring says is the plan.
+
+Deriving both lists from one constant is the property we would most like preserved in whatever you
+build: adding a family becomes one edit that discovery and the publisher learn together, which is
+exactly the skew RM89 describes — a rule whose premise the format withdrew, left in place — arriving a
+second time.
+
+### A live gap in that same allowlist: `sources.parquet` does not travel
+
+Separable from RM89 and reported here because it is the same six lines. `sources.parquet` is not in
+`_ALLOW_PATTERNS`, and we read it: discovery exposes `sources_url` (`hf_modules.py:167`) and the report
+renders distinct source terms in its footer, restricted to `layer == "annotation"` because
+[SCHEMAS.md § SourceRow](SCHEMAS.md) makes that the layer carrying the derivative-work obligation.
+
+A module published through the enricher therefore arrives with its source terms missing, and our footer
+renders **"Not stated"** — which is our tri-state for *could not be established*, and is the correct
+rendering of what we received. The bytes existed at compile time and were dropped at upload. That is the
+same shape as the note already above `_ALLOW_PATTERNS` about `manifest.readme` and the ClinPGx
+`LICENSE.txt`: a field whose bytes nobody uploads is a field that does not travel — here applied to a
+licensing table rather than to a manifest field. `literature.parquet`, `frequencies.parquet` and
+`gene_metrics.parquet` are in our list for the weaker reason that a published module should be a complete
+artifact; `sources.parquet` is the one with an obligation attached.
+
+### What we did meanwhile
+
+Nothing was worked around, because nothing is blocked. We publish through our own
+`pipelines v1-port publish`, whose allowlist already covers every family and `sources.parquet`. The
+RM84 discovery work is unstarted and unscheduled: until it lands, `read_module_provenance` continues to
+state `version: None` for every HF-discovered module, which our report renders as *Not stated* — correct,
+and now correct for a reason that has a fix on our side rather than yours.

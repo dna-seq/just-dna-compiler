@@ -34,7 +34,41 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-17 (latest) — the 0.6 PT2 batch: five items built, and three of the proposal's own numbers corrected
+## 2026-08-17 (latest) — the publisher stopped dropping most of the artifact (S35 / RM89)
+
+**`just-dna-compiler` + `just-dna-enricher` 0.6.0, uncut.** One item, answered and built the day after
+it was filed. `just-dna-lite` replied to the three questions RM84 and RM89 had put to them
+([S35](CONSUMER_SUGGESTIONS_HISTORY.md)), and the answer that unblocked RM89 also carried a finding of
+their own: the publisher's `_ALLOW_PATTERNS` was not just refusing table-only modules, it was **dropping
+the data of the ones it accepted**.
+
+**Measured before, over the sixteen reference examples compiled and run through `plan_upload`:** seven
+refused outright, and eight of the remaining nine published an artifact whose `manifest.artifact.files`
+attests parquets — by name, sha256 and size — that were never uploaded, so the `artifact.digest` in the
+published manifest cannot be reproduced from what arrives. **Fifteen of sixteen wrong**; only
+`grch37_build`, a bare SNP core with no sidecar and no 0.4-family table, was correct. `sources.parquet`
+was in the dropped set every time it existed, which is the half the consumer found from their end — a
+module published this way arrives with no licence terms and their report footer renders *"Not stated"*.
+Nothing is known to have been published through this surface, so this is *would publish*.
+
+- **The allowlist is derived, never hand-kept.** The compiler's `_OUTPUT_FILES` is now public as
+  `ARTIFACT_PARQUETS` and `just_dna_enricher.upload` imports it, so a new table family reaches the
+  publisher in the commit that adds it. `LEAD_PARQUETS` joins it — `weights` plus the nine 0.4 families —
+  which is what the consumer's discovery actually probes.
+- **`_REQUIRED` is replaced by three positive rules**, most specific first: the plan must carry every
+  file the manifest attests; `weights.parquet` never travels alone; at least one lead parquet must be
+  present. The first is a self-check as much as a module check, so publisher and compiler cannot drift
+  apart silently again. An absent or unreadable `manifest.json` **withholds** rather than refusing,
+  which is what keeps RM84's four version reasons intact.
+- **Re-measured after: 16 of 16 publish and all 16 digests verify.** Nothing that published before stops
+  publishing; the only new refusals are `weights.parquet` alone and a directory with no annotation table.
+- **RM84's two asks are answered and the segment spelling is settled** — `v<version>` verbatim stays,
+  and a nested versioned subdirectory does not disturb their scan, by construction. Both remaining fixes
+  are theirs. Recorded in [ENRICHER.md](ENRICHER.md), along with the one consequence they raised and we
+  are not fixing: nothing prunes the versioned copies, so the collection grows one artifact set per
+  release.
+
+## 2026-08-17 — the 0.6 PT2 batch: five items built, and three of the proposal's own numbers corrected
 
 The second 0.6 design round ([PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md), decided 2026-08-16) sorted
 twenty-one open items into five to build and sixteen to defer. All five are here, built as five

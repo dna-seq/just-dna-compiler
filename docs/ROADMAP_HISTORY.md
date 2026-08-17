@@ -2176,3 +2176,82 @@ string has to be rebuilt before it can be joined on.
 A parquet column is ~free under the 2026-08-13 charter amendment (materialized, derived, no human
 types one), which is what makes this a minor rather than a deferral. `content_signature` does not
 move; a recompile's `artifact.digest` does, for any module carrying `variants.csv`.
+
+# 0.6 — what answering S35 closed
+
+One item, and it is the shape the triage loop exists to produce: an entry filed with a genuinely open
+question, the consumer answering it the next day, and building the answer finding a defect underneath
+that neither side had stated. Filed 2026-08-17, closed 2026-08-17.
+
+## RM89 — the publisher cannot upload a table-only module at all
+
+✅ **Shipped in `just-dna-compiler` + `just-dna-enricher` 0.6.0** (2026-08-17), the day after it was
+filed, unblocked by [S35](CONSUMER_SUGGESTIONS_HISTORY.md) from just-dna-lite. **Owner** enricher
+(`upload._REQUIRED` / `_ALLOW_PATTERNS`) + compiler (a public name) · **Motivating case** seven of the
+sixteen reference examples
+
+`upload._REQUIRED` was `("weights.parquet", "annotations.parquet", "studies.parquet")` and `plan_upload`
+raised `FileNotFoundError` when any was absent. The comment above it said *"weights/annotations/studies
+are what discovery needs"*, and that premise expired when RM2 made the SNP core optional in 0.4: a
+module carries only the table kinds it uses, so a module with no `variants.csv` produces none of the
+three and could not be published by this tier at all. `fmr1_cgg_repeat` was the instructive one — it has
+`studies.parquet` and lacks the other two, so the rule was *"not all three"*, not *"no SNP core"*, and
+the obvious repair (**exempt a module with no `variants.csv`**) would still have refused it. Same class
+as RM55's `_INTEGER_KINDS`: a rule whose premise the format withdrew, left standing.
+
+**The open question was genuinely open, and it was not ours to answer.** Whether the required set should
+become *"`manifest.json` plus at least one parquet"* or drop the parquet requirement entirely depends on
+what the consuming discovery path actually opens. It was asked of just-dna-lite alongside RM84's two
+questions rather than guessed. Their answer: `_find_lead_table` probes `{base}/{family}.parquet` across
+ten lead families and returns the first hit — that single existence probe **is** their "is this a
+module" test — and `manifest.json` is not opened by discovery at any point. So of the two candidates,
+manifest-plus-at-least-one-parquet is the one a consumer can use.
+
+### What answering it found, and it is larger than the item
+
+**`_REQUIRED` was not the only gate.** The allowlist handed to `upload_folder` was `*_REQUIRED` plus
+`manifest.json`, the two logo spellings and `README_CANDIDATES` — so **not one 0.4 family and not one
+derived-fact table was in it**. Relaxing `_REQUIRED` alone would have converted *"a table-only module
+cannot be published"* into *"a table-only module publishes as `manifest.json` + README with no data"*,
+which is a worse failure because it is silent and leaves a directory behind. just-dna-lite found this
+half from the other end: `sources.parquet` is not in the allowlist and they read it, so a module
+published through this tier arrived with its licence terms missing and their report footer rendered
+*"Not stated"* — correct for what they received, and the derivative-work obligation gone with the bytes.
+
+**The consequence neither side had stated, found by probing rather than by reading.**
+`manifest.artifact.files` lists a name, a sha256 and a size per parquet, and `artifact.digest` is a
+Merkle root over exactly those — so a file attested and not uploaded makes the published manifest a
+false claim about bytes that are not there, and the digest cannot be reproduced from what arrives.
+Measured over the sixteen reference examples, compiled and run through `plan_upload`: **seven refused
+outright, and eight of the remaining nine published an artifact whose own digest did not verify**
+(`hboc_palb2` dropped six parquets). Only `grch37_build` — a bare SNP core with no sidecar and no
+0.4-family table — was correct. Fifteen of sixteen, on a surface where the failure is silent. Stated
+honestly: nothing is known to have been published through it, so this is *would publish*, never *has
+published*.
+
+### What was built
+
+**The allowlist is derived, never hand-kept.** `_OUTPUT_FILES` became public as
+`compiler.ARTIFACT_PARQUETS` and the publisher imports it, so a new table family reaches the publisher
+in the commit that adds it. This is `@fieldnames-from-model` one tier further out, and it is the
+property the consumer explicitly asked to have preserved from their own shipped version of this fix.
+`LEAD_PARQUETS` is the companion — `weights` plus the nine 0.4 families, matching what their
+`_find_lead_table` probes.
+
+**Three positive rules replace the required triple**, ordered most specific first so a refusal names the
+actual fault (`@specific-rejection`): the plan must carry every file `manifest.artifact.files` attests;
+`weights.parquet` never travels alone (the consumer's `_EXPECTED_WITH_WEIGHTS`, kept and scoped exactly
+as they scoped it, since a `pharm_variants`-led module legitimately has neither companion); and at least
+one **lead** parquet must be present. A positive rule rather than a deleted constant was the shape both
+sides wanted independently — the risk here runs toward letting a half-compiled directory upload, not
+toward refusing too much.
+
+**The first rule is a self-check as much as a module check**, which is why it earns its place on top of
+a derived allowlist: it compares what would be sent against what the artifact says it contains, so the
+two cannot drift apart silently a second time. And an absent or unreadable `manifest.json` **withholds**
+rather than refusing — the same tri-state as RM84's `version_unknown_reason`, and what keeps that item's
+four reasons four reasons rather than one refusal.
+
+Re-measured after: **16 of 16 publish, and all 16 digests verify** against exactly what would be sent.
+Nothing that published before stops publishing; the only new refusals are the two shapes that were never
+a publishable module.

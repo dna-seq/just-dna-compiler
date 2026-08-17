@@ -949,8 +949,10 @@ parked co-authoring item wearing a different name.
 ## RM84 — a module has no version identity on the discovery path, and the publisher is the half we own
 
 **Severity** medium-high · **Status** **our half SHIPPED in the 0.6 PT2 batch (lane D, 2026-08-17)** —
-`upload_module` writes `data/<name>/` and `data/<name>/v<version>/`; the consumer's half and the segment
-spelling are open, which is why this entry stays here. *Previously:* our half taken into 0.6 PT2 on
+`upload_module` writes `data/<name>/` and `data/<name>/v<version>/`. **The segment spelling is settled
+and both asks are answered** ([S35](CONSUMER_SUGGESTIONS_HISTORY.md), 2026-08-17): `v<version>` verbatim
+stays. Only the consumer's discovery half is open, and it is theirs, which is why this entry stays here.
+*Previously:* our half taken into 0.6 PT2 on
 2026-08-16 ([PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM84); before that, open — **joint with the
 reference consumer, and their half is already agreed in writing** · **Owner** enricher
 (`upload.upload_module`) + `just-dna-lite` discovery ·
@@ -991,23 +993,41 @@ lane D. Nothing already published moves, because the flat path keeps being writt
 *latest*. The full behaviour, including the null-version fallback and the two-commit caveat, is
 [ENRICHER § the publisher surface](ENRICHER.md#a-module-is-published-twice-and-the-second-path-is-the-one-that-can-name-a-release-rm84).
 
-### The one open thing, and it is an ask (RM27's shape)
+### The ask was put, and answered the next day — both questions closed
 
-**To just-dna-lite, two questions.** *(1)* **Does your discovery scan match `v1.0.0`, or only a
-`v`-plus-integer segment?** [S34 § 4](CONSUMER_SUGGESTIONS_HISTORY.md) says the `vN` fallback in the
-generic fsspec scan "is already the shape", and whether that regex accepts a full SemVer is a fact about
-their code, not something this repository can assert from its own rules. *(2)* **Does a subdirectory
-under `data/<name>/` disturb that scan?** — added because the decided layout nests the versioned copy
-inside the scanned directory, which until now held files only, so a recursive listing would see a full
-artifact set per release. That is the one part of this change that could regress a consumer who never
-adopts it, and it is precisely the part their pre-agreement did not cover.
+**Asked** in ENRICHER.md (RM27's shape: a finding about a downstream reader is an explicit ask, never an
+implication), delivered there rather than into their tree because `just-dna-lite` carries no consumer
+inbox. **Answered as [S35](CONSUMER_SUGGESTIONS_HISTORY.md) on 2026-08-17**, read off their code file
+and line rather than recalled.
 
-The publisher writes `v<version>` verbatim today — the proposal's own default, chosen because a bare
-major segment collides two patch releases at one path — and either answer is a one-line change here.
-Questions, not implications: nothing else in the decision depends on them, and the flat path is
-unchanged either way. **They are delivered in ENRICHER.md rather than into their tree**, because
-`just-dna-lite` carries no consumer inbox to write into; putting them in front of that team is the
-reader's step, not this lane's.
+*(1)* **Their scan matches only `v`-plus-integer** — `^v(\d+)$`, compared with `int()`, so `v1.0.0` does
+not match and `v10` would sort under `v9`. **The half that actually decides it is their correction, not
+the regex:** that fallback lives only in `_discover_fsspec_source`, the generic github/http/s3 branch.
+HuggingFace has its own branch with **no version fallback at all** — so on the path this item is *about*,
+no spelling is read today and the segment cannot be chosen to suit one. Their words: S34 § 4's *"the `vN`
+fallback in our generic fsspec scan is already the shape"* was accurate about the shape and quoted about
+a branch that does not serve HF, and they call that their error rather than a misreading here.
+**So `v<version>` verbatim stays** — a bare major segment would still collide two patch releases at one
+path, and would buy nothing since the code that would read it is not on this path.
+
+*(2)* **No, and by construction rather than by luck.** Both discovery branches call `fs.ls` at exactly
+one level and never `fs.find`, a `**` glob or a recursive listing, and their probe asks `fs.exists` on
+named files rather than listing the directory it is probing — so a nested `data/<name>/v<version>/` is
+never enumerated and never probed. Verified in their tree by search: no `fs.find`, `recursive=True`,
+`maxdepth` or `snapshot_download` against a module path anywhere. The one part of this change that could
+have regressed a consumer who never adopts it, and it does not.
+
+**One consequence recorded rather than fixed**, raised by them as a consequence and not an objection:
+the dual write doubles the collection's bytes and nothing prunes `data/<name>/v<version>/`, so the repo
+grows one full artifact set per release forever. It does not affect discovery. Retention is the
+collection owner's decision, not the publisher's; noted in
+[ENRICHER § the publisher surface](ENRICHER.md#a-module-is-published-twice-and-the-second-path-is-the-one-that-can-name-a-release-rm84).
+
+**What is left here is theirs and unscheduled:** teach `_discover_hf_source` a versioned fallback, and
+replace the regex and `int()` with `just_dna_format.identity.Version`, which already gives them parsing
+and ordering. Nothing is broken meanwhile — the flat path resolves and keeps meaning *latest* — so their
+`read_module_provenance` states `version: None` for every HF-discovered module, which their report
+renders as *Not stated*.
 
 **Confirmed by exhaustive search to have had no `Sn` and no `RMn`** before this entry, which is why it
 is filed rather than cross-referenced.
@@ -1020,11 +1040,13 @@ recorded here because this entry is where a reader meets the publisher.
 - **[RM88](ROADMAP.md#rm88--republishing-without-bumping-version-overwrites-a-versioned-path-with-different-bytes)** — the versioned path cannot notice that the version has *not* moved, so a republish
   without a `version:` bump overwrites it with different bytes. Refusing needs a remote read *and* an
   undecided policy (warn / refuse / `--force`), which is why it is an item and not a fix.
-- **[RM89](ROADMAP.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)** — `_REQUIRED`
-  still demands all three SNP-core parquets, so a table-only module cannot be published at all: seven of
-  the sixteen reference examples, measured. Its open question — what the discovery path actually needs
-  open — is for the same team as the two asks above, and belongs with them rather than as a third
-  message.
+- **[RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)** —
+  `_REQUIRED` still demanded all three SNP-core parquets, so a table-only module could not be published
+  at all: seven of the sixteen reference examples, measured. Its open question — what the discovery path
+  actually needs open — went to the same team as the two asks above rather than as a third message, and
+  **came back with them in S35, so it shipped on 2026-08-17**. Answering it found the larger half:
+  `_ALLOW_PATTERNS` carried no 0.4 family and no derived-fact table either, so eight *more* examples
+  published a manifest attesting parquets that were never uploaded.
 
 ## RM85 — the origin of a module predicts the shape of its second pass, and nothing records it
 

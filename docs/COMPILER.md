@@ -1192,15 +1192,20 @@ table kind, and one CSV per derived-fact sidecar whose parquet is present (`freq
 
 ## Output artifact & hashing
 
-- **`_OUTPUT_FILES`** (feed `artifact.digest`): `weights`/`annotations`/`studies.parquet` + the 9
-  table-kind parquets + `frequencies.parquet` / `gene_metrics.parquet` / `literature.parquet` when
-  present. The sidecars enter
+- **`ARTIFACT_PARQUETS`** (feed `artifact.digest`; `_OUTPUT_FILES` until 0.6): `weights`/`annotations`/
+  `studies.parquet` + the 9 table-kind parquets + `frequencies.parquet` / `gene_metrics.parquet` /
+  `literature.parquet` / `gene_validity.parquet` / `clinical_assertions.parquet` / `sources.parquet`
+  when present. The sidecars enter
   the digest because a module carrying frequency data genuinely *is* different content — but adding one
-  leaves the SNP core's bytes untouched (an explicit test).
+  leaves the SNP core's bytes untouched (an explicit test). **It is public because the publisher tier
+  has to agree with it**: `just_dna_enricher.upload` derives its allow-patterns from this tuple, after a
+  hand-kept copy covering three of the sixteen names silently dropped the rest at upload (S35/RM89).
+  `LEAD_PARQUETS` beside it names the ten that carry a module's own annotation rows — `weights` plus the
+  nine 0.4 families — which is the publisher's "is this a module" rule and what discovery probes.
 - **`_INPUT_FILES`** (feed `manifest.inputs`, raw-bytes hashed): `module_spec.yaml` + `variants.csv` +
   `studies.csv` + the 9 table-kind CSVs — the authored surface, and the reason only the *other* files
   gained a second legal name and location in 0.6. **`resolution.csv` is deliberately NOT here** (nor in
-  `_OUTPUT_FILES`) — it is a multi-producer artifact hashed only by the normalized `resolution_signature`
+  `ARTIFACT_PARQUETS`) — it is a multi-producer artifact hashed only by the normalized `resolution_signature`
   (a raw-bytes hash would be unstable across enricher/human/reverse producers). `frequencies.csv`,
   `gene_metrics.csv`, `literature.csv` and the 0.6 pair `gene_validity.csv` / `clinical_assertions.csv`
   are out for exactly the same reason, each hashed by its own `*_signature`. `provenance.json` is
