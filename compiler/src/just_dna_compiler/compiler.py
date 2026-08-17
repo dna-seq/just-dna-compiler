@@ -4114,8 +4114,19 @@ def compile_module(
     if study_allele_errors:
         return CompilationResult(success=False, errors=study_allele_errors, warnings=all_warnings)
 
+    # De-duplicated on the message, like the two blocks above (RM94). This one was the exception, and
+    # the reason it survived is worth keeping: `@no-rerun-with-counts` guards against a re-run whose
+    # message embeds a count, because the two copies then disagree and the manifest publishes two
+    # numbers. This message carries no count, so the copies agreed and the field was merely redundant
+    # rather than self-contradicting -- an untidiness nobody was looking for. The wider rule the
+    # neighbours already follow is the one to take from it: a check that runs on both sides dedupes on
+    # the message, and re-running it is the normal case rather than the exception.
+    #
+    # The re-run itself earns its place and is not what was removed. `compile_module` runs
+    # `validate_spec` in best_effort regardless of this compile's mode, so this second pass in the
+    # caller's mode is the only thing that lets `--strict` escalate the warning into a refusal.
     p_value_errors, p_value_warnings = _check_p_value_num(studies, strict=strict)
-    all_warnings.extend(p_value_warnings)
+    all_warnings.extend(w for w in p_value_warnings if w not in all_warnings)
     if p_value_errors:
         return CompilationResult(success=False, errors=p_value_errors, warnings=all_warnings)
 

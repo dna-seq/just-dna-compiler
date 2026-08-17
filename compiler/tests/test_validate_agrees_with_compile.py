@@ -337,6 +337,26 @@ def test_a_p_value_transcription_slip_follows_the_mode_ladder_on_both_sides(
     assert any("p_value_num says" in e for e in strict_result.errors), strict_result.errors
 
 
+def test_the_p_value_finding_is_published_once(tmp_path: Path) -> None:
+    """One authored disagreement, one sentence in the manifest (RM94).
+
+    `_check_p_value_num` runs in `validate_spec` and again in `compile_module` -- correctly, because
+    the inner pass is always best_effort and the re-run in the caller's mode is what lets `--strict`
+    escalate. What was wrong is that the compile-side `extend` carried no `if w not in all_warnings`
+    filter, which every neighbouring re-run does, so a best_effort compile published the identical
+    sentence twice into `manifest.compilation.warnings`.
+
+    Asserts the **count of the finding**, not the length of the list: other warnings (the closure
+    notice, for one) legitimately share the field, and a length assertion would break on any of them.
+    """
+    spec = _spec(tmp_path, studies__csv=_studies("1.2e-14", "1.2e-41"))
+    compiled = compile_module(spec, tmp_path / "once", resolve_with_ensembl=False)
+
+    assert compiled.success
+    findings = [w for w in compiled.manifest.compilation.warnings if "p_value_num says" in w]
+    assert len(findings) == 1, findings
+
+
 def test_an_agreeing_p_value_pair_is_silent(tmp_path: Path) -> None:
     """A rounding is not a contradiction: the comparison is relative at 1%, so the transcription that
     dropped a digit still agrees with its string."""
