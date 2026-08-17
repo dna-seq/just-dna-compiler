@@ -75,6 +75,7 @@ from just_dna_enricher.gene_validity import (
     enrich_gene_validity,
 )
 from just_dna_enricher.grch37 import GRCH37_BUILD, summarize_build_diagnoses
+from just_dna_enricher.gwas import GwasError, enrich_gwas
 from just_dna_enricher.identifiers import check_identifiers
 from just_dna_enricher.identifiers import unreachable_records as identifier_unreachable
 from just_dna_enricher.identifiers import verification_records as identifier_records
@@ -412,6 +413,56 @@ def gene_validity_(
             f"{result.unmapped}",
             fg=typer.colors.YELLOW, err=True,
         )
+
+
+@app.command("gwas")
+def gwas_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Severity ladder for findings; see the pass docstring."
+    ),
+    offline: bool = typer.Option(
+        False, "--offline", help="No-op with a warning: this pass reads the REST API, not a snapshot."
+    ),
+    use: str = typer.Option(
+        "unstated", "--use",
+        help="Declared use recorded on the licence row: unstated|non-commercial|commercial.",
+    ),
+) -> None:
+    """Fill gwas_effects.csv with the GWAS Catalog's published effect sizes for this module's rsIDs.
+
+    One row per published association, not per variant — a well-studied variant carries dozens across
+    different traits and papers. It does NOT fill `weight`: an authored weight is the author's model
+    of the finding, and no tool writes one. The two sit side by side and a consumer picks.
+
+    Reads `effect_unit` verbatim, including the Catalog's uninformative "unit", because a beta whose
+    scale is unknown must not look like one whose scale is shared. An association the Catalog
+    published without establishing which allele carries the effect keeps a null `effect_allele` and is
+    counted in the manifest, never dropped.
+    """
+    try:
+        result = enrich_gwas(spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use))
+    except GwasError as exc:
+        typer.secho(f"GWAS FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if result.skipped_offline:
+        typer.secho("skipped: --offline (the GWAS Catalog pass has no offline snapshot)",
+                    fg=typer.colors.YELLOW)
+        return
+    # Both halves of the request budget, because the pass computed them and an operator spending
+    # somebody else's rate limit is the person who needs the number.
+    typer.secho(
+        f"gwas: {len(result.rows)} row(s) for {len(result.covered)} variant(s), "
+        f"{len(result.missing)} with no published association; "
+        f"{result.requests_made} request(s), {result.requests_saved} saved by caching",
+        fg=typer.colors.GREEN,
+    )
+    # The path the pass actually wrote, never `spec_dir / <name>` — a module keeping its sidecars
+    # under `derived/` is written there, and a guess sends the author to the wrong file.
+    typer.secho(
+        f"gwas effects: {sidecar_path(spec_dir, 'gwas_effects.csv', error=GwasError)}",
+        fg=typer.colors.GREEN,
+    )
 
 
 @app.command("assertions")

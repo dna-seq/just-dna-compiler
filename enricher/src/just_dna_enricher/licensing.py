@@ -329,6 +329,39 @@ def article_terms(license_name: str | None) -> ArticleTerms:
 
 
 #: Every source whose terms this tier can state, by the identifier that joins `sources.csv.source`.
+# The NHGRI-EBI GWAS Catalog, read from https://www.ebi.ac.uk/about/terms-of-use on 2026-08-17. It is
+# the first source here with **no named licence at all** — EBI states terms in prose rather than by
+# pointing at CC0 or Apache — so `license` stays null, which is the honest answer and not a gap to
+# fill with a guess.
+#
+# The operative sentence: *"EMBL-EBI itself places no additional restrictions on the use or
+# redistribution of the data available via its Data Resources and Tools other than those provided by
+# the original data owners."* That names redistribution explicitly, so `redistribution=True`.
+#
+# **`commercial_use` stays `None`, deliberately, and the trailing clause is why.** The sentence
+# permits "use" generally, which reads as covering commercial use — but it is conditioned on terms the
+# original data owners may impose, and for an aggregator of thousands of published studies those are
+# not established here. Unknown is not permission and it is not refusal: `taints_commercial_use`
+# requires `commercial_use is False`, so a null warns rather than gating, which is exactly right for
+# terms this page does not settle. Do not "tidy" it to `True`.
+#
+# `share_alike` is null for the same reason — no named licence means no established answer — rather
+# than `False` by analogy with the CC0 sources, which have one.
+GWAS_CATALOG_TERMS = SourceTerms(
+    source="gwas_catalog",
+    license_url="https://www.ebi.ac.uk/about/terms-of-use",
+    attribution="NHGRI-EBI GWAS Catalog (https://www.ebi.ac.uk/gwas/)",
+    notice=(
+        "EMBL-EBI states no named licence and expects attribution in accordance with good scientific "
+        "practice. It places no additional restrictions on use or redistribution beyond those of the "
+        "original data owners — so the Catalog's curation travels freely, while the terms of the "
+        "thousands of underlying publications it summarizes are not established here. Data is "
+        "provided 'AS IS' without warranties of any kind."
+    ),
+    redistribution=True,
+)
+
+
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
@@ -340,6 +373,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         CLINVAR_TERMS,
         ENSEMBL_TERMS,
         GNOMAD_TERMS,
+        GWAS_CATALOG_TERMS,
     )
 }
 
