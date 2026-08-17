@@ -11,10 +11,14 @@ schema gets the behaviour and none of them carries a private copy. The vocabular
 here rather than listed, so a new one is covered without editing this file.
 """
 
+import inspect
+from typing import get_origin
+
 import pytest
 from just_dna_format import vocab
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import check_vocab, match_vocab
+from pydantic import BaseModel
 
 
 def _closed_vocabularies() -> dict[str, frozenset[str]]:
@@ -84,3 +88,121 @@ def test_the_authored_cell_now_agrees_with_the_cli_flag() -> None:
 def test_none_still_means_unknown_rather_than_a_match() -> None:
     """Tri-state is the house algebra: an absent categorical is not a member and never becomes one."""
     assert check_vocab(None, vocab.VALID_DECLARED_USE, "declared_use") is None
+
+
+# ── RM95: accepting the slip is half the rule; STORING the declared member is the other half ───────
+
+
+class _FieldInfo:
+    """The one attribute the shared validator reads off `ValidationInfo`."""
+
+    def __init__(self, field_name: str) -> None:
+        self.field_name = field_name
+
+
+def _vocabulary_bound_validators() -> list[tuple[type[BaseModel], str, frozenset[str], object]]:
+    """`(model, field, members, validator function)` for every closed-vocabulary field in the schema.
+
+    Discovered through `field_vocabularies` -- the one route to "what may this cell contain" -- and
+    through pydantic's own decorator registry, so a model that grows a vocabulary is covered without
+    editing this file. Every module that declares a row model is walked, not just the ones on the
+    authoring reference.
+    """
+    from just_dna_format import (
+        assertions,
+        binning,
+        frequency,
+        gene_metrics,
+        gene_validity,
+        gwas,
+        literature,
+        manifest,
+        pgs,
+        pgx,
+        resolution,
+        sources,
+        spec,
+    )
+    from just_dna_format.base import field_vocabularies
+
+    modules = (
+        assertions, binning, frequency, gene_metrics, gene_validity, gwas, literature,
+        manifest, pgs, pgx, resolution, sources, spec,
+    )
+    seen: set[tuple[str, str]] = set()
+    found: list[tuple[type[BaseModel], str, frozenset[str], object]] = []
+    for module in modules:
+        for model in vars(module).values():
+            if not (isinstance(model, type) and issubclass(model, BaseModel)):
+                continue
+            if model.__module__ != module.__name__:
+                continue  # imported into this module, owned by another
+            registry = model.__pydantic_decorators__.field_validators
+            for field, marker in field_vocabularies(model).items():
+                if not marker.get("closed") or (model.__name__, field) in seen:
+                    continue
+                for decorator in registry.values():
+                    if field in decorator.info.fields:
+                        seen.add((model.__name__, field))
+                        found.append((model, field, frozenset(marker["options"]), decorator.func))
+                        break
+    return found
+
+
+_VOCAB_FIELDS = _vocabulary_bound_validators()
+
+
+def test_the_vocabulary_bound_fields_are_discovered_not_assumed() -> None:
+    """Guard the premise: the walk must actually find the three fields this test was written for."""
+    pairs = {(model.__name__, field) for model, field, _members, _func in _VOCAB_FIELDS}
+    assert len(pairs) > 20, sorted(pairs)
+    assert {("MeasureBinRow", "measure_kind"), ("Contribution", "role")} <= pairs
+    assert ("PgsRow", "training_ancestry") in pairs
+
+
+@pytest.mark.parametrize(
+    "model,field,members,func",
+    _VOCAB_FIELDS,
+    ids=[f"{m.__name__}.{f}" for m, f, _members, _func in _VOCAB_FIELDS],
+)
+def test_a_vocabulary_bound_validator_returns_the_declared_member(
+    model: type[BaseModel], field: str, members: frozenset[str], func: object
+) -> None:
+    """Every closed-vocabulary validator must **return** `check_vocab`'s result, not merely call it.
+
+    This is the half `test_either_separator_reaches_the_declared_member` above cannot reach: that one
+    proves `check_vocab` canonicalizes, and three validators called it for its raising side effect and
+    returned the raw input anyway (RM95). `MeasureBinRow.measure_kind` was the visible one --
+    `copy-number` was accepted and *stored*, a value not in the vocabulary, inside `content_signature`,
+    and every subclass then rejected it against `_EXPECTED_KIND`, naming the canonical form the input
+    already denoted. `Contribution.role` and `PgsRow.training_ancestry` had the identical shape and
+    were latent only because no member of either vocabulary contains a separator today -- a property
+    of the current members, not of the code.
+
+    Drives the validator rather than constructing a row: required fields differ per model and several
+    carry format validators of their own, while the defect lives precisely in this return value.
+    Subclasses pinning one member (`CopyNumberRow`) reject the others by design, so a rejection is
+    only a failure when the *canonical* spelling is rejected too -- which is the asymmetry the bug
+    produced and the assertion below reads.
+    """
+    # The registry hands back a *bound* classmethod, so `cls` is already applied — and applied to the
+    # subclass, which is what makes the `_EXPECTED_KIND` half of `MeasureBinRow` readable from here.
+    is_list = get_origin(model.model_fields[field].annotation) in (list, list | None)
+    takes_info = len(inspect.signature(func).parameters) > 1
+
+    def run(candidate: str) -> str | None:
+        value = [candidate] if is_list else candidate
+        stored = func(value, _FieldInfo(field)) if takes_info else func(value)
+        return stored[0] if isinstance(stored, list) else stored
+
+    for member in sorted(members):
+        swapped = member.replace("_", "-") if "_" in member else member.replace("-", "_")
+        try:
+            canonical = run(member)
+        except ValueError:
+            continue  # a subclass that pins a different member — not this field's contract
+        assert canonical == member, f"{model.__name__}.{field} altered a declared member"
+        assert run(swapped) == member, (
+            f"{model.__name__}.{field} stored {run(swapped)!r} for input {swapped!r} — a closed "
+            f"vocabulary accepts either separator and stores the declared member ({member!r})"
+        )

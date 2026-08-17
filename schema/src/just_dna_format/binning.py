@@ -383,11 +383,18 @@ class MeasureBinRow(AuthoredModel):
     @field_validator("measure_kind")
     @classmethod
     def _validate_measure_kind(cls, v: str) -> str:
-        check_vocab(v, VALID_MEASURE_KINDS, "measure_kind")
+        # `check_vocab`'s RETURN is the declared member, and both lines below need it (RM95). Called
+        # for its raising side effect alone, this validator stored the author's raw `copy-number`
+        # inside `content_signature` -- a value that is not in the vocabulary -- and then compared
+        # that same raw string against `_EXPECTED_KIND`, so every subclass rejected exactly what this
+        # base class had just accepted, naming the canonical form the input already denoted.
+        # `@vocab-separator-slip`: a closed vocabulary accepts `-` for `_` and **stores the declared
+        # member**. `_validate_measure_tiling` one line above always did.
+        canonical = check_vocab(v, VALID_MEASURE_KINDS, "measure_kind")
         expected = cls._EXPECTED_KIND
-        if expected is not None and v != expected:
+        if expected is not None and canonical != expected:
             raise ValueError(f"{cls.__name__} requires measure_kind={expected!r}, got: {v!r}")
-        return v
+        return canonical
 
     @model_validator(mode="after")
     def _validate_range(self) -> "MeasureBinRow":

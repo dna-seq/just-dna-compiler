@@ -1188,9 +1188,11 @@ class Contribution(BaseModel):
     @field_validator("role")
     @classmethod
     def _check_role(cls, v: str) -> str:
-        # A closed vocabulary (Principle 6); reuse the shared checker's message format.
-        check_vocab(v, VALID_AUTHOR_ROLES, "role")  # raises if outside the vocab; role is required
-        return v
+        # A closed vocabulary (Principle 6); reuse the shared checker's message format. **Return its
+        # result**, which canonicalizes a `-`/`_` separator slip to the declared member -- this line
+        # discarded it and was latent only because no member of `VALID_AUTHOR_ROLES` contains a
+        # separator today, which is a property of the current members and not of the code (RM95).
+        return check_vocab(v, VALID_AUTHOR_ROLES, "role")  # raises if outside; role is required
 
     @field_validator("kind")
     @classmethod

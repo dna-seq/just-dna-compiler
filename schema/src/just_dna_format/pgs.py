@@ -91,11 +91,14 @@ class PgsRow(AuthoredModel):
     @field_validator("training_ancestry")
     @classmethod
     def _validate_ancestry(cls, v: list[str] | None) -> list[str] | None:
+        # Rebuilt from `check_vocab`'s returns rather than validated and discarded (RM95). The list
+        # case is the sharpest of the three: canonicalizing per element and then returning the
+        # original list means a `-`/`_` slip in a multi-valued cell survives into the stored row,
+        # inside `content_signature`. Latent today only because no member of
+        # `VALID_TRAINING_ANCESTRY` contains a separator.
         if v is None:
             return v
-        for tok in v:
-            check_vocab(tok, VALID_TRAINING_ANCESTRY, "training_ancestry")
-        return v
+        return [check_vocab(tok, VALID_TRAINING_ANCESTRY, "training_ancestry") or tok for tok in v]
 
     @field_validator("match_rate_floor")
     @classmethod
