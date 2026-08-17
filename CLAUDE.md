@@ -159,7 +159,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Resolution reads the PGx tables too; subjects dedupe with `variants.csv` first. `@resolution-reads-pgx-tables`
 - Reverse dropping `rsid_alternates` is closed, not a bug — don't re-flag it. `@rsid-alternates-closed`
 - A sidecar is merged, never clobbered — delete it to regenerate after a machinery change. `@sidecar-authoritative`
-- Resolution reaches the SNP core only; filling the positional tables moves `content_signature`. `@rm43-snp-core-only`
+- Resolution reaches the positional tables too since 0.6; `authored_ident` is what keeps the fill out of `content_signature`. `@rm43-positional-fill`
 - Unreachable is not absent: write no row, name it separately, warn in both modes. `@unreachable-not-absent`
 
 ### Checks: placement and severity

@@ -450,24 +450,42 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   for an existing `vrs_id`. To regenerate after a machinery change you MUST **delete the sidecar first**,
   or stale rows silently persist (this bit me while regenerating the reference example).
 
-- `@rm43-snp-core-only` — **Resolution reaches the SNP core ONLY, and the naive repair breaks P7 (RM43, surfaced in 0.5.3).**
-  `_build_table` is `model_dump()` → parquet, so a `pharm_variants.csv`/`haplotypes.csv`/
-  `heteroplasmy.csv` row keeps the coordinates its author typed — none, for an rsid-authored module —
-  and the table joins to no VCF. Before proposing "just join `resolution.csv` on `variant_key`":
-  **materializing the coordinate moves `content_signature`, not only `artifact.digest`**, because
-  `reverse_module` rebuilds the CSV from the parquet and a filled cell returns as *authored*. That is
-  what `VariantRow.authored_ident` exists to prevent and no 0.4-family model has one, so the
-  prerequisite is a new stamped column per positional table — **0.6 work since the 2026-08-11 charter
-  amendment, not 1.0**; what is major-only is the *filling*, if it ever re-emits as authored. Three
-  related traps:
-  `PharmVariantRow` has **no `alts`**; `variant_key` is a **property** on these models so it is in no
-  parquet (a consumer cannot even join them to `weights.parquet` on it); and `fully_resolved` is
-  `all(...)` over `VariantRow`, hence **vacuously `True`** for a table-only module — the manifest's own
-  trust rule (`resolution_mode == "strict" or fully_resolved`) is unsafe there. What 0.5.3 shipped is
-  legibility: `_check_positional_joinability` reports, per table, how many rows cannot be joined and
-  how many of those `resolution.csv` **could** place — the second count is what separates "never
-  enriched" from "the answer exists and this tier does not apply it". Warning in both modes, because
-  rsid-only identity is legal by the models' own rule and the remedy is a compiler change.
+- `@rm43-positional-fill` — **Resolution reaches the positional tables too, since 0.6 (RM43), and
+  `authored_ident` is the column that makes it legal.** `_apply_positional_resolution` joins the
+  injected `resolution.csv` onto every positional 0.4-family table, in `validate_spec` *and*
+  `compile_module` — filling in place, before `_build_table` materializes the rows and before
+  `_check_positional_joinability` counts what is still unplaced. It returns `(warnings, applied)`, and
+  `applied` is load-bearing rather than bookkeeping: it is what lets the joinability warning say *why*
+  a row is unplaced instead of asserting a reason the join never reached. Four gates turn it off — no
+  table to consult, no positional rows, a non-GRCh38 module (RM15, and it says so), a caller asking for
+  no resolution — and they differ in everything except the one consequence downstream, that nothing was
+  looked up. **`authored_ident` on `HaplotypeRow`/`PharmVariantRow`/`MeasureBinRow` is the prerequisite
+  that had to ship first**, frozen at construction so that a coordinate filled at compile time does not
+  return from `reverse_module` as though its author had typed it. That is the whole reason the fill
+  moves `artifact.digest` and leaves `content_signature` alone.
+
+  **Pre-0.6, this entry said the opposite, and the reasoning is worth keeping** because it is what the
+  repair had to satisfy. Surfaced in 0.5.3: `_build_table` is `model_dump()` → parquet, so one of these
+  rows kept the coordinates its author typed — none, for an rsid-authored module — and the table joined
+  to no VCF. The naive repair ("just join `resolution.csv` on `variant_key`") breaks P7, because
+  `reverse_module` rebuilds the CSV from the parquet and a filled cell returns as *authored*, moving
+  `content_signature` and not merely the digest. `VariantRow.authored_ident` already existed to prevent
+  exactly that and no 0.4-family model had one; the 2026-08-11 charter amendment is what made adding a
+  stamped column per positional table 0.6 work rather than 1.0. What 0.5.3 shipped in the meantime was
+  legibility only — `_check_positional_joinability` reporting, per table, how many rows cannot be joined
+  and how many of those `resolution.csv` **could** place, the second count being what separates "never
+  enriched" from "the answer exists and this tier does not apply it". That warning is still there and
+  still fires in both modes, because rsid-only identity remains legal by the models' own rule — what
+  changed is that the remedy it was pointing at now exists.
+
+  **The three traps this entry used to end on are all closed, and are recorded because a reader who
+  learned them elsewhere will still be carrying them.** `PharmVariantRow` **has** `alts`.
+  `variant_key` is a `stamped_identity_field` on `HaplotypeRow` and `PharmVariantRow`, not a property,
+  so it *is* in the parquet and a consumer can join these tables to `weights.parquet` on it. And
+  `fully_resolved` being `all(...)` over `VariantRow` — hence vacuously `True` for a table-only module —
+  no longer makes the manifest's trust rule unsafe, because RM44 put a count in front of it: the rule is
+  `resolution_subjects > 0 and (resolution_mode == "strict" or fully_resolved)`, and the conjunct is
+  what stops a vacuous truth reading as an achievement.
 
 - `@unreachable-not-absent` — **An UNREACHABLE source is unchecked, never absent — and the artifact must not say otherwise (S20,
   0.5.4).** `EnsemblResolver.resolve_rsid` returned `([], None)` both when Ensembl answered with no

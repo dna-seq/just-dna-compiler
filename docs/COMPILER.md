@@ -15,6 +15,22 @@ kinds materialize with enforced table-level coherence.
 > Companion docs: **[SCHEMAS.md](SCHEMAS.md)** (the models it compiles), **[ENRICHER.md](ENRICHER.md)**
 > (what produces `resolution.csv`), **[CONSTITUTION.md](CONSTITUTION.md)** (the invariants).
 
+## Known deviations — where 0.6.0 does not yet do what this document says
+
+**This document describes intended behaviour.** Where the shipped code differs, the difference is a
+filed defect rather than a second contract. Naming them here is the point: the validation table below
+is only useful if a reader can trust that it says what *should* happen, and the two parity gaps are
+exactly the case where reading the code instead would teach the wrong rule. Both fixed in 0.6.1.
+
+- **[RM93](ROADMAP.md#rm93--two-checks-refuse-in-compile-and-report-nothing-in-validate)** — the
+  validate/compile parity this document asserts holds for every check *except* two.
+  `_check_study_effect_alleles` is gated on `if variants:` in `validate_spec` and unconditional in
+  `compile_module`, so it never runs for a table-only module; `_check_frequency_arithmetic` is not
+  called from `validate_spec` at all. In both cases `validate` reports valid on a module `compile`
+  refuses — read the table below as the contract, not as a description of today's binaries.
+- **[RM94](ROADMAP.md#rm94--the-p-value-re-run-publishes-its-warning-twice-into-the-manifest)** — a
+  `p_value`/`p_value_num` disagreement is published twice into `manifest.compilation.warnings`.
+
 ## Public API
 
 Import from `just_dna_compiler.compiler`.
