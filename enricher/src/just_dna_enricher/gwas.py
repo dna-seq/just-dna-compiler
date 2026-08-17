@@ -111,6 +111,9 @@ class GwasResult:
     requests_made: int = 0
     requests_saved: int = 0
     p_value_underflows: int = 0
+    #: Associations the Catalog served that this pass could not key on, so they are in no row. Counted
+    #: because `strict` reads it (RM100) and because "we dropped some" is not a thing to leave in a log.
+    unusable: int = 0
     skipped_offline: bool = False
 
 
@@ -436,6 +439,10 @@ def enrich_gwas(
     body's silence means nobody has assessed the gene, whereas the Catalog's empty answer means no
     genome-wide association has been published for this variant — which *is* a fact about it, and one
     a consumer weighing an authored weight against the literature wants to see.
+
+    `mode` is the severity ladder the CLI's `--strict` sets, and it is deliberately **not** about
+    `missing`: see the block above the raise at the end of this function for why the Catalog's empty
+    answer is a fact rather than a shortfall, and what `strict` reads instead.
     """
     spec_dir = Path(spec_dir)
     output_path = sidecar_path(spec_dir, "gwas_effects.csv", error=GwasError)
@@ -462,95 +469,124 @@ def enrich_gwas(
         )
         return GwasResult(rows=existing_rows)
 
-    catalog = client or GwasCatalogClient()
-    cache = _LinkCache(fetch=catalog.follow)
-    release = dataset or f"gwas_catalog_{now_utc_iso()[:10]}"
-    fetched_at = now_utc_iso()
+    owned = client is None
+    # `try/finally`, like every sibling pass (RM100). The close used to be a bare
+    # `if client is None: catalog.close()` after ~80 lines of fetching and writing, so any
+    # exception in between -- a `GwasError`, a sidecar collision, a write failure -- leaked the
+    # httpx client. `frequencies`, `gene_metrics` and `enrich` all had this shape already.
+    try:
+        catalog = client or GwasCatalogClient()
+        cache = _LinkCache(fetch=catalog.follow)
+        release = dataset or f"gwas_catalog_{now_utc_iso()[:10]}"
+        fetched_at = now_utc_iso()
 
-    seen = {_merge_key(row) for row in existing_rows}
-    out: list[GwasEffectRow] = list(existing_rows)
-    covered: list[str] = []
-    missing: list[str] = []
-    unusable = 0
-    direct_requests = 0
-    underflows: list[str] = []
+        seen = {_merge_key(row) for row in existing_rows}
+        out: list[GwasEffectRow] = list(existing_rows)
+        covered: list[str] = []
+        missing: list[str] = []
+        unusable = 0
+        direct_requests = 0
+        underflows: list[str] = []
 
-    for rsid, variant_key in subjects:
-        associations = catalog.associations_for(rsid)
-        direct_requests += 1
-        if not associations:
-            missing.append(rsid)
-            row = GwasEffectRow(
-                association_id=f"{rsid}:not_found",
-                variant_key=variant_key,
-                rsid=rsid,
-                dataset=release,
-                source=GWAS_SOURCE,
-                status="not_found",
-                fetched_at=fetched_at,
-            )
-            if _merge_key(row) not in seen:
-                seen.add(_merge_key(row))
-                out.append(row)
-            continue
-        covered.append(rsid)
-        for association in associations:
-            built = _build_row(
-                association,
-                rsid=rsid,
-                variant_key=variant_key,
-                cache=cache,
-                release=release,
-                fetched_at=fetched_at,
-                underflows=underflows,
-                study_facts=study_facts,
-            )
-            if built is None:
-                unusable += 1
+        for rsid, variant_key in subjects:
+            associations = catalog.associations_for(rsid)
+            direct_requests += 1
+            if not associations:
+                missing.append(rsid)
+                row = GwasEffectRow(
+                    association_id=f"{rsid}:not_found",
+                    variant_key=variant_key,
+                    rsid=rsid,
+                    dataset=release,
+                    source=GWAS_SOURCE,
+                    status="not_found",
+                    fetched_at=fetched_at,
+                )
+                if _merge_key(row) not in seen:
+                    seen.add(_merge_key(row))
+                    out.append(row)
                 continue
-            key = _merge_key(built)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(built)
+            covered.append(rsid)
+            for association in associations:
+                built = _build_row(
+                    association,
+                    rsid=rsid,
+                    variant_key=variant_key,
+                    cache=cache,
+                    release=release,
+                    fetched_at=fetched_at,
+                    underflows=underflows,
+                    study_facts=study_facts,
+                )
+                if built is None:
+                    unusable += 1
+                    continue
+                key = _merge_key(built)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(built)
 
-    if underflows:
-        # Aggregated by reason, once. On a well-studied variant this fires dozens of times, and the
-        # rows are all still there — only the queryable number is withheld.
-        logger.warning(
-            "GWAS pass withheld p_value_num on %d association(s) whose p-value the Catalog reports "
-            "below float64's range (it publishes 0.0); the verbatim p_value string is kept and the "
-            "associations are recorded in full.",
-            len(underflows),
-        )
-    if unusable:
-        # Aggregated by reason, once — a per-row warning over a well-studied variant's dozens of
-        # associations is a wall nobody reads.
-        logger.warning(
-            "GWAS pass skipped %d association(s) the Catalog published without an id this pass "
-            "could key on; every usable association was still recorded.",
-            unusable,
+        if underflows:
+            # Aggregated by reason, once. On a well-studied variant this fires dozens of times, and the
+            # rows are all still there — only the queryable number is withheld.
+            logger.warning(
+                "GWAS pass withheld p_value_num on %d association(s) whose p-value the Catalog reports "
+                "below float64's range (it publishes 0.0); the verbatim p_value string is kept and the "
+                "associations are recorded in full.",
+                len(underflows),
+            )
+        if unusable:
+            # Aggregated by reason, once — a per-row warning over a well-studied variant's dozens of
+            # associations is a wall nobody reads.
+            logger.warning(
+                "GWAS pass skipped %d association(s) the Catalog published without an id this pass "
+                "could key on; every usable association was still recorded.",
+                unusable,
+            )
+
+        out.sort(key=_sort_key)
+        result = GwasResult(
+            rows=out,
+            covered=covered,
+            missing=missing,
+            requests_made=direct_requests + cache.misses,
+            requests_saved=cache.hits,
+            p_value_underflows=len(underflows),
+            unusable=unusable,
         )
 
-    out.sort(key=_sort_key)
-    result = GwasResult(
-        rows=out,
-        covered=covered,
-        missing=missing,
-        requests_made=direct_requests + cache.misses,
-        requests_saved=cache.hits,
-        p_value_underflows=len(underflows),
-    )
+        if write:
+            _write_gwas_csv(out, output_path)
+            merge_sources_file(
+                [GWAS_CATALOG_TERMS.row("gwas_effect", declared_use=declared_use, dataset=release)],
+                spec_dir,
+                error=GwasError,
+            )
+    finally:
+        if owned:
+            catalog.close()
 
-    if write:
-        _write_gwas_csv(out, output_path)
-        merge_sources_file(
-            [GWAS_CATALOG_TERMS.row("gwas_effect", declared_use=declared_use, dataset=release)],
-            spec_dir,
-            error=GwasError,
+    # **What `mode` means here, and why it is not `missing`** (RM100). The parameter was
+    # accepted and never read while the CLI advertised `--strict` as a severity ladder, so the
+    # flag was inert. Every sibling pass escalates on `result.missing`, and that would be wrong
+    # here for the reason this pass's own docstring gives: the Catalog holding nothing for a
+    # variant is a FACT about the variant, recorded as a `not_found` row, and true of most
+    # variants. Escalating it would refuse nearly every module and say nothing.
+    #
+    # What `strict` does escalate is the pass failing to hold what the source DID say: an
+    # association served without an id to key on, and a p-value below float64 whose queryable
+    # number is therefore withheld. Both are already warned about in `best_effort`, aggregated
+    # by reason; `strict` means a reproducible artifact, and both of these are places where the
+    # artifact is missing something the Catalog published.
+    if mode == "strict" and (result.unusable or result.p_value_underflows):
+        raise GwasError(
+            f"strict GWAS enrichment: {result.unusable} association(s) were served without an "
+            f"id this pass can key on and {result.p_value_underflows} carried a p-value below "
+            f"float64's range, so the artifact does not hold everything the Catalog published. "
+            f"Both are the Catalog's shape rather than an authoring mistake -- use "
+            f"mode='best_effort' to record what is holdable and read the warnings."
         )
-    if client is None:
-        catalog.close()
     return result
 
 

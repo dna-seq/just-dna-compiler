@@ -75,6 +75,7 @@ from tenacity import (
 
 from just_dna_enricher.eutils import EutilsClient, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
+from just_dna_enricher.locations import load_env
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 from just_dna_enricher.verification import ran, record_verification, skipped
 
@@ -399,6 +400,11 @@ class CrossrefClient:
     _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
+        # Same rule as `EutilsSettings` and `PharmVarClient` (RM100, `@credential-where-read`): the
+        # contact address lives in `.env`, and reading `os.environ` without loading it meant the
+        # `mailto:` in the User-Agent appeared or not depending on whether some unrelated call had
+        # resolved a cache path first. Both polite-identification services ask for it by name.
+        load_env()
         if self.gate is None:
             self.gate = PacingGate(self.min_request_interval)
         if self.contact_email is None:
@@ -497,6 +503,11 @@ class PmcIdConverterClient:
     _client: httpx.Client | None = None
 
     def __post_init__(self) -> None:
+        # Same rule as `EutilsSettings` and `PharmVarClient` (RM100, `@credential-where-read`): the
+        # contact address lives in `.env`, and reading `os.environ` without loading it meant the
+        # `mailto:` in the User-Agent appeared or not depending on whether some unrelated call had
+        # resolved a cache path first. Both polite-identification services ask for it by name.
+        load_env()
         if self.gate is None:
             self.gate = PacingGate(self.min_request_interval)
         if self.contact_email is None:

@@ -249,14 +249,6 @@ def _iter_records(vcf_path: Path) -> Iterator[tuple[str, str, str, str, str, str
                 yield cols[0], cols[1], cols[2], cols[3], cols[4], cols[7]
 
 
-def _sha256_file(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def _builder_version() -> str:
     try:
         return version("just-dna-enricher")
@@ -279,7 +271,8 @@ class BuildResult:
     parquet_files: list[Path]
     record_count: int
     clinvar_file_date: str | None
-    source_sha256: str
+    #: `None` when the source file could not be hashed — an unknown digest, never a missing one.
+    source_sha256: str | None
     chromosomes: list[str] = field(default_factory=list)
     skipped_non_acgt: int = 0
     skipped_too_long: int = 0
@@ -443,7 +436,16 @@ def build_citations(
 
 
 def _sha256_file(path: Path) -> str | None:
-    """sha256 of a file, or `None` if it cannot be read (provenance is best-effort, never fatal)."""
+    """sha256 of a file, or `None` if it cannot be read (provenance is best-effort, never fatal).
+
+    **The only definition, since 0.6.1.** There were two (RM100): an earlier one returning a bare
+    `str` and letting an unreadable file raise, and this one, which shadowed it at module load and so
+    was the one that always ran. The first was dead code that looked like the contract, and the
+    annotations downstream had been written against it -- `BuildResult.source_sha256` and
+    `_write_release_json(source_sha256=...)` both said `str` while a `None` really could reach them.
+    Those now say `str | None`, which is what the value is: the three-valued house algebra, where an
+    unhashable source file is an unknown digest rather than a missing one.
+    """
     hasher = hashlib.sha256()
     try:
         with path.open("rb") as handle:
@@ -599,7 +601,7 @@ def _write_release_json(
     *,
     clinvar_file_date: str | None,
     source_url: str,
-    source_sha256: str,
+    source_sha256: str | None,
     record_count: int,
 ) -> Path:
     """Write ``release.json`` — the provenance that feeds `GenePanelSpec.reference`/`reference_sha256`

@@ -33,6 +33,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from just_dna_enricher.locations import load_env
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,16 @@ class EutilsSettings:
     timeout: float = 30.0
 
     def __post_init__(self) -> None:
+        # `.env` is where a developer actually keeps the NCBI key, and until 0.6.1 it only reached
+        # `os.environ` as a side effect of some *other* call resolving a cache path (RM100).
+        # `@credential-where-read`: load it where it is read, so the credential path does not depend
+        # on call order. `PharmVarClient` carries the same call with a comment describing the same
+        # failure -- it was fixed there and not here. The live effect was silent: with a `.env`-only
+        # key the rate gate below stayed at 1 request / 3 s instead of 10 / s, three times slower,
+        # for a reason nothing reported.
+        #
+        # `override=False`, so a real environment variable and a test's neutralizing `""` both win.
+        load_env()
         if self.api_key is None:
             self.api_key = os.environ.get("NCBI_API_KEY") or None
         if self.email is None:

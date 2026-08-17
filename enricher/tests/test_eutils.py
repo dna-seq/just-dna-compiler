@@ -65,8 +65,16 @@ def test_the_gate_honours_the_interval_without_really_sleeping() -> None:
 
 
 def test_the_interval_follows_whether_an_api_key_is_available(monkeypatch) -> None:
-    """NCBI allows 3/s unkeyed and 10/s keyed; claiming the keyed rate without a key is abuse."""
-    monkeypatch.delenv("NCBI_API_KEY", raising=False)
+    """NCBI allows 3/s unkeyed and 10/s keyed; claiming the keyed rate without a key is abuse.
+
+    `setenv(VAR, "")`, never `delenv` (`@test-no-credential`, and `test_literature_terms.py` states
+    the same rule beside its own fixture). This test used `delenv` and passed only because nothing
+    had loaded `.env` yet -- RM100 made `EutilsSettings` load it where the key is read, so a developer
+    with a real key in `.env` saw the unkeyed assertion fail. `load_dotenv` skips a variable that is
+    merely present, and every reader here treats empty as absent, so an empty string is the only
+    spelling of "no credential" that actually holds.
+    """
+    monkeypatch.setenv("NCBI_API_KEY", "")
     assert EutilsSettings().min_request_interval == pytest.approx(1 / 3)
 
     monkeypatch.setenv("NCBI_API_KEY", "not-a-real-key")
@@ -77,7 +85,7 @@ def test_the_interval_follows_whether_an_api_key_is_available(monkeypatch) -> No
 
 def test_no_email_is_sent_when_none_is_configured(monkeypatch) -> None:
     """An invented address would misattribute the traffic to a real person."""
-    monkeypatch.delenv("JUST_DNA_CONTACT_EMAIL", raising=False)
+    monkeypatch.setenv("JUST_DNA_CONTACT_EMAIL", "")  # never `delenv` — see the test above
     params = EutilsSettings().identity_params()
     assert "email" not in params
     assert params["tool"] == "just-dna-enricher"
