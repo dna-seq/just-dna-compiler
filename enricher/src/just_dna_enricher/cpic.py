@@ -289,13 +289,21 @@ class CpicClient:
         wait=wait_exponential_jitter(initial=1, max=10),
         reraise=True,
     )
-    def _request(self, path: str, params: dict[str, str]) -> httpx.Response:
+    def _request(
+        self, path: str, params: dict[str, str], headers: dict[str, str] | None = None
+    ) -> httpx.Response:
         """The retrying half, kept separate so the translation below sits *outside* the retry.
 
         Wrapping inside would defeat the decorator: `retry_if_exception_type` tests
         `httpx.HTTPStatusError`, and a `CpicError` raised here would be a first-and-final attempt.
+
+        `headers` exists so `row_count` can send its `Prefer: count=exact` through here rather than
+        reaching for `self._client` (RM97). It was doing the latter, which made the one method with
+        no retry and no translation the one the snapshot builder uses to refuse a short read.
         """
-        response = self._client.get(f"{self.endpoint}/{path.lstrip('/')}", params=params)
+        response = self._client.get(
+            f"{self.endpoint}/{path.lstrip('/')}", params=params, headers=headers
+        )
         response.raise_for_status()
         return response
 
@@ -330,12 +338,23 @@ class CpicClient:
         snapshot builder to refuse a short read: the service imposes no default limit today, but that
         is a fact about a deployment rather than a contract, and a silently truncated snapshot reads
         as "CPIC has nothing for this gene".
+
+        **Routed through `_request` (RM97), not `self._client` directly.** It bypassed its own
+        transport, so the method whose whole job is to catch a truncated read had no retry and no
+        translation: a transport failure raised raw `httpx` from a method whose contract is
+        `CpicError` and escaped `cli.cpic_build_`'s `except (CpicError, CpicBuildError)` as a
+        traceback, and a 5xx returned `None` — read by the builder as "CPIC gave no count", a wrong
+        answer rather than an error. A client that documents its contract in two places and violates
+        it in a third is the argument for testing the contract instead of the method.
         """
-        response = self._client.get(
-            f"{self.endpoint}/{table}",
-            params={"select": "count"},
-            headers={"Prefer": "count=exact", "Range-Unit": "items", "Range": "0-0"},
-        )
+        try:
+            response = self._request(
+                table,
+                {"select": "count"},
+                headers={"Prefer": "count=exact", "Range-Unit": "items", "Range": "0-0"},
+            )
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            raise CpicError(f"CPIC {table} row count could not be read: {exc}") from exc
         header = response.headers.get("content-range", "")
         total = header.rsplit("/", 1)[-1] if "/" in header else ""
         return int(total) if total.isdigit() else None

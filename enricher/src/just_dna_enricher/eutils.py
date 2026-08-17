@@ -121,32 +121,54 @@ class EutilsClient:
         stop=attempt_floor(4),
         wait=wait_exponential_jitter(initial=1.0, max=20.0),
         retry=retry_if_exception_type(
-            (EutilsRateLimitedError, httpx.TransportError, httpx.TimeoutException)
+            (
+                EutilsRateLimitedError,
+                httpx.TransportError,
+                httpx.TimeoutException,
+                httpx.HTTPStatusError,
+            )
         ),
         reraise=True,
     )
-    def _get(self, path: str, params: dict[str, str]) -> dict:
-        """GET one paced, retried eutils call and return the parsed JSON body.
+    def _request(self, path: str, params: dict[str, str]) -> dict:
+        """The retrying half, kept separate so the translation below sits *outside* the retry.
+
+        Same split as `cpic._request` and `gnomad._request`, and for the same reason: the predicate
+        above tests `httpx.HTTPStatusError`, so translating in here would make every failure a
+        first-and-final attempt.
 
         A 429 is retried on top of the gate — the gate is what should normally prevent it, so one
         getting through means another process shares this IP or NCBI is stricter than advertised, and
-        backing off is the only correct response. Other 4xx are not retried: a malformed request does
-        not improve by being repeated.
+        backing off is the only correct response. That branch stays **inside** this method and
+        **before** `raise_for_status()`, since `EutilsRateLimitedError` is what the predicate matches.
         """
         assert self.gate is not None
         self.gate.wait()
         url = f"{self.settings.base_url.rstrip('/')}/{path}"
-        try:
-            response = self._http().get(url, params={**self.settings.identity_params(), **params})
-        except httpx.HTTPError as exc:
-            if isinstance(exc, (httpx.TransportError, httpx.TimeoutException)):
-                raise
-            raise EutilsError(f"eutils request failed: {exc}") from exc
+        response = self._http().get(url, params={**self.settings.identity_params(), **params})
         if response.status_code == 429:
             raise EutilsRateLimitedError("NCBI returned HTTP 429 (rate limited)")
         response.raise_for_status()
+        return response.json()
+
+    def _get(self, path: str, params: dict[str, str]) -> dict:
+        """Every way this client can fail, spelled as `EutilsError` (RM97).
+
+        `@client-exception-contract`: retry, then translate, **both legs**. Only one leg was
+        translated before — `raise_for_status()` sat between the two `try` blocks, so a body that
+        would not parse became an `EutilsError` while a 5xx did not, and `HTTPStatusError` was in no
+        retry list either. The transport leg was re-raised bare for the decorator and escaped raw
+        once the attempts ran out.
+
+        The live cost was the sharper of the two in this repair: `enrich()`'s `check_rsids` call has
+        no handler at all, and `identifiers.check_rsids` only wraps a `finally: eutils.close()`, so a
+        persistent dbSNP 5xx aborted the whole run with an httpx traceback the CLI cannot render —
+        after every other pass had finished and before `resolution.csv` was written.
+        """
         try:
-            return response.json()
+            return self._request(path, params)
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            raise EutilsError(f"eutils request failed: {exc}") from exc
         except ValueError as exc:
             raise EutilsError(f"eutils returned a non-JSON body for {path}: {exc}") from exc
 

@@ -35,6 +35,7 @@ from just_dna_enricher.clinical import (
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.eutils import EutilsError
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.grch37 import (
     BuildDiagnosis,
@@ -1017,7 +1018,20 @@ def enrich(
     if verify_rsids and not offline:
         asked = sorted({r.rsid for r in out if r.rsid})
         rsid_subjects = len(asked)
-        statuses = check_rsids(asked)
+        try:
+            statuses = check_rsids(asked)
+        except EutilsError as exc:
+            # The same rule as the gnomAD block above, and it had no handler at all (RM97): this is a
+            # *validation* pass that runs after every other pass has finished and before
+            # `resolution.csv` is written, so letting NCBI's availability abort the run throws away
+            # work that already succeeded. Until RM97 the escaping type was a raw `httpx` exception
+            # rather than even `EutilsError`, so nothing up the stack could have caught it either.
+            #
+            # Withholding is the correct outcome, not a fallback: `rsid_status` stays unset on every
+            # row, which says *nobody asked dbSNP*. Stamping `absent` here would assert a negative the
+            # run never established — `@unreachable-not-absent`, one column over.
+            logger.warning("dbSNP rsID check failed (%s); continuing without rsID verdicts.", exc)
+            statuses = []
         by_rsid = {s.rsid: s for s in statuses}
         for row in out:
             status = by_rsid.get(row.rsid or "")

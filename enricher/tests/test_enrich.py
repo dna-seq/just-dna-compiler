@@ -17,6 +17,7 @@ import pytest
 from just_dna_compiler.compiler import _load_csv_rows, compile_module
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.ensembl import EnsemblResolver
+from just_dna_enricher.eutils import EutilsClient
 from just_dna_enricher.gnomad import GnomadClient
 from just_dna_enricher.net import PacingGate
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
@@ -350,6 +351,49 @@ def test_an_unreachable_rsid_writes_no_not_found_row(cache: Path, tmp_path: Path
     assert result.unresolved == ["rs6567160"]             # still unresolved: strict still refuses
     assert [row for row in result.rows if row.status == "not_found"] == []
     assert not result.fully_resolved
+
+
+def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
+    cache: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rsID check runs last and had no handler at all (RM97).
+
+    It fires after every other pass has finished and *before* `resolution.csv` is written, so an NCBI
+    outage threw away work that had already succeeded — and until RM97 the escaping type was a raw
+    `httpx.HTTPStatusError` rather than even `EutilsError`, so nothing up the stack could have caught
+    it either. The CLI catches `EnrichmentError`, so the user saw a traceback.
+
+    Withholding is the outcome, not a fallback: `rsid_status` stays unset on every row, which says
+    nobody asked dbSNP. Stamping `absent` would assert a negative the run never established
+    (`@unreachable-not-absent`, one column over).
+    """
+    import time
+
+    from just_dna_enricher import identifiers
+
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)  # tenacity's backoff, not the gate's
+
+    def unwell(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "service unavailable"})
+
+    def failing_check(rsids: list[str], **_kwargs: object) -> list:
+        client = EutilsClient(gate=PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None))
+        client._client = httpx.Client(transport=httpx.MockTransport(unwell))
+        return identifiers.check_rsids(rsids, client=client)
+
+    monkeypatch.setattr("just_dna_enricher.enrich.check_rsids", failing_check)
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,C/T,risk,c\n")
+
+    result = enrich(
+        spec, ensembl_cache=cache, clinvar_cache=tmp_path, verify_rsids=True,
+        use_gnomad=False, download=False,
+    )
+
+    assert result.rows, "the resolution the run had already done must survive the outage"
+    assert all(row.rsid_status is None for row in result.rows), (
+        "nobody asked dbSNP, so no row may carry a verdict"
+    )
+    assert (spec / "resolution.csv").exists() or (spec / "derived" / "resolution.csv").exists()
 
 
 # ── strict mode ───────────────────────────────────────────────────────────────────────────────

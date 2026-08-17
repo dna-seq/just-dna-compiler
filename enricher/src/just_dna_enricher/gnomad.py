@@ -306,30 +306,50 @@ class GnomadClient:
         stop=attempt_floor(4),
         wait=wait_exponential_jitter(initial=2.0, max=30.0),
         retry=retry_if_exception_type(
-            (RateLimitedError, httpx.TransportError, httpx.TimeoutException)
+            (RateLimitedError, httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError)
         ),
         reraise=True,
     )
-    def _post(self, query: str) -> dict:
-        """POST one (possibly many-aliased) query, paced and retried. Returns the parsed body.
+    def _request(self, query: str) -> dict:
+        """The retrying half, kept separate so the translation below sits *outside* the retry.
+
+        Wrapping inside would defeat the decorator, exactly as `cpic._request` records: the retry
+        predicate tests `httpx.HTTPStatusError`, and a `GnomadError` raised here would be a
+        first-and-final attempt.
 
         A 429 is retried with backoff *on top of* the pacing gate — the gate is what should normally
         prevent it, so one getting through means the server is stricter than advertised or another
-        process shares this IP, and backing off is the only correct response. A 4xx that is not 429 is
-        not retried: a malformed query does not get better by being asked again.
+        process shares this IP, and backing off is the only correct response. That branch stays
+        **inside** this method and **before** `raise_for_status()`: `RateLimitedError` is what the
+        predicate above matches, and it carries the diagnosis a bare 429 status does not.
         """
         assert self.gate is not None
         self.gate.wait()
-        try:
-            response = self._http().post(self.settings.endpoint, json={"query": query})
-        except httpx.HTTPError as exc:
-            if isinstance(exc, (httpx.TransportError, httpx.TimeoutException)):
-                raise
-            raise GnomadError(f"gnomAD request failed: {exc}") from exc
+        response = self._http().post(self.settings.endpoint, json={"query": query})
         if response.status_code == 429:
             raise RateLimitedError("gnomAD returned HTTP 429 (rate limited)")
         response.raise_for_status()
         return response.json()
+
+    def _post(self, query: str) -> dict:
+        """Every way this client can fail, spelled as `GnomadError` (RM97).
+
+        `@client-exception-contract`: retry, then translate, **both legs**. This method used to be
+        the retrying one, and it leaked twice over. `raise_for_status()` sat outside its `try`, so a
+        persistent 5xx left as a raw `httpx.HTTPStatusError` — and `HTTPStatusError` was in neither
+        retry list, so it was not even retried first. The transport leg was re-raised bare on purpose,
+        for the decorator to see, and then escaped just as raw once `reraise=True` exhausted the
+        attempts. `response.json()` could raise `ValueError` past both.
+
+        What that cost is one caller down: `enrich()` catches `GnomadError` under the comment "a
+        last-resort link must not sink the whole enrichment", and a 502 sank it anyway. The repair is
+        `cpic.py`/`pharmvar.py`'s, which carried it with the R2-13 narrative for a release while these
+        two did not.
+        """
+        try:
+            return self._request(query)
+        except (httpx.TransportError, httpx.HTTPStatusError, ValueError) as exc:
+            raise GnomadError(f"gnomAD request failed: {exc}") from exc
 
     def _post_batch(self, fields: list[str], *, what: str) -> tuple[dict[str, Any], dict[str, str]]:
         """Run one aliased batch, returning `(data, per-alias errors)`.
