@@ -42,7 +42,7 @@ from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
-from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file
+from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file, sidecar_path
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,15 @@ def enrich_dosage_sensitivity(
     deliberately does not add one (that is RM38's family, and a much bigger question).
     """
     spec_dir = Path(spec_dir)
-    output_path = spec_dir / "gene_metrics.csv"
+    # Through the resolver, never joined by hand (RM99): a module keeping its sidecars under
+    # `derived/` (RM49) has this file there, and a pass with its own literal would read the split copy
+    # and write a flat one, leaving the module with both -- the collision RM49 made an error rather
+    # than a preference. `@sidecar-name-and-place`: write to the file you read.
+    # Sharpest here, because `gene_metrics` writes the SAME FILE: two passes reading and
+    # rewriting one table, one of them through the resolver and one not, is how a single
+    # `enrich` run left a module with a `derived/` copy and a root copy that each dropped the
+    # other authority's rows.
+    output_path = sidecar_path(spec_dir, "gene_metrics.csv", error=ClinGenError)
 
     if offline and curation_text is None:
         logger.warning(

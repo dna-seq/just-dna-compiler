@@ -204,7 +204,13 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     except EnrichmentError as exc:
         typer.secho(f"ENRICH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"enriched: {spec_dir / 'resolution.csv'}", fg=typer.colors.GREEN)
+    # The path the pass actually wrote, not `spec_dir / <name>` (RM99) — a module keeping its
+    # sidecars under `derived/` is written there, and a guess sends the author to a file that
+    # did not change.
+    typer.secho(
+        f"enriched: {sidecar_path(spec_dir, 'resolution.csv', error=EnrichmentError)}",
+        fg=typer.colors.GREEN,
+    )
     typer.echo(f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}")
     if result.unresolved:
         typer.secho(f"  unresolved: {result.unresolved}", fg=typer.colors.YELLOW, err=True)
@@ -288,7 +294,13 @@ def frequencies_(
     if result.skipped_offline:
         typer.secho("skipped: --offline (gnomAD frequency has no offline snapshot)", fg=typer.colors.YELLOW)
         return
-    typer.secho(f"frequencies: {spec_dir / 'frequencies.csv'}", fg=typer.colors.GREEN)
+    # The path the pass actually wrote, not `spec_dir / <name>` (RM99) — a module keeping its
+    # sidecars under `derived/` is written there, and a guess sends the author to a file that
+    # did not change.
+    typer.secho(
+        f"frequencies: {sidecar_path(spec_dir, 'frequencies.csv', error=FrequencyEnrichmentError)}",
+        fg=typer.colors.GREEN,
+    )
     typer.echo(f"rows: {len(result.rows)}  alleles covered: {len(result.covered)}  sources: {result.sources}")
     if result.missing:
         typer.secho(f"  no gnomAD frequency: {result.missing}", fg=typer.colors.YELLOW, err=True)
@@ -315,7 +327,13 @@ def gene_metrics_(
     except GeneMetricsEnrichmentError as exc:
         typer.secho(f"GENE METRICS FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.secho(f"gene metrics: {spec_dir / 'gene_metrics.csv'}", fg=typer.colors.GREEN)
+    # The path the pass actually wrote, not `spec_dir / <name>` (RM99) — a module keeping its
+    # sidecars under `derived/` is written there, and a guess sends the author to a file that
+    # did not change.
+    typer.secho(
+        f"gene metrics: {sidecar_path(spec_dir, 'gene_metrics.csv', error=GeneMetricsEnrichmentError)}",
+        fg=typer.colors.GREEN,
+    )
     typer.echo(f"rows: {len(result.rows)}  genes covered: {len(result.covered)}  sources: {result.sources}")
     if result.missing:
         typer.secho(f"  no gnomAD constraint: {result.missing}", fg=typer.colors.YELLOW, err=True)
@@ -352,7 +370,13 @@ def dosage_(
             fg=typer.colors.YELLOW,
         )
         return
-    typer.secho(f"dosage sensitivity: {spec_dir / 'gene_metrics.csv'}", fg=typer.colors.GREEN)
+    # The path the pass actually wrote, not `spec_dir / <name>` (RM99) — a module keeping its
+    # sidecars under `derived/` is written there, and a guess sends the author to a file that
+    # did not change.
+    typer.secho(
+        f"dosage sensitivity: {sidecar_path(spec_dir, 'gene_metrics.csv', error=ClinGenError)}",
+        fg=typer.colors.GREEN,
+    )
     typer.echo(f"dataset: {result.dataset}  genes curated: {len(result.covered)}")
     if result.missing:
         # ClinGen curates a subset by design, so this is information rather than a problem.
@@ -553,7 +577,13 @@ def literature_(
     if result.skipped_offline:
         typer.secho("skipped: --offline (PubMed/Europe PMC have no offline snapshot)", fg=typer.colors.YELLOW)
         return
-    typer.secho(f"literature: {spec_dir / 'literature.csv'}", fg=typer.colors.GREEN)
+    # The path the pass actually wrote, not `spec_dir / <name>` (RM99) — a module keeping its
+    # sidecars under `derived/` is written there, and a guess sends the author to a file that
+    # did not change.
+    typer.secho(
+        f"literature: {sidecar_path(spec_dir, 'literature.csv', error=LiteratureEnrichmentError)}",
+        fg=typer.colors.GREEN,
+    )
     # The citations the module makes, not the rows the sidecar holds: merge-not-clobber keeps a row
     # for a citation the author has since deleted, and counting it here would put a number in front
     # of the author that nothing else in the run agrees with.

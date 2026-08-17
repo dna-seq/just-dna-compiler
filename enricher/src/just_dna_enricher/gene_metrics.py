@@ -38,7 +38,7 @@ from just_dna_enricher.gnomad import (
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
 )
-from just_dna_enricher.licensing import record_source_terms
+from just_dna_enricher.licensing import record_source_terms, sidecar_path
 from just_dna_enricher.locations import resolve_constraint_reference
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,11 @@ def enrich_gene_metrics(
     is deliberately no separate CLI flag for the same reason there is none there.
     """
     spec_dir = Path(spec_dir)
-    output_path = spec_dir / "gene_metrics.csv"
+    # Through the resolver, never joined by hand (RM99): a module keeping its sidecars under
+    # `derived/` (RM49) has this file there, and a pass with its own literal would read the split copy
+    # and write a flat one, leaving the module with both -- the collision RM49 made an error rather
+    # than a preference. `@sidecar-name-and-place`: write to the file you read.
+    output_path = sidecar_path(spec_dir, "gene_metrics.csv", error=GeneMetricsEnrichmentError)
 
     # Keyed by (gene, dataset), not by gene: one gene legitimately carries a row per authority — a
     # gnomAD constraint row and a ClinGen dosage row make different statements about it. Keying on the

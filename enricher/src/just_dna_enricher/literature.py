@@ -74,7 +74,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.eutils import EutilsClient, is_missing
-from just_dna_enricher.licensing import article_terms
+from just_dna_enricher.licensing import article_terms, sidecar_path
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 from just_dna_enricher.verification import ran, record_verification, skipped
 
@@ -708,8 +708,14 @@ def enrich_literature(
     found nothing.
     """
     spec_dir = Path(spec_dir)
+    # `studies.csv` stays a plain join: it is an AUTHORED table and lives in the spec root, and
+    # `sidecar_path` is for the machine-written files RM49 allowed under `derived/`.
     studies_path = spec_dir / "studies.csv"
-    output_path = spec_dir / "literature.csv"
+    # Through the resolver, never joined by hand (RM99): a module keeping its sidecars under
+    # `derived/` (RM49) has this file there, and a pass with its own literal would read the split copy
+    # and write a flat one, leaving the module with both -- the collision RM49 made an error rather
+    # than a preference. `@sidecar-name-and-place`: write to the file you read.
+    output_path = sidecar_path(spec_dir, "literature.csv", error=LiteratureEnrichmentError)
 
     studies: list[StudyRow] = []
     if studies_path.exists():
