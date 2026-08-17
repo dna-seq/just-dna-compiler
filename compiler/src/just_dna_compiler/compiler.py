@@ -60,6 +60,7 @@ from just_dna_format.binning import (
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
+from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import (
     build_artifact,
@@ -82,6 +83,9 @@ from just_dna_format.integrity import (
 )
 from just_dna_format.integrity import (
     gene_validity_signature as _gene_validity_signature,
+)
+from just_dna_format.integrity import (
+    gwas_effect_signature as _gwas_effect_signature,
 )
 from just_dna_format.integrity import (
     literature_signature as _literature_signature,
@@ -115,6 +119,7 @@ from just_dna_format.manifest import (
     Frequency,
     GeneMetrics,
     GeneValidity,
+    GwasEffects,
     Identity,
     Literature,
     ModuleManifest,
@@ -287,6 +292,10 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # `_DERIVED_FILES` is derived, so a new fact table has to be added here and only here.
     "gene_validity.parquet",
     "clinical_assertions.parquet",
+    # RM90 (0.6), on the same terms as the six above. Position is load-bearing: this tuple is
+    # `artifact.digest` order, so inserting anywhere but beside its siblings would move the digest of
+    # every module carrying a later table for no reason.
+    "gwas_effects.parquet",
     "sources.parquet",
 )
 
@@ -318,6 +327,7 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("literature.csv", "literature.parquet", LiteratureRow),
     ("gene_validity.csv", "gene_validity.parquet", GeneValidityRow),
     ("clinical_assertions.csv", "clinical_assertions.parquet", ClinicalAssertionRow),
+    ("gwas_effects.csv", "gwas_effects.parquet", GwasEffectRow),
     ("sources.csv", "sources.parquet", SourceRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
@@ -4393,6 +4403,9 @@ def compile_module(
     def _clinical_assertion_checks(rows: list) -> tuple[list[str], list[str]]:
         return [], list(_cross_check_clinical_assertions(rows, variants))
 
+    def _gwas_effect_checks(rows: list) -> tuple[list[str], list[str]]:
+        return [], list(_cross_check_gwas_effects(rows, variants))
+
     def _sources_checks(rows: list) -> tuple[list[str], list[str]]:
         # `sources.csv` is last in `_FACT_TABLES`, so the other sidecars are already parsed into
         # `fact_rows` and their `source` values can be cross-checked here. Warnings only — the gate
@@ -4426,6 +4439,9 @@ def compile_module(
         ClinicalAssertionRow: (
             _clinical_assertion_checks,
             lambda rows: _build_table(rows, ClinicalAssertionRow, module_name),
+        ),
+        GwasEffectRow: (
+            _gwas_effect_checks, lambda rows: _build_table(rows, GwasEffectRow, module_name),
         ),
         SourceRow: (_sources_checks, lambda rows: _build_table(rows, SourceRow, module_name)),
     }
@@ -4468,6 +4484,7 @@ def compile_module(
     literature_rows: list[LiteratureRow] = fact_rows.get(LiteratureRow, [])
     gene_validity_rows: list[GeneValidityRow] = fact_rows.get(GeneValidityRow, [])
     clinical_assertion_rows: list[ClinicalAssertionRow] = fact_rows.get(ClinicalAssertionRow, [])
+    gwas_effect_rows: list[GwasEffectRow] = fact_rows.get(GwasEffectRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
 
     logs = _collect_logs(spec_dir, output_dir, log_files)
@@ -4525,6 +4542,7 @@ def compile_module(
         gene_metrics=_gene_metrics_block(gene_metrics_rows),
         gene_validity=_gene_validity_block(gene_validity_rows),
         clinical_assertions=_clinical_assertions_block(clinical_assertion_rows),
+        gwas_effects=_gwas_effects_block(gwas_effect_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),
         verification=verification,
@@ -4729,6 +4747,35 @@ def _clinical_assertions_block(rows: list[ClinicalAssertionRow]) -> ClinicalAsse
         min_review_stars=min(rated) if rated else None,
         max_review_stars=max(rated) if rated else None,
         unrated_count=sum(1 for r in rows if r.review_stars is None),
+        not_found_count=sum(1 for r in rows if r.status == "not_found"),
+    )
+
+
+def _gwas_effects_block(rows: list[GwasEffectRow]) -> GwasEffects | None:
+    """The manifest's `gwas_effects` summary, or `None` when the module carries no such sidecar.
+
+    `units` and the effect-allele pair are the facets that earn their place. A consumer asking "can I
+    use these effects" needs two answers a row count cannot give: are the betas on one scale
+    (`units` with more than one member says no), and how many associations name no allele at all
+    (`without_effect_allele`, which the Catalog writes as `-?` and which is unusable as a weight).
+
+    The unit set deliberately includes the Catalog's uninformative `unit`. Filtering it out would
+    make a module whose betas are all in unstated units look like one whose betas share a scale,
+    which is the more dangerous of the two mistakes.
+    """
+    if not rows:
+        return None
+    return GwasEffects(
+        signature=_gwas_effect_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        variant_count=len({r.variant_key for r in rows}),
+        with_effect_allele=sum(1 for r in rows if r.effect_allele),
+        without_effect_allele=sum(1 for r in rows if not r.effect_allele),
+        measures=sorted({r.effect_measure for r in rows if r.effect_measure}),
+        units=sorted({r.effect_unit for r in rows if r.effect_unit}),
+        traits=sorted({r.trait_efo_id for r in rows if r.trait_efo_id}),
         not_found_count=sum(1 for r in rows if r.status == "not_found"),
     )
 
@@ -5073,6 +5120,7 @@ def _build_manifest(
     gene_metrics: GeneMetrics | None = None,
     gene_validity: GeneValidity | None = None,
     clinical_assertions: ClinicalAssertions | None = None,
+    gwas_effects: GwasEffects | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
     verification: Verification | None = None,
@@ -5133,6 +5181,7 @@ def _build_manifest(
         gene_metrics=gene_metrics,
         gene_validity=gene_validity,
         clinical_assertions=clinical_assertions,
+        gwas_effects=gwas_effects,
         literature=literature,
         sources=sources,
         verification=verification,
@@ -5708,6 +5757,34 @@ def _cross_check_clinical_assertions(
     return [
         f"clinical_assertions.csv describes {len(orphans)} coordinate(s) no variant in this module "
         f"sits at: {orphans}"
+    ]
+
+
+def _cross_check_gwas_effects(rows: list[GwasEffectRow], variants: list[VariantRow]) -> list[str]:
+    """Warn when a GWAS-effect row is about a locus no variant in the module carries.
+
+    Matched on `variant_key`, not on position, and the difference from
+    `_cross_check_clinical_assertions` is a property of the source rather than a preference: a
+    `GwasEffectRow` carries no coordinates at all, because the Catalog's association payload has none
+    (they sit on the SNP object behind a link). So the key the enricher wrote is the only thing to
+    compare, and comparing it to the *authored* keys — before expansion — is what keeps a one-to-many
+    rsID from reporting its own siblings.
+
+    **Warning-only, in both modes.** An over-broad sidecar is the ordinary result of enriching a
+    module and then narrowing its variant list, and it must not fail a compile that is otherwise fine.
+    """
+    if not variants or not rows:
+        return []
+    known = {v.variant_key for v in variants if v.variant_key}
+    known |= {v.rsid for v in variants if v.rsid}
+    if not known:
+        return []
+    orphans = sorted({r.variant_key for r in rows if r.variant_key not in known and r.rsid not in known})
+    if not orphans:
+        return []
+    return [
+        f"gwas_effects.csv carries associations for {len(orphans)} identity(ies) no variant in this "
+        f"module carries: {orphans}"
     ]
 
 

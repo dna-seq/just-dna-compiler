@@ -28,6 +28,8 @@ def test_layer_and_declared_use_are_closed_vocabularies() -> None:
         # 0.6 (RM24/RM25) — fact-class like the four above, so neither taints; each is written by the
         # pass that owns the table it names.
         "gene_validity", "clinical_assertion",
+        # 0.6 (RM90) — the GWAS Catalog's published effect sizes, same fact class.
+        "gwas_effect",
         "annotation",
     } == VALID_SOURCE_LAYERS
     assert {"unstated", "non_commercial", "commercial"} == VALID_DECLARED_USE

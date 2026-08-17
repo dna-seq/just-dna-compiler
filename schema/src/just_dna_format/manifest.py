@@ -503,6 +503,80 @@ class ClinicalAssertions(BaseModel):
     )
 
 
+class GwasEffects(BaseModel):
+    """Summary of a module's injected GWAS-effect sidecar (0.6, RM90).
+
+    The facets are chosen so a consumer can decide *whether these effects are usable at all* without
+    reading the parquet, because for this table that is a real question with a frequently unwelcome
+    answer.
+
+    `units` is the one that matters most. The whole reason the table exists is that a magnitude
+    without its unit is the defect S36 reported one layer down, so the manifest publishes the set of
+    units present: a module whose GWAS effects span `umol/l`, `cm` and the Catalog's uninformative
+    `unit` is one whose effects cannot be pooled, and that is visible here rather than only after a
+    join.
+
+    `without_effect_allele` is the other. The Catalog writes `rs4149056-?` when a study did not
+    establish which allele carries the effect, and such a row is real evidence about a locus but
+    **cannot be used as a weight**. Published as a count beside its complement rather than filtered
+    out, because a consumer that silently dropped those rows and one that silently kept them would
+    both be wrong in ways nothing could see.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description=(
+            "Fact-hash of gwas_effects.csv (integrity.gwas_effect_signature); out of artifact.digest"
+        ),
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of GwasEffectRow.source values"
+    )
+    datasets: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the Catalog releases these rows are from",
+    )
+    row_count: int = Field(default=0, description="Number of published associations recorded")
+    variant_count: int = Field(
+        default=0,
+        description=(
+            "Distinct loci covered. Far lower than `row_count` in practice — one well-studied variant "
+            "carries dozens of associations across different traits and papers."
+        ),
+    )
+    with_effect_allele: int = Field(
+        default=0, description="Associations that name the allele their effect is relative to"
+    )
+    without_effect_allele: int = Field(
+        default=0,
+        description=(
+            "Associations where the source wrote `-?`. Real evidence, unusable as a weight; counted "
+            "rather than dropped so neither reading of the silence can be made by accident."
+        ),
+    )
+    measures: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of `effect_measure` values present, e.g. ['OR', 'beta']",
+    )
+    units: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted union of `effect_unit` values present. More than one entry means the betas here "
+            "are on different scales and must not be pooled."
+        ),
+    )
+    traits: list[str] = Field(
+        default_factory=list, description="Sorted union of the EFO trait ids present"
+    )
+    not_found_count: int = Field(
+        default=0,
+        description=(
+            "Variants the Catalog was consulted about and reports no association for (`status` is "
+            "'not_found'). A fact about the Catalog, not a gap in the pass."
+        ),
+    )
+
+
 class Literature(BaseModel):
     """Summary of a module's injected citation sidecar (0.5), out of `artifact.digest`.
 
@@ -1265,6 +1339,15 @@ class ModuleManifest(BaseModel):
             "Carries the star-rating range as well as the fact-hash, because the distinction between a "
             "single-submitter call and a practice guideline is the whole reason the table exists and a "
             "row count alone would discard it."
+        ),
+    )
+    gwas_effects: GwasEffects | None = Field(
+        default=None,
+        description=(
+            "Summary of the injected GWAS-effect sidecar (0.6), when the module carries one. Publishes "
+            "the set of `effect_unit` values and the count of associations naming no effect allele, "
+            "because both decide whether these effects can be used at all — and neither is visible "
+            "from a row count."
         ),
     )
     literature: Literature | None = Field(

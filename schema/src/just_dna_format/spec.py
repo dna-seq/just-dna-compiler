@@ -50,6 +50,7 @@ from just_dna_format.normalize import normalize_version, reject_authority_keys
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
+    RECOMMENDED_EFFECT_MEASURES,  # noqa: F401 — re-exported; moved to vocab in 0.6 so gwas.py can bind it
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
@@ -74,11 +75,6 @@ VALID_CHROMOSOMES: frozenset[str] = frozenset(
 # accepted and surfaced as INFO (not a warning) by the compiler. Never put direction / clinical
 # / consequence / drug words here — those have (or get) typed columns.
 RESERVED_FLAGS: frozenset[str] = frozenset({"conditional", "phased", "pleiotropic"})
-# `effect_measure` is intentionally NOT a closed vocabulary (kept permissive so PGS-Catalog
-# `weight_type` additions survive). These are the recommended values, for documentation only.
-RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
-    {"OR", "HR", "RR", "beta", "log(OR)", "log(HR)", "NR"}
-)
 # A PMID is a run of digits. Real sources present them bare (`9545397`), bracketed/prefixed
 # (`[PMID: 9545397]`), or as a `;`-joined list (`PMID 17478681; PMID: 30278588`). We accept any
 # string that carries at least one PMID token and keep it verbatim (ROADMAP item 6 / Obs #4).

@@ -24,6 +24,7 @@ from just_dna_format.base import DEFAULT_GENOME_BUILD
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.gene_validity import GENE_VALIDITY_FACT_FIELDS
+from just_dna_format.gwas import GWAS_FACT_FIELDS
 from just_dna_format.literature import LITERATURE_FACT_FIELDS
 from just_dna_format.manifest import (
     MARKETPLACE_COMPILED_BY,
@@ -342,6 +343,25 @@ def clinical_assertion_signature(rows: Sequence[BaseModel]) -> str:
     attached an rsID — the producer-dependence a fact hash exists to exclude.
     """
     return fact_signature(rows, CLINICAL_ASSERTION_FACT_FIELDS)
+
+
+def gwas_effect_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `gwas_effects.csv` (`gwas.GWAS_FACT_FIELDS`), 0.6 / RM90.
+
+    `effect_unit` is **inside**, and it is the column that most needs to be: the same magnitude in
+    `umol/l` and in the Catalog's uninformative `unit` are different facts, and a table that hashed
+    equal across them would have thrown away the distinction this table exists to keep.
+
+    `trait` is **outside**, on `gene_validity_signature`'s rule — a column that *describes* an
+    assertion is not the assertion. The Catalog re-words a reported trait between releases for an
+    unchanged `trait_efo_id`, so the label churns while the fact does not.
+
+    `rsid` is **inside**, which inverts `clinical_assertion_signature` and does so deliberately. There
+    the rsID is filled from the module's own `resolution.csv` because the archive returns none; here
+    the Catalog is queried by rsID and echoes it back inside `riskAlleleName`, so it is part of what
+    the source said rather than of what the module knew.
+    """
+    return fact_signature(rows, GWAS_FACT_FIELDS)
 
 
 def source_signature(rows: Sequence[BaseModel]) -> str:

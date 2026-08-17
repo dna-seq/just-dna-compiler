@@ -64,6 +64,7 @@ _MOVABLE = (
     "literature.csv",
     "gene_validity.csv",
     "clinical_assertions.csv",
+    "gwas_effects.csv",
     "sources.csv",
     LICENSING_CSV,
 )

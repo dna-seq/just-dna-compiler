@@ -558,9 +558,30 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
         "literature",
         "gene_validity",
         "clinical_assertion",
+        "gwas_effect",
         "annotation",
     }
 )
+
+# `effect_measure` is intentionally NOT a closed vocabulary (kept permissive so PGS-Catalog
+# `weight_type` additions survive). These are the recommended values, for documentation only.
+#
+# **Lives here rather than in `spec.py`, where it was defined until 0.6**, because `gwas.py` binds the
+# same vocabulary and a fact-table module importing the authored-DSL module to reach a shared
+# constant is the wrong direction of dependency. `spec.py` re-exports it, the same backward-compat
+# pattern `VALID_CLIN_SIG` and `VALID_DIRECTIONS` already use, so no importer had to change.
+RECOMMENDED_EFFECT_MEASURES: frozenset[str] = frozenset(
+    {"OR", "HR", "RR", "beta", "log(OR)", "log(HR)", "NR"}
+)
+
+# Which way the effect allele moves the MEASURED TRAIT — the GWAS Catalog's `betaDirection` (RM90).
+#
+# **Not `VALID_DIRECTIONS`, and the separation is structural rather than stylistic.** That vocabulary
+# is protective|risk|neutral|unknown and states a *clinical* judgement; this one states the sign of a
+# beta. Increasing a trait may be good, bad or neither — increasing HDL and increasing LDL are both
+# `increase` — so a field carrying both axes would be exactly the overloading Principle 5 forbids, and
+# the anti-pattern `state` is being unwound for. The source keeps them apart; so do we.
+VALID_EFFECT_DIRECTIONS: frozenset[str] = frozenset({"increase", "decrease"})
 
 # What the *acquirer* declared about their intended use when the data was fetched. A third orthogonal
 # axis (Principle 5), never folded into the strictness `mode`: `mode` is a claim about how hard to
