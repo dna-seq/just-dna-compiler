@@ -1213,6 +1213,28 @@ table kind, and one CSV per derived-fact sidecar whose parquet is present (`freq
 
 ## Output artifact & hashing
 
+**`ARTIFACT_PARQUETS` in `artifact.digest` order**, which is the tuple's own order and not sorted —
+`build_artifact` skips absent files, so a module's digest is over exactly the parquets it has, in this
+sequence:
+
+```
+weights  annotations  studies                                    ← the SNP core
+activity_phenotype  copynumbers  repeat_alleles  heteroplasmy
+haplotypes  allele_function  diplotypes  pgs  pharm_variants      ← the nine table kinds
+frequencies  gene_metrics  literature  gene_validity
+clinical_assertions  gwas_effects                                 ← the derived-fact sidecars
+sources                                                           ← the licence table
+```
+
+Nineteen names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
+nine table kinds — which is the publisher's *is this a module* rule and what discovery probes.
+
+**The per-parquet column lists are deliberately not reproduced here.** They are derivable from the
+models, and a hand-kept column list is precisely how `SOURCES_FIELDNAMES` lost a column
+(`@fieldnames-from-model`); use `just-dna-compiler describe` or read the model. A point-in-time listing,
+including which columns the compiler stamps rather than reads, is in
+[audit/COMPILER_FROM_CODE.md](audit/COMPILER_FROM_CODE.md) § 5 — dated evidence, not a maintained list.
+
 - **`ARTIFACT_PARQUETS`** (feed `artifact.digest`; `_OUTPUT_FILES` until 0.6): `weights`/`annotations`/
   `studies.parquet` + the 9 table-kind parquets + `frequencies.parquet` / `gene_metrics.parquet` /
   `literature.parquet` / `gene_validity.parquet` / `clinical_assertions.parquet` / `sources.parquet`
@@ -1250,6 +1272,93 @@ table kind, and one CSV per derived-fact sidecar whose parquet is present (`freq
 
 The three hashes and how they compose into `(content_signature, resolution_signature, compiler_version)
 ⟹ artifact.digest` are documented in [SCHEMAS.md § identity & integrity](SCHEMAS.md#identity--integrity).
+
+## Deterministic ordering — what is preserved, what is normalized
+
+Parquet bytes depend on row order, so ordering is part of `artifact.digest` rather than a nicety. The
+asymmetry below is intended: **rows are preserved, presentation is normalized.**
+
+**Preserved.**
+
+- **Authored row order**, through compile → reverse → recompile.
+- **Expansion order within a one-to-many rsID.** `_sorted_loci` sorts on
+  `(locus_index, chrom or "", start or 0, ref or "")`, which matches the deprecated DuckDB path's
+  `ORDER BY id, chrom, start, ref` — the two produce byte-identical parquet, which is what let that
+  path be retired without moving a digest.
+- **`_symbolic_findings`** sorts on `(table, reason, index, column)`, so the messages built from it are
+  byte-stable. They reach `manifest.compilation.warnings`, which is artifact-visible.
+- **`binning_citations`** returns first-occurrence order rather than sorted order, because it feeds
+  emission order.
+- **`Frequency.populations`** is in canonical order (`population_sort_key`, `global` first). Every
+  *other* manifest facet list is sorted — this one is the exception, deliberately.
+- **`_write_resolution_csv`** emits weights first and never re-emits a key from the positional pass, so
+  `variants.csv`'s `alts` always wins.
+
+**Normalized, not preserved.** Column order and cell formatting in every reversed CSV; the
+`curator`/`method` blank-vs-explicit split; unphased genotype allele order.
+
+**Deterministic tie-breaks where the library gives none.** `_module_name_from_parquets` uses `min()`
+over `unique()`, and `_most_common` uses `min()` over `mode()`, because polars orders neither. This is
+the concrete form of the standing rule: never derive an emitted row or a manifest field from
+`set`/`dict` iteration or from `mode()`/`unique()` without an explicit sort or tie-break.
+
+## Warning texts a consumer keys on
+
+**A warning's text is an API.** The manifest carries the prose and, for anything published before the
+structured field existed, no other handle — so a downstream consumer greps it. Four fragments are named
+constants for exactly that reason:
+
+```python
+UNJOINABLE_PHRASE     = "have no chrom+start"
+QUAL_INVERSION_PHRASE = "QUAL means the opposite thing on the record this row is read from"
+MISSING_ALLELE_PHRASE = "is VCF's MISSING marker, not an allele"
+UNCLOSED_PHRASE       = "records no closure"
+```
+
+`UNJOINABLE_PHRASE` has a **named external consumer**: `just-dna-registry` 0.11.3 pins
+`UNJOINABLE_MARKER = "have no chrom+start"` in its facet builder. The structured replacement
+(`manifest.compilation.positional_rows` / `positional_rows_placed`) shipped in 0.6 and the phrase is
+still **not** retired, because artifacts published under 0.5 carry neither field. Retiring it is a
+decision about the published corpus, not about this code.
+
+The positional-joinability sentence, as its format string — the counts and both trailing clauses are
+computed per table, so no example is invented here:
+
+```
+{csv_name}: {unplaced} of {rows} row(s) have no chrom+start, so this table joins by rsID only —
+a VCF whose ID column is empty matches none of them. {detail}.{partial_note}
+```
+
+`{detail}` is one of exactly three sentences, and the distinction between them is the whole point —
+*not consulted*, *consulted and found nothing*, and *consulted and refused to guess* are three
+different situations a consumer must not collapse:
+
+- `the resolution table was not consulted for this table — see the skip reported above` (or
+  `resolution.csv names N of them and was not consulted for this table — …`);
+- ``no resolution.csv row places them — run `just-dna-enricher enrich` first``;
+- `resolution.csv names N of them, but at more than one locus or at one the row's own allele
+  contradicts, so the compiler leaves them unplaced rather than picking`.
+
+The VRS coverage headline, as its format string, followed by one indented `  {count} allele(s):
+{reason}` line per gap reason, sorted by descending count then reason:
+
+```
+VRS allele identity covers {identified}/{alleles} allele(s) in resolution.csv ({pct}) —
+{missing} carry no ga4gh:VA. id. Anything keying on the VA sees only the covered fraction.
+```
+
+Three more sentences worth quoting exactly, because each states a consequence rather than a status: the
+closure reminder (`This module records no closure: … Compiling without one is a warning today;
+requiring it is filed for 1.0 (RM73).`), the symbolic-allele drop (`Those row(s) are DROPPED from the
+compiled artifact — reverse will not re-emit them — and --strict refuses instead.`), and `--no-resolve`
+with an injected table present, which spells out that the flag names Ensembl but is the master switch
+and that there is no "do not reach the network" flag because the compiler never does.
+
+**Substrings the suite pins as contract**, so changing one is a deliberate act rather than a reword:
+`test_validate_agrees_with_compile.py` holds `"forbid sale"`, `"does not match the id recomputed"`,
+`"could not be verified"`, `"p_value_num says"`, `"not among the"`, `"IUPAC ambiguity code"`,
+`"not valid YAML"`, `"must be a mapping"`; `test_strict_compile.py` holds `"unresolved genomic
+positions"`; `test_roundtrip_regressions.py` holds `"pointer, not an expression"`.
 
 ## CLI, and what it maps onto
 
