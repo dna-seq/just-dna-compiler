@@ -2020,3 +2020,41 @@ carry per-sample coverage.** But two small, in-charter things would materially h
    reading no-call as reference is the difference between "screened negative" and "not screened." A
    module author flags such rows; a consumer that lacks callability data then knows to withhold the
    reassuring conclusion rather than assert it. Purely additive, opt-in, and it names a real hazard.
+
+# Round-2 field notes (pre-0.5), retired 2026-08-18
+
+*The round-2 thread lived in `docs/history/CONSUMER_ROUND2_AND_0_5.md` — the answers to the 0.4
+round-2 checklist from production data, three review catches against the sample implementation, and a
+0.5 idea-book. It carried the same `↳ maintainer reply` blockquote idiom as the round-1 thread and was
+invisible to the ledger for the same reason, so it is retired for the same reason: an inbox nothing can
+read is a backlog nobody sees. The whole thread is recoverable from git history at `635da8c`.*
+
+**No item is refiled as an `Sn`, because unlike round 1 nothing was left undelivered.** Round 1 was
+retired with two asks outstanding and those became S27 and S28; this thread was checked item by item
+against the current tree on 2026-08-18 and every one had landed. That check is the record, so it is
+written down here rather than left to be re-run:
+
+| Item | Ask | Where it landed |
+| --- | --- | --- |
+| C1 | bins need an overlap/exhaustiveness contract | `binning.validate_bins` — raises on overlap within a trait, warns on interior gaps |
+| C2 | forensic STR microvariant (`TH01 9.3`) is not a decimal | `float` bound kept; the `full.partial` allele *name* is documented in REFERENCE_EXAMPLES as an allele string, never a numeric bound. The escape hatch it needs is parked beside RM5 |
+| C3 | the diplotype sort rule belongs in the CSV contract | REFERENCE_EXAMPLES states the pair is stored lexicographically-sorted and a consumer must sort identically |
+| Q2 | provenance is three axes, not one string | `caller` / `caller_version` / `reference_db` reserved as three, which was the agreed disposition — reserved, not built, is what was asked for |
+| Q3 | pin the MT reference sequence, hard-warn the legacy one | `HeteroplasmyRow.reference_sequence`, rejecting the `NC_001807` lineage outright |
+| Q4 | callability will want a real column | `requires_callable` is a built column (RM6), past the flag the round settled for |
+| Q5 | keep `repeat_unit` free-form; 5-HTTLPR is not a repeat locus | `repeat_unit` unconstrained; 5-HTTLPR is authored as a plain indel, settled again in 0.6 under RM5 |
+| Q6 | heteroplasmy bins are tissue-conditional | `tissue` / `assay_context` built on `HeteroplasmyRow` |
+| Q7 | one modifier pair covers the real loci | one `modifier_gene`/`modifier_cn` pair, frozen |
+| Q8 | floor not observed; finer ancestry; tiered | `match_rate_floor`, `training_cohort`, `research_tier` |
+| Q9 | extend actionability; ACMG-SF is orthogonal | seed extended with `descriptive`/`modifiable`; `acmg_sf` built as its own column |
+| B1 | the star-string is identity, don't over-structure | star-string verbatim, parsed fields optional |
+| 3a | let a module declare which VCF field holds its measurement | `source_field`, constrained to a bare field-name token so it stays a pointer rather than an expression |
+| 3b | modules as a deterministic verification harness | no format change needed; recorded as an *enabled* use case in USE_CASES § 1a and as RM7, which is a consumer task |
+| 3c | augmented VCF as the interface for cracked loci | endorsed, consumed through the same `source_field` path |
+| 3d | callability three-state, phasing, trio panels | `callable_from` built; the rest is consumer-side |
+
+**What the thread held that no table can carry is the grounding**, and that is the honest cost of
+retiring it: the reasoning was anchored in named callers and real rows — a legacy `NC_001807` accession
+producing a confidently wrong haplogroup, a Cyrius `None` rendered as "Normal Metabolizer", a
+South-Asian sample against a EUR-trained score. Those arguments are why several of these columns have
+the shape they do, and they are in git rather than here.

@@ -301,8 +301,10 @@ order rather than jumping to code.
    unanswered). `.claude/watch-suggestions.sh` notices that a consumer has written.
    **The two `.py` tools run under `python3`, never `bash`** — bash reads `import x` as ImageMagick's
    screen-capture tool and litters the repo root (runbook §6).
-   **Do not start a third feedback file** — the round-1 thread was removed on 2026-08-12 (git
-   `53f9260`) precisely because an inbox the ledger cannot see is a backlog nobody sees.
+   **Do not start a second feedback file** — both pre-`Sn` threads were retired for the same reason,
+   that an inbox the ledger cannot see is a backlog nobody sees: round 1 on 2026-08-12 (git `53f9260`,
+   two undelivered asks refiled as S27/S28) and round 2 on 2026-08-18 (git `635da8c`, nothing
+   undelivered). Their per-item dispositions are recorded in the pre-0.6 consumer archive.
 2. **Usage → blockers → solvability** — enabled / consumer-side / a gap closable additively? →
    [USE_CASES.md](docs/USE_CASES.md)  ← **start a design task here**
 3. **Means → draft schema → decision** — shape + charter check + open questions → the `PROPOSAL_*`

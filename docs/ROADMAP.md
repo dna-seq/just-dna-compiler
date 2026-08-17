@@ -617,8 +617,10 @@ remain open as RM5.)*
 ## Freeform suggestions — the 0.5 idea-book
 
 The consumer's grounded 0.5 ideas (kept inside the one constraint: **VCF-based, possibly augmented on
-top**) live in full in [CONSUMER_ROUND2_AND_0_5.md](history/CONSUMER_ROUND2_AND_0_5.md) §3, each run through
-the what-blocks lens in [USE_CASES.md](USE_CASES.md) §1. Standing dispositions:
+top**) came from the round-2 thread, retired on 2026-08-18 with its per-item disposition recorded in
+[history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md](history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md) and
+its prose in git at `635da8c`; each idea was run through the what-blocks lens in
+[USE_CASES.md](USE_CASES.md) §1. Standing dispositions:
 
 - **3a — module declares where its measurement lives in a VCF.** ✅ Taken early: `source_field` shipped
   in 0.4 (an optional, `|`-alternatable field-name token on every binning table — a *declarative

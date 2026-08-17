@@ -17,8 +17,9 @@ The design docs are stages of **one loop**; an idea moves left-to-right as it ma
 
 1. **Feedback** — a consumer's field report. → [`CONSUMER_SUGGESTIONS.md`](CONSUMER_SUGGESTIONS.md)
    (open) / [`CONSUMER_SUGGESTIONS_HISTORY.md`](CONSUMER_SUGGESTIONS_HISTORY.md) (answered), the runbook
-   in [`CONSUMER_TRIAGE_LOOP.md`](CONSUMER_TRIAGE_LOOP.md), and the round-2 thread
-   [`CONSUMER_ROUND2_AND_0_5.md`](history/CONSUMER_ROUND2_AND_0_5.md)
+   in [`CONSUMER_TRIAGE_LOOP.md`](CONSUMER_TRIAGE_LOOP.md). The pre-`Sn` rounds 1 and 2 were their own
+   threads and are both retired — their dispositions are recorded in
+   [`history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md`](history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md)
 2. **Usage → blockers → solvability** — run each use case against the current bricks: is it *enabled*,
    *consumer-side*, or a *gap*; and is the gap closable **additively**? → **this doc**
 3. **Means → draft schema → decision** — for a gap worth closing, the proposed shape + a charter check

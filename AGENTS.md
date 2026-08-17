@@ -57,7 +57,8 @@ in order rather than jumping to code:
 
 1. **Feedback** — a consumer's field report → [docs/CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md)
    (the open inbox) / [docs/CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md)
-   (answered), and [docs/history/CONSUMER_ROUND2_AND_0_5.md](docs/history/CONSUMER_ROUND2_AND_0_5.md)
+   (answered). The two pre-`Sn` rounds were separate threads and are both retired; their dispositions
+   are in [docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md](docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md)
 2. **Usage → blockers → solvability** — run each use case against the current bricks: *enabled*,
    *consumer-side* (the format owns nothing), or a *gap* closable additively? →
    [docs/USE_CASES.md](docs/USE_CASES.md)  ← **start a design task here**
