@@ -10,7 +10,7 @@ is waiting on a version. Each waits on a design question, a corpus, or a consume
 
 **Five of these were taken back into 0.6 on 2026-08-16, and this file no longer decides them.** RM55's
 fix, RM72, RM82, RM84 and RM87 were sorted into
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md), which re-asked whether the release they were filed against
+[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md), which re-asked whether the release they were filed against
 was still the right one now that 0.6 is uncut. **That document is authoritative for all five**; their
 entries below are kept as the record of what was observed, and where a probe overturned an entry the
 entry says so at the top. Nothing was taken on a legality argument — everything here was already legal
@@ -18,7 +18,7 @@ in a minor — so what moved them is severity: a shipped thing that is silent, w
 capability nobody has asked for.
 
 Indexed in [RM_TOC.md](RM_TOC.md). The 0.6 decisions that touched these items are in
-[PROPOSAL_0_6.md](PROPOSAL_0_6.md) and [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md).
+[PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md) and [PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md).
 
 ---
 
@@ -78,7 +78,7 @@ real consumer combining authored weights into a score, does not exist. A score's
 combine, what the reference distribution is, whether a percentile travels with it) is exactly what a
 first real case would dictate, so fixing it now spends a one-way door on a guess.
 
-**What would unpark it:** a real consumer. See [PROPOSAL_0_5.md](PROPOSAL_0_5.md) D1.
+**What would unpark it:** a real consumer. See [PROPOSAL_0_5.md](proposals/PROPOSAL_0_5.md) D1.
 
 ---
 
@@ -128,7 +128,7 @@ yet — because fixing a shape against four table kinds and then meeting the fif
 gets spent badly (P3/P5).
 
 The design thread, the starter shape and what is deliberately left open are in
-[PROPOSAL_0_5.md § G3](PROPOSAL_0_5.md): a new **optional** table, a predicate that **never blocks**, a
+[PROPOSAL_0_5.md § G3](proposals/PROPOSAL_0_5.md): a new **optional** table, a predicate that **never blocks**, a
 grammar kept to the smallest thing covering the motivating case, and a **three-valued** algebra
 (true/false/**unknown**, Kleene operators) — with `unknown` withheld, never reported and never negated.
 Kleene matters concretely: a conclusion gated on "ε4 present AND QUAL ≥ 60" is decidably **false** at
@@ -159,15 +159,15 @@ Neither is built until a real module needs it.
 
 # The VCF 4.4 items deferred out of 0.6
 
-Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md); the rest of that cluster
+Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.md); the rest of that cluster
 (RM53, RM54, RM56–RM64, and RM65's comment fix) went into 0.6 — see
-[PROPOSAL_0_6.md](PROPOSAL_0_6.md). The audit remains the evidence document: spec quotations,
+[PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md). The audit remains the evidence document: spec quotations,
 `file:line` references and probe transcripts live there and are not duplicated.
 
 ## RM55 — copy number and repeat count are not whole numbers (the usable fix)
 
 **Severity** high · **Status** ✅ **shipped in 0.6** — built to
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55, which is authoritative and against which this entry
+[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM55, which is authoritative and against which this entry
 is stale in its suggested fix; only the **removal** of `modifier_cn` is still 1.0
 ([ROADMAP_1_0.md](ROADMAP_1_0.md)). Indexed in [RM_TOC.md](RM_TOC.md); the built shape is described in
 [SCHEMAS.md](SCHEMAS.md) · **Owner** format (schema) + compiler
@@ -291,13 +291,13 @@ spec's own polyploid example — refused the call with a bare restatement of the
 limit read as a syntax error, while every other deliberate refusal in this schema names its own limit
 in-line. The arity refusals now carry that sentence: two alleles is a decision, VCF 4.4 §7.2 permits
 more, and nothing is queued against it. Recorded as D3-2 in
-[DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md).
+[DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md).
 
 ---
 
 # The 0.6 dogfooding items deferred out of the fix round
 
-Five findings from [DOGFOOD_0_6_FINDINGS.md](DOGFOOD_0_6_FINDINGS.md) whose obvious repair is itself a
+Five findings from [DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md) whose obvious repair is itself a
 design decision. The ledger classes each **surface** rather than **fix**, which is this repo's standing
 split: a false claim, a misdiagnosis, an unaggregated wall or an unreached guard gets fixed in the round
 that finds it; anything whose repair has to be *chosen* gets filed with the candidates and the reason
@@ -628,7 +628,7 @@ found: the protection holds **while the authored bytes stand still**, because an
 author has since edited is not an answer this document may keep asserting — without it the fix
 re-opened a defect an earlier `literature` round had closed. The `create-module` skill needed no edit,
 as predicted: its rows for both commands carry no "Writes nothing" annotation. See
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM72; the two reserved members did not move. *Previously:*
+[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM72; the two reserved members did not move. *Previously:*
 deferred — four members blocked on a printed contract, two deliberately
 reserved, one general question open · **Owner** enricher · **Found by** dogfooding on 2026-08-13,
 `reference_examples/hboc_palb2/`
@@ -818,7 +818,7 @@ sighted once before from the other side
 > the on-disk size **still moves the binding** on exactly the CRLF files the fix exists for — the naive
 > implementation is a no-op that looks like a fix. The normalized length has to travel with the
 > normalized digest, through a builder used by the binding and by nothing else. See
-> [PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM82.
+> [PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM82.
 
 ### What was observed
 
@@ -866,7 +866,7 @@ after.
 
 ### It was sighted once before, from the other side
 
-[DOGFOOD_0_6.md](DOGFOOD_0_6.md)'s lane plan asked whether a round-tripped spec's attestation may read
+[DOGFOOD_0_6.md](probes/DOGFOOD_0_6.md)'s lane plan asked whether a round-tripped spec's attestation may read
 as stale **to its own compiler** with nothing edited, since `reverse` normalizes cell formatting and
 column order, and closed with *"Both are legitimate outcomes; neither is documented."* Same mechanism,
 different trigger. The editor case is the one an author actually meets, which is what promoted the
@@ -953,7 +953,7 @@ parked co-authoring item wearing a different name.
 and both asks are answered** ([S35](CONSUMER_SUGGESTIONS_HISTORY.md), 2026-08-17): `v<version>` verbatim
 stays. Only the consumer's discovery half is open, and it is theirs, which is why this entry stays here.
 *Previously:* our half taken into 0.6 PT2 on
-2026-08-16 ([PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM84); before that, open — **joint with the
+2026-08-16 ([PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM84); before that, open — **joint with the
 reference consumer, and their half is already agreed in writing** · **Owner** enricher
 (`upload.upload_module`) + `just-dna-lite` discovery ·
 **Motivating case** a republished module on the HuggingFace path
@@ -1192,7 +1192,7 @@ carrying a `variants.csv` — hence a `weights.parquet` — and on nothing else;
 `sources.signature`, `verification.signature` and `compilation.resolution_signature` all held on all
 sixteen. (The proposal predicted twelve and four; the real split is nine and seven, which is a
 miscount in the prediction and not a behaviour difference.)
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM87 is the design record · **Owner** format (schema) +
+[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM87 is the design record · **Owner** format (schema) +
 compiler (materializer, reverse) · **Motivating case** S33 in
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md), from just-dna-lite
 

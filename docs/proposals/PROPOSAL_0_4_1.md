@@ -3,7 +3,7 @@
 **Status: decided — the S1/S2 + `version` items implemented, pending a release the user cuts; the
 *Ensembl cache authority leaves the compiler* item (below) decided but not yet implemented.** This is
 the *"means → draft schema → decision"* stage for a **0.4.1 patch**, responding to the registry's field
-report in [`CONSUMER_SUGGESTIONS.md`](CONSUMER_SUGGESTIONS.md) (S1/S2) and — for the cache-authority
+report in [`CONSUMER_SUGGESTIONS.md`](../CONSUMER_SUGGESTIONS.md) (S1/S2) and — for the cache-authority
 item — to the `just-dna-datasets` split design. Everything here is **out of `artifact.digest`**
 (identity/metadata validation only, or a resolver-input path that changes no output bytes), so it is
 patch-shippable (CONSTITUTION P3/P8).

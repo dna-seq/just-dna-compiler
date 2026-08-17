@@ -1,7 +1,7 @@
 # Consumer round-2 response + 0.5 idea-book
 
 *Answers to the 0.4 round-2 checklist (drafted in the since-retired `PROPOSAL_0_4.md`, its decisions now
-in [`CHANGELOG.md`](CHANGELOG.md)) from production data, a review of
+in [`CHANGELOG.md`](../CHANGELOG.md)) from production data, a review of
 the sample implementation (`vocab`/`binning`/`pgx`/`pgs`), and — in the spirit of the two-way
 collaboration — a book of **0.5 ideas grounded in our WGS pipeline**, kept inside the one constraint
 the consumer named: it stays **VCF-based, possibly augmented on top.***
@@ -369,7 +369,7 @@ class of our errors. Take what's useful, reject what isn't; that's the deal.
 >   is a `just-dna-lite` feature whose only format dependency (field-binding) already shipped. The
 >   format "helps" purely by the properties it already froze — declarative-not-code makes a downloaded
 >   panel safe to run, integrity makes the diff trustworthy. Nothing to schedule here. Recorded as an
->   *enabled* use case (not a gap) in [`USE_CASES.md`](USE_CASES.md) §1a, where every 0.5 suggestion
+>   *enabled* use case (not a gap) in [`USE_CASES.md`](../USE_CASES.md) §1a, where every 0.5 suggestion
 >   is run through the same what's-blocking lens.
 > - **3c augmented-VCF — endorsed as the interface** for your cracked short-read loci (a synthetic
 >   `<STR>` record with `INFO/RU` + `FORMAT/REPCN` + custom evidence fields), consumed through the same

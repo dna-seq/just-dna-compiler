@@ -1,7 +1,7 @@
 # Dogfooding the 0.6 batch — six probe modules and one corpus sweep
 
 **What this is.** A plan, not the work. The 0.6 batch landed twenty-eight items across eleven lanes
-([PROPOSAL_0_6.md](PROPOSAL_0_6.md) for the reasoning, [ROADMAP_HISTORY § 0.6.0](ROADMAP_HISTORY.md)
+([PROPOSAL_0_6.md](../proposals/PROPOSAL_0_6.md) for the reasoning, [ROADMAP_HISTORY § 0.6.0](../ROADMAP_HISTORY.md)
 for what actually shipped), and every one of them was verified by its own tests and its own code
 review. What none of them has had is the 2026-08-03 treatment: **a real module, built with the
 shipped CLIs, by someone trying to make the libraries fail at something they advertise.** This file

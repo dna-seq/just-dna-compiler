@@ -32,8 +32,15 @@ import pathlib
 import re
 import sys
 
-DEFAULT_DOC = pathlib.Path(__file__).resolve().parent.parent / "docs" / "CONSUMER_SUGGESTIONS.md"
-HISTORY_DOC = DEFAULT_DOC.with_name("CONSUMER_SUGGESTIONS_HISTORY.md")
+DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
+DEFAULT_DOC = DOCS / "CONSUMER_SUGGESTIONS.md"
+
+# Every file an `Sn` can be sitting in, found rather than listed: the live inbox, the history file, and
+# the archived halves of the history file, which live in a subdirectory and will be joined by more of
+# them. `next_id` is wrong the moment one of these is missed — it would hand out an id that is already
+# taken — and a hard-coded list is exactly the thing that goes stale when a file is split off.
+def corpus() -> list[pathlib.Path]:
+    return [DEFAULT_DOC, *sorted(DOCS.rglob("CONSUMER_SUGGESTIONS_HISTORY*.md"))]
 
 # A section is a top-level `## Sn` heading. `###` sub-headings fold into their parent:
 # they are part of what the consumer wrote, so they belong in the parent's fingerprint.
@@ -175,15 +182,16 @@ def classify(body: list[str], block_replied: bool) -> tuple[str, str, str | None
 
 
 def next_id() -> tuple[str, dict[str, int]]:
-    """The next unclaimed `Sn`, over the live document **and** the history file.
+    """The next unclaimed `Sn`, over the live document **and** every history file.
 
     Computed rather than remembered, because the number is exactly the kind of fact that goes stale:
     once answered items move out, the live file's highest id is not the corpus's highest, and an empty
-    inbox would invite `S1` a second time. Scanning both files cannot drift from them.
+    inbox would invite `S1` a second time. Scanning the files cannot drift from them — which is why
+    `corpus()` globs for the history files rather than naming them.
 
     Returns `(next, {filename: highest})` so a caller can see where the number came from."""
     highest: dict[str, int] = {}
-    for doc in (DEFAULT_DOC, HISTORY_DOC):
+    for doc in corpus():
         if not doc.is_file():
             continue
         ids = [

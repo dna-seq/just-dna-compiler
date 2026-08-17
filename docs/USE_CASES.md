@@ -18,12 +18,12 @@ The design docs are stages of **one loop**; an idea moves left-to-right as it ma
 1. **Feedback** — a consumer's field report. → [`CONSUMER_SUGGESTIONS.md`](CONSUMER_SUGGESTIONS.md)
    (open) / [`CONSUMER_SUGGESTIONS_HISTORY.md`](CONSUMER_SUGGESTIONS_HISTORY.md) (answered), the runbook
    in [`CONSUMER_TRIAGE_LOOP.md`](CONSUMER_TRIAGE_LOOP.md), and the round-2 thread
-   [`CONSUMER_ROUND2_AND_0_5.md`](CONSUMER_ROUND2_AND_0_5.md)
+   [`CONSUMER_ROUND2_AND_0_5.md`](history/CONSUMER_ROUND2_AND_0_5.md)
 2. **Usage → blockers → solvability** — run each use case against the current bricks: is it *enabled*,
    *consumer-side*, or a *gap*; and is the gap closable **additively**? → **this doc**
 3. **Means → draft schema → decision** — for a gap worth closing, the proposed shape + a charter check
-   + the open questions to settle it. → [`PROPOSAL_0_5.md`](PROPOSAL_0_5.md) (0.5),
-   [`PROPOSAL_0_4_1.md`](PROPOSAL_0_4_1.md) (the 0.4.1 patch). *(0.4's shipped decisions →
+   + the open questions to settle it. → [`PROPOSAL_0_5.md`](proposals/PROPOSAL_0_5.md) (0.5),
+   [`PROPOSAL_0_4_1.md`](proposals/PROPOSAL_0_4_1.md) (the 0.4.1 patch). *(0.4's shipped decisions →
    [`CHANGELOG.md`](CHANGELOG.md).)*
 4. **Conclusion — "how to do it now, with these bricks"** — the distilled worked example once the shape
    is settled. → [`REFERENCE_EXAMPLES.md`](REFERENCE_EXAMPLES.md)

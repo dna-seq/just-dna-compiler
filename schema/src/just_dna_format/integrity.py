@@ -227,7 +227,7 @@ def content_signature(
     `tables` maps each data-CSV filename (`variants.csv`, `studies.csv`, and the 0.4 table kinds) to
     its parsed, validated rows. The result is the enabling identity for content-level dedup that
     survives import/recompile and metadata-strip. It is the reference algorithm a marketplace's
-    `find_versions_by_content` should adopt (see docs/PROPOSAL_0_4_1.md).
+    `find_versions_by_content` should adopt (see docs/proposals/PROPOSAL_0_4_1.md).
     """
     listing: list[dict[str, object]] = [
         {

@@ -4,7 +4,7 @@
 lives anywhere else runs when somebody remembers it, which is exactly the property that let the defect
 accumulate: nineteen `FILE.md#anchor` links pointing at headings that no longer existed, almost all of
 them `ROADMAP.md#rm4x-…` pointers to items that had since moved to `ROADMAP_HISTORY.md` (R2-12 in
-`docs/DOGFOOD_0_6_FINDINGS.md`). The mechanism is structural rather than careless — this repo
+`docs/probes/DOGFOOD_0_6_FINDINGS.md`). The mechanism is structural rather than careless — this repo
 deliberately splits live from historical (ROADMAP/ROADMAP_HISTORY, CONSUMER_SUGGESTIONS and its
 history file), so *an item moving between the two* breaks every pointer at it, and the move is the
 routine event. `RM_TOC.md` exists because RM33 became unfindable; this is the same failure one
@@ -29,7 +29,7 @@ to a duplicated heading today, and a failure naming a fragment that ends in a di
 check by hand before repairing it.
 
 And **a consumer's own words are exempt, because the only repair this guard can ask for there is one
-the triage loop forbids.** `CONSUMER_SUGGESTIONS.md` and its history file quote each report
+the triage loop forbids.** `CONSUMER_SUGGESTIONS.md` and its history files quote each report
 byte-for-byte — the prose is evidence, the reply beneath it is ours — and consumers have started citing
 `RMn` items by link, which is exactly the live→history pointer this guard hunts. The two rules collided
 head-on: S35's report linked `ROADMAP.md#rm89` while RM89 was open, RM89 shipped, and the pass that
@@ -63,9 +63,13 @@ _LINK = re.compile(r"\[[^\]]*\]\(\s*([^)\s]+)\s*\)")
 _FENCE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
 _HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*$")
 
-# The two documents that quote someone else byte-for-byte. Both are matched by name rather than by
-# path so the guard keeps working if the pair ever moves out of `docs/`.
-_CONSUMER_DOCS = {"CONSUMER_SUGGESTIONS.md", "CONSUMER_SUGGESTIONS_HISTORY.md"}
+# The documents that quote someone else byte-for-byte. Matched by name prefix rather than by path, so
+# the guard keeps working when one of them moves out of `docs/` — and, since the history file was split
+# at the 0.6 boundary on 2026-08-17, so that the archived half is covered without being named. An
+# exact-name set would have left every archived report editable by the next pass that repaired a link,
+# which is the failure the exemption exists to prevent and is invisible until the ledger reports the
+# section `revised`.
+_CONSUMER_PREFIX = "CONSUMER_SUGGESTIONS"
 _SECTION = re.compile(r"^## S\d+\b")
 _TRIAGE_MARKER = re.compile(r"<!-- *triaged:")
 
@@ -171,7 +175,7 @@ def test_every_relative_doc_link_resolves() -> None:
 
     for path in scanned:
         body = _without_fences(path.read_text())
-        exempt = _verbatim_lines(body) if path.name in _CONSUMER_DOCS else set()
+        exempt = _verbatim_lines(body) if path.name.startswith(_CONSUMER_PREFIX) else set()
         for match in _LINK.finditer(body):
             target = match.group(1)
             if target.startswith(("http://", "https://", "mailto:")):

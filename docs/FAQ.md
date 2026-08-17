@@ -33,7 +33,7 @@ Because the digest is the **byte** identity — *these bytes, from this compiler
 identity. `content_signature` is the content one. A moved digest beside an unmoved signature is a
 provenance-only change and is the intended reading.
 → [SCHEMAS § Identity & integrity](SCHEMAS.md#identity--integrity), and
-[S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
+[S7](history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
 which was filed after somebody spent an afternoon looking for the content change that had not happened.
 
 **Then should the digest exclude the timestamp column, the way a build system excludes mtimes?**

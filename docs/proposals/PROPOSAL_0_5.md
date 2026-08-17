@@ -3,17 +3,17 @@
 **Status: 0.5.0 shipped on 2026-08-07, so this is now a design record rather than a forward plan.** The
 threads marked **built in 0.5** below (G1, G2, and the items under *The rest of 0.5 scope*) are done —
 what shipped, and the several places probing overturned the plan, are in
-[`CHANGELOG.md`](CHANGELOG.md). What is still forward design is **D1 → RM16**, **D2 → RM5** and **G3 →
-RM28**, each of which is parked in [`ROADMAP.md`](ROADMAP.md) with its own reasons. The doc is kept
+[`CHANGELOG.md`](../CHANGELOG.md). What is still forward design is **D1 → RM16**, **D2 → RM5** and **G3 →
+RM28**, each of which is parked in [`ROADMAP.md`](../ROADMAP.md) with its own reasons. The doc is kept
 whole rather than pruned, because the *arguments* — including the ones that lost — are what a later
 round needs; the 0.4 proposal was retired the same way.
 
 This is the *"means → draft schema → decision"* stage of the design cycle (CLAUDE.md → *The design
 cycle*) for the **0.5** milestone. It holds the design threads that the 0.4 round **deliberately did not
 take**, moved here when the 0.4 proposal was retired (its shipped decisions now live in
-[`CHANGELOG.md`](CHANGELOG.md), 2026-07-10 and the 0.4.0 branch-review passes).
+[`CHANGELOG.md`](../CHANGELOG.md), 2026-07-10 and the 0.4.0 branch-review passes).
 
-The concrete deferred-item tracker (`RMn`) stays in [`ROADMAP.md`](ROADMAP.md); this doc is the
+The concrete deferred-item tracker (`RMn`) stays in [`ROADMAP.md`](../ROADMAP.md); this doc is the
 design discussion behind the 0.5-scope rows, the same way the 0.4 proposal sat beside the roadmap.
 Everything below stays inside the Constitution (declarative-not-code, additive-within-a-major,
 orthogonal axes, reserved namespace, the `frozenset[str]` vocabulary idiom).
@@ -99,7 +99,7 @@ Recorded here as forward-design guardrails so these are not re-proposed for 0.5:
 
 ## G1 — gnomAD v4.1: population frequency, gene constraint, and VRS identity → **built in 0.5**
 
-The design thread behind [USE_CASES.md §6](USE_CASES.md) and the two new sidecars. Recorded here with
+The design thread behind [USE_CASES.md §6](../USE_CASES.md) and the two new sidecars. Recorded here with
 the reasoning, because several of the decisions were made *against* the plan's own expectations once the
 assumptions were probed.
 
@@ -185,7 +185,7 @@ formats unchanged. ClinPGx is the umbrella that merged PharmGKB, CPIC and PharmC
 `PharmVariantRow` on the *summary* table (variant → drug → level) and never met the per-genotype child
 table. Two rounds of correction were needed — first `genotype`, then `phenotype_category` +
 `annotation_id` — and the second round only surfaced because the reference example was built from the
-real corpus. Numbers and the argument are in [`USE_CASES.md` § 2b](USE_CASES.md).
+real corpus. Numbers and the argument are in [`USE_CASES.md` § 2b](../USE_CASES.md).
 
 **No PGx source is sellable, and CPIC is not an escape hatch.** All three are CC BY-SA 4.0 *plus* a
 contractual bar on sale, so a bare "CC BY-SA" line must not be read as permission to sell. CPIC's
@@ -249,7 +249,7 @@ recommendations; and the `activity_phenotype.csv` bins, which CPIC publishes as 
 ## The rest of 0.5 scope
 
 Everything else that was open at the end of the 0.4 round is tracked as `RMn` in
-[`ROADMAP.md`](ROADMAP.md) (§ *0.5 scope*): RM4 (native ClinVar gene-panel materialization), RM5
+[`ROADMAP.md`](../ROADMAP.md) (§ *0.5 scope*): RM4 (native ClinVar gene-panel materialization), RM5
 (symbolic/structural alleles), RM6 (callability as a first-class typed column + `callable_from`), RM10
 (inheritance-expectation field), RM15 (build-agnostic identity), RM16 (D1 above). RM7/RM13 are
 explicitly **consumer** contracts, not format scope. New ideas enter through the freeform idea-book in

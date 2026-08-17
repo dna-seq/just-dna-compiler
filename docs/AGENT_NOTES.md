@@ -1056,11 +1056,11 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   an unrestricted alternative** — `cpicpgx.org/license/` 302-redirects to the ClinPGx data usage
   policy. All three sources (ClinPGx, CPIC, PharmVar) are **CC BY-SA 4.0 plus a contractual no-sale
   clause**, so none is sellable: don't read a bare "CC BY-SA" line as permission to sell, read the
-  surrounding terms (`docs/pharmvar_lic.txt` §3 is the PharmVar one). Ensembl/dbSNP already cover
+  surrounding terms (`docs/vendor/pharmvar_lic.txt` §3 is the PharmVar one). Ensembl/dbSNP already cover
   rsID→coordinate, so never wire ClinPGx/CPIC as a resolution link — that keeps the coordinate layer
   unrestricted. PharmVar needs an **`Api-Key:` header** (not `X-API-KEY`) at **2 rps**, and its ToS §2
   makes the key personal — never bake one into a module, fixture, or snapshot. API schema:
-  `docs/pharmvar_api_docs.json`.
+  `docs/vendor/pharmvar_api_docs.json`.
 
 - `@gated-source-caches` — **Every gated source now has a cache, and PharmVar's is deliberately unpublishable (RM38, shipped in
   enricher 0.5.1).** The three PGx sources were the only `commercial_use=False` entries *and* the only

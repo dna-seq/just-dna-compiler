@@ -1,7 +1,7 @@
 # 0.6 design thread — the decisions, with their reasoning
 
 **What this is.** Stage 3 of the design cycle for the 0.6 line: every open `RMn` in
-[ROADMAP.md](ROADMAP.md)'s 0.6 bucket, taken one at a time, argued to a decision. It is the brief the
+[ROADMAP.md](../ROADMAP.md)'s 0.6 bucket, taken one at a time, argued to a decision. It is the brief the
 implementation works from, so it is deliberately exhaustive: each item records the problem in plain
 terms, the facts established while deciding it (several overturned what the roadmap entry says), the
 decision, the reasoning, **the repairs that were rejected and why**, and the consequences that follow
@@ -723,7 +723,7 @@ Same surfaces as RM24. These two are the same mechanics twice and should be one 
 
 # The VCF 4.4 cluster — RM53 to RM67
 
-**Where these came from.** [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md) is a full read of the VCFv4.4/BCFv2.2
+**Where these came from.** [VCF_4_4_AUDIT.md](../probes/VCF_4_4_AUDIT.md) is a full read of the VCFv4.4/BCFv2.2
 specification (`hts-specs` c101c79) against `just_dna_format`, done 2026-08-13. It produced fourteen
 findings, **none of them `RMn`-tracked**, all minor-legal. They were numbered and triaged in the same
 session as the sixteen items above; the audit remains the evidence document and is not duplicated here
@@ -848,7 +848,7 @@ on an integer kind a hole of exactly 1 is not reported at all: the module compil
 
 - **0.6: a loud compiler warning and nothing else.** The columns stay exactly as they are.
 - **0.7: the additive, charter-clean half** — a parallel float column beside the integer one, with the
-  integer column deprecated. Filed in [ROADMAP_0_7.md](ROADMAP_0_7.md) as RM55 with this shape as the
+  integer column deprecated. Filed in [ROADMAP_0_7.md](../ROADMAP_0_7.md) as RM55 with this shape as the
   suggested fix.
 - **1.0: the removal**, which is the only genuinely major part.
 
@@ -1164,9 +1164,9 @@ rather than widen the nucleotide grammar.
 Deferred and closed items are **not** in this document — they were moved to the roadmap of the release
 that will decide them, so this file stays a record of what 0.6 builds and why:
 
-- **[ROADMAP_0_7.md](ROADMAP_0_7.md)** — RM23 (predictor scores), RM16 (authored PRS weights), RM28
+- **[ROADMAP_0_7.md](../ROADMAP_0_7.md)** — RM23 (predictor scores), RM16 (authored PRS weights), RM28
   (the meta-conclusion predicate; its cofactor half closed here).
-- **[ROADMAP_1_0.md](ROADMAP_1_0.md)** — RM15 (multi-build identity), RM52 (the upgrade procedure).
+- **[ROADMAP_1_0.md](../ROADMAP_1_0.md)** — RM15 (multi-build identity), RM52 (the upgrade procedure).
 - **RM10** closed as an item — folded into RM28; see ROADMAP_0_7.
 - **RM7** was never format scope.
 

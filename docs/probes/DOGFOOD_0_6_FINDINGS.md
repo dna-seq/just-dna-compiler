@@ -13,13 +13,13 @@ decision, and the entry says why each candidate repair is wrong.
 > split was called, and landed in one commit that can be reviewed or reverted as a unit. **Everything
 > from D1 onward was filed and has since been worked**: the rows below carry `(done)` where a fix
 > landed, and the mapping from finding to pull request is at the end of this file. The `surface` rows
-> became RM68–RM72 in [ROADMAP_0_7.md](ROADMAP_0_7.md). Two rows are deliberately not `(done)`: D4-3,
+> became RM68–RM72 in [ROADMAP_0_7.md](../ROADMAP_0_7.md). Two rows are deliberately not `(done)`: D4-3,
 > which is a design decision, and D4-1, whose fix half is six of its twelve members with the rest
 > argued in RM72.
 
 > **Status, 2026-08-15.** **RM74–RM79 are all done** — the six findings they carry (R2-1, R2-11, R2-3;
 > R2-13, R2-4, R2-2) are marked `(done)` in the table below, with the outcomes in
-> [ROADMAP_HISTORY § 0.6 dogfooding](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired).
+> [ROADMAP_HISTORY § 0.6 dogfooding](../ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired).
 > Two things they turned up that were not in the findings: **R2-13's hole is on the PharmVar leg too**,
 > which the ledger did not say and which matters because fixing one leg makes *"one source failing must
 > not sink the pass"* true in one direction only; and **R2-1's write side had a decisive refutation
@@ -37,7 +37,7 @@ decision, and the entry says why each candidate repair is wrong.
 
 > **Every open Round 2 finding now has an `RMn`.** The thirteen that needed action were grouped into
 > **RM74–RM79** (`docs/ROADMAP.md`, active) on 2026-08-14, indexed in
-> [RM_TOC.md](RM_TOC.md), and each row below names the item that carries it. A finding reachable only
+> [RM_TOC.md](../RM_TOC.md), and each row below names the item that carries it. A finding reachable only
 > from this ledger is unfindable, which is the mechanism RM_TOC exists to prevent — so the ledger records
 > what was *found*, and the roadmap owns what is *left*. R2-7 is not a finding; R2-12 and R2-15 are done.
 

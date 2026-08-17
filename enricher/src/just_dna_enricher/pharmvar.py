@@ -9,7 +9,7 @@ allele does), both with GRCh38 genomic coordinates and dbSNP ids already attache
 endpoint returns the same `401 {"errorMessage": "API Key is invalid or missing"}` whether the key is
 absent, malformed, or passed under the wrong parameter name — so a wrong header looks exactly like a
 bad key. The parameter is **`Api-Key`**, a plain header with no `X-` prefix, documented per-endpoint
-in the service's own OpenAPI document (`docs/pharmvar_api_docs.json`) rather than in a
+in the service's own OpenAPI document (`docs/vendor/pharmvar_api_docs.json`) rather than in a
 `securityDefinitions` block, which is why it is easy to miss.
 
 **The key is personal.** PharmVar's terms §2 make an account non-transferable, so the key is read

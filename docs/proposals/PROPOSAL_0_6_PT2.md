@@ -4,7 +4,7 @@
 round ([PROPOSAL_0_6.md](PROPOSAL_0_6.md)) was decided on 2026-08-13 against the roadmap as it stood
 that morning. Everything since — two dogfooding rounds, the VCF 4.4 audit's deferred tail, the module
 lifecycle pass, and five consumer reports — filed items *behind* that line. They accumulated in
-[ROADMAP_0_7.md](ROADMAP_0_7.md) because the release they were filed against was the next one, and
+[ROADMAP_0_7.md](../ROADMAP_0_7.md) because the release they were filed against was the next one, and
 nobody re-asked whether the release they were filed against was still the right one now that 0.6 is
 uncut.
 
@@ -54,7 +54,7 @@ round; it only failed to stop anything.
 ## RM55 — a fractional copy number matches no bin, and the fix is not the column the entry names
 
 **Severity** high · **Owner** format (schema: `binning`) + compiler · **Filed** 2026-08-13 from
-[VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md) · **Entry** [ROADMAP_0_7.md § RM55](ROADMAP_0_7.md#rm55--copy-number-and-repeat-count-are-not-whole-numbers-the-usable-fix)
+[VCF_4_4_AUDIT.md](../probes/VCF_4_4_AUDIT.md) · **Entry** [ROADMAP_0_7.md § RM55](../ROADMAP_0_7.md#rm55--copy-number-and-repeat-count-are-not-whole-numbers-the-usable-fix)
 
 ### The problem
 
@@ -147,7 +147,7 @@ survives the objection that was raised against it in this document's first draft
 - **`_KEY_FIELDS` keys on the effective value, not on either column** (`binning.py:380`). This is what
   dissolves the objection that killed the parallel column in the first draft — that it would put two
   spellings of one value into a row's **key**, which is
-  [RM81](ROADMAP_1_0.md#rm81--one-artifact-spells-a-genotype-two-ways)'s shape and worse in a key than
+  [RM81](../ROADMAP_1_0.md#rm81--one-artifact-spells-a-genotype-two-ways)'s shape and worse in a key than
   in a payload. A coalesced effective value is **one** spelling by the time grouping and dedup see it,
   so the key never holds the ambiguity. The objection was to two values in a key; it is not an objection
   to a companion column read through one.
@@ -261,7 +261,7 @@ affected — `cyp2d6_structural`, `fmr1_cgg_repeat`, `htt_repeat_expansion`, `mt
 
 **Severity** medium-high (a consumer produced 3,762 false findings; caught before rendering) · **Owner**
 format (schema) + compiler (materializer, reverse) · **Filed** 2026-08-16 from S33 · **Entry**
-[ROADMAP_0_7.md § RM87](ROADMAP_0_7.md#rm87--an-expanded-row-is-indistinguishable-from-an-authored-one-in-the-artifact)
+[ROADMAP_0_7.md § RM87](../ROADMAP_0_7.md#rm87--an-expanded-row-is-indistinguishable-from-an-authored-one-in-the-artifact)
 
 ### The problem
 
@@ -370,7 +370,7 @@ carry, and this document is the record that it was noticed here first.
 ## RM84 — the publisher writes a path that cannot express a version
 
 **Severity** medium-high · **Owner** enricher (`upload.upload_module`) · **Filed** 2026-08-16 from
-MODULE_LIFECYCLE § 6.8 · **Entry** [ROADMAP_0_7.md § RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
+MODULE_LIFECYCLE § 6.8 · **Entry** [ROADMAP_0_7.md § RM84](../ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 
 ### The problem
 
@@ -402,7 +402,7 @@ independently, which is what makes this cheap enough to do without waiting.
 away the rest, so two patch releases of one module would collide at one path, which is the defect being
 fixed rather than a smaller version of it.
 
-**One thing to confirm before it ships, and it is theirs:** [S34 § 4](CONSUMER_SUGGESTIONS.md) says
+**One thing to confirm before it ships, and it is theirs:** [S34 § 4](../CONSUMER_SUGGESTIONS.md) says
 *"if the publisher grows a version segment we will follow it in discovery; the `vN` fallback in our
 generic fsspec scan is already the shape"*. Whether their scan matches `v0.6.0` or only `v1`-shaped
 segments is a fact about their regex, which this repository cannot assert from its own rules. It goes
@@ -434,7 +434,7 @@ in it.
 ## RM72 — the verification vocabulary is half-wired, and the contract that blocks it is a blanket over a narrow reason
 
 **Severity** medium · **Owner** enricher · **Filed** 2026-08-14 from DOGFOOD_0_6_FINDINGS § D4 ·
-**Entry** [ROADMAP_0_7.md § RM72](ROADMAP_0_7.md#rm72--six-verification-members-still-emitted-by-nothing-and-the-writes-nothing-contract)
+**Entry** [ROADMAP_0_7.md § RM72](../ROADMAP_0_7.md#rm72--six-verification-members-still-emitted-by-nothing-and-the-writes-nothing-contract)
 
 ### The problem
 
@@ -568,7 +568,7 @@ surface that answers a question about a value owes nothing.
 ## RM82 — the attestation binds raw bytes, and `size` is inside the binding
 
 **Severity** low-medium · **Owner** format (`verification.module_binding`) · **Decided** 2026-08-16,
-**built 2026-08-17** · **Entry** [ROADMAP_0_7.md § RM82](ROADMAP_0_7.md#rm82--the-attestation-binds-raw-bytes-so-an-editors-line-endings-un-close-a-module)
+**built 2026-08-17** · **Entry** [ROADMAP_0_7.md § RM82](../ROADMAP_0_7.md#rm82--the-attestation-binds-raw-bytes-so-an-editors-line-endings-un-close-a-module)
 
 ### The problem and the standing decision
 
@@ -655,23 +655,23 @@ and nothing is deferred because of the digest.
 
 | Item | Where | Why not now |
 |---|---|---|
-| **RM16** authored PRS weights | [0.7](ROADMAP_0_7.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) | Full-cost authored table; unblocks on a real consumer combining authored weights, which does not exist. Fixing the shape now spends a one-way door on a guess. |
-| **RM23** `predictions.csv` | [0.7](ROADMAP_0_7.md#rm23--computational-predictor-scores-as-a-table) | Full-cost authored table; both blockers unmoved — per-transcript grain undecided, acquisition unmeasured. A research task, not a schema task. |
-| **RM28** meta-conclusions (predicate half) | [0.7](ROADMAP_0_7.md#rm28--meta-conclusions-the-predicate-half) | Parked on a corpus that is ~70% built. The cofactor half already closed; what remains is open-world negation, which no operator fixes. |
-| **RM55** removing `modifier_cn` | [1.0](ROADMAP_1_0.md#rm55-removal-half--the-integer-copy-number-and-repeat-count-columns) | Removal is what the amended rule reserves for a major. The column is *deprecated* here, which needs no major, and 1.0 drops it — so 1.0 inherits a removal rather than a retype. |
-| **RM56** (policy half) | [0.7](ROADMAP_0_7.md#rm56-policy-half--the-rule-for-a-measurement-that-spans-bins) | Prerequisite is a real caller VCF, so the closed vocabulary is fixed against what callers emit rather than a guess. 0.6 ships withhold plus an explicit not-implemented warning. |
-| **RM65** positional repeat/CN tables | [0.7](ROADMAP_0_7.md#rm65-implementation-half--repeat-and-copy-number-tables-are-positional) | Same caller-VCF prerequisite. Also takes RM43's fill lane from three tables to five. |
-| **RM66** several motifs per locus | [0.7](ROADMAP_0_7.md#rm66--one-repeat-locus-several-motifs) | Filed beside RM65 so both arrive with the same evidence; a keying change on a shipped table, the expensive kind. |
-| **RM67** polyploid genotypes | [0.7](ROADMAP_0_7.md#rm67--polyploid-and-partially-phased-genotypes) | **Not work** — a documented divergence. The message was fixed on 2026-08-14; the decision did not change. |
-| **RM68** drafting on a non-GRCh38 module | [0.7](ROADMAP_0_7.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid) | Blocked on RM15, which dissolves the premise. Both candidate behaviours are refuted; the warning shipped in 0.6. A behaviour fixed before RM15 is one RM15 would have to undo. |
-| **RM69** `resolution_signature` off GRCh38 | [0.7](ROADMAP_0_7.md#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped) | Blocked on RM15. A documented limit of P7, not a breach — P7's own stated remedy points at a blocker P7 cannot remove. |
-| **RM70** `requires_callable` on the PGx tables | [0.7](ROADMAP_0_7.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) | Two **authored** columns, full cost twice, on the layer the rare human writes; the unblock condition — a real module whose author wants to state it — is unmet. Additive, so nothing waits on a version. |
-| **RM71** the drafted-stub allele worklist | [0.7](ROADMAP_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) | Every candidate that writes is refuted; the one survivor puts the worklist in a *third* place while the complaint is that it is not in the one being edited. The open question is where an author does this work, and this repo has no model of that. |
-| **RM83** sidecar refresh | [0.7](ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold) | A new command, and the blocking sub-question stands: nothing records that a row was overridden, so "keep the overrides" is not implementable. Tier ownership undecided. Decide with RM85. |
-| **RM85** origin and source drift | [0.7](ROADMAP_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it) | The same *has the world moved* question as RM83, asked about the release label instead of the rows. Deciding them separately is how one gets a shape the other has to undo. |
-| **RM86** the review pass downstream | [0.7](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published) | Two thirds is the registry's, filed as their S10–S12; the third that is ours is a documentation decision that waits on their S12 reply. |
-| **RM50** the optional PMCID column | [ROADMAP.md](ROADMAP.md) | The guard shipped as an enricher patch. The column is additive but the entry pairs it with the 1.0 `StudyRow.pmid` requiredness demotion, and both want settling in one release. |
-| `weights.parquet` `end` | [ROADMAP.md](ROADMAP.md) 1.0 tracker | Minor-legal since the amendment, and its real blocker is unmoved: whether an `end` is interbase-half-open or inclusive is the same choice RM15 must make. |
+| **RM16** authored PRS weights | [0.7](../ROADMAP_0_7.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) | Full-cost authored table; unblocks on a real consumer combining authored weights, which does not exist. Fixing the shape now spends a one-way door on a guess. |
+| **RM23** `predictions.csv` | [0.7](../ROADMAP_0_7.md#rm23--computational-predictor-scores-as-a-table) | Full-cost authored table; both blockers unmoved — per-transcript grain undecided, acquisition unmeasured. A research task, not a schema task. |
+| **RM28** meta-conclusions (predicate half) | [0.7](../ROADMAP_0_7.md#rm28--meta-conclusions-the-predicate-half) | Parked on a corpus that is ~70% built. The cofactor half already closed; what remains is open-world negation, which no operator fixes. |
+| **RM55** removing `modifier_cn` | [1.0](../ROADMAP_1_0.md#rm55-removal-half--the-integer-copy-number-and-repeat-count-columns) | Removal is what the amended rule reserves for a major. The column is *deprecated* here, which needs no major, and 1.0 drops it — so 1.0 inherits a removal rather than a retype. |
+| **RM56** (policy half) | [0.7](../ROADMAP_0_7.md#rm56-policy-half--the-rule-for-a-measurement-that-spans-bins) | Prerequisite is a real caller VCF, so the closed vocabulary is fixed against what callers emit rather than a guess. 0.6 ships withhold plus an explicit not-implemented warning. |
+| **RM65** positional repeat/CN tables | [0.7](../ROADMAP_0_7.md#rm65-implementation-half--repeat-and-copy-number-tables-are-positional) | Same caller-VCF prerequisite. Also takes RM43's fill lane from three tables to five. |
+| **RM66** several motifs per locus | [0.7](../ROADMAP_0_7.md#rm66--one-repeat-locus-several-motifs) | Filed beside RM65 so both arrive with the same evidence; a keying change on a shipped table, the expensive kind. |
+| **RM67** polyploid genotypes | [0.7](../ROADMAP_0_7.md#rm67--polyploid-and-partially-phased-genotypes) | **Not work** — a documented divergence. The message was fixed on 2026-08-14; the decision did not change. |
+| **RM68** drafting on a non-GRCh38 module | [0.7](../ROADMAP_0_7.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid) | Blocked on RM15, which dissolves the premise. Both candidate behaviours are refuted; the warning shipped in 0.6. A behaviour fixed before RM15 is one RM15 would have to undo. |
+| **RM69** `resolution_signature` off GRCh38 | [0.7](../ROADMAP_0_7.md#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped) | Blocked on RM15. A documented limit of P7, not a breach — P7's own stated remedy points at a blocker P7 cannot remove. |
+| **RM70** `requires_callable` on the PGx tables | [0.7](../ROADMAP_0_7.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) | Two **authored** columns, full cost twice, on the layer the rare human writes; the unblock condition — a real module whose author wants to state it — is unmet. Additive, so nothing waits on a version. |
+| **RM71** the drafted-stub allele worklist | [0.7](../ROADMAP_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) | Every candidate that writes is refuted; the one survivor puts the worklist in a *third* place while the complaint is that it is not in the one being edited. The open question is where an author does this work, and this repo has no model of that. |
+| **RM83** sidecar refresh | [0.7](../ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold) | A new command, and the blocking sub-question stands: nothing records that a row was overridden, so "keep the overrides" is not implementable. Tier ownership undecided. Decide with RM85. |
+| **RM85** origin and source drift | [0.7](../ROADMAP_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it) | The same *has the world moved* question as RM83, asked about the release label instead of the rows. Deciding them separately is how one gets a shape the other has to undo. |
+| **RM86** the review pass downstream | [0.7](../ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published) | Two thirds is the registry's, filed as their S10–S12; the third that is ours is a documentation decision that waits on their S12 reply. |
+| **RM50** the optional PMCID column | [ROADMAP.md](../ROADMAP.md) | The guard shipped as an enricher patch. The column is additive but the entry pairs it with the 1.0 `StudyRow.pmid` requiredness demotion, and both want settling in one release. |
+| `weights.parquet` `end` | [ROADMAP.md](../ROADMAP.md) 1.0 tracker | Minor-legal since the amendment, and its real blocker is unmoved: whether an `end` is interbase-half-open or inclusive is the same choice RM15 must make. |
 
 **RM15 is the load-bearing absence.** Three of the sixteen are blocked on it directly and a fourth is
 paired with it. It is a 1.0 item for identity-semantics reasons that have nothing to do with the digest,
@@ -747,8 +747,8 @@ before it would make that closure immediately stale.
 
 # Provenance
 
-Sorted on 2026-08-16 from [ROADMAP_0_7.md](ROADMAP_0_7.md) and [ROADMAP.md](ROADMAP.md)'s open items,
-against [CONSTITUTION.md](CONSTITUTION.md) read in full. The candidate pool is every item filed while
+Sorted on 2026-08-16 from [ROADMAP_0_7.md](../ROADMAP_0_7.md) and [ROADMAP.md](../ROADMAP.md)'s open items,
+against [CONSTITUTION.md](../CONSTITUTION.md) read in full. The candidate pool is every item filed while
 0.6 was open: RM68–RM72 (dogfooding, 2026-08-13/14), RM82–RM87 (the lifecycle pass, 2026-08-16), the
 VCF 4.4 tail RM55/RM56/RM65/RM66/RM67 (2026-08-13), and the three long-parked additive tables
 RM16/RM23/RM28.

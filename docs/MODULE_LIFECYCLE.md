@@ -240,7 +240,7 @@ Three readings that this document exists to make explicit, because each has cost
   description is accurate: *"when this row was last written by a pass, not when the source published
   anything"*. The merge is `setdefault`, measured — `record_source_terms` twice against one spec
   leaves the file byte-identical; **only deleting it re-stamps.** This is
-  [S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
+  [S7](history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
   answered as a non-issue in 0.5.4 with the same probe — which settled the *behaviour* question and
   left the naming one unasked. It is asked now: the rename is planned in
   [ROADMAP § the 1.0 cleanup](ROADMAP.md#fetched_at--the-column-says-fetch-the-value-means-write),

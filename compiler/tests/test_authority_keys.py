@@ -1,6 +1,6 @@
 """Injected authority-key stripping + genuine `module.version` adoption (0.4.1).
 
-Covers the DI design from docs/PROPOSAL_0_4_1.md: a consumer injects the set of registry-owned
+Covers the DI design from docs/proposals/PROPOSAL_0_4_1.md: a consumer injects the set of registry-owned
 identity keys it stamps (`IDENTITY_AUTHORITY_KEYS`), the format's owned stripper removes them before
 validation, and the validator stays strict for everything else. Plus: `version` is a genuine
 advisory field (accepted, previewed against the future SemVer parser, digest-neutral), not stripped.

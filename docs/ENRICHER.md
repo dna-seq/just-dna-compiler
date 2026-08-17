@@ -2233,7 +2233,7 @@ separate step.
 ### PharmVar and CPIC gotchas
 
 - **The header is `Api-Key`**, no `X-` prefix, documented per-endpoint in the service's own OpenAPI
-  document (`docs/pharmvar_api_docs.json`) rather than in a `securityDefinitions` block. Every wrong
+  document (`docs/vendor/pharmvar_api_docs.json`) rather than in a `securityDefinitions` block. Every wrong
   spelling returns the *same* 401 as no key at all, so a wrong header is indistinguishable from a bad
   key — the error message says so rather than guessing.
 - **The key is personal** (PharmVar terms §2), so it comes from `PHARMVAR_API_KEY` and is never

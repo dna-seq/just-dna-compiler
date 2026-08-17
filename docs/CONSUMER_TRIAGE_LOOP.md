@@ -68,6 +68,15 @@ the same reason: an inbox only grows, and the eleven unanswered entries this loo
 invisible inside 6,000 words of answered ones. So an empty live file means nothing is owed — which is
 a property worth having and is destroyed the moment answered items are left in place.
 
+**The history file has itself been split once, and the loop is unaffected.** On 2026-08-17 the items
+the 0.5 line answered — S1–S24, S27 and S28 — moved to
+[history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md](history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md),
+byte-for-byte and with every fingerprint intact. `triage-archive.py` still archives into
+`CONSUMER_SUGGESTIONS_HISTORY.md`, which is the file it should keep writing to; `triage-state.py`
+globs for the history files rather than naming them, so `--next` counts ids across every half. The
+contents list stays whole in the live history file — splitting an index is how an item stops being
+findable, and that is what `RM_TOC.md` exists to remember.
+
 This exists because the notes arrive faster than anyone re-reads them. Eleven of the seventeen entries
 in that file had no reply of any kind when the loop was built, and six of those are not recorded
 anywhere else either, so the only way to find out whether an item had been considered was to read

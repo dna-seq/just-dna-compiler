@@ -36,6 +36,14 @@ Any consumer picks the tier it needs. **`just-dna-format` and `just-dna-compiler
    living lists the Constitution keeps out of itself.
 3. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** — what actually shipped, newest first (shared across the
    ecosystem repos that consume these libs).
+
+   **`docs/` root holds only what is still live.** Four subfolders hold the rest, and none of it is
+   edited as routine work: `docs/history/` (the closed record — the pre-0.6 halves of the changelog,
+   the roadmap history and the consumer-suggestion history, split off on 2026-08-17, plus the round-2
+   consumer thread), `docs/proposals/` (the five concluded `PROPOSAL_*` threads), `docs/probes/` (the
+   dogfood and VCF-audit rounds), `docs/vendor/` (PharmVar's OpenAPI document and licence text).
+   [docs/RM_TOC.md](docs/RM_TOC.md) indexes every `RMn` across the live and archived halves, so look an
+   item up there rather than guessing which file holds it.
 4. **Per-package references** — [docs/SCHEMAS.md](docs/SCHEMAS.md) (the schema tier: models, the CSV
    families, conventions, the three hashes), [docs/COMPILER.md](docs/COMPILER.md) (the transform:
    compile pipeline, resolution precedence, reverse, the per-feature coverage table), and
@@ -49,13 +57,13 @@ in order rather than jumping to code:
 
 1. **Feedback** — a consumer's field report → [docs/CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md)
    (the open inbox) / [docs/CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md)
-   (answered), and [docs/CONSUMER_ROUND2_AND_0_5.md](docs/CONSUMER_ROUND2_AND_0_5.md)
+   (answered), and [docs/history/CONSUMER_ROUND2_AND_0_5.md](docs/history/CONSUMER_ROUND2_AND_0_5.md)
 2. **Usage → blockers → solvability** — run each use case against the current bricks: *enabled*,
    *consumer-side* (the format owns nothing), or a *gap* closable additively? →
    [docs/USE_CASES.md](docs/USE_CASES.md)  ← **start a design task here**
 3. **Means → draft schema → decision** — the proposed shape + charter check + open questions →
-   [docs/PROPOSAL_0_5.md](docs/PROPOSAL_0_5.md) (0.5 design threads),
-   [docs/PROPOSAL_0_4_1.md](docs/PROPOSAL_0_4_1.md) (the 0.4.1 patch). *(0.4's proposal shipped and
+   [docs/proposals/PROPOSAL_0_5.md](docs/proposals/PROPOSAL_0_5.md) (0.5 design threads),
+   [docs/proposals/PROPOSAL_0_4_1.md](docs/proposals/PROPOSAL_0_4_1.md) (the 0.4.1 patch). *(0.4's proposal shipped and
    was retired — its decisions live in [docs/CHANGELOG.md](docs/CHANGELOG.md).)*
 4. **Conclusion — how to author it now, with these bricks** → [docs/REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md)
 5. **Terminal** — either **shipped** (schema + compiler; recorded in COMPILER.md coverage) **or**

@@ -10,18 +10,18 @@
   release narratives.
 - **[CHANGELOG.md](CHANGELOG.md)** — what shipped in each release, newest first.
 - **[USE_CASES.md](USE_CASES.md)** — where most `RMn` were derived (the *what-blocks?* lens);
-  **[PROPOSAL_0_5.md](PROPOSAL_0_5.md)** — where their shape was argued.
+  **[PROPOSAL_0_5.md](proposals/PROPOSAL_0_5.md)** — where their shape was argued.
 
 **Split on 2026-08-13, and it changes where to look.** This file is now the **line being built**; a
 deferral is filed against the release that will decide it:
 
-- **[PROPOSAL_0_6.md](PROPOSAL_0_6.md)** — **the authoritative entry for every active item below.**
+- **[PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md)** — **the authoritative entry for every active item below.**
   Each was argued to a decision on 2026-08-13, with the facts probed, the repairs rejected and why, and
   the consequences that follow without being chosen. **Where an entry below and the proposal disagree,
   the entry below is stale** — several of these sections were written before the decision and describe
   a shape that was rejected. The proposal also carries RM53–RM67, from
-  [VCF_4_4_AUDIT.md](VCF_4_4_AUDIT.md), which are not repeated here.
-- **[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md)** — **the second 0.6 design round, decided 2026-08-16.**
+  [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.md), which are not repeated here.
+- **[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md)** — **the second 0.6 design round, decided 2026-08-16.**
   Everything filed *behind* the first round accumulated in ROADMAP_0_7 because that was the next release
   at the time; PT2 re-asked which release each belonged to now that 0.6 is uncut, and took five back:
   RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
@@ -41,16 +41,16 @@ on 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package.
 
 **0.6.0 is open on the `0.6` branch, unreleased.** All three packages read `0.6.0`. Landed so far:
 `manifest.readme` (S25), `manifest.derived` (S26), then
-[RM44](ROADMAP_HISTORY.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one),
-[RM51](ROADMAP_HISTORY.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
-and [RM49](ROADMAP_HISTORY.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses)
+[RM44](history/ROADMAP_HISTORY_PRE_0_6.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one),
+[RM51](history/ROADMAP_HISTORY_PRE_0_6.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
+and [RM49](history/ROADMAP_HISTORY_PRE_0_6.md#rm49--a-spec-directory-is-flat-so-a-legible-derived-layout-is-one-the-compiler-refuses)
 — the last two shipped together, because "the same table in two possible places" is one problem whether
 the two places differ by name or by directory, and it wants one resolver and one collision rule. Every
 reference example kept all four of its signatures across that batch.
 
 **Then the design round itself was built**, in eleven parallel lanes plus a charter amendment that went
 first and alone: RM4, RM5, RM24, RM25, RM27, RM43, RM45, RM46, RM47, RM48, RM50, RM59 and the VCF 4.4
-cluster RM53–RM65 — the whole of [PROPOSAL_0_6.md](PROPOSAL_0_6.md)'s build list, with the rationale in
+cluster RM53–RM65 — the whole of [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md)'s build list, with the rationale in
 [ROADMAP_HISTORY § 0.6.0](ROADMAP_HISTORY.md#060--the-design-round-built). Across the corpus that batch
 moved `content_signature` on exactly **two** modules (`mt_heteroplasmy` and `htt_repeat_expansion`, both
 re-authored deliberately because their VCF pointers named the wrong field), `artifact.digest` on seven,
@@ -58,9 +58,9 @@ and it *gained* a `resolution_signature` on the four table-only modules that nev
 went 1535 → 2046. `schema_version` is still `"1.0"` and cutting the release is the user's call.
 
 **Shipped since: `just-dna-enricher` + `just-dna-compiler` 0.5.1 and 0.5.2** — 0.5.1 was
-[RM38](ROADMAP_HISTORY.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher)
+[RM38](history/ROADMAP_HISTORY_PRE_0_6.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher)
 (a cache for every licence-gated source, so a hosted enricher never reaches one live per request) plus
-[RM39–RM42](PROPOSAL_0_5_1.md) from a consumer field report; **0.5.2** is the panel-scale batch behind
+[RM39–RM42](proposals/PROPOSAL_0_5_1.md) from a consumer field report; **0.5.2** is the panel-scale batch behind
 S3–S6 in [CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) — the quadratic DuckDB probe that stopped a
 gene panel finishing, a `clin_sig` cross-check that no longer reports a structurally guaranteed zero, a
 drafted genotype on the contigs where only one is expressible, and the `.env`-ordering bug behind three
@@ -135,7 +135,7 @@ question, a corpus question, or a genuine break:
 | **RM4** gene-panel materialization | compiler behaviour, opt-in per spec | ✅ — row-set expansion pinned on `compiler_version`; only a module that *declares* a panel gains rows |
 | **RM10** inheritance expectation | a column, its own table, or yaml metadata | ✅ — all three placements are minor-legal now; pick on orthogonality (P5), not on cost |
 | **RM43** resolve the 0.4 families | a stamped-identity column per positional table, then the join | ✅ — the column is additive; what is left is the design round, not a version gate |
-| ~~**RM44** `resolution_subjects` count~~ | one additive integer on `Compilation` | ✅ **shipped in 0.6.0** — see [ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one) |
+| ~~**RM44** `resolution_subjects` count~~ | one additive integer on `Compilation` | ✅ **shipped in 0.6.0** — see [ROADMAP_HISTORY](history/ROADMAP_HISTORY_PRE_0_6.md#rm44--fully_resolved-answers-a-question-nobody-asked-it-and-prose-is-the-only-record-of-the-real-one) |
 | ~~**RM51** `licensing.csv` alias~~ | a second accepted spelling of an input filename | ✅ **shipped in 0.6.0**, old spelling deprecated, removal queued for 1.0 |
 | **RM50** PMID↔PMCID | a diagnosis (no schema change) + one optional id column | ✅ for the guard, which is an enricher patch; ⚠ for the column — additive, but it wants deciding beside the 1.0 requiredness demotion |
 | **RM15** multi-build identity | changes the *semantics* of `variant_key` and of every coordinate | ❌ — 1.0, and not for digest reasons: re-keying published identity is the identity-change class |
@@ -400,7 +400,7 @@ with the `source` *column*, which in `resolution.csv`/`frequencies.csv`/`gene_me
 `studies.csv` and `literature.csv` are also "sources". SCHEMAS.md now carries a three-row table
 disambiguating them, which is the tell: a name needing a table is a name doing no work.
 
-**The input half is done — [RM51](ROADMAP_HISTORY.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
+**The input half is done — [RM51](history/ROADMAP_HISTORY_PRE_0_6.md#rm51--licensingcsv-land-the-better-name-in-a-minor-so-the-major-only-has-to-remove)
 shipped in 0.6.0**: `licensing.csv` is an accepted spelling, `sources.csv` is deprecated (warn-only,
 read exactly as before), and four reference examples already carry the new name. Its ledger line is in
 [RM52](ROADMAP_1_0.md#rm52--10-ships-an-upgrade-procedure-or-10-does-not-ship). What stays here is the half that
@@ -446,7 +446,7 @@ one spec directory leaves the file **byte-identical**; only deleting the sidecar
 So on an ordinary re-run — including one that really did go and ask the source — the column records no
 fetch whatever. It records **when this row's facts were first set**. That is a useful thing to have and
 a reasonable thing to publish; it is simply not what it is called. Established independently at
-[S7](CONSUMER_SUGGESTIONS_HISTORY.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
+[S7](history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
 which probed the same `setdefault` and answered the *behaviour* question; the naming question was never
 put.
 
@@ -617,7 +617,7 @@ remain open as RM5.)*
 ## Freeform suggestions — the 0.5 idea-book
 
 The consumer's grounded 0.5 ideas (kept inside the one constraint: **VCF-based, possibly augmented on
-top**) live in full in [CONSUMER_ROUND2_AND_0_5.md](CONSUMER_ROUND2_AND_0_5.md) §3, each run through
+top**) live in full in [CONSUMER_ROUND2_AND_0_5.md](history/CONSUMER_ROUND2_AND_0_5.md) §3, each run through
 the what-blocks lens in [USE_CASES.md](USE_CASES.md) §1. Standing dispositions:
 
 - **3a — module declares where its measurement lives in a VCF.** ✅ Taken early: `source_field` shipped

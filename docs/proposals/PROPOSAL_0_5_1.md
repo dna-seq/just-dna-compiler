@@ -1,11 +1,11 @@
 # Proposal — 0.5.1: four seams a downstream consumer cannot cross without re-implementing something
 
 **Status: ✅ all four decided and shipped in 0.5.1** (2026-08-07), alongside
-[RM38](ROADMAP_HISTORY.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher). Each is
+[RM38](../history/ROADMAP_HISTORY_PRE_0_6.md#rm38--a-cache-for-every-gated-source-the-hosted-enricher). Each is
 **enricher/compiler API shape**, out of `artifact.digest`, and touches no parquet — which is what made
 them patch-shippable inside the closed 0.5 digest window (CONSTITUTION P3/P8) rather than 0.6 schema
 work. What shipped, and the shape decisions taken while building, are recorded per item in
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#rm39--one-pass-in-the-family-ignored-offline); this file keeps
+[ROADMAP_HISTORY.md](../history/ROADMAP_HISTORY_PRE_0_6.md#rm39--one-pass-in-the-family-ignored-offline); this file keeps
 the *filing* — the argument as the consumer made it — because that is the part worth not re-deriving.
 
 One thing changed on contact. RM41 was filed as *"either half closes it, preferably both"*, and both
@@ -14,7 +14,7 @@ shipped — which makes 0.5.1 a **two-package cut**: `just-dna-compiler` takes t
 stays at 0.5.0 with nothing changed.
 
 These came from a **consumer field report** rather than from design, in the same shape as
-[`CONSUMER_SUGGESTIONS.md`](CONSUMER_SUGGESTIONS.md)'s S1/S2: `just-dna-registry` 0.11 wires the 0.5
+[`CONSUMER_SUGGESTIONS.md`](../CONSUMER_SUGGESTIONS.md)'s S1/S2: `just-dna-registry` 0.11 wires the 0.5
 pipeline server-side (`enrich()` → `compile_module(strict=…)`, plus the optional passes behind a
 `/check` pre-flight endpoint), and each of the four below is a place where doing that correctly
 required either special-casing one pass against its siblings, copying logic out of this workspace, or
@@ -39,7 +39,7 @@ way to stop it is to inject `curation_text=` — which requires the caller to ha
 already, i.e. to have solved the problem the parameter would solve. The `dosage` CLI command has no
 `--offline` flag either, so the asymmetry is user-visible and not merely internal.
 
-**What it costs.** [ENRICHER.md](ENRICHER.md) documents `--offline` as *"clamps to local caches /
+**What it costs.** [ENRICHER.md](../ENRICHER.md) documents `--offline` as *"clamps to local caches /
 sidecars"* and the registry advertises the same guarantee — an offline dry run is asserted to make
 zero egress. A caller running the family under one flag therefore has to know, out of band, that one
 member of it does not honour the flag, and hoist a `if not offline:` around that call specifically.
@@ -72,7 +72,7 @@ question. This is only about the flag meaning the same thing in every function t
 `clin_sig_conflicts`, `stale_rsids`, `par_twins_dropped` — and nothing about minting.
 
 **Why that is a defect rather than a missing convenience.** The whole point of the coverage counters,
-as [COMPILER.md](COMPILER.md) puts it, is that *"a consumer can read the reliability of the identity
+as [COMPILER.md](../COMPILER.md) puts it, is that *"a consumer can read the reliability of the identity
 scheme instead of inferring it"*. A consumer that wants to read it **before** a compile — which is
 what a publish dry run is — cannot, so it re-implements the counting over `EnrichmentResult.rows`.
 The registry's `services/enrich.py::vrs_coverage` is that re-implementation, and it has to get two
@@ -111,7 +111,7 @@ correctly is `just_dna_compiler.compiler._load_csv_rows`, which is private. This
 **Why re-implementing it is a trap rather than a chore.** It is not `csv.DictReader` plus
 `Model(**row)`. It carries two rules a hand-rolled loader gets wrong:
 
-- **An empty cell becomes `None`, and the key is kept.** [SCHEMAS.md](SCHEMAS.md) documents the
+- **An empty cell becomes `None`, and the key is kept.** [SCHEMAS.md](../SCHEMAS.md) documents the
   consequence in the requiredness discussion: `MeasureBinRow.measure_kind` has a default, so
   `is_required()` is `False`, but the model receives `None` rather than its default and **fails on
   type**. A `""` where the loader would have put `None` is a different failure again.

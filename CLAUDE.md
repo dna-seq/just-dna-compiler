@@ -26,15 +26,21 @@ gotcha book: it is loaded into every session and has a size ceiling.
 
 ## The doc map — what each answers, and what to grep
 
+**`docs/` root holds only what is still live.** Four subfolders hold the rest, and nothing in them is
+edited as routine work: `docs/history/` (the closed record — the pre-0.6 halves of the three history
+files, plus the round-2 consumer thread), `docs/proposals/` (the five `PROPOSAL_*` design threads,
+all of them concluded), `docs/probes/` (the dogfood and VCF audit rounds), `docs/vendor/` (two
+upstream files kept for reference, PharmVar's OpenAPI document and its licence text).
+
 | Doc | Answers | Grep for |
 | --- | --- | --- |
 | [CONSTITUTION.md](docs/CONSTITUTION.md) | the 8 principles + goals/non-goals. Wins over any plan. | `grep -n '^[0-9]\+\. \*\*' docs/CONSTITUTION.md` |
 | [AGENT_NOTES.md](docs/AGENT_NOTES.md) | the long-form gotcha book behind this file | `grep -n '^## ' docs/AGENT_NOTES.md`, then the symbol name |
 | [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list | `grep -n 'RM47' docs/RM_TOC.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, the reserved-namespace and 1.0-cleanup trackers | `grep -n '^## RM' docs/ROADMAP.md` |
-| [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale | `grep -n '^## RM' docs/ROADMAP_HISTORY.md` |
+| [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, 0.6 onward. Pre-0.6 is in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — **use RM_TOC rather than guessing the half** | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
 | [ROADMAP_0_7.md](docs/ROADMAP_0_7.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
-| [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos) | `grep -n '^## 2026-' docs/CHANGELOG.md` |
+| [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos); 2026-08-12 onward, earlier entries in [history/](docs/history/CHANGELOG_PRE_0_6.md) | `grep -rn '^## 2026-' docs/CHANGELOG.md docs/history/` |
 | [INTEGRATION_0_6.md](docs/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists | `grep -n '^## \|^### ' docs/INTEGRATION_0_6.md` |
 | [SCHEMAS.md](docs/SCHEMAS.md) | models, CSV families, conventions, the nine hashes, the allele grammar | `grep -n '^## ' docs/SCHEMAS.md` |
 | [COMPILER.md](docs/COMPILER.md) | validation ceiling, compile pipeline, **§ Resolution** + round-trip matrix, reverse, coverage | `grep -n '^## ' docs/COMPILER.md` |
@@ -42,12 +48,12 @@ gotcha book: it is loaded into every session and has a size ceiling.
 | [MODULE_LIFECYCLE.md](docs/MODULE_LIFECYCLE.md) | origin → publish → a consumer's join; **what pass 2+ moves** | `grep -n '^## ' docs/MODULE_LIFECYCLE.md` |
 | [FAQ.md](docs/FAQ.md) | settled questions keyed by *question* ("why did my digest move?") | `grep -n '^\*\*' docs/FAQ.md` |
 | [CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md) | the **open** consumer inbox (`Sn`) — empty means nothing owed | `grep -n '^## S' docs/CONSUMER_SUGGESTIONS.md` |
-| [CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md) | answered `Sn`, verbatim, with the reply | `grep -n '^## S[0-9]' docs/CONSUMER_SUGGESTIONS_HISTORY.md` |
+| [CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md) | answered `Sn`, verbatim, with the reply; it keeps the **whole** contents list, and the items 0.5 answered (S1–S24, S27, S28) sit in [history/](docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md) | `grep -rn '^## S[0-9]' docs/CONSUMER_SUGGESTIONS_HISTORY.md docs/history/` |
 | [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) | the runbook for answering an `Sn`, and the ledger | `grep -n '^## ' docs/CONSUMER_TRIAGE_LOOP.md` |
 | [USE_CASES.md](docs/USE_CASES.md) | a use case → enabled / consumer-side / gap. **Start a design task here** | `grep -n '^## ' docs/USE_CASES.md` |
 | [REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md) | how to author each case with today's bricks; indexes `reference_examples/` | `grep -n '^## ' docs/REFERENCE_EXAMPLES.md` |
-| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round | `grep -n '^## ' docs/PROPOSAL_0_6_PT2.md` |
-| [DOGFOOD_0_6.md](docs/DOGFOOD_0_6.md), [DOGFOOD_0_6_FINDINGS.md](docs/DOGFOOD_0_6_FINDINGS.md), [VCF_4_4_AUDIT.md](docs/VCF_4_4_AUDIT.md) | probe rounds and what they broke | `grep -n '^## ' docs/DOGFOOD_0_6_FINDINGS.md` |
+| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round | `grep -n '^## ' docs/proposals/PROPOSAL_0_6_PT2.md` |
+| [DOGFOOD_0_6.md](docs/probes/DOGFOOD_0_6.md), [DOGFOOD_0_6_FINDINGS.md](docs/probes/DOGFOOD_0_6_FINDINGS.md), [VCF_4_4_AUDIT.md](docs/probes/VCF_4_4_AUDIT.md) | probe rounds and what they broke | `grep -n '^## ' docs/probes/DOGFOOD_0_6_FINDINGS.md` |
 
 Cross-cutting greps worth knowing: an `RMn` or `Sn` anywhere → `grep -rn 'RM47' docs/`; a symbol's
 rule → `grep -rn 'hosting_verdict' docs/ schema/ compiler/ enricher/`; a warning a consumer quoted →

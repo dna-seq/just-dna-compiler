@@ -15,7 +15,7 @@ set. The validator itself stays strict — if a stripper is skipped or a key sli
   a consumer opts in by passing `IDENTITY_AUTHORITY_KEYS` (or its own set).
 - `normalize_version` — coerce an informal version string to SemVer `MAJOR.MINOR.PATCH`. Built now,
   used **read-only** in 0.4.1 to *preview* what a future release will read; slated to become the
-  enforced `version` validator in 0.5 (see docs/PROPOSAL_0_5.md).
+  enforced `version` validator in 0.5 (see docs/proposals/PROPOSAL_0_5.md).
 - `parse_p_value` — read a free-form authored `p_value` string as a number, or `None` when it does not
   denote a definite value. Same shape as the two above: a pure, total, re-runnable read of informal
   authored text, used by the compiler to cross-check the typed `p_value_num` against the string
@@ -43,7 +43,7 @@ from decimal import Decimal, InvalidOperation
 # `extra="forbid"`. Deliberately NOT the reserved namespace (`vocab.RESERVED_NAMES_0_4`): that set is
 # for names expected to become future *module columns* — the opposite of these, which will never be
 # authored. And `version` is deliberately ABSENT: it is a genuine (advisory) authored field now, not
-# something to strip. See CONSTITUTION P2/P5 and docs/PROPOSAL_0_4_1.md.
+# something to strip. See CONSTITUTION P2/P5 and docs/proposals/PROPOSAL_0_4_1.md.
 IDENTITY_AUTHORITY_KEYS: frozenset[str] = frozenset({"namespace", "owner", "canonical_id"})
 
 # Why each authority key is not author-set — a per-key note a consumer can surface when it strips one.
@@ -131,7 +131,7 @@ def normalize_version(raw: str) -> str:
 
     Built now but used **read-only** in 0.4.1 — `validate_spec` calls it only to *preview* what a
     future release will read from an authored `module.version`, warning when the coerced form differs
-    from the input. It becomes the enforced `version` validator in 0.5 (docs/PROPOSAL_0_5.md)."""
+    from the input. It becomes the enforced `version` validator in 0.5 (docs/proposals/PROPOSAL_0_5.md)."""
     cleaned = _VERSION_NOISE.sub("", raw)
     nums: list[str] = []
     for part in cleaned.split("."):

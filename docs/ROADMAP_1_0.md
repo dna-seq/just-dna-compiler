@@ -57,7 +57,7 @@ corpus spans more than one build. This does not shrink RM15: **RM15 is about *su
 what shipped is only that the tools *decline* to answer for one rather than answering wrongly.**
 
 **Not to be confused with RM48** (an hg19 coordinate reaching a GRCh38 module), which is one-way,
-authoring-time, re-keys nothing, and is built in 0.6 — see [PROPOSAL_0_6.md](PROPOSAL_0_6.md).
+authoring-time, re-keys nothing, and is built in 0.6 — see [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md).
 
 **Paired with** the `weights.parquet` `end` column in the cleanup tracker: both need the coordinate
 convention *for a second coordinate* settled (interbase-half-open vs inclusive). The authored `start`
@@ -137,7 +137,7 @@ fractional measurement matches **no bin at all**, silently, `--strict` included.
 the usable fix would not wait for the major, and then collapsed to two when the fix landed in 0.6.
 
 **Re-dated on 2026-08-16 and built the same week; the route is now two releases rather than three.**
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55 took the usable fix back into **0.6**, so what this
+[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM55 took the usable fix back into **0.6**, so what this
 entry calls "0.7" is 0.6, and what is left here is a **removal and nothing else**. Two corrections to
 the description above:
 
@@ -167,7 +167,7 @@ Design detail, **settled on 2026-08-16 rather than carried forward**: quantised-
 Constitution names by name (P5), besides being a product rather than a sum as kinds are added. It lands
 as `measure_tiling` in 0.6, shipped. So the removal here leaves behind a schema where the tiling is
 stated, not one where it has to be inferred from the kind. See
-[PROPOSAL_0_6_PT2.md](PROPOSAL_0_6_PT2.md) § RM55, and [SCHEMAS.md](SCHEMAS.md) for the built shape —
+[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md) § RM55, and [SCHEMAS.md](SCHEMAS.md) for the built shape —
 including the one place the build departed from the proposal, which is that the fractional inference
 fires only against a `quantised` default (`activity_score` is fractional by nature and asserts nothing
 about the grid, so reading it as continuous invents coverage gaps rather than revealing them).

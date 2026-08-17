@@ -3,7 +3,7 @@
 **Research doc, 2026-08-13. No code changed, no `RMn` filed.** A read of the full VCFv4.4/BCFv2.2
 specification (`hts-specs` c101c79, 5 Nov 2025) against `just_dna_format`, looking for cases the schema
 gets wrong or cannot express that are **not** already tracked as an `RMn` and not already declared as a
-blind spot in [COMPILER.md](COMPILER.md).
+blind spot in [COMPILER.md](../COMPILER.md).
 
 Scope note on what this audit is *for*. The format holds no sample data, so VCF is not an input or an
 output — but it is the **only** artifact a consumer actually queries, and four authored columns point
