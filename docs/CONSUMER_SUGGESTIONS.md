@@ -50,3 +50,47 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S36 — `weight` declares no scale and no methodology, so every module means something different by it
+
+Reported 2026-08-17 by Anton Kulaga, over chat, in Russian, from the consumer side (the app that reads
+`weights.parquet` and combines the column). Not a bug report — field feedback after living with the
+column across a corpus of modules. Quoted verbatim, then translated:
+
+> сейчас уже недома. Но основая идея, что weights какую-то фигню городят
+> на по каждому модулю нужно расписыавть методологию и давать по каким шкалам
+> часто есть gwas эффект по множеству снипов
+> они часто идут лучше чем отфанаревые куратор бейзд весы
+> у нас де факто по каждому модулю разные методология если говорить о весах
+
+"Not at my desk right now. But the main idea is that the weights construct some nonsense. For each
+module you need to spell out the methodology and say on which scales. There is often a GWAS effect
+across many SNPs. Those often work better than eyeballed curator-based weights. De facto we have a
+different methodology per module when it comes to weights."
+
+Four claims, and they are not the same claim:
+
+1. **The scale is undeclared.** `VariantRow.weight` is `float | None` described only as "Score
+   (positive=protective)". Nothing anywhere — not the row, not `module_spec.yaml`, not the manifest —
+   says what range it runs over, whether it is additive, or whether two modules' weights are on one
+   scale. `effect_size` has `effect_measure` beside it; `weight` has no unit column at all.
+2. **The methodology is undeclared.** `defaults.method` exists and defaults to `literature-review`, a
+   free-text string that is about the *annotation* method rather than the *weighting* method.
+3. **A different methodology per module, in practice.** So the column is module-local — which the 1.0
+   tracker already says ("module-local score vs published magnitude") — but nothing in the artifact
+   marks it as module-local, and the consumer combines across modules anyway.
+4. **GWAS effect sizes often beat hand-set curator weights,** and are available for many SNPs.
+
+**Candidate the maintainer raised, with the argument against it in the same breath:** have the
+enricher procure GWAS effect sizes into a derived table and fill `weight` where the authored cell is
+null. The argument against is already written down twice —
+[MODULE_LIFECYCLE § Stage 3](MODULE_LIFECYCLE.md) names `weight`/`direction`/`effect_size` verbatim in
+the cells no tool fills, and Stage 5 says every check reports and never repairs. A null `weight` is
+"the author has not modelled this", which is the tri-state house algebra, and filling it from a source
+destroys the redundancy a Class-2 check needs. There is also a sign trap sitting in the middle of it:
+`weight` is documented positive=protective while a GWAS beta is positive on the effect allele, so a
+silent fill inverts the claim on exactly the rows nobody re-reads.
+
+Claim 4 also overlaps a settled thread: combining a GWAS effect across many SNPs is a polygenic score,
+which the format delegates to `pgs.csv` + `just-prs` rather than scoring itself
+([RM16](ROADMAP_0_7.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)).
