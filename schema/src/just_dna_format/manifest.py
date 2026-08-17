@@ -1137,6 +1137,54 @@ class Contribution(BaseModel):
         return cleaned
 
 
+class Weighting(BaseModel):
+    """What a module's authored `weight` column means, in the author's own words (0.6, RM92).
+
+    `VariantRow.weight` is a bare `float | None` described only as "Score (positive=protective)". It
+    has no unit column — unlike `effect_size`, which has `effect_measure` beside it — so nothing in
+    the artifact says what scale it runs on, how it was arrived at, or whether two modules' weights
+    are on one scale. A consumer reported the consequence: the weights "construct nonsense" across a
+    corpus, because every module means something different by the column and the artifact cannot say
+    so ([S36](../docs/CONSUMER_SUGGESTIONS_HISTORY.md)).
+
+    **Free text on purpose, all three fields.** A closed vocabulary would have to enumerate scales
+    nobody has surveyed, and the one-way-door rule (P5) says do not fix a shape on a guess. More
+    pointedly, the typed field this block deliberately does **not** carry is a *precedence* rule —
+    something saying "use the GWAS effect where `weight` is null". That would put two methodologies in
+    one summable column, which is the defect the report is about; the module states what its weights
+    are, and a consumer chooses a table wholesale rather than blending row by row.
+
+    Advisory metadata, exactly like `license`: out of `artifact.digest` and out of `content_signature`
+    (the identity/display half of `module_spec.yaml` is excluded by design), and **not reconstructed
+    by the lossy `reverse_module`**, same class as `panel`/`authorship`/`license`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    scale: str | None = Field(
+        default=None,
+        description=(
+            "What the numbers mean and over what range, e.g. '0-1, curator-set, arbitrary' or "
+            "'log(OR), from the cited meta-analyses'. Free text."
+        ),
+    )
+    method: str | None = Field(
+        default=None,
+        description=(
+            "How the weights were arrived at, e.g. 'literature triage, no GWAS input'. Distinct from "
+            "`defaults.method`, which is the *annotation* method rather than the weighting one. "
+            "Free text."
+        ),
+    )
+    note: str | None = Field(
+        default=None,
+        description=(
+            "Anything a consumer must know before combining these weights — most usefully whether "
+            "they are comparable with another module's, which by default they are not. Free text."
+        ),
+    )
+
+
 class ModuleManifest(BaseModel):
     """Full module manifest (SPEC §4). Written next to the parquets as `manifest.json`."""
 
@@ -1161,6 +1209,15 @@ class ModuleManifest(BaseModel):
             "Module-wide licence. Author-declared via `module_spec.yaml`'s `license:` and copied "
             "through by the compiler; the marketplace overrides on publish. The per-source detail "
             "lives in `sources`, which is where a redistributor should look."
+        ),
+    )
+    weighting: Weighting | None = Field(
+        default=None,
+        description=(
+            "What this module's authored `weight` column means — scale, method, and any caveat on "
+            "combining it (RM92). Author-declared via `module_spec.yaml`'s `weighting:` and copied "
+            "through; absent means the module has not said, which is not the same as saying its "
+            "weights are comparable. Out of `artifact.digest` and `content_signature`."
         ),
     )
 

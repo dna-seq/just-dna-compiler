@@ -34,6 +34,7 @@ from just_dna_format.manifest import (
     Display,
     GenePanelSpec,
     VerificationRecord,
+    Weighting,
 )
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
 from just_dna_format.pgs import (
@@ -65,6 +66,7 @@ _MODULE_MODELS: dict[str, type[BaseModel]] = {
     "GenePanelSpec": GenePanelSpec,
     "Display": Display,
     "Contribution": Contribution,
+    "Weighting": Weighting,
 }
 _VARIANT_MODELS: dict[str, type[BaseModel]] = {
     "VariantRow": VariantRow,

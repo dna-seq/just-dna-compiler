@@ -2307,3 +2307,50 @@ optional column. That is what makes it minor-legal under P3 rather than merely a
 The reverse writer's hand-kept `fieldnames` list is the third of `@three-touch-points` and the one that
 gets missed; the round-trip test was **watched failing** with only that entry removed, which raises
 `dict contains fields not in fieldnames` at the reverse step rather than at the recompile.
+
+## RM92 — the one magnitude in the format with no unit beside it
+
+✅ **Shipped in `just-dna-format` + `just-dna-compiler` 0.6.0** (2026-08-17). **Owner** format (schema +
+compiler) · **Motivating case** [S36](CONSUMER_SUGGESTIONS_HISTORY.md), which is a report about exactly
+this and nothing else.
+
+`effect_size` has `effect_measure` beside it. `VariantRow.weight` is a bare `float | None` described
+only as "Score (positive=protective)", with no unit column anywhere, no statement of range, and nothing
+saying whether two modules' weights are on one scale. The reporter's summary of living with that across
+a corpus: the weights "construct nonsense", and *de facto* every module has a different methodology.
+The 1.0 tracker had already called `weight` "module-local" — but nothing in the **artifact** said so,
+so consumers combined across modules anyway.
+
+**Measured while triaging, and it reframed the item.** `weight` is authored **zero times** in this
+repo. Nine of the sixteen reference examples carry a `variants.csv`; four carry a `weight` column
+(`hboc_palb2` 16 rows, `hfe_hemochromatosis` 13, `par_boundary` 3, `shox_par1` 10) and **every cell is
+blank**; the other five have no such column. The column has never been dogfooded here, which is worth
+recording beside the 1.0 review of whether `weight` survives at all.
+
+**What landed.** `Weighting` on `ModuleSpecConfig` and copied to `ModuleManifest` — `scale`, `method`,
+`note`, three optional strings, `extra="forbid"`. Advisory exactly like `license`: out of
+`artifact.digest`, out of `content_signature`, dropped by `reverse_module`.
+
+**All three fields are free text, and the field the block does *not* have is the design.** A closed
+vocabulary would enumerate scales nobody has surveyed, against P5's one-way-door rule. More to the
+point, the block deliberately carries **no precedence rule** — nothing saying "use the GWAS effect
+where `weight` is null". That was the reporter's own first suggestion and it is refused: a per-row
+precedence rule puts two methodologies in one summable column, which is the defect being reported, and
+it leaves the module with no single scale left to declare. The module states what its weights *are*;
+a consumer picks a table wholesale rather than blending row by row.
+
+**`measure_tiling` is the nearest precedent and it is a column, not a yaml key** — worth stating,
+because "flag it like the binning kinds do" is the obvious move and it is the wrong one here.
+`measure_tiling` is per-row on `MeasureBinRow` and constant within a bin group; a weighting
+methodology is module-wide, and repeating it on every row is exactly the authoring burden the
+human-authorable gate exists to price. What *did* transfer is the shape of its resolution: declared →
+inferred → default, with the evidence returned beside the value.
+
+**Corpus movement: none.** No digest and no signature moved anywhere, because no example adopted the
+block in this commit. The cost lands on the module that *does* adopt it: `module_spec.yaml` is
+byte-hashed into `manifest.inputs[0]` and the RM45 attestation binds the same set, so adopting the
+block stales an existing `verification.json` and the module must be re-closed. Pinned by a test.
+
+One gap closed in passing: `license`, `panel` and `authorship` are all documented as dropped by
+`reverse_module` and **none of them was asserted anywhere**, so the round trip could have started
+re-emitting one with no test noticing. `weighting`'s reverse-drop is pinned.

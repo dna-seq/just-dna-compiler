@@ -39,7 +39,13 @@ from just_dna_format.derive import (
     trimmed_state,
 )
 from just_dna_format.identity import validate_name
-from just_dna_format.manifest import SCHEMA_VERSION, Contribution, Display, GenePanelSpec
+from just_dna_format.manifest import (
+    SCHEMA_VERSION,
+    Contribution,
+    Display,
+    GenePanelSpec,
+    Weighting,
+)
 from just_dna_format.normalize import normalize_version, reject_authority_keys
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
@@ -354,6 +360,16 @@ class ModuleSpecConfig(BaseModel):
             "stamps the canonical value on publish. The authoritative per-source record is "
             "`sources.csv`, which round-trips; this key is a human convenience and is NOT "
             "reconstructed by the lossy `reverse_module` (same class as `panel`/`authorship`)."
+        ),
+    )
+    weighting: Weighting | None = Field(
+        default=None,
+        description=(
+            "What this module's `weight` column means — `scale`, `method` and `note`, all free text "
+            "(RM92). `weight` is the one magnitude in the format with no unit beside it, so without "
+            "this a consumer combining two modules' weights cannot know they are on different "
+            "scales. Advisory, copied into the manifest, and NOT reconstructed by the lossy "
+            "`reverse_module` (same class as `panel`/`authorship`/`license`)."
         ),
     )
 
