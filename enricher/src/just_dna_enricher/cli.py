@@ -428,6 +428,11 @@ def gwas_(
         "unstated", "--use",
         help="Declared use recorded on the licence row: unstated|non-commercial|commercial.",
     ),
+    study_facts: bool = typer.Option(
+        True, "--study-facts/--no-study-facts",
+        help="Follow each association's study and trait links. Costs 2 requests per association; "
+             "measured at 382 requests for one real module. Off keeps effects, drops pmid/trait/ancestry.",
+    ),
 ) -> None:
     """Fill gwas_effects.csv with the GWAS Catalog's published effect sizes for this module's rsIDs.
 
@@ -441,7 +446,8 @@ def gwas_(
     counted in the manifest, never dropped.
     """
     try:
-        result = enrich_gwas(spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use))
+        result = enrich_gwas(spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use),
+                             study_facts=study_facts)
     except GwasError as exc:
         typer.secho(f"GWAS FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -454,7 +460,8 @@ def gwas_(
     typer.secho(
         f"gwas: {len(result.rows)} row(s) for {len(result.covered)} variant(s), "
         f"{len(result.missing)} with no published association; "
-        f"{result.requests_made} request(s), {result.requests_saved} saved by caching",
+        f"{result.requests_made} request(s), {result.requests_saved} saved by caching, "
+        f"{result.p_value_underflows} p-value(s) below float64 range",
         fg=typer.colors.GREEN,
     )
     # The path the pass actually wrote, never `spec_dir / <name>` — a module keeping its sidecars

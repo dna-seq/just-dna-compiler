@@ -11,11 +11,17 @@ documentation, and three findings shaped the pass:
 
 * **The association payload is thin.** It carries the effect, the p-value and the risk allele, and
   nothing else — `pmid`, `study_accession`, `ancestry`, `trait` and `trait_efo_id` all sit behind
-  `_links.study` and `_links.efoTraits`. So a complete row costs up to two extra requests, and the
-  naive shape of this pass would be `1 + 2N` requests for a variant with N associations. rs4149056
-  has dozens. `_LinkCache` memoizes by resolved URL within a run, which collapses most of that because
-  associations share studies heavily — and the pass reports what it actually spent rather than
-  guessing.
+  `_links.study` and `_links.efoTraits`. So a complete row costs two extra requests, and the pass
+  costs `1 + 2N` per variant with N associations.
+
+  **`_LinkCache` memoizes by resolved URL, and the measurement corrected the prediction that
+  motivated it.** The expectation was that associations share studies heavily, so caching would
+  collapse most of the cost. Run against `reference_examples/hfe_hemochromatosis`, it saved
+  **nothing**: rs1800562 alone carries 189 associations and each names its *own* study, so the real
+  figure was 382 requests and 0 cache hits. The cache stays — it costs a dict and it does pay on a
+  module whose variants share literature — but the honest budget is `1 + 2N`, and `--no-study-facts`
+  exists because of that measurement rather than in anticipation of it. The pass reports both halves
+  so an operator sees the real number instead of this docstring's guess.
 * **`riskAlleleName` is `rs4149056-C`, or `rs4149056-?` when the study never established which allele
   carries the effect** — 2 of the first 3 associations for that variant. `-?` becomes `None`, never a
   guess, and the row is still written: an effect relative to an unknown allele is real evidence that
@@ -79,6 +85,22 @@ class GwasError(RuntimeError):
     """
 
 
+class GwasNotFound(GwasError):
+    """The Catalog answered, and it has no record of this variant at all (HTTP 404).
+
+    **A subclass rather than a flag, because this is an answer and not a failure.** Found by running
+    the pass against a real module: the Catalog holds only variants with a published genome-wide
+    association, so `rs111033563` — a rare clinical HFE variant — 404s rather than returning an empty
+    list. The first version of this pass treated that as an outage and died on the first rare variant
+    in the module, which is every clinically-authored module.
+
+    It stays inside `GwasError` so a caller that does not care about the distinction still catches
+    one type; `associations_for` catches it and reports the empty answer, which the pass records as
+    `not_found`. What must never happen is the reverse — a transport failure read as "no
+    associations", which would write a confident negative about a variant nobody could ask about.
+    """
+
+
 @dataclass
 class GwasResult:
     """What one pass did, including what it spent."""
@@ -88,6 +110,7 @@ class GwasResult:
     missing: list[str] = field(default_factory=list)
     requests_made: int = 0
     requests_saved: int = 0
+    p_value_underflows: int = 0
     skipped_offline: bool = False
 
 
@@ -160,6 +183,8 @@ class GwasCatalogClient:
         except (httpx.TransportError, httpx.TimeoutException):
             raise
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise GwasNotFound(f"GWAS Catalog has no record at {url}") from exc
             raise GwasError(f"GWAS Catalog returned {exc.response.status_code} for {url}") from exc
         except httpx.HTTPError as exc:
             raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
@@ -175,7 +200,12 @@ class GwasCatalogClient:
         rather than empty. Fusing the last two would turn a failed request into a definite negative.
         """
         url = f"{self.endpoint}/singleNucleotidePolymorphisms/{rsid}/associations"
-        payload = self._get(url)
+        try:
+            payload = self._get(url)
+        except GwasNotFound:
+            # The Catalog holds only variants with a published association, so it 404s on a rare
+            # clinical variant rather than returning an empty list. That is the empty ANSWER.
+            return []
         embedded = payload.get("_embedded") or {}
         associations = embedded.get("associations")
         if associations is None:
@@ -188,7 +218,17 @@ class GwasCatalogClient:
         return list(associations)
 
     def follow(self, url: str) -> dict:
-        return self._get(url)
+        """A linked sub-resource, or `{}` when the Catalog has none.
+
+        A 404 here withholds the study/trait facts for one association rather than sinking the pass:
+        the association itself is still a real published effect, and dropping it because its study
+        record moved would lose evidence over metadata.
+        """
+        try:
+            return self._get(url)
+        except GwasNotFound:
+            logger.warning("GWAS Catalog has no record at %s; that association keeps null study facts", url)
+            return {}
 
 
 def _parse_risk_allele(name: str | None) -> tuple[str | None, str | None]:
@@ -226,6 +266,30 @@ def _float_or_none(value: object) -> float | None:
         return float(text)
     except ValueError:
         return None
+
+
+def _queryable_p_value(raw: object) -> tuple[float | None, bool]:
+    """`(p_value_num, underflowed)` — the queryable p-value, or a withheld one.
+
+    **Found by running the pass against a real module.** The Catalog reports `pvalue: 0.0` for
+    p-values past float64's range (subnormal below ~1e-308, exactly `0.0` below ~5e-324), and
+    `GwasEffectRow.p_value_num` is `gt=0` for the reason SCHEMAS states: such a value is an underflow
+    rather than a probability, and storing it would publish a confident zero. Correct — but the first
+    version of this pass let the resulting `ValidationError` drop the **whole association**, losing a
+    real published effect because one derived column could not be expressed.
+
+    So the number is withheld and the row is kept, with the verbatim `p_value` string carrying what
+    the source actually said. That is the same split `StudyRow` already makes, and it is precisely
+    the catalogue-scale case the 0.5 mantissa/exponent decision anticipated without needing to
+    reopen it: a module cites tens of associations, and the ones that underflow keep their evidence
+    in the string.
+    """
+    value = _float_or_none(raw)
+    if value is None:
+        return None, False
+    if not 0 < value <= 1:
+        return None, True
+    return value, False
 
 
 def _effect_from(association: dict) -> tuple[float | None, str | None, str | None]:
@@ -356,6 +420,7 @@ def enrich_gwas(
     client: GwasCatalogClient | None = None,
     dataset: str | None = None,
     declared_use: str = "unstated",
+    study_facts: bool = True,
 ) -> GwasResult:
     """Record the Catalog's published effect sizes for this module's variants.
 
@@ -408,6 +473,7 @@ def enrich_gwas(
     missing: list[str] = []
     unusable = 0
     direct_requests = 0
+    underflows: list[str] = []
 
     for rsid, variant_key in subjects:
         associations = catalog.associations_for(rsid)
@@ -436,6 +502,8 @@ def enrich_gwas(
                 cache=cache,
                 release=release,
                 fetched_at=fetched_at,
+                underflows=underflows,
+                study_facts=study_facts,
             )
             if built is None:
                 unusable += 1
@@ -446,6 +514,15 @@ def enrich_gwas(
             seen.add(key)
             out.append(built)
 
+    if underflows:
+        # Aggregated by reason, once. On a well-studied variant this fires dozens of times, and the
+        # rows are all still there — only the queryable number is withheld.
+        logger.warning(
+            "GWAS pass withheld p_value_num on %d association(s) whose p-value the Catalog reports "
+            "below float64's range (it publishes 0.0); the verbatim p_value string is kept and the "
+            "associations are recorded in full.",
+            len(underflows),
+        )
     if unusable:
         # Aggregated by reason, once — a per-row warning over a well-studied variant's dozens of
         # associations is a wall nobody reads.
@@ -462,6 +539,7 @@ def enrich_gwas(
         missing=missing,
         requests_made=direct_requests + cache.misses,
         requests_saved=cache.hits,
+        p_value_underflows=len(underflows),
     )
 
     if write:
@@ -484,6 +562,8 @@ def _build_row(
     cache: _LinkCache,
     release: str,
     fetched_at: str,
+    underflows: list[str],
+    study_facts: bool = True,
 ) -> GwasEffectRow | None:
     """One `GwasEffectRow` from one association payload, or `None` when it carries no usable id.
 
@@ -508,14 +588,19 @@ def _build_row(
     reported_rsid, effect_allele = _parse_risk_allele(allele_name)
     size, measure, unit = _effect_from(association)
 
+    queryable_p, underflowed = _queryable_p_value(association.get("pvalue"))
+    if underflowed:
+        underflows.append(str(association_id))
+
     facts: dict[str, str | None] = {"pmid": None, "study_accession": None, "ancestry": None}
-    study_link = _first_link(association, "study")
-    if study_link:
-        facts = _study_facts(cache.get(study_link))
     traits: dict[str, str | None] = {"trait": None, "trait_efo_id": None}
-    trait_link = _first_link(association, "efoTraits")
-    if trait_link:
-        traits = _trait_facts(cache.get(trait_link))
+    if study_facts:
+        study_link = _first_link(association, "study")
+        if study_link:
+            facts = _study_facts(cache.get(study_link))
+        trait_link = _first_link(association, "efoTraits")
+        if trait_link:
+            traits = _trait_facts(cache.get(trait_link))
 
     try:
         return GwasEffectRow(
@@ -533,7 +618,7 @@ def _build_row(
             else None,
             risk_allele_frequency=_float_or_none(association.get("riskFrequency")),
             p_value=str(association["pvalue"]) if association.get("pvalue") is not None else None,
-            p_value_num=_float_or_none(association.get("pvalue")),
+            p_value_num=queryable_p,
             trait=traits["trait"],
             trait_efo_id=traits["trait_efo_id"],
             pmid=facts["pmid"],

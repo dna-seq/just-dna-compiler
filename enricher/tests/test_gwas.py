@@ -20,6 +20,7 @@ from just_dna_enricher.gwas import (
     enrich_gwas,
 )
 from just_dna_enricher.licensing import sources_path
+from just_dna_enricher.net import PacingGate
 from just_dna_format.gwas import GwasEffectRow
 
 _YAML = """\
@@ -328,3 +329,78 @@ def test_a_transport_failure_surfaces_as_this_passs_own_error(tmp_path: Path) ->
     """A client leaking its transport library's exception has no contract."""
     with pytest.raises(GwasError):
         enrich_gwas(_spec(tmp_path), client=_FakeClient(fail_on="associations"), dataset="d")
+
+
+# ── the two bugs the live run found, which no recorded fixture had provoked ──────────────────────
+
+
+def test_a_404_is_the_empty_answer_not_an_outage(tmp_path: Path) -> None:
+    """The Catalog holds only variants with a published association, so it **404s** on a rare one.
+
+    Found by running the pass against `reference_examples/hfe_hemochromatosis`, whose first variant
+    is `rs111033563`. The pass treated the 404 as a transport failure and died on it — meaning it
+    could never have completed on any clinically-authored module, which is most of them. A 404 on
+    this path is the Catalog answering "no record", and the only thing that must not happen is the
+    reverse: a real outage read as "no associations", which would write a confident negative.
+    """
+    import httpx
+
+    from just_dna_enricher.gwas import GwasCatalogClient, GwasNotFound
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "rs111033563" in str(request.url):
+            return httpx.Response(404, json={"error": "Not Found"})
+        return httpx.Response(200, json={"_embedded": {"associations": []}})
+
+    client = GwasCatalogClient(gate=PacingGate(0.0))
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert client.associations_for("rs111033563") == []
+    assert client.associations_for("rs1800562") == []
+    # The typed distinction still exists one level down, which is what lets the two callers treat a
+    # 404 differently: `associations_for` reports the empty answer, `follow` withholds the study
+    # facts for one association and keeps the effect.
+    with pytest.raises(GwasNotFound):
+        client._get("https://www.ebi.ac.uk/x/rs111033563/y")
+    assert client.follow("https://www.ebi.ac.uk/x/rs111033563/y") == {}
+
+
+def test_a_p_value_below_float64_range_withholds_the_number_and_keeps_the_row(
+    tmp_path: Path,
+) -> None:
+    """The Catalog publishes `pvalue: 0.0` for p-values past float64's range, and `p_value_num` is
+    `gt=0` because such a value is an underflow rather than a probability.
+
+    Found on real data: rs1800562 carries several. The pass let the resulting `ValidationError` drop
+    the **whole association**, losing a real published effect over one derived column. The number is
+    withheld; the verbatim string keeps what the source said; the row survives.
+    """
+    underflowing = [
+        {
+            **_ASSOCIATIONS[0],
+            "associationId": "64091035",
+            "pvalue": 0.0,
+        }
+    ]
+    result = enrich_gwas(_spec(tmp_path), client=_FakeClient(associations=underflowing), dataset="d")
+    assert len(result.rows) == 1
+    row = result.rows[0]
+    assert row.p_value_num is None
+    assert row.p_value == "0.0"
+    assert row.effect_size == 0.05          # the association itself is intact
+    assert result.p_value_underflows == 1
+
+
+def test_skipping_study_facts_costs_one_request_per_variant(tmp_path: Path) -> None:
+    """`--no-study-facts`, which exists because the measurement contradicted the prediction.
+
+    Caching was expected to collapse the `1 + 2N` budget; on a real module it saved nothing, because
+    rs1800562's 189 associations each name their own study. The opt-out keeps the effects — which is
+    what the table is for — and drops the metadata behind the links.
+    """
+    client = _FakeClient()
+    result = enrich_gwas(_spec(tmp_path), client=client, dataset="d", study_facts=False)
+    assert result.requests_made == 1
+    assert [c for c in client.calls if c.startswith("http")] == []
+    assert len(result.rows) == 2
+    assert result.rows[0].effect_unit is not None      # the effect survived
+    assert all(r.pmid is None for r in result.rows)    # the linked facts did not
