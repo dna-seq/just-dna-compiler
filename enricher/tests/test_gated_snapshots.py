@@ -400,23 +400,59 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     Demonstrated end to end on a real policy rather than asserted about the source: the stop object is
     called with a synthetic attempt number, and the answer must move when the environment does.
     """
+    import importlib
+    import pkgutil
+
+    import just_dna_enricher
     from tenacity import BaseRetrying
 
-    modules = [
-        "cpic", "ensembl", "eutils", "gnomad", "identifiers", "literature", "pharmvar",
-    ]
-    found: list[BaseRetrying] = []
-    for name in modules:
-        module = __import__(f"just_dna_enricher.{name}", fromlist=["_"])
+    # **Discovered, not listed** (RM100). This walked a hand-kept list of seven modules and asserted
+    # `len(found) >= 9` against prose in `net.py` claiming nine policies — while the tree carried
+    # twelve, across nine modules. A floor cannot see three new policies and a list cannot see two
+    # whole modules, so the guard was blind on both axes at once. `@registry-completeness`: a registry
+    # nothing iterates is a number somebody has to remember.
+    found: dict[str, BaseRetrying] = {}
+    for info in sorted(pkgutil.iter_modules(just_dna_enricher.__path__), key=lambda m: m.name):
+        module = importlib.import_module(f"just_dna_enricher.{info.name}")
         # `@retry` hangs the policy off the wrapped function, so the walk is: module attributes, and
         # for a class its own `vars` (the methods). This is the same walk the consumer had to write.
-        candidates = list(vars(module).values())
-        candidates += [m for v in vars(module).values() if isinstance(v, type) for m in vars(v).values()]
-        found += [p for c in candidates if isinstance(p := getattr(c, "retry", None), BaseRetrying)]
-    assert len(found) >= 9, f"expected the nine documented policies, walked {len(found)}"
-    assert all(isinstance(p.stop, attempt_floor) for p in found), [type(p.stop) for p in found]
+        # Owners are filtered to those DEFINED here, or a client imported into another module would be
+        # counted once per importer — the reason a naive walk reports 34 policies rather than 12.
+        here = module.__name__  # the dotted name, which is what `__module__` carries
+        owners = [v for v in vars(module).values() if getattr(v, "__module__", None) == here]
+        owners += [
+            m
+            for v in vars(module).values()
+            if isinstance(v, type) and getattr(v, "__module__", None) == here
+            for m in vars(v).values()
+            if getattr(m, "__module__", None) == here
+        ]
+        for owner in owners:
+            policy = getattr(owner, "retry", None)
+            if isinstance(policy, BaseRetrying):
+                found[f"{info.name}.{getattr(owner, '__qualname__', owner)}"] = policy
+
+    # An EQUALITY over what the walk found, so a new policy has to be named here and a deleted one
+    # cannot go unnoticed — the two things the floor allowed through.
+    assert set(found) == {
+        "cpic.CpicClient._request",
+        "ensembl.EnsemblResolver._graphql_rsid",
+        "ensembl.EnsemblResolver._rest_rsid",
+        "eutils.EutilsClient._request",
+        "gnomad.GnomadClient._request",
+        "grch37.Grch37Client._get",
+        "gwas.GwasCatalogClient._get",
+        "identifiers.OntologyClient._get",
+        "literature.CrossrefClient.exists",
+        "literature.EuropePmcClient._get",
+        "literature.PmcIdConverterClient._get",
+        "pharmvar.PharmVarClient._request",
+    }, sorted(found)
+    assert all(isinstance(p.stop, attempt_floor) for p in found.values()), (
+        [type(p.stop) for p in found.values()]
+    )
     # The two tightest budgets keep their own, higher default.
-    defaults = {p.stop.default for p in found}
+    defaults = {p.stop.default for p in found.values()}
     assert defaults == {3, 4}
 
     class _State:

@@ -90,8 +90,8 @@ def dedupe[T](items: Iterable[T]) -> list[T]:
 
 #: Raise every client's retry ceiling to at least this many attempts (RM42).
 #:
-#: Read at retry time rather than at import, which is the whole point: the nine policies below are
-#: `@retry(stop=…)` decorator arguments evaluated when the module loads, so without this there is no
+#: Read at retry time rather than at import, which is the whole point: every retry policy in this tier
+#: is a `@retry(stop=…)` decorator argument evaluated when the module loads, so without this there is no
 #: moment at which a caller could influence them — a consumer's only route was to walk the package and
 #: reassign `policy.stop`, which is reaching into another package's decorator state.
 RETRY_ATTEMPTS_ENV = "JUST_DNA_HTTP_RETRY_ATTEMPTS"
@@ -149,8 +149,15 @@ class attempt_floor(stop_base):  # noqa: N801 - a tenacity `stop_*` object, name
 
     Drop-in for the `stop_after_attempt(n)` it replaces, and deliberately **only** for a bare one: a
     composed policy (`stop_after_attempt(3) | stop_after_delay(60)`) means *both*, and raising one term
-    silently changes something whose author meant the conjunction. None of the nine is composed today;
-    the rule matters the day one is.
+    silently changes something whose author meant the conjunction. None of this tier's policies is
+    composed today; the rule matters the day one is.
+
+    **Deliberately no count in this prose.** It read "the nine policies" in two places while the tree
+    carried twelve, and nobody noticed because the guard was a floor (`len(found) >= 9`) walking seven
+    of the nine modules that own one -- so three new policies and two whole unwalked modules were both
+    invisible. `@registry-completeness`, the same shape as RM96's `_ALL_MODELS` hole: a number in prose
+    is a registry nothing iterates. `test_gated_snapshots.py` now discovers the modules instead of
+    listing them and asserts an equality over what it walked, which is a claim that cannot go stale.
     """
 
     def __init__(self, default: int) -> None:
