@@ -13,9 +13,12 @@ no sleeping.
 import csv
 from pathlib import Path
 
+import httpx
 import pytest
 from just_dna_enricher.gwas import (
+    GwasCatalogClient,
     GwasError,
+    GwasNotFound,
     _parse_risk_allele,
     enrich_gwas,
 )
@@ -343,10 +346,6 @@ def test_a_404_is_the_empty_answer_not_an_outage(tmp_path: Path) -> None:
     this path is the Catalog answering "no record", and the only thing that must not happen is the
     reverse: a real outage read as "no associations", which would write a confident negative.
     """
-    import httpx
-
-    from just_dna_enricher.gwas import GwasCatalogClient, GwasNotFound
-
     def handler(request: httpx.Request) -> httpx.Response:
         if "rs111033563" in str(request.url):
             return httpx.Response(404, json={"error": "Not Found"})

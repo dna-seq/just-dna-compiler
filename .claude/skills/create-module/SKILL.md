@@ -118,7 +118,24 @@ genome_build: GRCh38
 #                             # it; drafting records the release it copied rows from by itself.
 # authorship: [...]           # optional per-version contributor entries (who/role)
 # license: CC-BY-SA-4.0       # advisory declaration for the module as a whole
+# weighting:                  # optional; write it if you author ANY weight column
+#   scale: '0-1, curator-set, arbitrary'
+#   method: 'literature triage; no GWAS input'
+#   note: 'not comparable with another module's weights'
 ```
+
+**If you author a `weight` on any row, write the `weighting:` block.** `weight` is the one number in
+the format with no unit column beside it — `effect_size` has `effect_measure`, `weight` has nothing —
+so without this a consumer combining your module with another cannot tell that the two are on
+different scales, and will combine them anyway. All three fields are free text; say what the numbers
+mean, how you arrived at them, and whether they travel. Nothing validates it, and that is deliberate:
+there is no vocabulary of scales worth closing.
+
+**No tool will ever fill `weight` for you**, and that is not an omission to work around. A weight is
+your model of the finding; a blank one means you have not made that call yet, and a tool writing one
+would put a machine's number where a curator's belongs. If you want published effect sizes, run the
+`gwas` pass below — they land in their own table, with their units, beside your column rather than
+inside it.
 
 Learning a table you have not authored before:
 
@@ -278,6 +295,7 @@ just-dna-enricher dosage spec/                  # → ClinGen dosage rows onto g
 just-dna-enricher literature spec/              # → literature.csv    (PMID/DOI/quotes, article licence)
 just-dna-enricher gene-validity spec/           # → gene_validity.csv (ClinGen or GenCC; --source)
 just-dna-enricher assertions spec/              # → clinical_assertions.csv (ClinVar call + review stars)
+just-dna-enricher gwas spec/                    # → gwas_effects.csv  (GWAS Catalog effect sizes + units)
 ```
 
 Every one of these writes a **derived** table: machine-written, and yours to regenerate rather than

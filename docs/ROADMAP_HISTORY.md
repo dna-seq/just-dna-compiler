@@ -2354,3 +2354,91 @@ block stales an existing `verification.json` and the module must be re-closed. P
 One gap closed in passing: `license`, `panel` and `authorship` are all documented as dropped by
 `reverse_module` and **none of them was asserted anywhere**, so the round trip could have started
 re-emitting one with no test noticing. `weighting`'s reverse-drop is pinned.
+
+## RM90 — GWAS effect sizes as a derived fact table, because they may not go in `weight`
+
+✅ **Shipped in all three packages, 0.6.0** (2026-08-17). **Owner** format (schema) + compiler (the
+seventh fact table) + enricher (the Catalog pass) · **Motivating case**
+[S36](CONSUMER_SUGGESTIONS_HISTORY.md), whose reporter asked for the one thing this does not do.
+
+The ask was: have the enricher procure GWAS effects and fill `weight` where the authored cell is null.
+Barred, twice over — `MODULE_LIFECYCLE` § Stage 3 names `weight`/`direction`/`effect_size` in the cells
+no tool fills, and Stage 5 says every check reports rather than repairs. A null `weight` means *the
+author has not modelled this*, which is the house algebra rather than a hole to backfill. There is
+also a sign trap in the middle of it: `weight` is documented positive=protective while a GWAS beta is
+positive on the effect allele, so a silent fill inverts the claim on exactly the rows nobody re-reads.
+
+So the effect goes in its own table — the third category the compiler already names, *"machine-produced
+reference-fact table … injected, fact-hashed, human-overridable"* — and `weights.parquet.weight` stays
+100% authored. A module carrying both holds an authored opinion **and** a machine-transcribed reference
+fact, which is exactly what it already does with `frequencies` and `gene_metrics`.
+
+### The model was shaped by the real payload, and the download TSV would have got it wrong
+
+Probed on 2026-08-17 against `rest/api/singleNucleotidePolymorphisms/{rsid}/associations`:
+
+- **`orPerCopyNum` and `betaNum` are separate, mutually exclusive keys** — not the download file's
+  single ambiguous "OR or BETA" column — so `effect_size` + `effect_measure` maps exactly.
+- **`betaUnit` is free text and frequently uninterpretable.** This is the column the table exists for:
+  a magnitude without its unit reproduces S36's defect one layer down. It is inside the fact hash.
+- **`betaDirection` is increase/decrease, about the measured trait**, and is deliberately not folded
+  into `direction` (protective|risk|neutral|unknown). Increasing HDL and increasing LDL are both
+  `increase`; one field carrying both axes is the P5 overloading `state` is being unwound for.
+- **`riskAlleleName` is `rs4149056-?` when the study never established the allele.** Parsed to `None`,
+  never a guess, and the row is **kept and counted** rather than dropped — it is real evidence that
+  cannot be used as a weight, and a consumer that silently dropped such rows and one that silently
+  kept them would both be wrong invisibly.
+- The row carries **no coordinates**: the association payload has none, and one copied from the
+  module's own `resolution.csv` would be the module's fact rather than the source's.
+
+`rsid` is **inside** `GWAS_FACT_FIELDS`, which inverts `CLINICAL_ASSERTION_FACT_FIELDS` on purpose:
+there the rsID is filled from the module's resolution because the archive returns none, here the
+Catalog is queried by it and echoes it back. Copying the newer precedent because it is newer would
+have been the wrong reading of it.
+
+### Running it against a real module broke it twice, and both would have shipped green
+
+Neither failure was reachable from a recorded fixture, which is the argument for the probe:
+
+1. **A 404 is the empty answer, not an outage.** The Catalog holds only variants with a published
+   association, so it 404s on a rare clinical one. The pass read that as a transport failure and died
+   on `rs111033563` — the **first** variant in `hfe_hemochromatosis` — so it could never have completed
+   on any clinically-authored module. `GwasNotFound` is a subclass rather than a flag, keeping the
+   distinction typed: `associations_for` reports the empty answer, `follow` withholds one association's
+   study facts and keeps the effect. The reverse must never happen.
+2. **A p-value below float64's range dropped the whole association.** The Catalog publishes
+   `pvalue: 0.0` past the subnormal boundary and `p_value_num` is `gt=0` for the reason SCHEMAS gives —
+   that is an underflow, not a probability. The model was right and the pass was wrong: it let the
+   `ValidationError` discard a real published effect over one derived column. The number is now
+   withheld, the verbatim string keeps what the source said, and the row survives. **Six on rs1800562;
+   189 rows became 195.** This is the catalogue-scale case the 0.5 mantissa/exponent rejection
+   anticipated, met without reopening it.
+
+**And a prediction the measurement refuted.** `_LinkCache` exists because `pmid`, `study_accession`,
+`ancestry`, `trait` and `trait_efo_id` all sit behind `_links`, making the pass `1 + 2N` requests per
+variant; the expectation was that associations share studies heavily and caching would collapse most of
+it. It saved **nothing** — rs1800562's 189 associations each name their own study, so the real figure
+was **382 requests and zero cache hits**. The cache stays (it costs a dict and pays on a module whose
+variants share literature), the docstring now states the measured budget instead of the guess, and
+`--no-study-facts` exists because of the measurement rather than in anticipation of it.
+
+### Licensing: the first source here with no named licence
+
+`GWAS_CATALOG_TERMS` records EBI's prose terms, read 2026-08-17. `license` is null, which is the honest
+answer. **`commercial_use` stays `None` deliberately**: the page permits "use" generally but conditions
+it on the original data owners' terms, and for an aggregator of thousands of published studies those
+are not established here. Unknown is neither permission nor refusal — `taints_commercial_use` requires
+an explicit `False`, so a null warns rather than gating, which is the right outcome for terms stated in
+prose. Pinned by a test so it is not "tidied" to `True`. Rate limits are **not established** for EBI,
+unlike gnomAD's real and load-bearing 10/60s, and the interval says so.
+
+### Measured
+
+Adding the table moved **nothing**: no digest and no signature on any of the sixteen examples, since a
+module without the table has no such file. `hfe_hemochromatosis` then adopted it — 195 real rows, 186
+associations for rs1800562 across **62 EFO traits in 12 distinct effect units**, three of which are
+spellings of one unit (`SD units`, `SD`, `s.d.`) and two more of which differ only in case (`g/dL`,
+`g/dl`); 138 rows carry the uninformative `unit` and **42 of 195 name no effect allele at all**. Its
+`artifact.digest` moved, correctly, and its **`content_signature` did not** — which corrects the
+prediction written into the plan: neither a derived sidecar nor a manifest-only block is authored row
+content.

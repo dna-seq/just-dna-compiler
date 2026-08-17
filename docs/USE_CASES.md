@@ -144,6 +144,29 @@ deferred with the rest of 0.4.
 
 ---
 
+### 2d. GWAS effect sizes as grounding for a curated panel (0.6)
+
+**Verdict: ENABLED (RM90 shipped), and the interesting part is what it refused.** A curator with a
+trait panel wants the published effect sizes beside their own annotations — partly as evidence, partly
+because a consumer reported that hand-set `weight` values "construct nonsense" across a corpus and that
+GWAS effects are often better grounded (S36).
+
+The enabled shape: `just-dna-enricher gwas` fills `gwas_effects.csv`, one row per published
+association, and the module ships it beside `variants.csv`. A consumer joins on `variant_key` and reads
+`effect_size` with `effect_unit` and `effect_allele`.
+
+**The blocker that was not dissolved, stated so nobody re-proposes it.** *Filling* `weight` from those
+effects is barred (MODULE_LIFECYCLE § Stage 3), and a per-row precedence rule was refused as putting two
+methodologies in one summable column. What closed the gap additively was two tables and a declaration,
+not an exception to the rule.
+
+**And a caution the real data supplies better than the design note could.** rs1800562's 186
+associations span 62 EFO traits in 12 distinct effect units — three of them spellings of one unit, two
+more differing only in case — with 138 rows in the Catalog's uninformative `unit` and 42 of 195 naming
+no effect allele at all. A "GWAS effects are better than curator weights" pipeline that pools those is
+worse than the weights it replaces. Read them per trait, and read `manifest.gwas_effects.units` before
+pooling anything.
+
 ## 3. Composite modules (the real pipeline shapes)
 
 ### 3a. SNP + PRS in one module

@@ -130,7 +130,16 @@ deciding it.
 
 The cells no tool fills: `genotype` (sources publish alleles, not genotypes), `state` where the
 record is uncertain, `weight`/`direction`/`effect_size`, `trait_efo_id`, `conclusion`, and the two
-provenance locators. Two of the toolchain's standing rules live here and both bear on later passes:
+provenance locators.
+
+**Where a machine-held effect size goes instead (0.6, RM90).** This rule is the one a consumer asked to
+have relaxed — fill `weight` from a GWAS effect where the authored cell is null — and the answer is a
+table rather than an exception. `gwas_effects.csv` records the Catalog's published effects beside the
+authored column, with their units, their effect alleles and their traits; `weights.parquet.weight`
+stays 100% authored, and a consumer chooses one source or the other wholesale rather than blending row
+by row. A per-row precedence rule was refused for the same reason the fill was: it puts two
+methodologies in one summable column, and leaves the module with no single scale left to declare
+(`module_spec.yaml`'s `weighting:` block, RM92, is where it declares one). Two of the toolchain's standing rules live here and both bear on later passes:
 
 - **Never fill a cell from the source that checks it.** The redundancy-bearing set exists so that a
   Class-2 check compares two independently produced values. Filling one from the other does not fail

@@ -77,6 +77,24 @@ digest, so forbidding a tool the same move proves too much. → ROADMAP, the row
 
 ## Sidecars, re-runs and regeneration
 
+**Why can't the enricher just fill my empty `weight` cells from a GWAS effect?**
+Because a null `weight` means *the author has not modelled this*, not *nobody has computed this yet* —
+`MODULE_LIFECYCLE` § Stage 3 lists `weight`/`direction`/`effect_size` among the cells no tool fills, and
+every check in the tier reports rather than repairs. There is also a sign trap: `weight` is documented
+positive=protective while a GWAS beta is positive on the **effect allele**, so a silent fill would
+invert the claim on exactly the rows nobody re-reads. What you want instead is `gwas_effects.csv`
+(RM90): the published effects sit beside the authored column with their units and their effect alleles,
+and your consumer picks one source or the other wholesale. Declare which, and on what scale, in
+`module_spec.yaml`'s `weighting:` block (RM92). → [SCHEMAS § The GWAS-effect table](SCHEMAS.md)
+
+**Why is a per-row "use the GWAS value where `weight` is null" rule refused?**
+It reintroduces the very thing the report was about. Two methodologies in one summable column is a
+number that means nothing, and a module whose weights vary in provenance row by row has no single scale
+left for `weighting:` to declare. Splitting the module in two was also considered and refused: the
+split criterion would be *source coverage*, not methodology (module B would be "the variants with no
+published GWAS"), and it would make module membership churn every time a new paper lands — routing an
+upstream fact straight into authored identity, which is what the derived-fact category exists to avoid.
+
 **Why did re-running a pass not pick up the newer data?**
 Every derived sidecar is merge-not-clobber: an existing row is authoritative because a human may have
 overridden it. Delete the file to re-derive. → [ENRICHER.md](ENRICHER.md), and
@@ -91,8 +109,8 @@ is materialized into `weights.parquet` and the positional tables where it belong
 
 **Does `reverse` give me my spec back?**
 No. It is a fixed point, not a backup. Manifest-only fields (`authorship`, `provenance`, `logo`,
-`readme`), the whole verification attestation *and its closure*, and `resolution.csv`'s provenance are
-all lost — deliberately, in each case. → [COMPILER § Reverse](COMPILER.md#reverse) and
+`readme`, and since 0.6 `weighting`), the whole verification attestation *and its closure*, and
+`resolution.csv`'s provenance are all lost — deliberately, in each case. → [COMPILER § Reverse](COMPILER.md#reverse) and
 [MODULE_LIFECYCLE § 6.9](MODULE_LIFECYCLE.md).
 
 **Reverse drops `rsid_alternates` — is that a bug to file?**

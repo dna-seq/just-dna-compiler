@@ -93,7 +93,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 
 | File | Model (module) | Role |
 |---|---|---|
-| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` (deprecated, RM4) / `authorship` |
+| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` (deprecated, RM4) / `authorship` / `license` / `weighting` (0.6, RM92) |
 | `variants.csv` | `spec.VariantRow` | SNP-core annotations (the weights table) |
 | `studies.csv` | `spec.StudyRow` | grounding evidence (PMID/DOI + provenance) |
 | `resolution.csv` | `resolution.ResolutionRow` | injected rsid↔coord facts (0.5; enricher-produced) |
@@ -106,6 +106,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 | `diplotypes.csv` | `pgx.DiplotypeRow` | canonicalized diplotype pair → phenotype |
 | `pharm_variants.csv` | `pgx.PharmVariantRow` | single-variant drug response (PharmGKB) |
 | `pgs.csv` | `pgs.PgsRow` | PGS-Catalog-ID manifest + ancestry-validity fields |
+| `gwas_effects.csv` | `gwas.GwasEffectRow` | injected GWAS Catalog effect sizes (0.6, RM90; enricher-produced) |
 
 ## Conventions (the idioms every model obeys)
 
@@ -1488,6 +1489,7 @@ silently.)
 | `literature_signature(rows)` | citation **facts** (`LITERATURE_FACT_FIELDS`) | order-independent | n/a | pins which articles the module cites — over the rows that reach the artifact, so a `literature.csv` row for a citation the module no longer makes is outside it (RM79) |
 | `gene_validity_signature(rows)` | gene–disease **facts** (`GENE_VALIDITY_FACT_FIELDS`) | order-independent | n/a | pins which curated assertions the module carries, at which strength |
 | `clinical_assertion_signature(rows)` | archive-record **facts** (`CLINICAL_ASSERTION_FACT_FIELDS`) | order-independent | n/a | pins the clinical calls **and the review behind them** |
+| `gwas_effect_signature(rows)` | published-association **facts** (`GWAS_FACT_FIELDS`) | order-independent | n/a | pins the effect sizes **and the unit each is in** — `effect_unit` is inside, `trait` (a churning label) is not |
 | `source_signature(rows)` | licensing **facts** (`SOURCE_FACT_FIELDS`) | order-independent | n/a | pins what the module was built from, and on what terms |
 
 The last seven share one body, `fact_signature(rows, fact_fields)` — every injected table under one
@@ -1704,3 +1706,45 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
 `uv run pytest schema/tests` (part of the workspace suite). Real fixtures, runtime-computed expected
 values, round-trip/idempotency proven (not asserted). Vocabularies may be hardcoded (domain constants);
 row/unique counts read off a data dump may not.
+
+## The GWAS-effect table (0.6, RM90)
+
+`gwas_effects.csv` → `gwas_effects.parquet` is the seventh derived-fact sidecar: one row per
+**published association**, keyed on the Catalog's own `association_id`, filled by the enricher's
+`gwas` pass and never fetched by the compiler. `just_dna_format.gwas.GwasEffectRow`.
+
+**It exists because the obvious repair is barred.** A consumer asked for the enricher to fill an empty
+`weight` from a GWAS effect ([S36](CONSUMER_SUGGESTIONS_HISTORY.md)). `MODULE_LIFECYCLE` § Stage 3 names
+`weight`/`direction`/`effect_size` among the cells no tool fills, and every check in the tier reports
+rather than repairs — a null `weight` says *the author has not modelled this*, which is the house
+algebra. So the effect sits beside the authored column instead of inside it, and a consumer chooses one
+or the other **wholesale**: `weights.parquet.weight` remains 100% authored, and no row is ever a blend.
+
+**`effect_unit` is the load-bearing column.** `effect_size` alone reproduces the very defect S36
+reports, one layer down. Measured on `reference_examples/hfe_hemochromatosis`: rs1800562 carries 186
+published associations spanning **12 distinct units**, of which `SD units`, `SD` and `s.d.` are three
+spellings of one and `g/dL`/`g/dl` differ only in case, while 138 rows carry the Catalog's
+uninformative `unit`. Those betas are not poolable, and the manifest's `gwas_effects.units` is what
+makes that visible without reading the parquet.
+
+**`effect_direction` is not `direction`.** It is the Catalog's `betaDirection` — which way the effect
+allele moves the *measured trait* — while `VariantRow.direction` is a clinical judgement
+(protective|risk|neutral|unknown). Increasing HDL and increasing LDL are both `increase`; one field
+carrying both axes is the Principle 5 overloading `state` is being unwound for.
+
+**A null `effect_allele` is a fact, not a gap.** The Catalog writes `rs4149056-?` when a study never
+established which allele carries the effect — 42 of 195 rows on that one module. Such a row cannot be
+used as a weight in any direction, so it is **kept and counted** (`with_effect_allele` /
+`without_effect_allele` in the manifest) rather than filtered: a consumer that silently dropped them
+and one that silently kept them would both be wrong, invisibly.
+
+**The row carries no coordinates**, deliberately: the association payload has none (they live on the
+SNP object behind a link), and one copied from the module's own `resolution.csv` would be the module's
+fact rather than the source's. `variant_key` joins it to the weights rows.
+
+`rsid` is **inside** `GWAS_FACT_FIELDS` — the inverse of `CLINICAL_ASSERTION_FACT_FIELDS`, and not by
+oversight. There the archive lookup is allele-exact and returns no rsID, so the column comes from the
+module's own resolution and would make two modules holding the same records hash differently. Here the
+Catalog is *queried* by rsID and echoes it back inside `riskAlleleName`, so it is part of what the
+source said. `trait` is outside, on `gene_validity`'s rule: a label that churns between releases for an
+unchanged `trait_efo_id` describes the association rather than being it.

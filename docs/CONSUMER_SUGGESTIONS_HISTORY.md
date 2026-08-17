@@ -59,6 +59,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S33** an expansion's other rows look authored — 0.6.0; row marker RM87
 - **S34** brief promised uninstallable fields — docs fixed; §4 RM84
 - **S35** answers RM84+RM89; publisher dropped most of the artifact — 0.6.0
+- **S36** `weight` declares no scale — 0.6.0; RM90, RM91, RM92
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -3084,7 +3085,7 @@ consequence rather than an item: retention is the collection owner's call, not t
 **Reporter** `just-dna-lite` · **Date** 2026-08-17 · **Answers**
 [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 § *The one open thing* and
-[RM89](ROADMAP.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)
+[RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)
 § *The open question* · **Read as** three answers and one finding, not a request
 
 ENRICHER.md put three questions in front of us and said delivering them into our tree was the reader's
@@ -3217,3 +3218,106 @@ Nothing was worked around, because nothing is blocked. We publish through our ow
 RM84 discovery work is unstarted and unscheduled: until it lands, `read_module_provenance` continues to
 state `version: None` for every HF-discovered module, which our report renders as *Not stated* — correct,
 and now correct for a reason that has a fix on our side rather than yours.
+
+# Anton Kulaga on authored weights, from the app side (2026-08-17)
+
+Field feedback rather than a bug report, arriving over chat rather than as a written item — recorded
+here in the reporter's own words, Russian original and translation, because the diagnosis was right
+and the specific repair proposed with it was not.
+
+## S36 — `weight` declares no scale and no methodology, so every module means something different by it
+
+**Status — accepted, and the diagnosis is right; the specific repair you proposed is refused, and the
+three items that make the underlying want satisfiable shipped in the tree on 2026-08-17.** All three
+packages read **0.6.0, which is NOT cut** — the newest tag is `v0.5.4`, so check
+[CHANGELOG.md](CHANGELOG.md) before building against any of this.
+[RM90](ROADMAP_HISTORY.md#rm90--gwas-effect-sizes-as-a-derived-fact-table-because-they-may-not-go-in-weight),
+[RM91](ROADMAP_HISTORY.md#rm91--a-study-states-an-effect-magnitude-relative-to-no-allele) and
+[RM92](ROADMAP_HISTORY.md#rm92--the-one-magnitude-in-the-format-with-no-unit-beside-it).
+
+**Reproduced, and it is worse than you said.** `weight` is authored **zero times** in this repository.
+Nine of the sixteen reference examples carry a `variants.csv`; four carry a `weight` column — 42 rows
+between them — and every cell is blank. So the column you are describing as inconsistent has never
+been dogfooded here at all, which is a fact about us rather than about your modules, and it now sits
+beside the 1.0 review of whether `weight` survives.
+
+**What shipped.** `module_spec.yaml` gains a free-text `weighting:` block — `scale`, `method`, `note` —
+so a module states what its numbers mean and whether they travel; it reaches `manifest.weighting` and
+moves neither identity half. `gwas_effects.csv` → `gwas_effects.parquet` is a new derived-fact table
+carrying the GWAS Catalog's published effects **with their units and their effect alleles**, filled by
+`just-dna-enricher gwas`. And `StudyRow` finally has `effect_allele`, because it had been stating
+magnitudes relative to nothing since 0.3.
+
+**What is refused, and why the fallback half is not in the design.** Having the enricher fill `weight`
+where the authored cell is null is barred twice over: MODULE_LIFECYCLE § Stage 3 names
+`weight`/`direction`/`effect_size` among the cells no tool fills, and every check in the tier reports
+rather than repairs — a null `weight` means *the author has not modelled this*, not *nobody has
+computed this yet*. There is a sign trap inside the proposal as well: `weight` is documented
+positive=protective while a GWAS beta is positive on the **effect allele**, so a silent fill inverts
+the claim on exactly the rows nobody re-reads.
+
+The per-row precedence rule that came up next — "use the GWAS value where `weight` is null" — is
+refused for a different reason, and it is your own argument: it puts two methodologies in one summable
+column, which is the defect you reported, and it leaves the module with no single scale left for
+`weighting:` to declare. Splitting such a module in two was also considered and refused: the split
+criterion would be *source coverage* rather than methodology (module B would be "the variants with no
+published GWAS"), and membership would churn every time a paper lands, routing an upstream fact
+straight into authored identity. So there is **no fallback mechanism at all** — the module declares
+what its weights are, and a consumer chooses a table wholesale rather than blending row by row.
+
+**One caution the data supplies better than any design note.** We ran the new pass against
+`hfe_hemochromatosis`: rs1800562 alone carries **186 published associations across 62 EFO traits in 12
+distinct effect units**. Three of those units are spellings of one thing (`SD units`, `SD`, `s.d.`),
+two more differ only in case (`g/dL`, `g/dl`), 138 rows carry the Catalog's uninformative `unit`, and
+**42 of 195 name no effect allele at all** and cannot be weighted in any direction. "GWAS effects beat
+curator weights" is true per trait and false in aggregate — pooling that set is worse than the weights
+it would replace. Read `manifest.gwas_effects.units` before combining anything.
+
+**What to do now.** Add `weighting:` to any module that authors weights, run `just-dna-enricher gwas`
+where you want published effects, and read them per trait. Note the request budget: it is `1 + 2N` per
+variant and measured at 382 requests for that one module, so `--no-study-facts` exists if you only
+want the effects.
+
+<!-- triaged: 0.6.0 · sha cbeeb8f -->
+
+Reported 2026-08-17 by Anton Kulaga, over chat, in Russian, from the consumer side (the app that reads
+`weights.parquet` and combines the column). Not a bug report — field feedback after living with the
+column across a corpus of modules. Quoted verbatim, then translated:
+
+> сейчас уже недома. Но основая идея, что weights какую-то фигню городят
+> на по каждому модулю нужно расписыавть методологию и давать по каким шкалам
+> часто есть gwas эффект по множеству снипов
+> они часто идут лучше чем отфанаревые куратор бейзд весы
+> у нас де факто по каждому модулю разные методология если говорить о весах
+
+"Not at my desk right now. But the main idea is that the weights construct some nonsense. For each
+module you need to spell out the methodology and say on which scales. There is often a GWAS effect
+across many SNPs. Those often work better than eyeballed curator-based weights. De facto we have a
+different methodology per module when it comes to weights."
+
+Four claims, and they are not the same claim:
+
+1. **The scale is undeclared.** `VariantRow.weight` is `float | None` described only as "Score
+   (positive=protective)". Nothing anywhere — not the row, not `module_spec.yaml`, not the manifest —
+   says what range it runs over, whether it is additive, or whether two modules' weights are on one
+   scale. `effect_size` has `effect_measure` beside it; `weight` has no unit column at all.
+2. **The methodology is undeclared.** `defaults.method` exists and defaults to `literature-review`, a
+   free-text string that is about the *annotation* method rather than the *weighting* method.
+3. **A different methodology per module, in practice.** So the column is module-local — which the 1.0
+   tracker already says ("module-local score vs published magnitude") — but nothing in the artifact
+   marks it as module-local, and the consumer combines across modules anyway.
+4. **GWAS effect sizes often beat hand-set curator weights,** and are available for many SNPs.
+
+**Candidate the maintainer raised, with the argument against it in the same breath:** have the
+enricher procure GWAS effect sizes into a derived table and fill `weight` where the authored cell is
+null. The argument against is already written down twice —
+[MODULE_LIFECYCLE § Stage 3](MODULE_LIFECYCLE.md) names `weight`/`direction`/`effect_size` verbatim in
+the cells no tool fills, and Stage 5 says every check reports and never repairs. A null `weight` is
+"the author has not modelled this", which is the tri-state house algebra, and filling it from a source
+destroys the redundancy a Class-2 check needs. There is also a sign trap sitting in the middle of it:
+`weight` is documented positive=protective while a GWAS beta is positive on the effect allele, so a
+silent fill inverts the claim on exactly the rows nobody re-reads.
+
+Claim 4 also overlaps a settled thread: combining a GWAS effect across many SNPs is a polygenic score,
+which the format delegates to `pgs.csv` + `just-prs` rather than scoring itself
+([RM16](ROADMAP_0_7.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)).

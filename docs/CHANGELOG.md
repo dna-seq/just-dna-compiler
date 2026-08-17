@@ -34,7 +34,64 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-17 (latest) — the publisher stopped dropping most of the artifact (S35 / RM89)
+## 2026-08-17 (latest) — weights declare a scale, and GWAS effects get their own table (S36 / RM90–RM92)
+
+**`just-dna-format` + `just-dna-compiler` + `just-dna-enricher` 0.6.0, uncut.** Three items from one
+consumer note about authored `weight` values: the column declares no scale, every module means
+something different by it, and published GWAS effects are often better grounded than a hand-set
+curator score. The note asked for one specific repair, which is barred; what shipped is the machinery
+that makes the underlying want satisfiable instead.
+
+**Measured while triaging, and it reframed the whole batch: `weight` is authored zero times in this
+repo.** Nine of the sixteen reference examples carry a `variants.csv`; four carry a `weight` column —
+`hboc_palb2` 16 rows, `hfe_hemochromatosis` 13, `par_boundary` 3, `shox_par1` 10 — and **every cell is
+blank**. The column has never been dogfooded here, which the 1.0 review of whether it survives now has
+as a data point.
+
+- **The enricher will not fill `weight`, and `gwas_effects.csv` is where the effect goes instead
+  (RM90).** MODULE_LIFECYCLE § Stage 3 names `weight`/`direction`/`effect_size` among the cells no tool
+  fills; a null one means *the author has not modelled this*. There is a sign trap under the request
+  too — `weight` is positive=protective while a GWAS beta is positive on the effect allele. So the
+  seventh derived-fact table carries the Catalog's published effects beside the authored column, and
+  `weights.parquet.weight` stays 100% authored. **A per-row precedence rule was refused** as putting
+  two methodologies in one summable column, and so was splitting such a module in two: the split
+  criterion would be source coverage rather than methodology, and membership would churn on every new
+  paper.
+- **`effect_unit` is the load-bearing column, and the corpus proves it.** rs1800562 carries 186
+  published associations across **62 EFO traits in 12 distinct effect units** — `SD units`, `SD` and
+  `s.d.` are three spellings of one; `g/dL` and `g/dl` differ only in case; 138 rows carry the
+  Catalog's uninformative `unit`. `manifest.gwas_effects.units` publishes the set, so a consumer sees
+  that those betas are not poolable without reading the parquet. **42 of 195 rows name no effect
+  allele at all** (the Catalog writes `rs4149056-?`) and are counted rather than dropped — real
+  evidence that cannot be weighted in any direction.
+- **A study can finally say what its magnitude is relative to (RM91).** `StudyRow` has carried
+  `effect_size` + `effect_measure` since 0.3 with no `effect_allele`, while `VariantRow` has had one
+  since the same release precisely because `ref`/`alts` plus a sign cannot recover it. One optional
+  column plus a check on the same mode ladder, in **both** `validate_spec` and `compile_module`; it
+  reads resolved evidence only and **withholds** on an unresolvable row rather than reporting.
+  `artifact.digest` moved on exactly the ten examples carrying a `studies.parquet`, and
+  `content_signature` on none.
+- **A module can declare what its weights mean (RM92).** `weighting:` — `scale`, `method`, `note`, all
+  free text — in `module_spec.yaml`, copied to the manifest, out of both identity halves and dropped by
+  `reverse_module`. Deliberately no closed vocabulary and deliberately no precedence field.
+- **Running the new pass against a real module broke it twice**, and neither failure was reachable from
+  a recorded fixture. A 404 is the Catalog's *empty answer* — it holds only variants with a published
+  association — and the pass read it as an outage and died on the first variant of
+  `hfe_hemochromatosis`. And `pvalue: 0.0`, which the Catalog really publishes past float64's subnormal
+  boundary, was discarding whole associations through a `ValidationError` on one derived column; the
+  number is withheld, the verbatim string kept, the row survives (189 rows became 195).
+- **A prediction the measurement refuted, recorded rather than quietly dropped.** The link cache exists
+  because `pmid`/`trait`/`ancestry` sit behind `_links`, making the pass `1 + 2N` requests per variant;
+  it was expected to collapse most of that because associations share studies. It saved **nothing** —
+  382 requests, zero hits, since each of rs1800562's associations names its own study. Hence
+  `--no-study-facts`, added because of the number rather than in anticipation of it.
+- **The first source here with no named licence.** EBI states the Catalog's terms in prose, so
+  `license` is null. `commercial_use` stays `None` — the page permits "use" but conditions it on the
+  original data owners' terms, which for an aggregator of thousands of publications are not
+  established. Unknown neither permits nor refuses: `taints_commercial_use` requires an explicit
+  `False`, so it warns rather than gating.
+
+## 2026-08-17 — the publisher stopped dropping most of the artifact (S35 / RM89)
 
 **`just-dna-compiler` + `just-dna-enricher` 0.6.0, uncut.** One item, answered and built the day after
 it was filed. `just-dna-lite` replied to the three questions RM84 and RM89 had put to them

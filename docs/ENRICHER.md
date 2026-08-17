@@ -305,6 +305,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
 | `gene_validity` | RM24: curated gene–disease assertions → `gene_validity.csv` (ClinGen expert panels, GenCC's aggregate; both CC0) | `httpx`, format |
 | `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
+| `gwas` | RM90: the GWAS Catalog REST API → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
@@ -364,6 +365,7 @@ really sleeping.
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
+| **GWAS Catalog REST** (`www.ebi.ac.uk/gwas/rest/api`) | `gwas` | **none established** — EBI publishes no numeric budget for this API, unlike gnomAD's real and load-bearing 10/60s | `DEFAULT_REQUEST_INTERVAL=1.0` — a **courtesy, not a transcribed limit**. Cost is `1 + 2N` per variant (the study/trait facts sit behind `_links`); measured at **382 requests for one real module**, and `--no-study-facts` drops it to one per variant | none |
 | **ClinGen** dosage TSV | `clingen` | n/a (one file) | single download, then local parse | none |
 | **ClinGen** gene-validity CSV | `gene_validity` | n/a (one file, ~1 MB) | single download, then local parse | none |
 | **GenCC** submissions CSV | `gene_validity` | n/a (one file, ~28 MB) | single download, then local parse; the client's timeout is 180 s because one response *is* the whole export | none |
@@ -2547,3 +2549,43 @@ catastrophic pattern (it must return *not checked*, never *not found*).
 Each of these files also carries an opt-in live probe (`JUST_DNA_NETWORK_TESTS=1`) that re-asks the real
 services the same questions, so a recording that has drifted away from reality fails loudly instead of
 letting the unit tests pass against a fiction.
+
+## GWAS effect sizes (`gwas.py`, online only) — RM90
+
+`just-dna-enricher gwas <spec-dir>` fills `gwas_effects.csv` with the NHGRI-EBI GWAS Catalog's
+published effect sizes for every rsID `variants.csv` names. **One row per published association**, not
+per variant — rs1800562 alone carries 186 — keyed on the Catalog's own `association_id` and merged
+never clobbered.
+
+**It does not fill `weight`, and that is the point of the pass rather than a limitation of it.** A
+consumer asked for exactly that (S36); `MODULE_LIFECYCLE` § Stage 3 names the cell, and every check
+here reports rather than repairs. The effect sits beside the authored column and a consumer picks one
+wholesale.
+
+**Everything below came from probing the live API, not its documentation.**
+
+* **The association payload is thin.** `pmid`, `study_accession`, `ancestry`, `trait` and
+  `trait_efo_id` all sit behind `_links.study` and `_links.efoTraits`, so a complete row costs two
+  extra requests and the pass is `1 + 2N` per variant. `_LinkCache` memoizes by resolved URL — and the
+  measurement **refuted the prediction that motivated it**: on `hfe_hemochromatosis` it saved nothing,
+  because rs1800562's 189 associations each name their own study. 382 requests, zero cache hits.
+  `--no-study-facts` exists because of that number and drops the cost to one request per variant,
+  keeping the effects and losing the linked metadata.
+* **A 404 is the empty answer, not an outage.** The Catalog holds only variants with a published
+  association, so it 404s on a rare clinical one. `GwasNotFound` keeps that typed: `associations_for`
+  reports the empty answer (recorded as a `not_found` row), `follow` withholds one association's study
+  facts and keeps the effect. The first version of this pass read a 404 as a transport failure and
+  died on the first variant of the first real module it met.
+* **`pvalue: 0.0` is an underflow the Catalog really publishes.** `p_value_num` is `gt=0` because such
+  a value is not a probability; the pass withholds the number, keeps the verbatim `p_value` string, and
+  **keeps the row** — an early version let the `ValidationError` discard a real published effect over
+  one derived column (six on rs1800562; 189 rows became 195).
+* **`riskAlleleName` is `rs4149056-?`** when a study never established which allele carries the effect.
+  Null, never a guess, and the row is kept and counted — 42 of 195 on that module.
+
+**Licensing.** `GWAS_CATALOG_TERMS` is the first entry here with **no named licence**: EBI states its
+terms in prose (read 2026-08-17). `redistribution=True` is directly supported; **`commercial_use` stays
+`None`** because the page permits "use" generally but conditions it on the original data owners' terms,
+which for an aggregator of thousands of publications are not established. Unknown is neither permission
+nor refusal — `taints_commercial_use` requires an explicit `False`, so a null warns rather than gating.
+Do not tidy it to `True`; a test pins it.

@@ -35,6 +35,7 @@ gotcha book: it is loaded into every session and has a size ceiling.
 | [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale | `grep -n '^## RM' docs/ROADMAP_HISTORY.md` |
 | [ROADMAP_0_7.md](docs/ROADMAP_0_7.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
 | [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos) | `grep -n '^## 2026-' docs/CHANGELOG.md` |
+| [INTEGRATION_0_6.md](docs/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists | `grep -n '^## \|^### ' docs/INTEGRATION_0_6.md` |
 | [SCHEMAS.md](docs/SCHEMAS.md) | models, CSV families, conventions, the nine hashes, the allele grammar | `grep -n '^## ' docs/SCHEMAS.md` |
 | [COMPILER.md](docs/COMPILER.md) | validation ceiling, compile pipeline, **§ Resolution** + round-trip matrix, reverse, coverage | `grep -n '^## ' docs/COMPILER.md` |
 | [ENRICHER.md](docs/ENRICHER.md) | resolver chain, the check table, rate limits, caches, publish/upload | `grep -n '^## ' docs/ENRICHER.md` |
@@ -207,6 +208,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Literature terms are per **article**; there is deliberately no `pubmed` terms constant. `@per-article-terms`
 - ClinPGx/CPIC/PharmVar are CC BY-SA + no-sale, never a resolution link, and the PharmVar key is personal. `@pgx-research-only`
 - Every gated source has a cache; PharmVar's is unpublishable; `offline` outranks an injected client. `@gated-source-caches`
+- A source may publish no licence at all; unknown commercial terms warn, they never gate. `@no-named-licence`
 
 ### PGx sources
 
@@ -254,6 +256,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `annotations.parquet` carries **and keys on** `genotype`. `@annotations-keys-genotype`
 - A `mode="after"` validator cannot rescue a value the field's type rejects first. `@yaml-version-int`
 - `content_signature` hashes the effective `curator`/`method`/`priority`, not the cell. `@effective-defaults-hash`
+- A magnitude needs its unit beside it; `weight` has none, and no tool may fill one. `@weight-has-no-unit`
+- An effect relative to an unknown allele is evidence that cannot be weighted — count it, never drop it. `@unknown-effect-allele`
 
 ### Snapshots, caches, network clients
 

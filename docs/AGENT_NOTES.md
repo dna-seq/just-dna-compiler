@@ -1913,3 +1913,48 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `test_pgx_licensing.py` now carries it for `PHARMVAR_API_KEY`. Three real credentials sit in `.env`
   (`HF_TOKEN`, `PHARMVAR_API_KEY`, `NCBI_API_KEY`), so this applies to any new test that asserts
   unkeyed behaviour — a pacing interval, a skip, a degradation warning.
+
+- `@weight-has-no-unit` — **`VariantRow.weight` is the one magnitude in the format with no unit column, and
+  filling it from a source is barred (RM90/RM92, S36).** `effect_size` has `effect_measure`; `weight` has
+  `float | None` and "Score (positive=protective)". A consumer living with that across a corpus reported the
+  result — the weights "construct nonsense", every module means something different, and *de facto* each has
+  its own methodology. Two things came out of triaging it. **Measured: `weight` is authored zero times in this
+  repo** — four of the nine `variants.csv`-carrying examples have the column, 42 rows, every cell blank — so
+  the 1.0 review of whether `weight` survives has a data point it lacked. And the obvious repair is refused:
+  MODULE_LIFECYCLE § Stage 3 names `weight`/`direction`/`effect_size` among the cells no tool fills, every
+  check reports rather than repairs, and a null `weight` means *the author has not modelled this*. There is a
+  sign trap under it — `weight` is positive=protective, a GWAS beta is positive on the **effect allele**, so a
+  silent fill inverts the claim on rows nobody re-reads. What shipped instead: `gwas_effects.csv` beside the
+  authored column (never inside it), and a free-text `weighting:` block so a module states its scale.
+  **A per-row precedence rule was refused too** — "use the GWAS value where `weight` is null" puts two
+  methodologies in one summable column, which is the reported defect, and leaves nothing for `weighting:` to
+  declare. So was splitting the module in two: the split criterion would be *source coverage* rather than
+  methodology (module B = "variants with no published GWAS"), and membership would churn on every new paper,
+  routing an upstream fact into authored identity — the thing the derived-fact category exists to prevent.
+
+- `@unknown-effect-allele` — **The GWAS Catalog writes `rs4149056-?` when a study never established which
+  allele carries the effect, and such a row is kept and counted, never dropped (RM90).** 42 of 195 rows on
+  `hfe_hemochromatosis`. It parses to `effect_allele=None` — never `'?'` (which would look like an allele a
+  consumer could match on) and never the reference (a fabrication). The row still travels because it is real
+  evidence that simply cannot be used as a weight, and `manifest.gwas_effects` publishes
+  `with_effect_allele`/`without_effect_allele` so neither silent reading is available: a consumer that dropped
+  them and one that kept them would both be wrong invisibly. The same probe supplies the other half of the
+  lesson — **12 distinct `effect_unit` values for one variant**, of which `SD units`/`SD`/`s.d.` are three
+  spellings of one and `g/dL`/`g/dl` differ only in case. Store the unit verbatim, including the Catalog's
+  useless `unit` (138 of those rows), because "these betas are on unknown and possibly different scales" is
+  the fact a consumer needs, and normalizing the spellings would be inventing agreement.
+
+- `@no-named-licence` — **A source may state its terms in prose and name no licence, and unknown commercial
+  terms warn rather than gate (RM90).** `GWAS_CATALOG_TERMS` is the first entry in `licensing.py` with
+  `license=None`: EBI's terms-of-use page says *"EMBL-EBI itself places no additional restrictions on the use
+  or redistribution of the data … other than those provided by the original data owners"* and names no CC or
+  Apache grant. `redistribution=True` follows directly from that sentence. **`commercial_use` stays `None`,
+  and the trailing clause is why** — the sentence permits "use" generally, but conditions it on terms that,
+  for an aggregator of thousands of publications, are not established. Unknown is neither permission nor
+  refusal, and the machinery already agrees: `taints_commercial_use` requires an explicit `False`, so a null
+  warns and the compile gate stays quiet. Do not "tidy" it to `True`; a test pins it. Two more findings from
+  the same pass, both about reading a *live* source rather than its docs: a **404 is the empty answer** (the
+  Catalog holds only variants with a published association, so it 404s on a rare clinical one — the first
+  version read that as an outage and died on the first variant of the first real module), and **`pvalue: 0.0`
+  is an underflow the source really publishes** (withhold the queryable number, keep the verbatim string,
+  keep the row — an early version discarded whole associations over one derived column).
