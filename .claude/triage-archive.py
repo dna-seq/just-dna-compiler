@@ -14,7 +14,7 @@ A section is moved together with its group heading and dateline when the history
 under that group. A group whose items split across the two files therefore keeps its dateline in both,
 which is the documented shape (S7/S9 answered, S8 open).
 
-The index row is deliberately NOT written: what a section is, who reported it, the verdict and where it
+The contents line is deliberately NOT written: what a section is, who reported it, the verdict and where it
 landed are editorial, and a generated row would be a worse version of the thing the index exists for.
 
 This file is Python with a `.py` extension for a reason — see the `bash` trap in
@@ -69,7 +69,7 @@ def group_span(lines: list[str], before: int) -> tuple[int, int] | None:
     The first `# ` heading in a document is its title by convention and both of these files have one,
     so a group heading is any *later* `# `. A section with none returns None, and the caller says so
     out loud rather than inventing one — naming a group (who reported it, when) is editorial, the same
-    reason the index row is not generated either.
+    reason the contents line is not generated either.
     """
     headings = [i for i, line in enumerate(lines) if GROUP_RE.match(line)]
     start = None
@@ -166,7 +166,7 @@ def main() -> int:
     if broken:
         raise SystemExit(f"\nFINGERPRINT CHANGED for {', '.join(broken)} — the prose was not moved verbatim")
     print(f"\n{len(idents)} section(s) archived, every fingerprint intact."
-          f"\nNow add each one's row to {HISTORY.name}'s index table.")
+          f"\nNow add each one's line to {HISTORY.name}'s contents list.")
     if ungrouped:
         print(f"\nNo group heading travelled with {', '.join(ungrouped)} — the section sat under the "
               f"live file's title, which is not a group. Add a `# ` heading above it in "

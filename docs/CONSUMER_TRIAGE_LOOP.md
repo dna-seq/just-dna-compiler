@@ -9,7 +9,57 @@ it is also the state — there is no queue, no database and no external ledger.
 <https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254> — with the three scripts
 parameterized (`INBOX`/`HISTORY`/`PREFIX`) and every repo-specific reference stripped. If you change the
 *pattern* here (the algorithm, a script's contract, a gotcha), update it there too; if you change
-something only true of this repo, do not. The gist is one-way — it never reads back from here.
+something only true of this repo, do not.
+
+### Sync in from the gist at the start of a pass, and adopt what has come back
+
+**The gist is where fixes from other repositories arrive, so it is read as well as written.** Other
+trees run this loop, and a defect in the *pattern* is usually met there first — the `**Status`-preamble
+collision in §6 was found while adopting the loop into a second repository, not here. That makes the
+published copy an inbound channel, and a fix sitting in it unadopted is the same failure this whole
+document is about: something answered somewhere nobody looks. What stays one-way is the **content** —
+the gist never reads this repo's items, only its machinery.
+
+Files are `<gist>/raw/<name>`, and the local names differ for the watcher only
+(`watch-inbox.sh` → `.claude/watch-suggestions.sh`):
+
+```bash
+G=https://gist.githubusercontent.com/winternewt/54b94bda01812be937b892146d1bb254/raw
+for f in triage-state.py triage-archive.py; do curl -sfL "$G/$f" -o "/tmp/gist-$f"; done
+diff -u /tmp/gist-triage-state.py .claude/triage-state.py     # noisy: most of it is parameterization
+```
+
+**Read the diff for logic, not for prose.** Nearly every line differs because the gist is
+parameterized and names no repo document, so a raw diff buries the two or three lines that matter.
+Compare the code with docstrings and comments stripped, and adopt only what is a *behaviour* change:
+in the 2026-08-17 sync those were `RULE_RE` (a trailing horizontal rule was being hashed as if the
+consumer had written it) and the archiver's closing line, which still said "add each one's row to the
+index table" — wording §4 retired when the table became a contents list.
+
+**Auto-adopt is the default, and it has exactly one gate: does adopting move a fingerprint?** A fix to
+the machinery is presumed wanted, since it was found by someone running the same loop and there is no
+local reason to differ. But a change to `fingerprint()` re-scores every marker already stamped, and
+those sections then read `revised` — our own adoption impersonating a consumer revision, which is the
+one signal the ledger exists to carry. So run the ledger over **both** documents immediately after,
+and if nothing moved you are done.
+
+**If something moved, prove the cause before restamping, and the proof is cheap.** Do not reach for
+git archaeology: if the ledger read all-`current` immediately *before* the adoption, then the old
+function still matched every recorded marker, so the whole delta is the function and no prose changed.
+That check is one command and it is stronger than a diff. Restamp to the new values and say so in the
+commit. `--backfill` will not do it — it only touches `unmarked-reply`, deliberately, because silently
+restamping a `revised` section is how a genuine re-triage signal gets erased. Adopting `RULE_RE` moved
+four (S2, S6, S7, S12 — the four reports ending in a `---`) and they were restamped on that proof.
+
+**What must not be adopted**, since the gist is the generic copy and this tree is not: the
+`INBOX`/`HISTORY`/`PREFIX` parameterization, the `FEEDBACK.md` defaults, and any pointer to
+`TRIAGE_LOOP.md`, which is the gist's name for this file. Adopting those silently repoints the tools at
+documents that do not exist here.
+
+**Push the other way too, and check it in the same pass** — the sync is bidirectional even though each
+direction is a separate act. The branch-pause in `watch-suggestions.sh` (§1) is generic and has **not**
+reached the gist as of 2026-08-17; it is the standing outward debt. Updating the gist is a publish, so
+it is the user's to do — surface it rather than assuming it happened.
 
 **The live document holds only what is unanswered.** An item moves to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) once its reply is written, which is
@@ -87,6 +137,16 @@ change that predates it**. Run the ledger once at startup to pick up the standin
 ```
 .claude/triage-state.py            # every section and its verdict
 .claude/triage-state.py --pending  # just the ones needing work
+```
+
+**Point it at the history file too, every time — an empty inbox is not an all-clear.** That run is the
+lint described in §6, and it is the only thing standing between a mis-archive and a permanently lost
+item: a well-formed archived section reads `current`, so anything else means a marker went in wrong or
+did not survive the move. On 2026-08-17 the inbox was empty and this turned up two, S35 `revised` and
+S36 `unmarked-reply`, both from the pass that had archived them.
+
+```
+.claude/triage-state.py docs/CONSUMER_SUGGESTIONS_HISTORY.md   # every row must read `current`
 ```
 
 ---
@@ -497,6 +557,29 @@ Each of these was a bug in the loop, not a hypothetical:
   name — so the fix is on the writing side: **do not open a preamble line with `**Status`** unless it
   is a real reply; a blockquote (`> **Status:** …`) is enough. Found while adopting the loop into a
   second repository rather than here, which is the argument for keeping the published copy in sync.
+- **A link guard and "the prose is evidence" collide, and the guard must give way.** `test_doc_links.py`
+  requires every relative link in every markdown file to resolve, and it exists because an item moving
+  live→history breaks every pointer at it. Consumers have now started citing `RMn` items by link inside
+  their reports — so when RM89 shipped, S35's quoted prose held a link the guard called dead, and the
+  pass that archived the next item quietly retargeted it. That edit moved S35's fingerprint, and the
+  ledger duly reported the section `revised`: our own edit wearing a consumer revision's clothes, which
+  is precisely the signal the marker exclusion exists to keep clean. **Never edit a report to satisfy a
+  tool.** The link was not even stale in the sense the guard means — it records where RM89 lived on the
+  day it was written, and the reply directly above it carries the current pointer. Fixed on the guard's
+  side: `_verbatim_lines` exempts everything below a section's marker in both consumer documents, our
+  replies stay checked because they sit above it, and a test asserts a genuinely dead anchor still
+  survives down there. The prose was restored to what the consumer wrote and the fingerprint came back
+  to the exact value it had carried.
+- **A marker can be stamped with a git commit sha, and it fails twice over.** S36's read
+  `<!-- triaged: 0.6.0 · sha cbeeb8f -->`, which is a real commit in this repo and not a fingerprint at
+  all. `MARKER_RE` wants exactly twelve hex characters, so seven made the marker **invisible**: the
+  section read `unmarked-reply`, indistinguishable from one answered before the ledger existed. The
+  second failure is the one worth remembering, because it compounds silently — with no marker visible,
+  `reply_end()` falls back to the single-paragraph rule, so paragraphs two onward of a long reply leaked
+  back into the fingerprint. The value the ledger *reported* for S36 was therefore also wrong, and
+  restamping to it left the section `revised` a second time. Stamp the sha the ledger prints for the
+  section, then re-run the ledger and confirm it reads `current` — the confirmation is the whole check,
+  and it is two seconds.
 
 ---
 

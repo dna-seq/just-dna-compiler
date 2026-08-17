@@ -41,6 +41,10 @@ SECTION_RE = re.compile(r"^## +S(\d+)\b")
 BOUNDARY_RE = re.compile(r"^#{1,2} ")
 STATUS_RE = re.compile(r"^\*\*Status\b")
 MARKER_RE = re.compile(r"<!-- *triaged:.*?sha +([0-9a-f]{12}) *-->")
+# A trailing horizontal rule is punctuation between sections rather than anything the consumer said,
+# and dropping one is editorial — so hashing it lets our own separator edit report as `revised`. Same
+# family as the marker exclusion. Adopted from the published gist, where a second repo hit it first.
+RULE_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 
 
 def sections(lines: list[str]) -> list[tuple[str, int, list[str]]]:
@@ -142,6 +146,8 @@ def fingerprint(body: list[str]) -> str:
         else:
             blank = False
         normalized.append(stripped)
+    while normalized and (normalized[-1] == "" or RULE_RE.match(normalized[-1])):
+        normalized.pop()
     text = "\n".join(normalized).strip() + "\n"
     return hashlib.sha256(text.encode()).hexdigest()[:12]
 
