@@ -1874,9 +1874,23 @@ def _allele_verdict(
     """
     if variant.ref and variant.alts:
         return hosting_verdict(call, variant.ref, variant.alts)
+    return _resolved_allele_verdict(call, variant.variant_key, resolution_table)
+
+
+def _resolved_allele_verdict(
+    call: str, variant_key: str | None, resolution_table: dict[str, list[ResolutionRow]]
+) -> bool | None:
+    """The resolved half of `_allele_verdict`, keyed by identity rather than by row.
+
+    Split out for `_check_study_effect_alleles` (RM91), which asks the identical question about a
+    `StudyRow` — a model with no `alts` and no `variant_key` column, so it cannot be passed to the
+    row-shaped predicate above. Factored rather than copied: two implementations of "can this locus
+    host that call" is exactly the drift `_allele_verdict`'s own docstring records, where membership
+    and resolution disagreed the moment one indel was spelled two ways.
+    """
     verdicts = [
         hosting_verdict(call, row.ref, row.alts)
-        for row in resolution_table.get(variant.variant_key or "", [])
+        for row in resolution_table.get(variant_key or "", [])
         if row.ref and row.alts
     ]
     if not verdicts:
@@ -2075,6 +2089,57 @@ def _check_allele_membership(
         if not findings:
             continue
         (errors if strict else warnings_out).extend(findings)
+    return errors, warnings_out
+
+
+def _check_study_effect_alleles(
+    studies: list[StudyRow],
+    resolution_table: dict[str, list[ResolutionRow]],
+    *,
+    strict: bool,
+) -> tuple[list[str], list[str]]:
+    """`StudyRow.effect_allele` must be an allele the study's locus can host (RM91).
+
+    The same question `_check_allele_membership` asks of `VariantRow.effect_allele`, and it exists for
+    the same reason: `effect_size` is stated *relative to* this allele, so naming the wrong one inverts
+    the study's finding instead of breaking it. Same mode ladder — warning in `best_effort`, error in
+    `strict`.
+
+    **Resolved evidence only, and it withholds on everything else.** A `StudyRow` has `ref` but no
+    `alts` (`ref` is there so a position-only row keeps an identifier), so the authored branch of
+    `_allowed_alleles` has nothing to compare and `{ref}` alone would flag every study of a
+    non-reference allele — which is most of them. A row whose key reaches no `resolution.csv` entry is
+    therefore skipped, not reported: unresolvable is unknown, and the house algebra withholds on
+    unknown rather than negating it. That also means this check is silent on a module compiled with
+    `--no-resolve`, which is correct and mirrors every other resolution-dependent check.
+
+    Since 0.6 a study row need not name a variant at all (`REQUIRED_ANY_OF` is empty, RM47), so a row
+    with no identity derives no key and is skipped by the same path.
+    """
+    errors: list[str] = []
+    warnings_out: list[str] = []
+    for study in studies:
+        if not study.effect_allele:
+            continue
+        if study.rsid is None and study.chrom is None:
+            continue
+        key = derive_variant_key(study.rsid, study.chrom, study.start, study.ref)
+        if _resolved_allele_verdict(study.effect_allele, key, resolution_table) is not False:
+            continue
+        resolved: set[str] = set()
+        for row in resolution_table.get(key or "", []):
+            if not row.ref or not row.alts:
+                continue
+            resolved.add(row.ref.upper())
+            resolved.update(a.strip().upper() for a in row.alts.split(",") if a.strip())
+        shown = "/".join(sorted(resolved))
+        finding = (
+            f"{key} (PMID {study.pmid}): effect_allele {study.effect_allele!r} is not among the "
+            f"resolved alleles at this locus ({shown}) — effect_size is stated relative to it, so a "
+            f"wrong effect allele inverts the study's finding rather than breaking it; the resolving "
+            f"source's allele list may also be incomplete, so check which before editing"
+        )
+        (errors if strict else warnings_out).append(finding)
     return errors, warnings_out
 
 
@@ -3637,6 +3702,14 @@ def validate_spec(
         )
         all_errors.extend(membership_errors)
         all_warnings.extend(membership_warnings)
+        # The study-side half of the same check (RM91), here for the same parity reason: it is a mode
+        # ladder, so leaving it compile-only would let `validate --strict` report valid on a module
+        # `compile --strict` refuses. Audited by check, not by table (`@parity-by-check`).
+        study_allele_errors, study_allele_warnings = _check_study_effect_alleles(
+            studies, membership_table, strict=strict
+        )
+        all_errors.extend(study_allele_errors)
+        all_warnings.extend(study_allele_warnings)
         # Genotype coverage (S32). Here and **only** here: it is warning-only in both modes, so there
         # is no severity a compile-side re-run could recover, and its message carries a count — which
         # after resolution would be counted over the expanded rows and print a second, differently
@@ -4001,6 +4074,14 @@ def compile_module(
     all_warnings.extend(w for w in allele_warnings if w not in all_warnings)
     if allele_errors:
         return CompilationResult(success=False, errors=allele_errors, warnings=all_warnings)
+
+    # RM91's study-side half, de-duplicated on the message for the same reason as the block above.
+    study_allele_errors, study_allele_warnings = _check_study_effect_alleles(
+        studies, resolution_table, strict=strict
+    )
+    all_warnings.extend(w for w in study_allele_warnings if w not in all_warnings)
+    if study_allele_errors:
+        return CompilationResult(success=False, errors=study_allele_errors, warnings=all_warnings)
 
     p_value_errors, p_value_warnings = _check_p_value_num(studies, strict=strict)
     all_warnings.extend(p_value_warnings)
@@ -5717,6 +5798,10 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "stat_significance": s.stat_significance,
                 "effect_size": s.effect_size,
                 "effect_measure": s.effect_measure,
+                # RM91 (0.6): what `effect_size` is relative to. Materialized beside the magnitude
+                # rather than derived, because nothing can recover it — `ref` names the locus, not
+                # the claim.
+                "effect_allele": s.effect_allele,
                 "trait_efo_id": s.trait_efo_id,
                 # ── 0.4 provenance columns (RM11/RM12, from the 0.5 scope; docs/USE_CASES.md §4a). ──
                 "doi": s.doi,
@@ -5744,6 +5829,7 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "stat_significance": pl.Utf8,
         "effect_size": pl.Float64,
         "effect_measure": pl.Utf8,
+        "effect_allele": pl.Utf8,
         "trait_efo_id": pl.Utf8,
         "doi": pl.Utf8,
         "provenance_quote": pl.Utf8,
@@ -6469,8 +6555,10 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
     fieldnames = [
         "rsid", "chrom", "start", "ref", "pmid", "population", "p_value", "conclusion",
         "study_design",
-        # 0.3 additive columns
-        "stat_significance", "effect_size", "effect_measure", "trait_efo_id",
+        # 0.3 additive columns, plus `effect_allele` (RM91, 0.6) beside the magnitude it qualifies.
+        # This list is the third of `@three-touch-points` and the one that gets missed: a column
+        # absent here reaches the parquet and then vanishes on reverse, which fails P7 silently.
+        "stat_significance", "effect_size", "effect_measure", "effect_allele", "trait_efo_id",
         # 0.4 provenance columns (RM11/RM12, from the 0.5 scope)
         "doi", "provenance_quote", "provenance_regex",
         # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
@@ -6499,6 +6587,7 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "stat_significance": _scalar_cell(row.get("stat_significance")),
                     "effect_size": _scalar_cell(row.get("effect_size")),
                     "effect_measure": _scalar_cell(row.get("effect_measure")),
+                    "effect_allele": _scalar_cell(row.get("effect_allele")),
                     "trait_efo_id": _scalar_cell(row.get("trait_efo_id")),
                     "doi": _scalar_cell(row.get("doi")),
                     "provenance_quote": _scalar_cell(row.get("provenance_quote")),

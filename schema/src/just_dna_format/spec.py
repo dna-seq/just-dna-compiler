@@ -904,6 +904,11 @@ class StudyRow(AuthoredModel):
     #: paper is not about. Widening an either-or rule only makes previously-*invalid* rows valid, so
     #: no published module breaks (P3/P8: nothing became required and nothing was retyped).
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = ()
+    #: `effect_allele` only, and the omission of `ref` is the point (RM91). `AuthoredModel`'s rule is
+    #: *sequence columns that are the claim, never a column that merely points at a variant*, and it
+    #: names `StudyRow.ref` as its own example of the second kind. `effect_allele` is the first kind:
+    #: it is what the row's magnitude is stated relative to, exactly as on `VariantRow`.
+    ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("effect_allele",)
 
     pmid: str = Field(description="PubMed ID or reference — free-form, must be non-empty")
     population: str | None = Field(default=None, description="Study population")
@@ -923,6 +928,20 @@ class StudyRow(AuthoredModel):
         default=None,
         json_schema_extra=vocabulary("effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False),
         description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended, open).",
+    )
+    # RM91 (0.6). `VariantRow` has carried `effect_allele` since 0.3 for a stated reason — `ref`/`alts`
+    # plus the sign of the magnitude cannot recover which allele the claim is about — and a study row
+    # states a magnitude too, with no such column. So `effect_size` here was relative to nothing, and
+    # the failure mode is the silent one: a wrong effect allele inverts the finding rather than
+    # breaking it. Optional, so every published module stays valid (P8) and an unset cell is omitted
+    # from `content_signature`.
+    effect_allele: str | None = Field(
+        default=None,
+        description=(
+            "The allele this study's `effect_size` is stated relative to — bases, or a "
+            "symbolic/structural allele carrying its length (e.g. <DEL:1500>). Absent means the "
+            "study did not state one, which is not the same as the reference allele."
+        ),
     )
     trait_efo_id: str | None = Field(
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s) for this study."

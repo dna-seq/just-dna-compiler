@@ -2255,3 +2255,55 @@ four reasons four reasons rather than one refusal.
 Re-measured after: **16 of 16 publish, and all 16 digests verify** against exactly what would be sent.
 Nothing that published before stops publishing; the only new refusals are the two shapes that were never
 a publishable module.
+
+# 0.6 — what S36 closed: weights declare a scale, and a study names its allele
+
+Three items from one consumer report about authored `weight` values. Anton Kulaga's note is field
+feedback rather than a bug: the column declares no scale, every module means something different by
+it, and published GWAS effects often beat hand-set curator weights. Triaging it found a fourth thing
+nobody had measured — `weight` is authored **zero times** in this repo — and one thing the report
+asked for that is barred outright. Filed and closed 2026-08-17.
+
+## RM91 — a study states an effect magnitude relative to no allele
+
+✅ **Shipped in `just-dna-format` + `just-dna-compiler` 0.6.0** (2026-08-17). **Owner** format (schema +
+compiler) · **Motivating case** [S36](CONSUMER_SUGGESTIONS_HISTORY.md), found while checking whether a
+GWAS effect could be carried on `studies.csv` at all.
+
+`VariantRow` has carried `effect_allele` since 0.3 for a stated reason — `ref`/`alts` plus the sign of
+the magnitude cannot recover which allele the claim is about — and `_check_allele_membership`'s own
+message says naming the wrong one *inverts* the conclusion rather than breaking it. `StudyRow` has
+carried `effect_size` + `effect_measure` since the same release and had **no such column**, so every
+study row in the format stated a magnitude relative to nothing. The existing check iterates `variants`
+only, and there was no field on a study row for it to examine even if it had.
+
+**What landed.** One optional column, plus the check that makes it load-bearing:
+
+- `StudyRow.effect_allele`, worded from `VariantRow`'s, and `StudyRow.ALLELE_COLUMNS =
+  ("effect_allele",)`. **The omission of `ref` from that tuple is the design, not an oversight**:
+  `AuthoredModel.ALLELE_COLUMNS` says *sequence columns that are the claim, never a column that merely
+  points at a variant*, and names `StudyRow.ref` as its own example of the second kind.
+- `_check_study_effect_alleles`, on the same mode ladder as the variant-side check — warning in
+  `best_effort`, error in `strict` — and registered in **both** `validate_spec` and `compile_module`,
+  since a mode ladder left compile-only is exactly the defect the 2026-08-07 audit fixed for
+  `_verify_vrs_ids` and `_check_p_value_num` (`@parity-by-check`).
+- **It reads resolved evidence only and withholds on everything else.** A `StudyRow` has `ref` without
+  `alts` — `ref` is there so a position-only row keeps an identifier — so the authored branch has
+  nothing to compare, and `{ref}` alone would flag every study of a non-reference allele, which is most
+  of them. A row whose key reaches no `resolution.csv` entry is skipped rather than reported:
+  unresolvable is unknown, and the house algebra withholds on unknown instead of negating it. A row
+  naming no variant at all (legal since RM47) derives no key and is skipped by the same path.
+- `_allele_verdict`'s resolved half was **factored out** as `_resolved_allele_verdict(call,
+  variant_key, table)` rather than copied. A `StudyRow` has no `alts` and no `variant_key` column, so
+  it cannot be passed to the row-shaped predicate; two implementations of "can this locus host that
+  call" is precisely the drift `_allele_verdict`'s docstring already records, where membership and
+  resolution disagreed the moment one indel was spelled two ways.
+
+**Measured, and the prediction held exactly.** `artifact.digest` moved on **10 of 16** reference
+examples — precisely the ten carrying a `studies.parquet`, since the column changes that schema — and
+`content_signature` moved on **none of the sixteen**, because `exclude_none=True` omits an unset
+optional column. That is what makes it minor-legal under P3 rather than merely additive-looking.
+
+The reverse writer's hand-kept `fieldnames` list is the third of `@three-touch-points` and the one that
+gets missed; the round-trip test was **watched failing** with only that entry removed, which raises
+`dict contains fields not in fieldnames` at the reverse step rather than at the recompile.
