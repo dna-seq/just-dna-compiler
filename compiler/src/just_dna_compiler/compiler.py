@@ -3533,6 +3533,18 @@ def validate_spec(
             # nothing else. It reports here too so an author sees the shortfall at pre-flight, where
             # the remedy (re-run the mint pass) is still cheap.
             all_warnings.extend(_vrs_coverage_warnings(injected_rows))
+        if model is FrequencyRow and not injected_errors:
+            # Validate-by-redundancy over the table's own numbers, here for the same parity reason as
+            # `_verify_vrs_ids` above and missed for the same reason `_check_study_effect_alleles` was
+            # (RM93): it lives in a per-model closure on the compile side, so a pass auditing table by
+            # table saw `frequencies.csv` loaded here and stopped. Its integer half returns **errors**
+            # in both modes, so leaving it compile-only let a plain `validate` report `valid` on a
+            # module a plain `compile` refused. It reads the injected rows and nothing else — no
+            # `output_dir`, no resolution — which is the standing test for what belongs in the
+            # pre-flight. `@parity-by-check`, `@validate-refuses-all`.
+            frequency_errors, frequency_warnings = _check_frequency_arithmetic(injected_rows)
+            all_errors.extend(frequency_errors)
+            all_warnings.extend(frequency_warnings)
         if model is LiteratureRow and not injected_errors:
             # Stashed rather than checked here: the citation sites (`studies.csv`, and since 0.6 the
             # binning tables' `pmid`) are loaded further down, so the cross-check runs once both are
@@ -3689,6 +3701,23 @@ def validate_spec(
     # The injected citation sidecar against BOTH citation sites, now that studies are loaded.
     all_warnings.extend(_cross_check_literature(literature_rows, studies, loaded_kinds))
 
+    # The study-side half of allele membership (RM91), here for the same parity reason as the check
+    # below: it is a mode ladder, so leaving it compile-only would let `validate --strict` report valid
+    # on a module `compile --strict` refuses.
+    #
+    # **Outside `if variants:`, and that is the whole of RM93's first half.** It sat inside, under a
+    # comment claiming it was audited "by check, not by table", so it never ran for the one composition
+    # it was written for: a module with a table kind, `studies.csv` and `resolution.csv` and no
+    # `variants.csv` at all. The compile side has always run it unconditionally, so the two disagreed
+    # exactly where it mattered. `membership_table` is filled from `resolution.csv` in the sidecar loop
+    # far above and is in scope regardless of whether any variant was authored, which is why the check
+    # simply moves rather than needing an input rebuilt. `@parity-by-check`, `@validate-refuses-all`.
+    study_allele_errors, study_allele_warnings = _check_study_effect_alleles(
+        studies, membership_table, strict=strict
+    )
+    all_errors.extend(study_allele_errors)
+    all_warnings.extend(study_allele_warnings)
+
     if variants:
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
@@ -3712,14 +3741,6 @@ def validate_spec(
         )
         all_errors.extend(membership_errors)
         all_warnings.extend(membership_warnings)
-        # The study-side half of the same check (RM91), here for the same parity reason: it is a mode
-        # ladder, so leaving it compile-only would let `validate --strict` report valid on a module
-        # `compile --strict` refuses. Audited by check, not by table (`@parity-by-check`).
-        study_allele_errors, study_allele_warnings = _check_study_effect_alleles(
-            studies, membership_table, strict=strict
-        )
-        all_errors.extend(study_allele_errors)
-        all_warnings.extend(study_allele_warnings)
         # Genotype coverage (S32). Here and **only** here: it is warning-only in both modes, so there
         # is no severity a compile-side re-run could recover, and its message carries a count — which
         # after resolution would be counted over the expanded rows and print a second, differently

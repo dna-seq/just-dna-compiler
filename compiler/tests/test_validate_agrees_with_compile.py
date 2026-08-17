@@ -96,12 +96,52 @@ def test_a_recorded_declaration_passes_both(tmp_path: Path) -> None:
     assert _both(spec, tmp_path / "out") == (True, True)
 
 
-@pytest.mark.parametrize(
-    "filename,body,expected",
-    [
+# **One case per injected table, and the guard below enumerates the registry rather than this list.**
+# RM93: `frequencies.csv` was simply absent here, so `_check_frequency_arithmetic` had no path through
+# `validate_spec` in any test and the file's own promise went unkept for a whole release. A list of
+# tables somebody remembered is exactly the failure this file was written about, one level up —
+# `@parity-by-check` says audit by check, and the least a fixture list can do is not be shorter than
+# the registry. Four of the seven fact tables were missing when that was first counted.
+_INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
         (
             "literature.csv",
             "pmid,exists,source,status\n8696333,true,pubmed,checked\n",
+            "status",
+        ),
+        (
+            "frequencies.csv",
+            (
+                "variant_key,rsid,chrom,start,ref,alt,genome_build,population,allele_count,"
+                "allele_number,dataset,source,status\n"
+                "rs1800562,rs1800562,6,26092913,G,A,GRCh38,global,3,1613660,gnomad_v4.1_joint,"
+                "gnomad,checked\n"
+            ),
+            "status",
+        ),
+        (
+            "gene_validity.csv",
+            (
+                "gene,disease_id,disease_label,moi,classification,dataset,source,status\n"
+                "HFE,MONDO:0011072,hereditary haemochromatosis,autosomal_recessive,definitive,"
+                "clingen_gene_validity_2026-06,clingen,checked\n"
+            ),
+            "status",
+        ),
+        (
+            "clinical_assertions.csv",
+            (
+                "variant_key,rsid,chrom,start,ref,alt,genome_build,clin_sig,dataset,source,status\n"
+                "rs1800562,rs1800562,6,26092913,G,A,GRCh38,pathogenic,clinvar_2026-06-27,"
+                "clinvar,checked\n"
+            ),
+            "status",
+        ),
+        (
+            "gwas_effects.csv",
+            (
+                "association_id,variant_key,rsid,effect_allele,effect_size,dataset,source,status\n"
+                "GCST000001,rs1800562,rs1800562,A,0.12,gwas_catalog_2026-06,gwas_catalog,checked\n"
+            ),
             "status",
         ),
         (
@@ -130,8 +170,32 @@ def test_a_recorded_declaration_passes_both(tmp_path: Path) -> None:
             ),
             "haploinsufficiency",
         ),
-    ],
 )
+
+
+def test_every_injected_table_has_a_parity_case() -> None:
+    """The guard that enumerates instead of remembering (RM93).
+
+    `test_an_invalid_injected_row_fails_validate_not_only_compile` walks a literal list, and a literal
+    list is only as complete as the person who wrote it: `frequencies.csv` was never in it, so the
+    table whose arithmetic check `validate_spec` did not call was also the table this file did not
+    exercise. Two independent misses with one cause, which is what makes the registry — not the list —
+    the right thing to iterate.
+
+    Derived from `_FACT_TABLES` for the same reason `_INPUT_FILES` is (`@fieldnames-from-model`): a
+    hand-kept parallel list goes stale the moment the eighth sidecar lands.
+    """
+    from just_dna_compiler.compiler import _FACT_TABLES
+
+    registry = {"resolution.csv", *(name for name, _parquet, _model in _FACT_TABLES)}
+    covered = {filename for filename, _body, _expected in _INJECTED_ROW_CASES}
+    assert registry <= covered, (
+        f"no validate/compile parity case for {sorted(registry - covered)} — add one to "
+        f"_INJECTED_ROW_CASES rather than deleting this assertion"
+    )
+
+
+@pytest.mark.parametrize("filename,body,expected", _INJECTED_ROW_CASES)
 def test_an_invalid_injected_row_fails_validate_not_only_compile(
     tmp_path: Path, filename: str, body: str, expected: str
 ) -> None:
@@ -375,3 +439,97 @@ def test_the_membership_message_is_identical_on_both_sides(tmp_path: Path) -> No
     ]
     assert from_validate == from_compile != []
     assert "IUPAC ambiguity code" in from_validate[0]
+
+
+# ── RM93: the two checks that were still compile-only, and the composition that hid one ────────────
+
+
+def _frequencies(allele_count: int, allele_number: int) -> str:
+    """One gnomAD-shaped row whose two counts the caller decides. Real locus (HFE C282Y)."""
+    return (
+        "variant_key,rsid,chrom,start,ref,alt,genome_build,population,allele_count,allele_number,"
+        "dataset,source,status\n"
+        f"rs1800562,rs1800562,6,26092913,G,A,GRCh38,global,{allele_count},{allele_number},"
+        f"gnomad_v4.1_joint,gnomad,resolved\n"
+    )
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_frequency_arithmetic_refuses_at_validate_too(tmp_path: Path, strict: bool) -> None:
+    """`_check_frequency_arithmetic` was never called from `validate_spec` at all (RM93).
+
+    Not a row-level failure — every cell here is a well-formed integer and the row loads on both
+    sides. What is impossible is the *relation* between two of them, which is why the table-level
+    check is the only thing that can see it, and why the parametrized row-level cases above could
+    never have caught this however many tables they covered.
+
+    Its integer half returns **errors**, not warnings, so this is the plain-mode variety of the gap:
+    `validate` reported `valid` for a module a plain `compile` refused. Parametrized over both modes
+    to pin that the severity does not depend on the ladder.
+    """
+    spec = _spec(tmp_path / f"f{int(strict)}", frequencies__csv=_frequencies(500, 100))
+    result = validate_spec(spec, strict=strict)
+    compiled = compile_module(
+        spec, tmp_path / f"fo{int(strict)}", resolve_with_ensembl=False, strict=strict
+    )
+
+    assert not result.valid and not compiled.success
+    assert any("cannot be larger than its own denominator" in e for e in result.errors), result.errors
+    assert set(result.errors) <= set(compiled.errors)
+
+
+def test_possible_frequency_arithmetic_is_clean_on_both_sides(tmp_path: Path) -> None:
+    """Negative control: the check must not refuse counts that can coexist, or the test above passes
+    for the wrong reason — 3 of 1613660 is HFE C282Y's real global frequency."""
+    spec = _spec(tmp_path / "fok", frequencies__csv=_frequencies(3, 1613660))
+    assert _agree(spec, tmp_path / "fok_out", strict=True) == (True, True)
+
+
+# Keyed under the **rsID**, because that is the key a study row derives: `StudyRow` here carries no
+# coordinate, so `derive_variant_key` returns `rs334` and the membership lookup has to find it there.
+# An rsid-authored module is exactly the shape whose `resolution.csv` is written under the rsID.
+_TABLE_ONLY_RESOLUTION = (
+    _RESOLUTION_HEADER + f"rs334,rs334,11,5227002,T,A,GRCh38,0,{_HBS},2.0,gnomad,resolved\n"
+)
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_module_with_no_variants_csv_still_gets_the_study_allele_check(
+    tmp_path: Path, strict: bool
+) -> None:
+    """The composition every fixture in this file was missing (RM93).
+
+    `_check_study_effect_alleles` sat inside `validate_spec`'s `if variants:` block while running
+    unconditionally on the compile side, so it never ran for the one shape it was written for: a
+    module with a table kind, `studies.csv` and `resolution.csv` and **no** `variants.csv`. Every
+    study fixture above writes `_MEMBERSHIP_VARIANTS` beside `_MEMBERSHIP_STUDIES`, so `if variants:`
+    was always true and this shape was never constructed — the gate was invisible to a suite that
+    only ever asked well-composed questions.
+
+    `_spec` always writes `diplotypes.csv`, so the module is a legal table-only one; the effect allele
+    named is C at a T/A locus, which the injected table can settle without any authored variant row.
+    """
+    spec = _spec(
+        tmp_path / f"t{int(strict)}",
+        resolution__csv=_TABLE_ONLY_RESOLUTION,
+        studies__csv="rsid,pmid,effect_allele,effect_size\nrs334,16199547,C,0.5\n",
+    )
+    assert not (spec / "variants.csv").exists(), "the fixture must stay table-only"
+
+    validated, compiled = _agree(spec, tmp_path / f"to{int(strict)}", strict=strict)
+    assert validated == compiled, "validate and compile disagreed about a table-only module"
+    assert validated is not strict, "a mode ladder: clean in best_effort, refused under strict"
+
+    reported = validate_spec(spec, strict=strict)
+    findings = reported.errors if strict else reported.warnings
+    assert any("not among the resolved alleles" in m for m in findings), findings
+
+
+def test_a_table_only_module_with_a_hosted_effect_allele_is_clean(tmp_path: Path) -> None:
+    """Negative control for the composition: A *is* an allele the locus hosts."""
+    spec = _spec(
+        tmp_path / "tok",
+        resolution__csv=_TABLE_ONLY_RESOLUTION,
+        studies__csv="rsid,pmid,effect_allele,effect_size\nrs334,16199547,A,0.5\n",
+    )
+    assert _agree(spec, tmp_path / "tok_out", strict=True) == (True, True)
