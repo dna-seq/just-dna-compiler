@@ -68,6 +68,13 @@ class GeneMetricsResult:
     rows: list[GeneMetricsRow]
     covered: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
+    # Genes **no route was consulted about** — an offline run with no constraint snapshot, where the
+    # snapshot link has no reference and the API link is gated off (RM98). Kept apart from `missing`,
+    # which means gnomAD was asked and has no constraint: that is a real and common fact about small
+    # or non-coding genes, and this is the absence of a question. These genes appear in `missing` too,
+    # because `strict` must still refuse a run that established nothing, but no ROW is written for
+    # them -- a `not_found` row here would name a release nobody opened.
+    unconsulted: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
 
@@ -216,6 +223,14 @@ def enrich_gene_metrics(
 
     # Which release a `not_found` row is reporting absence *from*: the last route actually consulted.
     absent_from = dataset if offline else API_CONSTRAINT_DATASET_LABEL
+    # **Was either route consulted at all?** (RM98.) The snapshot link needs a resolved `reference`,
+    # the API link needs `not offline` — so an offline run with no snapshot opens neither, and the
+    # pass has already logged that gene metrics "will be empty". It then wrote a `not_found` row per
+    # gene stamped with a `gnomad_v4.1_constraint` release it never opened, asserting that a specific
+    # gnomAD release was consulted and has no constraint for the gene. `@unreachable-not-absent`: the
+    # comment below already draws exactly this distinction, and the code crossed it.
+    constraint_routes_consulted = reference is not None or not offline
+    unconsulted: list[str] = []
     for gene in wanted:
         payload = from_snapshot.get(gene)
         # The label follows the ROUTE, never the caller's `dataset` argument alone — the snapshot and
@@ -236,6 +251,9 @@ def enrich_gene_metrics(
             # A `not_found` row is a fact — the gene was looked up and gnomAD has no constraint for
             # it, which is genuinely true for many small or non-coding genes — and is different from
             # a gene that was never queried (no row at all).
+            if not constraint_routes_consulted:
+                unconsulted.append(gene)
+                continue
             out.append(
                 GeneMetricsRow(
                     gene=gene, dataset=absent_from, source="gnomad", status="not_found",
@@ -260,10 +278,25 @@ def enrich_gene_metrics(
         )
 
     out.sort(key=lambda r: (r.gene, r.dataset))
+    if unconsulted:
+        # Warned in BOTH modes. The pass already logs "gene metrics will be empty" above; what this
+        # adds is that the emptiness is now honest -- before RM98 it went on to write one `not_found`
+        # row per gene anyway, stamped with a release it had just said it could not open.
+        logger.warning(
+            "%d gene(s) were not asked of any gnomAD route: no constraint snapshot is present and "
+            "the live API is disabled%s, so no row is written for them -- their absence from "
+            "gene_metrics.csv means unchecked, never 'gnomAD has no constraint for this gene'. %s. "
+            "Provision a snapshot with `just-dna-enricher gnomad constraint build|publish`.",
+            len(unconsulted),
+            " (--offline)" if offline else "",
+            ", ".join(sorted(unconsulted)),
+        )
+
     result = GeneMetricsResult(
         rows=out,
         covered=sorted(set(covered)),
         missing=sorted(set(missing)),
+        unconsulted=sorted(set(unconsulted)),
         sources=sorted({r.source for r in out if r.source}),
         mode=mode,
     )
@@ -273,6 +306,13 @@ def enrich_gene_metrics(
             f"constraint: {result.missing}. Many genes genuinely have none (small, non-coding, or "
             f"newly named), so this is often correct data — add the rows by hand, check the symbols "
             f"against current HGNC names, or use mode='best_effort'."
+            + (
+                f" Of these, {len(result.unconsulted)} were never asked at all "
+                f"({result.unconsulted}): no snapshot and no live link, so nothing is known about "
+                f"them either way."
+                if result.unconsulted
+                else ""
+            )
         )
     if write:
         _write_gene_metrics_csv(out, output_path)

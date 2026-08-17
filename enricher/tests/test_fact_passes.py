@@ -235,13 +235,52 @@ def test_snapshot_and_api_are_labelled_as_the_different_releases_they_are(
     assert from_api.loeuf != from_snapshot.loeuf  # genuinely different numbers, not a labelling nicety
 
 
-def test_gene_metrics_offline_without_a_snapshot_records_not_found(tmp_path: Path) -> None:
+def test_gene_metrics_offline_without_a_snapshot_records_nothing(tmp_path: Path, caplog) -> None:
+    """Offline with no snapshot consults NOTHING, so it may not write a `not_found` row (RM98).
+
+    This test used to assert the opposite — `[r.status for r in result.rows] == ["not_found"]` — and
+    that is the interesting part rather than a detail of the fix. The pass logs "gene metrics will be
+    empty" and then wrote one `not_found` row per gene stamped `gnomad_v4.1_constraint`, asserting
+    that a specific gnomAD release had been consulted and has no constraint for the gene. The test
+    pinned the row, so it was falsifying the log line rather than the behaviour, and the suite was
+    green either way. `@unreachable-not-absent`.
+
+    `missing` still holds the gene, so `strict` still refuses; what changes is that the artifact
+    stops making a claim, and the run says which genes nobody asked about.
+    """
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
-    result = enrich_gene_metrics(spec, offline=True, constraint_cache=tmp_path / "absent")
-    assert result.missing == ["BRCA1"]
-    assert [r.status for r in result.rows] == ["not_found"]
+    with caplog.at_level("WARNING"):
+        result = enrich_gene_metrics(spec, offline=True, constraint_cache=tmp_path / "absent")
+
+    # The behavioural assertion first, deliberately: it is the line that fails on the pre-fix tree,
+    # and what it prints is the fabricated row stamped `gnomad_v4.1_constraint`.
+    assert result.rows == [], "no row may assert a release nobody opened"
+    assert result.missing == ["BRCA1"]           # strict still refuses a run that established nothing
+    assert result.unconsulted == ["BRCA1"]       # named separately: nobody asked
+    assert any("not asked of any gnomAD route" in r.message for r in caplog.records)
+
+
+def test_gene_metrics_offline_WITH_a_snapshot_still_records_not_found(
+    tmp_path: Path, constraint_cache: Path
+) -> None:
+    """The negative control, and the line the fix must not cross.
+
+    A `not_found` row is a genuine fact when the snapshot **was** opened and does not carry the gene —
+    true of many small or non-coding genes — and RM98 is only about the case where nothing was
+    consulted. Without this, the repair above could have been "stop writing not_found offline", which
+    would throw away a real answer.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,NOTAGENE\n"
+    )
+    result = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
+
+    assert [r.status for r in result.rows] == ["not_found"]  # the snapshot was opened, and lacks it
+    assert result.unconsulted == []
 
 
 def test_a_missing_snapshot_is_provisioned_before_falling_back_to_the_api(
@@ -291,7 +330,10 @@ def test_offline_never_provisions(tmp_path: Path, monkeypatch) -> None:
 
     monkeypatch.setattr(gene_metrics, "ensure_constraint_snapshot", explode)
     result = enrich_gene_metrics(spec, offline=True, constraint_cache=tmp_path / "absent")
-    assert [r.status for r in result.rows] == ["not_found"]
+    # No row, because no route was consulted (RM98) — the assertion this test needs is that
+    # provisioning was not attempted, which `explode` above makes.
+    assert result.rows == []
+    assert result.unconsulted == ["BRCA1"]
 
 
 def test_a_failed_provisioning_degrades_to_the_api_and_says_which_release(

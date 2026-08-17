@@ -396,6 +396,49 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
     assert (spec / "resolution.csv").exists() or (spec / "derived" / "resolution.csv").exists()
 
 
+def test_offline_with_no_cache_at_all_writes_no_not_found_row(tmp_path: Path) -> None:
+    """The branch between the two that already got this right (RM98).
+
+    With `--offline` and no Ensembl cache and no ClinVar cache, every link is gated off and nothing is
+    asked. The row written here used to say `status="not_found", source="cache"` — naming a cache that
+    was never opened, and asserting in the artifact that a source does not have this rsID. Both
+    adjacent branches carry comments spelling out exactly why that is forbidden; the middle one did it
+    anyway.
+
+    `--offline` is where it matters most, because that is the mode a consumer runs when they *cannot*
+    reach the source: the fabricated negative is guaranteed rather than incidental.
+    """
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,C/T,risk,c\n")
+    result = enrich(
+        spec, offline=True, ensembl_cache=tmp_path / "no-cache", clinvar_cache=tmp_path / "no-cv",
+        download=False,
+    )
+
+    # The behavioural assertion first, deliberately: on the pre-fix tree this is the line that fails,
+    # and it names the fabricated row rather than a result field that did not exist yet.
+    assert [row for row in result.rows if row.status == "not_found"] == []
+    assert result.unresolved == ["rs1801133"]          # still unresolved: strict still refuses
+    assert result.unconsulted_rsids == ["rs1801133"]   # named separately: nobody looked
+    assert result.unreachable_rsids == []              # and NOT confused with "the request failed"
+
+
+def test_offline_WITH_a_cache_still_writes_not_found_for_an_rsid_it_lacks(
+    cache: Path, tmp_path: Path
+) -> None:
+    """The negative control, and the line RM98's fix must not cross.
+
+    A `not_found` row is a real fact when the cache **was** opened and does not carry the rsID. The
+    repair is about the case where nothing was consulted, not about `not_found` offline in general —
+    without this test, "stop writing not_found under --offline" would pass and would throw away a
+    genuine answer.
+    """
+    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs77777777,A/G,risk,c\n")
+    result = enrich(spec, offline=True, ensembl_cache=cache, clinvar_cache=tmp_path, download=False)
+
+    assert result.unconsulted_rsids == []                    # the cache was opened
+    assert [row.status for row in result.rows] == ["not_found"]   # and genuinely lacks the rsID
+
+
 # ── strict mode ───────────────────────────────────────────────────────────────────────────────
 
 

@@ -466,6 +466,13 @@ class EnrichmentResult:
     # same entry there, and only one of them is worth re-running. Same reason `clin_sig_not_checked`
     # exists beside an empty conflict list. Empty offline, since nothing was asked in the first place.
     unreachable_rsids: list[str] = field(default_factory=list)
+    # rsIDs **no link was consulted about at all** — the `--offline` run on a machine with no Ensembl
+    # and no ClinVar cache, where every link is gated off and there is nothing to ask (RM98). A third
+    # state, deliberately not folded into either neighbour: `unreachable_rsids` means the request was
+    # made and failed, and `unresolved` says a key has no position while staying silent about why.
+    # This one says nobody looked, which is the only one of the three a `not_found` row would be a
+    # plain fabrication of — the row used to be written, naming a cache that was never opened.
+    unconsulted_rsids: list[str] = field(default_factory=list)
     # What the rsid↔coordinate pass did (`resolver.check_rsid_coordinates`): the pairs it compared,
     # the ones the reference could not place, and the disagreements. Surfaced for the RM40/RM41 reason
     # — the run computes it and a consumer would otherwise recompute it from the log — and because the
@@ -621,6 +628,7 @@ def enrich(
     snapshot_unusable = False
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
+    unconsulted_rsids: set[str] = set()   # nobody looked (RM98) — see the EnrichResult field
     # Reverse (position→rsid) back-fill is allele-aware and keeps ALL candidates per authored allele,
     # so we can take a deterministic pick and flag a genuine multi-rsid allele as ambiguous rather than
     # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
@@ -766,6 +774,13 @@ def enrich(
                     client.close()
 
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
+    # **Was any rsID link consulted at all?** (RM98.) Every one of them is gated: the two caches on
+    # having resolved to a snapshot, the live Ensembl and gnomAD links on `not offline`. When all four
+    # gates are shut — `--offline` on a machine with no cache is the case that guarantees it — nothing
+    # was asked, and a `not_found` row below would be a fabricated negative rather than a fact. This is
+    # deliberately a *run*-level question, not a per-rsID one: the branch it guards is reached only for
+    # a subject no link produced a locus for, and if no link ran there is no per-rsID answer to have.
+    rsid_links_consulted = reference is not None or clinvar_ref is not None or not offline
     out: list[ResolutionRow] = []
     unresolved: list[str] = []
     # Collected across the loop and reported once. A per-row line here would be one line per variant —
@@ -848,6 +863,24 @@ def enrich(
                 # have this rsID — the one reading the run cannot support, and the fingerprint of a
                 # fabricated identifier. The key stays `unresolved`, so `strict` still refuses and
                 # `best_effort` still warns; what changes is that neither claims a source said no.
+                unresolved.append(key)
+            elif genome_build == "GRCh38" and not rsid_links_consulted:
+                # **No link ran, so there is no answer to record** (RM98). This branch used to write
+                # `status="not_found", source="cache"` unconditionally, which under `--offline` on a
+                # machine with no Ensembl and no ClinVar cache named a cache that was never opened and
+                # asserted that it does not have this rsID — a negative nobody established, about a
+                # question never put. It sat between the two branches on either side of it, both of
+                # which spell out in their own comments why that is forbidden.
+                #
+                # `--offline` is where it matters most, because that is the mode a consumer runs when
+                # they *cannot* reach the source: the fabricated negative is guaranteed there rather
+                # than incidental. `@unreachable-not-absent`.
+                #
+                # Named **separately** from `unreachable_rsids` rather than folded into it: that list
+                # means "the live request was made and failed", and its warning says so in those
+                # words. "Nothing was asked" and "the asking failed" are two different states of the
+                # world, and collapsing them would replace one small untruth with another.
+                unconsulted_rsids.add(v.rsid)
                 unresolved.append(key)
             elif genome_build == "GRCh38":
                 out.append(ResolutionRow(variant_key=key, rsid=v.rsid, genome_build=genome_build,
@@ -1107,6 +1140,7 @@ def enrich(
         build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
+        unconsulted_rsids=sorted(unconsulted_rsids),
         rsid_coordinates=pair_check,
     )
 
@@ -1119,6 +1153,22 @@ def enrich(
             "unchecked rather than empty): %s. Re-run before treating these as rsIDs Ensembl does "
             "not have.",
             len(unreachable_rsids), ", ".join(sorted(unreachable_rsids)),
+        )
+
+    if unconsulted_rsids:
+        # Warned in BOTH modes, like its neighbour above and for the same reason: nothing an author
+        # can edit makes a cache appear, and `strict` already refuses the run on `unresolved`. What
+        # this line adds is the *why*, which is the whole of RM98 — before it, these keys silently
+        # acquired a `not_found` row naming a cache nobody opened, and an author reading the artifact
+        # would have concluded that Ensembl does not have their rsID.
+        logger.warning(
+            "%d rsID(s) were not asked of any source: no Ensembl or ClinVar cache is present and "
+            "every live link is disabled%s, so no row is written for them — their absence from "
+            "resolution.csv means unchecked, never 'the source does not have it'. %s. Provision a "
+            "cache with `just-dna-enricher cache pull`, or re-run without --offline.",
+            len(unconsulted_rsids),
+            " (--offline)" if offline else "",
+            ", ".join(sorted(unconsulted_rsids)),
         )
 
     if mode == "strict" and ref_mismatches:
