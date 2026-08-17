@@ -301,7 +301,12 @@ A PharmGKB module carries `pharm_variants.csv` (+ the diplotype tables if star-a
 
 ## 9b. HFE — a gene panel drafted from ClinVar, with the zygosity left to a curator
 
-Compiled example: [`reference_examples/hfe_hemochromatosis/`](../reference_examples/hfe_hemochromatosis/).
+Compiled example: [`reference_examples/hfe_hemochromatosis/`](../reference_examples/hfe_hemochromatosis/). Since 0.6 it is also the corpus's
+demonstration of **RM90/RM92**: it carries 195 real `gwas_effects.csv` rows and a `weighting:` block.
+Its README records the two bugs the GWAS pass hit here — a 404 read as an outage rather than as the
+Catalog's empty answer, and a `pvalue: 0.0` underflow discarding whole associations — and the
+measurement that motivates declaring a weight scale at all: 186 associations for one variant, 62
+traits, 12 distinct effect units (three of them spellings of one), 42 rows naming no effect allele.
 The first module authored end-to-end with the 0.5 authoring surface — `scaffold` → `draft-panel` →
 curate → `enrich` → `compile` — and the one that shows where the tooling stops.
 

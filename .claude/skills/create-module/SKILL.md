@@ -121,7 +121,7 @@ genome_build: GRCh38
 # weighting:                  # optional; write it if you author ANY weight column
 #   scale: '0-1, curator-set, arbitrary'
 #   method: 'literature triage; no GWAS input'
-#   note: 'not comparable with another module's weights'
+#   note: "not comparable with another module's weights"
 ```
 
 **If you author a `weight` on any row, write the `weighting:` block.** `weight` is the one number in

@@ -90,6 +90,7 @@ reported, because a silent cap reads as "this is everything".
 | `studies.csv` | `draft-panel`, from ClinVar's citation links |
 | `sources.csv` | `draft-panel` (ClinVar is public domain; recorded because attribution is asked for) |
 | `resolution.csv` | `just-dna-enricher enrich --offline` |
+| `gwas_effects.csv` | `just-dna-enricher gwas` (RM90) |
 
 **This module deliberately keeps the deprecated `sources.csv` spelling.** 0.6 accepts `licensing.csv`
 as a second name for it and the other examples were renamed; this one was held back so the deprecation
@@ -98,3 +99,34 @@ notice and reads the file exactly as before. Renaming it changes nothing that is
 examples kept their exact `artifact.digest`, `content_signature`, `resolution_signature` and
 `source_signature` across the four that moved, which is the measurement behind the claim that the
 filename enters no identity.
+
+
+## What the GWAS pass broke here, and what its output shows (0.6, RM90/RM92)
+
+This module was the probe for `gwas_effects.csv`, and it broke the new pass **twice** — neither
+failure reachable from a recorded fixture, which is the whole argument for running a tool against a
+real module rather than a written one.
+
+* **A 404 is the Catalog's empty answer, not an outage.** The Catalog holds only variants with a
+  published genome-wide association, so it 404s on a rare clinical one. The pass read that as a
+  transport failure and died on `rs111033563` — the **first** variant in this file — which means it
+  could never have completed on any clinically-authored module. Nine of this module's ten rsIDs are
+  in that state and now carry an honest `not_found` row.
+* **`pvalue: 0.0` is an underflow the Catalog really publishes**, past float64's subnormal boundary.
+  `p_value_num` refuses it, correctly — that is not a probability — but the pass let the resulting
+  error discard the *whole association*. Six of them here. The number is now withheld, the verbatim
+  `p_value` string keeps what the source said, and the row survives: 189 rows became 195.
+
+**And the output is the clearest statement of why `weight` needed a declared scale.** `rs1800562`
+alone carries 186 published associations, across **62 EFO traits in 12 distinct effect units**. Three
+of those units are spellings of one thing — `SD units`, `SD`, `s.d.` — and two more differ only in
+case (`g/dL`, `g/dl`); 138 rows carry the Catalog's uninformative `unit`. **42 of the 195 rows name no
+effect allele at all**, because the study never established which allele carries the effect, and those
+cannot be weighted in any direction.
+
+Nothing in that set is poolable into one score, which is why this module's `weighting:` block says so
+in as many words rather than leaving a reader to find out. The block is also why the module was
+**re-closed**: it lives in `module_spec.yaml`, whose bytes the attestation binds.
+
+The `weight` column here has been present and entirely blank since the module was written, which is
+the other half of the point — it is a column nobody has ever filled, now with a declaration saying so.
