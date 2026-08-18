@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-18 (latest) — 0.6.1: nine defects a code-first reading of the documents found
+## 2026-08-18 (latest) — 0.6.1: nine defects a code-first reading of the documents found, and RM88 closed
 
 **`just-dna-format` + `just-dna-compiler` + `just-dna-enricher` 0.6.1 — cut and tagged `v0.6.1`.** A
 documentation pass regenerated SCHEMAS/COMPILER/ENRICHER from the source alone, read the result against
@@ -43,7 +43,7 @@ filed as eight items; RM100 grew a fifth defect while the first four were being 
 defects in eight entries). **No schema surface moves, `schema_version` stays `"1.0"`, and all sixteen
 reference examples recompile byte-identical** — verified against a worktree at `5c1ea87`, the state
 before the first fix, rather than inferred from the absence of a model change. The suite went
-**2568 → 2714**, and every new regression test was demonstrated failing on the pre-fix tree before
+**2568 → 2722**, and every new regression test was demonstrated failing on the pre-fix tree before
 being claimed as a guard. The seven doc commits that landed after `v0.6.0` ride along, as the entry
 below said they would.
 
@@ -97,6 +97,32 @@ call was to correct them as they moved rather than preserve the filing verbatim.
 missing four fact tables, not one; RM96's registry five models, not three; RM99 had five more sites in
 the reporting layer; RM100 stranded a fourth command. The fifth is a correction in the other direction:
 RM98's `SourceRow` claim was right, but by way of `authority` rather than `source`.
+
+**RM88 rode along, and closing it needed one decision rather than any new capability.** The entry had
+carried a technical blocker beside its policy question — a remote read, priced against "a path whose
+current cost is one `upload_folder`". Detailing it showed the real cost is `create_repo` plus **two**
+`upload_folder` calls, in the one tier permitted to fetch, so the read was always marginal and the
+policy was the only thing holding the item. Decided **refuse unless `--force`**: `upload` reads the
+published `manifest.json` at `data/<name>/v<version>/` and compares `artifact.digest`, refusing a
+*different* artifact. Identical bytes are **not** a collision, which is load-bearing rather than tidy —
+`upload_module` writes two commits and documents a re-run as the recovery when the second fails, so a
+presence check would have refused exactly that retry. It fails **open** on an unreadable remote
+(nothing established a collision, so nothing asserts one), and the flat path stays unguarded because it
+means *latest*. New `PublishCollisionError`, reported as `ALREADY PUBLISHED` rather than
+`UPLOAD FAILED` — the module is fine; the remote is what disagrees.
+
+**The wider half of RM88 shipped as an ask, not a fix, and consumers should read it.**
+`upload_folder` adds and replaces and **never removes**, so a recompile that stops emitting a table
+leaves the previous release's parquet beside a manifest that does not attest it — a union of two
+releases, on the **flat path, every republish**. The format's answer is that an unattested file is not
+part of the module, and it is the right answer; what stops it being true is that the discovery path
+fetches no manifest and probes named files, so a fossil parquet makes a module read as the wrong
+*kind*. `delete_patterns` was **declined**: it cleans nothing on a module nobody republishes, does
+nothing for a consumer that probes, and is one wildcard from dangerous (HF filters with `fnmatch`,
+whose `*` crosses path separators, so a single `*.parquet` would delete every archived version's
+parquets). The fix that closes it is the reader's, asked in **INTEGRATION_0_6 § 2.8** with the
+mechanism and the failure — the RM27 shape: a finding about a downstream reader is an explicit ask,
+never an implication.
 
 **One fix broke a test, and that is the release in miniature.** Making `EutilsSettings` call `load_env()`
 where it reads `NCBI_API_KEY` turned `test_eutils.py` red on a machine with a key in `.env`: it used

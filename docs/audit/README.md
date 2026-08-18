@@ -20,7 +20,7 @@ again from scratch, with the existing one unread, removes that anchor. Then the 
 peers, and every disagreement asks the same question — **which of these is wrong?**
 
 Eight times the answer was *the code*. Those are
-[RM93–RM100](../ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-and-the-two-the-fixes-found),
+[RM93–RM100](../ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
 all **shipped in 0.6.1**, and every one of them broke a rule this repo had already written down —
 which is the finding the pass is really evidence for. The pass
 also found the reverse: `@rm43-snp-core-only` was describing, in the present tense, the problem RM43

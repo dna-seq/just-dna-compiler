@@ -26,6 +26,12 @@ one thing 0.6.1 *adds* is that `authoring_reference()`, `describe`, `requirement
 `json_schemas()` now render **28 models rather than 23** (RM96), the five machine-written sidecar row
 models that were outside the registry. Additive, and worth knowing if you snapshot that output.
 
+**0.6.1 also closes RM88 and puts one ask to you.** `upload` now refuses to overwrite
+`data/<name>/v<version>/` with a different artifact unless `--force`. Beside it, § 2.8 carries the one
+change in this document we cannot make on our side: **decide what a module contains from
+`manifest.artifact.files`, not from what is in the directory**, because the publisher never removes a
+file and the discovery path fetches no manifest.
+
 ---
 
 ## 1. The headline: nothing you have breaks
@@ -293,12 +299,60 @@ The publisher now writes **`data/<name>/v<version>/` nested inside the flat `dat
 keeps meaning *latest* (RM84). The segment is `v<version>` verbatim. Enricher-only: no schema, no
 digest, no signature.
 
-Two things to plan for:
+Two things to plan for, and **one ask** — the third is the only thing in this document that needs a
+change on your side that we cannot make on ours.
 
 - **Nothing prunes the versioned copies.** The collection grows one artifact set per release. That is
   known and not being fixed here.
-- **RM88 is open**: republishing without bumping `version:` overwrites a versioned path with different
-  bytes. See §5.
+- **The versioned path now refuses to become a different release** (RM88, 0.6.1). `upload` reads the
+  published `manifest.json` at `data/<name>/v<version>/` and compares `artifact.digest`; a different
+  digest refuses unless `--force`. Identical bytes are **not** a collision, so re-running a publish
+  after a failed second commit still works. The flat path is deliberately **not** guarded — it means
+  *latest*, and overwriting it is what it is for. If the check itself cannot run, the publish proceeds
+  with a warning: nothing established a collision, so nothing asserts one.
+  Note that recompiling an unchanged spec under a newer compiler moves the digest too (P4), so it will
+  trip the gate — correctly, since the versioned path really would come to hold different bytes.
+
+#### The ask: read `artifact.files`, and treat what it does not name as not part of the module
+
+**`upload_folder` adds and replaces; it never removes.** A recompile that stops emitting a table — a
+module whose `studies.csv` was deleted, so `studies.parquet` is no longer produced — leaves the
+previous release's file sitting at the path beside a manifest that does not attest it. So a republish
+leaves a **union of two releases**, not a replacement, and it does this on the **flat path, every
+time**, version bumped or not.
+
+**The format's answer is that this does not matter, and we would like it to become true.**
+`manifest.artifact.files` states which parquets *are* the module, `artifact.digest` is a Merkle root
+over exactly those, and an unattested leftover is outside both — so a reader that starts from the
+manifest never sees one, and verification passes because nothing was corrupted. On that reading the
+leftover is an inert fossil.
+
+**What stops it being true is the reader.** Recorded in
+[MODULE_LIFECYCLE § 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) and verified in the
+reference consumer's tree rather than inferred: the discovery path adds *"no manifest fetch and no
+digest check"*, `verify_manifest` *"has no call sites there"*, and the scan is `fs.ls` at one level
+plus `fs.exists` on **named files**. On the registry path the fossil really is inert, because there is
+a per-version audit and the manifest is read. On the discovery path nothing consults the list that
+would make it inert, and a leftover parquet is indistinguishable from a live one.
+
+**The concrete failure is a shape misreport, not corruption**, and it needs two things at once: a
+module whose table set *shrank* between publishes, read over discovery. A SNP-core module re-authored
+as a table-only PGx module keeps a fossil `weights.parquet`, so a probe for named files still finds a
+SNP core — the old release's. Nothing is mis-hashed; the module is mis-*typed*.
+
+**So the ask is: decide what a module contains from `manifest.artifact.files`, not from what is in the
+directory.** That is one read, it is the list the digest is computed over, and it closes this for good
+on every module including the ones already published.
+
+**Why we are not fixing it here**, stated so the choice is auditable rather than implied: the publisher
+*could* pass `delete_patterns` and make the flat path a replacement. It was considered and declined for
+this release. It leaves already-published fossils untouched (only a republish would clean them), it
+does nothing for a consumer that probes rather than reads, and it is one wildcard away from being
+dangerous — HuggingFace filters delete patterns with `fnmatch`, whose `*` **crosses path separators**,
+so a single `*.parquet` in the publisher's allowlist would delete every archived version's parquets in
+one commit. The allowlist is literal basenames today and the archive is safe by that accident. A fix
+whose safety rests on an accident, and which does not close the case anyway, is the wrong half of the
+answer; the manifest read is the right half.
 
 **And the reason to upgrade the publisher at all:** the 0.5 allowlist was hand-kept, and it was not
 merely refusing table-only modules — it was **dropping the data of the ones it accepted**. Measured
@@ -328,24 +382,30 @@ fix: **16 of 16 publish and all 16 digests verify**, and the allowlist is derive
 4. Read `manifest.sources` / `sources.parquet` for licence terms as before — but if you consumed
    anything published through the old uploader, re-fetch it; the licence table was being dropped and
    your report footer would render *"Not stated"*.
+5. **Decide what a module contains from `manifest.artifact.files`, not from what is in the
+   directory** — the ask in §2.8. The publisher's `upload_folder` never removes, so a module whose
+   table set shrank between releases leaves the previous release's parquet at the path; on the
+   discovery path, which fetches no manifest, that fossil is indistinguishable from a live table and
+   the module reads as the wrong *kind*. One read of the list the digest is computed over closes it,
+   including on modules already published, which no publisher-side fix can reach.
 
 **Check**
 
-5. Re-pin any stored `artifact.digest`. `content_signature` needs nothing.
-6. Where you badge trust, read `resolution_subjects` beside `fully_resolved`, and keep the
+6. Re-pin any stored `artifact.digest`. `content_signature` needs nothing.
+7. Where you badge trust, read `resolution_subjects` beside `fully_resolved`, and keep the
    `UNJOINABLE_PHRASE` fallback for pre-0.6 artifacts.
-7. `weights.parquet` splits the genotype while the 0.4 families keep the string. That is **still
+8. `weights.parquet` splits the genotype while the 0.4 families keep the string. That is **still
    true** — unifying it is RM81 and it is 1.0, because it retypes a published column.
-8. **If you aggregate `weight` across modules, stop, or gate it on `manifest.weighting`.** This is
+9. **If you aggregate `weight` across modules, stop, or gate it on `manifest.weighting`.** This is
    your own report (S36) coming back as a surface: `weight` has no unit column, every module means
    something different by it, and until 0.6 the artifact could not say so. An absent `weighting`
    block means *the module has not said* — read that as *do not combine*, not as *safe*.
-9. **`gwas_effects.parquet` is not a drop-in replacement for a weight, and must not be pooled.**
+10. **`gwas_effects.parquet` is not a drop-in replacement for a weight, and must not be pooled.**
    Join it per **trait** (`trait_efo_id`), and read `manifest.gwas_effects.units` first: one real
    variant carries 12 distinct units, three of which are spellings of one. Skip or label rows with a
    null `effect_allele` — 42 of 195 on that module — because an effect relative to an unknown allele
    has no direction you can apply to a genotype.
-10. If you read `StudyRow.effect_size`, read `effect_allele` beside it now that it exists (RM91).
+11. If you read `StudyRow.effect_size`, read `effect_allele` beside it now that it exists (RM91).
     Null still means the study did not state one, never that the reference allele is implied.
 
 ### just-dna-marketplace (catalog / storage / serving)
@@ -355,22 +415,27 @@ fix: **16 of 16 publish and all 16 digests verify**, and the allowlist is derive
 1. Handle the nested `data/<name>/v<version>/` path. A nested versioned subdirectory does not disturb
    a flat-path scan by construction, but your catalog should now be able to *name* a version.
 2. Plan for unbounded growth of versioned copies — nothing prunes them.
-3. Surface the `verification` block. **Absent means *says nothing*, never *passed*.** Every field
+3. **Derive a module's file set from `manifest.artifact.files`** — the ask in §2.8, and it matters
+   more here than anywhere: the publisher never removes, so a path can hold a union of two releases,
+   and `revalidate` is the one place that enumerates published versions and could *say so*. A listing
+   diffed against `artifact.files` is the only thing that finds a fossil on a module nobody
+   republishes, which no publisher-side fix can reach.
+4. Surface the `verification` block. **Absent means *says nothing*, never *passed*.** Every field
    inside is marked untrusted; the closure (`closed_at`, `closed_by`) is the only record that a human
    declared the module final.
-4. `verify_manifest(require_marketplace=True)` is your policy — the default is yours, and it is
+5. `verify_manifest(require_marketplace=True)` is your policy — the default is yours, and it is
    correct for you and wrong for a local compile. Pin the `public_key`; that is the load-bearing part.
 
 **Check**
 
-5. Consume `positional_rows` / `positional_rows_placed` and `expanded_keys` / `expanded_rows` instead
+6. Consume `positional_rows` / `positional_rows_placed` and `expanded_keys` / `expanded_rows` instead
    of substring-matching warning prose. Treat `None` as *not measured*, never as `0`.
-6. `derived` records relative paths for a split tree, so `FileEntry.name` can carry `derived/…`. That
+7. `derived` records relative paths for a split tree, so `FileEntry.name` can carry `derived/…`. That
    block is documented transport-only.
-7. **Three** new parquets may appear in an artifact's file list. Derive from `ARTIFACT_PARQUETS`
+8. **Three** new parquets may appear in an artifact's file list. Derive from `ARTIFACT_PARQUETS`
    rather than hand-keeping a list — that is precisely the defect that broke the publisher, and
    `gwas_effects.parquet` is the first one added since the fix, so it is also the test of it.
-8. Two new manifest blocks to surface on a module page: `weighting` (what the module says its weights
+9. Two new manifest blocks to surface on a module page: `weighting` (what the module says its weights
    mean — free text, show it verbatim) and `gwas_effects`. If you render a facet from the latter,
    render `units` and `without_effect_allele`, not just `row_count`: they are what tell a reader
    whether those effects are usable, and a row count alone reads as confidence.
@@ -442,10 +507,10 @@ removal whose upgrade path is left to the reader to work out is not ready to shi
 
 | gate | result |
 | --- | --- |
-| `uv run pytest` | **2568 passed, 8 skipped, 0 failed** |
+| `uv run pytest` | **2722 passed, 8 skipped, 0 failed** (2568 at the 0.6.0 cut) |
 | `uv run ruff check` | clean |
 | Open consumer inbox (`CONSUMER_SUGGESTIONS.md`) | empty — nothing owed (S36 answered and archived 2026-08-17) |
-| Open roadmap items | one in format scope, RM88 (medium). RM7 also carries a `## RMn` heading but is marked **not format scope** — a `just-dna-lite` contract, listed only so it is not mistaken for ours. |
+| Open roadmap items | **none in format scope.** RM88 closed in 0.6.1; RM7 carries a `## RMn` heading but is marked **not format scope** — a `just-dna-lite` contract, listed only so it is not mistaken for ours. |
 | 0.5.4 spec corpus under the 0.6 compiler | 11 / 11 compile |
 | Reference corpus | 16 / 16 compile (measured here); 16 / 16 publish with verifying digests (measured in the RM89 fix round) |
 | Corpus movement from the S36 batch | `artifact.digest` moved on **10 / 16** — exactly the ten carrying a `studies.parquet`, since RM91 adds a column to it. `content_signature` moved on **0 / 16**. |
@@ -460,11 +525,12 @@ matrix. That shape is deliberate (a full matrix on every branch push mostly meas
 progress), but it means *merge via a PR, or dispatch the workflow against the branch first*. This
 project has been bitten once already by a green-looking CI that never ran, on the 0.5.0 release.
 
-**RM88 — open, medium, not a blocker.** Republishing without bumping `version:` overwrites a
-versioned path with different bytes. The status line calls it a policy question rather than a code
-one, and it is explicitly *not* a defect in RM84: the flat path was always going to be overwritten,
-and the versioned one is no worse than the situation before it existed. It was found by building
-RM84, not by planning it.
+**RM88 — closed in 0.6.1.** Republishing without bumping `version:` overwrote a versioned path with
+different bytes. The policy was the whole of the delay, not the code: refuse-unless-`--force`, decided
+2026-08-18, with the comparator (`artifact.digest`) already in the manifest. The half that is *not*
+closed is the one nobody here can close — the publisher never removes a file, so a path can hold a
+union of two releases, and only a reader that starts from `manifest.artifact.files` is immune. That is
+the ask in § 2.8.
 
 **Verdict: ready to cut**, with three caveats that are release-management rather than code.
 

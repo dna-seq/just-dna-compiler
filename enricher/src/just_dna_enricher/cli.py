@@ -1100,6 +1100,14 @@ def upload_(
         "--dry-run",
         help="Show what would be uploaded without contacting HuggingFace.",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help=(
+            "Overwrite data/<name>/v<version>/ even when it already holds a different artifact. "
+            "Without this the publish refuses; the flat path is always overwritten."
+        ),
+    ),
 ) -> None:
     """Upload a compiled module to a HuggingFace dataset collection (publisher/dev surface).
 
@@ -1107,8 +1115,12 @@ def upload_(
     manifest states a version — data/<name>/v<version>/ under it, in
     that order, as two commits. With no version, the flat path alone,
     and the reason why.
+
+    Refuses when the versioned path already holds a different artifact
+    (compare by artifact.digest), unless --force. The flat path means
+    latest and is overwritten either way.
     """
-    from just_dna_enricher.upload import plan_upload, upload_module
+    from just_dna_enricher.upload import PublishCollisionError, plan_upload, upload_module
 
     module_name = name or module_dir.name
     if dry_run:
@@ -1132,7 +1144,14 @@ def upload_(
             module_name,
             repo_id=repo_id,
             commit_message=commit_message,
+            force=force,
         )
+    except PublishCollisionError as exc:
+        # Its own branch, and its own word: this module is publishable and the remote already has
+        # this version. "UPLOAD FAILED" beside the three `plan_upload` refusals would read as
+        # "your module is broken", which is the opposite of what happened.
+        typer.secho(f"ALREADY PUBLISHED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     except (FileNotFoundError, PermissionError, ImportError) as exc:
         typer.secho(f"UPLOAD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc

@@ -20,11 +20,13 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 [RM_TOC.md](RM_TOC.md) indexes both halves plus the open roadmap, so it is where to look an item up.
 
 
-# 0.6.1 — the eight the documents caught, and the two the fixes found
+# 0.6.1 — the eight the documents caught, the two the fixes found, and RM88
 
 **A documentation pass regenerated SCHEMAS/COMPILER/ENRICHER from the source alone on 2026-08-18, read
 the result against the shipped documents, and asked which of the two was wrong.** Eight times it was
-the code. That is the whole of this release: no schema surface moves, `schema_version` stays `"1.0"`,
+the code. **RM88 rode along**, closed the same day and for a related reason — detailing it showed the
+technical blocker it had been carrying was mispriced, leaving a policy question that took one decision
+— and its own entry below carries the half that shipped as an ask rather than a fix. Everything else: no schema surface moves, `schema_version` stays `"1.0"`,
 and all sixteen reference examples recompile byte-identical — verified against a worktree at `5c1ea87`,
 the state before the first fix, rather than assumed from the absence of a model change.
 
@@ -57,8 +59,96 @@ shipped.
 additive under Principle 3 and buys guards that cannot miss a model again, which is the trade — a wider
 printed reference in exchange for a registry that iterates itself.
 
-The suite went **2568 → 2714**. Every new regression test was demonstrated failing on the pre-fix tree
+The suite went **2568 → 2722**. Every new regression test was demonstrated failing on the pre-fix tree
 before being claimed as a guard.
+
+## RM88 — republishing without bumping `version:` overwrites a versioned path with different bytes
+
+✅ **Shipped in `just-dna-enricher` 0.6.1.** [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
+built the versioned path `data/<name>/v<version>/` and it did exactly what it said. What it could not
+do was notice that the version had *not* moved: an author who recompiled a changed module and
+republished without editing `version:` overwrote the versioned copy with different bytes, and the path
+then named a version whose contents were not the ones that version had. The same lie the flat path
+already tells, arriving at the address built to stop telling it — which is why it was worth an entry
+rather than a shrug, and also why it was never a defect in RM84.
+
+**The delay was the policy, and the entry's own accounting of the other half was wrong.** It named a
+remote read as the first of two blockers, pricing it against "a path whose current cost is one
+`upload_folder`". The real cost is `create_repo` plus **two** `upload_folder` calls, in the one tier
+permitted to fetch, so one more read was always marginal — the entry's closing line had already
+conceded as much ("the check is cheap once the policy is chosen"). Corrected while detailing it on
+2026-08-18, which is what left the product question alone as the blocker.
+
+**Refuse unless `--force`**, decided 2026-08-18, over warn-and-proceed and refuse-outright. The flag's
+existence is itself the claim that overwriting is sometimes right, and that is the honest position: a
+curator re-cutting a draft release is a real workflow, and a gate with no override becomes a gate
+people route around.
+
+**Four outcomes, and the third is the one that decided the shape.** No versioned path (the module
+states no version) — nothing addressable to collide with. The path is absent — the first publish of
+this version, one `file_exists` and no download. **Present with the same digest — proceed**, because
+`upload_module` writes two commits and documents a re-run as the recovery when the second fails, so a
+gate keying on *presence* would refuse exactly the retry the design depends on. Present with a
+different digest — refuse. `artifact.digest` is the comparator because it is a Merkle root over
+exactly the attested files, so one small manifest read answers the question a tree listing could only
+answer for whatever happens to be LFS-backed.
+
+**It fails open, deliberately.** If the published manifest cannot be read, nothing established a
+collision, so nothing asserts one — the house algebra withholds, and the publish proceeds with a
+warning. Failing closed would make every network flake demand `--force`, training an author to pass it
+by default and turning the gate into one people route around, which is the exact failure the policy
+was chosen to avoid. It must not come back through the error path.
+
+**A recompile under a newer compiler trips it, and that is correct rather than a false positive.** P4
+scopes byte-reproducibility to a fixed `compiler_version`, so the versioned path really would come to
+hold different bytes than the ones it was published with. The refusal says so in its own text, because
+*"but I changed nothing"* is the first thing its first user will think.
+
+**Not a repair, and still refused:** making the compiler bump `version:` automatically. A version is an
+authored claim about compatibility, and a tool that increments it asserts something only the author
+knows — the same move the repo already refused for `SourceRow.dataset` in RM85.
+
+### The half that shipped as an ask instead of a fix
+
+**`upload_folder` adds and replaces; it never removes.** Found while detailing this entry, wider than
+the filed defect, and verified off the API contract rather than a live publish. A recompile that stops
+emitting a table leaves the previous release's parquet at the path beside a manifest that does not
+attest it — so a republish leaves a **union of two releases**, on the **flat path, every time**,
+version bumped or not.
+
+**The format's answer is that this does not matter**, and it is the right reading:
+`manifest.artifact.files` states which parquets *are* the module, `artifact.digest` is a Merkle root
+over exactly those, and an unattested leftover is outside both. A manifest-first reader never sees one
+and verification passes, because nothing was corrupted. On that reading the leftover is an inert fossil.
+
+**What stops it being true is the reader**, which
+[MODULE_LIFECYCLE § 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) already records,
+verified in the consumer's tree rather than inferred: the discovery path adds *"no manifest fetch and
+no digest check"*, `verify_manifest` *"has no call sites there"*, and the scan is `fs.ls` at one level
+plus `fs.exists` on **named files**. Registry path: inert. Discovery path: a leftover parquet is
+indistinguishable from a live one. The concrete failure is a **shape misreport, not corruption**, and
+it needs two things at once — a module whose table set *shrank*, read over discovery. A SNP-core module
+re-authored as table-only keeps a fossil `weights.parquet` and still probes as a SNP core.
+
+**`delete_patterns` was considered and declined**, which is the part worth recording because it is the
+obvious repair:
+
+- **It leaves the nested `v<version>/` archive alone today, and by accident.** HuggingFace filters
+  delete patterns with `fnmatch`, whose `*` **crosses path separators** — their own docs warn about it
+  — and every member of `_ALLOW_PATTERNS` is a literal basename, so `manifest.json` does not match
+  `v1.0.0/manifest.json`. Add one `*.parquet`, a completely reasonable tidy-up of a 28-entry list, and
+  a single publish deletes every archived version's parquets. `_SNAPSHOT_ALLOW_PATTERNS` already
+  carries two globs, on a path with no nesting, so the habit exists.
+- **It would not close the case anyway.** Only a republish cleans a fossil, so every module nobody
+  republishes keeps its own; and it does nothing at all for a consumer that probes filenames rather
+  than reading the manifest.
+
+A fix whose safety rests on an accident, and which does not close the case, is the wrong half of the
+answer. **The right half is the reader**, so it shipped as an explicit ask in
+[INTEGRATION_0_6 § 2.8](INTEGRATION_0_6.md#28-the-publisher-path-marketplace--registry) with the
+mechanism, the failure and the reasoning — the RM27 shape: a finding about a downstream reader is an
+explicit ask, never an implication. One read of `manifest.artifact.files` closes it for good, on every
+module including the ones already published, which no publisher-side change can reach.
 
 ## RM93 — two checks refuse in `compile` and report nothing in `validate`
 

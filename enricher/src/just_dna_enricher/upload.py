@@ -21,6 +21,7 @@ Extracted from ``just_dna_pipelines.v1_port.publish`` (just-dna-lite); ``create_
 """
 
 import json
+import logging
 from pathlib import Path
 
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
@@ -84,6 +85,8 @@ _SNAPSHOT_ALLOW_PATTERNS = [
     SNAPSHOT_LICENSE_FILENAME,
 ]
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_REPO_ID = "just-dna-seq/annotators"
 DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
 DEFAULT_CONSTRAINT_REPO_ID = "just-dna-seq/gnomad_constraint"
@@ -127,6 +130,15 @@ def ensure_repo(repo_id: str, token: str | None = None):
     api = _hf_api(repo_id, token)
     api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
     return api
+
+
+class PublishCollisionError(RuntimeError):
+    """The versioned path already holds a *different* release, and no `--force` was given (RM88).
+
+    Its own type rather than a `FileNotFoundError`, because the CLI has to tell it apart from the
+    three refusals `plan_upload` raises: those say the local module is not publishable, this one says
+    the local module is fine and the remote already has that version.
+    """
 
 
 class UploadPlan(BaseModel):
@@ -180,6 +192,26 @@ def _module_version(module_dir: Path) -> tuple[str | None, str | None]:
     if not isinstance(version, str) or not is_valid_version(version):
         return None, f"{_MANIFEST_FILENAME}'s identity.version is not MAJOR.MINOR.PATCH: {version!r}"
     return version, None
+
+
+def _artifact_digest(module_dir: Path) -> str | None:
+    """``manifest.artifact.digest`` for a compiled module, or ``None`` when the manifest cannot say.
+
+    Tri-state, and read field by field out of the JSON, for the same two reasons as its neighbours:
+    an unreadable manifest is *unknown* rather than *no digest*, and validating the whole
+    ``ModuleManifest`` to reach one string would let an unrelated model defect withhold a value that
+    is right there and legible.
+    """
+    path = module_dir / _MANIFEST_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    artifact = document.get("artifact") if isinstance(document, dict) else None
+    digest = artifact.get("digest") if isinstance(artifact, dict) else None
+    return digest if isinstance(digest, str) and digest else None
 
 
 def _attested_parquets(module_dir: Path) -> list[str] | None:
@@ -279,12 +311,69 @@ def plan_upload(
     )
 
 
+def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None) -> str | None:
+    """The remote `artifact.digest` already at the versioned path when it **differs** — else ``None``.
+
+    RM88's comparator, and the four outcomes are the whole of the gate:
+
+    - **no versioned path** (the module states no version) — nothing addressable to collide with;
+    - **the path is not there** — the first publish of this version, which is the normal case;
+    - **it is there and the digests agree** — the same release arriving twice. This must *proceed*,
+      and it is the case a naive existence check would break: `upload_module` writes two commits and
+      documents a re-run as the recovery when the second fails, so refusing on presence alone would
+      refuse exactly the retry the design depends on;
+    - **it is there and the digests differ** — the collision. `None` is not returned, and the caller
+      refuses unless `--force`.
+
+    **An unknown proceeds, with a warning, and that is a decision rather than an oversight.** If the
+    remote manifest cannot be read — a flake, a repo that answers but has no manifest at that path —
+    nothing established a collision, so nothing may assert one; the house algebra withholds. Failing
+    *closed* here would make every network hiccup demand `--force`, which trains an author to pass it
+    by default and turns a gate into one people route around. That is the failure the policy decision
+    was explicitly trying to avoid, so it must not be reintroduced by the error path.
+
+    Reads the remote `manifest.json` rather than comparing per-file hashes: `artifact.digest` is a
+    Merkle root over exactly the attested files, so one small download answers the question that a
+    tree listing could only answer for whatever happens to be LFS-backed.
+    """
+    if plan.versioned_path_in_repo is None or local_digest is None:
+        return None
+    remote_manifest = f"{plan.versioned_path_in_repo}/{_MANIFEST_FILENAME}"
+    try:
+        from huggingface_hub import hf_hub_download
+
+        if not api.file_exists(
+            repo_id=plan.repo_id, filename=remote_manifest, repo_type="dataset"
+        ):
+            return None
+        local_copy = hf_hub_download(
+            repo_id=plan.repo_id,
+            filename=remote_manifest,
+            repo_type="dataset",
+            token=api.token,
+        )
+        published = json.loads(Path(local_copy).read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001 — every failure here is the same unknown; see the docstring
+        logger.warning(
+            "Could not read the published manifest at %s (%s); publishing without the "
+            "already-published check. Nothing established a collision, so nothing asserts one.",
+            remote_manifest, exc,
+        )
+        return None
+    artifact = published.get("artifact") if isinstance(published, dict) else None
+    remote_digest = artifact.get("digest") if isinstance(artifact, dict) else None
+    if not isinstance(remote_digest, str) or not remote_digest:
+        return None
+    return None if remote_digest == local_digest else remote_digest
+
+
 def upload_module(
     module_dir: Path,
     name: str,
     repo_id: str | None = None,
     token: str | None = None,
     commit_message: str | None = None,
+    force: bool = False,
 ) -> UploadPlan:
     """Upload the compiled module to a HuggingFace dataset collection.
 
@@ -299,16 +388,39 @@ def upload_module(
     landed — `data/<name>/` is the new release and the versioned copy is absent until a re-run, which
     is idempotent.
 
-    **A versioned path is only as stable as the author's `version:` is.** Nothing here checks the
-    remote, so re-publishing without bumping `module_spec.yaml`'s version overwrites
-    `data/<name>/v<version>/` with different bytes — the same overwrite the flat path has always done,
-    but under a name that invites caching. Refusing it needs a remote read and a policy (warn, refuse,
-    `--force`), which is a decision rather than this item.
+    **The versioned path refuses to be overwritten with different bytes (RM88).** Before either
+    write, the published `manifest.json` at `data/<name>/v<version>/` is read and its
+    `artifact.digest` compared with this module's. A different digest is a `PublishCollisionError`
+    unless `force=True`. The flat path is deliberately **not** guarded: it means *latest*, so
+    overwriting it is what it is for, and the whole point of the versioned copy is that it does not.
+
+    The policy is refuse-unless-`--force` rather than warn-and-proceed or refuse-outright, decided
+    2026-08-18. The flag's existence is itself the claim that overwriting is sometimes right — a
+    curator re-cutting a draft release is a real workflow, and a gate with no override becomes a gate
+    people route around.
+
+    **Recompiling under a newer compiler also moves the digest**, and will trip this. That is correct
+    rather than a false positive: P4 scopes byte-reproducibility to a fixed `compiler_version`, so the
+    versioned path really would come to hold different bytes than the ones it was published with. The
+    refusal says so, because "I changed nothing" is the first thing its first user will think.
 
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
     """
     plan = plan_upload(module_dir, name, repo_id)
     api = ensure_repo(plan.repo_id, token)
+    published_digest = None if force else _versioned_digest_conflict(
+        api, plan, _artifact_digest(module_dir)
+    )
+    if published_digest is not None:
+        raise PublishCollisionError(
+            f"{name}: {plan.versioned_path_in_repo}/ is already published with a different artifact "
+            f"({published_digest[:19]}… there, {_artifact_digest(module_dir)[:19]}… here), so this "
+            f"upload would replace the bytes that version names. Bump `version:` in "
+            f"module_spec.yaml and re-compile to publish this as a new release, or pass --force to "
+            f"overwrite it deliberately. Note that recompiling an unchanged spec under a newer "
+            f"compiler moves the digest too — if that is what happened, this refusal is still "
+            f"protecting the bytes the published version was cut from."
+        )
     api.upload_folder(
         folder_path=str(module_dir),
         path_in_repo=plan.path_in_repo,

@@ -1297,11 +1297,40 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   explicit operation list, a different shape from the allow-pattern plumbing every publish here uses; it
   was not worth holding the fix for, and if the window ever matters that is the change to make.
 - **A versioned path is only as stable as the author's `version:` is.** Nothing reads the remote before
-  writing, so re-publishing without bumping the version overwrites `data/<name>/v<version>/` with
-  different bytes. That is the same overwrite the flat path has always done, but under a name that
-  invites caching, so it is worth saying rather than implying immutability the publisher does not
-  enforce. Refusing it needs a remote read plus a policy (warn / refuse / `--force`), which is a
-  decision and not part of RM84.
+  writing, so re-publishing without bumping the version overwrote `data/<name>/v<version>/` with
+  different bytes — the same overwrite the flat path has always done, but under a name that invites
+  caching. **Closed in 0.6.1 (RM88): the versioned path refuses unless `--force`.** Before either
+  write, the published `manifest.json` at that path is read and its `artifact.digest` compared with
+  this module's; a *different* digest raises `PublishCollisionError`, and the CLI reports it as
+  `ALREADY PUBLISHED` rather than `UPLOAD FAILED`, because the module is fine and the remote is what
+  disagrees. Four things about the gate that are decisions rather than details:
+  - **Identical bytes are not a collision.** The comparator is the digest, not presence — a presence
+    check would refuse exactly the re-run this section documents as the recovery when the second
+    commit fails.
+  - **The flat path is not guarded.** It means *latest*; overwriting it is what it is for, and the
+    whole point of the versioned copy is that it is the one that does not move.
+  - **It fails open.** An unreadable published manifest is an *unknown*, and nothing established a
+    collision, so the publish proceeds with a warning. Failing closed would make a network flake
+    demand `--force` and train an author to pass it by default.
+  - **A recompile under a newer compiler trips it**, correctly: P4 scopes byte-reproducibility to a
+    fixed `compiler_version`, so the path really would come to hold different bytes than the ones it
+    was published with. The refusal says so, because *"but I changed nothing"* is the first thing its
+    first user will think.
+- **`upload_folder` adds and replaces; it never removes — so a republish leaves a union of two
+  releases.** A recompile that stops emitting a table leaves the previous release's parquet at the
+  path beside a manifest that does not attest it, and this happens on the **flat path, every time**.
+  The format's answer is that an unattested file is not part of the module — `manifest.artifact.files`
+  says which parquets are, and `artifact.digest` is a Merkle root over exactly those — so a
+  manifest-first reader never sees it. What stops that being true is the reader:
+  [MODULE_LIFECYCLE § 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) records that the
+  discovery path fetches no manifest and probes named files, so there a fossil parquet is
+  indistinguishable from a live one and the module reads as the wrong *kind*. **`delete_patterns` was
+  considered and declined**: it cleans nothing on a module nobody republishes, does nothing for a
+  consumer that probes rather than reads, and is one wildcard away from dangerous — HuggingFace filters
+  those patterns with `fnmatch`, whose `*` crosses path separators, so a single `*.parquet` in the
+  allowlist would delete every archived version's parquets. The allowlist is literal basenames today
+  and the archive survives by that accident. The fix that closes it is the reader's, and it is asked
+  explicitly in [INTEGRATION_0_6 § 2.8](INTEGRATION_0_6.md#28-the-publisher-path-marketplace--registry).
 - **Nothing already published moves.** The flat path keeps being written, so every module published
   under the old layout stays exactly where it is and keeps resolving. That is the argument for writing
   both rather than migrating.

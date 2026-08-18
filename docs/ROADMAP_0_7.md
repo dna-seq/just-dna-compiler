@@ -1037,7 +1037,7 @@ is filed rather than cross-referenced.
 Both were found by writing the code, not by planning it, and neither is a defect in what shipped —
 recorded here because this entry is where a reader meets the publisher.
 
-- **[RM88](ROADMAP.md#rm88--republishing-without-bumping-version-overwrites-a-versioned-path-with-different-bytes)** — the versioned path cannot notice that the version has *not* moved, so a republish
+- **[RM88](ROADMAP_HISTORY.md#rm88--republishing-without-bumping-version-overwrites-a-versioned-path-with-different-bytes)** — the versioned path cannot notice that the version has *not* moved, so a republish
   without a `version:` bump overwrites it with different bytes. Refusing needs a remote read *and* an
   undecided policy (warn / refuse / `--force`), which is why it is an item and not a fix.
 - **[RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)** —

@@ -13,6 +13,7 @@ from just_dna_enricher.cli import app
 from just_dna_enricher.upload import (
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_REPO_ID,
+    PublishCollisionError,
     UploadPlan,
     plan_reference_snapshot,
     plan_upload,
@@ -508,3 +509,159 @@ def test_publish_reference_snapshot_requires_token(tmp_path: Path) -> None:
         pytest.raises(PermissionError, match="No HuggingFace token"),
     ):
         publish_reference_snapshot(snap)
+
+
+# ── RM88: the versioned path refuses to become a different release ────────────────────────────────
+
+_LOCAL_DIGEST = "sha256:" + "0" * 64
+_OTHER_DIGEST = "sha256:" + "1" * 64
+
+
+def _remote(tmp_path: Path, digest: str | None) -> tuple[MagicMock, Path | None]:
+    """A mock api whose versioned path holds a manifest with `digest`, or nothing when `digest` is
+    None. Returns the api and the file `hf_hub_download` should hand back."""
+    api = MagicMock()
+    api.token = "hf_test_token"
+    if digest is None:
+        api.file_exists.return_value = False
+        return api, None
+    api.file_exists.return_value = True
+    published = tmp_path / "published_manifest.json"
+    published.write_text(json.dumps({"artifact": {"digest": digest}}), encoding="utf-8")
+    return api, published
+
+
+def _upload(module_dir: Path, api: MagicMock, published: Path | None, **kwargs):
+    download = MagicMock(return_value=str(published) if published else "")
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+        patch("huggingface_hub.hf_hub_download", download),
+    ):
+        return upload_module(module_dir, "test_module", **kwargs)
+
+
+def test_a_versioned_path_holding_a_different_artifact_refuses(tmp_path: Path) -> None:
+    """RM88: republishing without bumping `version:` used to overwrite the versioned copy silently.
+
+    The comparator is `artifact.digest` — a Merkle root over exactly the attested files — read off
+    the published manifest, so the question asked is *are these the bytes that version names* rather
+    than *is something there*.
+    """
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    api, published = _remote(tmp_path, _OTHER_DIGEST)
+
+    with pytest.raises(PublishCollisionError) as caught:
+        _upload(module_dir, api, published)
+
+    message = str(caught.value)
+    assert "data/test_module/v1.2.3" in message
+    assert "--force" in message
+    assert "version:" in message                       # names the fix, not just the fault
+    assert "newer compiler" in message                 # pre-answers "but I changed nothing"
+    api.upload_folder.assert_not_called()              # refused BEFORE either write
+
+
+def test_the_same_artifact_republished_is_not_a_collision(tmp_path: Path) -> None:
+    """The case a naive existence check would break, and it is load-bearing rather than tidy.
+
+    `upload_module` writes two commits and documents a re-run as the recovery when the second fails,
+    so a gate keying on *presence* would refuse exactly the retry the design depends on. It compares
+    digests instead, and identical bytes are not a collision.
+    """
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    api, published = _remote(tmp_path, _LOCAL_DIGEST)
+
+    plan = _upload(module_dir, api, published)
+
+    assert [c.kwargs["path_in_repo"] for c in api.upload_folder.call_args_list] == [
+        "data/test_module",
+        "data/test_module/v1.2.3",
+    ]
+    assert plan.versioned_path_in_repo == "data/test_module/v1.2.3"
+
+
+def test_a_first_publish_of_a_version_is_never_a_collision(tmp_path: Path) -> None:
+    """Nothing at the path is the normal case, and it costs one `file_exists`, not a download."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    api, published = _remote(tmp_path, None)
+
+    _upload(module_dir, api, published)
+
+    assert api.file_exists.call_args.kwargs["filename"] == "data/test_module/v1.2.3/manifest.json"
+    assert len(api.upload_folder.call_args_list) == 2
+
+
+def test_force_overwrites_and_does_not_even_ask(tmp_path: Path) -> None:
+    """`--force` is the decision that overwriting is sometimes right, so it skips the read entirely —
+    a curator re-cutting a draft release should not pay a round trip to be told what they already
+    decided."""
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    api, published = _remote(tmp_path, _OTHER_DIGEST)
+
+    _upload(module_dir, api, published, force=True)
+
+    api.file_exists.assert_not_called()
+    assert len(api.upload_folder.call_args_list) == 2
+
+
+def test_a_module_with_no_version_is_not_gated_at_all(tmp_path: Path) -> None:
+    """There is no versioned path to collide with, so there is nothing to ask and nobody to ask."""
+    module_dir = _compiled_module(tmp_path / "m", version=None)
+    api, published = _remote(tmp_path, _OTHER_DIGEST)
+
+    plan = _upload(module_dir, api, published)
+
+    api.file_exists.assert_not_called()
+    assert plan.versioned_path_in_repo is None
+    api.upload_folder.assert_called_once()
+
+
+def test_the_flat_path_is_deliberately_not_guarded(tmp_path: Path) -> None:
+    """`data/<name>/` means *latest*, so overwriting it is what it is for — and the whole point of
+    the versioned copy is that it is the one that does not move. A gate on both would make every
+    republish need `--force`."""
+    module_dir = _compiled_module(tmp_path / "m", version=None)
+    api, published = _remote(tmp_path, None)
+
+    _upload(module_dir, api, published)
+
+    assert api.upload_folder.call_args.kwargs["path_in_repo"] == "data/test_module"
+
+
+def test_an_unreadable_published_manifest_proceeds_with_a_warning(
+    tmp_path: Path, caplog
+) -> None:
+    """**Fails open, deliberately.** Nothing established a collision, so nothing may assert one —
+    the house algebra withholds on unknown. Failing closed would make a network flake demand
+    `--force`, which trains an author to pass it by default and turns the gate into one people route
+    around; that is the failure the policy was chosen to avoid, and it must not come back through the
+    error path.
+    """
+    module_dir = _compiled_module(tmp_path / "m", version="1.2.3")
+    api = MagicMock()
+    api.token = "hf_test_token"
+    api.file_exists.side_effect = OSError("the hub is unwell")
+
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+        caplog.at_level("WARNING"),
+    ):
+        plan = upload_module(module_dir, "test_module")
+
+    assert len(api.upload_folder.call_args_list) == 2
+    assert plan.versioned_path_in_repo == "data/test_module/v1.2.3"
+    assert any("Nothing established a collision" in r.message for r in caplog.records)
+
+
+def test_a_local_module_with_no_readable_digest_is_not_gated(tmp_path: Path) -> None:
+    """Tri-state on this side too: an unreadable local manifest is an unknown digest, and an unknown
+    cannot disagree with anything. It also cannot have produced a versioned path, which is why this
+    is a belt-and-braces case rather than a reachable one."""
+    module_dir = _compiled_module(tmp_path / "m", manifest_bytes="{ not json")
+    api, published = _remote(tmp_path, _OTHER_DIGEST)
+
+    _upload(module_dir, api, published)
+
+    api.file_exists.assert_not_called()

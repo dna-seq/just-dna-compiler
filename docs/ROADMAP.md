@@ -42,7 +42,7 @@ version is installable from PyPI is a separate step and the maintainer's call, s
 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package.
 
 **0.6.0 was cut and tagged `v0.6.0` on 2026-08-17**, and `0.6.1` followed on 2026-08-18 with RM93–RM100
-(see [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-and-the-two-the-fixes-found)).
+(see [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88)).
 This paragraph read *"open on the `0.6` branch, unreleased"* for a release and a half
 after that stopped being true, which is the same failure the *Active items* heading had — a status line
 nobody re-reads is a status line that lies. What 0.6.0 landed:
@@ -162,18 +162,25 @@ Two consequences worth stating outright:
 
 # Active items
 
-**One: RM88.** RM93–RM100, the code half of the 2026-08-18 documentation pass, **shipped in 0.6.1** and
-moved to [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-and-the-two-the-fixes-found)
-with their rationale and with the five places the filings turned out to understate what was there.
+**None.** RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
+[ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
+with their rationale and with the five places the eight filings turned out to understate what was
+there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
+empty twice before while carrying real work one heading down. The live consumer inbox
+([CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md)) is the other half of that question, and
+[ROADMAP_0_7.md](ROADMAP_0_7.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
 Every one of them broke a rule this repo had already written down — which is the finding worth keeping
 out of the item entries and stating once: **the gotcha book is not the thing that catches a
 regression.** In four of the eight the file carrying the violation also carried the rule, sometimes in
 an adjacent comment. So the durable half of each is a test, and in six of the nine that test walks a
 registry rather than a list.
 
-**RM88** was filed 2026-08-17 out of the 0.6 PT2 batch's lane D together with RM89, both
-*found by building RM84 rather than by planning it* — neither a defect in what shipped, and neither a
-blocker for it. **RM89 closed the same week**: the consumer's answer arrived as
+**RM88 and RM89 were both filed 2026-08-17 out of the 0.6 PT2 batch's lane D**, both *found by
+building RM84 rather than by planning it* — neither a defect in what shipped, and neither a blocker
+for it. Both are closed now, and RM88's close is worth one line here because the *shape* recurs: the
+code half was always cheap and the entry had mispriced it, so what actually held the item for a
+release was an undecided policy wearing a technical objection.
+**RM89 closed the same week**: the consumer's answer arrived as
 [S35](CONSUMER_SUGGESTIONS_HISTORY.md) the day after it was filed, the open question it was waiting on
 was the only thing holding it, and building the answer found the defect underneath it — see
 [ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all).
@@ -200,187 +207,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM88 — republishing without bumping `version:` overwrites a versioned path with different bytes
-
-**Severity** medium · **Status** **policy decided 2026-08-18 — refuse unless `--force`** for the
-overwrite half, which is now buildable; the **fossil half below is unresolved and is the larger of the
-two** · **Owner** enricher (`upload.plan_upload` / `upload_module`) · **Motivating case** every second
-publish of a module whose author forgot the version bump · **Filed** 2026-08-17 from the 0.6 PT2 batch,
-lane D · **Detail added** 2026-08-18
-
-[RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
-shipped the versioned path `data/<name>/v<version>/`, and it does exactly what it says. What it cannot
-do is notice that the version has *not* moved: an author who recompiles a changed module and republishes
-without editing `version:` overwrites the versioned copy with different bytes, and the path then names a
-version whose contents are not the ones that version had. That is the same lie the flat path already
-tells, arriving at the address built to stop telling it — which is why it is worth an entry rather than
-a shrug, and also why it is **not** a defect in RM84: the flat path was always going to be overwritten,
-and the versioned one is no worse than the situation before it existed.
-
-### The mechanism, end to end
-
-Nothing here is subtle, and writing it out is the point — the entry read as though the difficulty were
-in the detection.
-
-1. `plan_upload` reads `identity.version` out of the **local** `manifest.json`, one field, never
-   through `read_manifest`. It builds `versioned_path_in_repo = data/<name>/v<version>`. No network.
-2. `upload_module` calls `ensure_repo` (`create_repo(exist_ok=True)` — a network call), then
-   `upload_folder` to the flat path, then `upload_folder` to the versioned path. **Three round trips
-   before any check could be added, which is worth stating because the cost objection below rests on
-   it.**
-3. `upload_folder` is create-or-update against whatever is at that path. It reads nothing first and
-   compares nothing. Same `version:` plus different bytes means the versioned directory now holds the
-   new bytes under the old name, and no record anywhere says it moved.
-
-**The second mechanism, verified off the API contract on 2026-08-18 rather than against a live publish
-— and it is wider than the one above.** `upload_folder` is passed no `delete_patterns`, so it *adds and
-replaces*, never removes. A recompile that stops emitting a table — a module whose `studies.csv` was
-deleted, so `studies.parquet` is no longer produced — leaves the previous release's file sitting beside
-the new `manifest.json` that does not attest it. So a republish produces a **union of two releases**,
-not a replacement. This applies to the **flat path on every republish**, version bumped or not, which
-makes it the wider defect of the two and the reason it is recorded here rather than filed separately:
-same owner, same call site, and the fix ENRICHER.md already names for the atomicity gap —
-`create_commit` over an explicit operation list — is the one that closes both.
-
-### What it is actually blocked on
-
-**A policy, and only a policy.** The entry used to name a remote read as the first of two blockers, on
-the grounds that it is "a network round trip on a path whose current cost is one `upload_folder`". That
-accounting was wrong in the publisher's favour: the current cost is `create_repo` plus **two**
-`upload_folder` calls, so one more read is marginal, and this is the network tier — the one place in
-the workspace permitted to fetch. The entry's own closing line already conceded the point ("the check
-is cheap once the policy is chosen"); what is corrected here is only the arithmetic that made it read
-like two blockers instead of one.
-
-**The read is cheaper than "download the remote manifest", too.** `HfApi.list_repo_tree` returns
-`RepoFile.lfs.sha256` for every LFS-stored file, and a dataset repo tracks `*.parquet` in LFS — so one
-tree listing of `data/<name>/v<version>/` yields the published parquets' sha256s, directly comparable to
-`manifest.artifact.files[].sha256`, with nothing downloaded. Where a file is not LFS-backed the
-fallback is `hf_hub_download` of `manifest.json` (a few KB) and a compare on `artifact.digest`. Note
-`get_hf_file_metadata`'s etag is **not** a substitute: for a non-LFS file it is a git blob hash, not a
-content sha256.
-
-**The product question is settled: refuse unless `--force`** (decided 2026-08-18). The three
-candidates were warn-and-proceed (the publisher stays a publisher and the author learns afterwards),
-refuse outright (the versioned path becomes immutable by construction — the strongest reading of what
-RM84 built it for, and the most annoying to a curator iterating on a draft), and the middle one that
-won. The flag's existence is itself a claim that overwriting is sometimes right, which is the honest
-position: a curator re-cutting a draft release is a real workflow, and a gate with no override turns
-into a gate people route around.
-
-**And a fourth sub-question nobody has asked yet:** what happens when the *check itself* cannot run —
-the listing fails, or the token can read nothing. The house algebra says an unknown withholds, but a
-publish gate that fails **open** on an unreachable check is a policy choice rather than a default, and
-whichever of the three above is picked has to answer it in the same breath.
-
-**What would make it decidable: a case.** Not more analysis — a consumer reporting a shadowed version,
-or the registry adopting this publisher surface for its own publishes. Picking one of the three without
-one is the guess P5 says not to spend a one-way door on.
-
-### The fossil question: is an unattested leftover inert?
-
-**The intended answer is yes, and it is the right reading of the format.** `manifest.artifact.files`
-is the statement of *which parquets are this module*, `artifact.digest` is a Merkle root over exactly
-those, and a file nobody attested is outside both. A reader that starts from the manifest never sees a
-leftover, and verification passes — correctly, because nothing was corrupted. On that reading a
-previous release's parquet is a fossil: dead weight, not a defect.
-
-**What stops it being true is the reader, not the format**, and this repository already records it.
-[§ 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands), verified in the consumer's tree
-rather than inferred:
-
-- the discovery path — the HuggingFace layout **this publisher writes**, and the reference consumer's
-  default — adds *"no manifest fetch and no digest check"*;
-- `verify_manifest` *"has no call sites there"*: the install path extracts and registers without
-  re-hashing `artifact.files[]` or recomputing the digest;
-- and the scan is `fs.ls` at one level plus `fs.exists` on **named files** (S35, quoted in RM84).
-
-So on the registry path the fossil really is inert — there is a per-version audit and the manifest is
-read. On the discovery path nothing consults the list that would make it inert, and a leftover parquet
-is indistinguishable from a live one. **The format's answer is right and the deployed reader does not
-run it**, which is § 6.8's own summary of the seam.
-
-**The failure that follows is a shape misreport, not data corruption, and it needs two preconditions:**
-a module whose table set **shrank** between publishes, read over discovery. A SNP-core module
-re-authored as a table-only PGx module keeps a fossil `weights.parquet`, so a probe for named files
-still finds a SNP core — the old release's. Nothing is mis-hashed; the module is mis-*typed*. Rare
-(table sets rarely shrink) and bounded (registry consumers are unaffected), which is why this is worth
-fixing cheaply rather than urgently.
-
-**Three places it can be fixed, and they are not alternatives — they answer different questions.**
-
-1. **The consumer reads the manifest.** This is the only thing that makes the fossil *actually* inert
-   rather than inert-by-hope, and it is the open half of RM84 and § 6.8 — theirs, already asked, not
-   ours to build. Worth naming because the fossil model above becomes simply true the day it lands.
-2. **The publisher stops leaving them.** `upload_folder(delete_patterns=_ALLOW_PATTERNS)` turns the
-   flat path from a union into a replacement, and three things about it were checked rather than
-   assumed:
-   - **It does not touch the nested `v<version>/` archive — today, and by accident.** HF filters
-     delete patterns with `fnmatch`, whose `*` **crosses path separators** (their own docs warn about
-     it). Every member of `_ALLOW_PATTERNS` is a literal basename, so `manifest.json` does not match
-     `v1.0.0/manifest.json` and the archive survives. Add one `*.parquet` — a completely reasonable
-     tidy-up of a 28-entry list — and a single publish deletes every archived version's parquets.
-     **So the fix owes a test asserting no allow-pattern carries a wildcard**, which is
-     `@registry-completeness` again: an invariant the code depends on and nothing states.
-     (`_SNAPSHOT_ALLOW_PATTERNS` already carries two globs, on a path with no nesting — the habit
-     exists.)
-   - **Deletion is safe only because RM89 already refuses a half-finished module.** `plan_upload`'s
-     three positive rules — everything attested is carried, `weights.parquet` never travels alone, at
-     least one lead table — are what stop a truncated local directory from wiping a good published
-     one. Without them, adding `delete_patterns` would be a foot-gun rather than a fix.
-   - **It shares its round trip with the overwrite fix.** `_prepare_folder_deletions` calls
-     `list_repo_files`, which is the same remote read the refuse-unless-`--force` gate needs, so the
-     two fixes cost one listing between them rather than one each.
-
-   The stronger form is `create_commit` over an explicit operation list — one atomic commit carrying
-   both adds and deletes, which also closes the two-commit window ENRICHER.md already names, and
-   which does not rest on the wildcard invariant at all. More code, no allow-pattern plumbing.
-3. **Something detects the ones already out there.** Neither fix above cleans a module nobody
-   republishes, and fossils may already exist. A remote listing diffed against `artifact.files` says
-   so — in `--dry-run` here, or catalog-side in `revalidate`, which enumerates published versions
-   anyway. This is also the only rung that finds the problem rather than preventing it.
-
-**One sub-question stays open on the deletion path**, the same shape as the fails-open question above:
-if `list_repo_files` fails mid-publish, does the upload proceed without deletes (leaving a fossil) or
-refuse (failing a publish over a tidy-up)? Withhold-on-unknown is the house rule and it argues for
-proceeding, since the adds are the point and the deletes are hygiene — but it is a choice, not a
-default.
-
-### How much of the corpus is exposed today
-
-**Two of sixteen**, measured 2026-08-18 by planning an upload for every compiled reference example:
-only `htt_repeat_expansion` (`v1.0.0`) and `pgx_slco1b1_simvastatin` (`v0.1.0`) state a `version:` at
-all, so every other module gets `versioned_path_in_repo=None` and the flat path alone. Since
-`Identity.version` stays null unless `module_spec.yaml` states a canonical SemVer — and
-[MODULE_LIFECYCLE](MODULE_LIFECYCLE.md) records that the registry stamps one *on publish* — the exposed
-population is essentially **registry-published modules coming back through this surface**, not the
-locally-compiled ones. That is a reason the item has not bitten, not a reason it will not: the
-versioned path exists precisely for the modules that have versions.
-
-### Candidate shapes, cheapest first
-
-1. **Report it in `--dry-run` only.** `plan_upload` already has a dry-run path that prints both
-   destinations, and `UploadPlan` already carries a withheld-answer field (`version_unknown_reason`) as
-   precedent for a second one. A line saying *"`v0.1.0` already exists at this repo and its parquets
-   hash differently"* needs **no policy decision at all**, because it decides nothing — it is
-   informational by construction, which is exactly what makes it buildable before the fork below is
-   settled. It is also how the case above gets collected.
-2. **A publish-time guard**, with the warn / refuse / `--force` fork resolved. Roughly twenty lines once
-   the answer is chosen, plus the fails-open question.
-3. **Catalog-side, in the registry rather than here.** RM85 already lists *"a publish-time or
-   catalog-side signal"* as a live candidate for its own question, and `revalidate` already enumerates
-   published versions and classifies each — so *two digests under one version* is detectable where the
-   remote read is happening anyway, and by the party that owns the listing a reader trusts. This is
-   also where the RM85 pairing stops being an abstraction: both are *"has the world moved, and does
-   anything notice"* asked of the publish path, and deciding them apart is how one gets a shape the
-   other has to undo (the same pairing note RM83 and RM85 already carry).
-4. **Nothing, deliberately** — the status quo, defensible only while the versioned path has almost no
-   occupants, which the measurement above says is true today and says nothing about tomorrow.
-
-**Not a repair:** making the compiler bump `version:` automatically. A version is an authored claim about
-compatibility, and a tool that increments it is asserting something only the author knows. The repo
-already refused the neighbouring move for `SourceRow.dataset` in RM85.
 
 # Not format scope
 
