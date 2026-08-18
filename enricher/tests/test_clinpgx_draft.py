@@ -6,6 +6,8 @@ row per drug in a `;`-joined annotation, the `CC` → `C/C` re-spelling, and tha
 grammar cannot hold is skipped with a warning rather than coerced.
 """
 
+import csv
+import io
 from pathlib import Path
 
 import pytest
@@ -33,6 +35,11 @@ _needs_snapshot = pytest.mark.skipif(
     reason="no local ClinPGx snapshot (build it with `just-dna-enricher clinpgx build`)",
 )
 
+def _rows(path: Path) -> list[dict]:
+    """A drafted CSV as dicts — the raw cells, so a test can see what was written."""
+    return list(csv.DictReader(io.StringIO(path.read_text(encoding="utf-8"))))
+
+
 _RECORDS = [
     {"annotation_id": "1", "rsid": "rs6265", "genotype": "CC", "evidence_level": "3",
      "phenotype_category": "Efficacy", "drugs": "citalopram;paroxetine"},
@@ -48,10 +55,67 @@ _RECORDS = [
 def test_a_concatenated_genotype_becomes_the_authored_form() -> None:
     assert _authored_genotype("CC") == "C/C"
     assert _authored_genotype("TC") == "C/T"  # unphased calls are alphabetical
-    # anything that is not two unambiguous bases is declined, never guessed
+    # a star allele belongs on diplotypes.csv, and a symbolic one carries no length here
     assert _authored_genotype("*1") is None
     assert _authored_genotype("del/del") is None
-    assert _authored_genotype("CAT") is None
+    assert _authored_genotype("C/del") is None
+
+
+def test_an_already_separated_call_is_taken_as_written() -> None:
+    """`CTT/CTT` needs no splitting decision, so declining it was pure loss (S44).
+
+    This assertion used to read `_authored_genotype("CAT") is None`, on the rule *only two
+    unambiguous bases*. That rule was narrower than the schema it writes into: `validate_allele`
+    accepts any `^[ACGT]+$` allele, and ClinPGx separates with `/` wherever an allele runs past one
+    base — so the ambiguity the rule guarded against does not arise on these cells. Changed
+    deliberately rather than adjusted around.
+    """
+    assert _authored_genotype("CTT/CTT") == "CTT/CTT"
+    assert _authored_genotype("TTAAAGTTA/TTAAAGTTA") == "TTAAAGTTA/TTAAAGTTA"
+    assert _authored_genotype("CTT/AGG") == "AGG/CTT", "still sorted, like the two-base form"
+    # and the row it produces is one the schema takes
+    assert PharmVariantRow(
+        rsid="rs113993960", gene="CFTR", genotype="CTT/CTT", drug="ivacaftor", conclusion="x"
+    ).genotype == "CTT/CTT"
+
+
+def test_a_single_haploid_allele_is_a_genotype() -> None:
+    """ClinPGx spells an mtDNA call as one allele, and the grammar already holds that form.
+
+    Skipping it cost every MT-RNR1 annotation — aminoglycoside-induced hearing loss, a CPIC
+    guideline — for want of a second allele that does not exist on a haploid contig. Same reasoning
+    as `clinvar_draft.sole_expressible_genotype`: the placeholder protects a zygosity decision, and
+    on a haploid contig there is none to protect.
+    """
+    assert _authored_genotype("A") == "A"
+    assert _authored_genotype("CCCCCCC") == "CCCCCCC"
+    assert PharmVariantRow(
+        rsid="rs267606617", gene="MT-RNR1", genotype="A",
+        drug="aminoglycoside antibacterials", conclusion="x",
+    ).genotype == "A"
+
+
+def test_the_pass_is_never_narrower_than_the_schema_it_writes_into() -> None:
+    """The general rule behind both cases above, asserted rather than restated in a comment.
+
+    Every genotype spelling this pass declines must be one `PharmVariantRow` would *also* refuse —
+    otherwise the provider is dropping rows the format can hold, which is what S44 reported twice.
+    The converse is allowed: declining `del/del` is deliberate even though the schema would take a
+    length-bearing `<DEL:1500>`, because ClinPGx publishes no length.
+    """
+    from pydantic import ValidationError
+
+    accepted_by_schema = []
+    for spelling in ("CC", "CTT/CTT", "A", "CCCCCCC", "TTAAAGTTA/TTAAAGTTA", "GT/GT"):
+        try:
+            PharmVariantRow(rsid="rs1", genotype=spelling, drug="d", conclusion="x")
+        except ValidationError:  # pragma: no cover - the point is that none of these raise
+            continue
+        accepted_by_schema.append(spelling)
+    declined_anyway = [s for s in accepted_by_schema if _authored_genotype(s) is None]
+    assert declined_anyway == [], (
+        f"the schema accepts these and the provider drops them: {declined_anyway}"
+    )
 
 
 def test_one_annotation_naming_several_drugs_becomes_one_row_each() -> None:
@@ -262,3 +326,65 @@ def test_a_drafted_pgx_module_validates(tmp_path: Path) -> None:
     )
     result = validate_spec(tmp_path)
     assert result.valid, result.errors
+
+
+@_needs_snapshot
+def test_the_real_snapshot_yields_the_mt_and_indel_annotations_that_were_dropped(
+    tmp_path: Path,
+) -> None:
+    """The two families S44 named, recovered from the snapshot rather than from a fixture.
+
+    MT-RNR1 is the haploid case and CFTR F508del the already-separated one; both are asserted by
+    *presence of the annotation*, not by a row count, so the test survives a snapshot rebuild. The
+    `del`-spelled rows of those same CFTR annotations stay skipped — the point is that the
+    pure-nucleotide sibling no longer goes with them.
+    """
+    result = draft_pharm_variants(
+        tmp_path, snapshot=_SNAPSHOT, genes=["MT-RNR1", "CFTR"], declared_use="non_commercial",
+    )
+    assert not result.skipped, result.warnings
+    rows = _rows(tmp_path / "pharm_variants.csv")
+    assert rows, "the snapshot must carry these genes or this proves nothing"
+
+    mt = [r for r in rows if "MT-RNR1" in (r["gene"] or "")]
+    assert mt, "no MT-RNR1 rows — the haploid genotype is being skipped again"
+    assert all("/" not in r["genotype"] and r["genotype"] for r in mt), (
+        "an mtDNA call is one allele; a pair here would be invented zygosity"
+    )
+    assert "1A" in {r["evidence_level"] for r in mt}, "the guideline-level annotations are the point"
+
+    cftr = [r for r in rows if "CFTR" in (r["gene"] or "")]
+    assert cftr, "no CFTR rows — F508del's CTT/CTT genotype is being skipped again"
+    spellings = {r["genotype"] for r in cftr}
+    assert "CTT/CTT" in spellings, "F508del's pure-nucleotide genotype is being skipped again"
+    assert not [g for g in spellings if "del" in g.lower()], (
+        "the del/ spellings stay skipped — ClinPGx publishes no length for them"
+    )
+
+
+@_needs_snapshot
+def test_the_licence_terms_are_pinned_to_the_text_that_governed_them(tmp_path: Path) -> None:
+    """`license_sha256` was null on a share-alike source whose LICENSE.txt sits in the snapshot (S44).
+
+    `SourceTerms.row` has taken `license_text=` all along and this caller passed only `declared_use`
+    and `dataset`, so the module recorded ClinPGx's terms without pinning them — which is the one
+    thing that field is for. Computed here from the file rather than compared to `release.json`'s
+    stated hash: the file is what the module is claiming, and hashing it independently is what makes
+    the assertion mean something.
+    """
+    import hashlib
+
+    from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
+
+    licence = _SNAPSHOT / SNAPSHOT_LICENSE_FILENAME
+    assert licence.is_file(), "the snapshot must carry its LICENSE.txt or this proves nothing"
+    expected = "sha256:" + hashlib.sha256(licence.read_bytes()).hexdigest()
+
+    result = draft_pharm_variants(
+        tmp_path, snapshot=_SNAPSHOT, genes=["CYP2C19"], declared_use="non_commercial",
+    )
+    assert not result.skipped, result.warnings
+    sources = _rows(tmp_path / preferred_spelling(SOURCES_CSV))
+    clinpgx = [r for r in sources if r["layer"] == "annotation"]
+    assert clinpgx, "the pass must write its SourceRow"
+    assert {r["license_sha256"] for r in clinpgx} == {expected}

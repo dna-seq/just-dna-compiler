@@ -49,12 +49,22 @@ from just_dna_format.pgx import PharmVariantRow
 
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, _normalize_category, load_snapshot
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
 from just_dna_enricher.provenance import stamp_draft_digest
 
 logger = logging.getLogger(__name__)
 
 #: A diploid nucleotide call as ClinPGx writes it: two bases, unseparated (`CC`, `CT`).
 _TWO_BASE = re.compile(r"^[ACGT]{2}$")
+
+#: One nucleotide allele of any length — what `validate_allele` accepts, matched here so this pass
+#: cannot be narrower than the schema it writes into. ClinPGx spells a haploid mtDNA call as a bare
+#: `A`/`T`/`CCCCCCC` and an indel genotype as `CTT/CTT`, both of which `PharmVariantRow` takes.
+_NUCLEOTIDES = re.compile(r"^[ACGT]+$", re.IGNORECASE)
+
+#: An already-separated diploid call: `CTT/CTT`, `TTAAAGTTA/TTAAAGTTA`. ClinPGx uses `/` wherever an
+#: allele is longer than one base, so no splitting decision arises — the source has made it.
+_SLASHED = re.compile(r"^[ACGT]+/[ACGT]+$", re.IGNORECASE)
 
 #: How ClinPGx spells a structural allele inside a genotype cell (`C/del`, `del/del`, `ins/ins`), and
 #: the format's own name for the same thing. **Normalising a source's dialect belongs here, at the
@@ -95,16 +105,44 @@ class ClinPgxDraftResult:
 
 
 def _authored_genotype(raw: str | None) -> str | None:
-    """`CC` → `C/C`. Only an unambiguous two-base call; anything else is the caller's to skip.
+    """ClinPGx's genotype cell in the authored grammar, or `None` where a decision would be needed.
 
-    Splitting is safe *here* precisely because the cell is two single bases: `CT` can only be `C/T`.
-    The general case needs the resolved ref/alt to disambiguate, which this pass does not have — so
-    it does not guess, it declines. Sorted, because the authored grammar wants an unphased call
-    alphabetical."""
-    if not raw or not _TWO_BASE.match(raw.strip().upper()):
+    Three shapes are taken, and the boundary between them is *whether this pass has to choose*:
+
+    * `CC` → `C/C`. Splitting is safe precisely because the cell is two single bases: `CT` can only
+      be `C/T`. Sorted, because the authored grammar wants an unphased call alphabetical.
+    * `CTT/CTT` → itself. **The source has already separated it**, so there is no splitting decision
+      to get wrong — ClinPGx writes `/` wherever an allele runs past one base. Sorted for the same
+      reason as above. This was being skipped (S44), which cost CFTR **F508del** among others: those
+      annotations carry a `del`-spelled genotype *and* a pure-nucleotide one, and dropping the
+      annotation for the first discarded the second with it.
+    * `A`, `CCCCCCC` → itself. A single allele is the hemizygous/homoplasmic form the grammar
+      already holds, and it is how ClinPGx spells an **mtDNA** call. Skipping it cost every MT-RNR1
+      annotation — 32 rows at evidence level 1A, aminoglycoside-induced hearing loss, a CPIC
+      guideline — for want of a second allele that does not exist on a haploid contig. The same
+      reasoning `sole_expressible_genotype` applies on the ClinVar side: the placeholder protects a
+      zygosity decision, and on a haploid contig there is none to protect.
+
+    What still declines: a genotype naming a **star allele** (`*1/*1` — that belongs on
+    `diplotypes.csv`) or a **symbolic** allele (`del/del`, `C/del`). The second is unchanged and
+    deliberate — ClinPGx publishes no length, and a lengthless `<DEL>` is a rule the compiler drops,
+    so writing it would hand an author work the next command undoes. See `_symbolic_types`.
+
+    The general case that motivated the original narrowness — an unseparated cell of more than two
+    bases, where splitting needs the resolved ref/alt — is still declined, and no such cell exists in
+    the snapshot: every multi-base call ClinPGx publishes arrives already slashed."""
+    if not raw:
         return None
-    first, second = sorted(raw.strip().upper())
-    return f"{first}/{second}"
+    text = raw.strip().upper()
+    if _TWO_BASE.match(text):
+        first, second = sorted(text)
+        return f"{first}/{second}"
+    if _SLASHED.match(text):
+        first, second = sorted(text.split("/"))
+        return f"{first}/{second}"
+    if _NUCLEOTIDES.match(text):
+        return text
+    return None
 
 
 def _symbolic_types(raw: str | None) -> list[str]:
@@ -353,12 +391,34 @@ def draft_pharm_variants(
         # A pass that consults a source must WRITE its SourceRow: the compile gate and
         # `manifest.sources` read sources.csv and nothing else, so a row that is only returned is a
         # source the module cannot account for.
+        # **The terms are pinned to the same moment as the data, which is the whole point of
+        # `license_sha256` and this call was not doing it (S44).** ClinPGx bundles its `LICENSE.txt`
+        # inside `clinicalAnnotations.zip` and `clinpgx_build` extracts it beside the parquet
+        # precisely so a holder of the snapshot can read the terms without the archive — but the row
+        # passed only `declared_use` and `dataset`, so a share-alike source was recorded with a null
+        # hash and nothing tied the recorded terms to the text that governed the bytes. Read from the
+        # snapshot rather than from `release.json`'s stated hash: the file is what the module is
+        # actually claiming, and hashing it here means a tampered or truncated copy cannot pin to a
+        # value it does not have. Absent stays `None` (the tri-state rule) — an older snapshot built
+        # before the extractor has no licence file, and inventing a hash for it would be worse than
+        # the null this fixes.
+        license_path = Path(snapshot) / SNAPSHOT_LICENSE_FILENAME
+        license_text = (
+            license_path.read_text(encoding="utf-8") if license_path.is_file() else None
+        )
+        if license_text is None:
+            warnings.append(
+                f"no {SNAPSHOT_LICENSE_FILENAME} in the snapshot, so the recorded ClinPGx terms are "
+                f"not pinned to the text that governed them (license_sha256 stays empty). Rebuild "
+                f"the snapshot with `just-dna-enricher clinpgx build` to extract it."
+            )
         merge_sources_file(
             [
                 CLINPGX_TERMS.row(
                     "annotation",
                     declared_use=declared_use,
                     dataset=release.get("dataset"),
+                    license_text=license_text,
                 )
             ],
             spec_dir,

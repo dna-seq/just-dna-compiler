@@ -2402,6 +2402,40 @@ source's dialect (`del` → `DEL`) and lives **here, at the boundary**, not in t
 `C/C` rule beside it is the precedent, and a grammar that accepted every source's spelling would owe
 every consumer the union of them.
 
+**But the rule beside it was narrower than the schema it writes into, and that cost two whole families
+(S44).** `_authored_genotype` took only `CC` — two unseparated bases — on the argument that the general
+case needs the resolved ref/alt to disambiguate. True of an unseparated cell; false of the two shapes
+ClinPGx actually publishes beside it, and `validate_allele` accepts any `^[ACGT]+$` allele:
+
+- **An already-separated call, `CTT/CTT`.** ClinPGx writes `/` wherever an allele runs past one base,
+  so the source has already made the split and no decision arises. Declining it cost **CFTR F508del**
+  among others — those annotations carry a `del`-spelled genotype *and* a pure-nucleotide one under the
+  same `annotation_id`, so dropping the annotation for the first discarded the second with it. A module
+  shipped 176 CFTR rows and the drug *elexacaftor / tezacaftor / ivacaftor* while omitting the most
+  common CF variant.
+- **A single haploid allele, `A` / `CCCCCCC`.** The hemizygous/homoplasmic form the grammar already
+  holds, and how ClinPGx spells an **mtDNA** call. Declining it cost every MT-RNR1 annotation — 24
+  annotations, 48 rows, 32 of them at evidence level **1A**: aminoglycoside-induced hearing loss, a
+  CPIC guideline. The reasoning is `clinvar_draft.sole_expressible_genotype`'s, one source over: the
+  placeholder protects a zygosity decision, and on a haploid contig there is none to protect.
+
+Measured on the provisioned snapshot: **158 rows recovered**, 36 of them at 1A, across MT-RNR1 (48),
+HTR2C, ACE, TYMS, IFNL4, GSTM3 and CFTR. The unseparated multi-base cell the original rule guarded
+against does not exist in the snapshot — every multi-base call arrives slashed — and it is still
+declined. The general rule is now a test rather than a comment: **every spelling this pass declines
+must be one `PharmVariantRow` would also refuse**, walked over the accepted set, so a provider can
+never again be narrower than the format. The converse stays allowed, which is what keeps `del/del`
+skipped.
+
+**And the terms are pinned now.** `SourceTerms.row` has taken `license_text=` all along; this caller
+passed only `declared_use` and `dataset`, so a share-alike source was recorded with a null
+`license_sha256` — the module named ClinPGx's licence without tying it to the text that governed the
+bytes, which is the one thing that field exists for. `clinpgx_build` already extracts `LICENSE.txt`
+beside the parquet, so the fix is to read it. Hashed from the file rather than copied from
+`release.json`'s stated hash: the file is what the module is claiming, so a truncated copy cannot pin
+to a value it does not have. Absent stays `None` and warns — an older snapshot predates the extractor,
+and inventing a hash would be worse than the null it replaces.
+
 ## Exception contract — what a caller catches (RM97 + RM101)
 
 **Two layers, and a caller only ever touches the outer one.** A *client* raises its own error type,

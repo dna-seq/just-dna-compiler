@@ -287,6 +287,65 @@ nothing says so. Our own read path prefers the `clin_sig` column (`_effective_cl
 
 ## S44 — `clinpgx_draft` drops MT-RNR1 and every `del`-spelled annotation, including CFTR F508del
 
+**Status — accepted; both genotype families and the licence pin are fixed in the tree (enricher,
+shipping in 0.6.3). The `del`-spelled rows themselves stay skipped, and that half is unchanged and
+deliberate.** All four claims reproduced against the provisioned snapshot before anything was
+touched.
+
+**The diagnosis you did not quite make, and it is the one that matters: our gate was narrower than
+our own schema.** `_authored_genotype` accepted only `CC` — two unseparated bases — reasoning that
+the general case needs the resolved ref/alt to disambiguate. That is true of an *unseparated* cell
+and false of both shapes you found, because `validate_allele` accepts any `^[ACGT]+$` allele:
+
+- **`CTT/CTT` is already separated by the source.** ClinPGx writes `/` wherever an allele runs past
+  one base, so there is no splitting decision to get wrong. You are right that these are discarded
+  *with* their `del` siblings — same `annotation_id`, so skipping the annotation took the writable row
+  too. That is the F508del loss, and it was pure loss.
+- **`A` / `CCCCCCC` is a single haploid allele**, which the grammar already holds and which is how
+  ClinPGx spells mtDNA. Your instinct was right and so was your evidence — `split_genotype` handles a
+  one-element list. The reasoning is the one `clinvar_draft.sole_expressible_genotype` already
+  applies on the ClinVar side: the placeholder protects a zygosity decision, and on a haploid contig
+  there is none to protect. Inventing a second allele would have been the error, not writing one.
+
+**Measured after the fix: 158 rows recovered**, 36 at evidence level 1A — MT-RNR1 48 (all 24
+annotations, the 1A aminoglycoside set intact), plus HTR2C, ACE, TYMS, IFNL4, GSTM3 and CFTR's
+`CTT/CTT`. The unseparated multi-base cell the old rule was guarding against does not occur in the
+snapshot at all; every multi-base call arrives slashed. It is still declined.
+
+**What stays skipped, and why we are not moving it.** The `del`-spelled genotypes themselves —
+`CTT/del`, `del/del` — still do not get written. Since RM5 the grammar *can* spell `<DEL:1500>`, so
+the block is no longer "the format cannot express it"; it is that **ClinPGx publishes no length**, and
+a lengthless symbolic allele is a rule the compiler drops. Writing those rows would hand you work the
+next command in the workflow undoes. So DPYD\*7, RYR1 and ACE keep their `del` rows skipped — but any
+pure-nucleotide sibling under the same annotation now survives, which is the part that was costing you
+real findings.
+
+**The general rule is now a test rather than a comment**, because this defect is the kind that
+recurs: *every genotype spelling this pass declines must be one `PharmVariantRow` would also refuse*,
+walked over the accepted set. The converse stays allowed — that is what keeps `del/del` skipped
+deliberately rather than by accident.
+
+**Your one-liner was exactly a one-liner, and it was worse than cosmetic.** `license_sha256` was null
+on a **share-alike** source whose `LICENSE.txt` we ship in the snapshot ourselves — so the module
+named ClinPGx's terms without pinning them to the text that governed the bytes, which is the entire
+purpose of that field. Fixed by passing `license_text=`, read from the snapshot. One deliberate
+difference from your framing: we hash **the file**, not `release.json`'s stated hash. The file is what
+the module is actually claiming, and hashing it independently means a truncated or tampered copy
+cannot pin to a value it does not have. They agree on your snapshot — we checked, byte for byte. An
+absent `LICENSE.txt` (an older snapshot, built before the extractor) stays `None` and warns, rather
+than inventing a hash.
+
+**You are right that `merge_sources_file` is never-clobber and you cannot patch it afterwards** — so
+a module drafted before this fix keeps its null. Delete the sidecar and re-draft to pick it up; that
+is the documented way to regenerate after a machinery change.
+
+**Nothing filed.** Four tests: the already-separated form, the haploid form, the never-narrower-than-
+the-schema rule, and two against the real snapshot (MT-RNR1 and CFTR present, `del` spellings still
+absent; the licence hash computed independently from the file). One existing assertion changed
+deliberately — `_authored_genotype("CAT") is None` was the old rule stated as a test, and it is now
+the new rule with the reason written next to it.
+<!-- triaged: 0.6.3 · sha aae77d27f69b -->
+
 Same audit, on our `pharmgkb` module (ClinPGx snapshot, evidence ≥2B).
 
 - **MT-RNR1: 16 annotations / 32 rows, all level 1A**, dropped because the genotype is a single haploid
