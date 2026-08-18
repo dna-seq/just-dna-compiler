@@ -34,7 +34,43 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-18 (latest) — 0.6.1: nine defects a code-first reading of the documents found, and RM88 closed
+## 2026-08-18 (latest) — a pass owes its own exception type, not its client's (S37 / RM101)
+
+**`just-dna-enricher` only, and not yet cut** — every package still reads `0.6.1` and `v0.6.1` is the
+newest tag. The additions are minor-legal (six new public exception classes beside the existing ones;
+nothing removed, promoted or retyped), so which release carries them is a scheduling decision.
+
+**What a caller gets.** A pass now raises **its own** type, and where the reason is "the source could
+not be reached" it raises an `*Unavailable` subclass of that type — `FrequencyUnavailable`,
+`LiteratureUnavailable`, `GeneMetricsUnavailable`, `IdentifierUnavailable`, `ClinGenUnavailable`,
+`GeneValidityUnavailable`, after the `AcmgListUnavailable` that already had this shape. Every one is a
+subclass, so an existing `except <Pass>Error` catches everything it did before (P3) and the narrower
+catch is new capability rather than a migration. The client's exception is chained onto `__cause__`.
+The table is in [ENRICHER § Exception contract](ENRICHER.md).
+
+**What was broken.** Five call sites held a client in `try: … finally: close()` with no `except`, so
+`GnomadError` left `enrich_frequencies`/`enrich_gene_metrics` and `EutilsError` left
+`enrich_literature`/`check_rsids`. The handler a consumer was told to write did not fire. **Our own
+CLI had it too**: `just-dna-enricher frequencies` promises `FREQUENCIES FAILED: <reason>` and exit 1,
+and on a gnomAD 503 it printed nothing and let the exception out.
+
+**And a third client was still leaking `httpx` after RM97 said that was over.**
+`OntologyClient.trait`/`.gene` kept the exact unrepaired shape — `raise_for_status()` in the callers,
+`HTTPStatusError` in neither retry list. RM97's coverage guard walked a hand-written tuple of eight
+module names and `identifiers` was not one of them; both guards now walk the package, so a new client
+or pass fails the suite by name.
+
+**Two conflations split.** `ClinGenError` and `GeneValidityError` each covered "the source could not
+be fetched" *and* "the local CSV will not parse" — opposite histories, previously separable only by
+reading `exc.__cause__`. Only the fetch path is now `*Unavailable`.
+
+**If you catch the client's type today, you can stop** — but check first whether you catch it
+*instead of* the pass's type, because that is the form that stops firing. Catching both, which is what
+just-dna-registry did as a workaround, keeps working unchanged.
+
+Suite: 2738 tests. Every repair was demonstrated failing on the unrepaired code before being asserted.
+
+## 2026-08-18 — 0.6.1: nine defects a code-first reading of the documents found, and RM88 closed
 
 **`just-dna-format` + `just-dna-compiler` + `just-dna-enricher` 0.6.1 — cut and tagged `v0.6.1`.** A
 documentation pass regenerated SCHEMAS/COMPILER/ENRICHER from the source alone, read the result against

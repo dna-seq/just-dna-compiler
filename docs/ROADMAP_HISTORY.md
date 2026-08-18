@@ -20,6 +20,79 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 [RM_TOC.md](RM_TOC.md) indexes both halves plus the open roadmap, so it is where to look an item up.
 
 
+
+# Built on top of 0.6.1, not yet cut
+
+One item, from the consumer inbox rather than from a doc pass. It is recorded here rather than in
+[ROADMAP.md](ROADMAP.md) because it is **built and green**, not because a version has shipped: every
+package still reads `0.6.1`, and cutting one is the user's call. Its additions are minor-legal (new
+public names beside the old, nothing removed or retyped), so which release carries them is a
+scheduling decision and not a legality one.
+
+## RM101 — a pass raises its client's exception type, which its own documented type does not cover
+
+✅ **Built on 2026-08-18**, motivating case
+[S37](CONSUMER_SUGGESTIONS_HISTORY.md) from just-dna-registry. `@client-exception-contract`, one layer
+up from where RM97 left it.
+
+**What was wrong.** RM97 made each *client* raise its own type instead of `httpx`'s. A consumer does
+not call a client — they call a **pass**, and the pass's docstring and the CLI handler beside it both
+name the pass's type. Five call sites held a client in `try: … finally: close()` with **no `except`**,
+so `GnomadError` walked out of `enrich_frequencies` and `enrich_gene_metrics`, and `EutilsError` out
+of `enrich_literature` and `check_rsids`. A handler written as
+`except FrequencyEnrichmentError` was silent for exactly the failure it was written for.
+
+**It was not only a consumer's problem, and that is what sized the item.** `just-dna-enricher`'s own
+`frequencies` command promises `FREQUENCIES FAILED: <reason>` and exit 1; measured on a gnomAD 503 it
+printed **nothing at all** and let the exception out. The printed contract was false on the path it
+existed for.
+
+**Three of the six sites were reported; three were found by walking.** The report named
+`frequencies`, `literature` and the `clingen` conflation. Walking every pass that takes an injected
+client added `gene_metrics` and both `identifiers` sites, and walking the *clients* found
+`OntologyClient` still leaking a raw `httpx.HTTPStatusError` from both of its methods — a full release
+after RM97 declared that class of defect closed. **RM97's own coverage guard is why it survived**: it
+walked a hand-written tuple of eight module names and `identifiers` was not one of them.
+`@registry-completeness`, in the guard whose job was to prevent exactly this. Both guards now discover
+by `pkgutil` walk — one by "owns an `httpx` transport", the other by signature — so a new client or
+pass fails the suite by name until it is covered or explicitly exempted.
+
+**The leak was load-bearing in two places, which is the trap worth carrying.** Repairing a client
+without grepping for handlers that catch the *leaked* type turns working behaviour off silently. Two
+handlers here did exactly that: `cli.py`'s `check-identifiers` caught `httpx.HTTPError` to attest
+`unreachable` — on the run its own test calls *"the run where the record matters most is the one with
+no report to print"* — and `enrich()` caught `EutilsError` under *"a dbSNP outage does not sink a
+finished enrichment"*. Both only ever fired because of the defect. The second was caught by its test;
+the first would have been a silent loss of an attestation.
+
+**Why a subclass and not the obvious translation.** `FrequencyUnavailable(FrequencyEnrichmentError)`
+and five siblings, after `AcmgListUnavailable`. The reporter proposed flat translation
+(`raise FrequencyEnrichmentError(...) from exc`) **and then argued against it themselves**, correctly:
+it flattens "your input is wrong" and "the source is down" when every pass here used one type for
+both. There is a second reason they did not give, and it is the stronger one — *they had already
+compensated* by catching the client's type, so a flat repair would have broken the consumer who filed
+the item. A subclass keeps every `except <Pass>Error` working (P3) and makes the narrow catch new
+capability rather than a migration. The client's error stays on `__cause__`.
+
+**The conflation half, and its unreported twin.** `ClinGenError` covered "could not fetch the curation
+list" *and* "your local `gene_metrics.csv` will not parse" — opposite histories, separable only by
+reading `exc.__cause__`. `gene_validity.py` had the identical pair at lines 369 and 437 and nobody had
+reported it. Both now raise the `*Unavailable` subclass on the fetch path only. Matching the message
+was the alternative and is worse: neither string is in the pinned warning-text catalogue, so a reword
+would silently flip a consumer's verdict from "unchecked" to "your table is broken".
+
+**Deliberately untouched.** `enrich_gwas` (client and pass share `GwasError`, so nothing is foreign),
+`enrich()` and `enrich_pgx` (both **degrade** rather than raise — the tri-state withhold, which is the
+right shape where work worth keeping has already been produced), `Grch37Client` (returns `None`/`[]`
+on every transport path and raises nothing), and the two snapshot builders plus `pgx_draft.draft_gene`,
+whose callers correctly enumerate the several types they can see. That last group is the *list* shape
+the report objected to and RM96 is the lesson for — a real question, wider than this item, and named
+in the guard's exemption block rather than left to be rediscovered.
+
+Tests: `enricher/tests/test_pass_exception_contract.py` (new — walks the passes, drives both histories
+for the two conflated modules) and the rewritten guard in `test_client_exception_contract.py`. Each
+repair was demonstrated failing on the unrepaired code before being asserted.
+
 # 0.6.1 — the eight the documents caught, the two the fixes found, and RM88
 
 **A documentation pass regenerated SCHEMAS/COMPILER/ENRICHER from the source alone on 2026-08-18, read

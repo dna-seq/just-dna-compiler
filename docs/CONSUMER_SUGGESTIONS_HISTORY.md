@@ -60,6 +60,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S34** brief promised uninstallable fields — docs fixed; §4 RM84
 - **S35** answers RM84+RM89; publisher dropped most of the artifact — 0.6.0
 - **S36** `weight` declares no scale — 0.6.0; RM90, RM91, RM92
+- **S37** passes leak the client's error type — accepted, RM101; 6 sites
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -1327,3 +1328,136 @@ silent fill inverts the claim on exactly the rows nobody re-reads.
 Claim 4 also overlaps a settled thread: combining a GWAS effect across many SNPs is a polygenic score,
 which the format delegates to `pgs.csv` + `just-prs` rather than scoring itself
 ([RM16](ROADMAP_0_7.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)).
+
+# just-dna-registry, adopting 0.6.1 — the enricher's exception contract (2026-08-18)
+
+Reported from registry 0.17 while adapting each enricher pass for its `POST .../check` dry run.
+Not a regression: it predates 0.6, and RM97 is what made it legible, because after RM97 the
+escaping exception is at least the tier's own type rather than `httpx`'s.
+
+## S37 — three passes raise their client's error type, which their own documented error type does not cover
+
+**Status — accepted in full, built, and it was six sites rather than three.** Your preferred option is
+what shipped: a per-pass unavailability subclass, `FrequencyUnavailable(FrequencyEnrichmentError)` and
+five siblings, so `except FrequencyEnrichmentError` starts working and `except FrequencyUnavailable`
+becomes possible. Filed and detailed as
+[RM101](ROADMAP_HISTORY.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover).
+**Not yet cut** — every package still reads `0.6.1`; the release is the maintainer's call and this note
+will not move when it happens, so watch the tag rather than this paragraph.
+
+**Reproduced, all three, exactly as you measured them** — `GnomadError` out of `enrich_frequencies`,
+`EutilsError` out of `enrich_literature`, `ClinGenError` out of `enrich_dosage_sensitivity`, each
+through a `try/finally` carrying no `except`. Then the same probe against our own CLI, which is the
+part that changed how the item was sized: `just-dna-enricher frequencies <dir>` promises
+`FREQUENCIES FAILED: <reason>` and exit 1, and on a gnomAD 503 it printed **nothing at all** and let
+the exception out. Your report was about where a contract is stated; it turned out ours was false on
+the path it exists for, so this is our defect and not a convenience request.
+
+**Walking the passes instead of the report found three more.** `enrich_gene_metrics` (gnomAD
+constraint) and both `identifiers` sites — `check_rsids` against dbSNP and `check_identifiers` against
+OLS4/HGNC — had the identical shape. And your "second, smaller instance" has a twin you could not have
+seen: `gene_validity.py` conflates "could not fetch the export" with "the existing
+`gene_validity.csv` is invalid" at lines 369 and 437, precisely as `clingen.py` did. Both now raise the
+subclass on the fetch path only.
+
+**Underneath all of it, RM97 had left a third client leaking.** `OntologyClient.trait`/`.gene` still
+returned a raw `httpx.HTTPStatusError` — `raise_for_status()` in the callers, `HTTPStatusError` in
+neither retry list — a full release after we told you that class of defect was closed. The reason is
+worth your time because it is the failure mode your own report is about: RM97 *had* a coverage guard,
+and the guard walked a hand-written tuple of eight module names with `identifiers` missing from it.
+Both guards now discover by walking the package, so a new client or pass fails the suite by name.
+
+**On your argument against your own first choice — you were right, and there is a second reason you
+did not give.** Flat translation would have broken *you*. You have already compensated by catching the
+client's type; `raise FrequencyEnrichmentError(...) from exc` would have stopped `GnomadError` arriving
+without giving you anything that was a `FrequencyEnrichmentError` before, so a consumer who had done
+exactly the sensible workaround would have been the one to break. The subclass has neither problem.
+Your documentation option we agree is weaker, for your reason: RM96 was that lesson, and the two
+guards above are what a type-shaped answer buys that a list does not.
+
+**What to do now.** Nothing urgent, and nothing that breaks if you do nothing: your adapters catch the
+client's type *alongside* the pass's, and that keeps working unchanged. When you drop the client half,
+drop it only where you catch both — an adapter catching `GnomadError` *instead of*
+`FrequencyEnrichmentError` is the form that stops firing. If you want the distinction your `unreachable`
+field is recording, `except FrequencyUnavailable` is now the way to ask for it, and
+`__cause__` still carries the client's error. The full table is in
+[ENRICHER § Exception contract](ENRICHER.md).
+
+**On the half you fixed yourselves** — one `try` per pass so a dead ClinGen cannot discard collected
+PharmVar/CPIC findings — that matches what `enrich_pgx` does per leg, and it is the right shape. We
+deliberately did *not* make `enrich()` or `enrich_pgx` raise these new types: both degrade and withhold
+instead, because they have already produced work worth keeping. The subclass is for passes that have
+nothing to return.
+<!-- triaged: 0.6.1+unreleased · sha af7eb4c93e62 -->
+
+Reported by **just-dna-registry** while adopting 0.6.1 (registry 0.17). Not a regression: this predates
+0.6 and RM97 is what made it easy to see, because after RM97 the escaping exception is at least *your*
+type rather than `httpx`'s.
+
+**What we run.** `services/enrich.py` adapts each enricher pass for the `POST .../check` dry run, and each
+adapter catches the error type the pass module defines and documents:
+
+```python
+try:
+    result = enrich_frequencies(spec_dir, mode="best_effort", offline=offline, write=False,
+                                client=clients.gnomad)
+except FrequencyEnrichmentError as exc:
+    return FrequencyCheck(warnings=[str(exc)])       # a degradation to report, not a failed request
+```
+
+**What happens.** That `except` never fires for a transport failure, because the pass does not raise its
+own type for one:
+
+* `frequencies.py` contains **no `except` at all**. `gnomad.fetch_frequencies` is called at
+  `frequencies.py:218` inside `try: … finally: gnomad.close()`, so a `GnomadError` — a 5xx after retries,
+  or a whole-request query error from `_errors_by_alias` — travels straight out of `enrich_frequencies`.
+* `literature.py:794` calls `client.esummary("pubmed", wanted)` inside a bare `try/finally`, so
+  `EutilsError` leaves `enrich_literature` the same way.
+* `clingen.py:203` calls `fetch_curation_list(url)` unguarded, so a `ClinGenError` naming an
+  unreachable curation list leaves `enrich_dosage_sensitivity`.
+
+Measured, on `reference_examples/hboc_palb2` with `frequencies.csv` and `literature.csv` removed so each
+pass reaches its client, and a stub client raising what the real one raises:
+
+```
+frequency:  ESCAPED -> just_dna_enricher.gnomad.GnomadError: gnomAD request failed: Server error '503 …'
+literature: ESCAPED -> just_dna_enricher.eutils.EutilsError: eutils request failed: Server error '502 …'
+clingen:    ESCAPED -> just_dna_enricher.clingen.ClinGenError: could not fetch the ClinGen curation list …
+```
+
+**What it cost us.** A `500` from a reporting endpoint, on all three. The endpoint's contract is that a
+pass which could not run reports why and never reports clean — your rule as much as ours — and an
+upstream 503 was instead ending the request. The ClinGen one was the worst shape: our three PGx adapters
+shared one `try`, so the unguarded fetch also discarded the PharmVar/CPIC and ClinPGx findings already
+collected. That half is ours and is fixed here (one `try` per pass, which is what `enrich_pgx` already
+does between PharmVar and CPIC).
+
+**What we did meanwhile.** Each adapter now catches the client's type alongside the pass's, records the
+source in a new `unreachable` field, and returns findings. So we are not blocked — this is about where
+the contract is stated, and it is the same argument RM97 settled one layer down.
+
+One thing the fix turned up that is worth passing on, because it is the shape rather than the cause: the
+new field alone was not enough. Our CLI prints per-pass findings and no summary for the frequency,
+literature and ACMG passes, so a gnomAD outage rendered as `✓ would publish` with nothing else on
+screen — the report carried `unreachable` and the human read a clean check. Whatever the resolution
+here, a consumer adopting it has a second place to change.
+
+**The ask, and an argument against our own first choice.** The obvious fix is to translate at the pass
+boundary (`raise FrequencyEnrichmentError(...) from exc`), which is what `pgx.py:327/374` already does
+with `PharmVarError` / `CpicError`. But it flattens two things a caller may want apart — "your input is
+wrong" and "the source is down" — and every current pass uses one error type for both, so translating
+without splitting would make the distinction harder rather than easier. Documenting instead would be
+cheaper and, we think, weaker: a docstring listing four types a caller must catch is a list, and lists
+drift (RM96 is that lesson at a different scale). Our preference would be a per-pass *unavailability*
+subclass, so `except FrequencyEnrichmentError` keeps working and `except FrequencyUnavailable` becomes
+possible — the shape `AcmgListUnavailable(AcmgSfError)` already has, and whose docstring gives exactly
+this reason.
+
+**A second, smaller instance of the same thing.** `ClinGenError` covers two opposite histories: an
+unfetchable curation list (`clingen.py:142`) and an invalid local `gene_metrics.csv`
+(`clingen.py:199`). Only the first means ClinGen was asked. A caller can separate them today only by
+inspecting `exc.__cause__` — chained from `httpx.HTTPError` for the fetch, raised bare for the table —
+which is what we do, and it is a private detail to be depending on. Matching the message was the
+alternative and we rejected it: your warning and error texts are pinned where they are an API, and these
+two are not, so a reword would silently flip our verdict from "unchecked" to "your table is broken". A
+subclass would make it a type question.

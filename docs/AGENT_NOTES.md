@@ -1194,6 +1194,40 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   legs**: PharmVar had the identical hole, and repairing one makes that comment true in one direction
   only — the guarantee would then hold or not depending on which source went down.
 
+  **The contract has two layers, and RM97 only repaired the lower one (RM101, from S37).** A client
+  raising its own type is half the promise; the other half is that a **pass** raises *its* type. Five
+  call sites held a client with `try: ... finally: close()` and no `except`, so `GnomadError` walked
+  out of `enrich_frequencies`, `EutilsError` out of `enrich_literature` and `check_rsids`, and a
+  caller's `except FrequencyEnrichmentError` — the type the pass documents — was silent for exactly
+  the failure it was written for. Two things make this worth more than five `except` clauses:
+
+  **The leak is often load-bearing, so repairing the client alone breaks something silently.** Two
+  handlers in this tree caught the *leaked* type on purpose: `cli.py`'s `check-identifiers` caught
+  `httpx.HTTPError` to attest `unreachable` — on the run whose own test is named *"the run where the
+  record matters most is the one with no report to print"* — and `enrich()` caught `EutilsError` under
+  *"a dbSNP outage does not sink a finished enrichment"*. Both only ever fired because of the leak.
+  Fix the client, and the attestation and the degradation switch off with nothing failing. Grep for
+  handlers naming the *client's* type before retyping anything.
+
+  **Translate to a SUBCLASS, never a flat type.** `FrequencyUnavailable(FrequencyEnrichmentError)`,
+  after `AcmgListUnavailable`. Flat translation is the obvious repair and it is wrong twice: it
+  flattens "your input is wrong" and "the source is down" into one type when every pass here used one
+  for both, and it breaks the consumer who already compensated by catching the client's type — which
+  the reporter of S37 had. `except <Pass>Error` keeps working (P3), and `except <Pass>Unavailable`
+  becomes possible. Chain with `from exc` so `__cause__` still carries the client's error.
+
+  **The same split fixes a conflation that has nothing to do with escaping.** `ClinGenError` covered
+  "could not fetch the curation list" *and* "your local `gene_metrics.csv` will not parse" — opposite
+  histories, separable only by reading `exc.__cause__`. Matching the message is worse: neither string
+  is pinned as an API, so a reword flips a consumer's verdict from "unchecked" to "your table is
+  broken". `gene_validity.py` had the identical pair and nobody had reported it.
+
+  **Ask this of every pass, not the ones in the report.** S37 named three; walking the passes found
+  three more, and walking the *clients* found `OntologyClient` still leaking raw `httpx` a release
+  after RM97 said that was over. RM97's own coverage guard is why it survived: it walked a hand-written
+  tuple of eight module names and `identifiers` was not one of them. `@registry-completeness` — the
+  guard now discovers by `pkgutil` walk and by signature. `@probe-names-the-table`.
+
 ## Drafting and the authoring surfaces
 
 - `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`

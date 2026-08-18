@@ -233,6 +233,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - An incidental call must not be able to discard finished work. `@incidental-call-isolated`
 - A client leaking its transport library's exception has no contract; retry, then translate, both legs. `@client-exception-contract`
 - Test the contract over every client, not the method on one. `@client-exception-contract`
+- A **pass** owes its own type too; translate to an `*Unavailable` subclass, never a flat one. `@client-exception-contract`
+- Before retyping a leak, grep for handlers catching the leaked type — some are load-bearing. `@client-exception-contract`
 
 ### Drafting and the authoring surfaces
 

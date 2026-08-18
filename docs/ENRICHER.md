@@ -2362,6 +2362,54 @@ source's dialect (`del` → `DEL`) and lives **here, at the boundary**, not in t
 `C/C` rule beside it is the precedent, and a grammar that accepted every source's spelling would owe
 every consumer the union of them.
 
+## Exception contract — what a caller catches (RM97 + RM101)
+
+**Two layers, and a caller only ever touches the outer one.** A *client* raises its own error type,
+never `httpx`'s (RM97). A *pass* raises **its** own type, never the client's (RM101). A consumer calls
+a pass, so the pass's type is the one to write in an `except`; before RM101 five call sites let the
+client's type through and the documented handler was silent for exactly the failure it was written for.
+
+| you call | catch | and for "the source could not be reached" |
+| --- | --- | --- |
+| `enrich_frequencies` | `FrequencyEnrichmentError` | `FrequencyUnavailable` |
+| `enrich_literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable` |
+| `enrich_gene_metrics` | `GeneMetricsEnrichmentError` | `GeneMetricsUnavailable` |
+| `check_rsids` / `check_identifiers` | `IdentifierCheckError` | `IdentifierUnavailable` |
+| `enrich_dosage_sensitivity` | `ClinGenError` | `ClinGenUnavailable` |
+| `enrich_gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
+| `verify_acmg_sf` | `AcmgSfError` | `AcmgListUnavailable` (carries `skip`) |
+| `enrich_gwas` | `GwasError` | — client and pass share the type |
+| `enrich_pgx` | `PgxEnrichmentError` | — degrades per leg instead of raising |
+| `enrich()` | — | — degrades and withholds; see below |
+
+**Every `*Unavailable` is a subclass of the type beside it**, so `except <Pass>Error` keeps catching
+everything it did (P3, additive within a major) and the narrower catch is new capability rather than a
+migration. The client's exception is chained, so `__cause__` still carries it — but it is no longer the
+*only* way to tell the two apart, which is what the split is for.
+
+**What the distinction means.** The subclass says the source was **asked and never answered** —
+nothing was established either way, so a caller records `unchecked` rather than a negative
+(`@unreachable-not-absent`). The plain parent means the question *was* put and the answer is a
+problem: a `strict` run with a variant that genuinely has no frequency, or a local sidecar that will
+not parse. `ClinGenError` and `GeneValidityError` covered both histories with one type until RM101,
+and the only way to separate them was reading `__cause__` — chained for the fetch, bare for the table.
+
+**Do not separate them by message.** Neither string is in the pinned warning-text catalogue, so a
+reword would silently flip a verdict from "unchecked" to "your table is broken". That is the argument
+just-dna-registry made in S37 against their own first option, and it is why this is a type question.
+
+**Two passes deliberately do not raise at all.** `enrich()` catches `GnomadError` on its last-resort
+gnomAD link ("a last-resort link must not sink the whole enrichment") and answers an unreachable rsID
+with `None` from the Ensembl leg; `enrich_pgx` degrades per leg so one dead source does not take the
+other's answer down. Both are the tri-state **withhold**, which is the correct shape where a pass has
+already produced work worth keeping — the opposite end of the same rule, not an exception to it.
+
+**If you are adding a pass or a client**, `enricher/tests/test_client_exception_contract.py` and
+`test_pass_exception_contract.py` both discover by walking the package rather than by a list, and
+will fail naming your addition until it is covered or explicitly exempted. That is deliberate: RM97's
+guard walked a hand-written tuple of eight module names, `identifiers` was not one of them, and
+`OntologyClient` leaked raw `httpx` for a whole release as a result.
+
 ## CLI
 
 ```
