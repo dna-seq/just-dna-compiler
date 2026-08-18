@@ -203,10 +203,11 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 ## RM88 — republishing without bumping `version:` overwrites a versioned path with different bytes
 
-**Severity** medium · **Status** open — **blocked on a policy decision and nothing else**; the read is
-one API call and the comparator already exists · **Owner** enricher (`upload.plan_upload` /
-`upload_module`) · **Motivating case** every second publish of a module whose author forgot the version
-bump · **Filed** 2026-08-17 from the 0.6 PT2 batch, lane D · **Detail added** 2026-08-18
+**Severity** medium · **Status** **policy decided 2026-08-18 — refuse unless `--force`** for the
+overwrite half, which is now buildable; the **fossil half below is unresolved and is the larger of the
+two** · **Owner** enricher (`upload.plan_upload` / `upload_module`) · **Motivating case** every second
+publish of a module whose author forgot the version bump · **Filed** 2026-08-17 from the 0.6 PT2 batch,
+lane D · **Detail added** 2026-08-18
 
 [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 shipped the versioned path `data/<name>/v<version>/`, and it does exactly what it says. What it cannot
@@ -260,13 +261,13 @@ fallback is `hf_hub_download` of `manifest.json` (a few KB) and a compare on `ar
 `get_hf_file_metadata`'s etag is **not** a substitute: for a non-LFS file it is a git blob hash, not a
 content sha256.
 
-**So the open question is the product one**, and it has three answers that are three different tools:
-
-- **warn and proceed** — the publisher stays a publisher, and the author learns after the fact;
-- **refuse outright** — the versioned path becomes immutable-by-construction, which is the strongest
-  reading of what RM84 built it for and the most annoying to a curator iterating on a draft;
-- **refuse unless `--force`** — the middle, and the one that quietly adds a flag whose existence is a
-  claim that overwriting is sometimes right.
+**The product question is settled: refuse unless `--force`** (decided 2026-08-18). The three
+candidates were warn-and-proceed (the publisher stays a publisher and the author learns afterwards),
+refuse outright (the versioned path becomes immutable by construction — the strongest reading of what
+RM84 built it for, and the most annoying to a curator iterating on a draft), and the middle one that
+won. The flag's existence is itself a claim that overwriting is sometimes right, which is the honest
+position: a curator re-cutting a draft release is a real workflow, and a gate with no override turns
+into a gate people route around.
 
 **And a fourth sub-question nobody has asked yet:** what happens when the *check itself* cannot run —
 the listing fails, or the token can read nothing. The house algebra says an unknown withholds, but a
@@ -276,6 +277,75 @@ whichever of the three above is picked has to answer it in the same breath.
 **What would make it decidable: a case.** Not more analysis — a consumer reporting a shadowed version,
 or the registry adopting this publisher surface for its own publishes. Picking one of the three without
 one is the guess P5 says not to spend a one-way door on.
+
+### The fossil question: is an unattested leftover inert?
+
+**The intended answer is yes, and it is the right reading of the format.** `manifest.artifact.files`
+is the statement of *which parquets are this module*, `artifact.digest` is a Merkle root over exactly
+those, and a file nobody attested is outside both. A reader that starts from the manifest never sees a
+leftover, and verification passes — correctly, because nothing was corrupted. On that reading a
+previous release's parquet is a fossil: dead weight, not a defect.
+
+**What stops it being true is the reader, not the format**, and this repository already records it.
+[§ 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands), verified in the consumer's tree
+rather than inferred:
+
+- the discovery path — the HuggingFace layout **this publisher writes**, and the reference consumer's
+  default — adds *"no manifest fetch and no digest check"*;
+- `verify_manifest` *"has no call sites there"*: the install path extracts and registers without
+  re-hashing `artifact.files[]` or recomputing the digest;
+- and the scan is `fs.ls` at one level plus `fs.exists` on **named files** (S35, quoted in RM84).
+
+So on the registry path the fossil really is inert — there is a per-version audit and the manifest is
+read. On the discovery path nothing consults the list that would make it inert, and a leftover parquet
+is indistinguishable from a live one. **The format's answer is right and the deployed reader does not
+run it**, which is § 6.8's own summary of the seam.
+
+**The failure that follows is a shape misreport, not data corruption, and it needs two preconditions:**
+a module whose table set **shrank** between publishes, read over discovery. A SNP-core module
+re-authored as a table-only PGx module keeps a fossil `weights.parquet`, so a probe for named files
+still finds a SNP core — the old release's. Nothing is mis-hashed; the module is mis-*typed*. Rare
+(table sets rarely shrink) and bounded (registry consumers are unaffected), which is why this is worth
+fixing cheaply rather than urgently.
+
+**Three places it can be fixed, and they are not alternatives — they answer different questions.**
+
+1. **The consumer reads the manifest.** This is the only thing that makes the fossil *actually* inert
+   rather than inert-by-hope, and it is the open half of RM84 and § 6.8 — theirs, already asked, not
+   ours to build. Worth naming because the fossil model above becomes simply true the day it lands.
+2. **The publisher stops leaving them.** `upload_folder(delete_patterns=_ALLOW_PATTERNS)` turns the
+   flat path from a union into a replacement, and three things about it were checked rather than
+   assumed:
+   - **It does not touch the nested `v<version>/` archive — today, and by accident.** HF filters
+     delete patterns with `fnmatch`, whose `*` **crosses path separators** (their own docs warn about
+     it). Every member of `_ALLOW_PATTERNS` is a literal basename, so `manifest.json` does not match
+     `v1.0.0/manifest.json` and the archive survives. Add one `*.parquet` — a completely reasonable
+     tidy-up of a 28-entry list — and a single publish deletes every archived version's parquets.
+     **So the fix owes a test asserting no allow-pattern carries a wildcard**, which is
+     `@registry-completeness` again: an invariant the code depends on and nothing states.
+     (`_SNAPSHOT_ALLOW_PATTERNS` already carries two globs, on a path with no nesting — the habit
+     exists.)
+   - **Deletion is safe only because RM89 already refuses a half-finished module.** `plan_upload`'s
+     three positive rules — everything attested is carried, `weights.parquet` never travels alone, at
+     least one lead table — are what stop a truncated local directory from wiping a good published
+     one. Without them, adding `delete_patterns` would be a foot-gun rather than a fix.
+   - **It shares its round trip with the overwrite fix.** `_prepare_folder_deletions` calls
+     `list_repo_files`, which is the same remote read the refuse-unless-`--force` gate needs, so the
+     two fixes cost one listing between them rather than one each.
+
+   The stronger form is `create_commit` over an explicit operation list — one atomic commit carrying
+   both adds and deletes, which also closes the two-commit window ENRICHER.md already names, and
+   which does not rest on the wildcard invariant at all. More code, no allow-pattern plumbing.
+3. **Something detects the ones already out there.** Neither fix above cleans a module nobody
+   republishes, and fossils may already exist. A remote listing diffed against `artifact.files` says
+   so — in `--dry-run` here, or catalog-side in `revalidate`, which enumerates published versions
+   anyway. This is also the only rung that finds the problem rather than preventing it.
+
+**One sub-question stays open on the deletion path**, the same shape as the fails-open question above:
+if `list_repo_files` fails mid-publish, does the upload proceed without deletes (leaving a fossil) or
+refuse (failing a publish over a tidy-up)? Withhold-on-unknown is the house rule and it argues for
+proceeding, since the adds are the point and the deletes are hygiene — but it is a choice, not a
+default.
 
 ### How much of the corpus is exposed today
 
