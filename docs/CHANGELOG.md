@@ -34,7 +34,67 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-18 (latest) — the 0.6.2 upgrade note had a fourth shape, and it was the silent one (S38)
+## 2026-08-18 (latest) — an off-switch that switched nothing, and an upgrade note silent on a relaxation (S39, S40)
+
+**One enricher fix, three documentation fixes, one new test, one roadmap item.** Nothing is cut:
+`just-dna-enricher` stays at **0.6.2** in `pyproject.toml`, and the fix below will carry **0.6.3**
+whenever the maintainer cuts it. Suite 2761 → 2762, green throughout.
+
+**`load_dotenv_file=False` reached none of the six cache resolvers (S39).** The parameter has existed
+since the resolvers were generalized, is named in six signatures, and did nothing at all: each
+`resolve_*_reference` passes `default_*_cache_dir()` as an *argument*, and that helper went through a
+`_cache_dir` whose `load_env()` was unconditional — so the `.env` was loaded before the resolver had
+looked at its own flag. Probed rather than read, with a marker variable in a `.env` and a controlled
+cwd: `load_dotenv_file=False` left it in `os.environ` for cpic, ensembl and clinvar alike. The flag is
+now threaded through `_cache_dir` and the six `default_*_cache_dir` helpers rather than the load being
+removed — the unconditional load is itself the 0.5.2 repair behind three "the cache is right there"
+reports, and the `True` path is unchanged. `test_locations.py` runs each resolver in a subprocess and
+pins both directions plus the pre-fix arrangement; a twelfth test walks both families asserting each
+member takes the parameter, so a seventh snapshot cannot quietly reopen it.
+
+This is the **second** knob in two days whose disabling value did not disable — after the watcher's
+`${BRANCH:-main}`, where `BRANCH=` restored `main` — so it is now a rule with a tag:
+`@off-switch-needs-a-probe`. Run the disabling value; a test that passes the enabling value and a test
+that passes nothing are the same path.
+
+**What that fix does not reach is [RM102](ROADMAP.md#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch),
+and S39's reporter hit the default path.** The enricher loads a whole `.env` into `os.environ` from
+*library* code, so asking where the ClinVar cache is can hand a process credentials for sources it
+never named — and `override=False` skips a variable that is **present**, which means *deleting* one is
+exactly what lets the file supply it. Their test isolation was undone that way. Filed rather than
+fixed: a default flip is silent for every caller who never passed the parameter (S14's shape, so an
+actionable deprecation has to come first), the allowlist variant makes us a filter over somebody
+else's file, and four credential paths carry no flag at all by `@credential-where-read`. ENRICHER.md
+now documents the mutation, the sharp edge, and both halves.
+
+**INTEGRATION_0_6.md was silent on the one check that *stopped* refusing (S40).** RM47 relaxed
+`StudyRow.REQUIRED_ANY_OF` to `()`, which § 1 never mentioned while naming both tightenings — the
+table row *"Fields removed, retyped, or promoted to required | none"* is literally true and still left
+a consumer's negative test failing with nothing to anticipate it. § 1 gains the symmetric table row
+and a subsection that leads with the consequence rather than the validator: `StudyRow.variant_key` can
+now be `None`, and a null join key in polars is a **silently smaller result**, not an error. A
+relaxation is invisible to a corpus run and visible to every consumer holding a negative test, which
+is the argument for saying more about it rather than less. No code half underneath it —
+`_cross_validate_studies` handles the subject-less row deliberately.
+
+**And it pointed at a fixture that does not exist.** § 3 told just-dna-lite that a same-`ref`
+expansion "is instantiated in `reference_examples/shox_par1/`", offered as the evidence that their
+`ref`-spelling mitigation is insufficient; the committed example is 10 rows, 10 distinct rsIDs, all on
+chrX, `expanded_keys=0`. The sentence now says so and names both routes to build one, including that
+the VRS check refuses a copied `vrs_id` and prints the recomputed pair — the detail that makes it ten
+minutes rather than an afternoon. **Building it found the gap under the report:** the claim had no
+instance anywhere in this repository, tests included, because the corpus's only other expansion
+(`pathogenic_clinvar`'s `rs1554917888`, `T>TA` beside `TA>T`) differs in `ref` — so every existing
+`locus_count` assertion would have survived an expansion that deduped on `(chrom, start, ref)`.
+`test_two_loci_sharing_a_ref_still_count_as_two` builds the twin from the example's own row through
+`par_partner` and asserts both halves against each other. Third item, same document: § 1's *"nothing
+you have breaks"* now carries the one exception, the private `_OUTPUT_FILES` made public as
+`ARTIFACT_PARQUETS`.
+
+**A consumer note from just-dna-lite is recorded below**, dated the same day, in the convention this
+file already carries for their 0.5 adoption. It is their writing and is committed unedited.
+
+## 2026-08-18 — the 0.6.2 upgrade note had a fourth shape, and it was the silent one (S38)
 
 **No package is cut.** `just-dna-enricher` stays at **0.6.2** and the code is unchanged — S38 is
 explicit that the RM101 subclass design is right, and it is exactly what makes the reported shape

@@ -287,6 +287,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The publisher's allowlist is derived from the artifact's file list; what it drops, the manifest still attests. `@publisher-allowlist-derived`
 - The snapshot layout lives in `locations`; a sidecar is a sibling of `data/`. `@snapshot-layout-locations`
 - A second published artifact makes provenance a question — answer it in `release.json`. `@release-json-provenance`
+- Run a knob's **disabling** value; a flag the callee never sees is a flag that does nothing. `@off-switch-needs-a-probe`
 - An `ensure_*` must actually be called; `--offline` is the only switch. `@ensure-must-be-called`
 - Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`. `@network-tests-optin`
 - A flag must mean the same thing in every function that takes one. `@flag-means-same`

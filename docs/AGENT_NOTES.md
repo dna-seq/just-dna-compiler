@@ -1845,6 +1845,23 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **withholds** (tri-state, like RM84's `version_unknown_reason`), so a directory without one stays
   publishable.
 
+- `@off-switch-needs-a-probe` — **A knob's disabling value is its own case, and reading the code is not
+  running it.** Two instances a day apart, and neither was visible in review. The watcher's `BRANCH`
+  knob was spelled `${BRANCH:-main}`, which treats an explicitly empty value as unset — so `BRANCH=`,
+  the one thing anybody would type to turn the branch-pause off, silently restored `main` and enabled
+  it instead; `${BRANCH-main}` is the fix, and the two spellings differ for exactly one value, the one
+  no test reaches by accident. Then S39: `resolve_*_reference(load_dotenv_file=False)` loaded the
+  `.env` anyway, in **all six** resolvers, because each passes `default_*_cache_dir()` as an
+  *argument* and that helper's `load_env()` was unconditional — so the load happened before the
+  resolver had looked at its own flag (`@default-arg-before-setup` wearing a different hat). The
+  parameter had existed for two releases, was named in six signatures, and did nothing.
+  The rule is procedural rather than structural: **run the disabling value.** A knob is not tested by
+  a test that passes the enabling value and a test that passes nothing, because those are the same
+  path; and a flag threaded through a call chain needs the probe at the *outermost* caller, since that
+  is where an eagerly-evaluated default can outflank it. Where the knob is a parameter, walk the
+  family and assert every member accepts it rather than listing the ones you remember
+  (`@registry-completeness`) — a seventh snapshot's resolver is how this reopens.
+
 - `@ensure-must-be-called` — **A snapshot's `ensure_*` must actually be CALLED — check the pass, not just the function.** Three
   instances so far, all the same shape. `ensure_constraint_snapshot` shipped with the ClinVar
   generalization and had no caller for a whole release, so `gene-metrics` on a plain install skipped the
