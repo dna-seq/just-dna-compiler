@@ -203,9 +203,10 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 ## RM88 — republishing without bumping `version:` overwrites a versioned path with different bytes
 
-**Severity** medium · **Status** open — the shape is a policy question, not a code one · **Owner**
-enricher (`upload.plan_upload` / `upload_module`) · **Motivating case** every second publish of a
-module whose author forgot the version bump · **Filed** 2026-08-17 from the 0.6 PT2 batch, lane D
+**Severity** medium · **Status** open — **blocked on a policy decision and nothing else**; the read is
+one API call and the comparator already exists · **Owner** enricher (`upload.plan_upload` /
+`upload_module`) · **Motivating case** every second publish of a module whose author forgot the version
+bump · **Filed** 2026-08-17 from the 0.6 PT2 batch, lane D · **Detail added** 2026-08-18
 
 [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 shipped the versioned path `data/<name>/v<version>/`, and it does exactly what it says. What it cannot
@@ -216,18 +217,96 @@ tells, arriving at the address built to stop telling it — which is why it is w
 a shrug, and also why it is **not** a defect in RM84: the flat path was always going to be overwritten,
 and the versioned one is no worse than the situation before it existed.
 
-**Why it was not fixed in lane D.** Refusing needs two things this tier does not have. A **remote read**
-first — the publisher would have to ask HuggingFace whether `data/<name>/v<version>/` already exists and
-whether its `manifest.json` carries a different `artifact.digest`, which is a network round trip on a
-path whose current cost is one `upload_folder`. And a **policy** second, which is the part that is
-actually undecided: warn and proceed, refuse outright, or refuse unless `--force`. Those are three
-different products. Picking one without a case is the guess P5 says not to spend a one-way door on.
+### The mechanism, end to end
 
-**What makes this decidable later.** The digest is already the right comparator and it is already in the
-manifest, so the check is cheap once the policy is chosen. Note the interaction with
-[RM85](ROADMAP_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it):
-both are *"has the world moved, and does anything notice"* asked of the publish path, and deciding them
-apart is how one gets a shape the other has to undo — the same pairing note RM83 and RM85 already carry.
+Nothing here is subtle, and writing it out is the point — the entry read as though the difficulty were
+in the detection.
+
+1. `plan_upload` reads `identity.version` out of the **local** `manifest.json`, one field, never
+   through `read_manifest`. It builds `versioned_path_in_repo = data/<name>/v<version>`. No network.
+2. `upload_module` calls `ensure_repo` (`create_repo(exist_ok=True)` — a network call), then
+   `upload_folder` to the flat path, then `upload_folder` to the versioned path. **Three round trips
+   before any check could be added, which is worth stating because the cost objection below rests on
+   it.**
+3. `upload_folder` is create-or-update against whatever is at that path. It reads nothing first and
+   compares nothing. Same `version:` plus different bytes means the versioned directory now holds the
+   new bytes under the old name, and no record anywhere says it moved.
+
+**The second mechanism, verified off the API contract on 2026-08-18 rather than against a live publish
+— and it is wider than the one above.** `upload_folder` is passed no `delete_patterns`, so it *adds and
+replaces*, never removes. A recompile that stops emitting a table — a module whose `studies.csv` was
+deleted, so `studies.parquet` is no longer produced — leaves the previous release's file sitting beside
+the new `manifest.json` that does not attest it. So a republish produces a **union of two releases**,
+not a replacement. This applies to the **flat path on every republish**, version bumped or not, which
+makes it the wider defect of the two and the reason it is recorded here rather than filed separately:
+same owner, same call site, and the fix ENRICHER.md already names for the atomicity gap —
+`create_commit` over an explicit operation list — is the one that closes both.
+
+### What it is actually blocked on
+
+**A policy, and only a policy.** The entry used to name a remote read as the first of two blockers, on
+the grounds that it is "a network round trip on a path whose current cost is one `upload_folder`". That
+accounting was wrong in the publisher's favour: the current cost is `create_repo` plus **two**
+`upload_folder` calls, so one more read is marginal, and this is the network tier — the one place in
+the workspace permitted to fetch. The entry's own closing line already conceded the point ("the check
+is cheap once the policy is chosen"); what is corrected here is only the arithmetic that made it read
+like two blockers instead of one.
+
+**The read is cheaper than "download the remote manifest", too.** `HfApi.list_repo_tree` returns
+`RepoFile.lfs.sha256` for every LFS-stored file, and a dataset repo tracks `*.parquet` in LFS — so one
+tree listing of `data/<name>/v<version>/` yields the published parquets' sha256s, directly comparable to
+`manifest.artifact.files[].sha256`, with nothing downloaded. Where a file is not LFS-backed the
+fallback is `hf_hub_download` of `manifest.json` (a few KB) and a compare on `artifact.digest`. Note
+`get_hf_file_metadata`'s etag is **not** a substitute: for a non-LFS file it is a git blob hash, not a
+content sha256.
+
+**So the open question is the product one**, and it has three answers that are three different tools:
+
+- **warn and proceed** — the publisher stays a publisher, and the author learns after the fact;
+- **refuse outright** — the versioned path becomes immutable-by-construction, which is the strongest
+  reading of what RM84 built it for and the most annoying to a curator iterating on a draft;
+- **refuse unless `--force`** — the middle, and the one that quietly adds a flag whose existence is a
+  claim that overwriting is sometimes right.
+
+**And a fourth sub-question nobody has asked yet:** what happens when the *check itself* cannot run —
+the listing fails, or the token can read nothing. The house algebra says an unknown withholds, but a
+publish gate that fails **open** on an unreachable check is a policy choice rather than a default, and
+whichever of the three above is picked has to answer it in the same breath.
+
+**What would make it decidable: a case.** Not more analysis — a consumer reporting a shadowed version,
+or the registry adopting this publisher surface for its own publishes. Picking one of the three without
+one is the guess P5 says not to spend a one-way door on.
+
+### How much of the corpus is exposed today
+
+**Two of sixteen**, measured 2026-08-18 by planning an upload for every compiled reference example:
+only `htt_repeat_expansion` (`v1.0.0`) and `pgx_slco1b1_simvastatin` (`v0.1.0`) state a `version:` at
+all, so every other module gets `versioned_path_in_repo=None` and the flat path alone. Since
+`Identity.version` stays null unless `module_spec.yaml` states a canonical SemVer — and
+[MODULE_LIFECYCLE](MODULE_LIFECYCLE.md) records that the registry stamps one *on publish* — the exposed
+population is essentially **registry-published modules coming back through this surface**, not the
+locally-compiled ones. That is a reason the item has not bitten, not a reason it will not: the
+versioned path exists precisely for the modules that have versions.
+
+### Candidate shapes, cheapest first
+
+1. **Report it in `--dry-run` only.** `plan_upload` already has a dry-run path that prints both
+   destinations, and `UploadPlan` already carries a withheld-answer field (`version_unknown_reason`) as
+   precedent for a second one. A line saying *"`v0.1.0` already exists at this repo and its parquets
+   hash differently"* needs **no policy decision at all**, because it decides nothing — it is
+   informational by construction, which is exactly what makes it buildable before the fork below is
+   settled. It is also how the case above gets collected.
+2. **A publish-time guard**, with the warn / refuse / `--force` fork resolved. Roughly twenty lines once
+   the answer is chosen, plus the fails-open question.
+3. **Catalog-side, in the registry rather than here.** RM85 already lists *"a publish-time or
+   catalog-side signal"* as a live candidate for its own question, and `revalidate` already enumerates
+   published versions and classifies each — so *two digests under one version* is detectable where the
+   remote read is happening anyway, and by the party that owns the listing a reader trusts. This is
+   also where the RM85 pairing stops being an abstraction: both are *"has the world moved, and does
+   anything notice"* asked of the publish path, and deciding them apart is how one gets a shape the
+   other has to undo (the same pairing note RM83 and RM85 already carry).
+4. **Nothing, deliberately** — the status quo, defensible only while the versioned path has almost no
+   occupants, which the measurement above says is true today and says nothing about tomorrow.
 
 **Not a repair:** making the compiler bump `version:` automatically. A version is an authored claim about
 compatibility, and a tool that increments it is asserting something only the author knows. The repo
