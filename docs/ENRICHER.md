@@ -2387,6 +2387,14 @@ everything it did (P3, additive within a major) and the narrower catch is new ca
 migration. The client's exception is chained, so `__cause__` still carries it — but it is no longer the
 *only* way to tell the two apart, which is what the split is for.
 
+**Being a subclass makes handler order load-bearing, and that is the one thing the split costs.** Two
+separate `except` arms with the parent first leave the narrow arm dead — Python takes the first
+matching clause — so a caller who wrote `except <Pass>Error` above `except <Pass>Unavailable` reports
+an outage as an ordinary failure and never sets whatever an outage sets. It fails silently: nothing
+raises, and a test asserting a status code sees a clean run. One tuple is unaffected, since both names
+route to the same block. just-dna-registry lost three of four handlers this way on 0.6.2 (S38), which
+is what `enricher/tests/test_shadowed_handlers.py` now walks the workspace for.
+
 **What the distinction means.** The subclass says the source was **asked and never answered** —
 nothing was established either way, so a caller records `unchecked` rather than a negative
 (`@unreachable-not-absent`). The plain parent means the question *was* put and the answer is a

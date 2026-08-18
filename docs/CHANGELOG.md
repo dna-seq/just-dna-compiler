@@ -34,7 +34,46 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-18 (latest) — the outward half of the gist sync, and the off-switch that was not one
+## 2026-08-18 (latest) — the 0.6.2 upgrade note had a fourth shape, and it was the silent one (S38)
+
+**No package is cut.** `just-dna-enricher` stays at **0.6.2** and the code is unchanged — S38 is
+explicit that the RM101 subclass design is right, and it is exactly what makes the reported shape
+possible. What moves is two documents, one guard test, and a dated correction on S37's reply.
+
+**The defect: "catch both" describes two handlers that behave oppositely.** § 8's migration table said
+`except (FrequencyEnrichmentError, GnomadError)` "keeps working, unchanged", written as though catching
+both could only mean one tuple. just-dna-registry had them as two separate arms — the two meant
+different things to them, a plain warning against an `unreachable` field — with the parent first. On
+0.6.2 `enrich_frequencies` raises `FrequencyUnavailable`, which **is a** `FrequencyEnrichmentError`, so
+the first arm wins and the outage arm is dead code. Three of their four handlers. **It fails silently**:
+nothing raises, nothing 500s, and their endpoint reported a clean check while gnomAD was down — the
+failure RM101 exists to end, reintroduced by the fix for it, in a consumer who had followed our advice.
+They caught it only because their guards assert the *field* rather than the status code.
+
+**Fixed where it was read and where it is maintained.**
+[INTEGRATION_0_6 § 8](INTEGRATION_0_6.md#8-what-061-got-wrong-and-062-fixed) gains the fourth row in
+the reporter's own words, plus a paragraph saying to read rows one and four together, since they differ
+only in punctuation. [ENRICHER § Exception contract](ENRICHER.md) gains the same warning, because a
+migration note stops being read while the reference does not. The 0.6.1 workaround row now says **in
+one tuple**. § 8 also now points at `AcmgListUnavailable.skip`, which separates `unreachable` from
+`no_reference` — the reporter had been collapsing the two and sending operators to check a healthy
+network, and fixed it themselves once they read the field.
+
+**The guard is structural, because the defect is invisible except in the shape of the code.**
+`enricher/tests/test_shadowed_handlers.py` parses all three packages and fails on any `except` arm an
+earlier arm in the same `try` already catches. Our tree is clean — and since a zero is worth nothing
+unless the walk can fail, a second test runs it over the reporter's snippet and asserts exactly one
+finding. A parent and child in **one tuple** is deliberately not a finding: that is redundant rather
+than dead, and a guard that cries wolf on it gets deleted. Adopted from the guard the reporter built
+for themselves.
+
+**S37's reply carries a dated correction rather than an edit.** The sentence *"your adapters catch the
+client's type alongside the pass's, and that keeps working unchanged"* was ours and was too broad. It
+stands, with the correction beneath it: the reply is what a consumer was told, and rewriting it would
+hide that the advice was incomplete. The fingerprint is unmoved — corrections sit above the marker,
+which is what the reply span excludes.
+
+## 2026-08-18 — the outward half of the gist sync, and the off-switch that was not one
 
 **No package is cut for this.** Loop maintenance again: the only executable change is to
 `.claude/watch-suggestions.sh`, which ships in nothing, and the rest is

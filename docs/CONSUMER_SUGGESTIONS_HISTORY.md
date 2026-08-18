@@ -61,6 +61,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S35** answers RM84+RM89; publisher dropped most of the artifact — 0.6.0
 - **S36** `weight` declares no scale — 0.6.0; RM90, RM91, RM92
 - **S37** passes leak the client's error type — accepted, RM101; 6 sites
+- **S38** subclass made `except` order matter — docs fixed; AST guard
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -1388,6 +1389,17 @@ PharmVar/CPIC findings — that matches what `enrich_pgx` does per leg, and it i
 deliberately did *not* make `enrich()` or `enrich_pgx` raise these new types: both degrade and withhold
 instead, because they have already produced work worth keeping. The subclass is for passes that have
 nothing to return.
+**Correction, 2026-08-18 (S38).** The sentence above — *"your adapters catch the client's type
+alongside the pass's, and that keeps working unchanged"* — is true only if the two types are one
+`except (PassError, ClientError)` tuple. Written as two separate arms with the parent first, the
+upgrade kills the second arm, because `FrequencyUnavailable` **is a** `FrequencyEnrichmentError` and
+Python takes the first matching clause. That is the shape just-dna-registry actually had, in three of
+four handlers, and it fails silently: the pass reports a clean check while the source is down. The
+guidance is corrected in [INTEGRATION_0_6 § 8](INTEGRATION_0_6.md#8-what-061-got-wrong-and-062-fixed),
+which gains a fourth row, and in [ENRICHER § Exception contract](ENRICHER.md). Left as a correction
+rather than an edit: this reply is what they were told, and rewriting it would hide that the advice was
+incomplete.
+
 <!-- triaged: 0.6.1+unreleased · sha af7eb4c93e62 -->
 
 Reported by **just-dna-registry** while adopting 0.6.1 (registry 0.17). Not a regression: this predates
@@ -1461,3 +1473,111 @@ which is what we do, and it is a private detail to be depending on. Matching the
 alternative and we rejected it: your warning and error texts are pinned where they are an API, and these
 two are not, so a reword would silently flip our verdict from "unchecked" to "your table is broken". A
 subclass would make it a type question.
+
+# just-dna-registry, upgrading to 0.6.2 the day it landed (2026-08-18)
+
+## S38 — the 0.6.2 upgrade table has a fourth row: two separate `except` arms, parent first
+
+**Status — accepted as a documentation defect, and it is ours twice over: the table and the sentence in
+S37's reply. Both fixed here, plus a guard.** Nothing in the code changes — you are right that the
+subclass design is correct, and it is what makes your ordering matter at all. No release is cut for
+this; `just-dna-enricher` stays at 0.6.2 and the fix is in documents plus one test.
+
+**Reproduced by construction, then measured.** `FrequencyUnavailable` is declared
+`class FrequencyUnavailable(FrequencyEnrichmentError)` in `frequencies.py`, so a parent arm above it
+catches every instance and the arm below is unreachable — there is no configuration in which your two
+handlers both fire. Driven as an `ast` walk over your reported shape: the parent-first pair reports one
+dead arm, the reversed pair reports none, and the one-tuple form reports none. That last case is the
+one that makes the two shapes look identical in prose while behaving oppositely, which is the whole
+item.
+
+**What §8 now says.** A fourth row, in your words:
+
+| both, as **two separate arms with the parent first** | **the outage arm goes dead.** Move the `*Unavailable` arm above the parent: Python takes the first matching clause, and the subclass is now the more specific one. This is the row that fails *silently* |
+
+with a paragraph under the table saying to read rows one and four together, because *"we catch both"*
+describes either and they differ only in punctuation. The row for consumers pinned to 0.6.1 now says
+**in one tuple**, and the sentence you needed is the one you wrote — it is in
+[ENRICHER § Exception contract](ENRICHER.md) too, since that is the maintained reference and §8 is a
+migration note that stops being read.
+
+**On the S37 reply.** *"your adapters catch the client's type alongside the pass's, and that keeps
+working unchanged"* was our sentence, and it was too broad in exactly the way you describe. It carries a
+dated correction now rather than an edit: the reply is what you were told, and rewriting it would hide
+that the advice was wrong for a shape we had not considered.
+
+**Your structural guard is the right instrument and we adopted it.**
+`enricher/tests/test_shadowed_handlers.py` parses all three packages and fails on any `except` arm an
+earlier arm in the same `try` already catches. Our tree is clean — 211 files, zero shadowed arms — and
+because a zero is worthless unless the walk can fail, a second test runs it against your reported
+snippet and asserts it reports exactly one. It also asserts a parent and child in **one tuple** is not
+a finding: that is redundant rather than dead, and a guard that cries wolf on it is one somebody
+deletes. Only bare-name clauses are compared; `except httpx.HTTPError` is not resolved, which is
+documented in the module rather than left to be discovered.
+
+**On `AcmgListUnavailable.skip` — agreed, and it is now pointed at from §8.** You are reading it the way
+it was designed: `skip` is decided where the failure happens and holds a `VALID_VERIFICATION_SKIPS`
+member, `unreachable` when the source was asked and never answered against `no_reference` when
+something was there and no list could be read out of it. Collapsing them sends an operator to check a
+healthy network, which is the same answered-absence-versus-unasked-question distinction this tier draws
+everywhere. Nothing else carries a `skip` today — the other six are a plain pair — so if you want that
+shape on the passes you actually report per-source availability for, file it and we will size it.
+
+**And the observation we are keeping.** That the parent arm becomes *useful* rather than redundant once
+the subclass exists — "the question was put and the answer is a problem" is a distinct thing to report
+— is a better statement of what the split buys than the one in our own reference, which mostly argues
+that the narrow catch is new capability. §8's "what you gain" paragraph is unchanged, but that reading
+is now in ENRICHER's contract section.
+<!-- triaged: 0.6.2 · sha 26ca25f77e30 -->
+
+Reported by **just-dna-registry**, upgrading to `just-dna-enricher` 0.6.2 the day it landed. **Not a
+defect in 0.6.2** — the subclass design is right and we would not change it. This is about the guidance
+beside it, because the shape that bit us is not in the table, and it is the one that fails *silently*.
+
+**What INTEGRATION_0_6 § 8 says.** Three rows: catch both types (keeps working), catch the pass's type
+only (starts working), catch the client's type *instead of* the pass's (stops firing — "the one that
+breaks"). We read that as "we are row one, nothing to do", and S37's own reply says the same:
+*"your adapters catch the client's type alongside the pass's, and that keeps working unchanged."*
+
+**It did not.** Row one is written as though catching both means one `except (PassError, ClientError)`
+tuple. Ours were two separate arms, because the two meant different things to us — a structural problem
+is a plain warning, an outage additionally sets an `unreachable` field:
+
+```python
+except FrequencyEnrichmentError as exc:          # structural: no resolution.csv, or it won't parse
+    return FrequencyCheck(warnings=[str(exc)])
+except GnomadError as exc:                       # the outage arm, added as the S37 workaround
+    return FrequencyCheck(unreachable=["gnomad"], warnings=[...])
+```
+
+On 0.6.2 `enrich_frequencies` raises `FrequencyUnavailable`, which **is a** `FrequencyEnrichmentError`,
+so the first arm wins and the second is dead. Measured on the real pass with a stubbed 503: our
+`unreachable` came back `[]` where it had been `["gnomad"]`. Same for literature and ClinGen dosage —
+three of our four handlers.
+
+**Why this is worth a note rather than a shrug.** Nothing raises, nothing 500s, no test that asserts a
+`200` notices. The endpoint reports a clean check while the source is down, which is the exact failure
+S37 was filed to end — reintroduced by the fix for it, in a consumer that had followed the advice. We
+caught it only because our guards assert the *field* rather than the status code, and that was luck as
+much as design.
+
+**A fourth row would say it.** Something like:
+
+| two separate `except` arms, parent first | **the outage arm goes dead.** Move the `*Unavailable` arm above the parent — Python takes the first match, and the subclass is now the more specific one |
+
+And the sentence we would have needed in the S37 reply is narrower than the one that is there: *catching
+both keeps working if they are one tuple; if they are separate arms, check the order.*
+
+**What we did.** Reordered so every `*Unavailable` arm precedes its parent, dropped the client-type
+catches entirely (the pass owns it now — we import `httpx` nowhere in that module any more), and added a
+structural guard that walks our own AST and fails on any `except` clause shadowed by an earlier one. We
+also found the parent arm is now genuinely useful rather than redundant: `FrequencyEnrichmentError`
+alone means "the question was put and the answer is a problem", which is a distinct thing to report.
+That is the split doing its job.
+
+**One place the split paid off immediately, unprompted.** `AcmgListUnavailable` predates this with its
+`skip` member, and we had been collapsing it: a `no_reference` (offline, no snapshot built) was being
+reported as an outage, sending an operator to check a network that was fine. `exc.skip` is decided where
+the failure happens and is a `VALID_VERIFICATION_SKIPS` member, so we now report only `unreachable` as
+one. Worth pointing at from § 8's table — it is the same distinction one level finer, and it was already
+shipped before anybody asked for it.

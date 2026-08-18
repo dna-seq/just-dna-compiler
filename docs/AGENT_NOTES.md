@@ -1228,6 +1228,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   tuple of eight module names and `identifiers` was not one of them. `@registry-completeness` — the
   guard now discovers by `pkgutil` walk and by signature. `@probe-names-the-table`.
 
+  **The subclass makes a consumer's handler ORDER load-bearing, and that is the cost of the repair
+  (S38).** It is the one thing the subclass buys that a flat type would not have: once
+  `FrequencyUnavailable` is a `FrequencyEnrichmentError`, two separate `except` arms with the parent
+  first leave the narrow arm dead, because Python takes the first matching clause. just-dna-registry
+  upgraded to 0.6.2 with exactly that shape in three of four handlers, having read our own migration
+  row — which said catching both "keeps working, unchanged" and was written as though *both* could only
+  mean one tuple. Their outage field came back empty and the endpoint reported a clean check while
+  gnomAD was down: the failure RM101 exists to end, reintroduced by the fix for it, in a consumer that
+  had followed the advice.
+
+  **So a migration note has to enumerate the SHAPES, not the type sets.** "Catch both" describes two
+  handlers that differ only in punctuation and behave oppositely, and the silent one is not the one a
+  reader pattern-matches to. The table in INTEGRATION_0_6 § 8 gained a fourth row and the reference in
+  ENRICHER gained the same warning, because a migration note stops being read while the reference does
+  not.
+
+  **A guard for it is structural and cheap**, which is the general lesson rather than the specific one:
+  a defect invisible at every level except the *shape* of the code wants an `ast` walk, not a review
+  habit. `enricher/tests/test_shadowed_handlers.py` parses all three packages and fails on any arm an
+  earlier arm in the same `try` already catches; our own tree was clean, and the test that proves the
+  walk can fail runs it against the reporter's snippet (`@tautology-zero`). Two false positives were
+  designed out deliberately: a parent and child in **one tuple** is redundant, not dead, and dotted
+  clause types are not resolved rather than guessed at.
+
 ## Drafting and the authoring surfaces
 
 - `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`

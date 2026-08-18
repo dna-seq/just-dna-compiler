@@ -626,11 +626,23 @@ catching the client's type. Which of the two shapes you wrote decides what happe
 
 | what your handler looks like today | on 0.6.2 |
 | --- | --- |
-| `except (FrequencyEnrichmentError, GnomadError)` — both | **keeps working, unchanged.** Nothing to do. Drop the client half whenever convenient |
+| `except (FrequencyEnrichmentError, GnomadError)` — both, **in one tuple** | **keeps working, unchanged.** Nothing to do. Drop the client half whenever convenient |
 | `except FrequencyEnrichmentError` — the documented type only | **starts working.** This is the fix; it was silently dead before |
 | `except GnomadError` — the client type *instead of* the pass's | **stops firing.** This is the one that breaks. Add the pass's type before upgrading |
+| both, as **two separate arms with the parent first** | **the outage arm goes dead.** Move the `*Unavailable` arm above the parent: Python takes the first matching clause, and the subclass is now the more specific one. This is the row that fails *silently* |
 
-The third row is the whole hazard, and it is why a flat translation was rejected: the obvious repair
+**Read the first and fourth rows together, because "we catch both" describes either.** They differ only
+in punctuation and they behave oppositely, which is why the fourth is written out rather than left as a
+consequence of the third. If your two types meant different things to you — a plain warning for one, an
+`unreachable` field for the other — then you wrote separate arms, and on 0.6.2 the parent arm catches
+everything because the subclass *is* a parent instance. Nothing raises, nothing 500s, and a handler
+asserting only a status code sees nothing wrong; just-dna-registry found it in three of four handlers
+(S38) and only because their guards assert the *field*. **The mechanical check is structural**: walk
+your own `except` clauses and fail on any arm an earlier one in the same `try` already catches. That is
+`enricher/tests/test_shadowed_handlers.py` here, and it is about thirty lines of `ast` in yours.
+
+The third row is the whole hazard for a handler that never named the pass's type, and it is why a flat
+translation was rejected: the obvious repair
 (`raise FrequencyEnrichmentError(...) from exc`) would have broken exactly the consumers who had done
 the sensible thing. The repair is a **subclass** instead, so every `except <Pass>Error` catches
 strictly more than it did and nothing catches less.
@@ -647,9 +659,18 @@ data is wrong" are separable by type rather than by reading `exc.__cause__`:
 | `enrich_dosage_sensitivity` | `ClinGenError` | `ClinGenUnavailable` |
 | `enrich_gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
 
-Every one is a subclass of the type beside it, and the client's exception stays on `__cause__`. The
-full table, including the passes that deliberately degrade rather than raise, is in
+Every one is a subclass of the type beside it, and the client's exception stays on `__cause__`. Order
+the two arms narrow-first if you write them separately — see the fourth row above. The full table,
+including the passes that deliberately degrade rather than raise, is in
 [ENRICHER § Exception contract](ENRICHER.md).
+
+**`verify_acmg_sf` is the same distinction one level finer, and it predates this.**
+`AcmgListUnavailable` carries a `skip` holding a `VALID_VERIFICATION_SKIPS` member, decided where the
+failure happens: `unreachable` when the source was asked and never answered, `no_reference` when
+something was there and no list could be read out of it. A caller collapsing the two reports an
+offline run with no snapshot as an outage, and sends an operator to check a network that is fine —
+just-dna-registry was doing exactly that until they read `exc.skip` (S38). If you report per-source
+availability anywhere, that field is the one to read rather than the type alone.
 
 **Two conflations you may be working around.** `ClinGenError` and `GeneValidityError` each covered
 *"could not fetch the source"* **and** *"the local CSV will not parse"* — opposite histories. If you
@@ -660,7 +681,7 @@ verdict from "unchecked" to "your table is broken".
 
 | Item | Who hits it on 0.6.1 | What to do if you are pinned to 0.6.1 |
 | --- | --- | --- |
-| [RM101](ROADMAP_HISTORY.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover) | anyone calling an enricher pass from Python | Catch the client's type **alongside** the pass's — `except (FrequencyEnrichmentError, GnomadError)`, `except (LiteratureEnrichmentError, EutilsError)`, `except (IdentifierCheckError, EutilsError, httpx.HTTPError)`. The last one needs `httpx` because `OntologyClient` still leaks it on 0.6.1 |
+| [RM101](ROADMAP_HISTORY.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover) | anyone calling an enricher pass from Python | Catch the client's type **alongside** the pass's, in **one tuple** — `except (FrequencyEnrichmentError, GnomadError)`, `except (LiteratureEnrichmentError, EutilsError)`, `except (IdentifierCheckError, EutilsError, httpx.HTTPError)`. The last one needs `httpx` because `OntologyClient` still leaks it on 0.6.1. If you keep them as separate arms instead, order them narrow-first now, or the upgrade kills the second one (fourth row above) |
 | same | anyone shelling out to `just-dna-enricher frequencies` / `literature` | A 5xx produces a traceback and no `FREQUENCIES FAILED:` line. Treat a non-zero exit with no marker as a source failure rather than assuming your parse broke |
 | same | anyone distinguishing "ClinGen unreachable" from "our `gene_metrics.csv` is bad" | Read `exc.__cause__` — `None` means the local table. Do not match on the message |
 
