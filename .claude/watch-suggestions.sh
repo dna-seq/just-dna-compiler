@@ -37,7 +37,7 @@ LEDGER=${LEDGER:-$REPO/.claude/triage-state.py}
 COOLDOWN=${COOLDOWN:-150}
 POLL=${POLL:-10}
 BRANCH_PAUSE=${BRANCH_PAUSE:-900}
-BRANCH=${BRANCH:-main}
+BRANCH=${BRANCH-main}           # `-`, not `:-`: BRANCH= is an explicit "never pause", not an unset
 CAP=${CAP:-8}
 
 mtime() { stat -c %Y "$FILE" 2>/dev/null || stat -f %m "$FILE" 2>/dev/null || echo 0; }

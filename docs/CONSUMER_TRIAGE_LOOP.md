@@ -31,12 +31,13 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**Adopted through gist revision `ab7e2a89c48d1970e5bae5d4576c7c49a30d06e3`**, committed 2026-08-16 and
-adopted here on 2026-08-18 in `e9a538e`. That pairing is established rather than assumed: the gist has
-not moved since 2026-08-16, so the revision the adoption read is the one it still serves. Same sha
-back means nothing has arrived and the sync-in is finished for that pass; a different one means pull
-the files and read the diff. **Update this line, with its date and commit, whenever an adoption
-lands** — it is the baseline, and a stale one silently re-diffs work already taken.
+**Adopted through gist revision `bd793a8ce98b729f00b97733d38ed82d4d127a48`**, published 2026-08-18 —
+and that one is ours, an outward push rather than an adoption, so it is in sync by construction. It
+supersedes `ab7e2a89c48d…` (committed 2026-08-16), which was the baseline the digest check was first
+pinned to. Same sha back means nothing has arrived and the sync-in is finished for that pass; a
+different one means pull the files and read the diff. **Update this line, with its date, whenever an
+adoption *or* a push lands** — it is the baseline, and a stale one re-diffs work already taken, which
+after a push means re-reading your own writing as though a stranger had sent it.
 
 `history[0]` is the newest entry, checked and not recalled — its `committed_at` equals the gist's
 `updated_at`. Getting that orientation backwards is the failure worth guarding, because it does not
@@ -82,11 +83,14 @@ four (S2, S6, S7, S12 — the four reports ending in a `---`) and they were rest
 documents that do not exist here.
 
 **Push the other way too, and check it in the same pass** — the sync is bidirectional even though each
-direction is a separate act. Two things are generic and have **not** reached the gist as of 2026-08-18:
-the branch-pause in `watch-suggestions.sh` (§1), and the digest check above, which is a change to the
-pattern and so belongs in the published copy by this document's own rule. That is the standing outward
-debt. Updating the gist is a publish, so it is the user's to do — surface it rather than assuming it
-happened.
+direction is a separate act. **The standing debt was discharged on 2026-08-18**: the branch-pause in
+`watch-suggestions.sh` (§1) and the digest check above both reached the gist in revision `bd793a8c…`,
+genericized, along with the correction to §2's "why not git" that the branch-pause forced — the
+published copy still called *the loop must not commit* a fatal reason for the design, which stopped
+being true here when §5's permit was granted, and a watcher that pauses because the loop commits cannot
+sit in a document saying it does not. Nothing is owed outward as of that revision. Updating the gist is
+a publish and stays the user's to authorize; it was authorized for that push and is not a standing
+permission.
 
 **The live document holds only what is unanswered.** An item moves to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) once its reply is written, which is
@@ -606,6 +610,14 @@ Each of these was a bug in the loop, not a hypothetical:
   replies stay checked because they sit above it, and a test asserts a genuinely dead anchor still
   survives down there. The prose was restored to what the consumer wrote and the fingerprint came back
   to the exact value it had carried.
+- **An off-switch spelled `${VAR:-default}` is not an off-switch, and the watcher's `BRANCH` knob was
+  one.** `${BRANCH:-main}` treats an explicitly empty value as unset, so `BRANCH=` — the one thing
+  anybody would type to turn the pause off — silently restored `main` and enabled it instead. Found
+  while porting the branch-pause to the gist on 2026-08-18, by *running* the off-switch in a sandbox
+  rather than reading it, and fixed in both copies to `${BRANCH-main}`. The two spellings behave
+  identically for every value except the empty one, which is exactly the value no test reaches by
+  accident; the general form is that a knob's disabling value is its own case and needs its own probe.
+
 - **A marker can be stamped with a git commit sha, and it fails twice over.** S36's read
   `<!-- triaged: 0.6.0 · sha cbeeb8f -->`, which is a real commit in this repo and not a fingerprint at
   all. `MARKER_RE` wants exactly twelve hex characters, so seven made the marker **invisible**: the
