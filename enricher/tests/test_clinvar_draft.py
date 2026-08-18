@@ -17,8 +17,10 @@ from just_dna_enricher.clinvar_draft import (
     _identity_cells,
     _refusal_summary,
     _row_cells,
+    _signature,
     _study_rows,
     draft_gene_panel,
+    multi_allelic_rsids,
     sole_expressible_genotype,
 )
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
@@ -532,3 +534,134 @@ def test_no_download_refuses_instead_of_provisioning(monkeypatch, tmp_path: Path
     )
     assert result.exit_code == 1
     assert "no ClinVar snapshot found" in result.output
+
+
+# ── the mirror pair, and why an rsID is flagged (S41) ───────────────────────────────────────────
+#
+# `multi_allelic_rsids` grouped on `(rsid, chrom, start, ref)` and fired on >1 alt inside the group,
+# which is not the "more than one alt at one position" its own docstring claimed: a dup/del mirror
+# pair at one position is two groups of one alt each, so the rsID went unflagged, both records
+# reduced to the same rsid-only signature, and the second was dropped as `already_present`.
+
+#: A ClinVar duplication beside its reciprocal deletion at one position, under one rsID — the
+#: ordinary shape, not an exotic one. `rs80359609` in BRCA2 per the report; the 3★ expert-panel
+#: record is the one that was being dropped, because `select_by_gene` orders by `ref` before
+#: `review_stars DESC` and the survivor is therefore decided by allele spelling.
+_MIRROR_PAIR = [
+    {**_RECORD, "rsid": "rs80359609", "chrom": "13", "start": 32340301, "ref": "A", "alt": "AT",
+     "gene": "BRCA2", "review_stars": 1, "condition": "Hereditary breast ovarian cancer syndrome",
+     "variation_id": "111111"},
+    {**_RECORD, "rsid": "rs80359609", "chrom": "13", "start": 32340301, "ref": "ATT", "alt": "A",
+     "gene": "BRCA2", "review_stars": 3, "condition": "Breast-ovarian cancer, familial 2",
+     "variation_id": "52138"},
+]
+
+
+def _drafted_signatures(records: list[dict]) -> list[tuple]:
+    """The identities `draft_gene_panel`'s loop would write for these records, in its own order."""
+    ambiguous = multi_allelic_rsids(records)
+    out = []
+    for record in records:
+        cells = _row_cells(record, force_coordinate=(record.get("rsid") or "").strip() in ambiguous)
+        out.append(_signature(cells) if cells is not None else None)
+    return out
+
+
+def test_a_dup_del_mirror_pair_does_not_collapse_onto_one_identity() -> None:
+    """Two distinct allele events under one rsID must get two distinct rows.
+
+    Asserted as *distinctness* rather than against written-down signatures: what the identity is
+    spelled as is `_identity_cells`' business, and what matters here is only that the two records
+    cannot land on the same row.
+    """
+    signatures = _drafted_signatures(_MIRROR_PAIR)
+    assert None not in signatures, "both records carry a complete coordinate, so neither is unkeyable"
+    assert len(set(signatures)) == len(_MIRROR_PAIR), (
+        f"the mirror pair collapsed onto {set(signatures)}"
+    )
+    assert multi_allelic_rsids(_MIRROR_PAIR) == {"rs80359609"}
+
+
+def test_the_pair_really_did_collapse_under_the_old_grouping() -> None:
+    """The demonstration on the old predicate, rather than an assertion about it.
+
+    Without this the test above proves the identities differ, not that they ever did not — and the
+    old rule is three lines, so restating it is cheaper than trusting the claim.
+    """
+    def _old_predicate(records):
+        alts_by_site: dict[tuple, set[str]] = {}
+        for record in records:
+            rsid = (record.get("rsid") or "").strip()
+            if not rsid:
+                continue
+            site = (rsid, record.get("chrom"), record.get("start"), record.get("ref"))
+            alts_by_site.setdefault(site, set()).add((record.get("alt") or "").strip())
+        return {site[0] for site, alts in alts_by_site.items() if len(alts) > 1}
+
+    assert _old_predicate(_MIRROR_PAIR) == set(), "the old rule saw nothing to flag"
+    old = [
+        _signature(_row_cells(r, force_coordinate=False))  # what the unflagged rsID produced
+        for r in _MIRROR_PAIR
+    ]
+    assert len(set(old)) == 1, "both records really did reduce to one identity"
+
+
+def test_the_same_allele_written_twice_is_still_one_claim() -> None:
+    """Distinctness is over the allele event, not over records.
+
+    A re-submission under a second `variation_id` is one claim written twice; flagging it would move
+    the row to a coordinate identity that cannot separate the two anyway, so the predicate must not
+    fire. This is the half that makes the rule *event*-level rather than merely wider.
+    """
+    resubmitted = [
+        {**_RECORD, "rsid": "rsDUP", "variation_id": "1"},
+        {**_RECORD, "rsid": "rsDUP", "variation_id": "2"},
+    ]
+    assert multi_allelic_rsids(resubmitted) == set()
+
+
+def test_one_rsid_at_two_positions_is_flagged_too() -> None:
+    """The same defect's other face: a differing position, not merely a differing `ref`.
+
+    The old grouping keyed the site on the position as well, so this shape escaped for the same
+    reason the mirror pair did — and it is the one that produces the report's second consequence,
+    where resolution finds both loci and the compiler pairs the survivor's labels onto the wrong one.
+    """
+    two_places = [
+        {**_RECORD, "rsid": "rsTWO", "chrom": "1", "start": 100, "ref": "C", "alt": "T"},
+        {**_RECORD, "rsid": "rsTWO", "chrom": "1", "start": 200, "ref": "G", "alt": "A"},
+    ]
+    assert multi_allelic_rsids(two_places) == {"rsTWO"}
+    assert len(set(_drafted_signatures(two_places))) == 2
+
+
+def test_the_hfe_case_the_predicate_was_written_for_still_fires() -> None:
+    """One position, one `ref`, two alts — the original motivating record. Widening kept it."""
+    hfe = [
+        {**_RECORD, "rsid": "rs773443949", "chrom": "6", "start": 26090951, "ref": "G", "alt": "A"},
+        {**_RECORD, "rsid": "rs773443949", "chrom": "6", "start": 26090951, "ref": "G", "alt": "T"},
+    ]
+    assert multi_allelic_rsids(hfe) == {"rs773443949"}
+
+
+@_needs_snapshot
+def test_no_identity_collapses_on_a_real_cancer_panel(tmp_path: Path) -> None:
+    """The measurement the report was made of, run against the snapshot rather than quoted.
+
+    Every drafted identity must be unique across the whole selection: a repeat means two ClinVar
+    records reduced to one row and one of them is about to be dropped by `append_partial_rows`. The
+    genes are the report's own, and nothing here is a number read off a dump — the assertion is a
+    relationship (identities == keyable records) that holds whatever the snapshot's vintage.
+    """
+    from just_dna_enricher.clinvar import select_by_gene
+
+    records = select_by_gene(
+        _SNAPSHOT, ["BRCA1", "BRCA2", "ATM", "MLH1", "MSH2"],
+        clin_sig=sorted(DEFAULT_CLIN_SIG), min_review_stars=0,
+    )
+    assert records, "the snapshot must hold these genes or this proves nothing"
+    signatures = _drafted_signatures(records)
+    keyable = [s for s in signatures if s is not None]
+    assert len(set(keyable)) == len(keyable), (
+        f"{len(keyable) - len(set(keyable))} record(s) share an identity and would be dropped"
+    )

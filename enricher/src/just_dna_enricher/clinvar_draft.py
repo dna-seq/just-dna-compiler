@@ -56,6 +56,7 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.locations import resolve_clinvar_reference
 from just_dna_enricher.provenance import stamp_draft_digest
+from just_dna_enricher.verification import examples
 
 logger = logging.getLogger(__name__)
 
@@ -113,20 +114,44 @@ class ClinVarDraftResult:
 
 
 def multi_allelic_rsids(records: Sequence[dict]) -> set[str]:
-    """rsIDs that name more than one alt at one position in this selection.
+    """rsIDs that name more than one distinct **allele event** in this selection.
 
     An rsID is a **position/multi-allelic-level** tag, not a per-allele one: ClinVar lists
     `rs773443949` in HFE as both `G>A` and `G>T`. An rsid-only row cannot say which, so drafting one
     row per record would write two identical rows — and de-duplicating them would silently drop a real
-    allele. Found by drafting an actual panel; these records take the coordinate identity instead."""
-    alts_by_site: dict[tuple, set[str]] = {}
+    allele. Found by drafting an actual panel; these records take the coordinate identity instead.
+
+    **The event is `(chrom, start, ref, alt)`, and keying the *site* on `ref` was the bug (S41).**
+    The predicate used to group by `(rsid, chrom, start, ref)` and fire on >1 alt inside that group,
+    which reads as "more than one alt at one position" and is not: an ordinary ClinVar dup/del mirror
+    pair — `A>AT` beside `ATT>A` at one position, the same event written from either side — lands in
+    two groups of one alt each, so the rsID was never flagged, both records reduced to the same rsid
+    signature, and `append_partial_rows` dropped the second as `already_present`. A differing `ref`
+    breaks an rsid-only identity exactly as thoroughly as a differing `alt`; the docstring's own claim
+    was the correct rule and the code was narrower than it. Measured on the `2026-06-27` snapshot over
+    BRCA1/BRCA2/ATM/MLH1/MSH2: 942 rsIDs flagged before, 1,589 after, and the 647 newly flagged are
+    exactly the 647 identities that were collapsing — 725 records, of which 187 dropped a
+    *better-reviewed* record than the one kept, since `select_by_gene` orders by `ref` before
+    `review_stars DESC` and the survivor is therefore an artifact of allele spelling.
+
+    Distinctness is over the whole event rather than over records, deliberately: two rows of the same
+    allele (a re-submission under a second `variation_id`) are one claim written twice and collapsing
+    them loses nothing, while coordinate identity would not separate them anyway. On that measurement
+    the two readings coincide — every multi-record rsID is also multi-allele — but only this one is
+    true by construction, and the other would flag rsIDs whose collapse the fix cannot repair."""
+    events_by_rsid: dict[str, set[tuple]] = {}
     for record in records:
         rsid = (record.get("rsid") or "").strip()
         if not rsid:
             continue
-        site = (rsid, record.get("chrom"), record.get("start"), record.get("ref"))
-        alts_by_site.setdefault(site, set()).add((record.get("alt") or "").strip())
-    return {site[0] for site, alts in alts_by_site.items() if len(alts) > 1}
+        event = (
+            record.get("chrom"),
+            record.get("start"),
+            (record.get("ref") or "").strip(),
+            (record.get("alt") or "").strip(),
+        )
+        events_by_rsid.setdefault(rsid, set()).add(event)
+    return {rsid for rsid, events in events_by_rsid.items() if len(events) > 1}
 
 
 def _identity_cells(record: dict, *, force_coordinate: bool = False) -> dict | None:
@@ -476,9 +501,12 @@ def draft_gene_panel(
     unkeyable = 0
     ambiguous = multi_allelic_rsids(records)
     if ambiguous:
+        # The list used to be printed whole, which was right at the one rsID that motivated it and is
+        # not at the 1,589 a real cancer panel produces (S41 widened the predicate). `examples` is the
+        # house aggregation, shared so this cannot drift from the other callers'.
         warnings.append(
             f"{len(ambiguous)} rsID(s) name more than one allele here "
-            f"({', '.join(sorted(ambiguous))}) — written with their full coordinate, since an rsID "
+            f"({examples(sorted(ambiguous))}) — written with their full coordinate, since an rsID "
             f"alone cannot say which allele the row is about."
         )
     record_by_signature: dict[tuple[str, ...], dict] = {}

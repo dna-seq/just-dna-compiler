@@ -2199,7 +2199,23 @@ through the column still holding the stub.
 Two rules worth keeping in view. **Identity is filled whole or not at all**: the rsID, else the
 complete coordinate, never a subset, because a lone `alts` on a position-only row makes
 `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref` — a partial coordinate
-silently changes which variant the row is. And `min_review_stars` defaults to **2**: a panel that
+silently changes which variant the row is.
+
+**An rsID is only usable as an identity when it names one allele event here, and the predicate that
+decides that is `multi_allelic_rsids` — which keyed the site on `ref` until S41.** It grouped by
+`(rsid, chrom, start, ref)` and fired on more than one alt inside that group, which reads as *more
+than one alt at one position* and is not: an ordinary ClinVar dup/del mirror pair, `A>AT` beside
+`ATT>A` at one position, is two groups of one alt each. So the rsID was never flagged, both records
+took the same rsid-only identity, and `append_partial_rows` dropped the second as `already_present` —
+a **silent** loss, since dedup is the normal case and nothing distinguishes it from a re-draft. The
+event is now the whole `(chrom, start, ref, alt)`, so a differing `ref` and a differing position both
+flag. Measured on the `2026-06-27` snapshot over BRCA1/BRCA2/ATM/MLH1/MSH2: 942 rsIDs flagged before
+and 1,589 after, the 647 new ones exactly the 647 collapsing identities, 725 records recovered, no
+record made unkeyable. **187 of those collapses had dropped the better-reviewed record** — a
+consequence worth stating separately, because `select_by_gene` orders by `ref` before
+`review_stars DESC`, so which of the pair survived was decided by allele spelling rather than by
+evidence. Distinctness is over the allele *event* and not over records: a re-submission under a second
+`variation_id` is one claim written twice, and coordinate identity could not separate those anyway. And `min_review_stars` defaults to **2**: a panel that
 mixes a 0-star "no assertion criteria" submission with a 3-star expert-panel review without saying so
 is worse than one that names its floor.
 

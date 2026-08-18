@@ -51,3 +51,163 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+---
+
+## S41 — `multi_allelic_rsids` keys `ref` into the site, so a dup/del pair collapses and one ClinVar record is lost
+
+**Status — accepted and fixed in the tree (enricher, uncut; it ships in 0.6.3). Your candidate was
+right, and the predicate is now the whole allele event rather than the alt alone.** Reproduced three
+ways before touching anything: your `rs80359609` pair through the real `_row_cells` →
+`append_partial_rows` path (2 records in, **1 row out**, and the survivor is the 1★ record while the
+3★ BRCA2 `ATT>A` is dropped — consequence (1) exactly as you describe it); the predicate in isolation;
+and the whole thing against our own `2026-06-27` snapshot over your five named genes.
+
+**Our measurement agrees with yours and adds the number that convinced us.** 17,004 records for
+BRCA1/BRCA2/ATM/MLH1/MSH2: 942 rsIDs flagged under the old rule, 1,589 under the new one, and the 647
+newly flagged are **exactly** the 647 identities that were collapsing — 725 records dropped, of which
+**187 dropped a better-reviewed record than the one kept**. After the fix: 0 collapsed identities, 0
+records dropped, and 0 records made unkeyable, which was the one risk in the candidate (a record with
+no complete coordinate would become `unkeyable` rather than collapsing; there are none in that
+selection, but the test asserts it rather than assuming it).
+
+**One deliberate difference from your wording.** You proposed grouping on `rsid` alone — any rsID
+naming more than one record takes coordinate identity. We group on the distinct `(chrom, start, ref,
+alt)` events instead, which coincides with yours on real data (every multi-record rsID in that
+selection is also multi-allele) but differs on a re-submission: the same allele under a second
+`variation_id` is one claim written twice, and moving it to coordinate identity would not separate the
+two rows anyway. Flagging only when coordinate identity actually *resolves* the collapse keeps the
+predicate true by construction rather than by measurement. Both readings fix your case.
+
+**Your reading of the docstring is the one that settled it.** "More than one alt at one position" was
+the correct rule and the code was narrower than its own claim — a differing `ref` breaks an rsid-only
+identity exactly as thoroughly as a differing `alt`. Widening also catches a third shape neither of us
+listed: **one rsID at two distinct positions**, which the old site key also swallowed, and which is
+the direct producer of your consequence (2).
+
+**Six tests, including the one that runs on the real snapshot.** The mirror pair does not collapse;
+the pair demonstrably *did* collapse under the old grouping (restated in the test, so the claim is
+shown rather than trusted); a re-submitted identical allele still does not flag; one rsID at two
+positions flags; the HFE case the predicate was originally written for still fires; and no identity
+collapses across your five genes — asserted as a relationship (unique identities == keyable records)
+so it holds whatever the snapshot's vintage. All six were run against the unfixed predicate and
+watched to fail, the real-data one at exactly 725 dropped records.
+
+**The warning now aggregates.** It listed every flagged rsID, which was right at the one that motivated
+it and unreadable at 1,589; it uses the house `examples` helper, so at one rsID the text is
+byte-identical to what `reference_examples/hfe_hemochromatosis/README.md` quotes.
+
+**On consequence (2), and this is the part we are not claiming to have fixed.** The 8,231 matchable
+rows with wrong labels are a *downstream* effect of the collapse: with each record keeping its own
+identity there is no surviving rsID for resolution to pair against two loci, so newly drafted panels
+should not produce them. We have not re-measured that end to end on your modules, and we are not going
+to assert it from the drafting fix alone — your `_identity_collapse_note` is still the right thing to
+run, and if it reports collapses on a panel drafted after this ships, that is a second defect and we
+want it as its own item. **Already-published artifacts are not reached by any of this**, which is the
+bit worth planning around: they were drafted under the old predicate and need a re-draft.
+
+**Nothing filed.** The repair is legal and additive-in-effect — it writes more rows, moves no schema,
+and the drafted output is authored material a human owns rather than a compiled identity — so it is a
+fix rather than a roadmap item. `manifest` fields, `content_signature` and every reference example are
+untouched; suite 2762 → 2768.
+<!-- triaged: 0.6.3 · sha 0b16582fa93d -->
+
+Reported from just-dna-lite, 2026-08-19, during a 0.6 audit of the ten `v1_port` modules. Measured on
+enricher 0.6.2 / compiler 0.6.1 / format 0.6.1 against the ClinVar `2026-06-27` parquet snapshot.
+
+**What we ran.** Rebuilt the identity assignment `draft_gene_panel` performs, over the exact record set
+`select_by_gene` returns for our three ClinVar panels, and compared drafted identities to input records.
+
+**What we expected.** An rsID naming more than one distinct ClinVar allele takes the coordinate identity,
+so no two records share an authored row.
+
+**What happened.** `multi_allelic_rsids` groups on `(rsid, chrom, start, ref)` and fires only on >1 alt
+*within* that group. The ordinary ClinVar dup/del mirror pair — `A>AT` and `ATT>A` at one position — is
+two groups of one alt each, so the rsID is never flagged, both records reduce to the same rsid signature,
+and `append_partial_rows` keeps whichever the selection ordered first.
+
+| module | records dropped | collapsed identities | notes |
+|---|---:|---:|---|
+| `cancer` | 1,619 | 1,481 | 483 allele events exist nowhere in the artifact — 454 pathogenic, 29 likely-pathogenic, **108 at 3★** — across 63 genes incl. BRCA1, BRCA2, ATM, MLH1, MSH2 |
+| `pathogenic` | 3,140 | 2,953 | 100% differ in `ref`; 435 differ in `clin_sig`; 2,378 differ in `condition`; 69 sit at different positions |
+
+Two consequences worse than the dropped row itself:
+
+1. **The survivor is not the better-evidenced record.** `ref` sorts before `review_stars DESC` in
+   `select_by_gene`'s ORDER BY, so which record wins is an artifact of allele spelling. On `cancer` the
+   kept row is the *lower*-starred one in 400 of 1,481 collapses. `rs80359609` keeps a 1★ `A>AT` and drops
+   the 3★ BRCA2 `ATT>A` (Variation 52138).
+2. **The dropped record's coordinate comes back wearing the survivor's labels.** Resolution finds both
+   loci for the surviving rsID and the compiler pairs every authored genotype with every resolved locus.
+   On `pathogenic` that is 10,558 rows, of which **8,231 are matchable** (het or hom-alt, so restoration
+   never sees them): **301 state the wrong `clin_sig` for the locus they sit at and 1,453 the wrong
+   condition**. `rs761621516` is the sharpest — a GBA1 record at 1:155239968 rendered with GAMT's gene and
+   "Parkinson disease, late-onset", and a genotype `C/CGCT` not expressible from its own `ref=GGTA`. The
+   compiler flagged that one ("could not be decided here") and kept the locus.
+
+**Candidate fix.** Group on `rsid` alone: any rsID naming more than one record in the selection takes
+coordinate identity. The docstring already says the predicate is "more than one alt at one position" —
+a differing `ref` at the same position breaks the identity just as thoroughly, and the mirror pair is
+common rather than exotic.
+
+**Why we did not work around it locally.** `draft_gene_panel` re-queries the snapshot itself, so the
+records are gone before anything on our side sees the drafted rows, and our own `_allele_index` /
+`_row_key` key on the same collapsed identity. Meanwhile we detect the condition and report it
+(`_identity_collapse_note` in `clinvar_panel.py`) so a build states what it lost instead of shipping the
+loss silently. That is a report, not a repair, and it is all a consumer can do from outside.
+
+**Not urgent for restoration.** We checked: the hom-ref half is fully withheld on both modules — the
+pre-0.6 `ref`-spelling guard catches 1,296/1,296 on `cancer` and 2,728/2,728 on `pathogenic`, and there
+are **zero same-`ref` expansions** in either. The 8,231 matchable rows are the live half, and neither
+`locus_count` nor the `ref` guard addresses them, because those rows do match a real call.
+
+## S42 — `ModuleInfo.version` coerces `'abc'` to `'0.0.0'` rather than refusing it
+
+Same audit. `ModuleInfo(version='abc').version` returns `'0.0.0'`. A version is an identity key, and
+`0.0.0` is indistinguishable from a deliberate pre-release, so an unparseable string becomes a
+plausible-looking claim rather than an error. `1.5` (a float) is refused with an excellent message about
+YAML reading `1.10` as `1.1`; `'abc'` is not.
+
+Noting also that CLAUDE.md in our repo carried "an unquoted `1` in YAML loads as an int and is rejected",
+which is **not** true on 0.6.1 — `1` coerces to `'1.0.0'`. We have corrected our own doc. The hazard is
+the unquoted *decimal*, not the unquoted integer.
+
+## S43 — `clinvar_draft` folds `likely_pathogenic` into `pathogenic=True` and never sets the `likely_pathogenic` column
+
+Same audit, measured on all three of our ClinVar panels.
+`clinvar_draft.py` sets `cells["pathogenic"] = True` for both tiers, commented "the 0.3 booleans stay
+authoritative and are folded from the same call, never independently". The result is not merely lossy —
+it is a wrong assertion on the rows it touches, and the column that exists to carry the distinction is
+never written:
+
+| module | `clin_sig=pathogenic` | `clin_sig=likely_pathogenic` | stored `pathogenic` | stored `likely_pathogenic` |
+|---|---:|---:|---|---|
+| cardio | 75,909 | 39,151 | `true` on both | `false` everywhere |
+| cancer | 110,476 | 28,778 | `true` on both | `false` everywhere |
+| pathogenic | 402,174 | 214,827 | `true` on both | `false` everywhere |
+
+`manifest.stats.pathogenic_count` reads the boolean and inherits the inflation (cancer 136,662;
+pathogenic 611,542). We are not asking for a behaviour change we cannot see the history of — the fold may
+well be deliberate 0.3 compatibility. What we would ask is that `likely_pathogenic` either be populated
+or be documented as permanently unwritten, because a consumer keying on the column gets 0 of 214,827 and
+nothing says so. Our own read path prefers the `clin_sig` column (`_effective_clin_sig`) and is unaffected.
+
+## S44 — `clinpgx_draft` drops MT-RNR1 and every `del`-spelled annotation, including CFTR F508del
+
+Same audit, on our `pharmgkb` module (ClinPGx snapshot, evidence ≥2B).
+
+- **MT-RNR1: 16 annotations / 32 rows, all level 1A**, dropped because the genotype is a single haploid
+  allele the drafter cannot pair into a diploid genotype. This is aminoglycoside-induced hearing loss, a
+  CPIC guideline. It does not look like a format limit: `split_genotype` handles a one-element list, and
+  the format carries a whole `heteroplasmy` family for mtDNA.
+- **6 annotations / 19 rows dropped whole for a `del` spelling**, including **CFTR F508del (1A)**,
+  DPYD*7 (1A), RYR1 (1A) and ACE (2A). The sharp part is that these annotations also carry
+  **pure-nucleotide** genotypes (`CTT/CTT`) which the schema accepts, and those are discarded with them.
+  Our module therefore ships 176 CFTR rows and the drug "elexacaftor / tezacaftor / ivacaftor" while
+  omitting the most common CF variant.
+
+Also minor, and a one-liner: `sources.parquet.license_sha256` is null on both our rows although the
+snapshot ships `LICENSE.txt` and `release.json` states its hash (they match exactly). `SourceTerms.row`
+already accepts `license_text=`; the `clinpgx_draft` call passes only `declared_use` and `dataset`. So we
+record ClinPGx's terms without pinning them, which is the field's purpose, and `merge_sources_file` is
+never-clobber so we cannot patch it afterwards.
