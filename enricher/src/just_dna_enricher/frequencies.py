@@ -32,6 +32,7 @@ from just_dna_enricher.gnomad import (
     FREQUENCY_DATASET_LABEL,
     FREQUENCY_GENOME_BUILD,
     GnomadClient,
+    GnomadError,
     covers_locus,
 )
 from just_dna_enricher.licensing import record_source_terms, sidecar_path
@@ -47,6 +48,20 @@ _FIELDNAMES = [
 
 class FrequencyEnrichmentError(RuntimeError):
     """Raised in strict mode when a resolved variant gets no frequency."""
+
+
+class FrequencyUnavailable(FrequencyEnrichmentError):
+    """gnomAD could not be reached, so no frequency question was put at all (RM101).
+
+    A subclass rather than a second exception, so every existing `except FrequencyEnrichmentError` still
+    catches it (P3 — additive within a major). It exists because this pass could fail two ways that
+    want different responses and had one type for both: **gnomAD was asked and never answered**, and a resolved variant genuinely has no frequency under `strict`.
+    Only this one means the source was asked and never answered.
+
+    Before RM101 this case did not reach `FrequencyEnrichmentError` at all — a `GnomadError` travelled straight
+    out through a `try/finally` with no `except`, so a caller's handler, written against the type
+    this module documents, was silent for exactly the failure it was written for.
+    """
 
 
 @dataclass
@@ -218,6 +233,8 @@ def enrich_frequencies(
             fetched = gnomad.fetch_frequencies(
                 [_variant_id(chrom, start, ref, alt) for _, chrom, start, ref, alt in to_fetch]
             )
+        except GnomadError as exc:
+            raise FrequencyUnavailable(f"gnomAD could not be reached: {exc}") from exc
         finally:
             if owned:
                 gnomad.close()

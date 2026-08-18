@@ -35,7 +35,6 @@ from just_dna_enricher.clinical import (
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
-from just_dna_enricher.eutils import EutilsError
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
 from just_dna_enricher.grch37 import (
     BuildDiagnosis,
@@ -44,7 +43,7 @@ from just_dna_enricher.grch37 import (
     diagnose_wrong_build,
     summarize_build_diagnoses,
 )
-from just_dna_enricher.identifiers import RsidStatus, check_rsids
+from just_dna_enricher.identifiers import IdentifierUnavailable, RsidStatus, check_rsids
 from just_dna_enricher.licensing import (
     read_sources_file,
     record_source_terms,
@@ -1053,12 +1052,18 @@ def enrich(
         rsid_subjects = len(asked)
         try:
             statuses = check_rsids(asked)
-        except EutilsError as exc:
+        except IdentifierUnavailable as exc:
             # The same rule as the gnomAD block above, and it had no handler at all (RM97): this is a
             # *validation* pass that runs after every other pass has finished and before
             # `resolution.csv` is written, so letting NCBI's availability abort the run throws away
             # work that already succeeded. Until RM97 the escaping type was a raw `httpx` exception
             # rather than even `EutilsError`, so nothing up the stack could have caught it either.
+            #
+            # `IdentifierUnavailable` since RM101, and the walk from `httpx.HTTPStatusError` to
+            # `EutilsError` to here is the whole item in one handler: each step moved the type one
+            # layer closer to the thing the caller actually called. `check_rsids` is `identifiers`'
+            # function, so `EutilsError` — another module's client — was never the type this line
+            # should have named, and it only worked because the pass let it through untranslated.
             #
             # Withholding is the correct outcome, not a fallback: `rsid_status` stays unset on every
             # row, which says *nobody asked dbSNP*. Stamping `absent` here would assert a negative the

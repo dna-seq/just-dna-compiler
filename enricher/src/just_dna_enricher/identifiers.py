@@ -48,7 +48,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.eutils import EutilsClient, is_missing
+from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.net import PacingGate, attempt_floor, dedupe
 from just_dna_enricher.verification import examples, ran, skipped
 
@@ -326,6 +326,10 @@ def check_rsids(rsids: list[str], *, client: EutilsClient | None = None) -> list
     eutils = client or EutilsClient()
     try:
         records = eutils.esummary("snp", [r.removeprefix("rs") for r in wanted])
+    except EutilsError as exc:
+        # dbSNP is a *different* module's client, so `EutilsError` is not this module's type
+        # and `except IdentifierCheckError` around `check_rsids` never fired for a 5xx.
+        raise IdentifierUnavailable(f"dbSNP could not be reached: {exc}") from exc
     finally:
         if owned:
             eutils.close()

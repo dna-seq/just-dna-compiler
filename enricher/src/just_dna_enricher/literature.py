@@ -73,7 +73,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.eutils import EutilsClient, is_missing
+from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
 from just_dna_enricher.locations import load_env
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
@@ -109,6 +109,25 @@ _WHITESPACE = re.compile(r"\s+")
 
 class LiteratureEnrichmentError(RuntimeError):
     """Raised in strict mode when a citation does not resolve, or contradicts its own identifiers."""
+
+
+class LiteratureUnavailable(LiteratureEnrichmentError):
+    """PubMed could not be reached, so no citation question was put at all (RM101).
+
+    A subclass rather than a second exception, so every existing `except LiteratureEnrichmentError`
+    still catches it (P3 — additive within a major). It separates **the source was asked and never
+    answered** from a citation that genuinely does not resolve under `strict`. Only this one means
+    nothing was established either way.
+
+    Before RM101 an `EutilsError` travelled straight out of `enrich_literature` through a
+    `try/finally` with no `except`, so a caller's `except LiteratureEnrichmentError` was silent for
+    exactly the failure it was written for.
+
+    Scoped to the eutils leg on purpose. `EuropePmcClient.fulltext` and `CrossrefClient.exists`
+    already answer a transport failure with `None` rather than an exception — the tri-state withhold
+    this codebase uses for "could not be retrieved" — and turning either into an error here would
+    convert a withheld answer into a failed run.
+    """
 
 
 @dataclass
@@ -793,6 +812,8 @@ def enrich_literature(
         client = eutils or EutilsClient()
         try:
             summaries = client.esummary("pubmed", wanted)
+        except EutilsError as exc:
+            raise LiteratureUnavailable(f"PubMed could not be reached: {exc}") from exc
         finally:
             if owned_eutils:
                 client.close()

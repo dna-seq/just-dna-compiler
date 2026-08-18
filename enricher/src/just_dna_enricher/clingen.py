@@ -57,6 +57,21 @@ class ClinGenError(RuntimeError):
     """A ClinGen fetch or parse failed in a way the caller must see."""
 
 
+class ClinGenUnavailable(ClinGenError):
+    """The curation list could not be fetched, so ClinGen was never actually asked (RM101).
+
+    A subclass rather than a second exception, so every existing `except ClinGenError` still catches
+    it (P3 — additive within a major). It exists because `ClinGenError` covered **two opposite
+    histories**: the curation list could not be fetched (`fetch_curation_list`), or a local
+    `gene_metrics.csv` this module was handed will not parse. Only the first means the source was
+    asked. A caller could separate them until now only by reading `exc.__cause__` — chained from
+    `httpx.HTTPError` for the fetch and raised bare for the table — which is a private detail to
+    depend on, and the alternative of matching the message is worse: neither string is pinned as an
+    API, so a reword would silently flip a consumer's verdict from "unchecked" to "your table is
+    broken".
+    """
+
+
 @dataclass
 class DosageRating:
     """One gene's curated dosage sensitivity, decoded."""
@@ -140,7 +155,9 @@ def fetch_curation_list(url: str = DEFAULT_CLINGEN_URL, *, timeout: float = 60.0
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise ClinGenError(f"could not fetch the ClinGen curation list from {url}: {exc}") from exc
+        raise ClinGenUnavailable(
+            f"could not fetch the ClinGen curation list from {url}: {exc}"
+        ) from exc
     return response.text
 
 

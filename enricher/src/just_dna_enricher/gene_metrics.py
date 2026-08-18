@@ -37,6 +37,7 @@ from just_dna_enricher.gnomad import (
     API_CONSTRAINT_DATASET_LABEL,
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
+    GnomadError,
 )
 from just_dna_enricher.licensing import record_source_terms, sidecar_path
 from just_dna_enricher.locations import resolve_constraint_reference
@@ -61,6 +62,20 @@ _METRIC_FIELDS = (
 
 class GeneMetricsEnrichmentError(RuntimeError):
     """Raised in strict mode when a module gene gets no constraint metrics."""
+
+
+class GeneMetricsUnavailable(GeneMetricsEnrichmentError):
+    """The gnomAD constraint API could not be reached, so the question was not put (RM101).
+
+    A subclass rather than a second exception, so every existing `except GeneMetricsEnrichmentError` still
+    catches it (P3 — additive within a major). It exists because this pass could fail two ways that
+    want different responses and had one type for both: **the API was asked and never answered**, and a module gene genuinely has no constraint metrics under `strict`. Only this one means the
+    source was asked and never answered.
+
+    Before RM101 this case did not reach `GeneMetricsEnrichmentError` at all — a `GnomadError` travelled straight out
+    through a `try/finally` with no `except`, so a caller's handler, written against the type this
+    module documents, was silent for exactly the failure it was written for.
+    """
 
 
 @dataclass
@@ -221,6 +236,10 @@ def enrich_gene_metrics(
         gnomad = client or GnomadClient()
         try:
             from_api = gnomad.fetch_gene_constraint(still_missing)
+        except GnomadError as exc:
+            raise GeneMetricsUnavailable(
+                f"the gnomAD constraint API could not be reached: {exc}"
+            ) from exc
         finally:
             if owned:
                 gnomad.close()

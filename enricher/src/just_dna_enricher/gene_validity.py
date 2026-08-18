@@ -138,6 +138,17 @@ class GeneValidityError(RuntimeError):
     """A gene-validity fetch or parse failed in a way the caller must see."""
 
 
+class GeneValidityUnavailable(GeneValidityError):
+    """A submitter's export could not be fetched, so it was never actually asked (RM101).
+
+    The same split `ClinGenUnavailable` draws, and it is here because this module has the identical
+    shape: `GeneValidityError` covers both "could not fetch the gene-validity export" and "the
+    existing `gene_validity.csv` is invalid", and only the first means a source was asked. Found by
+    walking the passes rather than by a report — S37 named ClinGen's instance and this one is its
+    twin, which is why the repair is a walked registry and not two hand-picked sites.
+    """
+
+
 @dataclass
 class ValidityAssertion:
     """One parsed assertion, before it is scoped to a module's genes."""
@@ -366,7 +377,9 @@ def fetch_validity_export(url: str, *, timeout: float = 180.0) -> str:
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise GeneValidityError(f"could not fetch the gene-validity export from {url}: {exc}") from exc
+        raise GeneValidityUnavailable(
+            f"could not fetch the gene-validity export from {url}: {exc}"
+        ) from exc
     return response.text
 
 
