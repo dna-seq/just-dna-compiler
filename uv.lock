@@ -555,7 +555,7 @@ dev = [{ name = "pytest", specifier = ">=9.0.3" }]
 
 [[package]]
 name = "just-dna-enricher"
-version = "0.6.2"
+version = "0.6.3"
 source = { editable = "enricher" }
 dependencies = [
     { name = "duckdb" },

@@ -34,7 +34,67 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-18 (latest) — an off-switch that switched nothing, and an upgrade note silent on a relaxation (S39, S40)
+## 2026-08-19 (latest) — 0.6.3: a drafter that silently dropped ClinVar records, and three more from one audit (S41–S44)
+
+**`just-dna-enricher` 0.6.3**; `just-dna-format` and `just-dna-compiler` stay at **0.6.1** — a partial
+cut, since no code outside the enricher moved. Suite 2761 → 2776, `ruff` clean. Everything here came
+from one just-dna-lite audit of ten `v1_port` modules, plus S39 from just-module-creator carried over
+from the previous pass.
+
+**The serious one: `multi_allelic_rsids` keyed the site on `ref`, so an ordinary ClinVar dup/del pair
+collapsed onto one row and the second record was dropped (S41).** An rsID takes coordinate identity
+when it names more than one allele *here* — except the predicate grouped by
+`(rsid, chrom, start, ref)` and fired on more than one alt inside that group, which is not what its own
+docstring claimed. A mirror pair (`A>AT` beside `ATT>A` at one position, the same event written from
+either side) is two groups of one alt each, so the rsID was never flagged, both records reduced to the
+same rsid-only identity, and `append_partial_rows` dropped the second as `already_present` — silently,
+because dedup is the normal case and nothing distinguishes it from a re-draft.
+
+Re-measured here on the `2026-06-27` snapshot over BRCA1/BRCA2/ATM/MLH1/MSH2 rather than quoted from
+the report: **942 rsIDs flagged before, 1,589 after**, and the 647 newly flagged are exactly the 647
+identities that were collapsing. **725 records recovered, 0 made unkeyable, and 187 of those collapses
+had been dropping the better-reviewed record** — `select_by_gene` orders by `ref` before
+`review_stars DESC`, so which of a pair survived was decided by allele spelling rather than by
+evidence. The event key is now the whole `(chrom, start, ref, alt)`, which also catches one rsID at two
+distinct positions; distinctness is over the allele event and not over records, so a re-submission
+under a second `variation_id` still does not flag. Six tests, all run against the unfixed predicate and
+watched to fail, the real-snapshot one at exactly 725. **Modules published before this need a
+re-draft** — no fix here reaches an artifact already built.
+
+**The ClinPGx drafter's genotype gate was narrower than the schema it writes into (S44).**
+`_authored_genotype` took only `CC`, on the argument that the general case needs the resolved ref/alt
+to disambiguate — true of an unseparated cell, false of the two shapes ClinPGx publishes beside it,
+since `validate_allele` accepts any `^[ACGT]+$` allele. `CTT/CTT` is *already* separated by the source,
+and declining it cost **CFTR F508del**: those annotations carry a `del`-spelled genotype and a
+pure-nucleotide one under one `annotation_id`, so skipping the annotation discarded the writable row
+with it. A bare `A`/`CCCCCCC` is the haploid form the grammar already holds and how ClinPGx spells
+mtDNA — declining it cost every **MT-RNR1** annotation, 32 rows at evidence level 1A, a CPIC guideline.
+**158 rows recovered**, 36 at 1A. `del/del` and `C/del` stay skipped, unchanged and deliberate: ClinPGx
+publishes no length and the compiler drops a lengthless symbolic allele. The general rule is a test now
+rather than a comment — *every spelling this pass declines must be one `PharmVariantRow` would also
+refuse* — walked over the accepted set, with the converse still allowed.
+
+**A share-alike source was recording its licence without pinning it (S44).** `SourceTerms.row` has
+taken `license_text=` all along; `clinpgx_draft` passed only `declared_use` and `dataset`, so
+`license_sha256` was null while `clinpgx_build` was extracting `LICENSE.txt` into the snapshot for
+exactly this purpose. Hashed from the file rather than copied from `release.json`'s stated hash — the
+file is what the module claims, so a truncated copy cannot pin to a value it lacks. Absent stays `None`
+and warns. `merge_sources_file` is never-clobber, so a module drafted earlier keeps its null until the
+sidecar is deleted and re-drafted.
+
+**Two documentation defects with no code half, and one filed.** `likely_pathogenic` and `likely_benign`
+turned out to be **unwritable, not merely unwritten** (S43): parquet columns with no authored field
+behind them, a literal `False` since the initial 0.1.0 commit, read by nothing. Not filled and not
+removed — both are breaking moves on a published column — but documented as permanently unwritten, in
+SCHEMAS.md's tri-state table as its one acknowledged exception. Probing that corrected a claim we were
+about to make wrongly: `manifest.stats.pathogenic_count` counts **authored `variants.csv` rows**, not
+parquet rows, which diverge wherever resolution expanded one row onto several loci. And a digitless
+`module.version` coerces to `0.0.0` and reaches `manifest.identity.version` (S42) — filed as
+**RM103** rather than fixed, because refusing it is a new refusal and that sizes as a minor, the
+RM50/RM48 class. Both entry points already warn naming the authored string, so the silence is the
+model's alone.
+
+## 2026-08-18 — an off-switch that switched nothing, and an upgrade note silent on a relaxation (S39, S40)
 
 **One enricher fix, three documentation fixes, one new test, one roadmap item.** Nothing is cut:
 `just-dna-enricher` stays at **0.6.2** in `pyproject.toml`, and the fix below will carry **0.6.3**
