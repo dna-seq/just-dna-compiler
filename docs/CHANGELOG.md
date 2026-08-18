@@ -702,6 +702,51 @@ keying would let two genotypes sharing a conclusion collapse onto a row naming o
 missing answer into a wrong one. Reverse reads which of three keyings an artifact carries; both legacy
 branches preserved. `content_signature` unmoved.
 
+## 2026-08-18 — consumer note: `just-dna-lite` adopts format 0.6.1 / compiler 0.6.1 / enricher 0.6.2
+
+No change here; recorded so the other consumers are not surprised. Done on a branch, against
+`INTEGRATION_0_6.md` § 3's just-dna-lite list, with registry `0.17.0` bumped in the same commit range
+(its floor is `just-dna-format>=0.6.1`, and `version.contract_compatible` compares installed *format*
+versions, so the two pins cannot move apart). Field notes are **S40**.
+
+- **`locus_count > 1` replaced the `ref`-spelling guard as the expansion predicate** (RM87), which is
+  the S33 follow-through. The old guard is kept beside it as the pre-0.6 fallback, because every module
+  we have published predates the column. Both are needed and the gap between them was measured, not
+  assumed: on a compiled same-`ref` fixture (`shox_par1` with its `resolution.csv` twinned onto chrY),
+  the grouped `ref` test finds one spelling at each of the two positions and withholds nothing, while
+  `locus_count=2` withholds both. Restoration is where this matters — an unobserved hom-ref row at a
+  locus that is one of N is a fabricated result, not an ambiguous one.
+- **The report's genotype split now calls `alleles.split_genotype`** (S30's public leaf), and ours was
+  wrong in a way the corpus cannot show: it split on `/` only, so a phased `"A|G"` came back as the
+  single allele `["A|G"]` and the row rendered with **no zygosity**. Nothing we ship authors a phased
+  genotype, so no fixture drawn from real modules could have caught it. Both our splitters — the
+  Python one and the engine's vectorized polars twin, which cannot call the leaf per row — are now
+  pinned against it over a cell list that deliberately includes `A|G` and `G|A`.
+- **Discovery decides a module's shape from `manifest.artifact.files`** (§ 2.8's ask), falling back to
+  probing where there is no manifest, which is every module on HuggingFace today. `None` rather than an
+  empty set is what makes that safe to adopt now. Demonstrated on a directory holding an unattested
+  `weights.parquet` beside an attested `pharm_variants.parquet`: probing answers `weights` and the
+  attested list answers `pharm_variants`, so the fossil really does decide the module's *kind*.
+- **Two hand-kept lists were deleted rather than updated.** The HuggingFace publisher's allowlist named
+  six side tables where 0.6 has nine, so a module carrying any of the three new fact tables would have
+  published a manifest attesting parquets the upload never sent — the same defect S35 found upstream,
+  one repo over. It now derives from `ARTIFACT_PARQUETS`. Separately, two copies of "which authored CSV
+  leads a module" named four of the ten families, so a `heteroplasmy`- or `copynumbers`-led module
+  counted **zero** authored rows and was always routed to the enrichment half of `/check`.
+- **The licence sidecar is cleared through `layout`, not by name.** Our drafters' stale-file sweep
+  unlinked `sources.csv` literally. That is fine at the spec root and wrong under `derived/`: the sweep
+  cannot reach `derived/sources.csv`, so `sidecar_write_path` finds it as the existing copy and merges
+  into the **deprecated** spelling, which the module then keeps for good. Measured both ways on the
+  pre-fix tree (`['derived/sources.csv']` before, `['licensing.csv']` after). `sidecar_candidates` made
+  it three lines.
+- **Nothing changed for § 8.** We hold no `except` around any enricher pass, so there was no handler to
+  reorder and nothing that had been silently dead. The 0.6.2 floor is taken for the registry's sake and
+  for the unavailability subclasses if we ever want them.
+- **Not done, deliberately:** the ten modules in `data/interim/v1_port/` are **not** rebuilt or
+  republished. That is the maintainer's call (`docs/MODULE_RELEASE_0_5.md`), and leaving them as 0.5
+  artifacts keeps the mixed-era read paths — `_annotations_keying`'s three generations, the pre-0.6
+  `ref` guard, `UNJOINABLE_PHRASE` — under live test rather than under test only by fixture.
+
 ## 2026-08-16 — consumer note: `just-dna-lite`'s annotating engine moves onto 0.5
 
 No change here; recorded so the other consumers are not surprised. `just-dna-lite` migrated its
