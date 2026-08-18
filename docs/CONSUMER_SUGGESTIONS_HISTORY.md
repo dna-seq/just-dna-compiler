@@ -1508,7 +1508,8 @@ that the advice was wrong for a shape we had not considered.
 
 **Your structural guard is the right instrument and we adopted it.**
 `enricher/tests/test_shadowed_handlers.py` parses all three packages and fails on any `except` arm an
-earlier arm in the same `try` already catches. Our tree is clean — 211 files, zero shadowed arms — and
+earlier arm in the same `try` already catches. Our tree is clean — every `.py` in all three packages,
+zero shadowed arms — and
 because a zero is worthless unless the walk can fail, a second test runs it against your reported
 snippet and asserts it reports exactly one. It also asserts a parent and child in **one tuple** is not
 a finding: that is redundant rather than dead, and a guard that cries wolf on it is one somebody

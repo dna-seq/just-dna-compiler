@@ -27,8 +27,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+# The package roots, not their `src/` subtrees: tests are code we ship the shape in too, and the
+# measurement this guard's zero is quoted from (S38's reply, the CHANGELOG) walked the wider set.
 _PACKAGES = [
-    Path(__file__).resolve().parents[2] / pkg / "src"
+    Path(__file__).resolve().parents[2] / pkg
     for pkg in ("schema", "compiler", "enricher")
 ]
 
