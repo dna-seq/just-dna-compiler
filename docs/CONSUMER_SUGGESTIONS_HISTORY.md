@@ -1342,8 +1342,8 @@ what shipped: a per-pass unavailability subclass, `FrequencyUnavailable(Frequenc
 five siblings, so `except FrequencyEnrichmentError` starts working and `except FrequencyUnavailable`
 becomes possible. Filed and detailed as
 [RM101](ROADMAP_HISTORY.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover).
-**Not yet cut** — every package still reads `0.6.1`; the release is the maintainer's call and this note
-will not move when it happens, so watch the tag rather than this paragraph.
+**Shipped in `just-dna-enricher` 0.6.2**, tagged `v0.6.2`. A partial cut: `just-dna-format` and
+`just-dna-compiler` are unchanged and stay at `0.6.1`, so upgrade the enricher alone.
 
 **Reproduced, all three, exactly as you measured them** — `GnomadError` out of `enrich_frequencies`,
 `EutilsError` out of `enrich_literature`, `ClinGenError` out of `enrich_dosage_sensitivity`, each

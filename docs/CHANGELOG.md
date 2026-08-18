@@ -34,11 +34,13 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-18 (latest) — a pass owes its own exception type, not its client's (S37 / RM101)
+## 2026-08-18 (latest) — 0.6.2: a pass owes its own exception type, not its client's (S37 / RM101)
 
-**`just-dna-enricher` only, and not yet cut** — every package still reads `0.6.1` and `v0.6.1` is the
-newest tag. The additions are minor-legal (six new public exception classes beside the existing ones;
-nothing removed, promoted or retyped), so which release carries them is a scheduling decision.
+**`just-dna-enricher` 0.6.2 — cut and tagged `v0.6.2`. A partial cut**: `just-dna-format` and
+`just-dna-compiler` have no diff since `v0.6.1` and stay there, which is the normal shape here (schema
+sat at 0.5.0 across two compiler releases). The additions are minor-legal — six new public exception
+classes beside the existing ones, nothing removed, promoted or retyped — so a patch number carries
+them without straining P3.
 
 **What a caller gets.** A pass now raises **its own** type, and where the reason is "the source could
 not be reached" it raises an `*Unavailable` subclass of that type — `FrequencyUnavailable`,

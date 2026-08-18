@@ -21,17 +21,16 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
-# Built on top of 0.6.1, not yet cut
+# 0.6.2 — the enricher's exception contract, one layer up from RM97
 
-One item, from the consumer inbox rather than from a doc pass. It is recorded here rather than in
-[ROADMAP.md](ROADMAP.md) because it is **built and green**, not because a version has shipped: every
-package still reads `0.6.1`, and cutting one is the user's call. Its additions are minor-legal (new
-public names beside the old, nothing removed or retyped), so which release carries them is a
-scheduling decision and not a legality one.
+One item, and the first in a while to arrive from the consumer inbox rather than from a doc pass.
+**A partial cut**: only `just-dna-enricher` moved, so `just-dna-format` and `just-dna-compiler` stay
+at `0.6.1`. The additions are minor-legal — new public names beside the old, nothing removed or
+retyped — so the patch number carries them without straining P3.
 
 ## RM101 — a pass raises its client's exception type, which its own documented type does not cover
 
-✅ **Built on 2026-08-18**, motivating case
+✅ **Shipped in `just-dna-enricher` 0.6.2 on 2026-08-18**, motivating case
 [S37](CONSUMER_SUGGESTIONS_HISTORY.md) from just-dna-registry. `@client-exception-contract`, one layer
 up from where RM97 left it.
 

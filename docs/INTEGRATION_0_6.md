@@ -26,6 +26,14 @@ one thing 0.6.1 *adds* is that `authoring_reference()`, `describe`, `requirement
 `json_schemas()` now render **28 models rather than 23** (RM96), the five machine-written sidecar row
 models that were outside the registry. Additive, and worth knowing if you snapshot that output.
 
+**One defect was found in 0.6.1 and is fixed in `just-dna-enricher` 0.6.2** — RM101, from
+[S37](CONSUMER_SUGGESTIONS_HISTORY.md), and it is the only one of these that a consumer had *already
+written a workaround for*. **0.6.2 is a partial cut**: `just-dna-format` and `just-dna-compiler` did
+not move and stay at `0.6.1`, so upgrade the enricher alone. If you call an enricher pass from Python
+— checking a module, running a dry run, wrapping a pass in a service — read
+[§ 8](#8-what-061-got-wrong-and-062-fixed) before you upgrade, because it is the one item here where
+*removing* your workaround at the wrong moment is what breaks you.
+
 **0.6.1 also closes RM88 and puts one ask to you.** `upload` now refuses to overwrite
 `data/<name>/v<version>/` with a different artifact unless `--force`. Beside it, § 2.8 carries the one
 change in this document we cannot make on our side: **decide what a module contains from
@@ -583,7 +591,7 @@ moved is behaviour.
 | --- | --- | --- |
 | [RM93](ROADMAP_HISTORY.md#rm93--two-checks-refuse-in-compile-and-report-nothing-in-validate) | anyone using `validate` as a pre-flight for `compile` | **The one to know.** `validate` is not currently a complete pre-flight: a module with `frequencies.csv`, or a table-only module with `studies.csv`, can pass `validate --strict` and then be refused by `compile --strict`. If your pipeline gates on `validate` and treats a later `compile` failure as an infrastructure error, it will misclassify these two. Gate on `compile` into a temporary directory if you need certainty today. |
 | [RM94](ROADMAP_HISTORY.md#rm94--the-p-value-re-run-publishes-its-warning-twice-into-the-manifest) | anyone reading `manifest.compilation.warnings` | A `p_value`/`p_value_num` disagreement appears **twice**, byte-identical. If you count warnings or show them to a user, dedupe on the string — which is worth doing regardless, since the field has never promised uniqueness. |
-| [RM97](ROADMAP_HISTORY.md#rm97--two-clients-leak-the-transport-exception-the-other-two-document-repairing) | anyone calling the enricher against gnomAD or dbSNP | A 5xx from either escapes as a raw `httpx.HTTPStatusError` rather than as this tier's own error type, so `except GnomadError` / `except EutilsError` does not hold it and a dbSNP 5xx can abort a run. Catch `httpx.HTTPError` alongside the tier's exceptions until this lands. |
+| [RM97](ROADMAP_HISTORY.md#rm97--two-clients-leak-the-transport-exception-the-other-two-document-repairing) | anyone calling the enricher against gnomAD or dbSNP | A 5xx from either escapes as a raw `httpx.HTTPStatusError` rather than as this tier's own error type, so `except GnomadError` / `except EutilsError` does not hold it and a dbSNP 5xx can abort a run. Catch `httpx.HTTPError` alongside the tier's exceptions until this lands. **This row was incomplete and 0.6.1 did not finish the job**: `OntologyClient` (OLS4/HGNC, behind `check_identifiers`) kept leaking raw `httpx` through 0.6.1 as well, and the passes leaked their *client's* type on top of that — see [§ 8](#8-what-061-got-wrong-and-062-fixed). On anything below 0.6.2, keep the `httpx.HTTPError` catch and add the client types. |
 | [RM98](ROADMAP_HISTORY.md#rm98--two-passes-record-an-absence-nobody-established-under---offline) | anyone running `enrich --offline` or `gene-metrics --offline` without a cache | The artifact records `status="not_found"` — a definite negative — where nothing was consulted. **Do not read a `not_found` from an offline run with no cache as evidence the source lacks the record.** With a cache present the behaviour is correct; it is the empty-cache case that fabricates. |
 | [RM95](ROADMAP_HISTORY.md#rm95--a-canonicalized-vocabulary-value-is-discarded-so-the-slip-is-stored-and-then-rejected), [RM96](ROADMAP_HISTORY.md#rm96--the-registry-an-audit-iterates-was-missing-five-of-the-models) | module authors | `measure_kind=copy-number` is accepted by `MeasureBinRow` and rejected by its subclasses; write the underscore spelling. Two unenforced/misattributed model guards, neither of which lets bad data into a surface you read. |
 | [RM99](ROADMAP_HISTORY.md#rm99--three-passes-bypass-the-sidecar-resolver-so-one-family-writes-to-two-places), [RM100](ROADMAP_HISTORY.md#rm100--five-enricher-surface-defects-with-no-common-cause) | registries serving a `derived/` layout; anyone invoking the enricher as a module | Three passes write their sidecar to the spec root regardless of layout, so an `enrich` run can leave one module with both. And use the `just-dna-enricher` entry point rather than `python -m just_dna_enricher.cli`, which is missing three commands. |
@@ -594,3 +602,69 @@ column existed. They are recorded against 0.6 because that is when someone looke
 in this document at all is § 1's promise that nothing you have breaks: that promise is about the
 *surface*, and it holds, but a consumer planning an integration deserves the behavioural caveats in the
 same place as the surface delta rather than one document over.
+
+
+## 8. What 0.6.1 got wrong, and 0.6.2 fixed
+
+One item — [RM101](ROADMAP_HISTORY.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover),
+shipped in **`just-dna-enricher` 0.6.2**. `just-dna-format` and `just-dna-compiler` are untouched and
+stay at `0.6.1`. No schema surface moves, so § 2's delta stands; what changes is **which exception
+type comes out of an enricher pass**, and this is the one item in this document where the upgrade
+order matters.
+
+**The defect.** § 7's RM97 row made each *client* raise its own type instead of `httpx`'s. But you do
+not call a client — you call a **pass**, and five passes held their client in `try: … finally: close()`
+with no `except`, so the client's type walked straight out. `except FrequencyEnrichmentError` — the
+type `enrich_frequencies` documents — did not fire for a gnomAD 503. Same for `enrich_gene_metrics`,
+`enrich_literature`, and both `identifiers` entry points. Our own CLI had it too: `just-dna-enricher
+frequencies <dir>` promises `FREQUENCIES FAILED: <reason>` and exit 1, and on a 5xx it printed
+**nothing** and let the exception out — so if you shell out and parse stderr for that marker, it was
+not there.
+
+**Read this before you delete your workaround.** Almost everyone hitting this has compensated by
+catching the client's type. Which of the two shapes you wrote decides what happens:
+
+| what your handler looks like today | on 0.6.2 |
+| --- | --- |
+| `except (FrequencyEnrichmentError, GnomadError)` — both | **keeps working, unchanged.** Nothing to do. Drop the client half whenever convenient |
+| `except FrequencyEnrichmentError` — the documented type only | **starts working.** This is the fix; it was silently dead before |
+| `except GnomadError` — the client type *instead of* the pass's | **stops firing.** This is the one that breaks. Add the pass's type before upgrading |
+
+The third row is the whole hazard, and it is why a flat translation was rejected: the obvious repair
+(`raise FrequencyEnrichmentError(...) from exc`) would have broken exactly the consumers who had done
+the sensible thing. The repair is a **subclass** instead, so every `except <Pass>Error` catches
+strictly more than it did and nothing catches less.
+
+**What you gain.** Each pass now has an unavailability subclass, so "the source is down" and "your
+data is wrong" are separable by type rather than by reading `exc.__cause__`:
+
+| pass | catch | source could not be reached |
+| --- | --- | --- |
+| `enrich_frequencies` | `FrequencyEnrichmentError` | `FrequencyUnavailable` |
+| `enrich_literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable` |
+| `enrich_gene_metrics` | `GeneMetricsEnrichmentError` | `GeneMetricsUnavailable` |
+| `check_rsids` / `check_identifiers` | `IdentifierCheckError` | `IdentifierUnavailable` |
+| `enrich_dosage_sensitivity` | `ClinGenError` | `ClinGenUnavailable` |
+| `enrich_gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
+
+Every one is a subclass of the type beside it, and the client's exception stays on `__cause__`. The
+full table, including the passes that deliberately degrade rather than raise, is in
+[ENRICHER § Exception contract](ENRICHER.md).
+
+**Two conflations you may be working around.** `ClinGenError` and `GeneValidityError` each covered
+*"could not fetch the source"* **and** *"the local CSV will not parse"* — opposite histories. If you
+separate them today by inspecting `exc.__cause__` (chained for the fetch, bare for the table), that
+is a private detail you can now stop depending on. **Do not separate them by matching the message**:
+neither string is in the pinned warning-text catalogue of § 2.6, so a reword would silently flip your
+verdict from "unchecked" to "your table is broken".
+
+| Item | Who hits it on 0.6.1 | What to do if you are pinned to 0.6.1 |
+| --- | --- | --- |
+| [RM101](ROADMAP_HISTORY.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover) | anyone calling an enricher pass from Python | Catch the client's type **alongside** the pass's — `except (FrequencyEnrichmentError, GnomadError)`, `except (LiteratureEnrichmentError, EutilsError)`, `except (IdentifierCheckError, EutilsError, httpx.HTTPError)`. The last one needs `httpx` because `OntologyClient` still leaks it on 0.6.1 |
+| same | anyone shelling out to `just-dna-enricher frequencies` / `literature` | A 5xx produces a traceback and no `FREQUENCIES FAILED:` line. Treat a non-zero exit with no marker as a source failure rather than assuming your parse broke |
+| same | anyone distinguishing "ClinGen unreachable" from "our `gene_metrics.csv` is bad" | Read `exc.__cause__` — `None` means the local table. Do not match on the message |
+
+**Not a regression against 0.6.0 or 0.5.4.** Every one of these behaved this way before 0.6 as well;
+`gene_validity`'s conflation has been there since the pass existed. They are recorded against 0.6.1
+because that is when a consumer looked, and because § 7's RM97 row told you the client half was
+finished when it was not.
