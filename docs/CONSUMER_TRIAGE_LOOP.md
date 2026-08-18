@@ -20,8 +20,33 @@ published copy an inbound channel, and a fix sitting in it unadopted is the same
 document is about: something answered somewhere nobody looks. What stays one-way is the **content** —
 the gist never reads this repo's items, only its machinery.
 
-Files are `<gist>/raw/<name>`, and the local names differ for the watcher only
-(`watch-inbox.sh` → `.claude/watch-suggestions.sh`):
+**Check the digest first, and pull the files only when it has moved.** Fetching both scripts and
+diffing them every pass is almost always work for nothing: the gist changes rarely, and the diff is
+noisy enough (below) that reading one is not free either. The gist's own revision id is a digest of
+the whole thing and is public, so the check costs a single unauthenticated request:
+
+```bash
+GIST=54b94bda01812be937b892146d1bb254
+curl -sf "https://api.github.com/gists/$GIST" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
+```
+
+**Adopted through gist revision `ab7e2a89c48d1970e5bae5d4576c7c49a30d06e3`**, committed 2026-08-16 and
+adopted here on 2026-08-18 in `e9a538e`. That pairing is established rather than assumed: the gist has
+not moved since 2026-08-16, so the revision the adoption read is the one it still serves. Same sha
+back means nothing has arrived and the sync-in is finished for that pass; a different one means pull
+the files and read the diff. **Update this line, with its date and commit, whenever an adoption
+lands** — it is the baseline, and a stale one silently re-diffs work already taken.
+
+`history[0]` is the newest entry, checked and not recalled — its `committed_at` equals the gist's
+`updated_at`. Getting that orientation backwards is the failure worth guarding, because it does not
+announce itself: the check would read `unchanged` forever and the inbound channel would look healthy
+while nothing came through it. If `api.github.com` is ever unreachable, the fallback is a conditional
+GET against the raw URLs carrying a stored `ETag`, where a `304` is the same "unchanged" answer. Build
+one or the other, never both.
+
+When the digest has moved, the files are at `<gist>/raw/<name>`, and the local names differ for the
+watcher only (`watch-inbox.sh` → `.claude/watch-suggestions.sh`):
 
 ```bash
 G=https://gist.githubusercontent.com/winternewt/54b94bda01812be937b892146d1bb254/raw
@@ -57,9 +82,11 @@ four (S2, S6, S7, S12 — the four reports ending in a `---`) and they were rest
 documents that do not exist here.
 
 **Push the other way too, and check it in the same pass** — the sync is bidirectional even though each
-direction is a separate act. The branch-pause in `watch-suggestions.sh` (§1) is generic and has **not**
-reached the gist as of 2026-08-17; it is the standing outward debt. Updating the gist is a publish, so
-it is the user's to do — surface it rather than assuming it happened.
+direction is a separate act. Two things are generic and have **not** reached the gist as of 2026-08-18:
+the branch-pause in `watch-suggestions.sh` (§1), and the digest check above, which is a change to the
+pattern and so belongs in the published copy by this document's own rule. That is the standing outward
+debt. Updating the gist is a publish, so it is the user's to do — surface it rather than assuming it
+happened.
 
 **The live document holds only what is unanswered.** An item moves to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) once its reply is written, which is
