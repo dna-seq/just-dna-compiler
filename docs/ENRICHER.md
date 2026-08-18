@@ -2215,7 +2215,30 @@ record made unkeyable. **187 of those collapses had dropped the better-reviewed 
 consequence worth stating separately, because `select_by_gene` orders by `ref` before
 `review_stars DESC`, so which of the pair survived was decided by allele spelling rather than by
 evidence. Distinctness is over the allele *event* and not over records: a re-submission under a second
-`variation_id` is one claim written twice, and coordinate identity could not separate those anyway. And `min_review_stars` defaults to **2**: a panel that
+`variation_id` is one claim written twice, and coordinate identity could not separate those anyway.
+
+**A re-draft repairs the omission and cannot retract the collapse — so the drafter now names what it
+supersedes (S45).** *"Your module needs a re-draft"* reads as a complete instruction and is not one.
+Drafting appends and never mutates, so re-running the fixed drafter over an existing spec adds the
+coordinate-keyed rows **beside** the collapsed rsid-only row rather than replacing it: the module then
+states both the right answer and the wrong one for the same locus, and the stale row is the one
+carrying the mislabelled expansion. Reproduced on `MLH1` at `min_review_stars=2`: a stale module of
+996 rows re-drafts to 1,061 against a fresh draft's 1,030 — **0 identities missing** (every dropped
+record recovered) and **31 present that a fresh draft does not contain**.
+
+Those 31 are invisible from inside the module: `_row_cells` writes no `rsid` on a coordinate-identity
+row, so the obvious predicate — *an rsid-only row whose rsID also appears on a coordinate row* — finds
+**0 of 31**. What can see it is the pass itself, which holds `ambiguous`: an rsid-only row carrying an
+rsID this run is deliberately writing by coordinate is a row no current draft would produce.
+`_superseded_rsid_rows` reports them, aggregated through `examples`, after the append.
+
+**Reported, never removed**, and that is the reporter's own preference for the reason they gave: a
+drafted row is authored material by the time a re-draft runs, a human may have curated its `genotype`,
+`state` and `conclusion`, and deleting curated work to repair a drafting defect is a trade only the
+author can make. Drafting-appends-never-mutates is the rule one file over, and a provider that started
+deleting rows would be the exception to it. The cleaner remediation is still a **fresh directory**
+reconciled against the old one; the notice exists for the author who did the other thing, which is
+what the instruction invited. And `min_review_stars` defaults to **2**: a panel that
 mixes a 0-star "no assertion criteria" submission with a 3-star expert-panel review without saying so
 is worse than one that names its floor.
 

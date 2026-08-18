@@ -34,7 +34,38 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-19 (latest) — 0.6.3: a drafter that silently dropped ClinVar records, and three more from one audit (S41–S44)
+## 2026-08-19 (latest) — 0.6.4: "needs a re-draft" was an incomplete instruction (S45)
+
+**`just-dna-enricher` 0.6.4**; format and compiler stay at **0.6.1**. One fix, three tests, suite
+2776 → 2779. It exists because a consumer measured the half the 0.6.3 entry explicitly did not claim
+to have measured, and the answer was worse than assumed.
+
+**A re-draft repairs S41's omission and cannot retract S41's collapse.** Drafting appends and never
+mutates, so re-running the fixed drafter over an existing spec adds the coordinate-keyed rows
+**beside** the collapsed rsid-only row instead of replacing it. The module then carries both the
+replacement rows and the row they replace — and the stale one is the row bearing the mislabelled
+expansion, since resolution pairs its authored genotype with every locus its rsID resolves to. So the
+remediation named in the 0.6.3 entry leaves a module worse-formed than either the old one or a fresh
+one.
+
+Reproduced independently on `MLH1` at `min_review_stars=2`, every number matching the report: a stale
+module of 996 rows re-drafts to **1,061** against a fresh draft's **1,030** — `added=65,
+already_present=965`, **0 identities missing** and **31 present that a fresh draft does not contain**.
+
+**And they were undetectable from inside the module.** `_row_cells` writes no `rsid` on a
+coordinate-identity row, so the obvious predicate — *an rsid-only row whose rsID also appears on a
+coordinate row* — finds **0 of 31**. The pass itself can see it, because it holds the set of rsIDs it
+is deliberately writing by coordinate this run; an rsid-only row carrying one of those is a row no
+current draft would produce. `_superseded_rsid_rows` now names them after the append, aggregated
+through the house `examples` helper.
+
+**Reported, never removed**, which is the reporter's own preference and the right one: a drafted row
+is authored material by the time a re-draft runs, a human may have curated its `genotype`, `state` and
+`conclusion`, and deleting curated work to repair a drafting defect is a trade only the author can
+make. The cleaner remediation is still a fresh directory reconciled against the old module — the
+notice is for the author who followed the shorter instruction, which is the one we wrote.
+
+## 2026-08-19 — 0.6.3: a drafter that silently dropped ClinVar records, and three more from one audit (S41–S44)
 
 **`just-dna-enricher` 0.6.3**; `just-dna-format` and `just-dna-compiler` stay at **0.6.1** — a partial
 cut, since no code outside the enricher moved. Suite 2761 → 2776, `ruff` clean. Everything here came

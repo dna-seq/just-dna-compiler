@@ -13,12 +13,14 @@ import pytest
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import PartialRow, RowOutcome
 from just_dna_enricher.clinvar_draft import (
+    _MATCH_ON,
     DEFAULT_CLIN_SIG,
     _identity_cells,
     _refusal_summary,
     _row_cells,
     _signature,
     _study_rows,
+    _superseded_rsid_rows,
     draft_gene_panel,
     multi_allelic_rsids,
     sole_expressible_genotype,
@@ -664,4 +666,144 @@ def test_no_identity_collapses_on_a_real_cancer_panel(tmp_path: Path) -> None:
     keyable = [s for s in signatures if s is not None]
     assert len(set(keyable)) == len(keyable), (
         f"{len(keyable) - len(set(keyable))} record(s) share an identity and would be dropped"
+    )
+
+
+# ── a re-draft is additive, so it cannot retract the collapse (S45) ─────────────────────────────
+#
+# Fixing the predicate repairs the *omission* for new drafts and does nothing for a module already
+# drafted under the old one: `append_partial_rows` adds the coordinate-keyed rows and leaves the
+# collapsed rsid-only row in place, because drafting appends and never mutates. The module then
+# carries both the replacement rows and the row they replace — and the stale one is the one bearing
+# the mislabelled expansion. Nothing in the file distinguishes it, so the drafter says so.
+
+
+def _old_multi_allelic_rsids(records) -> set[str]:
+    """The 0.6.2 predicate, restated: the site key carried `ref`, so a mirror pair never fired."""
+    alts_by_site: dict[tuple, set[str]] = {}
+    for record in records:
+        rsid = (record.get("rsid") or "").strip()
+        if not rsid:
+            continue
+        site = (rsid, record.get("chrom"), record.get("start"), record.get("ref"))
+        alts_by_site.setdefault(site, set()).add((record.get("alt") or "").strip())
+    return {site[0] for site, alts in alts_by_site.items() if len(alts) > 1}
+
+
+def test_a_stale_rsid_only_row_is_named_after_a_re_draft(tmp_path: Path) -> None:
+    """The remediation an author actually performs, end to end on the mirror pair.
+
+    Drafts under the old predicate, then re-drafts the same directory with the current one — which is
+    what "your module needs a re-draft" means to someone holding a spec. The coordinate rows arrive,
+    the collapsed row stays, and the run must say which row is now superseded.
+    """
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+
+    ambiguous_old = _old_multi_allelic_rsids(_MIRROR_PAIR)
+    assert ambiguous_old == set(), "the fixture must be the shape the old rule could not see"
+    stale = [
+        PartialRow(
+            model=VariantRow,
+            cells=_row_cells(record, force_coordinate=False),
+            stubbed=("genotype", "state"),
+            match_on=_MATCH_ON,
+        )
+        for record in _MIRROR_PAIR[:1]  # the collapse wrote exactly one row for the pair
+    ]
+    from just_dna_compiler.draft import append_partial_rows
+
+    append_partial_rows(spec_dir, "variants.csv", stale, group_by=("gene",))
+    before = _rows(spec_dir / "variants.csv")
+    assert len(before) == 1 and before[0]["rsid"] == "rs80359609"
+    assert not before[0]["chrom"], "the stale row identifies by rsID alone"
+
+    # now the re-draft, with the current predicate
+    ambiguous = multi_allelic_rsids(_MIRROR_PAIR)
+    fixed = [
+        PartialRow(
+            model=VariantRow,
+            cells=_row_cells(record, force_coordinate=True),
+            stubbed=("genotype", "state"),
+            match_on=_MATCH_ON,
+        )
+        for record in _MIRROR_PAIR
+    ]
+    report = append_partial_rows(spec_dir, "variants.csv", fixed, group_by=("gene",))
+    notices = _superseded_rsid_rows(report.path, ambiguous)
+
+    after = _rows(spec_dir / "variants.csv")
+    assert len(after) == 3, "both coordinate rows were added beside the stale one, none removed"
+    assert len([r for r in after if r["chrom"]]) == 2
+    assert len(notices) == 1, "the superseded row must be reported"
+    notice = notices[0]
+    assert "rs80359609" in notice
+    assert "removed nothing" in notice, "the notice must say the row was kept, not deleted"
+
+
+def test_the_superseded_check_is_silent_on_a_module_drafted_correctly(tmp_path: Path) -> None:
+    """A row is only superseded when *this run* would key that rsID by coordinate.
+
+    The check must not fire on an ordinary rsid-only row, which is the normal identity for the
+    overwhelming majority of a panel — a false positive here would tell an author to delete correct
+    rows, which is worse than the silence it replaces.
+    """
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    from just_dna_compiler.draft import append_partial_rows
+
+    single = [
+        PartialRow(
+            model=VariantRow,
+            cells=_row_cells(_RECORD, force_coordinate=False),
+            stubbed=("genotype", "state"),
+            match_on=_MATCH_ON,
+        )
+    ]
+    report = append_partial_rows(spec_dir, "variants.csv", single, group_by=("gene",))
+    assert _superseded_rsid_rows(report.path, multi_allelic_rsids([_RECORD])) == []
+    # and it stays silent when the rsID is ambiguous but the row already carries its coordinate
+    assert _superseded_rsid_rows(report.path, {"rs99999999"}) == []
+
+
+@_needs_snapshot
+def test_a_real_re_draft_reports_every_row_the_fix_supersedes(tmp_path: Path) -> None:
+    """The reporter's own measurement, on a real gene, asserted as a relationship.
+
+    Every identity a fresh draft produces must be present after a re-draft (nothing is missing), and
+    every identity the re-drafted module has *beyond* the fresh one must be an rsid-only row that the
+    notice names. That second set is what a count alone would hide, and it is the whole finding.
+    """
+    import just_dna_enricher.clinvar_draft as module
+
+    def _identity(row: dict) -> tuple:
+        return tuple((row.get(c) or "").strip() for c in _MATCH_ON)
+
+    stale_dir, fresh_dir = tmp_path / "stale", tmp_path / "fresh"
+    stale_dir.mkdir()
+    fresh_dir.mkdir()
+    kwargs = {"snapshot": _SNAPSHOT, "min_review_stars": 2, "max_citations": 0}
+
+    original = module.multi_allelic_rsids
+    module.multi_allelic_rsids = _old_multi_allelic_rsids
+    try:
+        draft_gene_panel(stale_dir, ["MLH1"], **kwargs)
+    finally:
+        module.multi_allelic_rsids = original
+
+    draft_gene_panel(fresh_dir, ["MLH1"], **kwargs)
+    result = draft_gene_panel(stale_dir, ["MLH1"], **kwargs)
+
+    fresh = {_identity(r) for r in _rows(fresh_dir / "variants.csv")}
+    redrafted = {_identity(r) for r in _rows(stale_dir / "variants.csv")}
+    assert fresh - redrafted == set(), "the re-draft must recover every record the old rule dropped"
+
+    superseded = redrafted - fresh
+    assert superseded, "the fixture must actually have collapsed something"
+    assert all(i[0] and not i[1] for i in superseded), "each is an rsid-only row"
+
+    notice = [w for w in result.warnings if "identify by rsID alone" in w]
+    assert len(notice) == 1, "one aggregated notice, never one line per row"
+    assert f"{len(superseded)} row(s)" in notice[0], (
+        "the count must be the number of superseded rows, not a sample"
     )

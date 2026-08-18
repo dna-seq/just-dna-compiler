@@ -35,6 +35,7 @@ silently changes which variant the row *is*.
 * `curator`, `method` — the spec's `defaults:` block owns those.
 """
 
+import csv
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -340,6 +341,55 @@ def _row_cells(record: dict, *, force_coordinate: bool = False) -> dict | None:
     return cells
 
 
+def _superseded_rsid_rows(path: Path, ambiguous: set[str]) -> list[str]:
+    """Rsid-only rows already in the file whose rsID this run writes with a full coordinate.
+
+    **A re-draft is additive, so it repairs S41's omission and cannot retract S41's collapse (S45).**
+    A module drafted before the predicate was widened holds one rsid-only row where two records
+    belonged; re-running the fixed drafter adds both coordinate-keyed rows and leaves that row in
+    place, because drafting appends and never mutates. The module then states the right answer *and*
+    the wrong one for the same locus — and the wrong one is the row carrying the mislabelled
+    expansion, since resolution pairs its authored genotype with every locus the rsID resolves to.
+
+    Nothing in the file distinguishes them: `_row_cells` writes no `rsid` on a coordinate-identity
+    row, so "an rsid-only row whose rsID also appears on a coordinate row" finds **0 of 31** on the
+    reporter's `MLH1` measurement, reproduced here. What *can* see it is this pass, which holds
+    `ambiguous` — the set of rsIDs it is deliberately not writing by rsID this run. An rsid-only row
+    carrying one of those is a row no current draft would produce.
+
+    **Reported, never removed**, and that is the reporter's own preference for the reason they give:
+    a drafted row is authored material by the time a re-draft runs, a human may have curated its
+    `genotype`, `state` and `conclusion`, and deleting curated work to repair a drafting defect is a
+    trade only the author can make. The rule one file over is the same — drafting appends, it never
+    mutates — so a provider that started deleting rows would be the exception to it.
+    """
+    if not ambiguous or not path.is_file():
+        return []
+    stale: list[str] = []
+    with open(path, encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle):
+            rsid = (row.get("rsid") or "").strip()
+            if not rsid or rsid not in ambiguous:
+                continue
+            # An authored row that carries both is not the shape this is about: it identifies by
+            # coordinate already, and the rsID beside it is descriptive.
+            if (row.get("chrom") or "").strip():
+                continue
+            stale.append(rsid)
+    if not stale:
+        return []
+    return [
+        f"{len(stale)} row(s) already in {path.name} identify by rsID alone "
+        f"({examples(sorted(set(stale)))}) — but this run writes those rsIDs with their full "
+        f"coordinate, because each names more than one allele here. They were most likely drafted "
+        f"before that check was widened (0.6.3), when two ClinVar records collapsed onto one such "
+        f"row. This run has ADDED the coordinate-keyed rows beside them and has removed nothing: "
+        f"drafting never deletes an authored row, and yours may have been curated since. Review "
+        f"each and delete it once its records are covered by the coordinate rows — until then the "
+        f"module carries both the row and its replacements."
+    ]
+
+
 #: How many of a variant's ClinVar-linked papers to draft. `rs1800562` alone carries 84 — a panel
 #: does not need them all, and an author drowning in study rows will not read any. Capped rather than
 #: sampled, and the number dropped is always reported: a silent cap reads as "this is everything".
@@ -557,6 +607,7 @@ def draft_gene_panel(
         spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run
     )
     reports = [report]
+    warnings.extend(_superseded_rsid_rows(report.path, ambiguous))
 
     # Grounding evidence, from ClinVar's own literature links. Without this a drafted panel could not
     # compile at all — `studies.csv` is mandatory and the VCF carries no PMIDs — so the provider
