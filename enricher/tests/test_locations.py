@@ -1,7 +1,7 @@
 """Cache locations: the `.env` has to be loaded before the default directory is computed.
 
-Every assertion here runs in a **subprocess** with a controlled cwd and environment, and that is not
-incidental. The bug is process-scoped ordering — it only shows on the *first* resolve — and
+Every assertion that *resolves* anything runs in a **subprocess** with a controlled cwd and
+environment, and that is not incidental. The bug is process-scoped ordering — it only shows on the *first* resolve — and
 `locations.load_env()` mutates `os.environ` for the rest of the session, so an in-process test would
 both miss the defect and leak the repo's own `.env` into every test that ran after it.
 """

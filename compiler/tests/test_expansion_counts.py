@@ -37,6 +37,7 @@ from just_dna_compiler.compiler import compile_module, content_signature, revers
 from just_dna_format.base import authored_field_names
 from just_dna_format.integrity import content_signature as signature_over_rows
 from just_dna_format.spec import VariantRow
+from just_dna_format.vrs import par_partner
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
@@ -593,8 +594,6 @@ def _same_ref_par_expansion(spec_dir: Path) -> tuple[Path, str, str]:
     wrong for a Y position and the check refuses them — correctly. Empty is the honest cell, and this
     fixture is about `locus_count`, not about identity.
     """
-    from just_dna_format.vrs import par_partner
-
     source = _EXAMPLES / "shox_par1"
     spec_dir.mkdir(parents=True, exist_ok=True)
     (spec_dir / "module_spec.yaml").write_text(
