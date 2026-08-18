@@ -163,6 +163,47 @@ are **zero same-`ref` expansions** in either. The 8,231 matchable rows are the l
 
 ## S42 — `ModuleInfo.version` coerces `'abc'` to `'0.0.0'` rather than refusing it
 
+**Status — accepted as a real defect, filed as [RM103](ROADMAP.md#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
+rather than fixed in this pass, and documented in [SCHEMAS.md](SCHEMAS.md) meanwhile. Your correction
+about the unquoted integer is confirmed, and our own docs did not carry the claim.** Reproduced:
+`ModuleInfo(version="abc").version` is `"0.0.0"`, as are `draft`, `TBD`, `unreleased` and `-`. We then
+took it one step further than the model, and it is worse than your report says — the value **reaches
+the published artifact**: a real compile of a reference example with `version: "abc"` writes
+`identity.version: "0.0.0"` into `manifest.json`.
+
+**Why it is filed rather than repaired today, and the reason is release sizing rather than doubt.**
+Refusing `"abc"` makes a spec that compiles today fail tomorrow, which is the same class as RM50 (a
+PMC id refused by name) and RM48 (a wrong-build coordinate) — both shipped in **0.6.0** as minor work,
+and both are listed in INTEGRATION_0_6 § 1 under *"two checks can newly refuse an author's spec"*
+precisely because a consumer who compiles other people's specs sees CI go red. Legality sizes the
+release here; severity would only order it. Given RM17's history — the coercion exists because the
+pre-0.4 corpus is full of `v2` and `3`, and 0.6 widened it after **26 of 61** foreign modules refused
+on an unquoted integer — we are not going to spring a new refusal on that corpus inside a patch. The
+item carries three candidates, including why *coerce to an unmistakable sentinel* is a dead end: every
+three-number string is somebody's real version, which is your complaint restated.
+
+**One thing your report will want, because it changes what you can do today.** You tested the model
+directly, where the coercion is indeed silent — but the **pipeline is not**. Both `compile_module` and
+`validate_spec` already emit a warning naming both values: *"module.version 'abc' was read as SemVer
+'0.0.0'. It is advisory either way … but the module now compiles under the coerced value."* We checked
+the two for parity and they report it identically, so a build that greps its warnings catches this
+now. `ModuleInfo.version_coerced_from` holds the authored string for the same purpose. That is a
+mitigation rather than a fix — it does not stop the bad value being published — but it is the
+difference between invisible and merely quiet, and it is available before RM103 lands.
+
+**Your correction, checked and standing.** `ModuleInfo(version="1").version` is `"1.0.0"` on 0.6.1, so
+"an unquoted `1` loads as an int and is rejected" is indeed false — that was the **pre-0.6** state, and
+RM17's widening at `mode="before"` is exactly what fixed it (26 of 61 foreign modules, every one an
+integer). We grepped our own documents for the stale claim and none carries it: AGENT_NOTES
+`@yaml-version-int`, the CHANGELOG entry and DOGFOOD_0_6_FINDINGS D7-3 all describe the int refusal as
+history. You have the hazard right — it is the unquoted **decimal**, which stays refused because YAML
+reads `1.10` as `1.1` and the author's text is gone before any validator runs.
+
+**Documented now**: SCHEMAS.md's identity-keys section states the digitless behaviour, that it reaches
+`manifest.identity.version`, that both entry points warn, and that RM103 is the open question — so the
+next person meets it in the reference rather than in a manifest.
+<!-- triaged: uncut · sha bf9b69206ba1 -->
+
 Same audit. `ModuleInfo(version='abc').version` returns `'0.0.0'`. A version is an identity key, and
 `0.0.0` is indistinguishable from a deliberate pre-release, so an unparseable string becomes a
 plausible-looking claim rather than an error. `1.5` (a float) is refused with an excellent message about

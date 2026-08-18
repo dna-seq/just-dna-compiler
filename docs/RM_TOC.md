@@ -212,7 +212,7 @@ examples recompile byte-identical. See
 
 ## ⏳ Open, no release decided — [ROADMAP.md § Active items](ROADMAP.md#active-items)
 
-**One item as of 0.6.2 (RM102), and the heading was kept while it was empty.** Items whose release nobody has argued yet belong
+**Two items as of 0.6.2 (RM102, RM103), and the heading was kept while it was empty.** Items whose release nobody has argued yet belong
 here rather than in a `ROADMAP_0_7`/`ROADMAP_1_0` file, and **the section exists because there was
 nowhere to index one** — every other heading names a release or a terminal state, so RM88 and RM89
 would have been filed into a document this index could not point at, which is the exact failure this
@@ -221,6 +221,8 @@ consumer answer it was waiting on, and **RM88 in 0.6.1** once the policy it was 
 decided. Both stay indexed under their release below, because an item that shipped is exactly what
 this index exists to still be able to find — and the heading stays for the next item filed before its
 release is argued.
+
+- ⏳ **[RM103](ROADMAP.md#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)** — **open.** `ModuleInfo(version="abc").version` is `"0.0.0"`: `normalize_version` strips every non-digit, finds none, pads to three zeros — documented in its docstring and pinned by a test, so deliberate, but `0.0.0` is a legal SemVer and a plausible pre-release, so an unreadable string becomes a confident claim. Verified to reach `manifest.identity.version` on a real compile. The RM17 coercion itself is not in question (26 of 61 foreign modules needed it) — only the **digitless** case, where there is no intent to read. Filed rather than fixed because a new refusal is the RM50/RM48 class, which shipped as **minor**: legality sizes the release. Candidates in the item, including why no sentinel SemVer exists. Note the compiler *already* warns naming both values, in `compile` and `validate` alike — the silence is the model's alone. · *from* S42 (just-dna-lite) · *also in* SCHEMAS, CHANGELOG
 
 - ⏳ **[RM102](ROADMAP.md#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch)** — **open, and it is the design half only.** The enricher's `load_dotenv` call writes a whole `.env` into `os.environ` from *library* paths, so asking where the ClinVar cache is can hand a process credentials for sources it never named; `override=False` skips a variable that is **present**, so deleting one is what lets the file supply it, and a consumer's test isolation was undone that way. The bug half — `load_dotenv_file=False` reaching none of the six resolvers, because each computes its default directory as an *argument* through an unconditionally-loading `_cache_dir` — is **repaired in the tree (0.6.3, uncut)** with the leak demonstrated over all six. What stays open is whether the default should flip (silent for every caller who never passed it — S14's shape, so an actionable deprecation first) and the four credential paths that carry no flag at all by `@credential-where-read`. · *from* S39 (just-module-creator) · *also in* ENRICHER, CHANGELOG
 

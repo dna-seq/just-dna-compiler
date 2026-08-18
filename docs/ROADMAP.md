@@ -163,7 +163,8 @@ Two consequences worth stating outright:
 
 # Active items
 
-**One: [RM102](#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch).**
+**Two: [RM102](#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch)
+and [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote).**
 RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
 [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
 with their rationale and with the five places the eight filings turned out to understate what was
@@ -262,6 +263,61 @@ the credential paths is a knob that reads as an assurance and is not one.
 **Not blocking anything.** The behaviour is documented now (ENRICHER § cache locations names the
 mutation, the sharp edge in `override=False`, and the switch), which was the reporter's fallback ask
 and is what the patch line can honestly carry.
+
+## RM103 — a version with no digits coerces to `0.0.0`, which is a real version nobody wrote
+
+**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** format ·
+**Motivating case** S42 (just-dna-lite, in CONSUMER_SUGGESTIONS_HISTORY.md)
+
+`ModuleInfo(version="abc").version` is `"0.0.0"`. `normalize_version` strips every non-digit, finds
+nothing, and pads to three zeros — documented in its own docstring (*"a value with no digits →
+`0.0.0`"*) and pinned by a test, so this is deliberate behaviour rather than an oversight. The
+reporter's objection is nonetheless right, and it is about *which* value is invented: `0.0.0` is a
+legal SemVer and a plausible pre-release marker, so an unreadable string becomes a confident claim
+instead of an error. Verified to reach the published artifact — `identity.version` in `manifest.json`
+reads `0.0.0`, with nothing beside it recording that the author wrote `abc`.
+
+**The coercion itself is not in question and must not be undone.** RM17 decided coerce-rather-than-
+reject because the pre-0.4 corpus is full of `v2` and `3`, and 0.6 widened it at `mode="before"` after
+**26 of 61** foreign modules refused on an unquoted integer. Every digit-bearing case — `v2`, `3`,
+`1.5`, `v1.2.3-beta` — is working as intended and stays. What is at issue is the *digitless* case
+alone, where there is no authorial intent to read and the function invents one.
+
+**Why it is filed rather than fixed: a new refusal is a tightening, and tightenings size the release.**
+Refusing `version: "abc"` makes a spec that compiles today fail tomorrow, which is exactly the RM50 /
+RM48 class — both shipped in **0.6.0** as minor work, not as a patch, and INTEGRATION_0_6 § 1 lists
+them under *"two checks can newly refuse an author's spec"* precisely because a consumer compiling
+other people's specs (just-dna-pipelines) sees CI go red. Severity orders the queue; legality sizes the
+release, and this one is a minor.
+
+**Three candidate repairs, and what each costs.**
+
+- *Refuse a digitless version.* The reporter's implicit ask and the cleanest end state: an
+  unparseable version is an error, with a message naming the fix the way the float branch already
+  does. It is a tightening (above), and under the charter's cadence the honest route to it is a
+  deprecation an author can act on — warn in one minor, refuse in the next — since there is a real
+  corpus out there and we have already been surprised once by what it contains.
+- *Keep coercing but record it in the manifest.* `version_coerced_from` already holds the authored
+  text and the compiler already **warns**, naming both values (*"module.version 'abc' was read as
+  SemVer '0.0.0'"*) — `validate_spec` reports it identically, so there is no parity gap. Surfacing
+  that string in the manifest would make the fabrication auditable rather than invisible, and it is
+  purely additive. It does not stop the bad value being published, so it is a complement to the first
+  option and not a substitute.
+- *Coerce to something that cannot be mistaken for a version.* Rejected: there is no such SemVer.
+  Every three-number string is a legal version, so any sentinel is someone's real one — which is the
+  whole complaint, restated.
+
+**What the reporter should do meanwhile, and it is not nothing.** The compiler already tells them:
+both `compile` and `validate` emit the coercion warning with the authored string in it, so a build
+that greps its warnings catches this today. The gap is between the *model* (silent) and the
+*pipeline* (loud), and the reporter was testing the model directly.
+
+**One correction to their report, in their favour.** They note their own CLAUDE.md claimed *"an
+unquoted `1` in YAML loads as an int and is rejected"* and is wrong on 0.6.1 — `1` coerces to
+`1.0.0`. Confirmed, and our documents do not carry that claim: AGENT_NOTES `@yaml-version-int`,
+CHANGELOG and DOGFOOD_0_6_FINDINGS all describe the int refusal as the **pre-0.6** state that RM17's
+widening fixed. The hazard is the unquoted *decimal*, which is still refused and deliberately so.
+
 
 
 # Not format scope

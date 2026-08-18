@@ -1755,6 +1755,20 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   deliberately in the first group, not the third — it is a genuine advisory authored field, coerced to
   SemVer (RM17) rather than stripped.
 
+  **What that coercion does with a version holding no digits at all: it returns `0.0.0` (S42).**
+  `normalize_version` strips every non-digit and pads to three parts, so `abc`, `draft` and
+  `unreleased` all become `0.0.0` — and that value reaches `manifest.identity.version` on a real
+  compile. It is the documented behaviour rather than a slip, but `0.0.0` is a legal SemVer and reads
+  as a deliberate pre-release, so an unparseable string arrives downstream as a confident claim.
+  **`compile` and `validate` both warn**, naming the authored string and the coerced result
+  (`module.version 'abc' was read as SemVer '0.0.0'`), and `ModuleInfo.version_coerced_from` holds the
+  original for a caller that wants to report it — so the fabrication is visible to a pipeline and
+  silent only to code that instantiates the model directly. Whether the digitless case should refuse
+  outright is **RM103**: it would be a new refusal, which sizes as a minor rather than a patch. Every
+  digit-bearing case (`v2` → `2.0.0`, `3` → `3.0.0`, `v1.2.3-beta` → `1.2.3`) is working as intended
+  and is not in question; a **float** is refused outright, because YAML reads `1.10` as `1.1` and the
+  authored text is gone before any validator sees it.
+
   There is deliberately **no enumeration of "what 0.4 newly rejects"**, because the newly-rejected set
   is the *complement* of a finite set rather than a finite set: pre-0.4 dropped every unknown key
   silently, so "what moved from warn to reject" is every name a model does not declare. What is
