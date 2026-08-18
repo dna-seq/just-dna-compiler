@@ -63,8 +63,13 @@ def group_span(lines: list[str], before: int) -> tuple[int, int] | None:
     consumer appends one item to an empty inbox — took the live file's `# <title>` *and its whole
     preamble* (the "this file is the inbox" blurb) into the history file as that item's heading. The
     fingerprint check could not catch it: fingerprints cover the consumer's prose alone, so the move
-    verified clean while the history file grew a duplicate of the inbox's front matter and the
-    preceding section's own fingerprint shifted underneath it.
+    verified clean while the history file grew a duplicate of the inbox's front matter.
+
+    It does **not** disturb the section above the injection, and an earlier version of this docstring
+    said it did — the heading is separated by one blank line and `fingerprint()` ends in `.strip()`,
+    so the preceding hash is unaffected. CONSUMER_TRIAGE_LOOP.md § 6 had the correction; this
+    docstring kept the tempting story, which is the same "establish it, then write it" failure one
+    layer down.
 
     The first `# ` heading in a document is its title by convention and both of these files have one,
     so a group heading is any *later* `# `. A section with none returns None, and the caller says so
