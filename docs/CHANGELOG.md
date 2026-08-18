@@ -34,7 +34,47 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-18 (latest) — 0.6.2: a pass owes its own exception type, not its client's (S37 / RM101)
+## 2026-08-18 (latest) — the outward half of the gist sync, and the off-switch that was not one
+
+**No package is cut for this.** Loop maintenance again: the only executable change is to
+`.claude/watch-suggestions.sh`, which ships in nothing, and the rest is
+[CONSUMER_TRIAGE_LOOP.md](CONSUMER_TRIAGE_LOOP.md) plus the published copy of the loop. The live
+consumer inbox is empty and stayed empty, and the ledger read all-`current` over both history files
+before and after.
+
+**The sync is cheaper to start: check a digest, fetch only when it moves.** Pulling both scripts from
+the gist and diffing them at the head of every pass is work for nothing in the normal case — the
+upstream changes rarely, and the diff is deliberately noisy because the published copy is
+parameterized. The gist's own revision id is a public digest of the whole thing, so one unauthenticated
+API request answers the only question the sync-in asks first. The baseline lives in the runbook rather
+than a side-car file, on the same reasoning as the in-document ledger, and it is pinned to a revision
+established rather than assumed: the gist had not moved since 2026-08-16, and both local adoptions are
+later, so the revision `e9a538e` read is the one it still served.
+
+**The standing outward debt is discharged.** The 2026-08-17 entry above closed naming it — the
+watcher's branch-pause had not reached the gist — and the digest check joined it, since a change to the
+*pattern* belongs in the published copy by that document's own rule. Both are in gist revision
+`bd793a8c`, genericized: the branch-pause derives its work tree from the watched file rather than from
+the script's own layout, and never fires outside a git work tree at all, because a generic adopter may
+be running with no repo.
+
+**Porting it forced a correction the pattern had been carrying.** The gist's "why not git" gave two
+fatal reasons, one being *the loop must not commit* — which stopped being a property of the design here
+when the unattended permit was granted, and a watcher that pauses precisely **because** the loop commits
+cannot sit in a document denying that it does. The surviving reason is fatal alone (a reporter may
+commit their own addition, and a diff-based ledger then sees nothing), so the design holds; the expired
+reason is recorded rather than deleted, because a design defended by two reasons is worth re-checking
+when one of them goes.
+
+**And the port found a real defect in our own watcher.** `BRANCH=${BRANCH:-main}` treats an explicitly
+empty value as unset, so `BRANCH=` — the one thing anybody would type to switch the pause off — restored
+`main` and switched it on. Fixed in both copies to `${BRANCH-main}`. It surfaced only because the
+off-switch was *run* in a sandbox rather than read: the two spellings behave identically for every value
+except the empty one, which is the value no test reaches by accident. The same rehearsal covered
+`main → branch → main`, an edit written while paused arriving in the resume event, and a non-git
+directory never pausing.
+
+## 2026-08-18 — 0.6.2: a pass owes its own exception type, not its client's (S37 / RM101)
 
 **`just-dna-enricher` 0.6.2 — cut and tagged `v0.6.2`. A partial cut**: `just-dna-format` and
 `just-dna-compiler` have no diff since `v0.6.1` and stay there, which is the normal shape here (schema
