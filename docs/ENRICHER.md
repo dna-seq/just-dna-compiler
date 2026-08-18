@@ -707,6 +707,20 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 automatically (`locations.load_env`, walking up from CWD). Every resolver returns `None` rather than
 guessing when nothing is there.
 
+**That load writes into `os.environ`, and it is a library path rather than a CLI one — pass
+`load_dotenv_file=False` if that is not wanted.** `load_dotenv` sets every variable the file holds, not
+only the cache ones, so a process that merely asks where the ClinVar cache is inherits whatever
+credentials sit in the nearest `.env` above its working directory. `override=False` means a variable
+already **present** is kept — which reads as the safe direction and has one sharp edge: *deleting* a
+variable is what lets the file supply it, so a test isolating itself with `del os.environ[...]` (or
+`monkeypatch.delenv`) is un-isolated by the next resolve. Set it empty instead; that is the same rule
+the enricher's own tests follow. Every resolver and every `default_*_cache_dir` takes
+`load_dotenv_file`, and since 0.6.3 (in the tree, uncut) passing `False` really does reach the load —
+before that it reached none of the six, because the default directory is computed as an *argument* and
+loaded the file on its own way in (S39). The credential paths — `net`, `eutils`, `literature`,
+`pharmvar` — call `load_env()` with no flag at all, so a caller who wants nothing loaded anywhere still
+has to neutralize the loader; **RM102** is the open item for the whole question.
+
 Inside a cache the layout is fixed, because **four parties have to agree on it** — builder writes,
 publisher uploads, provisioner fetches, reader queries — and every past disagreement was silent:
 
@@ -887,6 +901,16 @@ from a failure.
   `draft-panel --offline` refusing with *"no ClinVar snapshot found"* for a snapshot `cache status`
   reported present, and a test module whose first skip-guard silently skipped. One load, six resolvers,
   both CLI paths; `override=False`, so a real environment variable still wins.
+
+  **The same argument-position evaluation made `load_dotenv_file=False` a knob that did nothing, in all
+  six resolvers, until 0.6.3 (S39).** The load above was unconditional, so it ran before the resolver
+  had looked at its own flag — and a caller passing `False` still had the whole `.env` written into
+  `os.environ`. The flag is now threaded through `_cache_dir` and the six `default_*_cache_dir`
+  helpers rather than the load being removed: the unconditional load is the repair described above, and
+  the `True` path is byte-identical. `test_locations.py` pins both directions **and** walks the two
+  families asserting each takes the parameter, so a seventh snapshot's resolver cannot quietly reopen
+  it. Same shape as the watcher's `${BRANCH:-main}`: a knob's disabling value is its own case and needs
+  its own probe, not a reading.
 - **`locations.read_release(reference)`** — a snapshot's `release.json` as a dict, or `None` when it is
   absent or unreadable. Written by every builder and, until 0.5.2, read by nothing but `cache status`;
   it is what lets `enrich()` compare a module's `panel:` pin against the snapshot in front of it. `None`

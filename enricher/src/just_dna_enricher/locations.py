@@ -130,9 +130,9 @@ def load_env(override: bool = False) -> str | None:
     return None
 
 
-def default_ensembl_cache_dir() -> Path:
+def default_ensembl_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/ensembl_variations` directory, matching just-dna-lite's convention."""
-    return _cache_dir(ENSEMBL_SUBDIR)
+    return _cache_dir(ENSEMBL_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
 def resolve_ensembl_reference(
@@ -149,7 +149,9 @@ def resolve_ensembl_reference(
         load_env()
 
     candidate = ensembl_cache or os.getenv("JUST_DNA_ENSEMBL_CACHE")
-    search_dir = Path(candidate) if candidate else default_ensembl_cache_dir()
+    search_dir = (
+        Path(candidate) if candidate else default_ensembl_cache_dir(load_dotenv_file=load_dotenv_file)
+    )
 
     # Explicit pointing at a specific DuckDB file.
     if search_dir.is_file() and search_dir.suffix == ".duckdb":
@@ -168,7 +170,7 @@ def resolve_ensembl_reference(
     return None
 
 
-def _cache_dir(subdir: str) -> Path:
+def _cache_dir(subdir: str, *, load_dotenv_file: bool = True) -> Path:
     """`<base>/<subdir>`, where `<base>` is `$JUST_DNA_PIPELINES_CACHE_DIR` or the platformdirs cache.
 
     Every snapshot shares one base so a single just-dna-lite deployment's cache serves all of them.
@@ -187,8 +189,18 @@ def _cache_dir(subdir: str) -> Path:
     module whose first skip-guard silently skipped. Loading here fixes all six resolvers and both CLI
     paths at once, because this is the one function all of them go through. `override=False`, so a
     real environment variable — and a test's deliberately empty one — still wins.
+
+    **`load_dotenv_file=False` has to reach here or it means nothing, and until 0.6.3 it did not
+    (S39).** The load above is unconditional, and each resolver's default directory goes through it —
+    as an *argument*, so it ran before the resolver had even looked at its own flag. A caller asking
+    for no `.env` therefore got one loaded anyway, in all six resolvers, and `load_dotenv` mutates the
+    whole process environment: a consumer's test that had deleted a credential from `os.environ` had it
+    refilled from a developer's `.env`, because `override=False` skips a variable that is *present* and
+    deleting it is exactly what lets the file win. The flag is threaded rather than the load removed —
+    the unconditional load is itself the repair described above, and the True path is unchanged.
     """
-    load_env()
+    if load_dotenv_file:
+        load_env()
     base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
     root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
     return root / subdir
@@ -230,29 +242,29 @@ def _resolve_parquet_cache(
     return None
 
 
-def default_clinvar_cache_dir() -> Path:
+def default_clinvar_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/clinvar` directory (same base as the Ensembl cache)."""
-    return _cache_dir(CLINVAR_SUBDIR)
+    return _cache_dir(CLINVAR_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
-def default_constraint_cache_dir() -> Path:
+def default_constraint_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/gnomad_constraint` directory (same base as the other two caches)."""
-    return _cache_dir(CONSTRAINT_SUBDIR)
+    return _cache_dir(CONSTRAINT_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
-def default_clinpgx_cache_dir() -> Path:
+def default_clinpgx_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/clinpgx` directory — the ClinPGx clinical-annotation snapshot."""
-    return _cache_dir(CLINPGX_SUBDIR)
+    return _cache_dir(CLINPGX_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
-def default_cpic_cache_dir() -> Path:
+def default_cpic_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/cpic` directory — the CPIC allele/diplotype/recommendation snapshot."""
-    return _cache_dir(CPIC_SUBDIR)
+    return _cache_dir(CPIC_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
-def default_pharmvar_cache_dir() -> Path:
+def default_pharmvar_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/pharmvar` directory — operator-built only (see `PHARMVAR_SUBDIR`)."""
-    return _cache_dir(PHARMVAR_SUBDIR)
+    return _cache_dir(PHARMVAR_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
 def resolve_constraint_reference(
@@ -265,7 +277,8 @@ def resolve_constraint_reference(
     ``.duckdb``), and a bare ``.parquet`` may be pointed at directly since the snapshot is one file.
     """
     return _resolve_parquet_cache(
-        constraint_cache, "JUST_DNA_GNOMAD_CONSTRAINT_CACHE", default_constraint_cache_dir(),
+        constraint_cache, "JUST_DNA_GNOMAD_CONSTRAINT_CACHE",
+        default_constraint_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file, accept_bare_file=True,
     )
 
@@ -282,7 +295,8 @@ def resolve_clinvar_reference(
     the enricher's `download.ensure_clinvar_snapshot` or the deployment's job.
     """
     return _resolve_parquet_cache(
-        clinvar_cache, "JUST_DNA_CLINVAR_CACHE", default_clinvar_cache_dir(),
+        clinvar_cache, "JUST_DNA_CLINVAR_CACHE",
+        default_clinvar_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 
@@ -298,7 +312,8 @@ def resolve_clinpgx_reference(
     `download.ensure_clinpgx_snapshot`.
     """
     return _resolve_parquet_cache(
-        clinpgx_cache, "JUST_DNA_CLINPGX_CACHE", default_clinpgx_cache_dir(),
+        clinpgx_cache, "JUST_DNA_CLINPGX_CACHE",
+        default_clinpgx_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 
@@ -308,7 +323,8 @@ def resolve_cpic_reference(
 ) -> Path | None:
     """Locate a built CPIC snapshot without downloading (`$JUST_DNA_CPIC_CACHE`)."""
     return _resolve_parquet_cache(
-        cpic_cache, "JUST_DNA_CPIC_CACHE", default_cpic_cache_dir(),
+        cpic_cache, "JUST_DNA_CPIC_CACHE",
+        default_cpic_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 
@@ -323,6 +339,7 @@ def resolve_pharmvar_reference(
     PharmVar leg degrades exactly as it does when no key is configured.
     """
     return _resolve_parquet_cache(
-        pharmvar_cache, "JUST_DNA_PHARMVAR_CACHE", default_pharmvar_cache_dir(),
+        pharmvar_cache, "JUST_DNA_PHARMVAR_CACHE",
+        default_pharmvar_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )

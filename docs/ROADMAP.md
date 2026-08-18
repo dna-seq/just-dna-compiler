@@ -35,8 +35,9 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.6.1 is the current line** — all three packages read `0.6.1`, tagged and built into
-`dist/`. `schema_version` stays `"1.0"` and has since 0.4. **Tagged is not published**: whether a
+**Status:** **0.6.2 is the current line** — `just-dna-enricher` reads `0.6.2`, tagged and built into
+`dist/`; format and compiler stay at `0.6.1`, which is a partial cut and normal here (RM101 touched
+only the enricher). `schema_version` stays `"1.0"` and has since 0.4. **Tagged is not published**: whether a
 version is installable from PyPI is a separate step and the maintainer's call, so check
 [CHANGELOG.md](CHANGELOG.md) before promising a field to anyone. 0.5.0 was released to PyPI on
 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package.
@@ -162,7 +163,8 @@ Two consequences worth stating outright:
 
 # Active items
 
-**None.** RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
+**One: [RM102](#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch).**
+RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
 [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
 with their rationale and with the five places the eight filings turned out to understate what was
 there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
@@ -207,6 +209,60 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
+
+## RM102 — the enricher loads a `.env` into `os.environ` from library paths, and only half of that has an off-switch
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** S39 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
+
+**The half that is already fixed is not this item.** `load_dotenv_file=False` reached none of the six
+cache resolvers — the default directory is computed as an *argument*, and `_cache_dir` loaded the file
+unconditionally on its way in — so the knob did nothing at all. That is a defect against the
+parameter's own contract and it is repaired in the tree (0.6.3, uncut), with the leak demonstrated
+before and after over all six resolvers. What is filed here is everything the repair does **not**
+reach, and it is a design question rather than a bug.
+
+**What a consumer actually meets.** `load_dotenv` writes the whole file into `os.environ`, not the
+cache variables alone, so a process that asks where the ClinVar cache is inherits whatever credentials
+sit in the nearest `.env` above its working directory — for a service, credentials for sources it never
+asked about. `override=False` reads as the cautious direction and hides the sharp edge: it skips a
+variable that is **present**, so *deleting* one is exactly what lets the file supply it. S39's reporter
+lost a test's isolation that way and spent an hour inside their own fixture, because the failure is
+green on CI (no `.env` there) and different on every developer's machine. Their own repair —
+sweeping `sys.modules` and replacing every bound `load_dotenv` with a no-op — is the right defence
+today and stays right whatever this item decides, since a `from dotenv import load_dotenv` binding is
+per-module and patching `dotenv` reaches none of them.
+
+**Two candidate repairs, and what is wrong with each.**
+
+- *Flip the default to `load_dotenv_file=False` and leave loading to the entry point.* The machinery
+  exists and the shape is right: a CLI loading `.env` is ordinary, a library function doing it while
+  answering "where is the cache" is not. But a default flip is **silent for every caller who never
+  passed the parameter** — nothing raises, nothing warns, and a deployment that pointed its cache
+  through `.env` alone simply stops finding it, which is the "the cache is right there" report the
+  unconditional load was added to end. That is S14's shape: the addition being legal does not make the
+  change legal. Under the charter's cadence a deprecation has to be **actionable**, so the honest
+  route is a release that warns when a load would have happened and no explicit choice was made, then
+  the flip — which is a minor's worth of work, not a patch's.
+- *Narrow it to the cache variables — load the file, set only `JUST_DNA_*`.* Tempting, and it keeps
+  every existing deployment working. It is wrong for a different reason: it makes the enricher a
+  filter over somebody else's file, so a `.env` holding `NCBI_API_KEY` (which this codebase reads, by
+  `@credential-where-read`) would need that name on the allowlist too, and the allowlist is then a
+  hand-kept list of every variable any tier might ever read — the exact registry-not-a-list defect
+  this repo keeps repairing. It also cannot answer the reporter's real complaint, which is about
+  mutating the process environment at all rather than about which keys.
+
+**And the flagless half.** `net`, `eutils`, `literature` and `pharmvar` call `load_env()` with **no
+parameter**, deliberately — a credential has to be loaded where it is read (`@credential-where-read`,
+RM100). So a caller who passes `load_dotenv_file=False` everywhere still has `os.environ` mutated by
+the first network client they construct, and no switch exists to stop it. Whatever this item decides
+has to decide it for both halves or it decides nothing: a knob that covers the cache resolvers and not
+the credential paths is a knob that reads as an assurance and is not one.
+
+**Not blocking anything.** The behaviour is documented now (ENRICHER § cache locations names the
+mutation, the sharp edge in `override=False`, and the switch), which was the reporter's fallback ask
+and is what the patch line can honestly carry.
+
 
 # Not format scope
 

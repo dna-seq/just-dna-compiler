@@ -6,6 +6,7 @@ incidental. The bug is process-scoped ordering — it only shows on the *first* 
 both miss the defect and leak the repo's own `.env` into every test that ran after it.
 """
 
+import inspect
 import os
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from just_dna_enricher import locations
 
 _PROBE = """
 from just_dna_enricher.locations import default_clinvar_cache_dir, resolve_clinvar_reference
@@ -95,3 +97,100 @@ def test_a_real_environment_variable_still_outranks_the_dotenv(dotenv_only_cache
         capture_output=True, text=True, check=True,
     )
     assert f"FIRST {elsewhere / 'clinvar'}" in done.stdout
+
+
+# ── the off-switch (S39) ────────────────────────────────────────────────────────────────────────
+#
+# `load_dotenv_file=False` reached none of the six resolvers until 0.6.3: each passes its
+# `default_*_cache_dir()` as an *argument*, and that helper loaded the `.env` unconditionally, so the
+# load happened before the resolver had looked at its own flag. Two properties are worth pinning
+# separately — that the knob works, and that every resolver *has* it — because the second is what a
+# seventh snapshot would silently break.
+
+#: A variable no real `.env` has, so a leak cannot be mistaken for the developer's own environment.
+_MARKER = "JUST_DNA_S39_PROBE_TOKEN"
+
+_LEAK_PROBE = f"""
+import os
+from just_dna_enricher import locations
+os.environ.pop({_MARKER!r}, None)
+locations.{{resolver}}(load_dotenv_file={{flag}})
+print("MARKER", os.environ.get({_MARKER!r}, "unset"))
+"""
+
+#: The pre-fix arrangement, restored in-process: `_cache_dir` ignoring the flag it is handed.
+_LEAK_PROBE_WITHOUT_THE_FIX = f"""
+import os
+import just_dna_enricher.locations as loc
+_real = loc._cache_dir
+loc._cache_dir = lambda subdir, *, load_dotenv_file=True: _real(subdir, load_dotenv_file=True)
+os.environ.pop({_MARKER!r}, None)
+loc.{{resolver}}(load_dotenv_file=False)
+print("MARKER", os.environ.get({_MARKER!r}, "unset"))
+"""
+
+
+def _resolver_names() -> list[str]:
+    """Every `resolve_*_reference` the module publishes, walked rather than listed.
+
+    A hand-kept list is the defect this repo keeps meeting: it is complete on the day it is written
+    and silently short afterwards. The seventh snapshot's resolver joins these tests by existing.
+    """
+    return sorted(n for n in dir(locations) if n.startswith("resolve_") and n.endswith("_reference"))
+
+
+@pytest.fixture
+def dotenv_with_a_credential(tmp_path) -> Path:
+    """A working directory whose `.env` holds a credential-shaped variable and nothing else."""
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / ".env").write_text(f"{_MARKER}=leaked_from_the_dotenv\n", encoding="utf-8")
+    return work
+
+
+@pytest.mark.parametrize("resolver", _resolver_names())
+def test_load_dotenv_file_false_leaves_the_process_environment_alone(
+    resolver, dotenv_with_a_credential
+) -> None:
+    """The consumer's report (S39): a library call refilling a variable a test had deleted.
+
+    `load_dotenv(override=False)` skips a variable that is **present**, so deleting one is precisely
+    what lets the file win — which is why the leak shows up as a test's own isolation being undone.
+    """
+    out = _run(_LEAK_PROBE.format(resolver=resolver, flag="False"), dotenv_with_a_credential)
+    assert out["MARKER"] == "unset"
+
+
+@pytest.mark.parametrize("resolver", _resolver_names())
+def test_the_default_still_loads_the_dotenv(resolver, dotenv_with_a_credential) -> None:
+    """The other half: the flag is what did it, not a fixture that failed to write a `.env`.
+
+    The unconditional load is a fix in its own right (three "the cache is right there" reports), so
+    the repair threads the flag rather than removing the load.
+    """
+    out = _run(_LEAK_PROBE.format(resolver=resolver, flag="True"), dotenv_with_a_credential)
+    assert out["MARKER"] == "leaked_from_the_dotenv"
+
+
+@pytest.mark.parametrize("resolver", _resolver_names())
+def test_without_the_fix_the_off_switch_really_did_leak(resolver, dotenv_with_a_credential) -> None:
+    """The demonstration on the old arrangement, not an assertion about it."""
+    out = _run(_LEAK_PROBE_WITHOUT_THE_FIX.format(resolver=resolver), dotenv_with_a_credential)
+    assert out["MARKER"] == "leaked_from_the_dotenv"
+
+
+def test_every_resolver_and_default_dir_takes_the_off_switch() -> None:
+    """The knob is only as complete as the set of functions carrying it.
+
+    Both families are walked: a resolver that forgot the parameter, or a `default_*_cache_dir` that
+    cannot be told, puts the leak straight back for that one snapshot.
+    """
+    named = _resolver_names() + sorted(
+        n for n in dir(locations) if n.startswith("default_") and n.endswith("_cache_dir")
+    )
+    assert len(named) == 12, f"expected six resolvers and six default dirs, walked {named}"
+    without = [
+        n for n in named
+        if "load_dotenv_file" not in inspect.signature(getattr(locations, n)).parameters
+    ]
+    assert without == [], f"cannot be told to leave the environment alone: {without}"
