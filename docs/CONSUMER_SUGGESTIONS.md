@@ -215,6 +215,58 @@ the unquoted *decimal*, not the unquoted integer.
 
 ## S43 — `clinvar_draft` folds `likely_pathogenic` into `pathogenic=True` and never sets the `likely_pathogenic` column
 
+**Status — the fold is deliberate and stays; the column is worse than you found and is now documented
+as permanently unwritten, which is your second option. [SCHEMAS.md](SCHEMAS.md) carries it and three
+tests pin it.** Reproduced on our own shipped `hfe_hemochromatosis`, which the drafter produced: its
+one `clin_sig=likely_pathogenic` row carries `pathogenic=true`, and `likely_pathogenic` is `False` on
+every row of the artifact.
+
+**The fold is 0.3 compatibility, and you were right to suspect it had a history.** `pathogenic` and
+`benign` are the legacy booleans P8 pins — required-ish authoritative since 0.3, never demotable
+inside a major — and the four-tier distinction lives on `clin_sig`, the orthogonal axis added beside
+them. `derive.pathogenic_from_clin_sig` folds both pathogenic tiers to `True` and
+`clin_sig_from_booleans` states the loss in its own docstring: *"legacy cannot recover
+`likely_pathogenic`/`likely_benign`"*. `clinvar_draft` is doing what the schema says. Your read path
+already prefers `clin_sig`, which is the correct one.
+
+**What you found is sharper than "never set by the drafter", and this is the part worth your
+attention: `likely_pathogenic` and `likely_benign` cannot be written by anything.** They are parquet
+columns with **no authored field behind them** — `VariantRow` declares `pathogenic` and `benign` and
+nothing else, so `extra="forbid"` refuses `likely_pathogenic` in a CSV — and the compiler writes the
+literal `False` into the parquet at a fixed line. They have been that way since the initial 0.1.0
+commit, `reverse` does not read them, and no derivation consults them. So it is not 0 of 214,827 on
+your module; it is 0 of every row of every module ever compiled by this project.
+
+**We are not filling them, and the reason is the charter rather than reluctance.** They are published
+columns that have always read `False`. Writing `True` — or `None` — into them changes what an existing
+reader is told with no way for that reader to notice it changed, which is the silent break P3 exists to
+prevent; removing them is major-only for the same reason. So the honest statement for the 0.x line is
+the one you offered as your alternative, and it is now in the reference: **permanently unwritten, read
+`clin_sig`**. They also went into SCHEMAS.md's tri-state table as its one acknowledged exception —
+that table exists to say `None` is never `False`, and these two are a hardcoded `False` sitting in the
+middle of it.
+
+**On `pathogenic_count`: your reading is right, and probing it corrected something we would have told
+you wrongly.** It counts the folded boolean, so it does include the likely tier — consistent with what
+the boolean means, but not with what the name reads as. It also counts **authored `variants.csv` rows,
+not parquet rows**, which we only established by writing the test: our first version asserted against
+unique rsIDs in the parquet and failed, 13 vs 11, because resolution expands one authored row onto
+several loci. Both facts are now in SCHEMAS.md, because the second is the kind of thing a consumer
+reconciling a count against an artifact would otherwise chase for an afternoon.
+
+**Three tests**, so the documentation cannot quietly stop being true: the two columns are unauthorable
+and always `False` (walking both rather than naming one), a `likely_pathogenic` row reaches the parquet
+as `pathogenic=true` on a shipped example, and `pathogenic_count` equals the authored rows carrying the
+folded boolean and strictly exceeds the strictly-pathogenic ones. If either column ever becomes
+writable, the first test fails and the doc gets rewritten deliberately rather than drifting.
+
+**Nothing filed.** Filling the columns is major-only and there is no 1.0 design question here worth an
+`RMn` of its own — the tier axis already exists and already works. If you would rather see the pair
+*removed* at 1.0 than left reading `False` forever, say so and we will add it to the 1.0 cleanup
+tracker; that is a real choice and it is yours to push on, since you are the consumer who would have
+to stop reading them.
+<!-- triaged: uncut · sha 27c16dbb010d -->
+
 Same audit, measured on all three of our ClinVar panels.
 `clinvar_draft.py` sets `cells["pathogenic"] = True` for both tiers, commented "the 0.3 booleans stay
 authoritative and are folded from the same call, never independently". The result is not merely lossy —

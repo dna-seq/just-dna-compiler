@@ -269,6 +269,7 @@ is what makes it checkable. **When adding a field that answers a question, find 
 | `Compilation.expanded_keys` / `.expanded_rows` / `.positional_rows` / `.positional_rows_placed` | `None` = this compiler did not say; `0` = it said zero. **Do not coalesce** — it is how the eras are told apart |
 | `ClinicalAssertions.min_review_stars` / `.max_review_stars`, `ClinicalAssertionRow.review_stars` | `null` = no rated record; `0` = the real rating *"no assertion criteria provided"* |
 | `derive.pathogenic_from_clin_sig` / `benign_from_clin_sig` | returns `True` or `None` — never a fabricated `False` |
+| `weights.parquet.likely_pathogenic` / `.likely_benign` | **the exception, and it is a known wart (S43)**: hardcoded `False`, never `None` and never `True`. Read `clin_sig` instead |
 | `MeasureBinRow.unresolved` vs "no matching bin" | measurement **absent** and measurement **present but unbinned** are different states |
 | `check_vocab(None, …)` | absent = unknown, and never becomes a member |
 
@@ -276,6 +277,35 @@ The pattern worth extracting: in almost every row the `0`/`False` case is a *rea
 `None` case is *the question was not put*. Collapsing them is not a rounding error — it converts silence
 into evidence, which is the failure `@unreachable-not-absent` names on the enricher side and
 `@tautology-zero` names on the compiler side.
+
+**`likely_pathogenic` / `likely_benign` are the two columns that break that pattern, and they have
+broken it since 0.1.0 — a consumer keying on either gets `False` on every row of every module ever
+compiled (S43).** They are parquet columns with **no authored field behind them**: `VariantRow`
+declares `pathogenic` and `benign` and nothing else, so `extra="forbid"` refuses `likely_pathogenic`
+in a CSV, and the compiler writes the literal `False` into the parquet. Nothing reads them back —
+`reverse` does not, and no derivation consults them.
+
+The four-tier distinction is carried by **`clin_sig`**, which is the orthogonal 0.3 axis and holds
+`pathogenic` / `likely_pathogenic` / `benign` / `likely_benign` / `uncertain_significance` verbatim.
+The legacy booleans are deliberately lossy on top of it: `derive.pathogenic_from_clin_sig` folds both
+pathogenic tiers to `True`, `clin_sig_from_booleans` says so in its own docstring (*"legacy cannot
+recover `likely_pathogenic`/`likely_benign`"*), and `clinvar_draft` writes `pathogenic=true` for both
+tiers for the same reason. That fold is the design and P8 pins it — `pathogenic` has been required-ish
+authoritative since 0.3 and cannot be demoted inside a major. What is *not* by design is publishing two
+always-`False` columns that look like the missing half of it.
+
+**`manifest.stats.pathogenic_count` counts the boolean and therefore counts both tiers.** That is
+consistent with the boolean's meaning rather than a second bug, but it is not what "pathogenic" reads
+as: a module of 400k pathogenic and 215k likely-pathogenic rows reports 615k. Facet on `clin_sig` when
+the tiers matter. Note also that it counts **authored `variants.csv` rows**, not parquet rows — the two
+diverge wherever resolution expanded one authored row onto several loci, so it is not the number of
+rows a consumer reading `weights.parquet` will find.
+
+Filling the two columns is **not** a repair available inside a major: they are published columns, and
+writing `True`/`None` into what has always read `False` changes what an existing reader is told without
+any way for it to know. Removing them is major-only for the same reason (Principle 3). So the honest
+statement for the 0.x line is the one above — *they are permanently unwritten; use `clin_sig`* — which
+is what the reporter asked for as their second option.
 
 ## The allele grammar — bases, and the five structural types (RM5, 0.6)
 

@@ -8,6 +8,8 @@ docs/COMPILER.md. These tests target what IS implemented, and assert the deferra
 
 All run with resolve_with_ensembl=False (no reference/network needed)."""
 
+import csv
+import io
 from pathlib import Path
 
 import polars as pl
@@ -310,3 +312,75 @@ def test_study_doi_and_regex_validation() -> None:
     assert StudyRow.model_validate({"pmid": "1", "rsid": "rs1", "provenance_regex": r"C\d+T"})
     with pytest.raises(ValidationError):
         StudyRow.model_validate({"pmid": "1", "rsid": "rs1", "provenance_regex": "(unclosed"})
+
+
+# ── the two columns nothing can write (S43) ─────────────────────────────────────────────────────
+
+_UNWRITABLE_BOOLEANS = ("likely_pathogenic", "likely_benign")
+
+
+def test_the_likely_columns_are_unauthorable_and_always_false() -> None:
+    """`weights.parquet` carries them, no authored field backs them, so every row reads `False`.
+
+    Documented in SCHEMAS.md as a permanent wart of the 0.x line rather than repaired: filling them
+    would change what an existing reader is told with no way for it to notice, and removing a
+    published column is major-only (P3). The test exists so the *claim* cannot rot — if either column
+    ever becomes writable, this fails and the doc gets rewritten deliberately instead of drifting.
+
+    The distinction they look like they carry lives on `clin_sig`, which is asserted beside them so
+    the replacement is named in the same place as the wart.
+    """
+    from just_dna_format.base import authored_field_names
+    from just_dna_format.spec import VariantRow
+
+    authored = authored_field_names(VariantRow)
+    for column in _UNWRITABLE_BOOLEANS:
+        assert column not in authored, f"{column} became authorable — SCHEMAS.md now lies"
+        with pytest.raises(ValidationError):
+            VariantRow(
+                rsid="rs1", genotype="A/G", state="risk", conclusion="c", **{column: True}
+            )
+    # the tier distinction is carried here instead, and this vocabulary is the contract
+    assert {"pathogenic", "likely_pathogenic", "benign", "likely_benign"} <= VALID_CLIN_SIG
+
+
+def test_a_likely_pathogenic_row_reaches_the_parquet_as_pathogenic_true(tmp_path: Path) -> None:
+    """The fold, end to end on a shipped example, and the always-`False` column beside it.
+
+    `hfe_hemochromatosis` is drafted by `clinvar_draft` and authors both tiers, so it is the module
+    that shows the consumer's report rather than a fixture written to show it: the one
+    `clin_sig=likely_pathogenic` row carries `pathogenic=true`, and `likely_pathogenic` is `False`
+    there as everywhere. Both halves are read off the artifact rather than asserted as counts.
+    """
+    example = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
+    result = compile_module(example, tmp_path / "out", resolve_with_ensembl=False)
+    assert result.success, result.errors
+    weights = pl.read_parquet(tmp_path / "out" / "weights.parquet")
+
+    likely = weights.filter(pl.col("clin_sig") == "likely_pathogenic")
+    assert len(likely), "the example must author a likely_pathogenic row or this proves nothing"
+    assert set(likely["pathogenic"].to_list()) == {True}, "both tiers fold onto the boolean"
+    for column in _UNWRITABLE_BOOLEANS:
+        assert set(weights[column].to_list()) == {False}, f"{column} is not always False any more"
+
+
+def test_pathogenic_count_counts_the_fold_not_the_tier(tmp_path: Path) -> None:
+    """`manifest.stats.pathogenic_count` reads the boolean, so it includes the likely tier.
+
+    Consistent with what the boolean means and not a second defect — but it is not what the name
+    reads as, which is why SCHEMAS.md says to facet on `clin_sig`. Asserted as the relationship
+    (the count equals the authored rows carrying the folded boolean, and strictly exceeds the rows
+    whose tier is actually `pathogenic`) rather than as a number read off a dump. It counts
+    **authored `variants.csv` rows**, not parquet rows — the two differ wherever resolution expanded
+    one authored row onto several loci.
+    """
+    example = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
+    result = compile_module(example, tmp_path / "out", resolve_with_ensembl=False)
+    assert result.success, result.errors
+    assert result.manifest is not None
+
+    authored = list(csv.DictReader(io.StringIO((example / "variants.csv").read_text())))
+    folded = [r for r in authored if (r.get("pathogenic") or "").strip().lower() == "true"]
+    strictly = [r for r in folded if (r.get("clin_sig") or "").strip() == "pathogenic"]
+    assert len(folded) > len(strictly), "the example must author both tiers"
+    assert result.manifest.stats.pathogenic_count == len(folded)
