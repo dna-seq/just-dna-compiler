@@ -212,7 +212,7 @@ examples recompile byte-identical. See
 
 ## ⏳ Open, no release decided — [ROADMAP.md § Active items](ROADMAP.md#active-items)
 
-**Two items as of 0.6.3 (RM102, RM103), and the heading was kept while it was empty.** Items whose release nobody has argued yet belong
+**Two items as of 0.6.4 (RM102, RM103), and the heading was kept while it was empty.** Items whose release nobody has argued yet belong
 here rather than in a `ROADMAP_0_7`/`ROADMAP_1_0` file, and **the section exists because there was
 nowhere to index one** — every other heading names a release or a terminal state, so RM88 and RM89
 would have been filed into a document this index could not point at, which is the exact failure this

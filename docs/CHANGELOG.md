@@ -40,6 +40,12 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 2776 → 2779. It exists because a consumer measured the half the 0.6.3 entry explicitly did not claim
 to have measured, and the answer was worse than assumed.
 
+**Two drafting fixes shipped in 0.6.3 and they remediate differently, which is the frame worth
+carrying: S44 *skipped* rows, S41 *wrote them under an identity that has since moved*.** Only the
+second leaves anything behind. Re-measured here: a stale ClinPGx module of 18,691 rows re-drafts to
+**18,895 with 0 missing and 0 stale**, exactly a fresh draft — so S44 needs no caveat, while S41 does.
+A reader meeting both in one set of release notes will reasonably assume otherwise.
+
 **A re-draft repairs S41's omission and cannot retract S41's collapse.** Drafting appends and never
 mutates, so re-running the fixed drafter over an existing spec adds the coordinate-keyed rows
 **beside** the collapsed rsid-only row instead of replacing it. The module then carries both the

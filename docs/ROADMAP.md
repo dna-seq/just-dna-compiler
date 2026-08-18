@@ -35,9 +35,9 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.6.3 is the current line** — `just-dna-enricher` reads `0.6.3`, tagged and built into
-`dist/`; format and compiler stay at `0.6.1`. Two partial cuts in a row, which is normal here: 0.6.2
-was RM101 and 0.6.3 is S41–S44, and neither touched a model or the compiler. `schema_version` stays `"1.0"` and has since 0.4. **Tagged is not published**: whether a
+**Status:** **0.6.4 is the current line** — `just-dna-enricher` reads `0.6.4`, tagged and built into
+`dist/`; format and compiler stay at `0.6.1`. Three partial cuts in a row, which is normal here: 0.6.2
+was RM101, 0.6.3 was S41–S44 and 0.6.4 is S45, and none of them touched a model or the compiler. `schema_version` stays `"1.0"` and has since 0.4. **Tagged is not published**: whether a
 version is installable from PyPI is a separate step and the maintainer's call, so check
 [CHANGELOG.md](CHANGELOG.md) before promising a field to anyone. 0.5.0 was released to PyPI on
 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package.

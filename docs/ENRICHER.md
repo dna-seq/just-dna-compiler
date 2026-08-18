@@ -2219,6 +2219,13 @@ evidence. Distinctness is over the allele *event* and not over records: a re-sub
 
 **A re-draft repairs the omission and cannot retract the collapse — so the drafter now names what it
 supersedes (S45).** *"Your module needs a re-draft"* reads as a complete instruction and is not one.
+
+**The distinction that decides it: a drafting fix either *skipped* rows or *wrote them under an
+identity that has since moved*, and only the second leaves anything behind.** S44's widened genotype
+gate is the first kind — measured on the same afternoon, a stale ClinPGx module of 18,691 rows
+re-drafts to **18,895 with 0 missing and 0 stale**, byte-for-byte a fresh draft, so it needs no caveat
+at all. S41 is the second kind, and the two shipped in the same release, which invites a reader to
+generalise the wrong remediation.
 Drafting appends and never mutates, so re-running the fixed drafter over an existing spec adds the
 coordinate-keyed rows **beside** the collapsed rsid-only row rather than replacing it: the module then
 states both the right answer and the wrong one for the same locus, and the stale row is the one
