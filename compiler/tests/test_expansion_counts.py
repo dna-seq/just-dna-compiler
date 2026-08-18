@@ -573,3 +573,79 @@ def test_the_columns_reach_the_parquet_and_not_a_reversed_variants_csv(tmp_path:
     assert {"locus_index", "locus_count"}.isdisjoint(header)
     # The authored identity of the reversed module is the authored identity of the original.
     assert content_signature(spec_dir) == content_signature(tmp_path / "rev")
+
+
+def _same_ref_par_expansion(spec_dir: Path) -> tuple[Path, str, str]:
+    """A two-locus key whose loci share a `ref` — the shape a `ref`-spelling guard passes through.
+
+    Built from `shox_par1`, whose committed `resolution.csv` holds ten single-locus rsIDs on chrX and
+    therefore instantiates nothing: PAR twinning is what `enrich --keep-par-twin` records, and the
+    example ships the default (X only). So the twin is written here, from the example's own row and
+    through `par_partner` rather than a typed-in Y coordinate.
+
+    **Why it is worth a fixture of its own.** The corpus's other expansion (`pathogenic_clinvar`'s
+    `rs1554917888`, `T>TA` beside `TA>T`) differs in `ref`, so every existing assertion here would
+    survive an expansion that deduped on `(chrom, start, ref)` — and the claim
+    INTEGRATION_0_6 § 3 makes to a consumer, that a `ref`-spelling mitigation misses same-`ref`
+    expansions, had no instance anywhere in this repo until a consumer went looking for one (S40).
+
+    `vrs_id` is cleared on both loci: a VA does not encode `ref`, so the X row's ids are genuinely
+    wrong for a Y position and the check refuses them — correctly. Empty is the honest cell, and this
+    fixture is about `locus_count`, not about identity.
+    """
+    from just_dna_format.vrs import par_partner
+
+    source = _EXAMPLES / "shox_par1"
+    spec_dir.mkdir(parents=True, exist_ok=True)
+    (spec_dir / "module_spec.yaml").write_text(
+        (source / "module_spec.yaml").read_text().replace("shox_par1", "par_twin_probe")
+    )
+
+    rows = list(csv.DictReader(io.StringIO((source / "resolution.csv").read_text())))
+    grounded = {r["rsid"] for r in csv.DictReader(io.StringIO((source / "studies.csv").read_text()))}
+    x = next(r for r in rows if r["chrom"] == "X" and r["rsid"] in grounded)
+    partner = par_partner(x["chrom"], int(x["start"]), build=x["genome_build"])
+    assert partner is not None, "the example's row must sit in a pseudoautosomal region"
+    y = dict(x, chrom=partner[0], start=str(partner[1]), locus_index="1", vrs_id="")
+    x = dict(x, locus_index="0", vrs_id="")
+    assert x["ref"] == y["ref"], "the point of the fixture is that the two loci agree on ref"
+
+    fieldnames = list(rows[0])
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerows([x, y])
+    (spec_dir / "resolution.csv").write_text(buf.getvalue())
+
+    variants = (source / "variants.csv").read_text().splitlines()
+    authored = [variants[0]] + [ln for ln in variants if ln.startswith(f"{x['rsid']},")]
+    assert len(authored) == 2, "the example must author this rsID exactly once"
+    (spec_dir / "variants.csv").write_text("\n".join(authored) + "\n")
+
+    studies = (source / "studies.csv").read_text().splitlines()
+    kept = [ln for ln in studies if ln.startswith(f"{x['rsid']},")]
+    (spec_dir / "studies.csv").write_text("\n".join([studies[0], *kept]) + "\n")
+    (spec_dir / "licensing.csv").write_text((source / "licensing.csv").read_text())
+    return spec_dir, x["ref"], x["rsid"]
+
+
+def test_two_loci_sharing_a_ref_still_count_as_two(tmp_path: Path) -> None:
+    """The same-`ref` expansion, which a `ref`-spelling guard cannot see and `locus_count` can.
+
+    Both halves are asserted against each other rather than against a written-down number: the rows
+    carry exactly one distinct `ref` between them, *and* `locus_count` reads 2 on every one. A
+    dedup on `(chrom, start, ref)` would keep the first assertion true and break the second, which is
+    the failure this pins.
+    """
+    spec_dir, ref, rsid = _same_ref_par_expansion(tmp_path / "spec")
+    result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
+    assert result.success, result.errors
+
+    weights = pl.read_parquet(tmp_path / "out" / "weights.parquet").filter(pl.col("rsid") == rsid)
+    assert set(weights["ref"].to_list()) == {ref}, "the two loci must be indistinguishable by ref"
+    assert set(weights["locus_count"].to_list()) == {2}
+    assert sorted(weights["locus_index"].to_list()) == [0, 1]
+    assert set(weights["chrom"].to_list()) == {"X", "Y"}, "one place, two contigs"
+    assert result.manifest is not None
+    assert result.manifest.compilation.expanded_keys == 1
+    assert result.manifest.compilation.expanded_rows == 2

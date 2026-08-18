@@ -155,6 +155,60 @@ was in our own fixture.
 
 ## S40 — two 0.6 changes a consumer meets that INTEGRATION_0_6.md does not name, one of them a check that *stopped* refusing
 
+**Status — accepted, all three; [INTEGRATION_0_6.md](INTEGRATION_0_6.md) fixed in this pass, and item
+2 also gained the fixture it was missing.** All three reproduced exactly as written, on this tree:
+`StudyRow.REQUIRED_ANY_OF` is `()` and `StudyRow(pmid="12345", conclusion="Test")` is accepted with
+`variant_key is None`; `reference_examples/shox_par1/resolution.csv` is 10 rows, 10 distinct rsIDs,
+every one on chrX, so nothing in it expands; `_OUTPUT_FILES` is gone from
+`just_dna_compiler.compiler` and `ARTIFACT_PARQUETS` is there in its place.
+
+**1 — the relaxation now has its own subsection, and your framing is the one that went in.** § 1 gains
+a *"one check **stopped** refusing"* heading beside the two tightenings, and the § 1 table gains the
+symmetric row (*Requiredness relaxed — one*), because you are right that the old row was literally
+true and still left a reader with no way to anticipate the failure. The subsection leads with the
+consequence rather than the validator — `StudyRow.variant_key` can be `None`, a null join key in
+polars is a silently smaller result rather than an error — and carries your two-line advice verbatim
+in spirit: pin the consequence, not the acceptance, and do not repair a null key into a string. Your
+argument for *more* emphasis rather than less is quoted in the heading itself: a relaxation is
+invisible to a corpus run and visible to every consumer holding a negative test.
+
+We looked for our own half underneath it, as an item like this usually has one, and there is none:
+`_cross_validate_studies` handles the subject-less row deliberately (its docstring names RM47 and
+explains why the dedup key is `(None, pmid)`), and the compiler's own study paths match on any shared
+identifier rather than on `variant_key` equality. So this is documentation-only on our side, which is
+worth saying rather than leaving you to infer.
+
+**2 — the sentence was wrong to point at a shipped artifact, and it now says how to build one *and*
+where the fixture lives.** Your reading afterwards was generous; ours is that "one is instantiated in
+`reference_examples/shox_par1/`" is not defensible when the committed example instantiates nothing,
+and it is worse than a plain gap because it was offered as the evidence that your mitigation is
+insufficient. § 3 now states outright that the committed example contains no expansion, gives the
+regeneration route (`enrich --keep-par-twin`, whose default keeps only the X spelling), and describes
+the hand edit — including that the VRS check will refuse the copied `vrs_id` and print the recomputed
+ones, which is the ten-minutes-not-an-afternoon detail you found.
+
+**Building it here found the gap under your report.** The claim had no instance anywhere in this
+repository, tests included: the corpus's only other expansion is `pathogenic_clinvar`'s
+`rs1554917888`, `T>TA` beside `TA>T`, which differs in `ref` — so every existing assertion about
+`locus_count` would have survived an expansion that deduped on `(chrom, start, ref)`, and the
+same-`ref` case a `ref`-spelling guard cannot see was pinned by nothing.
+`test_two_loci_sharing_a_ref_still_count_as_two` now builds the twin from the example's own row
+through `par_partner`, and asserts both halves against each other — exactly one distinct `ref` across
+the expanded rows, *and* `locus_count == 2` on each. It is the ground-truth artifact you wanted, in a
+form that also fails if we ever break it.
+
+**3 — added, as the half-sentence you wrote.** § 1's headline now carries the exception directly:
+`_OUTPUT_FILES` was made public as `ARTIFACT_PARQUETS` (§ 2.4), so a consumer who imported the private
+name gets an `ImportError` at module scope. We also recorded that you had the better of the two
+arguments — re-listing that set by hand is the defect § 2.8 and S35 trace the broken publisher to, so
+importing the underscore was the lesser evil and the headline should have said so.
+
+**Nothing is filed.** Three documentation fixes and one test, all in the tree; the fixes are in a
+document that describes an already-shipped release, so there is no version to wait for. Thank you for
+the last section — the `layout` and § 8 notes are the only evidence we get that a document did its
+job, and § 8's *four shapes with the silent one spelled out* is the shape we will keep writing.
+<!-- triaged: 0.6.2 · sha 09e9c111af7c -->
+
 Reported by **just-dna-lite** on 2026-08-18, adopting format 0.6.1 / compiler 0.6.1 / enricher 0.6.2
 (and registry 0.17.0) from a working 0.5.4 integration. `INTEGRATION_0_6.md` was the whole plan for the
 migration and it was accurate about everything it covered — the delta in § 2 held, § 3's per-consumer

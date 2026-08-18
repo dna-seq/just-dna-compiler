@@ -57,6 +57,7 @@ byte-for-byte unmodified, and the resulting manifests compared field by field ag
 | `artifact.digest` moved | **11 / 11** |
 | `schema_version` | unchanged, `"1.0"` |
 | Fields removed, retyped, or promoted to required | **none** |
+| Requiredness **relaxed** | **one** — `StudyRow`'s identifier rule (RM47), below |
 
 That shape is exactly what Principle 3 promises for a minor: new optional and stamped columns move
 the *byte* identity and leave the *content* identity alone. Principle 4 already scopes byte
@@ -72,6 +73,14 @@ Both directions of the manifest were also checked against the real files:
 
 So a mixed deployment — an old reader against a new artifact, or the reverse — does not fault. What
 an old reader does *not* get is the new information; see §3.
+
+**One exception to the headline, and it is a name rather than a behaviour: `_OUTPUT_FILES` was made
+public as `ARTIFACT_PARQUETS` (§2.4), so a consumer who imported the private name gets an
+`ImportError` at module scope.** Importing an underscore is nobody's recommendation, but re-listing
+that set by hand is the defect §2.8 and S35 both trace the broken publisher to — so the consumer who
+did it had the better of the two arguments, and *"nothing you have breaks"* is the sentence they
+carried into an upgrade that broke on its first import. Reported as S40; making the name public is the
+right fix and needs nothing further.
 
 ### The one thing you must re-pin
 
@@ -92,6 +101,31 @@ Neither fired on the corpus, but both are real tightenings and both are fixes:
 
 These matter to **just-dna-pipelines**, which compiles other people's specs: a spec that passed CI at
 0.5.4 can fail at 0.6, and that is the intended outcome.
+
+### And one check *stopped* refusing — which is the asymmetric half, and needs saying more, not less
+
+**RM47 relaxed `StudyRow`'s identifier requirement: `REQUIRED_ANY_OF` went from `({rsid}, {chrom})` to
+`()`.** A study row citing no variant at all — a paper grounding a bin boundary, a method, a
+population — is now legal, which is the whole point of the change. It is not a removed, retyped or
+newly-required field, so the table above stays literally true; it is also invisible to a corpus run,
+because a relaxation can only turn a red green. A consumer holding a **negative** test sees it
+immediately:
+
+```python
+with pytest.raises(Exception, match="At least one identifier"):
+    StudyRow(pmid="12345", conclusion="Test")     # 0.5.4: raised.  0.6.1: accepted.
+```
+
+**The load-bearing half is one layer out, and it is a join rather than a validator.**
+`StudyRow.variant_key` can now be `None`. Anything joining `studies.parquet` to a lead table on
+`variant_key` meets a null key, and in polars a null join key is a **silently smaller result**, not an
+error — no warning, no row count anyone would question. Filtering on `rsid` instead is safe for the
+same reason it looks unsafe: a null rsid matches nothing, which is the correct outcome for a citation
+that grounds a threshold rather than a variant.
+
+So: check whether you key studies on `variant_key`, and pin the *consequence* rather than the
+acceptance — `row.variant_key is None` and `REQUIRED_ANY_OF == ()`. **Do not repair a null key into a
+string.** Reported as S40, whose author found it in the first seven test failures after the bump.
 
 ---
 
@@ -382,8 +416,23 @@ fix: **16 of 16 publish and all 16 digests verify**, and the allowlist is derive
 
 1. Adopt `locus_count > 1` to filter or label expanded rows. This is the fix for the 3,762 false
    findings; your own mitigation (withhold any locus spelled with more than one `ref`) **misses
-   same-`ref` expansions**, and one is instantiated in `reference_examples/shox_par1/` via
-   `enrich --keep-par-twin`.
+   same-`ref` expansions**, and `reference_examples/shox_par1/` is the module to instantiate one on.
+   **The committed example does not contain one** — its `resolution.csv` is 10 rows, 10 distinct
+   rsIDs, every one on chrX, so a compile gives `expanded_keys=0` and `locus_count == 1` throughout.
+   That sentence read as though the shape were shipped and it is not; S40's author went looking for it
+   and built it instead. To make one: re-run `enrich --keep-par-twin` (which records both contigs of a
+   pseudoautosomal locus where the default keeps only the X spelling), or, without a reference to
+   hand, copy one `resolution.csv` row onto chrY at the offset-matched position. **The VRS check will
+   then refuse the copy**, correctly — a `vrs_id` carried across to a different position is corruption
+   rather than a difference of opinion — and it prints the recomputed ids, so pasting the two reported
+   values back in is the whole edit. What you get is `expanded_keys=1`, `expanded_rows=2`, two rows
+   sharing `ref` and `start` with `locus_count=2` and `locus_index` 0 and 1: the shape a `ref`-spelling
+   guard passes straight through. That construction is now a fixture —
+   `compiler/tests/test_expansion_counts.py::test_two_loci_sharing_a_ref_still_count_as_two` builds the
+   twin through `par_partner` and asserts both halves, that the expanded rows carry exactly one
+   distinct `ref` between them *and* that `locus_count` reads 2 — so the claim above is under test
+   rather than merely stated. Read it as the worked example; the corpus's other expansion
+   (`pathogenic_clinvar`'s `rs1554917888`) differs in `ref` and cannot stand in for it.
 2. Join `annotations.parquet` on `genotype`. Without it you match a larger set than you mean to.
 3. Replace any local genotype-splitting with `just_dna_format.alleles.split_genotype`. Authored
    order, never sorted.
