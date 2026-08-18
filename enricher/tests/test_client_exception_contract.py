@@ -30,6 +30,7 @@ import pytest
 from just_dna_enricher.cpic import CpicClient, CpicError
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
 from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
+from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError
 
@@ -84,6 +85,13 @@ def _cpic_row_count(handler: Callable[[httpx.Request], httpx.Response]) -> Calla
     return lambda: client.row_count("allele")
 
 
+def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """OLS4/HGNC. RM97 left this one behind, and the guard below is why nobody noticed (RM101)."""
+    client = OntologyClient(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.trait("HP:0000118")
+
+
 def _pharmvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
     client = PharmVarClient(
         api_key="test-key",
@@ -100,37 +108,63 @@ CLIENTS = [
     ("cpic", _cpic, CpicError),
     ("cpic.row_count", _cpic_row_count, CpicError),
     ("pharmvar", _pharmvar, PharmVarError),
+    # `IdentifierUnavailable` rather than its parent on purpose: it is strictly the stronger
+    # assertion, since passing it also proves an `except IdentifierCheckError` still fires.
+    ("identifiers", _ontology, IdentifierUnavailable),
 ]
 
 
 def test_every_network_client_in_the_tier_is_covered() -> None:
-    """Guard the premise: a fifth client must not be able to ship without joining this file.
+    """Guard the premise: a new client must not be able to ship without joining this file.
 
-    Discovered by walking the modules for a class that owns an `httpx.Client`, so adding one and
-    forgetting the contract fails here rather than in a consumer's traceback a release later.
+    **This guard was itself the RM101 defect.** It read a hand-written tuple of eight modules, and
+    `identifiers` was not one of them — so `OntologyClient` was invisible here for RM97's whole
+    release while leaking a raw `httpx.HTTPStatusError` from both of its methods. A registry-iterating
+    guard is only as complete as its registry (`@registry-completeness`), and a list of modules
+    someone has to remember to extend is not a registry. It now walks the package.
+
+    The criterion is the one this docstring always claimed: a class that owns an `httpx` transport.
+    That is what separates a network client from `CpicSnapshotClient` / `PharmVarSnapshotClient`,
+    which answer the same questions from a built snapshot and never open a socket — so they are absent
+    by construction rather than by exemption, and no longer need naming below.
     """
+    import importlib
     import inspect
+    import pkgutil
 
-    from just_dna_enricher import clingen, cpic, ensembl, eutils, gnomad, gwas, literature, pharmvar
+    import just_dna_enricher
 
-    owners = {
-        f"{module.__name__.rsplit('.', 1)[-1]}.{name}"
-        for module in (clingen, cpic, ensembl, eutils, gnomad, gwas, literature, pharmvar)
-        for name, obj in vars(module).items()
-        if inspect.isclass(obj) and obj.__module__ == module.__name__ and name.endswith("Client")
-    }
+    discovered: set[str] = set()
+    for module_info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+        module = importlib.import_module(f"just_dna_enricher.{module_info.name}")
+        for name, obj in vars(module).items():
+            if not (inspect.isclass(obj) and obj.__module__ == module.__name__):
+                continue
+            if not name.endswith("Client"):
+                continue
+            if "httpx" not in inspect.getsource(obj):
+                continue  # a snapshot reader, not a network client
+            discovered.add(f"{module_info.name}.{name}")
+
     covered = {label.split(".")[0] for label, _builder, _error in CLIENTS}
-    uncovered = {owner for owner in owners if owner.split(".")[0] not in covered}
-    assert uncovered == {
-        # Named rather than silently skipped, so the exemption is a decision a reader can dispute.
-        # These four are exercised by their own suites against real recorded payloads. Extending the
-        # contract to them is worth doing and is a wider change than RM97 — each needs a happy-path
-        # call shaped for it, and `literature`'s three share a base whose retry story differs.
-        "gwas.GwasCatalogClient",
+    #: Named rather than silently skipped, so each exemption is a decision a reader can dispute.
+    exempt = {
+        # These three share a base whose retry story differs, and are exercised by their own suite
+        # against real recorded payloads. Extending the contract to them is worth doing and is wider
+        # than this item. `EuropePmcClient.fulltext` is deliberately *not* a leak: it catches httpx
+        # and returns `None`, the tri-state withhold this tier uses for "could not be retrieved".
         "literature.CrossrefClient",
         "literature.EuropePmcClient",
         "literature.PmcIdConverterClient",
-    }, sorted(uncovered)
+        # Same reason, plus: `GwasError` is both the client's and the pass's type, so there is no
+        # cross-module mismatch here for a caller to fall through.
+        "gwas.GwasCatalogClient",
+        # Raises nothing at all: every httpx path returns `None` or `[]`, which is the withhold. A
+        # contract test asserting an error type would be asserting the wrong contract.
+        "grch37.Grch37Client",
+    }
+    uncovered = {name for name in discovered if name.split(".")[0] not in covered}
+    assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))
 
 
 @pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
@@ -160,14 +194,29 @@ def test_an_exhausted_transport_failure_surfaces_as_the_tiers_own_error(
         call()
 
 
+#: Clients for which a 404 is a real answer rather than a failure, with what it answers.
+#:
+#: This is a per-client fact and not a tier-wide one, which the RM101 pass found by adding a client
+#: that disagreed. OLS4 and HGNC answer 404 for "no such term / no such symbol", and both callers
+#: read it as `absent` — so raising there would convert an answered question into an unasked one,
+#: the collapse this tier refuses everywhere else. Keeping the case in the table rather than dropping
+#: the client from it means the *semantics* are asserted either way, and a client that silently
+#: changed its mind about 404 fails one of these two tests.
+FOUR_OH_FOUR_IS_AN_ANSWER = {"identifiers"}
+
+
 @pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
 def test_a_client_error_is_not_swallowed_into_a_wrong_answer(label, builder, error) -> None:
-    """A 404 is a failure, not an empty result.
+    """A 404 is a failure, not an empty result — except where it is the source's way of saying absent.
 
     `row_count` is why this is here: before the repair a 5xx made it return `None`, which the
     snapshot builder reads as "CPIC does not report a count" — a wrong answer rather than an error,
     and the one failure mode a `pytest.raises` on the happy path would never surface.
     """
     call = builder(_serve(404))
+    if label in FOUR_OH_FOUR_IS_AN_ANSWER:
+        result = call()  # must not raise, and must not be mistaken for an error either
+        assert result is not None
+        return
     with pytest.raises(error):
         call()

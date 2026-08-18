@@ -442,7 +442,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         "gnomad.GnomadClient._request",
         "grch37.Grch37Client._get",
         "gwas.GwasCatalogClient._get",
-        "identifiers.OntologyClient._get",
+        # `_request`, not `_get`, since RM101: the retried inner and the translating outer are
+        # now split here the way `cpic`, `eutils` and `gnomad` already split them.
+        "identifiers.OntologyClient._request",
         "literature.CrossrefClient.exists",
         "literature.EuropePmcClient._get",
         "literature.PmcIdConverterClient._get",

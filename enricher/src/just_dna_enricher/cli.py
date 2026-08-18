@@ -14,7 +14,6 @@
 import json
 from pathlib import Path
 
-import httpx
 import typer
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
@@ -76,7 +75,7 @@ from just_dna_enricher.gene_validity import (
 )
 from just_dna_enricher.grch37 import GRCH37_BUILD, summarize_build_diagnoses
 from just_dna_enricher.gwas import GwasError, enrich_gwas
-from just_dna_enricher.identifiers import check_identifiers
+from just_dna_enricher.identifiers import IdentifierUnavailable, check_identifiers
 from just_dna_enricher.identifiers import unreachable_records as identifier_unreachable
 from just_dna_enricher.identifiers import verification_records as identifier_records
 from just_dna_enricher.licensing import (
@@ -891,11 +890,18 @@ def check_identifiers_(
         # attestation to bind to and no question was reached.
         typer.secho(f"{exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    except httpx.HTTPError as exc:
+    except IdentifierUnavailable as exc:
         # The registry never answered, which is `unreachable` rather than an absence (S20) — and it is
         # the run on which a reader most needs the record, since the report is empty. `check-acmg`
         # records the same thing through `AcmgListUnavailable`; without this the promise two lines up
         # would be false exactly when it matters.
+        #
+        # This read `except httpx.HTTPError` until RM101, and it only ever fired because
+        # `OntologyClient` leaked its transport library's exception — the very defect RM97 set out to
+        # end. So the leak was not merely unnoticed here, it was **load-bearing**: repairing the
+        # client without this line would have turned the attestation off silently, on exactly the run
+        # the comment above says needs it most. The comment already named the right shape one clause
+        # over; the type now matches it.
         _attest_on_the_way_out(
             identifier_unreachable(check_traits=traits, check_genes=genes, detail=str(exc)),
             spec_dir,

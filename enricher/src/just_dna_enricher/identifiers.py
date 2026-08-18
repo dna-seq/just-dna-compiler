@@ -81,6 +81,23 @@ class IdentifierCheckError(RuntimeError):
     """A currency lookup failed outright (transport or an unusable response)."""
 
 
+class IdentifierUnavailable(IdentifierCheckError):
+    """A source this pass asks was not reachable, so the question could not be put (RM101).
+
+    A subclass rather than a second exception, for `AcmgListUnavailable`'s reason: every existing
+    `except IdentifierCheckError` still catches it, and the two histories this module can fail with
+    stop being one type. Only this one means a source was *asked*; an invalid local `variants.csv` is
+    the plain parent, and a caller separating them had to read `__cause__` to do it.
+
+    It carries no `skip` member, unlike `AcmgListUnavailable`, and the reason is not that nothing
+    attests — `check-identifiers` does, and getting this wrong once is how the first draft of this
+    class shipped a false docstring. The difference is *where the member is decided*. `acmg` raises
+    from several places that mean different skips, so the raiser is the only thing that knows which;
+    here every raise means the same one, and `unreachable_records()` already owns it for all three
+    checks at once. Putting it on the exception would be a second place to keep the same fact.
+    """
+
+
 # ── findings ────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -363,10 +380,36 @@ class OntologyClient:
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
-    def _get(self, url: str, params: dict | None = None) -> httpx.Response:
+    def _request(self, url: str, params: dict | None = None) -> httpx.Response:
         assert self.gate is not None
         self.gate.wait()
         return self._http().get(url, params=params)
+
+    def _get(self, url: str, params: dict | None = None) -> httpx.Response:
+        """One GET, with `httpx` translated away — `@client-exception-contract`, RM97's leftover.
+
+        RM97 repaired `gnomad._post` and `eutils._get` and this client kept the unrepaired shape, so
+        a 5xx from OLS4 or HGNC arrived as a raw `httpx.HTTPStatusError`: `raise_for_status()` sat in
+        the *callers* (`trait`, `_hgnc`) with `HTTPStatusError` in neither retry list, and the
+        transport leg is re-raised bare on purpose for the decorator, so it escaped raw too once
+        `reraise=True` exhausted the attempts. The guard that should have caught this walked eight
+        named modules and `identifiers` was not one of them — `@registry-completeness`.
+
+        **A 404 is returned, not raised.** It is this client's normal "no such term / symbol" answer
+        and both callers read it as `absent`; translating it into an error would turn an answered
+        question into an unasked one, which is the distinction this tier draws everywhere else.
+        """
+        try:
+            response = self._request(url, params)
+        except (httpx.TransportError, httpx.TimeoutException) as exc:
+            raise IdentifierUnavailable(f"{url} could not be reached: {exc}") from exc
+        if response.status_code == 404:
+            return response
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise IdentifierUnavailable(f"{url} answered {response.status_code}: {exc}") from exc
+        return response
 
     def trait(self, curie: str) -> TraitStatus:
         """Existence, obsolescence and the replacement term for one ontology CURIE."""
@@ -384,7 +427,6 @@ class OntologyClient:
         )
         if response.status_code == 404:
             return TraitStatus(curie=curie, state="absent")
-        response.raise_for_status()
         terms = (response.json().get("_embedded") or {}).get("terms") or []
         if not terms:
             return TraitStatus(curie=curie, state="absent")
@@ -421,7 +463,6 @@ class OntologyClient:
         response = self._get(f"{self.hgnc_base.rstrip('/')}/fetch/{path}")
         if response.status_code == 404:
             return []
-        response.raise_for_status()
         return (response.json().get("response") or {}).get("docs") or []
 
 
