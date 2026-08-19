@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-20 — §6.6 said a review pass reaches nothing downstream, and it had reached it for three releases (S46)
+## 2026-08-20 (latest) — §6.6 said a review pass reaches nothing downstream, and it had reached it for three releases (S46)
 
 Documentation only; no code moved and no version needs cutting. `just-module-creator`, writing a
 `module-revise` skill with [MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md) §6 as its source, measured §6.6's
@@ -72,7 +72,7 @@ citing another repo's code has no test behind it and no expiry, so it decays sil
 evidence. §6.6 now dates each finding to a release, which is the cheapest thing that makes the decay
 visible to the next reader.
 
-## 2026-08-20 (latest) — a downstream reference surface, validated against the code, and eight findings filed (RM104–RM111)
+## 2026-08-20 — a downstream reference surface, validated against the code, and eight findings filed (RM104–RM111)
 
 **No version moves.** Format and compiler stay at **0.6.1**, enricher at **0.6.4**. This is an audit
 round: nothing shipped, eight things were filed, and one downstream repository's documentation was
