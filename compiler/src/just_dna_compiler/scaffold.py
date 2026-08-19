@@ -31,6 +31,7 @@ from just_dna_format.spec import ModuleSpecConfig
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
 
+from just_dna_compiler.compiler import _TABLE_KIND_CSVS
 from just_dna_compiler.draft import field_category, model_for, stub_template
 
 logger = logging.getLogger(__name__)
@@ -46,10 +47,51 @@ MODULE_SPEC = "module_spec.yaml"
 #: `studies.csv` fails with "Grounding evidence is mandatory", and `studies.csv` alone fails with
 #: "module has no recognized table" — evidence about nothing is as incomplete as a claim with no
 #: evidence. One level only, not transitive: each side pulls in the other exactly once.
+#:
+#: **One half is conditional, and reading this dict alone gets it wrong (S49).** `studies.csv` needs
+#: `variants.csv` only when it is *literally* alone, which is what its half of the comment above
+#: always said — but the pull was applied unconditionally, so
+#: `scaffold_module(kinds=["copynumbers.csv", "studies.csv"])` invited an empty `variants.csv` into a
+#: module that compiles strict-green without one. RM47 made a study row legal with no variant identity,
+#: precisely so a binning module can ground its thresholds, and that is the *intended* shape. Ask
+#: `companions_for()` rather than this mapping: it applies the condition, and it is what
+#: `scaffold_module` itself uses.
 COMPANION_KINDS: dict[str, tuple[str, ...]] = {
     "variants.csv": ("studies.csv",),
     "studies.csv": ("variants.csv",),
 }
+
+#: What actually satisfies the compiler's composition rule — `variants.csv` **or** at least one table
+#: kind (`compiler`: `if not has_variants and not kind_row_counts`). Derived from the compiler's own
+#: tuple, so a table kind added in a future release counts here without an edit; `sources.csv` is
+#: deliberately absent, being a licence ledger rather than a table a module can consist of.
+_RECOGNIZED_TABLES: frozenset[str] = frozenset(_TABLE_KIND_CSVS) | {"variants.csv"}
+
+
+def companions_for(kinds: Sequence[str]) -> list[str]:
+    """The kinds to scaffold *beside* those asked for, with `COMPANION_KINDS`' conditional half applied.
+
+    Public because a consumer passing the raw mapping through answers a question it cannot answer
+    alone, and would then contradict its own composition advice: never add an empty table to keep
+    another company (S49).
+
+    `variants.csv` still pulls `studies.csv` unconditionally — that direction has no condition, since
+    the compiler requires grounding evidence for a variant claim however the module is composed.
+    `studies.csv` pulls `variants.csv` **only when nothing else recognised was requested**, which is
+    the "alone" its own justification always named: beside a binning table the studies row grounds the
+    bins through `pmid` and the module needs no variant at all.
+    """
+    requested = list(dict.fromkeys(kinds))
+    grounded_by_another_table = bool(_RECOGNIZED_TABLES & set(requested))
+    companions: list[str] = []
+    for kind in requested:
+        for companion in COMPANION_KINDS.get(kind, ()):
+            if companion in requested or companion in companions:
+                continue
+            if kind == "studies.csv" and grounded_by_another_table:
+                continue
+            companions.append(companion)
+    return companions
 
 
 @dataclass
@@ -130,12 +172,7 @@ def scaffold_module(
     for kind in requested:
         model_for(kind)  # raises DraftError for a kind this format does not define
 
-    companions = [
-        companion
-        for kind in requested
-        for companion in COMPANION_KINDS.get(kind, ())
-        if companion not in requested
-    ]
+    companions = companions_for(requested)
     plan = ScaffoldPlan(spec_dir=spec_dir)
     for companion in companions:
         plan.warnings.append(

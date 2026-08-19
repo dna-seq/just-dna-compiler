@@ -239,6 +239,46 @@ append a row.
 
 ## S49 — `COMPANION_KINDS` pulls `variants.csv` in behind `studies.csv`, which RM47 made wrong for a binning module
 
+**Status — accepted and shipped in `just-dna-compiler` today, filed as
+[RM114](ROADMAP_HISTORY.md#rm114--the-scaffold-pulled-variantscsv-in-behind-studiescsv-which-rm47-made-wrong).**
+`scaffold.companions_for(kinds)` is public; call it instead of reading `COMPANION_KINDS` directly and
+your surface stops contradicting your own composition rule.
+
+**Both halves reproduce.** `scaffold_module(kinds=["copynumbers.csv", "studies.csv"])` created the
+`variants.csv` stub and warned that it was owed; and the resulting module compiles **strict-green** with
+no `variants.csv` — three warnings, closure and CN tiling, none of them about a missing variants table,
+exactly as you reported. Both are now tests, the second one included, because the strict-green premise is
+the whole reason the stub was wrong.
+
+**You were right that the comment already described the condition.** Its justification said
+`studies.csv` *alone* fails with "module has no recognized table", which is true when it is literally
+alone and false beside a binning table. So the defect was never a disagreement about the rule — the
+condition the comment named was simply never applied. That makes your first candidate the repair, and it
+is the one shipped, in the comment's own wording.
+
+**What it does now.** `studies.csv` pulls `variants.csv` only when no other recognised table was
+requested; `variants.csv` still pulls `studies.csv` **unconditionally**, because that direction genuinely
+has no condition — the compiler wants grounding evidence for a variant claim however the module is
+composed. The recognised set is derived from the compiler's own `_TABLE_KIND_CSVS` plus `variants.csv`,
+mirroring `if not has_variants and not kind_row_counts`, so a table kind added in a later release counts
+without anyone editing this. `sources.csv` stays outside it: a licence ledger is not a table a module can
+consist of, so `["studies.csv", "sources.csv"]` still pulls `variants.csv`.
+
+**`COMPANION_KINDS` is deliberately unchanged**, and your decision to pass it through rather than patch
+it is why the accessor is public rather than internal. You were not wrong about the pair — only about its
+unconditionality — so the mapping still states it, and a test pins that it does. An internal-only fix
+would have left your surface giving the old answer while ours gave the new one, which is the drift you
+said you were trying to remove.
+
+**Your blunter candidate is rejected, for your reason.** Dropping that direction of the pair loses the
+help in the one case it was added for — `studies.csv` truly alone, which really does fail composition —
+and that case is now a test so it cannot be lost by a later tidy-up.
+
+**On what you did meanwhile:** adding the RM47 half to your composition note was the right call and it
+stays correct. The note can now say the stronger thing — that a study row grounding a bin through `pmid`
+is the *intended* shape for a binning module, not merely a legal one.
+<!-- triaged: 0.6.5 · sha 4a9f2a929528 -->
+
 **What we ran.** A spec directory with `module_spec.yaml`, `copynumbers.csv` (two SMN1 bins, each
 carrying `pmid: 9382095`) and `studies.csv` (one row, `pmid,conclusion`, no variant identity —
 legal since RM47). No `variants.csv`.

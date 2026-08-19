@@ -17,6 +17,7 @@ from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for
 from just_dna_compiler.scaffold import (
     COMPANION_KINDS,
     MODULE_SPEC,
+    companions_for,
     module_spec_template,
     scaffold_module,
 )
@@ -456,3 +457,61 @@ def test_a_stub_in_a_free_text_column_alone_is_still_refused(tmp_path: Path) -> 
 
     assert rows == []
     assert any("unreplaced template placeholder" in e and "source" in e for e in errors), errors
+
+
+def test_studies_beside_a_binning_table_pulls_no_variants_stub(tmp_path: Path) -> None:
+    """S49: RM47 made this the *intended* shape, and the scaffold was inviting an empty table into it.
+
+    The premise is checked here rather than assumed — the module really does compile strict-green with
+    no `variants.csv` — because that is the whole reason the stub was wrong.
+    """
+    spec = tmp_path / "smn1"
+    plan = scaffold_module(spec, name="smn1_cn", kinds=["copynumbers.csv", "studies.csv"], rows=0)
+    assert [f.name for f in plan.created] == [MODULE_SPEC, "copynumbers.csv", "studies.csv"]
+    assert plan.warnings == []
+
+    (spec / MODULE_SPEC).write_text(
+        "schema_version: '1.0'\nmodule:\n  name: smn1_cn\n  title: SMN1 copy number\n"
+        "  report_title: SMN1 copy number\n  description: SMN1 copy-number bins grounded in one study.\n"
+        "defaults:\n  curator: probe\n  method: literature\ngenome_build: GRCh38\n",
+        encoding="utf-8",
+    )
+    (spec / "copynumbers.csv").write_text(
+        "measure_kind,measure_min,measure_max,gene,phenotype,conclusion,pmid\n"
+        "copy_number,0,0,SMN1,Spinal muscular atrophy type I,Homozygous SMN1 deletion,9382095\n",
+        encoding="utf-8",
+    )
+    (spec / "studies.csv").write_text(
+        "pmid,conclusion\n9382095,SMN1 copy number correlates with SMA severity\n", encoding="utf-8"
+    )
+    result = validate_spec(spec, strict=True)
+    assert result.valid, result.errors
+    assert not any("variants" in w for w in result.warnings)
+
+
+def test_studies_truly_alone_still_pulls_variants() -> None:
+    """The case the pair was added for is unchanged — the condition is "alone", not "never"."""
+    assert companions_for(["studies.csv"]) == ["variants.csv"]
+
+
+def test_variants_pulls_studies_unconditionally() -> None:
+    """That direction has no condition: a variant claim needs grounding however the module is composed."""
+    assert companions_for(["variants.csv"]) == ["studies.csv"]
+    assert companions_for(["variants.csv", "copynumbers.csv"]) == ["studies.csv"]
+
+
+def test_the_licence_ledger_does_not_count_as_a_recognized_table() -> None:
+    """`sources.csv` cannot satisfy composition, so `studies.csv` beside it is still alone."""
+    assert companions_for(["studies.csv", SOURCES_CSV]) == ["variants.csv"]
+
+
+def test_every_table_kind_grounds_a_studies_row_on_its_own() -> None:
+    """Set equality over the walked set: a table kind added later must not reintroduce the stub."""
+    kinds = {k for k in DRAFTABLE if k not in {"variants.csv", "studies.csv", SOURCES_CSV, "licensing.csv"}}
+    assert kinds
+    assert {k: companions_for([k, "studies.csv"]) for k in kinds} == dict.fromkeys(kinds, [])
+
+
+def test_the_companion_mapping_itself_is_unchanged() -> None:
+    """The constant still states the pair; only the *application* is conditional (S49)."""
+    assert COMPANION_KINDS == {"variants.csv": ("studies.csv",), "studies.csv": ("variants.csv",)}

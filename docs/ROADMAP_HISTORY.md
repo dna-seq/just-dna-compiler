@@ -77,6 +77,43 @@ never a bare name resolving to nothing. Two further guards keep the class closed
 instance: no key column on any kind carries a `DEPRECATED` description, and every rule is a declared
 vocabulary member.
 
+## RM114 — the scaffold pulled `variants.csv` in behind `studies.csv`, which RM47 made wrong
+
+✅ **Shipped in `just-dna-compiler` on 2026-08-20**, motivating case
+[S49](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**What was wrong.** `COMPANION_KINDS["studies.csv"] == ("variants.csv",)` was applied
+unconditionally, so `scaffold_module(kinds=["copynumbers.csv", "studies.csv"])` warned that
+`variants.csv` was owed and wrote a stub for it — inviting an empty table into a module whose author was
+doing the right thing. **RM47 is what made this wrong**: a study row is legal with no variant identity
+precisely so a binning module can ground its thresholds through `pmid`, and that is the *intended*
+shape. Reproduced both halves — the scaffold really does create the stub, and the resulting
+`copynumbers.csv` + `studies.csv` module really does compile **strict-green**, three warnings, none of
+them about `variants.csv`.
+
+**The comment was already right.** Its own justification said `studies.csv` *alone* fails with "module
+has no recognized table" — true when literally alone, false beside a binning table. So the defect was
+that the condition the comment described was never applied, which is why the repair is the comment's own
+wording rather than a new rule.
+
+**Shipped.** `scaffold.companions_for(kinds)`, public, applying the condition and used by
+`scaffold_module` itself. `studies.csv` pulls `variants.csv` only when no other recognised table was
+requested; `variants.csv` still pulls `studies.csv` **unconditionally**, because that direction has no
+condition — the compiler wants grounding evidence for a variant claim however the module is composed.
+The recognised set is derived from the compiler's own `_TABLE_KIND_CSVS` plus `variants.csv`, mirroring
+`if not has_variants and not kind_row_counts` exactly, so a table kind added later counts without an
+edit. `sources.csv` is deliberately outside it: a licence ledger is not a table a module can consist of.
+
+**`COMPANION_KINDS` itself is unchanged**, and that is deliberate rather than incidental — the mapping
+states a real pair, and a consumer reading it is not wrong about the pair, only about its
+unconditionality. The reporter passes the constant through rather than restating it, which was the right
+instinct and is why the accessor is public: an internal-only fix would have left their surface giving the
+old answer while ours gave the new one.
+
+**Rejected candidate**, the reporter's own blunter option: drop that direction of the pair and let the
+"no recognized table" error speak for itself. It loses the help in the one case the pair was added for —
+`studies.csv` truly alone — which a test now pins.
+
 ## RM112 — the machine-produced tables have no public `csv -> row model` resolver
 
 ✅ **Shipped in `just-dna-compiler` on 2026-08-20**, motivating case
