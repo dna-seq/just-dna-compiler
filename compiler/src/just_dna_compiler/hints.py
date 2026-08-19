@@ -40,11 +40,75 @@ from typing import Any
 
 from just_dna_format.base import authored_field_names, field_category, field_vocabularies
 from just_dna_format.binning import MeasureBinRow, deprecation_warnings, validate_bins
+from just_dna_format.layout import sidecar_spellings
+from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
 
-from just_dna_compiler.compiler import _list_cell, _list_fields, _scalar_cell
-from just_dna_compiler.draft import authoring_requirements, model_for, natural_key
+from just_dna_compiler.compiler import _FACT_TABLES, _list_cell, _list_fields, _scalar_cell
+from just_dna_compiler.draft import (
+    DRAFTABLE,
+    DraftError,
+    authoring_requirements,
+    model_for,
+    natural_key,
+)
+
+#: `csv name -> row model` for the tables a **machine** produces: the fact sidecars and
+#: `resolution.csv`. The read-only counterpart to `draft.DRAFTABLE`, which is authored kinds only and
+#: refuses these by design — so a tool asked "what is in `frequencies.csv`" had no public way to answer
+#: (S47). Every consumer that wanted one was reaching for `compiler._FACT_TABLES`, which is private and
+#: free to move in a patch, or hand-keeping the same seven lines and being the one that missed the
+#: eighth table.
+#:
+#: **Derived from `_FACT_TABLES`, never restated** — a hand-kept parallel map is the defect this
+#: closes, so re-introducing one here to publish it would be absurd. A test asserts the keys against
+#: `_FACT_TABLES` plus `resolution.csv`, so a new fact table fails CI rather than becoming silently
+#: undescribable.
+#:
+#: **Both spellings of the licence table are keys**, exactly as `DRAFTABLE` does it and for the same
+#: reason: the map is keyed on the filename a *caller* names, and a caller holding a module that
+#: carries `licensing.csv` must not be told it is not a table of this format. `sources.csv` is
+#: deliberately in both maps — it is the one fact table a human legitimately writes.
+#:
+#: `verification.json` is **not** here: it is the attestation document, not a fact table — no parquet,
+#: no `_FACT_TABLES` row, and not a CSV at all.
+DERIVED_TABLE_MODELS: dict[str, type[BaseModel]] = {
+    "resolution.csv": ResolutionRow,
+    **{
+        spelling: model
+        for csv_name, _parquet, model in _FACT_TABLES
+        for spelling in sidecar_spellings(csv_name)
+    },
+}
+
+
+def derived_model_for(csv_name: str) -> type[BaseModel]:
+    """The row model for a machine-produced CSV, or `DraftError` for a name this format does not read.
+
+    The counterpart to `draft.model_for`, which answers for authored kinds only. Between them they
+    cover every CSV the compiler reads, and a tool that dispatches on a filename needs both: an author
+    reading `resolution.csv` or `frequencies.csv` — files they must read and must never hand-finish —
+    was getting *"not an authored table of this format"*, which is true and useless (S47).
+
+    Raises `DraftError` rather than returning `None` so the failure matches `model_for`'s, on the house
+    rule that a generic rejection is a dead end where a specific one is a fix: the message names the
+    authored route, because asking this function for `variants.csv` is the likely mistake and the
+    answer to it is one call away.
+    """
+    model = DERIVED_TABLE_MODELS.get(csv_name)
+    if model is None:
+        if csv_name in DRAFTABLE:
+            raise DraftError(
+                f"{csv_name!r} is an authored table, not a machine-produced one — "
+                f"use model_for({csv_name!r}) instead."
+            )
+        raise DraftError(
+            f"{csv_name!r} is not a machine-produced table of this format. "
+            f"Known: {sorted(DERIVED_TABLE_MODELS)}"
+        )
+    return model
+
 
 #: How an alteration relates to what the author wrote. `frozenset[str]` + validation, never an Enum
 #: (Principle 6), and the three are ordered by how much they add: nothing, arithmetic, the world.

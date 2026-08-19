@@ -11,19 +11,23 @@ import io
 from pathlib import Path
 
 import pytest
+from just_dna_compiler.compiler import _FACT_TABLES
 from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for, stub_template
 from just_dna_compiler.hints import (
     ALTERATION_KINDS,
     ATTESTATION_BEARING,
+    DERIVED_TABLE_MODELS,
     REDUNDANCY_BEARING,
     REFUSAL_REASONS,
     Finding,
     HintReport,
+    derived_model_for,
     describe_table,
     field_options,
     inspect_rows,
 )
 from just_dna_format.base import authored_field_names, field_vocabularies
+from just_dna_format.layout import sidecar_spellings
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
@@ -354,3 +358,40 @@ def test_a_headerless_row_is_read_against_the_models_column_order() -> None:
 def test_an_unknown_kind_is_refused() -> None:
     with pytest.raises(DraftError, match="not an authored table"):
         inspect_rows("nonsense.csv", "a,b\n1,2\n")
+
+
+def test_the_derived_roster_is_derived_from_the_compilers_own_fact_tables() -> None:
+    """The whole point of S47: a new fact table must not be able to become undescribable.
+
+    Set equality over a walked set, never a floor and never a count — a hand-kept parallel map is the
+    defect this closes, so the test that guards it cannot restate the roster either.
+    """
+    expected = {"resolution.csv"} | {
+        spelling for csv_name, _parquet, _model in _FACT_TABLES for spelling in sidecar_spellings(csv_name)
+    }
+    assert set(DERIVED_TABLE_MODELS) == expected
+
+
+def test_every_fact_table_resolves_to_the_model_the_compiler_loads_it_with() -> None:
+    """Not just *a* model — the same one, so the two surfaces cannot drift."""
+    assert all(
+        derived_model_for(csv_name) is model for csv_name, _parquet, model in _FACT_TABLES
+    )
+
+
+def test_both_spellings_of_the_licence_table_answer_the_same_model() -> None:
+    """A caller holding a `licensing.csv` module must not be told it is not a table of this format."""
+    assert derived_model_for("licensing.csv") is derived_model_for("sources.csv")
+
+
+def test_an_authored_table_is_refused_with_the_route_that_does_answer_it() -> None:
+    """A generic rejection is a dead end where a specific one is a fix."""
+    with pytest.raises(DraftError, match=r"authored table.*model_for"):
+        derived_model_for("variants.csv")
+    # …and the authored route really does answer it, which is what makes the message actionable.
+    assert model_for("variants.csv") is DRAFTABLE["variants.csv"]
+
+
+def test_a_name_this_format_does_not_read_at_all_is_refused() -> None:
+    with pytest.raises(DraftError, match="not a machine-produced table"):
+        derived_model_for("nonsense.csv")

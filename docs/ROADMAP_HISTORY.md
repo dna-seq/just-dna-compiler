@@ -21,6 +21,48 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
+# The RM10/RM11 session — a downstream MCP surface restated three schema facts it could not generate
+
+Four items from `just-module-creator` on 2026-08-20, filed together because they came out of one work
+item: their MCP tools had three answers that **restated** a schema fact instead of generating it, and
+they went looking for the public symbol to generate each from. Two of the three had none — which is the
+report, and it is the useful shape of it: a consumer who wants to generate rather than restate, blocked
+by a private name, will hand-keep the same lines every other consumer hand-keeps and will be the one who
+misses the next table. All four are additive or documentation; nothing removed, nothing retyped.
+
+## RM112 — the machine-produced tables have no public `csv -> row model` resolver
+
+✅ **Shipped in `just-dna-compiler` on 2026-08-20**, motivating case
+[S47](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**What was missing.** `draft.model_for` answers for authored kinds and refuses everything else by
+design, so a tool asked *"what is in `frequencies.csv`"* — or `resolution.csv`, files an author must
+read and must never hand-finish — got `'resolution.csv' is not an authored table of this format`. True,
+and useless. The only complete map was `compiler._FACT_TABLES`, private and free to move in a patch.
+
+**Why the four obvious substitutes do not work**, each checked rather than assumed: `hints.model_for`
+and `draft.DRAFTABLE` are authored-only; `just_dna_registry.specfiles.FACT_CSVS` is public but is
+**names only**, and lives in another package, so a registry release lagging a compiler release makes the
+answer lag too; `ARTIFACT_PARQUETS - LEAD_PARQUETS` does not isolate them — measured at **nine** names
+against seven fact tables, because `annotations.parquet` and `studies.parquet` are in neither set; and
+`authoring_reference()["models"]` is keyed by **model name**, so it answers "what columns does
+`GeneValidityRow` have" and cannot answer "which model is `gene_validity.csv`" — which is the direction a
+tool caller holding a filename actually needs.
+
+**Shipped.** `hints.DERIVED_TABLE_MODELS` plus `hints.derived_model_for(csv_name)`, the read-only
+counterpart to `draft.model_for`. **Derived from `_FACT_TABLES`, never restated** — re-introducing a
+hand-kept map in order to publish one would be the defect wearing a public name — with a test asserting
+set equality over the walked set, so an eighth fact table fails CI instead of becoming undescribable.
+Both spellings of the licence table are keys, exactly as `DRAFTABLE` does it and for the same reason
+(`@sidecar-name-and-place`); `sources.csv` is deliberately in both maps, being the one fact table a human
+legitimately writes. `verification.json` is excluded: it is the attestation document, not a fact table.
+Asking it for an authored name raises with the route that *does* answer — `@specific-rejection`, since
+"not machine-produced" is a dead end where "use `model_for`" is a fix.
+
+**What was not done.** `describe_table` still refuses non-authored names. Widening it was tempting and
+rejected: a caller today can rely on that refusal, and the reporter had already built the second
+read-only route themselves — the missing piece was the map, not the presentation.
+
 # 0.6.2 — the enricher's exception contract, one layer up from RM97
 
 One item, and the first in a while to arrive from the consumer inbox rather than from a doc pass.
