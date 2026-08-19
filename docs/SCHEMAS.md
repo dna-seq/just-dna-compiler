@@ -454,7 +454,7 @@ hg19 coordinate, whose remedy is rsID recovery rather than a liftover.
 
 **Binning rows** (`binning.py`, all subclass `MeasureBinRow`). Shared: `measure_kind` (must match the
 row type), inclusive `[measure_min, measure_max]` (finite; `unresolved=True` carries no bounds — the
-mandatory no-call sentinel), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
+no-call sentinel, expected on every table but enforced only one-sidedly; see below), `conclusion`, plus `direction?`/`clin_sig?`/`phenotype?`/`trait_efo_id?`
 and the `source_field?` VCF pointer plus its `source_element?` rule, plus **`pmid?` — the boundary
 citation added in 0.6 (RM47)**, a free-form PubMed pointer under the same grammar as `StudyRow.pmid`,
 plus **`measure_tiling?` — how the axis is divided, added in 0.6 (RM55)**, described below.
@@ -464,6 +464,19 @@ from migrating here one column at a time. Per-kind key fields: `ActivityPhenotyp
 repeat_unit)`; `HeteroplasmyRow`→`(gene, reference_sequence, tissue, variant_key)` (rejects the legacy
 `NC_001807` mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping
 resolved ranges in a key group are a compile error; interior coverage gaps are warnings.
+
+**What the sentinel rule actually enforces — one side of it.** The contract is that a missing
+measurement selects the `unresolved` row, so a table without one leaves a consumer with nothing to
+match. The compile path enforces only the **upper** bound of that: `_validate_table_kind` counts
+sentinels per bin group and refuses a *second* one in a group, and no check anywhere on the compile
+path refuses **zero**. Measured: a binning table with its sentinel row deleted compiles green under
+`--strict`. The presence half lives on the authoring surface — `hints._check_bins` warns *"no
+unresolved sentinel row"* — and it is `not any(...)` **over the whole table**, so it is satisfied by a
+single sentinel anywhere in the file. That matters wherever the key fields fragment one CSV into
+several bin groups: `CopyNumberRow`'s modifier columns are part of the group key, so each distinct
+`(modifier_gene, modifier dosage)` pair is its own tiling needing its own sentinel, and a file that has
+one for the null-modifier group is silent about the rest. Nothing on either surface catches that — the
+compile rule is per-group but one-sided, the hint is table-level. Write a sentinel per group by hand.
 
 **`measure_tiling` — how the axis is divided, which is not what is measured (RM55, 0.6).** A closed
 two-member vocabulary (`VALID_MEASURE_TILINGS` = `{quantised, continuous}`), optional, on the binning
@@ -628,7 +641,7 @@ of them measures anything:
 | `VariantRow.requires_callable` | the *absence* of this variant is the informative call, so a consumer without callability data withholds the conclusion rather than asserting the reference one |
 | `VariantRow.callable_from` | which VCF field(s) the proof of callability lives in (`FORMAT/DP`, `FORMAT/GQ`, `FORMAT/FT`, `FORMAT/DP\|FORMAT/GQ`) — a pointer, never an expression |
 | `VariantRow.quality_from` + `min_quality` | the floor below which what *was* seen is not good enough to act on. A consumer that cannot read the field **withholds** — an unevaluable floor is unknown, never satisfied |
-| `MeasureBinRow.unresolved` | the mandatory no-call sentinel on every binning table: a missing measurement selects it and **never** the lowest or reference bin |
+| `MeasureBinRow.unresolved` | the no-call sentinel on every binning table: a missing measurement selects it and **never** the lowest or reference bin. Contractually expected, but only the authoring hints enforce its presence — see the binning note below |
 
 ### A row asserts something about a (locus, genotype) PAIR — and one rsID can produce rows for pairs the author never wrote (0.6, S33)
 

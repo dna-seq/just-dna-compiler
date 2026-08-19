@@ -59,14 +59,19 @@ carrying CPIC's prescribing recommendation on top of the 595 phenotype rows. The
 they answer different questions and `_TABLE_DUPE_KEYS` keys on `drug`: the plain row says *what
 phenotype this pair is*, the drug row says *what CPIC advises about it for this drug*.
 
-`--population` is required rather than convenient. CPIC scopes clopidogrel to three clinical
-contexts — `CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI` — and **they disagree**: `*2/*2` (Poor
-Metabolizer) is a `strong` recommendation in `CVI ACS PCI` and `moderate` in `NVI`. `DiplotypeRow`
-has no population column, so drafting all three would produce rows the compiler rejects as
-duplicates, and picking one silently would assert a clinical context the author never chose. With
-more than one available and none named, the provider drafts nothing and lists the choices. This
-module declares `CVI ACS PCI` — the acute-coronary/PCI setting CPIC's clopidogrel guideline is
-written around — and that declaration is the curation, not a default.
+`--population` narrows rather than decides. CPIC scopes clopidogrel to three clinical contexts —
+`CVI ACS PCI`, `CVI non-ACS non-PCI`, `NVI` — and **they disagree**: `*2/*2` (Poor Metabolizer) is a
+`strong` recommendation in `CVI ACS PCI` and `moderate` in `NVI`. When this module was drafted
+`DiplotypeRow` had no column for that axis, so all three contexts collided as duplicate rows and the
+provider refused rather than pick one; `--population` was the only way through, and this module was
+drafted with `CVI ACS PCI` — the acute-coronary/PCI setting CPIC's clopidogrel guideline is written
+around. RM29b (0.5.1) dissolved the refusal by adding `clinical_context` to the row and to the dedup
+key, so today `draft --drug` writes every context as its own row and `--population` merely filters.
+
+Note what that leaves on disk: these rows carry **no `clinical_context` column at all**, so the
+setting they belong to is recorded in this paragraph and nowhere a consumer can read. Re-drafting the
+module today would state it per row. The declaration is still the curation — it is just no longer the
+only way to draft.
 
 The `conclusion` is CPIC's own two halves, transcribed rather than summarized: the *implication*
 (what the genotype does) followed by the *recommendation* (what to do about it).

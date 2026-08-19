@@ -528,8 +528,9 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
   for CC/CT and "increased" for TT. Genotype is in the key for that reason.
 - **CPIC recommendations are keyed by (phenotype, drug, *population*)**, and the populations disagree —
   the same Poor Metabolizer diplotype is `strong` in one clinical context and `moderate` in another.
-  `draft --drug` **refuses and lists the choices** when several exist rather than picking one, because
-  defaulting would assert a clinical context you never chose. Narrow with `--population`.
+  `draft --drug` writes **every** context as its own row — `clinical_context` is part of what makes those
+  rows distinct, so none of them collides. `--population` filters that set rather than deciding it, and
+  naming one the source does not publish refuses and lists what is available.
 - **`recommendation_strength` is CPIC's; `evidence_level` is PharmGKB/ClinPGx's.** Different axes — fill
   only the one your source states.
 - **A large star-allele gene needs `draft --allele`.** *n* alleles is *n(n+1)/2* diplotypes; unfiltered

@@ -160,7 +160,10 @@ keying — never a packed tuple). Single-gene rows leave the modifier null.
 ```csv
 gene,measure_kind,measure_min,measure_max,modifier_gene,modifier_copy_number,direction,clin_sig,phenotype,trait_efo_id,conclusion,unresolved
 SMN1,copy_number,0,0,SMN2,3,risk,pathogenic,Spinal muscular atrophy,MONDO_0001516,"0 SMN1 / 3 SMN2 — milder",false
+SMN1,copy_number,,,SMN2,3,,,Spinal muscular atrophy,MONDO_0001516,"SMN1 CN not resolved, 3 SMN2 — needs MLPA",true
 SMN1,copy_number,0,0,SMN2,1,risk,pathogenic,Spinal muscular atrophy,MONDO_0001516,"0 SMN1 / 1 SMN2 — severe",false
+SMN1,copy_number,,,SMN2,1,,,Spinal muscular atrophy,MONDO_0001516,"SMN1 CN not resolved, 1 SMN2 — needs MLPA",true
+SMN1,copy_number,0,0,,,risk,pathogenic,Spinal muscular atrophy,MONDO_0001516,"0 copies, SMN2 unknown — affected, severity unstated",false
 SMN1,copy_number,1,1,,,risk,pathogenic,Spinal muscular atrophy,MONDO_0001516,"1 copy — carrier",false
 SMN1,copy_number,2,2,,,neutral,benign,Spinal muscular atrophy,MONDO_0001516,"2 copies — normal",false
 SMN1,copy_number,3,,,,neutral,benign,Spinal muscular atrophy,MONDO_0001516,"3+ copies — normal",false
@@ -168,6 +171,17 @@ SMN1,copy_number,,,,,,,Spinal muscular atrophy,MONDO_0001516,"CN not resolved (s
 ```
 Inert until a consumer supplies a CNV call. There is no `copy_number` column — a sharp value is
 `measure_min == measure_max`.
+
+**Why nine rows and not six: the modifier columns are part of the bin-group key.** `_KEY_FIELDS` is
+`(gene, modifier_gene, effective_modifier_copy_number)` plus `trait_efo_id`, so this one CSV is **three
+tilings**, not one — `(SMN1, SMN2, 3)`, `(SMN1, SMN2, 1)` and `(SMN1, null, null)` — and each needs its
+own `unresolved` sentinel, plus a `[0,0]` bin in the null-modifier group for a homozygous deletion with
+no SMN2 call. The earlier six-row version of this example had one sentinel for the null-modifier group
+and none for the two SMN2 groups, and no `[0,0]` bin outside them: an SMN2=3 sample with no SMN1 call
+matched nothing, and so did SMN1=0 with SMN2 unknown. **Nothing catches that** — the compile-path
+sentinel rule is per-group but only refuses a *second* one, and the authoring-surface warning for a
+missing sentinel is table-level, so a single sentinel anywhere in the file satisfies it. Verified: the
+nine rows above group into three, each with a sentinel, and `validate_bins` returns no warnings.
 
 **`modifier_copy_number`, not `modifier_cn` (RM55, 0.6).** The integer column is deprecated and goes
 at 1.0; the float one holds the non-integer dosages VCF 4.4 §7.2 allows. Setting both is an error.

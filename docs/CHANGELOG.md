@@ -34,7 +34,67 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-19 (latest) — 0.6.4: "needs a re-draft" was an incomplete instruction (S45)
+## 2026-08-20 (latest) — a downstream reference surface, validated against the code, and eight findings filed (RM104–RM111)
+
+**No version moves.** Format and compiler stay at **0.6.1**, enricher at **0.6.4**. This is an audit
+round: nothing shipped, eight things were filed, and one downstream repository's documentation was
+corrected in place.
+
+**What was audited.** `just-module-creator`'s `skills/module-tables/references/` holds 24 files, one
+per table kind, written against this repo's 0.6.1/0.6.4 by another agent. All 24 were checked three
+ways — the reference, against our `docs/`, against **the code as arbiter**. The calibration result is
+worth recording because it inverts the expected yield: roughly 250 `file:line` citations were
+spot-checked across twelve reports and **near-zero named the wrong symbol**. Their line numbers have
+drifted with the tree; their reasoning held. So most of what the audit found is wrong in **our**
+documents, not in theirs.
+
+**Two of our own findings were themselves wrong, and the reason generalises.** Two reports accused the
+reference of fabricating `describe_table`'s return value and of calling a `table_requirements` symbol
+that does not exist. Both accusations are false: those are the **plugin's own MCP tools**, which really
+do return `redundancy_bearing`/`attestation_bearing` and really do expose `table_requirements`. The
+agents checked `just_dna_compiler.hints` — a different surface with the same names. **When a claim
+names a tool, establish which surface owns that name before calling it a misread**; the wrapper and the
+library disagree deliberately, and only the *count* was actually wrong (thirteen authorable kinds, not
+twelve).
+
+**The downstream files now carry two markers**, and they are a convention worth knowing if you read
+them: 🚧 **ROADWORKS** for a surface that is broken or unfinished, always with a **Guard** naming what
+to do instead, and ⚠️ **CHECK** for a claim whose current state is not what the surrounding text
+implies. 25 and 10 of them respectively, plus a per-file audit banner and about ten unmarked in-place
+corrections. That repository is not ours to commit; the edits are left in its working tree.
+
+**Eight code findings, filed as RM104–RM111 and none of them fixed.** Three are one-line patches with a
+test each — `enrich_gene_metrics` raising `UnboundLocalError` on the ordinary idempotent re-run
+(**RM104**, and it defeats the `GeneMetricsEnrichmentError` contract RM101 was built for), the `faf95`
+arithmetic warning being **published twice** into `manifest.compilation.warnings` (**RM106**, the same
+shape as the shipped RM94, three lines from a dedup filter whose comment names the hazard), and the
+gene-metrics fetch-suppression key not being derived from its merge key, so an honest `source=manual`
+override duplicates instead of overriding (**RM109**). Two more are patches with a wider blast radius:
+`logo.jpeg` compiles and is attested but never publishes, because the publisher allowlist is the one
+place still spelling logo names by hand (**RM105**), and a duplicate `(source, layer)` row compiles
+green under `--strict` because `SourceRow` is in the *drafter's* dupe map and not the *compiler's*
+(**RM107**) — in the one file the compile gate keys on. Two need design before code: a ClinGen
+re-curation appends a second row with nothing marking the superseded one, so
+`manifest.gene_validity.classifications` can publish `["definitive", "refuted"]` with no currency
+notion (**RM108** — S45's shape, minus the signal S45 had), and `constraint_flags` carries two
+encodings from two producers, where normalizing the snapshot leg's literal `"[]"` would move
+`gene_metrics.signature` for every module already holding those rows (**RM110**). The last is
+documentation shipped as code: three strings, two of them `Field(description=…)`, assert a registry
+override of `license` that the registry's publish path never performs (**RM111**).
+
+**Three recurring shapes came out of it, and they are the part worth carrying forward.** A check is
+only as wide as the table it reads, and our documents name checks without naming that scope — six
+agents found an instance independently, from `REDUNDANCY_BEARING` being keyed on a bare column name
+(so it advertises checkers that cannot run on the model in front of you) to `manifest.stats.genes`
+being `variants.csv`-only, so a gene-keyed table-only module publishes `gene_count: 0`. A counted
+claim in prose rots the same way a hand-kept list does — "seven fact signatures" (eight), "six derived
+sidecars" (seven), "four causes" (five) — and the repair is an **equality over a walked set**, never a
+corrected integer. And an *enforcement* claim needs its surface named: the `unresolved` bin sentinel is
+called mandatory in three places, and the compile path refuses a **second** one while refusing zero
+nowhere at all, with the presence half living on the authoring hints and scoped to the whole table
+where the compile rule is per bin group.
+
+## 2026-08-19 — 0.6.4: "needs a re-draft" was an incomplete instruction (S45)
 
 **`just-dna-enricher` 0.6.4**; format and compiler stay at **0.6.1**. One fix, three tests, suite
 2776 → 2779. It exists because a consumer measured the half the 0.6.3 entry explicitly did not claim

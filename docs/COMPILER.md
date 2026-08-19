@@ -95,9 +95,16 @@ that never fetches cannot independently confirm a fetched fact.
 
 **1. Formal conformance** — complete within its domain, like type-checking. Columns, types, closed
 vocabularies (`extra="forbid"` plus the reserved-namespace diagnosis), identifier grammars (rsid, DOI,
-PMID, CURIE, `ga4gh:VA.`, `CA\d+`), value bounds, finite floats (no `NaN`), required-ness, mandatory
-`unresolved` bin sentinels, bin overlap/gap, duplicate natural keys, duplicate `(variant_key,
-genotype)`. If a module violates one of these it is malformed, full stop.
+PMID, CURIE, `ga4gh:VA.`, `CA\d+`), value bounds, finite floats (no `NaN`), required-ness, **at most one**
+`unresolved` bin sentinel per bin-group key, bin overlap/gap, duplicate natural keys, duplicate
+`(variant_key, genotype)`. If a module violates one of these it is malformed, full stop.
+
+Note the one-sidedness of the sentinel rule, because it reads like a completeness check and is not one:
+`_validate_table_kind` counts sentinels per group and refuses a **second** one, and nothing on the
+compile path refuses **zero**. A binning table carrying no sentinel at all compiles green under
+`--strict` — measured. The missing-sentinel finding lives on the authoring surface only
+(`hints._check_bins` warns `no unresolved sentinel row`), and it is *table*-level, so a table whose rows
+fragment into several bin groups can satisfy it while leaving most groups with no sentinel.
 
 **2. Validate-by-redundancy** — where two independently-authored things must agree, disagreement is
 detectable without any reference. This is where most real authoring bugs are caught:

@@ -386,8 +386,8 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
   cannot express. Needed four times in one provider: assume a per-row warning needs collapsing before
   you ship it, grouped by **reason** rather than by row.
 - **CPIC recommendations are keyed by (gene phenotype, drug, POPULATION), and the populations
-  disagree** — `DiplotypeRow` has no population column, so `draft --drug` **refuses** and lists the
-  choices rather than asserting a clinical context. Drug rows sit *beside* phenotype rows.
+  disagree** — `clinical_context` is in the dedup key since RM29b, so `draft --drug` writes **every**
+  context as its own row and `--population` only filters. Drug rows sit *beside* phenotype rows.
   `recommendation_strength` is CPIC's, `evidence_level` is PharmGKB's — different axes.
 - **A star allele can be *used* without being *defined*** — `_cross_validate_haplotype_definitions`
   warns when `haplotypes.csv` is present; `*1` is exempt.
