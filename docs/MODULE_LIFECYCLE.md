@@ -511,8 +511,9 @@ who must make it. There is no version of this where the old closure survives and
 says.
 
 **What happens to that pass downstream was the sharper half of the question, and it is now answered.**
-Four findings, first read out of `just-dna-registry`'s tree on 2026-08-16, filed there as their S10–S12
-and re-verified against that tree on **2026-08-20 at registry 0.18.3**. They are stated separately, each
+Four findings, first read out of `just-dna-registry`'s tree on 2026-08-16 and re-verified against that
+tree on **2026-08-20 at registry 0.18.3**. Three of them were filed there as asks — their S10–S12; the
+first is a confirmation and was never one. They are stated separately, each
 with the release that moved it, because the composite sentence this paragraph used to carry went stale
 as a unit — three of the four have moved since it was written, and a reader could not tell which:
 
