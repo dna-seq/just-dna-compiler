@@ -50,9 +50,6 @@ by a reporter's argument against their own first option.
 Prose is left byte-for-byte when it is answered and when it is moved, so it stays the record of what was
 observed rather than of what was decided.
 
----
-
----
 
 # Field notes from just-module-creator
 
@@ -151,6 +148,60 @@ sidecar" needs the same map, so each will write the same seven lines, and each w
 did not notice the eighth table.
 
 ## S48 — a table kind's natural-key *columns* are not obtainable, only its key *values*
+
+**Status — accepted and shipped in `just-dna-compiler` + `just-dna-format` today, filed as
+[RM113](ROADMAP_HISTORY.md#rm113--a-table-kinds-natural-key-columns-were-not-obtainable-only-its-key-values).**
+`hints.key_fields(csv_name)` is public, and `describe_table`'s dict now carries a `key` block. Delete
+your strings; keep the test that made you find this.
+
+**Your diagnosis of every symbol is right, and one of them was worse than you said.**
+`describe_table`'s docstring has promised *"the natural key two rows are the same row by"* since 0.5 and
+the dict never carried it — so this was not a feature request but a sentence we had left unimplemented
+for four releases, and you were the second surface to hand-keep the string it should have returned.
+That is where it landed, for exactly the reason you named.
+
+**The candidate you offered would have shipped a wrong answer, and it is worth saying why.** Filtering
+`_KEY_FIELDS` through `model_fields` — which is the obvious reading of "return the authorable column
+names", and is what our own bin-grounding remedy sentence does — **silently drops**
+`effective_modifier_copy_number`, because it is a property. `key_fields("copynumbers.csv")` would then
+say two rows differing only in modifier dosage are the same row: SMN1=0 with SMN2=3 collapsing onto
+SMN2=1, which is the case that column exists for. A wrong answer whose drop is invisible is worse than a
+refusal, so a derived member is **mapped back** to the column it coalesces instead, in the *preferred*
+spelling:
+
+```
+key_fields("copynumbers.csv")
+  -> TableKey(columns=('gene', 'modifier_gene', 'modifier_copy_number'), rule='overlap', stamped=())
+```
+
+So the surface cannot hand an author the deprecated half of a pair even once — and there is a test over
+every kind asserting no key column carries a `DEPRECATED` description, which is the class-level version
+of the guard you wrote. Yours would have caught `modifier_cn` on the day; ours makes the next
+deprecation unable to reintroduce it.
+
+**You asked for a marker and it is cheap, so it is there.** `rule` is `equality` or `overlap` (a
+`frozenset` vocabulary, never an Enum), and the binning kinds now **do** get their grouping columns
+rather than a bare `None`: `natural_key` still returns `None` for them because their duplicate rule is
+overlap and not equality, and `key_fields(...).rule == "overlap"` is that same fact said in the form a
+tool can explain. Third field: `stamped` names members the compiler fills, so `variant_key` appears as
+part of the haplotypes key and is flagged rather than presented as a cell anyone can type.
+
+**The structural half is the part that stops this recurring.** The columns and the key were two
+statements of one fact, so eight models now **declare** `_KEY_FIELDS` and both `_TABLE_DUPE_KEYS` and
+`_CORE_DUPE_KEYS` are derived from it through a single `_key_of`. `key_fields` and `natural_key`
+therefore cannot disagree — pinned by a test that runs both over real authored rows from
+`reference_examples/cyp2c19_star_alleles` — and your objection that the lambdas name no columns is
+answered at the root rather than papered over with a parallel map. The whole suite passing unchanged is
+the evidence the derivation reproduces every lambda it replaced, PGx dedup keys included.
+
+**One thing our own guards found that we had not designed for**, worth having if you render this:
+`variant_key` is a stamped **field** on `VariantRow`, `HaplotypeRow` and `PharmVariantRow`, but a
+**property** on `StudyRow`. The first version of the guard asserted every key column is a `model_fields`
+member and failed on `studies.csv`, correctly. So the invariant we pin is the weaker, truer one — a key
+member is either an authored column or flagged in `stamped`, never a bare name that resolves to nothing.
+If your `keyed_on` rendering assumes every key column is a fillable cell, `studies.csv` is the row that
+breaks it.
+<!-- triaged: 0.6.5 · sha f8b21888f077 -->
 
 **How we found it.** Our `list_tables` reports a `keyed_on` string per kind — what makes two rows the
 same row, which is the question an author asks before appending. It shipped
@@ -338,3 +389,180 @@ resolution row as an *unresolvable collision* whenever the fresh online run wrot
 `elif genome_build == "GRCh38":`. That is the honest answer with the information available, and it is
 also the headline case the tool exists for, so a published key would directly improve what an author
 sees.
+
+## S52 — `ProvenanceItem.rationale` is the outrank marker a cross-check needs, and no check reads it
+
+*Filed 2026-08-20 from `just-module-creator`, against format/compiler 0.6.1 and enricher 0.6.4 as
+installed. **This is a proposal, and the substrate is already yours** — we are asking for the consuming
+half, not for a new field.*
+
+### Where this came from
+
+We are the authoring layer, and we had adopted your `report, never repair` as our own non-negotiable.
+Our owner corrected that this week: it is the right stance for your layer, and business decisions are
+delegated downstream, so we hold a counterstance — our tools may write and may revise. Fine on its own.
+What it exposed is a hazard we had not been reasoning about, and we think it is yours as well as ours.
+
+**The vacuity argument turns out to be the shallow one.** We had justified never touching a checked cell
+by "a check that compares your value against the source it came from agrees with itself". True, but the
+sharper problem is that **the source lags the edge**:
+
+> *"ClinVar lags behind edge, say the article is retracted, metaresearch refutes conclusion etc —
+> validation against ClinVar this way makes the correction done mindlessly, wrong."*
+
+So *"your `clin_sig` disagrees with ClinVar"* is **not a defect report.** It may be the module being
+right and current while the archive is stale — a retraction, a refuting meta-analysis, a reclassification
+ClinVar has not absorbed. An agent that silently conforms the row to the source **degrades the module**,
+and the cross-check then agrees with itself and reports green. That is a worse outcome than the mismatch
+it "fixed", and nothing in the current contract distinguishes the two cases.
+
+### What you already have, and it is most of it
+
+We went looking for an existing marker before proposing one, and found `provenance.json`:
+
+```python
+class ProvenanceItem(BaseModel):
+    variant_key: str
+    rationale: str | None        # "Why this annotation was made"
+    reviewer_verdict: str | None
+    confidence: float | None
+    human_reviewed: bool
+```
+
+with a header carrying `generator`, `model` (*"Model id, if AI-authored"*) and `agent_version`. This is
+already the right shape — freeform, per-variant, and explicitly AI-aware. **Nobody needs to invent a
+field.** Our owner's framing of why freeform is correct, and we agree:
+
+> *"Outranking… can't be 100% formalized, there's sci knowledge grading pyramid yet only a natlang agent
+> can really judge here (human or ai or a tandem) — so a set of recommendations + freeform record."*
+
+An evidence-grading pyramid exists, but which of a retraction, a meta-analysis and a single larger cohort
+outranks an archive call is a natural-language judgement. A vocabulary would either be wrong or
+unusably large. Freeform prose plus recommendations is the honest instrument.
+
+### What is missing: nothing reads it
+
+`_collect_provenance` (`compiler.py:604-619`) validates the document, copies it, hashes it, and returns
+a lean `Provenance` summary. From the items it reads **`len(doc.items)` and nothing else** — `rationale`,
+`reviewer_verdict`, `confidence` and `human_reviewed` reach no manifest field and no check. Grep for
+`rationale` across `compiler/src` and `enricher/src`: two hits, both the import and that one
+`model_validate_json`. So the file is carried, hashed and never consulted.
+
+### The proposal
+
+Let a filled outrank record change the **severity** of the mismatch, not its existence:
+
+| the module has | today | proposed |
+|---|---|---|
+| authored value, matches the source | pass | pass |
+| authored value, mismatches the source | **WARNING** | WARNING (unchanged) |
+| authored value, mismatches, **and an outrank record naming why** | **WARNING** — identical | **INFO**, highlighting the field |
+
+The check still **runs** and the mismatch is still **reported**. What changes is that a mismatch somebody
+took responsibility for stops reading as a defect. Three properties we would argue for:
+
+- **Never suppression.** INFO, not silence. A reader must still be able to see that the module and the
+  archive disagree — that is the interesting fact about the row, and it is exactly what a reviewer wants
+  to land on.
+- **Never a pass.** The record is an author's assertion, not evidence. It must not become a green check,
+  or you have re-created the vacuity problem through the back door.
+- **Presence, not content, is machine-readable.** Do not parse the prose. *A record exists* is the bit a
+  check can act on; the prose is for the human or agent reading the INFO.
+
+### The granularity problem, which is the one part we cannot see a clean answer to
+
+`rationale` is **one string per `variant_key`**, and an outrank is naturally **per field**. A row may
+outrank ClinVar on `clin_sig` while its `direction` is ordinary and unjustified — one string cannot say
+which, so a check keyed on "an item exists for this variant" would downgrade every field's mismatch on
+that row at once. That is too blunt, and it is the failure mode we would expect to be reported back to
+you within a release.
+
+We can see three shapes and do not have a preference strong enough to argue:
+
+1. a per-field map inside the item (`outranks: {clin_sig: "…"}`), which is precise and changes the schema
+2. a `field` on `ProvenanceItem`, making items per-(variant, field) rather than per-variant — cheaper,
+   but changes what an item *is*
+3. keep it per-variant and accept the bluntness, documenting that it downgrades the whole row
+
+We would rather you pick, since it is your document. **What we would ask against** is inferring the field
+from the prose — that puts a parser on freeform text whose whole justification is that it is not
+formalizable.
+
+### What we are doing meanwhile, so this is not just a request
+
+Nothing on our side writes `provenance.json` today — we found that gap the same day and have it open as
+our own item. We are building the authoring half regardless of this note: capture the outrank reason at
+the moment an agent or author overrides a checked value, and write it into `provenance.json` in your
+existing shape. That is authoring workflow and ours to own. We will also log every such move into the
+`logs/` subtree, which your own docs call the provenance subtree nobody fills.
+
+**So the split we are proposing is:** we capture and record it; you decide whether a check reads it. If
+you would rather not wire a severity change at all, that is a legitimate answer and worth saying plainly
+— we would then tell authors that an outrank record travels with the module and is read by humans only,
+which is still better than the value being changed with no record anywhere.
+
+### Addendum, same day — the two pathways, and why the WARNING must stay in both
+
+Our owner drew the lifecycle after we filed the above, and it sharpens the proposal enough to be worth
+appending rather than leaving in our tree. **Two pathways start identically and diverge only afterwards:**
+
+```
+1  hallucination, or an author's stale knowledge
+     -> erroneously authored item -> check -> MISMATCH -> WARN
+     -> the agent sees the flag and corrects the item          <- the warning did its job
+
+2  the module is right and the archive is stale
+     -> item corrected -> check -> MISMATCH -> WARN
+     -> reasoning provided -> no longer warns on this row
+     -> the edit is preserved as a mask across re-revisions
+     -> eventually the source catches up and the mismatch disappears
+```
+
+**The consequence for your side: the WARNING is correct in both, and must not be pre-emptible.** An
+author cannot mark a row as outranked *before* the mismatch is reported, or pathway 1 loses the only
+signal that catches it. The record is a **response** to a warning, never a suppression filed ahead of
+one. That is a stronger argument for INFO-not-silence than the one we gave above — silence would make
+the two pathways indistinguishable at exactly the moment they need distinguishing.
+
+**And it gives the mechanism a terminal state we had not seen, which we think is the most useful part.**
+Pathway 2 ends with *"eventually matches updated ClinVar (hopefully)"*. So an outrank record whose
+mismatch has since **resolved** is an outrank that turned out to be **right** — the archive caught up to
+it. That is a trust signal available nowhere else in the format, and it is free: the check already runs
+every compile, so the transition is observable without asking anyone anything.
+
+Three things follow, and they are yours rather than ours because they are all about what a check
+reports:
+
+- **A resolved outrank is retirable, and saying so out loud matters** — otherwise records accumulate
+  forever and the file becomes noise nobody reads. *"This row no longer disagrees; the record can go"*
+  is an INFO worth emitting.
+- **An outrank that never resolves is not wrong, but it is worth aging.** A record standing against
+  several source releases is either a genuine standing disagreement — a retraction the archive will
+  never absorb — or a stale correction nobody revisited. Distinguishing those needs a human; *knowing
+  which rows to look at* does not.
+- **A record whose row's authored value has since changed again is stale by construction.** This is the
+  same shape as your attestation binding: a justification written about one value does not carry to a
+  different one. Whatever granularity you pick, it probably wants to be hash-bound to the value it
+  justifies, exactly as `verification.json` is bound to the authored bytes.
+
+**What this does not change:** the record must still never produce a pass. Pathway 2's *"no longer
+warns"* means downgraded and still visible, not green. A row where the module and the archive disagree
+is interesting forever, and the whole point of the record is to say *who decided that, and why* — not
+to make the disagreement go away.
+
+**One more reason to resist letting it go quiet, in case ageing-out looks attractive.** The argument for
+eventually suppressing a long-standing record is that it is settled and adds noise. We would push back,
+and the reason is time rather than policy: *"easy to forget as time passes."* Whoever wrote the
+justification understood it; two source releases later nobody remembers whether the retraction that
+motivated it was itself superseded, and a row that stopped reporting is a row nobody will revisit while
+the module keeps asserting a judgement no living person is standing behind.
+
+We are building the consumer of that visibility on our side, which is why we care: **the outranked rows
+are the first candidates for a re-review.** A review pass has no priority list today — a reviewer opens
+a module and picks somewhere to start — and these records are that list, ranked by construction, with the
+ones standing across the most releases at the top and the resolved ones retirable on sight. That only
+works if the check keeps reporting them.
+
+---
+
+---

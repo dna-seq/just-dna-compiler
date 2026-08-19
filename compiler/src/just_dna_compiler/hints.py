@@ -281,6 +281,92 @@ class HintReport:
         )
 
 
+#: How a kind decides that two rows collide. `frozenset[str]` + a validator, never an Enum
+#: (Principle 6). **Two readings, and they are not interchangeable:** `equality` means the key tuple
+#: must be unique, which the compiler enforces as a duplicate-row error; `overlap` means the key
+#: columns only *group* rows, and the collision rule inside a group is that their `[measure_min,
+#: measure_max]` ranges must not overlap — two bins can conflict while sharing no key at all.
+KEY_RULES: frozenset[str] = frozenset({"equality", "overlap"})
+
+
+@dataclass(frozen=True)
+class TableKey:
+    """What makes two rows of one kind the same row, in columns an author can actually see (S48).
+
+    `draft.natural_key` answers this per **row**, as a tuple of values, so a tool holding only a table
+    name could not ask it which columns those values came from — and `_TABLE_DUPE_KEYS`, even reached
+    into, yields lambdas that name no columns at all. Every consumer wanting the column names was
+    therefore hand-keeping a string, and a hand-kept string went stale the day 0.6 deprecated a column
+    inside one: the reporting consumer was telling authors to key `copynumbers.csv` on `modifier_cn`,
+    whose own description reads *DEPRECATED since 0.6, removed at 1.0*.
+
+    `columns` is in the author's own spelling wherever one exists: a derived `_KEY_FIELDS` member is
+    mapped back to the authored column it coalesces, never dropped. `CopyNumberRow` keys on
+    `effective_modifier_copy_number`, a property over two columns, and it appears here as
+    `modifier_copy_number` — the **preferred** spelling, so this surface can never hand an author the
+    deprecated half of a pair. Dropping the member instead, which is what the compiler's own
+    grounding-remedy sentence does, would say two rows differing only in modifier dosage are the same
+    row. That is a wrong answer where the drop is invisible, so it is the one thing this must not do.
+
+    `stamped` names the members the **compiler** fills rather than the author — `variant_key` on the
+    two variant-keyed kinds. They stay in `columns` because they really are part of the key; they are
+    flagged because an author cannot type one, and a surface that presented them as fillable columns
+    would be describing a cell that does not exist in their CSV.
+    """
+
+    columns: tuple[str, ...]
+    rule: str
+    stamped: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.rule not in KEY_RULES:
+            raise ValueError(f"unknown key rule {self.rule!r}; known: {sorted(KEY_RULES)}")
+
+
+def _authored_spelling(model: type[BaseModel], name: str) -> str:
+    """A `_KEY_FIELDS` member in the spelling an author writes, or the member itself.
+
+    Derived from the naming convention rather than a restated map: an `effective_x` property exists to
+    coalesce the column `x` with a deprecated companion, so stripping the prefix lands on the column
+    the author should fill. Anything that does not resolve is returned unchanged — never dropped — and
+    a test asserts every member of every kind resolves to a real field, so a future property that does
+    not follow the convention fails CI instead of silently producing a wrong key.
+    """
+    if name in model.model_fields:
+        return name
+    stripped = name.removeprefix("effective_")
+    return stripped if stripped in model.model_fields else name
+
+
+def key_fields(csv_name: str) -> TableKey | None:
+    """What makes two rows of this table kind the same row, or `None` for a kind with no declared key.
+
+    Answers for authored kinds and for the machine-produced tables alike, so a tool dispatching on a
+    filename gets one route. `None` is the honest answer for a derived table that declares no key —
+    withheld rather than invented, on the house three-valued rule.
+
+    Consistent with `draft.natural_key` by construction, not by agreement: both read the model's own
+    `_KEY_FIELDS`, and a test pins `natural_key(row)` against `getattr` over these columns for every
+    keyed kind. `natural_key` returns `None` for the binning kinds because their duplicate rule is
+    *overlap*, not equality; this function still names their grouping columns and says
+    `rule="overlap"`, which is the distinction a tool needs to explain either one.
+    """
+    try:
+        model: type[BaseModel] = model_for(csv_name)
+    except DraftError:
+        model = derived_model_for(csv_name)
+    declared = getattr(model, "_KEY_FIELDS", None)
+    if not declared:
+        return None
+    columns = tuple(_authored_spelling(model, name) for name in declared)
+    authored = set(authored_field_names(model))
+    return TableKey(
+        columns=columns,
+        rule="overlap" if issubclass(model, MeasureBinRow) else "equality",
+        stamped=tuple(c for c in columns if c not in authored),
+    )
+
+
 def describe_table(csv_name: str) -> dict[str, Any]:
     """Everything a tool needs to help someone fill one table kind, without any input from them.
 
@@ -328,6 +414,16 @@ def describe_table(csv_name: str) -> dict[str, Any]:
             for name in authored_field_names(model)
         ],
         "requirements": requirements,
+        # The docstring above has promised "the natural key two rows are the same row by" since 0.5
+        # and the dict did not carry it, so every caller hand-kept the string instead and one of them
+        # went stale (S48). `None` for a kind with no declared key, never an empty tuple: no key and a
+        # key of no columns are different claims.
+        "key": (
+            {"columns": list(table_key.columns), "rule": table_key.rule,
+             "stamped": list(table_key.stamped)}
+            if (table_key := key_fields(csv_name)) is not None
+            else None
+        ),
     }
 
 

@@ -12,11 +12,12 @@ from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import _FACT_TABLES
-from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for, stub_template
+from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for, natural_key, stub_template
 from just_dna_compiler.hints import (
     ALTERATION_KINDS,
     ATTESTATION_BEARING,
     DERIVED_TABLE_MODELS,
+    KEY_RULES,
     REDUNDANCY_BEARING,
     REFUSAL_REASONS,
     Finding,
@@ -25,6 +26,7 @@ from just_dna_compiler.hints import (
     describe_table,
     field_options,
     inspect_rows,
+    key_fields,
 )
 from just_dna_format.base import authored_field_names, field_vocabularies
 from just_dna_format.layout import sidecar_spellings
@@ -395,3 +397,112 @@ def test_an_authored_table_is_refused_with_the_route_that_does_answer_it() -> No
 def test_a_name_this_format_does_not_read_at_all_is_refused() -> None:
     with pytest.raises(DraftError, match="not a machine-produced table"):
         derived_model_for("nonsense.csv")
+
+
+_EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
+
+
+def test_no_key_column_is_presented_as_fillable_unless_it_is_a_real_authored_field() -> None:
+    """The guard that makes the `effective_*` mapping safe to rely on.
+
+    A key member is either a column the author can fill, or it is flagged in `stamped` — never a bare
+    name that resolves to nothing, which is what would be handed to an author as a cell to edit. This
+    is the invariant rather than "every member is a model field", because two members legitimately are
+    not: `StudyRow.variant_key` is a **property** over the row's identity columns (the other three
+    variant-keyed kinds carry it as a stamped *field*), and `CopyNumberRow` keys on a property that is
+    mapped back to its authored column. A future property that follows neither route fails here.
+    """
+    offenders = {
+        csv_name: [
+            c for c in key.columns
+            if c not in model_for(csv_name).model_fields and c not in key.stamped
+        ]
+        for csv_name in DRAFTABLE
+        if (key := key_fields(csv_name)) is not None
+    }
+    assert {k: v for k, v in offenders.items() if v} == {}
+
+
+def test_the_copynumber_key_names_the_authored_column_and_never_the_deprecated_one() -> None:
+    """S48's actual defect: the consumer's surface said `modifier_cn`, which 0.6 deprecated.
+
+    The property `_KEY_FIELDS` names is mapped back to the *preferred* spelling of the pair, so this
+    surface cannot hand an author the half that is removed at 1.0 — and it is not dropped either,
+    which would say two rows differing only in modifier dosage are the same row.
+    """
+    key = key_fields("copynumbers.csv")
+    assert key is not None
+    assert key.columns == ("gene", "modifier_gene", "modifier_copy_number")
+    assert "modifier_cn" not in key.columns
+    assert "effective_modifier_copy_number" not in key.columns
+
+
+def test_no_key_column_is_a_deprecated_column_on_any_kind() -> None:
+    """The general form of the case above, so the next deprecation cannot reintroduce it."""
+    deprecated = {
+        (csv_name, column)
+        for csv_name in DRAFTABLE
+        if (key := key_fields(csv_name)) is not None
+        for column in key.columns
+        if column in (fields := model_for(csv_name).model_fields)
+        and "DEPRECATED" in (fields[column].description or "")
+    }
+    assert deprecated == set()
+
+
+def test_key_fields_and_natural_key_agree_on_real_rows() -> None:
+    """One source of truth, pinned against the other reader rather than trusted.
+
+    `natural_key` is the row-level answer and `key_fields` the table-level one; both now read the
+    model's `_KEY_FIELDS`, so a drift between them is a bug this asserts away. Real authored rows from
+    a reference example, not hand-built ones.
+    """
+    spec = _EXAMPLES / "cyp2c19_star_alleles"
+    checked = 0
+    for csv_name in ("haplotypes.csv", "allele_function.csv", "diplotypes.csv"):
+        model = model_for(csv_name)
+        key = key_fields(csv_name)
+        assert key is not None and key.rule == "equality"
+        with (spec / csv_name).open(newline="", encoding="utf-8") as handle:
+            for raw in csv.DictReader(handle):
+                row = model.model_validate({k: v for k, v in raw.items() if v != ""})
+                assert natural_key(row) == tuple(getattr(row, c) for c in key.columns)
+                checked += 1
+    assert checked > 0
+
+
+def test_a_binning_kind_names_its_grouping_columns_and_says_the_rule_is_overlap() -> None:
+    """`natural_key` returns None there; that is the same fact, not a disagreement."""
+    spec_rows = key_fields("activity_phenotype.csv")
+    assert spec_rows is not None
+    assert spec_rows.rule == "overlap"
+    assert spec_rows.columns == ("gene",)
+
+
+def test_a_derived_table_with_no_declared_key_withholds_rather_than_inventing_one() -> None:
+    assert key_fields("frequencies.csv") is None
+    assert key_fields("resolution.csv") is None
+
+
+def test_every_rule_is_a_declared_member() -> None:
+    rules = {
+        key.rule for csv_name in DRAFTABLE if (key := key_fields(csv_name)) is not None
+    }
+    assert rules <= KEY_RULES and rules == KEY_RULES
+
+
+def test_a_stamped_key_member_is_flagged_rather_than_presented_as_fillable() -> None:
+    """An author cannot type `variant_key`; it is still part of the key."""
+    key = key_fields("haplotypes.csv")
+    assert key is not None
+    assert "variant_key" in key.columns
+    assert key.stamped == ("variant_key",)
+
+
+def test_describe_table_carries_the_key_its_docstring_has_always_promised() -> None:
+    described = describe_table("diplotypes.csv")
+    key = key_fields("diplotypes.csv")
+    assert key is not None
+    assert described["key"] == {
+        "columns": list(key.columns), "rule": key.rule, "stamped": list(key.stamped)
+    }

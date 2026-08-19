@@ -246,23 +246,25 @@ _TABLE_KIND_CSVS: tuple[str, ...] = tuple(csv for csv, _, _ in _TABLE_KINDS)
 # (rs4149056+simvastatin is Metabolism/PK, Efficacy AND Toxicity). `annotation_id` is the
 # last-resort tie-break for the 283 that differ by neither — a source accession as identity, the
 # same shape as `PgsRow.pgs_id`.
-_TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
-    # `r.variant_key` since 0.6 (RM43): the same expression this used to recompute, but stamped at
-    # load from the *authored* columns — so the duplicate check keys on what the author wrote rather
-    # than on whatever the resolution fill has since put in the cells.
-    HaplotypeRow: lambda r: (r.haplotype_name, r.variant_key, r.allele),
-    AlleleFunctionRow: lambda r: (r.gene, r.allele),
-    # `clinical_context` joined the key in 0.5.1 (RM29b): CPIC scopes one gene/drug pair to several
-    # settings whose recommendations disagree, so without it the three clopidogrel rows are duplicates
-    # of each other and only one survives — the collision that made `draft --drug` refuse.
-    DiplotypeRow: lambda r: (
-        r.gene, r.haplotype_a, r.haplotype_b, r.trait_efo_id, r.drug, r.clinical_context,
-    ),
-    PgsRow: lambda r: (r.pgs_id, r.trait_efo_id),
-    PharmVariantRow: lambda r: (
-        r.variant_key, r.drug, r.genotype, r.phenotype_category, r.annotation_id,
-    ),
-}
+#
+# **Derived from each model's own `_KEY_FIELDS`, not restated here as a lambda (S48).** The columns
+# and the key were two statements of one fact for four releases, and a consumer wanting the *column
+# names* could get nothing out of `lambda r: (r.gene, r.allele)` without reading our source — which
+# is what the reporting consumer ended up doing, and then hand-kept a string that went stale the day
+# 0.6 deprecated a column in it. Each model now declares its key and this dict reads it, so
+# `hints.key_fields` can name the columns and cannot disagree with the check.
+#
+# The per-key reasoning stays with the declarations: `HaplotypeRow` keys on the *stamped*
+# `variant_key` (RM43), `DiplotypeRow` carries `clinical_context` since 0.5.1 (RM29b), and
+# `PharmVariantRow` carries the full ClinPGx key.
+def _key_of(row: Any) -> tuple:
+    """A keyed row's identity tuple, read off the model's declared `_KEY_FIELDS`."""
+    return tuple(getattr(row, name) for name in row._KEY_FIELDS)
+
+
+_TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
+    (HaplotypeRow, AlleleFunctionRow, DiplotypeRow, PgsRow, PharmVariantRow), _key_of
+)
 
 _INPUT_FILES: tuple[str, ...] = (
     "module_spec.yaml",

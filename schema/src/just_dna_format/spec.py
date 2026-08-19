@@ -418,6 +418,10 @@ class VariantRow(AuthoredModel):
     )
     #: `ref`/`alts` (the locus), `genotype` and `effect_allele` (what the row's claim is about).
     ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "alts", "genotype", "effect_allele")
+    #: What makes two rows the same row. The SNP core's keys live on the models too, so every
+    #: keyed kind answers `hints.key_fields` from one place (S48); the compiler checks these two
+    #: inline (`_cross_validate_variants`) rather than through `_TABLE_DUPE_KEYS`.
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "genotype")
     variant_key: str | None = Field(
         default=None,
         json_schema_extra=COMPILER_MANAGED,
@@ -897,6 +901,9 @@ class StudyRow(AuthoredModel):
 
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid`/`trait_efo_id`/
     `stat_significance`/`effect_size` validators)."""
+
+    #: What makes two rows the same row (see `VariantRow._KEY_FIELDS`).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "pmid")
 
     rsid: str | None = Field(default=None, description="dbSNP identifier or variant key")
     # No `chromosome` marker: `StudyRow` runs no chrom validator (only `VariantRow` does), and a

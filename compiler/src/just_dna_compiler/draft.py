@@ -61,6 +61,7 @@ from pydantic import BaseModel
 from just_dna_compiler.compiler import (
     _TABLE_DUPE_KEYS,
     _TABLE_KINDS,
+    _key_of,
     _list_cell,
     _list_fields,
     _load_csv_rows,
@@ -89,14 +90,13 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks
 # them inline instead (`_cross_validate_variants` / `_cross_validate_studies`). Same keys, so a draft
 # can never append a row the compiler would then reject as a duplicate.
-_CORE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = {
-    VariantRow: lambda r: (r.variant_key, r.genotype),
-    StudyRow: lambda r: (r.variant_key, r.pmid),
-    # `sources.csv`'s key is `(source, layer)` — the same one `licensing.merge_sources_csv` merges on,
-    # borrowed for the same reason the two above are: a draft must not append a row the other writer
-    # would treat as already present. One source legitimately appears at two layers.
-    SourceRow: lambda r: (r.source, r.layer),
-}
+# Derived from each model's `_KEY_FIELDS`, like `_TABLE_DUPE_KEYS` (S48) — the columns and the key
+# were two statements of one fact. `sources.csv`'s key is the same one `licensing.merge_sources_csv`
+# merges on, borrowed for the reason the other two are: a draft must not append a row the other writer
+# would treat as already present. One source legitimately appears at two layers.
+_CORE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
+    (VariantRow, StudyRow, SourceRow), _key_of
+)
 
 
 class DraftError(RuntimeError):

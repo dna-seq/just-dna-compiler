@@ -141,6 +141,12 @@ class HaplotypeRow(AuthoredModel):
     #: It is also a no-op in practice, since the symbolic check runs before that fill, and stating the
     #: reason is what keeps someone from "completing" the tuple later.
     ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "allele")
+    #: What makes two rows the same row. Declared rather than left implicit in the compiler's dupe
+    #: lambda, which is what `_TABLE_DUPE_KEYS` now derives itself from — one source of truth, so a
+    #: public `hints.key_fields` can name the columns without a consumer reading our source (S48).
+    #: `variant_key` is the *stamped* identity (RM43): the key reads what the author wrote rather than
+    #: whatever the resolution fill has since put in the cells.
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("haplotype_name", "variant_key", "allele")
     #: A haplotype junction matches a variant at chrom:start:ref regardless of allele — the key the
     #: enricher has always derived for this table, kept byte-identical so nothing re-keys.
     _KEY_INCLUDES_ALTS: ClassVar[bool] = False
@@ -172,6 +178,9 @@ class AlleleFunctionRow(AuthoredModel):
     *cis* allele-unit — the star-string remains truth.
 
     Inherits `AuthoredModel` (reserved-namespace guard)."""
+
+    #: What makes two rows the same row (see `HaplotypeRow._KEY_FIELDS`).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene", "allele")
 
     gene: str = Field(description="Gene symbol, e.g. CYP2D6")
     allele: str = Field(description="Star-allele string, verbatim canonical identity, e.g. *4")
@@ -222,6 +231,13 @@ class DiplotypeRow(AuthoredModel):
 
     Inherits `AuthoredModel` (reserved-namespace guard + shared `direction`/`clin_sig`/
     `evidence_level`/`trait_efo_id` validators)."""
+
+    #: What makes two rows the same row. `trait_efo_id` and `drug` keep a legitimately pleiotropic
+    #: or multi-drug row from being a false duplicate; `clinical_context` joined in 0.5.1 (RM29b),
+    #: because CPIC scopes one gene/drug pair to several settings whose recommendations disagree.
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = (
+        "gene", "haplotype_a", "haplotype_b", "trait_efo_id", "drug", "clinical_context",
+    )
 
     gene: str = Field(description="Gene symbol, e.g. CYP2D6")
     haplotype_a: str = Field(description="First haplotype of the pair (canonicalized a <= b)")
@@ -340,6 +356,14 @@ class PharmVariantRow(AuthoredModel):
 
     Inherits `AuthoredModel` (reserved-namespace guard + shared `rsid`/`evidence_level`/
     `trait_efo_id`/`genotype` validators)."""
+
+    #: What makes two rows the same row — the full ClinPGx key, each member earned by real data
+    #: (`@clinpgx-full-key`): PharmGKB publishes one annotation *per genotype*, and one
+    #: variant+drug then carries several distinct annotations differing by category, with
+    #: `annotation_id` the last-resort tie-break for those differing by neither.
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = (
+        "variant_key", "drug", "genotype", "phenotype_category", "annotation_id",
+    )
 
     rsid: str | None = Field(default=None, description="dbSNP id of the variant, e.g. rs9923231")
     # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,

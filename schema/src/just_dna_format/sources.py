@@ -35,6 +35,8 @@ contract for the same reason.
 """
 
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from just_dna_format.base import vocabulary
@@ -103,6 +105,10 @@ class SourceRow(BaseModel):
     guarded all the same — so the classification above stays true and the other four sidecars stay
     out, since no template is ever generated for them.
     """
+
+    #: What makes two rows the same row — the same key `licensing.merge_sources_csv` merges on.
+    #: One source legitimately appears at two layers.
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("source", "layer")
 
     model_config = ConfigDict(extra="forbid")
 

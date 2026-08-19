@@ -30,6 +30,53 @@ report, and it is the useful shape of it: a consumer who wants to generate rathe
 by a private name, will hand-keep the same lines every other consumer hand-keeps and will be the one who
 misses the next table. All four are additive or documentation; nothing removed, nothing retyped.
 
+## RM113 — a table kind's natural-key *columns* were not obtainable, only its key *values*
+
+✅ **Shipped in `just-dna-compiler` + `just-dna-format` on 2026-08-20**, motivating case
+[S48](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**What was wrong, and it had already cost a consumer.** `draft.natural_key` answers per **row**,
+returning a tuple of *values*, so a tool holding only a table name could not ask which columns those
+values came from; `_TABLE_DUPE_KEYS` was private *and* held lambdas, so even reaching in yielded no
+column names out of `lambda r: (r.gene, r.allele)`. Every consumer wanting the columns therefore
+hand-kept a string — and the reporter's went stale the day 0.6 landed: their surface was telling authors
+to key `copynumbers.csv` on `modifier_cn`, whose own description reads *DEPRECATED since 0.6, removed at
+1.0*. Reproduced here: the description does say exactly that.
+
+**A promise was already outstanding.** `hints.describe_table`'s docstring has advertised *"the natural
+key two rows are the same row by"* since 0.5, and the returned dict never carried it. So this was not a
+feature request but an unimplemented sentence, which is why the dict is where it landed.
+
+**The fix that would have been wrong.** Filtering `_KEY_FIELDS` through `model_fields` — which is what
+the compiler's own grounding-remedy sentence does, correctly, for a remedy. `CopyNumberRow` keys on
+`effective_modifier_copy_number`, a *property* over two columns, so the filter **silently drops the
+modifier axis** and the answer becomes "two rows differing only in modifier dosage are the same row."
+A wrong answer whose drop is invisible is worse than a refusal, so a derived member is mapped back to
+the authored column it coalesces instead — and to the **preferred** spelling, so this surface can never
+hand an author the deprecated half of a pair.
+
+**Shipped.** `hints.key_fields(csv_name) -> TableKey | None`, plus the `key` block in
+`describe_table`. `TableKey` carries `columns` (author's spelling), `rule`
+(`equality`/`overlap`, a `frozenset` vocabulary per Principle 6) and `stamped` (members the compiler
+fills, so `variant_key` is named as part of the key but never presented as a fillable cell). `None` for
+a kind with no declared key — withheld, not invented.
+
+**The structural half, and the reason this touched the schema tier.** The columns and the key were two
+statements of one fact, so eight models now **declare** `_KEY_FIELDS` and both `_TABLE_DUPE_KEYS` and
+`_CORE_DUPE_KEYS` are **derived from it** through one `_key_of`. One source of truth: `key_fields` and
+`natural_key` cannot disagree, and a test pins them against each other over real authored rows from
+`reference_examples/cyp2c19_star_alleles`. The whole suite passing unchanged (2784) is the evidence that
+the derivation reproduces every lambda it replaced, including the PGx dedup keys each earned by real
+ClinPGx data.
+
+**What the tests found that the design had not.** `variant_key` is a stamped **field** on `VariantRow`,
+`HaplotypeRow` and `PharmVariantRow` but a **property** on `StudyRow`. The first guard written asserted
+every key column is a `model_fields` member and failed on `studies.csv` — correctly. The invariant worth
+pinning is the weaker, truer one: a key member is either an authored column or flagged in `stamped`,
+never a bare name resolving to nothing. Two further guards keep the class closed rather than the
+instance: no key column on any kind carries a `DEPRECATED` description, and every rule is a declared
+vocabulary member.
+
 ## RM112 — the machine-produced tables have no public `csv -> row model` resolver
 
 ✅ **Shipped in `just-dna-compiler` on 2026-08-20**, motivating case

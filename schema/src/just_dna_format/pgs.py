@@ -24,6 +24,7 @@ how to caveat them; no sample, genotype, or computed score lives here.
 """
 
 import re
+from typing import ClassVar
 
 from pydantic import Field, field_validator
 
@@ -40,6 +41,11 @@ VALID_RESEARCH_TIERS: frozenset[str] = frozenset({"research_only", "calibrated"}
 class PgsRow(AuthoredModel):
     """One curated PGS Catalog entry. Inherits `AuthoredModel` (reserved-namespace guard, which keeps
     the namespace closed, + the shared `trait_efo_id` validator)."""
+
+    #: What makes two rows the same row. `trait_efo_id` is in it so a pleiotropic score — the same
+    #: PGS reported against two traits — is not a false duplicate. Declared here so the compiler
+    #: derives its dupe key from one place and `hints.key_fields` can name the columns (S48).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("pgs_id", "trait_efo_id")
 
     pgs_id: str = Field(description="PGS Catalog id, e.g. PGS000135")
     trait_efo_id: str | None = Field(
