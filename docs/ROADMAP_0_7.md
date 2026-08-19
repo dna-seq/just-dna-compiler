@@ -1094,18 +1094,51 @@ So the live candidates are the ones that read rather than write:
 
 ## RM86 — a review pass is legal at the gate, refused by the pre-flight, and invisible once published
 
-**Severity** medium-high · **Status** open — **filed with the registry on 2026-08-16 as their S10, S11
-and S12**, one item per finding; the question that is ours waits on their answer to S12 · **Owner**
-`just-dna-registry`, with a documentation half here · **Found by** reading the registry tree on
-2026-08-16, while settling whether a review pass costing the attestation is a defect (it is not — see
-[MODULE_LIFECYCLE § 6.6](MODULE_LIFECYCLE.md#66-authorship-across-passes))
+**Severity** medium-high · **Status** ✅ **CLOSED 2026-08-20** — all three findings answered by
+`just-dna-registry`, two of them by code, and the question that was ours is decided and written into
+[MODULE_LIFECYCLE § 6.6](MODULE_LIFECYCLE.md#66-authorship-across-passes). Filed with them on 2026-08-16
+as their S10, S11 and S12, one item per finding; all three are answered and archived in their history ·
+**Owner** `just-dna-registry`, with a documentation half here — **that half is now done** · **Found by**
+reading the registry tree on 2026-08-16, while settling whether a review pass costing the attestation is
+a defect (it is not) · **Closed by** re-reading that tree at **registry 0.18.3** on 2026-08-20, prompted
+by [S46](CONSUMER_SUGGESTIONS_HISTORY.md) from `just-module-creator`, who measured the recognition half
+from outside and reported §6.6 as stale
 
-**Where the report lives:** `../just-dna-marketplace/docs/CONSUMER_SUGGESTIONS.md`, under *Field notes
-from just-dna-format — the second pass*. It carries the standing caveat that **0.6 is not published and
-not finished**, so the half of S11 that needs a reader of ours is explicitly filed as *do not build
-against this yet* — the recognition half, which is independent of our release, is the only thing asked
-for now. This entry is the tracking record; their file is the authoritative report, and the citations
-below were each verified in their tree first-hand rather than taken second-hand.
+**How it closed, per finding.** The dispositions are not uniform, which is the reason this entry keeps
+all three rather than collapsing to one line:
+
+- **The pre-flight — fixed in registry 0.16.0.** `published_elsewhere` is a new field carrying the
+  subset of content hits under a *different* `(namespace, name)`, and `would_publish_module_level`
+  quantifies over it, so the verdict now matches the gate; `published_as` still lists the same-module
+  hit, because a review pass wants to see it. The namespace is threaded through both pre-flight routes.
+  Verified first-hand at `services/enrich.py` — the carve-out and the comment naming this exact defect.
+- **The closure — fixed across 0.16.0 and 0.17.** `verification.json` is in `RECOGNIZED_SPEC_FILES`
+  (0.16.0), so a rebuild carries it forward; it is in that registry's `DERIVED_FILES` and
+  `manifest.derived` (0.17), so `download(include_inputs=True, layout="split")` returns it at
+  `derived/verification.json`; and `manifest.verification` is projected onto the module-detail response,
+  with `closed` re-bound by that server's own compile. Still **out of `SIGNATURE_INPUTS`**, which is the
+  property that made recognising an unread file safe and is asserted by their tests. The version-lag
+  clause is also dead: they now require `just-dna-format>=0.6.1` / `just-dna-compiler>=0.6.1`, not 0.5.4.
+- **`authorship` unsurfaced — answered as policy, not repaired, and correctly.** It stays payload: a
+  server that compiles what it publishes must not render the author's statement about their own reviewer
+  beside claims of its own. Read it from the manifest, where it is plainly the manifest's word.
+
+**The question that was ours is answered too**, by their reply to S12, and it is now §6.6's advice
+verbatim: a `reviews` row by default; an `authorship` entry when the record has to travel inside the
+module or be signed; both when both matter. The version-bump path is legal and costs a version number
+and nothing else.
+
+**Where the report lives:** `../just-dna-registry/docs/CONSUMER_SUGGESTIONS_HISTORY.md` (the tree is also
+reachable as `just-dna-marketplace`, a symlink to it, which is the name this entry used to give), under
+*Field notes from just-dna-format — the second pass*, as their S10–S12 with a reply on each. The original
+filing carried the standing caveat that **0.6 was not published and not finished**, so the half of S11
+needing a reader of ours was explicitly filed as *do not build against this yet*; 0.6 has since been cut
+and that caveat has expired. This entry is the tracking record; their file is the authoritative report,
+and the citations below were each verified in their tree first-hand rather than taken second-hand.
+
+**Everything below this line is the 2026-08-16 finding as first written**, kept because the reasoning is
+what a publisher should still hold and because two of the three sections describe behaviour that a
+registry deployment older than 0.16.0 still has. Read it against the dispositions above.
 
 ### Why this was looked at
 
@@ -1173,9 +1206,9 @@ A reason to re-open the binding question. Un-closing on a review is correct
 finding here is about what a catalog does with the result, and none of them would be fixed by keeping a
 closure the reviewer did not make.
 
-**What would unblock it:** the pre-flight carve-out and the `verification.json` recognition are theirs
-and are small; the review-versus-version guidance is ours and needs deciding once, wherever an author
-is told how to run a review pass.
+**What would unblock it** *(as written on 2026-08-16; all three happened)*: the pre-flight carve-out and
+the `verification.json` recognition are theirs and are small; the review-versus-version guidance is ours
+and needs deciding once, wherever an author is told how to run a review pass.
 
 ## RM87 — an expanded row is indistinguishable from an authored one in the artifact
 

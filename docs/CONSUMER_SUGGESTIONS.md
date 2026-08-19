@@ -8,9 +8,9 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S41
+## The next item is S47
 
-**Claim ids from here, never from what this file shows.** S1–S45 are all answered and live in the
+**Claim ids from here, never from what this file shows.** S1–S46 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
 the next report is a second S1. The number is computed rather than remembered:
 
@@ -53,3 +53,9 @@ observed rather than of what was decided.
 ---
 
 ---
+
+# Field notes from just-module-creator
+
+*Filed 2026-08-20, against format 0.6.1 / compiler 0.6.1 / enricher 0.6.4 as installed, and
+`just-dna-registry` 0.18.2. **Priority: we are writing an author-facing skill straight out of
+`MODULE_LIFECYCLE.md` §6 this session, so the answer changes text we ship.***

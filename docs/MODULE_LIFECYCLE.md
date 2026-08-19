@@ -197,15 +197,18 @@ network tier). `would_publish_module_level` composes three gates only and means 
 module-level blocks this*, never *this will publish*.
 
 **And on one scenario it is not merely weaker than the gate, it disagrees with it** — found by reading
-the registry on 2026-08-16, in the course of settling §6.6. Publishing a later version whose data is
-unchanged (a review pass, the commonest case there is) is **allowed** by the gate, which carves out
-*"a collision under the same module"* by comparing `(namespace, name)`. The pre-flight computes the
-same lookup with **no carve-out at all**, and the namespace is never threaded into it, so it reports
-`published_as: [the predecessor]` and `would_publish: false` for a publish that then succeeds. A
-publisher branching on that field — the field the API docs say to branch on — refuses its own legal
-publish. Recorded as an ask to the registry in
-[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published);
-their own test file states the standard it violates.
+the registry on 2026-08-16, in the course of settling §6.6, and **fixed there in 0.16.0** — so what
+follows is the shape of a defect that is closed, kept because the reasoning is what a publisher should
+still hold. Publishing a later version whose data is unchanged (a review pass, the commonest case there
+is) is **allowed** by the gate, which carves out *"a collision under the same module"* by comparing
+`(namespace, name)`. The pre-flight computed the same lookup with **no carve-out at all**, and the
+namespace was never threaded into it, so it reported `published_as: [the predecessor]` and
+`would_publish: false` for a publish that then succeeded. A publisher branching on that field — the
+field the API docs say to branch on — refused its own legal publish. Recorded as an ask to the registry
+in [RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published);
+their own test file stated the standard it violated, and the repair added `published_elsewhere` so the
+verdict quantifies over what the gate actually refuses. **Branch on `would_publish` against a current
+registry; a deployment older than 0.16.0 will still refuse a legal review publish.**
 
 The irreversibility is the point of the rehearsal. On production a version is immutable, and the
 authored data is claimed by a name-independent content hash that **`yank` does not release** — so a
@@ -507,18 +510,52 @@ closure is a record of a human declaring bytes final, so the person making the n
 who must make it. There is no version of this where the old closure survives and still means what it
 says.
 
-**What is not settled is what happens to that pass downstream, and reading the registry to find out
-made it the sharper half of the question.** Three findings, all verified in
-`just-dna-registry`'s tree on 2026-08-16 and filed as
-[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published):
-the publish **succeeds** and the same-module carve-out is real code rather than prose (so the sentence
-above is confirmed, not merely believed); the **pre-flight refuses it anyway**, disagreeing with the
-gate it exists to predict (§ stages 7–8); and the closure reaches **nothing** — `verification.json` is
-uploaded, stored, and then read by no code path, absent from `RECOGNIZED_SPEC_FILES`, so it is dropped
-by every server-side rebuild and served by no endpoint. The re-close is right and currently costs a
-version number for a record nothing downstream can see. That registry also has a **`reviews` table**
-of its own, projected onto module cards and costing no version at all — so *whether a review should be
-a version* is a live question rather than the settled one this section used to imply.
+**What happens to that pass downstream was the sharper half of the question, and it is now answered.**
+Four findings, first read out of `just-dna-registry`'s tree on 2026-08-16, filed there as their S10–S12
+and re-verified against that tree on **2026-08-20 at registry 0.18.3**. They are stated separately, each
+with the release that moved it, because the composite sentence this paragraph used to carry went stale
+as a unit — three of the four have moved since it was written, and a reader could not tell which:
+
+- **The publish succeeds, and the same-module carve-out is real code rather than prose** — unchanged,
+  and it is what makes the rest legal. The duplicate-content gate compares `(namespace, name)` and is
+  pinned by a test, so two versions sharing a `content_signature` inside one module are permitted by
+  design.
+- **The pre-flight now agrees with the gate** — fixed in registry **0.16.0**, and this is the finding
+  most worth knowing, because it had a blast radius: an automated publisher branching on
+  `would_publish` refused its own legal review publish. The verdict now quantifies over a new
+  `published_elsewhere` — the subset of hits under a *different* `(namespace, name)`, which is what the
+  gate actually refuses — while `published_as` still lists the same-module hit, since *“this data is
+  already published as 1.0.0”* is exactly what a review pass wants to confirm. The namespace is
+  threaded through both pre-flight routes, `validate` and `check`.
+- **The closure now reaches downstream, by two routes, neither of which is the registry reading the
+  file as a verdict.** `verification.json` entered `RECOGNIZED_SPEC_FILES` in **0.16.0**, so a
+  server-side rebuild (`revalidate`, `upgrade`) carries it forward instead of dropping it; and in
+  **0.17** it entered that registry's `DERIVED_FILES` and `manifest.derived`, so
+  `download(include_inputs=True, layout="split")` lands it at `derived/verification.json`. Separately,
+  `manifest.verification` is **projected onto a read endpoint** — the module detail response, from the
+  latest version's manifest, with per-version access through the `…/manifest` route. Deliberately not a
+  card facet, not a filter and not sortable: it is presented as the publisher's claim, never as a
+  registry verdict, on the reasoning that a server which compiles what it publishes must not lend its
+  credibility to an attestation it cannot reproduce offline. `closed` is the sturdiest field in it,
+  because the closure is hash-bound and that server's own compile re-binds it against the authored bytes
+  and drops it when it does not match. It stays out of `SIGNATURE_INPUTS`, which is the property that
+  made recognising an unread file safe in the first place and has not moved.
+- **`authorship` still reaches no projected field, and that is now policy rather than an omission** —
+  stated by that registry in answer to our ask. Seeing who reviewed a module means reading the manifest,
+  which is where it is plainly the manifest's word; a card presenting it beside the server's own claims
+  would present two different kinds of fact as one.
+
+**So the re-close is no longer a version number spent on an invisible record** — which is what this
+paragraph used to conclude, and the conclusion inverted when the three releases above landed. What that
+does *not* mean is that a review should default to a version bump. That registry has a **`reviews` table**
+of its own — projected onto module cards, moderatable, driving `?group=curated`, costing no version at
+all, and postable by a reviewer who is not the author, which the manifest cannot express. Asked which
+instrument an author should reach for, it answered: **a `reviews` row by default; an `authorship` entry
+when the record has to travel inside the module or be signed; both when both matter.** They are not
+substitutes, and the deciding asymmetry is that a `reviews` row cannot carry the reviewer's key — so
+provenance-of-review is `authorship` or nothing. The version-bump path is legal and now costs a version
+number and nothing else; it is the right instrument when the record must survive a download, a hand-off
+on disk or a re-publish, and reach a consumer who never talks to that API at all.
 
 ### 6.7 What the registry does with v2
 
@@ -701,4 +738,6 @@ dissolved into a documentation fix (§6.8, and SCHEMAS.md); and the review pass 
 (§6.2, §6.6). That second decision spawned RM86 rather than closing flat, which is the one thing this
 exercise did not predict: settling the format side is what sent someone to read what the catalog does
 with the result, and the catalog turned out to refuse the publish in its pre-flight and drop the
-closure on the floor. Nothing was dropped from the section itself.
+closure on the floor. **RM86 closed on 2026-08-20**, all three findings answered — the pre-flight and
+the closure both repaired upstream, the third declared policy — so §6.6 now records what a review pass
+actually reaches rather than what it did not. Nothing was dropped from the section itself.

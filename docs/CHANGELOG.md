@@ -34,6 +34,44 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-20 — §6.6 said a review pass reaches nothing downstream, and it had reached it for three releases (S46)
+
+Documentation only; no code moved and no version needs cutting. `just-module-creator`, writing a
+`module-revise` skill with [MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md) §6 as its source, measured §6.6's
+central claim from outside and found all three halves of it false. Re-verified here first-hand against
+the `just-dna-registry` tree at **0.18.3**, not taken from their report or from that registry's replies:
+
+- **`verification.json` is recognized** (`RECOGNIZED_SPEC_FILES`, their 0.16.0), so `revalidate` and
+  `upgrade` carry it forward instead of dropping it; it is in `DERIVED_FILES`/`manifest.derived` (0.17),
+  so `download(include_inputs=True, layout="split")` returns it at `derived/verification.json`; and
+  `manifest.verification` is **projected onto their module-detail response**, with `closed` re-bound by
+  their own compile against the authored bytes. Still out of `SIGNATURE_INPUTS` — the property that made
+  recognising an unread file safe, unchanged.
+- **The pre-flight agrees with the gate** as of their 0.16.0, via a new `published_elsewhere` the verdict
+  quantifies over. Nobody on this side had re-read the reply, so §6.6 and § stages 7–8 both still
+  described a publisher being refused its own legal review publish.
+- **`authorship` reaching no projected field is policy, not an omission** — answered, not repaired.
+
+So §6.6's conclusion — that a re-close *"costs a version number for a record nothing downstream can
+see"* — had inverted, and the section is rewritten: the four findings are stated **separately with the
+release that moved each**, which is the reporter's suggested shape, adopted because the composite
+sentence went stale as a unit and a reader could not tell which third was still true. The new advice is
+that registry's own answer to the question RM86 had left open: **a `reviews` row by default; an
+`authorship` entry when the record must travel inside the module or be signed; both when both matter** —
+so *visible downstream* deliberately does not become *bump a version for every review*.
+
+**[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published)
+is closed** in place, with per-finding dispositions; its own status line ("waits on their answer to S12")
+was stale too, since that answer arrived in their 0.16.0. [RM_TOC.md](RM_TOC.md) carries the same, and
+the entry's `../just-dna-marketplace` pointer now names `just-dna-registry` — the former is a symlink to
+the latter. S46 is archived.
+
+**The lesson, which is why this entry is long for a doc fix:** every clause of that sentence was verified
+in another repository's tree the day it was written, and none of it was re-checked afterwards. Prose
+citing another repo's code has no test behind it and no expiry, so it decays silently while reading as
+evidence. §6.6 now dates each finding to a release, which is the cheapest thing that makes the decay
+visible to the next reader.
+
 ## 2026-08-20 (latest) — a downstream reference surface, validated against the code, and eight findings filed (RM104–RM111)
 
 **No version moves.** Format and compiler stay at **0.6.1**, enricher at **0.6.4**. This is an audit

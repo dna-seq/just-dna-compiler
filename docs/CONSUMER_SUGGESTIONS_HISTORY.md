@@ -69,6 +69,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S43** `likely_pathogenic` is unwritable, not just unwritten — documented
 - **S44** ClinPGx dropped MT-RNR1 and F508del — fixed; 158 rows, licence pinned
 - **S45** a re-draft cannot retract S41's collapse — fixed; 0.6.4, 3 tests
+- **S46** §6.6 said the closure reached nothing downstream — RM86 closed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2313,3 +2314,164 @@ moved**. Only the second leaves anything behind, and it is the case where the fi
 inspected to tell. If the report we suggest above is too much machinery for one defect, the cheap
 version is to say in the S41 entry which of the two shapes it is — a reader who has just seen S44 in
 the same release notes will reasonably assume both remediate the same way, and they do not.
+
+# just-module-creator, writing a `module-revise` skill out of MODULE_LIFECYCLE §6 (2026-08-20)
+
+*Filed 2026-08-20, against format 0.6.1 / compiler 0.6.1 / enricher 0.6.4 as installed, and
+`just-dna-registry` 0.18.2. **Priority: we are writing an author-facing skill straight out of
+`MODULE_LIFECYCLE.md` §6 this session, so the answer changes text we ship.***
+
+## S46 — `MODULE_LIFECYCLE.md` §6.6 and RM86 say the closure reaches nothing downstream; the registry has recognized and attested it since 0.16
+
+**Status — accepted as a documentation defect, fixed in the tree today; §6.6 and RM86 are rewritten and
+RM86 is closed. Your measurements reproduce, and one thing you did not ask about has also moved — see
+the pre-flight paragraph below, because it changes your skill too.**
+
+**The narrow question you actually needed answered: no, "served by no endpoint" is not true any more,
+and it is false by two independent routes.** Verified first-hand in the registry tree at **0.18.3**
+(commit `28f3cea`) on 2026-08-20, not taken from their replies:
+
+- **A read endpoint projects the attestation.** `manifest.verification` is projected onto the
+  module-detail response as a `VerificationInfo` block — `closed`, `closed_at`, `closed_by`, `producer`,
+  `produced_at` and a per-check list of `check`/`subjects`/`findings`/`skipped`. It is built by
+  `services/catalog.py::_verification`, from the **latest** version's manifest; per-version access is the
+  `…/manifest` route. Deliberately **not** a card facet, not a filter and not sortable, and `None` is not
+  collapsed with an empty block — absent means no attestation survived, which is a different statement
+  from an attestation that recorded no checks.
+- **The bytes come back too**, but name the flag when you teach it: `download(include_inputs=True,
+  layout="split")` lands `derived/verification.json`, because the file is in their `DERIVED_FILES` and
+  attested in `manifest.derived` since 0.17. A plain download does not carry it.
+
+**The distinction you drew is the right one and it survives — with a sharper edge than you gave it.**
+The projection reads `manifest.verification`, never the file, and that server compiles the spec itself,
+so the closure in that block was **re-bound by their compiler against the authored bytes** and dropped if
+it did not match. So `closed: true` on that endpoint is hash-checked rather than asserted: it is the
+strongest form of "visible" available, and it is still not a registry verdict about your checks. Their
+refusal to read the file as a verdict is intact and, as you say, correct. `SIGNATURE_INPUTS` is unchanged
+— shipping an attestation still moves no identity and no `409` claim, and their tests assert it.
+
+**The thing you did not ask about, and the reason we would rather you read this before you ship: the
+pre-flight is fixed too.** Your report says *"the pre-flight disagreement and the `publish succeeds`
+carve-out are both still live as far as we can see."* The carve-out is live — that is the good half. The
+disagreement is **not**: it was repaired in registry **0.16.0**. `would_publish_module_level` now
+quantifies over a new `published_elsewhere` — the subset of content hits under a *different*
+`(namespace, name)`, which is what the gate actually refuses — while `published_as` still lists the
+same-module hit, since *"this data is already published as 1.0.0"* is exactly what a review pass wants
+to confirm. The namespace is threaded through both pre-flight routes, so `validate` and `check` agree.
+Verified at `services/enrich.py`, where the comment names this precise defect. **If your skill warns an
+author that the pre-flight will refuse a review publish, drop that warning** — against a current
+registry it will not. The honest caveat is a version floor: a deployment older than 0.16.0 still refuses.
+
+**And the question that RM86 said was ours is answered, which changes the advice rather than just the
+facts.** We had it filed as waiting on their S12; they answered it in 0.16.0 and we had not read the
+reply. The sentence, now §6.6's advice: **a `reviews` row by default; an `authorship` entry when the
+record has to travel inside the module or be signed; both when both matter.** Not substitutes — a
+`reviews` row cannot carry the reviewer's key, so provenance-of-review is `authorship` or nothing, while
+everything else favours the row (no version number, projected onto cards, moderatable, drives
+`?group=curated`, and postable by someone who is not the author). So the re-close is no longer a version
+spent on an invisible record — but the default instrument for a plain review is still theirs, not a
+version bump. Please do not let the inversion carry you past that: *visible* is not *the recommended
+path*, and a skill that now tells authors to bump a version for every review would be the opposite
+error to the one you caught.
+
+**Third finding, for completeness:** `authorship` still reaches no projected field, and that is now
+stated **policy** rather than the omission RM86 called it — payload, so their card never renders an
+author's claim about their own reviewer beside the server's own claims. Read it from the manifest.
+
+**What we changed.** [MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md) §6.6's composite sentence is replaced by
+the four findings stated separately, each with the release that moved it — your suggested shape, adopted
+for your reason: the conclusion outlived the clause it rested on, and a reader could not tell which third
+was stale. §6.6 now ends on the `reviews`-versus-`authorship` advice instead of on the version-cost
+argument. The stages 7–8 passage is marked fixed with the version floor. Your second candidate — delete
+the paragraph and defer to the registry's docs — is rejected for exactly your reason: §6.6 is where a
+module author meets this question and their reference docs are not on that reader's path.
+[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published)
+is **closed**, in place, with the per-finding dispositions and the note that its "waits on their answer to
+S12" status was itself stale; [RM_TOC.md](RM_TOC.md)'s row carries the same. Its pointer said
+`../just-dna-marketplace`, which is a symlink to `just-dna-registry` — the real name is now given.
+
+**You were right that this is not a trivia correction, and right about the cause.** It is a missed
+propagation, three releases deep: their 0.16.0 answered our own S11, and nothing on our side re-read the
+reply. Every clause of that sentence was checked against their tree when it was written and none of it
+was re-checked afterwards — which is the failure mode of citing another repo's code from prose, and the
+reason §6.6 now dates each finding to a release. **Cite us rather than correcting us**: §6.6 as it now
+reads is the text to quote, and drop your pre-flight warning at the same time.
+<!-- triaged: 0.6.4 · sha a078a50e2186 -->
+
+We are writing a `module-revise` skill — pass two and beyond — with §6 as its primary source, because
+§3 says pass two normally re-enters at 3 and §6.1's six kinds are the only enumeration of them
+anywhere. §6 held up under checking except on the one claim the skill's central advice turns on.
+
+**What §6.6 says.** In the RM86 paragraph:
+
+> the closure reaches **nothing** — `verification.json` is uploaded, stored, and then read by no code
+> path, absent from `RECOGNIZED_SPEC_FILES`, so it is dropped by every server-side rebuild and served
+> by no endpoint. The re-close is right and currently costs a version number for a record nothing
+> downstream can see.
+
+**What we measured**, against `just-dna-registry` 0.18.2:
+
+```
+>>> from just_dna_registry import specfiles as S
+>>> S.VERIFICATION_FILE in S.RECOGNIZED_SPEC_FILES
+True
+>>> S.VERIFICATION_FILE in S.DERIVED_FILES
+True
+>>> S.VERIFICATION_FILE in S.SIGNATURE_INPUTS
+False
+```
+
+So all three halves of the sentence have moved. It is recognized, which is precisely what makes
+`revalidate` materialize it back out of storage and `upgrade` carry it forward instead of rebuilding a
+spec directory without it. It is in `DERIVED_FILES`, so `download(layout="split")` places it in
+`derived/` and a downloader receives it. And their `specfiles.py` attributes both changes explicitly —
+the `VERIFICATION_FILE` docstring reads *"0.16 recognized this file so a rebuild would carry it
+forward; 0.6 lets the manifest attest it (`manifest.verification`), and 0.17 surfaces it — as the
+**publisher's** claim, never as a registry verdict"*, and *"**In** `DERIVED_FILES` since 0.17"*.
+
+The `SIGNATURE_INPUTS: False` half is the part that did **not** move, and it is load-bearing in your
+favour: shipping an attestation still moves no identity and no `409` claim, which is the property that
+makes recognizing an unread file safe. Their own tests assert it.
+
+**Why this is not a trivia correction.** §6.6's conclusion is that a re-close *"costs a version number
+for a record nothing downstream can see"*, and that conclusion is the argument for treating "should a
+review be a version" as open. If the record *is* carried forward, served in a split download, and
+attested in `manifest.verification`, the cost/benefit inverts and the advice we write inverts with it.
+We were one paragraph away from telling authors that re-closing after a review buys them nothing.
+
+**One thing we could not settle and are not asserting.** Recognized-and-carried is not the same as
+*read*. The registry is explicit that it will not read the file as a verdict — this server compiles
+what it publishes, so `compile_success` and the digest are theirs while the attestation is the
+publisher's word about what an enricher saw against live sources at authoring time, which they cannot
+reproduce offline. That refusal looks correct to us and we are not asking for it to change. What we
+cannot tell from outside is whether "served by no endpoint" is still true in the narrow sense — whether
+any *read* endpoint projects it — as distinct from "carried through rebuilds", which it demonstrably
+now is. That distinction is the answer we actually need.
+
+**A second contradiction in the same neighbourhood, smaller.** §6.6 says `verification.json` is absent
+from `RECOGNIZED_SPEC_FILES` while their `specfiles.py` credits the fix to **S11 — your own note,
+filed by this project against your then-unreleased 0.6**, and answered in their 0.16.0. So the fix was
+requested from your side and landed; only §6.6's text did not follow it. That suggests the stale
+sentence is a missed propagation rather than a disagreement about the design, which is why we are
+filing it as one item and not arguing a position.
+
+**What we did meanwhile.** Wrote the skill from the measured state, and said in it that
+`MODULE_LIFECYCLE.md` §6.6 currently reads otherwise so a reader who checks is not confused. We would
+rather quote you than contradict you, which is the reason for the priority flag: if §6.6 and RM86 are
+updated we will drop our correction and cite you instead.
+
+**Candidate fixes, with our objection to the obvious one.** The obvious repair is to strike the
+"absent from `RECOGNIZED_SPEC_FILES`" clause. We think that is not enough on its own, because the
+paragraph's *conclusion* — the version cost buys an invisible record — survives the strike while no
+longer following from anything. RM86 has three findings and this stale clause is only one of them; the
+pre-flight disagreement and the "publish succeeds" carve-out are both still live as far as we can see.
+Our suggestion is to state the three separately with a version marker on each, so a reader can tell
+which are current, rather than one composite sentence that goes stale as a unit.
+
+A second candidate we think is wrong: deferring to the registry's own docs and deleting the paragraph.
+§6.6 is where a *module author* meets this question, and the registry's reference docs are not on that
+reader's path. The paragraph is in the right place; it is the version-skew that hurt.
+
+---
+
+---
