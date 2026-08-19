@@ -70,6 +70,9 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S44** ClinPGx dropped MT-RNR1 and F508del — fixed; 158 rows, licence pinned
 - **S45** a re-draft cannot retract S41's collapse — fixed; 0.6.4, 3 tests
 - **S46** §6.6 said the closure reached nothing downstream — RM86 closed
+- **S47** no public csv → model map for the fact tables — RM112
+- **S48** a kind's key columns were unobtainable — RM113
+- **S49** scaffold pulled variants.csv behind studies.csv — RM114
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2475,3 +2478,253 @@ reader's path. The paragraph is in the right place; it is the version-skew that 
 ---
 
 ---
+
+# just-module-creator, generating rather than restating three schema facts (2026-08-20)
+
+*Filed 2026-08-20, against format 0.6.1 / compiler 0.6.1 / enricher 0.6.4 as installed, and
+`just-dna-registry` 0.18.2. All three came out of one work item: our MCP surface had three answers
+that **restated** a schema fact instead of generating it, and we went looking for the public symbol
+to generate each from. Two of the three had none. That is the report.*
+
+## S47 — the machine-produced fact tables have no public (csv → row model) enumeration
+
+**Status — accepted and shipped in `just-dna-compiler` today, filed as
+[RM112](ROADMAP_HISTORY.md#rm112--the-machine-produced-tables-have-no-public-csv---row-model-resolver).**
+`hints.DERIVED_TABLE_MODELS` (the roster) and `hints.derived_model_for(csv_name)` (the resolver) are
+public as of this commit. Drop the hand-kept seven-entry map and the cross-package roster both.
+
+**Your four rejected substitutes all reproduce, including the one you measured.**
+`ARTIFACT_PARQUETS - LEAD_PARQUETS` really is **nine** names against seven fact tables — confirmed here,
+`annotations.parquet` and `studies.parquet` are in neither set, exactly as you said. And
+`authoring_reference()["models"]` being keyed by model name is the crux: it answers *"what columns does
+`GeneValidityRow` have"* and cannot answer *"which model is `gene_validity.csv`"*, which is the direction
+a tool caller holding a filename actually has. That asymmetry is why "just read `authoring_reference()`"
+is not the answer, and your framing of it is the one we adopted into the roadmap entry.
+
+**What it is.** Keyed on the filename a caller names, so both spellings of the licence table answer —
+`derived_model_for("licensing.csv") is derived_model_for("sources.csv")`, and there is a test. It is
+**derived from `_FACT_TABLES`**, not restated beside it: publishing a hand-kept copy of the map in order
+to close a report about hand-kept maps would have been the defect wearing a public name. The guard is set
+equality over the walked set, so an eighth fact table fails our CI rather than becoming undescribable —
+which is the same test you wrote on your side, and you can now delete it.
+
+Two deliberate exclusions. `verification.json` is not in the roster: it is the attestation document, not
+a fact table — no parquet, no `_FACT_TABLES` row, and not a CSV. And `sources.csv` is in **both** maps,
+`DRAFTABLE` and this one, because it genuinely is both: the one fact table a human legitimately writes.
+
+**Asking the wrong route names the right one.** `derived_model_for("variants.csv")` raises *"is an
+authored table, not a machine-produced one — use `model_for('variants.csv')` instead"*, rather than a flat
+"unknown". A generic rejection is a dead end where a specific one is a fix, and dispatching on a filename
+is exactly where a caller lands on the wrong one of the two.
+
+**What we did not do, and why.** `describe_table` still refuses non-authored names. Widening it was the
+first thing we tried and we backed it out: a caller today can rely on that refusal, and you had already
+built the second read-only route yourself — the missing piece was the map, not the presentation. If you
+want the derived tables to come back through a `describe_table`-shaped dict, say so and we will add a
+separate function rather than change what that one accepts.
+
+**On the cross-package cost you accepted knowingly** — deriving the roster from
+`specfiles.FACT_CSVS` so a registry release lagging a compiler release makes your answer lag: that is
+real and it is now unnecessary, since the roster ships in the tier that owns the loader. Worth saying
+because it is the better instinct in general — the registry recognising every file the compiler reads is
+its business — and it was the wrong direction only because the map was private on our side.
+<!-- triaged: 0.6.5 · sha 5cd3b2bfb2c2 -->
+
+**What we were building.** Our `describe_table` tool answers a table kind's columns straight out of
+`hints.describe_table`, and refuses anything outside `draft.DRAFTABLE`. So the six fact sidecars and
+`resolution.csv` are unanswerable through it — an author reading `resolution.csv` or
+`frequencies.csv` (which they must read and must never hand-finish) gets `'resolution.csv' is not an
+authored table of this format`. We are closing that with a second, read-only route.
+
+**What we needed.** `csv name -> row model` for the machine-produced tables. What exists:
+
+* `just_dna_compiler.compiler._FACT_TABLES` — exactly right, `(csv, parquet, model)` triples, and
+  **private**. Our own guidelines forbid importing an upstream private name, and for the usual
+  reason: it is free to move in a patch release and we would be the ones broken.
+* `hints.model_for` / `draft.DRAFTABLE` — authored kinds only, by design.
+* `just_dna_registry.specfiles.FACT_CSVS` + `RESOLUTION_CSV` — public, and **names only**, no model.
+* `compiler.ARTIFACT_PARQUETS` minus `LEAD_PARQUETS` — we tried this and it does not isolate the
+  fact tables: `annotations.parquet` and `studies.parquet` are in neither set, so the difference is
+  nine names where the fact tables are seven.
+* `reference.authoring_reference()["models"]` — carries every derived model's assembled column list
+  (`FrequencyRow`, `ResolutionRow`, …) keyed by **model name**, so it answers "what are this model's
+  columns" beautifully and cannot answer "which model is `gene_validity.csv`".
+
+**What we did meanwhile.** Derived the *roster* from `specfiles.FACT_CSVS | {RESOLUTION_CSV}` (public,
+and it is the registry's business to recognise every file the compiler reads), and hand-kept a
+seven-entry `csv -> public model` map for the model half, with a test pinning its keys to that
+roster so an eighth fact table fails our suite rather than being silently undescribable. Two costs
+we accepted knowingly: the roster now comes from a *different package* than the loader it describes,
+so a registry release lagging a compiler release makes our answer lag too; and the hand-kept map is
+precisely the shape of thing that goes stale — see S48, where ours did.
+
+**Candidate fix.** Make `_FACT_TABLES` public, or publish a `hints.model_for`-style resolver that
+covers the machine-produced names as well (`hints.derived_model_for(csv)`, or a `machine_produced=True`
+flag). The parquet name in the triple is not something we need; the model is.
+
+**Why not "just read `authoring_reference()`".** It gives us the columns once we know the model, and
+the thing a *tool caller* has is a filename. Every consumer that wants to answer "what is in this
+sidecar" needs the same map, so each will write the same seven lines, and each will be the one that
+did not notice the eighth table.
+
+## S48 — a table kind's natural-key *columns* are not obtainable, only its key *values*
+
+**Status — accepted and shipped in `just-dna-compiler` + `just-dna-format` today, filed as
+[RM113](ROADMAP_HISTORY.md#rm113--a-table-kinds-natural-key-columns-were-not-obtainable-only-its-key-values).**
+`hints.key_fields(csv_name)` is public, and `describe_table`'s dict now carries a `key` block. Delete
+your strings; keep the test that made you find this.
+
+**Your diagnosis of every symbol is right, and one of them was worse than you said.**
+`describe_table`'s docstring has promised *"the natural key two rows are the same row by"* since 0.5 and
+the dict never carried it — so this was not a feature request but a sentence we had left unimplemented
+for four releases, and you were the second surface to hand-keep the string it should have returned.
+That is where it landed, for exactly the reason you named.
+
+**The candidate you offered would have shipped a wrong answer, and it is worth saying why.** Filtering
+`_KEY_FIELDS` through `model_fields` — which is the obvious reading of "return the authorable column
+names", and is what our own bin-grounding remedy sentence does — **silently drops**
+`effective_modifier_copy_number`, because it is a property. `key_fields("copynumbers.csv")` would then
+say two rows differing only in modifier dosage are the same row: SMN1=0 with SMN2=3 collapsing onto
+SMN2=1, which is the case that column exists for. A wrong answer whose drop is invisible is worse than a
+refusal, so a derived member is **mapped back** to the column it coalesces instead, in the *preferred*
+spelling:
+
+```
+key_fields("copynumbers.csv")
+  -> TableKey(columns=('gene', 'modifier_gene', 'modifier_copy_number'), rule='overlap', stamped=())
+```
+
+So the surface cannot hand an author the deprecated half of a pair even once — and there is a test over
+every kind asserting no key column carries a `DEPRECATED` description, which is the class-level version
+of the guard you wrote. Yours would have caught `modifier_cn` on the day; ours makes the next
+deprecation unable to reintroduce it.
+
+**You asked for a marker and it is cheap, so it is there.** `rule` is `equality` or `overlap` (a
+`frozenset` vocabulary, never an Enum), and the binning kinds now **do** get their grouping columns
+rather than a bare `None`: `natural_key` still returns `None` for them because their duplicate rule is
+overlap and not equality, and `key_fields(...).rule == "overlap"` is that same fact said in the form a
+tool can explain. Third field: `stamped` names members the compiler fills, so `variant_key` appears as
+part of the haplotypes key and is flagged rather than presented as a cell anyone can type.
+
+**The structural half is the part that stops this recurring.** The columns and the key were two
+statements of one fact, so eight models now **declare** `_KEY_FIELDS` and both `_TABLE_DUPE_KEYS` and
+`_CORE_DUPE_KEYS` are derived from it through a single `_key_of`. `key_fields` and `natural_key`
+therefore cannot disagree — pinned by a test that runs both over real authored rows from
+`reference_examples/cyp2c19_star_alleles` — and your objection that the lambdas name no columns is
+answered at the root rather than papered over with a parallel map. The whole suite passing unchanged is
+the evidence the derivation reproduces every lambda it replaced, PGx dedup keys included.
+
+**One thing our own guards found that we had not designed for**, worth having if you render this:
+`variant_key` is a stamped **field** on `VariantRow`, `HaplotypeRow` and `PharmVariantRow`, but a
+**property** on `StudyRow`. The first version of the guard asserted every key column is a `model_fields`
+member and failed on `studies.csv`, correctly. So the invariant we pin is the weaker, truer one — a key
+member is either an authored column or flagged in `stamped`, never a bare name that resolves to nothing.
+If your `keyed_on` rendering assumes every key column is a fillable cell, `studies.csv` is the row that
+breaks it.
+<!-- triaged: 0.6.5 · sha f8b21888f077 -->
+
+**How we found it.** Our `list_tables` reports a `keyed_on` string per kind — what makes two rows the
+same row, which is the question an author asks before appending. It shipped
+`copynumbers.csv -> (gene, modifier_gene, modifier_cn)` and stayed that way across 0.6, so we were
+telling authors to key on a column whose own description reads *DEPRECATED since 0.6, removed at
+1.0*. Ours is a hand-kept string and that is our defect, but we went looking for the derivation and
+there is none:
+
+* `draft.natural_key(row)` is public and **row-level** — it takes an instance and returns a tuple of
+  *values*, so it cannot tell a tool which columns those values came from. It also returns `None` for
+  the four binning kinds on purpose (their rule is overlap, not equality), which is the right answer
+  to a different question.
+* `compiler._TABLE_DUPE_KEYS` is private, and its values are lambdas — even reaching in, a consumer
+  gets no column names out of `lambda r: (r.gene, r.allele)` without source inspection.
+* `MeasureBinRow._KEY_FIELDS` (and the per-kind overrides) is exactly the tuple of names we want for
+  the binning kinds, and is `_`-prefixed. `CopyNumberRow._KEY_FIELDS` also names
+  `effective_modifier_copy_number`, the *property*, not the authorable column — correct for the
+  grouper, one step away from what an author is told to write.
+
+**What we did meanwhile.** Kept the strings, corrected every one of them to exact model field names
+(three were loose prose: `variant`, `a`/`b`/`trait`, `trait`), and added a test that resolves each
+token against `model_fields` and fails if any is missing **or** if its `description` contains
+`DEPRECATED`. That guard would have caught `modifier_cn` the day 0.6 landed, which is the whole
+reason to write it down rather than fix the one cell.
+
+**Candidate fix.** A public `key_fields(csv_name) -> tuple[str, ...] | None`, returning the authorable
+column names, `None` where equality is not the rule (binning), and — if it is cheap — a marker for
+which reading applies. `describe_table`'s docstring already promises "the natural key two rows are
+the same row by"; today the returned dict does not carry it, and that would be the natural home.
+
+**Why it matters more than one stale cell.** A deprecated column can only be *found* by a consumer
+who re-reads the field descriptions on every upgrade. Everything else about a table on our surface is
+generated and cannot drift; this one string can, and it is the string an author acts on when they
+append a row.
+
+## S49 — `COMPANION_KINDS` pulls `variants.csv` in behind `studies.csv`, which RM47 made wrong for a binning module
+
+**Status — accepted and shipped in `just-dna-compiler` today, filed as
+[RM114](ROADMAP_HISTORY.md#rm114--the-scaffold-pulled-variantscsv-in-behind-studiescsv-which-rm47-made-wrong).**
+`scaffold.companions_for(kinds)` is public; call it instead of reading `COMPANION_KINDS` directly and
+your surface stops contradicting your own composition rule.
+
+**Both halves reproduce.** `scaffold_module(kinds=["copynumbers.csv", "studies.csv"])` created the
+`variants.csv` stub and warned that it was owed; and the resulting module compiles **strict-green** with
+no `variants.csv` — three warnings, closure and CN tiling, none of them about a missing variants table,
+exactly as you reported. Both are now tests, the second one included, because the strict-green premise is
+the whole reason the stub was wrong.
+
+**You were right that the comment already described the condition.** Its justification said
+`studies.csv` *alone* fails with "module has no recognized table", which is true when it is literally
+alone and false beside a binning table. So the defect was never a disagreement about the rule — the
+condition the comment named was simply never applied. That makes your first candidate the repair, and it
+is the one shipped, in the comment's own wording.
+
+**What it does now.** `studies.csv` pulls `variants.csv` only when no other recognised table was
+requested; `variants.csv` still pulls `studies.csv` **unconditionally**, because that direction genuinely
+has no condition — the compiler wants grounding evidence for a variant claim however the module is
+composed. The recognised set is derived from the compiler's own `_TABLE_KIND_CSVS` plus `variants.csv`,
+mirroring `if not has_variants and not kind_row_counts`, so a table kind added in a later release counts
+without anyone editing this. `sources.csv` stays outside it: a licence ledger is not a table a module can
+consist of, so `["studies.csv", "sources.csv"]` still pulls `variants.csv`.
+
+**`COMPANION_KINDS` is deliberately unchanged**, and your decision to pass it through rather than patch
+it is why the accessor is public rather than internal. You were not wrong about the pair — only about its
+unconditionality — so the mapping still states it, and a test pins that it does. An internal-only fix
+would have left your surface giving the old answer while ours gave the new one, which is the drift you
+said you were trying to remove.
+
+**Your blunter candidate is rejected, for your reason.** Dropping that direction of the pair loses the
+help in the one case it was added for — `studies.csv` truly alone, which really does fail composition —
+and that case is now a test so it cannot be lost by a later tidy-up.
+
+**On what you did meanwhile:** adding the RM47 half to your composition note was the right call and it
+stays correct. The note can now say the stronger thing — that a study row grounding a bin through `pmid`
+is the *intended* shape for a binning module, not merely a legal one.
+<!-- triaged: 0.6.5 · sha 4a9f2a929528 -->
+
+**What we ran.** A spec directory with `module_spec.yaml`, `copynumbers.csv` (two SMN1 bins, each
+carrying `pmid: 9382095`) and `studies.csv` (one row, `pmid,conclusion`, no variant identity —
+legal since RM47). No `variants.csv`.
+
+```
+compiler.validate_spec(spec, strict=True).valid  ->  True
+```
+
+Strict-green: three warnings, all about closure and CN tiling, none about a missing `variants.csv`.
+So the module is legal and is the *intended* shape for a binning module that grounds its thresholds
+— RM47's whole point, and `_check_binning_grounding` is satisfied by exactly this.
+
+**What the constant says.** `scaffold.COMPANION_KINDS["studies.csv"] == ("variants.csv",)`, whose
+comment justifies the symmetry with "`studies.csv` alone fails with *module has no recognized
+table*". True when it is *literally* alone; not true when it sits beside a binning table. So
+`scaffold_module(kinds=["copynumbers.csv", "studies.csv"])` warns that `variants.csv` is owed, and
+upstream's own scaffold adds a stub for it — inviting an empty `variants.csv` into a module whose
+author was doing the right thing. Our own composition rule says never add an empty table to keep
+another company, so the two advices now contradict each other.
+
+**What we did meanwhile.** Nothing: we pass `COMPANION_KINDS` through rather than restating it, so
+our answer is upstream's answer and patching it here would be the drift we are trying to remove. We
+added the RM47 half to the composition note our tools return, so an author reading it at least knows
+a study row may name no variant.
+
+**Candidate fix.** Make the `studies.csv -> variants.csv` pull conditional on no other recognised
+table being requested — the condition the comment already describes ("alone"). A blunter fix is to
+drop that direction of the pair and let the "no recognized table" error speak for itself, but that
+loses the help in the one case the pair was added for.

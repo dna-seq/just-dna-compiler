@@ -34,7 +34,44 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-20 (latest) — §6.6 said a review pass reaches nothing downstream, and it had reached it for three releases (S46)
+## 2026-08-20 (latest) — three schema facts a downstream surface could not generate (S47–S49, RM112–RM114)
+
+Not cut yet — `just-dna-format`/`just-dna-compiler` read `0.6.1` and `just-dna-enricher` `0.6.4`; these
+land in the next cut. Three items from `just-module-creator` in one sitting, all from the same work: their
+MCP tools had answers that **restated** a schema fact instead of generating it, and two of the three had
+no public symbol to generate from. Additive only — new public names beside the old, nothing removed or
+retyped, no authored column moved, so `content_signature` is untouched everywhere.
+
+- **RM112 — `hints.DERIVED_TABLE_MODELS` + `hints.derived_model_for(csv)`.** `draft.model_for` is
+  authored-only by design, so a tool asked what is in `frequencies.csv` or `resolution.csv` got *"not an
+  authored table of this format"* — true and useless — and the only complete map was private
+  `compiler._FACT_TABLES`. All four substitutes were measured and fail; notably
+  `ARTIFACT_PARQUETS - LEAD_PARQUETS` is **nine** names against seven fact tables. Derived from
+  `_FACT_TABLES`, never restated.
+- **RM113 — `hints.key_fields(csv)` → `TableKey(columns, rule, stamped)`, and `describe_table` now
+  carries a `key` block its docstring has promised since 0.5.** The reporter's hand-kept key string had
+  gone stale, naming `modifier_cn`, deprecated at 0.6. The obvious repair is a **wrong answer**:
+  filtering `_KEY_FIELDS` through `model_fields` silently drops `CopyNumberRow`'s property-valued
+  modifier axis. Structurally, eight models now declare `_KEY_FIELDS` and both dupe-key dicts derive
+  from it, so `key_fields` and `natural_key` cannot drift.
+- **RM114 — `scaffold.companions_for(kinds)`.** The `studies.csv -> variants.csv` pull was
+  unconditional, so scaffolding a binning module invited an empty `variants.csv` into a spec that
+  compiles strict-green without one. RM47 is what made it wrong; the constant's own comment already said
+  *alone*.
+
+**The shape worth carrying.** All three are one defect at three sites: a fact stated twice, once where it
+is enforced and once where it is described, with only the enforced copy under test. The durable half of
+each is therefore a **derivation** rather than a fix — the published map reads `_FACT_TABLES`, the key
+reads the model, the companion set reads the compiler's composition rule — because publishing a
+hand-kept copy of a map in order to close a report about hand-kept maps is the defect wearing a public
+name. Two guards found things the designs had not: `variant_key` is a stamped **field** on three models
+and a **property** on `StudyRow`, and the first key guard failed on `studies.csv` correctly.
+
+Suite 2779 → 2799, green throughout; `ruff` clean. **S50–S52 arrived during the pass and are
+deliberately left `new`** — S50 is a documented doc-gap in the GWAS merge, S51 and S52 untriaged. An
+empty verdict is honest; a hedged one is not.
+
+## 2026-08-20 — §6.6 said a review pass reaches nothing downstream, and it had reached it for three releases (S46)
 
 Documentation only; no code moved and no version needs cutting. `just-module-creator`, writing a
 `module-revise` skill with [MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md) §6 as its source, measured §6.6's
