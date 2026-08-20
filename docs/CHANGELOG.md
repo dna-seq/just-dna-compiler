@@ -34,7 +34,77 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-20 (latest) — a triage batch of seven, and the one authored column in it (S50–S56, RM115–RM120)
+## 2026-08-20 (latest) — a dossier audit's four reports (S57–S60, RM121–RM124)
+
+**Not cut.** All three packages read `0.6.5`; the work below is uncut in the tree and the next number
+would be **0.6.6**, a patch on every half of it — nothing was added to an authored schema, nothing was
+retyped, and no published identity moved. Publishing is the maintainer's step, as always.
+
+Four reports from `just-module-creator`, filed the same day after they audited their own per-table
+dossiers and their own attestations. Two are ours to fix, one is a documentation gap with a code-shaped
+edge, and one is a 0.7 design that turns out to answer a question a 0.7 item has been blocked on.
+
+**Two of the four turned out to be about a record that could not state its own scope**, which is the
+reporter's sentence and is worth keeping: *a check that could not have failed should record why rather
+than record a zero.*
+
+- **[RM121](ROADMAP_HISTORY.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
+  — `manifest.stats` described one table and was published as if it described the module.** `stats.genes`
+  came from `variants.csv` alone, so a module led by `diplotypes.csv`, `allele_function.csv` or any other
+  gene-bearing kind published `gene_count: 0, genes: []` however many rows named a gene — and a registry's
+  gene index is fed from that field. Measured on `reference_examples/cyp2c19_star_alleles`: **1,332 rows
+  naming CYP2C19** against `genes: []`; seven of our sixteen examples carry no `variants.csv`, and seven
+  of the eight non-variant gene-bearing models make `gene` **required**. `Stats`'s own docstring already
+  said *"derived from the spec"*, so this was an unimplemented sentence and not a scoping choice.
+  Shipped `module_stats` **beside** `variant_stats` — renaming it would be a major (S14's rule) — with
+  `_GENE_BEARING_TABLE_KINDS` derived from `_TABLE_KINDS`, and derived fact sidecars structurally
+  excluded. Building it recreated the RM44 defect it inherits: the post-symbolic-drop re-derive sat
+  inside the `variants.csv` branch and `pharm_variants.csv` also drops and also carries a gene.
+- **[RM123](ROADMAP_HISTORY.md#rm123--two-attestations-recorded-a-check-whose-scope-they-could-not-state)
+  — two attestations recorded a check whose scope they could not state.** Two halves in two tiers.
+  *PGx:* RM73's per-leg tautology skip has worked since 0.6.0, but `_function_check_record`'s **answered**
+  branch built `detail` from the answered legs alone — so a CPIC-drafted module with PharmVar answering
+  published a clean two-authority comparison with no sign that half of it was a copy against itself. The
+  note lived on `result.warnings`, which is the run's stderr, and `verification.json` is what a later
+  reader trusts. Both branches now sort by source: that file is a hashed input and `legs` fills in pass
+  order. *Hints:* `REDUNDANCY_BEARING` is keyed on a bare column with no model attached, so the
+  vacuous-check reason printed on six (column, table) pairs whose checker cannot see the table — right
+  advice, false reason, and the false reason implies a green run is agreement.
+  `REDUNDANCY_BEARING_TABLES` narrows the **explanation only**; the provider refusal stays column-keyed.
+  The six unscoped columns are checked claims — RM43 puts resolution on the positional kinds, RM47 makes
+  a bin a second citation site — and scoping either from the checker-name strings would have suppressed
+  a *true* advisory.
+- **[RM122](ROADMAP.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it)
+  — the binning family is now specified for consumers, and says so.** [SCHEMAS.md](SCHEMAS.md) gains the
+  normative **measure lookup** beside the genotype join contract: scope to the group, select the row whose
+  inclusive range contains the value, greatest `measure_min` on a shared endpoint, compare in float32
+  (RM62), `unresolved` on a missing measurement and withhold on no match, and `trait_efo_id` multiplies
+  the answer rather than disambiguating it. It opens with the plain sentence that the family is specified
+  **ahead of its consumers** — verified: `just-dna-lite` touches all four binning tables in exactly two
+  places and both count rows. The authoring skill now tells an author to write what the bins mean into
+  the README. RM122 is open for the question they did not ask — whether the rule should also be a public
+  function — which waits on a consumer to fix the signature against.
+- **[RM124](ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
+  — an authored overlay table, filed for 0.7.** RM83 named two exits from *nothing records that a row was
+  overridden*; the reporter **built the first one** — a non-destructive capture/delete/re-derive/reapply
+  wrapper — and it stops exactly where RM83 predicted. RM124 is the second exit with their shape, the tier
+  settled in their favour, and four questions open. The sharpest is one only RM115 could expose:
+  `(table, subject, field)` cannot key `resolution.csv`, whose published rule is `subject`.
+
+**One report did not reproduce, and the reply says what was probed.** `enrich_facts` names no symbol in
+any tier; read as the gene-constraint pass, the two states it describes have been separate since RM98 in
+**0.6.1** — a looked-up gene gnomAD publishes nothing for gets a `not_found` row, a gene reachable
+through neither route gets no row and lands in `unconsulted` with its own warning. The reporter is
+running enricher 0.6.4.
+
+**Triage thresholds moved to 20/30** the same day (dev-start and the stop-filing ceiling, from 10/20),
+and the block that counts them was worse than stale: it grepped `Status** open — **0.6**`, an idiom
+`ROADMAP.md` stopped using once 0.6 shipped, so it returned `0` however full the queue was. It now counts
+the two forms the file actually carries. A stale counter reads as an all-clear.
+
+Suite 2835 → 2859 passing (2,867 collected, 8 skipped — the opt-in network tests).
+
+## 2026-08-20 — a triage batch of seven, and the one authored column in it (S50–S56, RM115–RM120)
 
 **Cut as 0.6.5** across all three packages and tagged `v0.6.5` on 2026-08-20 — the aligned number, since
 schema, compiler and enricher all moved in this batch. Tagged is not published: `uv publish` is a
