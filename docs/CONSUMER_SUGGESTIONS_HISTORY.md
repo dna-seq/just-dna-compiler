@@ -84,6 +84,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S58** the binning family has no consumer, and no spec — RM122
 - **S59** three attestations that could not have failed — RM123
 - **S60** an authored overlay over a derived table — RM124 (0.7)
+- **S61** a snapshot-miss finding denied the position beside it — RM125
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4292,3 +4293,107 @@ can disagree about what the module says, and the artifact stops being a function
 
 The business decision — *whether* this authored value outranks that source — stays ours, and we would
 not ask you to take it. What we are asking for is the place to put the answer.
+
+# just-module-creator, the authoring lookup run against real rsIDs (2026-08-21)
+
+## S61 — `lookup_variant` reports "position remains unset" in the same payload that carries the position
+
+**Status — accepted; shipped in `just-dna-enricher` on 2026-08-21 as
+[RM125](ROADMAP_HISTORY.md#rm125--a-cache-link-answered-a-question-only-the-caller-could-answer-and-said-the-opposite).** Reproduced exactly as
+written, without network: a populated Ensembl snapshot that simply lacks `rs4988235`, a live leg that
+answers `2:135851076`, and the payload comes back carrying the coordinate and *"position remains
+unset"* together.
+
+**We took your third shape, and your reason for it is the reason** — `lookup_variant` is the function
+that knows both halves ran. Probing turned up the thing that makes it cheap: `enrich()` discards both
+links' warning lists into `_`, so `lookup_variant` is the **only** reader either sentence has ever had.
+The link now reports what it searched and stops; `lookup_variant` says `"{rsid}: position remains
+unset"` once at the end, when nothing placed the variant. Your first shape would have dropped the
+cache-warming record you explicitly asked us to keep, and your second is not implementable where the
+sentence is emitted — the cache link runs *before* the live leg, so it cannot say "resolved live".
+
+**In house terms this is the tri-state rule, which is why you found something more general than one
+row.** At the moment the link speaks, *does the position remain unset* is neither true nor false but
+**unknown**: a leg that has not run may still answer. The rule here is to withhold, and the line
+asserted. You are right that the earlier wording change was correct and is not the report — what it
+fixed was the link speaking for its **source**, and it left the link speaking for the **rest of the
+run**. Two halves of one defect, and only one of them had been found.
+
+**One correction to your option 2, and it matters for your reader.** The finding was **already**
+`info` — before this change and after it. The level was right and the sentence was wrong, so if your
+agent read that payload as a failed lookup it did so from an `info`. Worth a look on your side: no
+severity we can assign will carry that distinction if findings are read as failures regardless of level.
+
+**Your probe was one leg short, and the other leg was worse.** `clinvar.lookup_loci` is documented as
+signature-identical to `resolver.lookup_loci` — *"one implementation, no drift"* — and still said
+*"not found in ClinVar, position remains unset"*, which is the speaks-for-the-source defect the Ensembl
+half was corrected out of. It is reachable in the same call, because the cache loop breaks only on a
+hit, so a run with both snapshots provisioned produced **two** false claims rather than one:
+
+```
+[info] rs4988235: not in the injected Ensembl snapshot, position remains unset
+[info] rs4988235: not found in ClinVar, position remains unset
+[info] rs4988235: 1 locus/loci from live ensembl-rest — not from a pinned snapshot, ...
+```
+
+Both now read *"not in the injected `<source>` snapshot"*.
+
+**What to change on your side.** The texts moved and they are an API. Grep
+`not in the injected Ensembl snapshot` / `not in the injected ClinVar snapshot` for the miss, and
+`position remains unset` as a **whole finding** rather than as a clause on the miss. The miss lines now
+say nothing about the outcome, deliberately — a reader asking "did this resolve" should read the
+closing finding, or `loci`. `SYMPTOMS.md` in the authoring skill carries both entries.
+
+**Not installable yet — S34's standing rule.** This is in the tree and lands in **0.6.6**, which is
+bumped but **uncut**; the newest tag is `v0.6.5`. It travels with the S57–S60 batch and the 2026-08-19
+doc-audit round whenever 0.6.6 is cut and published, and that is the maintainer's step.
+
+**Why it survived a green suite**, since you noted that every test here checks the returned fields:
+neither phrase was pinned by any test, and every existing `lookup_variant` test passes an **empty**
+cache directory — so no snapshot is located and the per-rsID miss line is never emitted at all. The
+defect lived on a line the fixtures could not reach. Six new tests build a populated snapshot that
+simply lacks the rsID under test, which is your method rather than ours.
+<!-- triaged: 0.6.6 · sha 9e026ea11585 -->
+
+**Reported by** just-module-creator, 2026-08-21. Found by running the tool against real rsIDs rather
+than by reading it, which is why it had survived: every test here checks the returned fields, and the
+defect is in a `findings` entry beside them.
+
+`lookup_variant(rsid="rs4988235", offline=False)` returns, in one payload:
+
+```
+loci:     [{"chrom": "2", "start": 135851076, "ref": "G", "alts": "A"}]
+rsid_state: live
+findings: ["rs4988235: not in the injected Ensembl snapshot, position remains unset"]
+```
+
+The coordinate is correct and it is the live one. The finding is the cache stage's, emitted by
+`resolver.py:429` during `_lookup_from_cache`, and nothing revisits it after `_lookup_live_loci`
+fills the gap a few lines later in `lookup_variant`. Same for `rs1799945`, which comes back at
+`6:26090951` — the exact coordinate your own comment beside that warning cites as the reason the
+wording was changed.
+
+**We think the wording change was right and is not what we are reporting.** The comment at
+`resolver.py:420-427` is careful and correct: *"in the injected snapshot", not "in Ensembl" … as the
+last word — which is what it is for `lookup_variant` — it asserted that Ensembl does not know a
+variant Ensembl serves perfectly well*. That fixed the **first** half. The second half is that for
+`lookup_variant` it is **no longer the last word** — a live link follows and succeeds — and the
+clause *"position remains unset"* is then simply false about the object it is attached to.
+
+**Why it matters to us specifically.** The direct consumer of this surface is an agent, and the
+instruction it is given everywhere is to read findings rather than to trust a bare value. An agent
+that reads `findings` first concludes the lookup failed, and one that reads `loci` first concludes it
+succeeded; both are reading the same response. On a surface whose whole discipline is that `null`
+means unchecked and a warning on a green run is the interesting output, a warning that contradicts the
+data teaches the reader to discount warnings — which is the expensive failure, not this one row.
+
+**Three shapes, and we have no stake in which:** drop the cache-stage warning once a live locus is
+found for that rsID; keep it but downgrade to `info` and re-word to what it actually reports
+(*"not in the local snapshot; resolved live"*), which preserves the fact that the snapshot is partial
+and is arguably useful for cache-warming; or leave the emission where it is and have
+`lookup_variant` reconcile its own findings before returning, since it is the function that knows
+both halves ran.
+
+We are not proposing that the snapshot miss go unrecorded — knowing the local cache is incomplete has
+real value for anyone deciding whether to warm it. The ask is only that the record stop asserting the
+position is unset when the payload it travels in carries the position.
