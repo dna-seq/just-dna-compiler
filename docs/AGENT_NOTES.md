@@ -568,6 +568,13 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **move** behind resolution because resolution fills `chrom`, which is the same rule reaching the
   opposite answer from a different input. Ask what fills the input before choosing a side, and if the
   message carries a count, that alone settles it.
+  **The countless case still owes the filter, and forgetting it is the recurring half (RM94, then RM106).**
+  `compile_module` runs `validate_spec`, so every check reaching both sides runs twice by construction;
+  the filter (`w for w in … if w not in all_warnings`) is what makes that harmless. `_frequency_checks`
+  did not have one, so RM93's parity move published the `faf95` warning **twice** in
+  `manifest.compilation.warnings` — measured at 15 warnings, 14 distinct. When a check moves to
+  `validate_spec` for parity, look at what still calls it on the compile side in the same commit, and
+  assert `len(warnings) == len(set(warnings))` rather than grepping for the one phrase.
 
 - `@clinsig-never-escalates` — **The ClinVar `clin_sig` cross-check is the one check where `strict` does NOT escalate** — it warns in
   both modes, deliberately, because failing would make the format arbitrate a clinical dispute. The

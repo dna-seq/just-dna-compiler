@@ -505,6 +505,37 @@ def test_possible_frequency_arithmetic_is_clean_on_both_sides(tmp_path: Path) ->
     assert _agree(spec, tmp_path / "fok_out", strict=True) == (True, True)
 
 
+def test_a_check_that_runs_on_both_sides_is_published_once(tmp_path: Path) -> None:
+    """RM106: `compile_module` runs `validate_spec`, so a check living in both places prints twice.
+
+    `_check_frequency_arithmetic` reached `validate_spec` with RM93 (the test above) and the compile-
+    side `_frequency_checks` kept running it unfiltered, so the `faf95` warning landed in
+    `manifest.compilation.warnings` — a published field since RM44 — as two identical lines. Any
+    consumer counting warnings then overstates what is wrong with the module. Re-running a check on
+    both sides is the normal case and is not the defect; not filtering on the message is
+    (`@no-rerun-with-counts`), which is what `_literature_checks` eleven lines below has always done.
+
+    The second assertion is the one worth keeping past this item: **no warning may appear twice**,
+    whatever produced it. This is the second instance of the shape (RM94 was the first).
+    """
+    spec = _spec(
+        tmp_path / "faf",
+        frequencies__csv=(
+            "variant_key,rsid,chrom,start,ref,alt,genome_build,population,allele_count,"
+            "allele_number,faf95,dataset,source,status\n"
+            "rs1800562,rs1800562,6,26092913,G,A,GRCh38,global,3,1613660,0.5,gnomad_v4.1_joint,"
+            "gnomad,resolved\n"
+        ),
+    )
+    compiled = compile_module(spec, tmp_path / "faf_out", resolve_with_ensembl=False)
+
+    assert compiled.success
+    phrase = "exceeds the group's own allele frequency"
+    tripped = [w for w in compiled.warnings if phrase in w]
+    assert len(tripped) == 1, tripped
+    assert len(compiled.warnings) == len(set(compiled.warnings)), compiled.warnings
+
+
 # Keyed under the **rsID**, because that is the key a study row derives: `StudyRow` here carries no
 # coordinate, so `derive_variant_key` returns `rs334` and the membership lookup has to find it there.
 # An rsid-authored module is exactly the shape whose `resolution.csv` is written under the rsID.

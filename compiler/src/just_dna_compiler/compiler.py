@@ -4504,8 +4504,15 @@ def compile_module(
     # being readable at three, so each entry states its own checks and its own builder; the loop below
     # stays generic. Errors are fatal, warnings accumulate — the same contract the SNP core uses.
     def _frequency_checks(rows: list) -> tuple[list[str], list[str]]:
+        # De-duplicated on the message, the `_literature_checks` idiom eleven lines below and the
+        # `_check_contig_ploidy` one before it: `compile_module` runs `validate_spec`, which has run
+        # `_check_frequency_arithmetic` over these same injected rows since RM93 added it for parity,
+        # so an unfiltered re-run publishes the finding **twice** in `manifest.compilation.warnings`
+        # (RM44) and every consumer counting warnings overstates what is wrong with the module.
+        # Re-running is the normal case and is not the bug; not filtering is (`@no-rerun-with-counts`).
+        # Only the warnings need it — validate's errors abort the compile before this closure runs.
         errors, warns = _check_frequency_arithmetic(rows)
-        warns = list(warns)
+        warns = [w for w in warns if w not in all_warnings]
         warns.extend(_cross_check_frequencies(rows, variants))
         warns.extend(_check_ba1_lint(rows, variants, threshold=ba1_threshold))
         return errors, warns
