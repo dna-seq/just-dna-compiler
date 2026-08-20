@@ -88,9 +88,17 @@ direction is a separate act. **The standing debt was discharged on 2026-08-18**:
 genericized, along with the correction to §2's "why not git" that the branch-pause forced — the
 published copy still called *the loop must not commit* a fatal reason for the design, which stopped
 being true here when §5's permit was granted, and a watcher that pauses because the loop commits cannot
-sit in a document saying it does not. Nothing is owed outward as of that revision. Updating the gist is
-a publish and stays the user's to authorize; it was authorized for that push and is not a standing
-permission.
+sit in a document saying it does not. Updating the gist is a publish and stays the user's to authorize;
+it was authorized for that push and is not a standing permission.
+
+**One item is owed outward again as of 2026-08-21**, and it is pattern material rather than local
+tuning: *stamp the arrival fingerprint, not the value the ledger prints after you write the reply*
+(§6). The gist does not carry the wrong sentence — it simply never says which sha to write, and a
+reader who reasonably guesses "run the ledger and copy what it prints" walks into the trap on every
+reply longer than a paragraph, which is most of them. Nothing else is owed: the §4 thresholds and the
+§5 permit have no counterpart there at all, deliberately or otherwise, so the stale-counter correction
+of 2026-08-20 (*count the idiom, not a fixed version number*) has nothing to be stale in. Whether the
+generic copy should grow those two sections is a separate question and a larger push.
 
 **The live document holds only what is unanswered.** An item moves to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) once its reply is written, which is
@@ -649,9 +657,19 @@ Each of these was a bug in the loop, not a hypothetical:
   second failure is the one worth remembering, because it compounds silently — with no marker visible,
   `reply_end()` falls back to the single-paragraph rule, so paragraphs two onward of a long reply leaked
   back into the fingerprint. The value the ledger *reported* for S36 was therefore also wrong, and
-  restamping to it left the section `revised` a second time. Stamp the sha the ledger prints for the
-  section, then re-run the ledger and confirm it reads `current` — the confirmation is the whole check,
-  and it is two seconds.
+  restamping to it left the section `revised` a second time.
+
+  **So "stamp the sha the ledger prints" is wrong for any reply longer than one paragraph, and that was
+  this file's own prescription until 2026-08-21.** The contamination is not special to a malformed
+  marker — it is the *normal* state of a section you have just replied to and not yet stamped, which is
+  every section at the moment you go to stamp it. The value to write is the one the section carried
+  **before the reply existed**: the ledger prints it when the item arrives, and `--backfill` is correct
+  for the same reason. Writing S61's reply reproduced it exactly — unmarked, the section hashed to
+  `143952a318dc`, and stamping that read `revised  (was 143952a318dc)` against the true `9e026ea11585`.
+  Checked in a scratch copy rather than argued, which is cheap and is the habit this file keeps asking
+  for. So: **stamp the arrival fingerprint, then re-run the ledger and confirm `current`.** The
+  confirmation is the whole check either way and it is two seconds — it is also what catches this if you
+  stamp the wrong value regardless, which is why the failure has never survived a pass that ran it.
 
 ---
 
