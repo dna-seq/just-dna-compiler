@@ -30,6 +30,69 @@ report, and it is the useful shape of it: a consumer who wants to generate rathe
 by a private name, will hand-keep the same lines every other consumer hand-keeps and will be the one who
 misses the next table. All four are additive or documentation; nothing removed, nothing retyped.
 
+## RM123 — two attestations recorded a check whose scope they could not state
+
+✅ **Shipped in `just-dna-compiler` + `just-dna-enricher` on 2026-08-20**, motivating case
+[S59](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**The reporter's generalisation is the item, and it is a good one:** *a check that could not have
+failed should record why rather than record a zero.* They filed three instances. Two reproduced, in
+different tiers and with the same shape underneath; the third had shipped four releases earlier and is
+answered as a non-issue in the reply, with what was probed.
+
+### Half one — the PGx record lost a tautological leg whenever another leg answered
+
+RM73 already built the skip they asked for: `pgx._tautology_note` is the ClinVar `tautology_reason`
+conjunction one source over — the licence row must name **this** release *and* the drafter's digest
+must still match — applied **per leg**, because PharmVar is an independent authority and a whole-record
+skip would throw away a real comparison to suppress a hollow one. That has been in the tree since
+0.6.0, and the reporter is running 0.6.4.
+
+What it did not do is reach the file. `_function_check_record`'s **skip** branch joins every
+non-answered leg's note into `detail`, so a tautology-only record already says so. The **answered**
+branch built `detail` from `answered` alone, so the one case the per-leg design exists for — CPIC
+tautological, PharmVar answering — published *"compared N authored allele function(s) against pharmvar
+(…)"* and no trace at all that half the check was a copy against itself. `result.warnings` carried it,
+which is the run's stderr; `verification.json` is what a later reader trusts, and the run is not part
+of the module. Demonstrated by calling `_function_check_record` directly with a mixed `legs` dict —
+its signature takes every number as a parameter, which is what made the demonstration a unit test
+rather than a network pass.
+
+Fixed by appending the withheld legs' notes to the answered branch, **sorted by source in both
+branches**. That sort is not tidiness: `verification.json` is a hashed input, `legs` is filled in
+whichever order the pass reached the authorities, and an iteration-order sentence is a file whose bytes
+depend on which authority answered first.
+
+### Half two — a redundancy-bearing advisory named a checker that cannot see the table
+
+`hints.REDUNDANCY_BEARING` is keyed on a bare column name with no model attached, and
+`_flag_advisory_columns` gated only on whether the *model* carries the column. `clin_sig` is authored
+on `variants.csv`, on all four binning kinds and on `diplotypes.csv`, while `verify_clin_sig` takes
+`list[VariantRow]`; `evidence_level` is on `diplotypes.csv` and `pharm_variants.csv`, and the ClinPGx
+check loads `pharm_variants.csv` alone. So six (column, table) pairs printed *"filling it from that
+same source would make the check vacuous"* about a check that never sees the table. **The advice stays
+right and the reason was false**, which is the worse half of being wrong: it implies a green run is
+evidence of agreement.
+
+`REDUNDANCY_BEARING_TABLES` narrows the explanation, and the map's **absences are checked claims**.
+`rsid`/`chrom`/`start`/`ref`/`alts` stay unscoped because resolution reaches the positional table kinds
+and the PGx tables (RM43), so a coordinate on `heteroplasmy.csv` really is cross-examined; `pmid` stays
+unscoped because RM47 made a bin a second citation site and `enricher.literature` reads both through
+`binning_citations`. Both were nearly scoped from the checker-name strings alone, which would have
+suppressed a **true** advisory — the same defect facing the other way, and the reason every entry and
+every absence has a test.
+
+**It scopes the explanation and not the refusal.** `REDUNDANCY_BEARING` is also the map a drafting
+provider refuses on; whether a provider should start filling `clin_sig` on a binning row is a decision
+nobody has taken, and taking it as a side effect of fixing a message is what this repo refuses. The
+model→CSV direction is derived from `draft.DRAFTABLE` rather than listed, so a kind added later is
+scoped by construction — and two names for one model is real (`SourceRow` answers to both spellings
+since RM51), not a quirk to normalize away.
+
+**A patch on both halves**: prose in a record that is outside the verification signature (`detail` is
+excluded on purpose, so rewording never moves it), and an `info` finding's text. No schema moved, no
+authored surface moved, nothing was retyped. Suite 2843 → 2859.
+
 ## RM121 — `manifest.stats` described one table and was published as if it described the module
 
 ✅ **Shipped in `just-dna-compiler` + `just-dna-format` on 2026-08-20**, motivating case

@@ -209,6 +209,80 @@ to a reader right now.
 
 ## S59 — three attestations record a check that could not have failed
 
+**Status — the generalisation is accepted and shipped as
+[RM123](ROADMAP_HISTORY.md#rm123--two-attestations-recorded-a-check-whose-scope-they-could-not-state)
+in the tree (not yet cut). Two of your three reproduced; the third shipped four releases before the
+enricher you are running.** Taking them in your order.
+
+**(1) `enrich_pgx` grading CPIC's own table — the skip you asked for exists, and you found the one case
+where it does not reach the record.** `pgx._tautology_note` is exactly `clinical.tautology_reason` one
+source over: the licence row must name **this** release *and* the drafter's digest must still match,
+either half missing runs the leg. It has been in the tree since **0.6.0** (RM73's provenance half), it
+is **per leg** rather than per record — PharmVar is an independent authority and a whole-record skip
+would throw away a real comparison to suppress a hollow one — and `pgx_draft` stamps the release that
+keys it.
+
+So the check is not the problem; the **record** was. `_function_check_record` has two branches. The
+skip branch joins every non-answered leg's note into `detail`, so a tautology-only run already says so
+— that is presumably the one you would have seen on a CPIC-only module. The **answered** branch built
+`detail` from the answered legs alone, so a CPIC-drafted module with PharmVar answering published
+*"compared N authored allele function(s) against pharmvar (…)"* and nothing at all about CPIC. The note
+was on `result.warnings`, which is the run's stderr, and the run is not part of the module. Reproduced
+by calling `_function_check_record` with a mixed `legs` dict and asserting `"cpic" not in detail`.
+
+Fixed by appending the withheld legs, **sorted by source in both branches** — `verification.json` is a
+hashed input and `legs` fills in whichever order the pass reached the authorities, so an
+iteration-order sentence is a file whose bytes depend on which authority answered first.
+
+**(2) `_flag_advisory_columns` — reproduced exactly as reported, including which pairs.** Six of them:
+`clin_sig` on all four binning kinds and on `diplotypes.csv`, and `evidence_level` on `diplotypes.csv`.
+`verify_clin_sig` takes `list[VariantRow]`; the ClinPGx check loads `pharm_variants.csv`. Your framing
+is the one we took — the advice stays right and the *reason* was false, which is the worse half,
+because it implies a green run is agreement.
+
+`hints.REDUNDANCY_BEARING_TABLES` now narrows the explanation, and the affected pairs read *"left to
+the author on purpose, and on this table for a different reason than on variants.csv: …
+does not read diplotypes.csv, so nothing here compares the cell against a source"*.
+
+Three things worth knowing if you consume that map:
+
+- **It scopes the explanation, never the refusal.** `REDUNDANCY_BEARING` stays keyed on the bare
+  column, because whether a provider should start filling `clin_sig` on a binning row is a decision
+  nobody has taken and we are not taking it as a side effect of fixing a message.
+- **Six columns are deliberately absent, and the absences are checked claims.**
+  `rsid`/`chrom`/`start`/`ref`/`alts` stay unscoped because resolution reaches the positional table
+  kinds and the PGx tables (RM43), so a coordinate on `heteroplasmy.csv` really is cross-examined; and
+  `pmid` stays unscoped because RM47 made a binning row a **second citation site** and
+  `enricher.literature` reads both through `binning_citations`. We nearly scoped all six from the
+  checker-name strings, which would have suppressed a *true* advisory — the same defect facing the
+  other way. Every entry and every absence has a test.
+- **The model→CSV direction is derived from `draft.DRAFTABLE`**, so a kind added later is scoped by
+  construction rather than by someone remembering.
+
+**(3) `enrich_facts` collapsing "no constraint published" into "not asked" — does not reproduce, and
+here is what was probed.** No symbol or CLI command of that name exists in any of the three tiers, so
+we read it as the gene-constraint pass (`just-dna-enricher gene-metrics` → `enrich_gene_metrics`, the
+only thing that fetches constraint). There the two states are already separate, in the same loop:
+
+- a gene that was looked up and gnomAD publishes no constraint for gets a **`not_found` row** — a
+  fact, and true of many small or non-coding genes;
+- a gene that could be asked through neither route gets **no row at all** and lands in
+  `GeneMetricsResult.unconsulted`, with its own warning naming the genes and saying nothing is known
+  about them.
+
+That split is RM98, shipped in **v0.6.1** (`c4959f1`, *"two passes recorded an absence nobody
+established under --offline"*) — before the enricher 0.6.4 you filed against. So the cell you describe
+is not one cell. **This negative is scoped to that pass**: we did not probe the other fact passes for
+the same shape, and if you meant one of them, re-file naming it and we will.
+
+**On the generalisation itself, which is the part we found most useful.** *A check that could not have
+failed should record why rather than record a zero* is now doing work in two tiers, and your ClinVar
+example was the right template to point at because it is the one that had already been generalised —
+`tautology_reason` and `_tautology_note` are the same conjunction over different sources, and the
+digest half (RM73) is what makes them survive an author's edit. What was missing was never the skip.
+It was that a record has to carry the scope even when the check **did** run, which is your sentence.
+<!-- triaged: 0.6.6 · sha 20ed3e72a9a7 -->
+
 **Reported by** just-module-creator, 2026-08-20. Found while auditing what our own tools may claim.
 
 `verification.json` is the record a later reader trusts, and three cases inflate what it appears to say.

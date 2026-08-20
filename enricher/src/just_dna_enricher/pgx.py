@@ -536,7 +536,12 @@ def _function_check_record(
             # Joined with a space: every note is a finished sentence written by the leg that
             # produced it, and the reader needs all of them — the reason on the record names one
             # leg's absence, and a second leg absent for another reason is not thereby answered.
-            detail=" ".join(note for outcome, note in legs.values() if outcome != _ANSWERED),
+            # Sorted by source, like the answered branch's `withheld` below: `legs` is filled in
+            # pass order, and `verification.json` is a hashed input, so an iteration-order sentence
+            # is a file whose bytes depend on which authority was reached first.
+            detail=" ".join(
+                note for _source, (outcome, note) in sorted(legs.items()) if outcome != _ANSWERED
+            ),
             source=implicated[0] if len(implicated) == 1 else None,
         )
     # "pharmvar (snapshot, pharmvar_2026-08-02), cpic (live)" — the route and, where the source
@@ -560,6 +565,18 @@ def _function_check_record(
             f"; {unanswered} authored claim(s) name an allele no consulted authority states a "
             f"function for, so they were not checked"
         )
+    # **The legs that did NOT answer, in the record and not only in the log (S59).** The skip branch
+    # below already joins every non-answered note into its `detail`; this branch did not, so a module
+    # drafted from CPIC with PharmVar answering recorded *"compared N against pharmvar"* and no trace
+    # at all that the CPIC leg was a tautology. `result.warnings` carried it, and `verification.json`
+    # is what a later reader trusts — the run's stderr is not part of the module. So the mixed case,
+    # the one the per-leg design exists for, was the one case whose scope the record lost. Joined with
+    # a space for the skip branch's reason: each note is a finished sentence written by the leg.
+    withheld = " ".join(
+        note for _source, (outcome, note) in sorted(legs.items()) if outcome != _ANSWERED
+    )
+    if withheld:
+        detail += f". {withheld}"
     return ran(
         "allele_function",
         # One allele, not one conflict per authority — see the docstring.

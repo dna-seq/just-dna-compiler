@@ -172,6 +172,40 @@ REDUNDANCY_BEARING: dict[str, str] = {
     "provenance_regex": "enricher.literature._study_quote_found (authored pattern vs the fulltext)",
 }
 
+#: Which authored CSVs the checker named in `REDUNDANCY_BEARING` actually reads, for the columns whose
+#: checker does **not** see every table carrying the column. An absent key means unscoped — every table
+#: with that column is cross-examined — which is the honest answer for more entries than not.
+#:
+#: **It exists because a column name with no model attached is not a scope (S59).** `clin_sig` is a
+#: column on `variants.csv` and on all four binning kinds and on `diplotypes.csv`, and
+#: `verify_clin_sig` takes `list[VariantRow]`; `evidence_level` is on `diplotypes.csv` and
+#: `pharm_variants.csv`, and the ClinPGx check loads `pharm_variants.csv` alone. So the advisory that
+#: explains *why* those cells are left to the author named, on six of the tables it printed on, a
+#: checker that cannot see the table — advice that stays right for a reason that is false, which is the
+#: worse half of being wrong.
+#:
+#: **This scopes the EXPLANATION, never the refusal.** `REDUNDANCY_BEARING` is also the map a drafting
+#: provider refuses on, and it stays keyed on the bare column: whether a provider should start filling
+#: `clin_sig` on a binning row is a separate decision nobody has taken, and quietly making it fillable
+#: as a side effect of fixing a message is exactly the shape this repo refuses.
+#:
+#: Six columns are deliberately **absent**, and each absence is a checked claim rather than a gap.
+#: `rsid`/`chrom`/`start`/`ref`/`alts` stay unscoped because resolution reaches the positional table
+#: kinds and the PGx tables since 0.6 (RM43), so a coordinate on `haplotypes.csv` or
+#: `heteroplasmy.csv` really is cross-examined. `pmid` stays unscoped because there are **two**
+#: citation sites since RM47 — `studies.csv` and a `pmid` on a binning row — and
+#: `enricher.literature` reads both through `binning_citations`.
+REDUNDANCY_BEARING_TABLES: dict[str, frozenset[str]] = {
+    "clin_sig": frozenset({"variants.csv"}),
+    "evidence_level": frozenset({"pharm_variants.csv"}),
+    "function_status": frozenset({"allele_function.csv"}),
+    "acmg_sf": frozenset({"variants.csv"}),
+    "doi": frozenset({"studies.csv"}),
+    "p_value_num": frozenset({"studies.csv"}),
+    "provenance_quote": frozenset({"studies.csv"}),
+    "provenance_regex": frozenset({"studies.csv"}),
+}
+
 
 @dataclass(frozen=True)
 class Alteration:
@@ -696,6 +730,15 @@ def _apply_normalizations(
     return updated
 
 
+def _tables_for(model: type[BaseModel]) -> frozenset[str]:
+    """The authored CSV name(s) this model is the row model for, from `DRAFTABLE` rather than a list.
+
+    Two names for one model is real and not a quirk to normalize away: `SourceRow` answers to both
+    `sources.csv` and `licensing.csv` since RM51.
+    """
+    return frozenset(name for name, other in DRAFTABLE.items() if other is model)
+
+
 def _flag_advisory_columns(
     rows: list[dict[str, str]], model: type[BaseModel], report: HintReport
 ) -> None:
@@ -704,22 +747,39 @@ def _flag_advisory_columns(
     Keyed on the *model's* columns rather than the ones the input happens to carry: an rsid-only row
     has no `chrom` column at all, and that is exactly the case worth explaining — a lookup could
     supply the coordinate and deliberately does not. Reported with `row=None` because the reason is a
-    property of the column; repeating it per row would bury the real findings under boilerplate."""
+    property of the column; repeating it per row would bury the real findings under boilerplate.
+
+    **The reason given depends on whether the named checker can see this table** (S59).
+    `REDUNDANCY_BEARING` is keyed on a bare column name, so the vacuous-check explanation printed on
+    every table carrying the column — including six pairs where the checker reads a different table
+    entirely. The cell is still the author's on those, and saying so with a false reason is the part
+    worth fixing: a green run over a `clin_sig` on `diplotypes.csv` is not evidence of agreement with
+    anything, and the old sentence implied it was.
+    """
     authored = set(authored_field_names(model))
+    tables = _tables_for(model)
     for column, checker in REDUNDANCY_BEARING.items():
         if column not in authored:
             continue
         if any(row.get(column, "").strip() for row in rows):
             continue  # the author filled it somewhere; nothing is being withheld
-        report.findings.append(
-            Finding(
-                None,
-                column,
-                "info",
+        scope = REDUNDANCY_BEARING_TABLES.get(column)
+        # `not tables` — a model reached through some path other than `DRAFTABLE` — keeps the
+        # unscoped wording rather than claiming an out-of-scope it has not established.
+        if scope is None or not tables or tables & scope:
+            note = (
                 f"{column} is left to the author on purpose: {checker} compares it against a "
-                f"source, and filling it from that same source would make the check vacuous",
+                f"source, and filling it from that same source would make the check vacuous"
             )
-        )
+        else:
+            note = (
+                f"{column} is left to the author on purpose, and on this table for a different "
+                f"reason than on {', '.join(sorted(scope))}: {checker} does not read "
+                f"{' or '.join(sorted(tables))}, so nothing here compares the cell against a "
+                f"source. It is yours to judge, and a run that reports nothing about it is not "
+                f"agreement with any authority"
+            )
+        report.findings.append(Finding(None, column, "info", note))
 
 
 def _check_duplicate_keys(parsed: list[BaseModel | None], report: HintReport) -> None:

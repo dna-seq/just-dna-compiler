@@ -491,6 +491,18 @@ tautological; for an rsid-only row `resolution._verify` never runs at all, and t
 honestly unverified to apparently verified. Every looked-up fact is therefore reported with
 `applied=False` and a refusal reason, and the enricher's `lookup.py` answers in the same shape.
 
+**A column name is not a scope, and the reason given now says which table it applies to (RM123).**
+`REDUNDANCY_BEARING` maps a bare column to the checker that reads it, and `clin_sig` is a column on
+`variants.csv`, on all four binning kinds and on `diplotypes.csv` while `verify_clin_sig` takes
+`list[VariantRow]`. So the vacuous-check sentence printed on six (column, table) pairs whose checker
+cannot see the table — right advice, false reason, and a green run on one of those cells looked like
+agreement with an authority that never saw it. `REDUNDANCY_BEARING_TABLES` narrows the *explanation*
+for the columns whose checker reads fewer tables than carry them; an absent key means unscoped, which
+is the honest answer for `rsid`/`chrom`/`start`/`ref`/`alts` (resolution reaches the positional kinds,
+RM43) and for `pmid` (a bin is a second citation site, RM47). **It scopes nothing else**: the refusal a
+drafting provider obeys stays keyed on the bare column, because whether a provider should start filling
+`clin_sig` on a binning row is a decision nobody has taken.
+
 One consequence of computing nothing new is that the same cell can be seen by two layers, and a hint
 must still print it once. An unreplaced `TEMPLATE_PLACEHOLDER` is the case: `_check_placeholders`
 names the column, and the model then says the same thing less usefully — a row-level `ValueError`
