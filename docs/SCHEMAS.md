@@ -1658,6 +1658,40 @@ and the derived `commercial_use` / `redistribution`). All six are out of `artifa
 no `row_count` and no `sources` union, because its records are few and are embedded whole rather than
 left in the table. It has its own section above, including the reason nothing in it is trusted.
 
+### `provenance.json` and the outrank record (S52)
+
+`ProvenanceDoc` is the file authored beside the spec — `generator` / `model` / `agent_version` plus a
+`ProvenanceItem` per variant — and the compiler copies it, hashes it and records the lean `Provenance`
+summary in the manifest. **It reads `len(doc.items)` and nothing else**: `rationale`,
+`reviewer_verdict`, `confidence`, `human_reviewed` and `outranks` reach no check and no manifest field.
+That is honest rather than accidental — the document is carried and attested, and read by humans.
+
+`outranks` is `{column: why}` on the item, and it is the answer to a question a consumer asked (S52):
+where a module deliberately disagrees with a source — a retraction, a refuting meta-analysis, a
+reclassification an archive has not absorbed — the mismatch is not a defect, and something has to be
+able to say *who decided that, and why*. **Per column, because a row may outrank an archive on
+`clin_sig` while its `direction` is ordinary and unjustified**, and a single `rationale` string cannot
+tell those apart.
+
+Three properties, and the last two are the ones a design is likely to get wrong:
+
+- **The presence of a key is the machine-readable bit, never the prose.** A parser over freeform text
+  whose whole justification is that the judgement is not formalizable would defeat the point.
+- **An item stays per *variant*.** Putting the column on `ProvenanceItem` instead — making items
+  per-(variant, field) — was refused because `Provenance.item_count` is a published number meaning
+  *variants carrying a record*, and redefining what it counts is an S14-shaped break: the addition
+  would be legal and the redefinition is not.
+- **Neither identity moves.** `content_signature` and `artifact.digest` are equal across a pair of
+  modules differing only by an outrank record, so recording the disagreement costs nothing. Pinned.
+
+**What is deliberately unsettled: whether any check reads it.** The proposal it came from asks that a
+filled record downgrade a source-mismatch warning from WARNING to INFO — never to silence, never to a
+pass, since the record is an author's assertion and not evidence. That is a live question and this
+field does not answer it; what the field settles is that the record has somewhere to live. The
+argument that decides it is the reporter's two-pathway one: a hallucinated value and a correctly
+outranked one both start as a mismatch, so the warning must not be pre-emptible — a record is a
+*response* to a warning, never a filter filed ahead of one.
+
 `ClinicalAssertions` publishes `min_review_stars` / `max_review_stars` as **two counts and not an
 average**, for the reason `vrs_alleles` sits beside `vrs_alleles_identified`: an average is a number
 describing no record, while the pair tells a catalog that a module is mixing a practice guideline with

@@ -475,6 +475,48 @@ it against `licensing.csv` rather than replacing it), or file the override as re
 leave them disagreeing; a `Field(description=…)` is the most-read documentation in the repo.
 
 
+## RM117 — an outrank record exists and no check reads it, and what a check should do is undecided
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher (+ compiler,
+if the severity ladder moves) ·
+**Motivating case** [S52](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+**The half that shipped.** `ProvenanceItem.outranks` — `{column: why}`, per column, additive, in the
+tree since 2026-08-20 — so an author overriding a checked value has somewhere to record *why*, and the
+capture half the reporter is building has a place to write. Neither identity moves. See SCHEMAS.md.
+
+**The half that is open, and it is a design decision rather than a missing line of code.** The
+proposal is that a filled record change the **severity** of a source-mismatch: WARNING today, INFO
+where a record names the column. Never silence and never a pass — the record is an author's assertion,
+not evidence, and a green check would re-create the vacuity problem through the back door.
+
+**Why this is not obviously right, which is why it is filed rather than shipped.**
+
+- **It puts a checked verdict under authored control**, which nothing else in this format does. Every
+  other severity here is a property of the finding; this one would be a property of a cell the author
+  writes. The reporter's guard against the obvious abuse is sound — a record is a *response* to a
+  warning, never a filter filed ahead of one, since a hallucinated value and a correctly outranked one
+  start identically — but the code cannot see the order. Nothing distinguishes a record written after
+  reading a warning from one written before, so the guard is a convention and not a mechanism.
+- **The ClinVar `clin_sig` cross-check is the obvious first site and is deliberately warn-only in both
+  modes.** Adding a downgrade *below* warn-only is legal, but the check's whole design is that its
+  severity does not vary — and the reason (`@clinsig-never-escalates`) is that whose limit it is, is
+  not knowable from the mismatch. That argument cuts both ways here.
+- **A record is not bound to the value it justifies.** The reporter saw this and named the right
+  precedent: `verification.json` binds to the authored bytes, and a justification written about one
+  `clin_sig` does not carry to a different one. Without a binding, an author edits the value and the
+  downgrade silently persists. Any severity change probably wants the binding *first*, which is a
+  larger design than the severity ladder.
+
+**What is genuinely free and worth having whatever is decided**, because the check already runs every
+compile: a mismatch that has since **resolved** means the archive caught up to the outrank, which is a
+trust signal available nowhere else, and a record whose row's value has changed again is stale by
+construction. Both are observable without asking anyone anything.
+
+**Do not answer this by parsing the prose.** The field is freeform because the judgement is not
+formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
+natural-language question. Presence is the bit a check may read.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

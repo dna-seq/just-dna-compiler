@@ -388,3 +388,78 @@ def test_pinned_key_but_unsigned_manifest_fails(tmp_path: Path) -> None:
     m = _compile(_write_spec(tmp_path / "s"), out)
     with pytest.raises(IntegrityError, match="no signature"):
         verify_manifest(out, m, public_key=public_key_b64_from_pem(generate_private_key_pem()))
+
+
+# ── S52: a per-field outrank record, and what it must not disturb ────────────────────────────────
+
+
+def test_an_outrank_record_survives_the_compile_byte_for_byte(tmp_path: Path) -> None:
+    """The file is copied and hashed, not re-serialized, so the prose reaches a reader unchanged.
+
+    That matters more here than for the other item fields: the record's whole value is a human
+    reading *why* a row disagrees with a source, and a round-trip through our models would be a
+    silent place for it to be reshaped.
+    """
+    from just_dna_format.manifest import ProvenanceDoc
+
+    why = "PMID 24489884 was retracted in 2025; ClinVar has not absorbed it."
+    doc = {
+        **_PROVENANCE,
+        "items": [{"variant_key": "rs1801133", "outranks": {"clin_sig": why}}],
+    }
+    spec = _write_spec(tmp_path / "s", provenance=False)
+    (spec / "provenance.json").write_text(json.dumps(doc), encoding="utf-8")
+
+    out = tmp_path / "o"
+    m = _compile(spec, out)
+    assert m.provenance is not None
+    assert m.provenance.sha256 == sha256_file(out / "provenance.json")
+
+    shipped = ProvenanceDoc.model_validate_json((out / "provenance.json").read_text())
+    assert shipped.items[0].outranks == {"clin_sig": why}
+
+
+def test_outranks_does_not_change_what_item_count_counts(tmp_path: Path) -> None:
+    """The reason shape 1 was chosen over a `field` on the item (S52).
+
+    `Provenance.item_count` is a published number meaning *variants carrying a record*. One item
+    justifying two columns must stay one item, or every consumer already reading that number starts
+    reading a different quantity with no signal that it changed.
+    """
+    doc = {
+        **_PROVENANCE,
+        "items": [
+            {
+                "variant_key": "rs1801133",
+                "outranks": {"clin_sig": "retraction", "direction": "meta-analysis reversed it"},
+            }
+        ],
+    }
+    spec = _write_spec(tmp_path / "s", provenance=False)
+    (spec / "provenance.json").write_text(json.dumps(doc), encoding="utf-8")
+    m = _compile(spec, tmp_path / "o")
+    assert m.provenance is not None
+    assert m.provenance.item_count == 1
+
+
+def test_an_outrank_record_stays_out_of_both_identities(tmp_path: Path) -> None:
+    """Provenance is metadata about the content, never the content, so neither identity moves.
+
+    Compiled twice from the same rows, once with an outrank record and once without: the authored
+    `content_signature` and `artifact.digest` must be equal across the pair. Otherwise recording why
+    a row disagrees with an archive would fork the module's identity, and an author would be paying
+    for the honesty with a digest.
+    """
+    bare = _write_spec(tmp_path / "bare", provenance=False)
+    marked = _write_spec(tmp_path / "marked", provenance=False)
+    (marked / "provenance.json").write_text(
+        json.dumps({**_PROVENANCE, "items": [
+            {"variant_key": "rs1801133", "outranks": {"clin_sig": "retraction"}}
+        ]}),
+        encoding="utf-8",
+    )
+
+    a = _compile(bare, tmp_path / "oa")
+    b = _compile(marked, tmp_path / "ob")
+    assert a.content_signature == b.content_signature
+    assert a.artifact.digest == b.artifact.digest

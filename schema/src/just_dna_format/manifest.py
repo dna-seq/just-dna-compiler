@@ -777,13 +777,37 @@ class GenePanelSpec(BaseModel):
 
 class ProvenanceItem(BaseModel):
     """One per-variant provenance record (SPEC ROADMAP item 1). Lives in the full `provenance.json`
-    document, not in the manifest — the manifest carries only the `Provenance` summary pointer."""
+    document, not in the manifest — the manifest carries only the `Provenance` summary pointer.
+
+    **An item stays per *variant*, and `outranks` is what carries per-*field* judgement** (S52). A row
+    may outrank an archive on `clin_sig` while its `direction` is ordinary and unjustified, so a
+    single `rationale` string cannot say which field a justification is about — and a check keyed on
+    *an item exists for this variant* would downgrade every field's mismatch on the row at once. Of
+    the three shapes the reporter put up, a `field` **on the item** was refused for a reason outside
+    their list: `Provenance.item_count` is a published manifest number meaning *variants with a
+    record*, and making items per-(variant, field) would silently change what it counts for every
+    consumer already reading it — an S14-shaped break, where the addition is legal and the
+    redefinition is not. Accepting the bluntness was refused on the reporter's own argument.
+
+    **Presence is the machine-readable bit; the prose is for a human.** A key in `outranks` says a
+    justification exists for that column, and that is all a check may act on — never a parse of the
+    text, whose whole justification is that the judgement is not formalizable. Nothing in this format
+    reads `outranks` today: the capture half is the authoring layer's, and whether a check downgrades
+    a mismatch to INFO is an open question this field does not settle. What it settles is that the
+    record has somewhere to live that is not a string per variant."""
 
     variant_key: str = Field(description="rsid or chrom:start:ref, matching VariantRow.variant_key")
     rationale: str | None = Field(default=None, description="Why this annotation was made")
     reviewer_verdict: str | None = Field(default=None, description="Reviewer's verdict, if any")
     confidence: float | None = Field(default=None, description="Author/model confidence 0..1")
     human_reviewed: bool = Field(default=False, description="A human reviewed this item")
+    outranks: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Per-column justification for this row deliberately disagreeing with a source: "
+            "{column: why}. A key's presence is what a tool may read; the prose is for a human."
+        ),
+    )
 
 
 class ProvenanceDoc(BaseModel):

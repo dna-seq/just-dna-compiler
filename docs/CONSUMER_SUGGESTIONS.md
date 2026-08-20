@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S56
+## The next item is S57
 
 **Claim ids from here, never from what this file shows.** S1–S46 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
@@ -270,6 +270,52 @@ also the headline case the tool exists for, so a published key would directly im
 sees.
 
 ## S52 — `ProvenanceItem.rationale` is the outrank marker a cross-check needs, and no check reads it
+
+**Status — accepted, split as you proposed: the capture half shipped in the tree (not yet cut), the
+check half is filed as [RM117](ROADMAP.md#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided) with the reasons it is not obviously right.**
+
+**Taking your explicit ask first, since you said it unblocks you more than the check behaviour does:
+it is shape 1.** `ProvenanceItem.outranks: dict[str, str]` — `{column: why}` — is in the tree. Build
+against that.
+
+**And a reason from outside your list, which is why it was not close.** Shape 2 is not merely "changes
+what an item is": `Provenance.item_count` is a **published manifest number** whose meaning is *variants
+carrying a record*, and making items per-(variant, field) silently changes what it counts for every
+consumer already reading it. The addition would be legal and the redefinition is not — the same shape
+as S14's rename and S18's `Finding.row`, where the break is silent because a compensating consumer
+keeps working and keeps being wrong. Shape 3 is refused on your own argument.
+
+Confirmed the rest of your reading of the code before answering: `_collect_provenance` really does read
+`len(doc.items)` and nothing else, and `rationale`/`reviewer_verdict`/`confidence`/`human_reviewed`
+reach no check and no manifest field. One thing worth knowing that you could not see — `ProvenanceItem`
+did not `forbid` extras, so an `outranks` key written before this shipped was **silently dropped** rather
+than rejected. It is a real field now.
+
+Three properties pinned by tests: the record survives the compile byte-for-byte (the file is copied and
+hashed, not re-serialized, so your prose reaches a reader unchanged), one item justifying two columns
+stays one item, and **neither `content_signature` nor `artifact.digest` moves** across a pair differing
+only by an outrank record — recording the disagreement costs nothing.
+
+**On the check half, where we are not taking your proposal as-is.** Your three properties are right and
+the two-pathway argument is the strongest thing in the note — the WARNING must not be pre-emptible, and
+INFO-not-silence follows from it. What stops us wiring it now is that **the guard is a convention the
+code cannot see**: nothing distinguishes a record written in response to a warning from one filed ahead
+of it, so pathway 1 is protected by an author's good faith rather than by a mechanism. And your own
+addendum names what would fix that — a record hash-bound to the value it justifies, as
+`verification.json` binds to the authored bytes. Without it an author edits the value and the downgrade
+silently persists. We think the binding comes first and the severity ladder after, which is a larger
+design than one severity change; RM117 carries all of it, including that the ClinVar cross-check's
+deliberate warn-only-in-both-modes design is an argument that cuts both ways here.
+
+**Your terminal-state observation is the part we found most useful and it is recorded as free.** A
+mismatch that has since resolved means the archive caught up to the outrank; a record whose row's value
+has changed again is stale by construction. The check runs every compile, so both are observable without
+asking anyone anything, and they do not depend on the severity question being settled first.
+
+Documented in [SCHEMAS.md § `provenance.json` and the outrank record](SCHEMAS.md), including that
+nothing reads it today — stated rather than left for the next person to grep for, since that is how you
+found it. Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+<!-- triaged: 0.6.5 · sha b67b4f769fd2 -->
 
 *Filed 2026-08-20 from `just-module-creator`, against format/compiler 0.6.1 and enricher 0.6.4 as
 installed. **This is a proposal, and the substrate is already yours** — we are asking for the consuming
@@ -653,6 +699,41 @@ you already have for that article*, not against the shape of the string.
 content we will not rewrite. On our side the audit is changing what we tell an author, and `S55` is
 the half that is yours.
 
+### Correction, 2026-08-20, same reporter — the check did not run on any of these four
+
+Filed hours after the above, while remediating `aggression_anger` row by row. **The paragraph titled
+*Why this is a check defect and not only an authoring one* overstates one step, and the truth is
+worse rather than better.** We wrote that `quotes_found` equals `quotes_authored` and the module
+reports full coverage. Measured against the `literature.csv` those four modules actually ship:
+
+```
+module                    studies rows   rows with a quote   literature rows   quotes_authored   quotes_found   quote_source
+aggression_anger                    69                  69                 3               0             ""             ""
+big_five_personality               859                 859                26               0             ""             ""
+cognitive_intelligence            2045                2045                33               0             ""             ""
+risk_impulsivity                   695                 695                19               0             ""             ""
+muscle_lean_mass                    11                   0                 0               —              —              —
+```
+
+`quotes_authored` is **0 on every literature row of all four**, and `quotes_found` and `quote_source`
+are empty. So `quotes_found` never equalled `quotes_authored`; the quote check **never ran on a
+single one of these 3668 rows**. The sidecar was written by a literature pass that ran *before* the
+quotes were authored, and because the sidecar is merge-not-clobber nothing revisited it.
+
+Three consequences, and the third is why we are correcting the record rather than leaving it:
+
+1. **The candidate fix as written would not fire on the modules that motivated it.** Comparing a
+   quote against `CitationHint.title` happens inside `_study_quote_found`, and on these four that
+   code path is never reached. The title check is still right; it is not sufficient.
+2. **`quotes_authored: 0` is a confident zero, not a null.** Beside 859 non-empty `provenance_quote`
+   cells in the same module, it is the only number a reader has, and it is wrong in the direction
+   that reads as "this author wrote no quotes" rather than as "this was never looked at".
+3. **Nothing compares the two files.** That is separable from the title problem and from the
+   attribution problem, so it is filed on its own as **S56** rather than folded in here.
+
+Everything else in this entry stands, including the measurement it opens with: one distinct quote per
+PMID, equal to the title, on all four.
+
 ## S55 — we withdraw the reasoning behind `attestation_bearing`, and ask for the attributor it was missing
 
 *Filed 2026-08-20 by just-module-creator. This one is a retraction of our own argument, so the report
@@ -722,3 +803,102 @@ forbade an agent to locate a passage at all, citing `S11`. That prohibition is r
 located it. Until `StudyRow` has somewhere to put that, we can only write it to our own logs, where
 it does not travel with the module — which is the concrete cost of the gap, and the reason we are
 asking rather than working around it.
+
+## S56 — `literature.csv` can claim `quotes_authored: 0` beside 859 authored quotes, and nothing compares them
+
+*Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 / compiler 0.6.1 as installed.
+Found while remediating a real module's quotes; the numbers are from the four published
+`antonkulaga/*` modules in your `data/output/corrected_modules/`. This is the separable half of
+`S54`'s correction.*
+
+**What we were doing.** Replacing the title-quotes in `aggression_anger` with located passages. Before
+editing we read the module's own attestation to see what it currently claimed about them.
+
+**What we expected.** `literature.csv` is the derived sidecar that records what the literature pass
+established per PMID, `quotes_authored` among it. With 69 of 69 studies rows carrying a
+`provenance_quote`, we expected `quotes_authored` to be 69 spread over three PMIDs, and `quotes_found`
+to be some number at or below it.
+
+**What we found.**
+
+```
+aggression_anger/literature.csv
+pmid,...,quotes_authored,quotes_found,quote_source,...
+20585324,...,0,,,...
+24489884,...,0,,,...
+29500382,...,0,,,...
+```
+
+Zero, on every row, in all four modules — 3668 authored quotes and not one of them counted. The
+mechanism is ordinary and is not a bug in any single pass: the literature pass ran while
+`provenance_quote` was still empty, it wrote what was true then, and the sidecar is merge-not-clobber,
+so a later run treats the existing row as authoritative and the counters never move. The module then
+compiles and publishes green with a sidecar that contradicts the table it describes.
+
+**Why this is yours and not only an ordering mistake by the author.** The compiler reads both files.
+`studies.csv` and `literature.csv` are in the same spec directory, joined on `pmid`, and the count of
+non-empty `provenance_quote` per PMID is arithmetic over data you already have in memory. Nothing
+compares them, so a sidecar that is stale in exactly the way that matters is indistinguishable from a
+current one — and `0` is reported as a number rather than as `null`, which is the distinction this
+tier is otherwise built around. A reader cannot tell "the author wrote no quotes" from "nobody ever
+checked".
+
+It also defeats the only cheap detector for the `S54` defect. An operator sweeping the catalog for
+title-quotes would reasonably start at `quotes_found` / `quotes_authored`; on every module that has
+the problem, those columns say nothing at all.
+
+**Candidate fix — one comparison, at compile.** For each `literature.csv` row, count the non-empty
+`provenance_quote` + `provenance_regex` cells in `studies.csv` for that `pmid`. If it disagrees with
+`quotes_authored`, emit a finding naming both numbers: *"literature.csv records quotes_authored=0 for
+pmid 29500382, but studies.csv carries 65 quotes citing it — the sidecar predates the quotes; re-run
+the literature pass."* Warning rather than error seems right: the sidecar being behind the table is a
+staleness signal, not a malformed module.
+
+**A second candidate, cheaper and weaker: make the pass update the counter on a merge.** The counters
+are derivable from the spec without any network — `quotes_authored` needs no fetch at all — so a
+literature pass could recompute them even when it merges everything else. That fixes new runs and
+leaves every already-published module reporting zero, so we would rather have the comparison; both
+together would be better than either.
+
+**A candidate we think is wrong: treating `0` as `null` when no `quote_source` is set.** It would
+silence the report without making the distinction visible, and it guesses at the author's intent from
+the absence of a second field. The point is that the two files disagree, and saying so is the whole
+fix.
+
+**What we did meanwhile.** Nothing in the published data — these are not our modules. In our own
+remediation copy we left `literature.csv` as we found it and said so in the module's log, because
+correcting it needs the literature pass, which is behind our extended tier; that is our gap and we
+are fixing it on our side.
+
+### The second half, found on the way out: the manifest turns the whole thing into a confident zero
+
+We published a remediated copy to the polygon and read the manifest back. `literature.csv` carries
+`quotes_found` **empty** on all three rows — null, correctly, because no quote was ever checked. The
+manifest for that same module says:
+
+```
+"literature": { "row_count": 3, "quotes_authored": 0, "quotes_found": 0, ... }
+```
+
+`_literature_block` is careful and its docstring is right: *"`quotes_found` counts only rows where it
+is non-null: a null there means 'no fulltext was retrievable', and folding that into zero would report
+an unchecked quote as a missing one — the single most misleading thing this block could say."* The
+per-row guard does work. What it cannot express is the **total over rows that are all null**: `sum(...)`
+over an empty selection is `0`, `Literature.quotes_found` is `int` with `default=0`, and there is no
+`quotes_unchecked` beside it. So the exact sentence that docstring calls the most misleading thing this
+block could say is what the block ends up saying, one aggregation later.
+
+A reader of the published manifest sees `quotes_authored: 0, quotes_found: 0` and concludes the author
+wrote no quotes. That module's `studies.csv` has 69 of them (3668 across the four). And nothing
+distinguishes it from a module where three articles were fetched and no quote matched.
+
+**Candidate fix.** Either make the two counters `int | None` in `Literature` and leave them null when
+no row carried a number, or add `quotes_unchecked` (rows whose `quotes_found` is null) so the three
+states stay three. The second is additive and reads better beside `open_access_count`, which is
+already there for exactly this kind of "read it against" qualification.
+
+**And your own note already argues the rest of it for us.** `literature.py`'s `LITERATURE_FACT_FIELDS`
+comment gives, as a reason to keep `quotes_authored` out of the fact hash, that it *"is derivable from
+`studies.csv` (so storing it as a fact duplicates one fact in two files)"*. That is precisely the
+argument for recomputing it at compile rather than trusting the sidecar's stored copy: it is already
+understood to be a duplicate of something the compiler holds open at the same moment.
