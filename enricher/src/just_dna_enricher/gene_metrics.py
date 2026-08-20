@@ -193,9 +193,23 @@ def enrich_gene_metrics(
             existing[merge_key(row)] = row
 
     genes = module_genes(spec_dir)
-    # "Already done" means done *by this pass*, judged on the route that wrote the row rather than on
-    # the dataset label (which differs between the snapshot and the API routes).
-    done = {row.gene for row in existing.values() if (row.source or "").startswith("gnomad")}
+    # **The suppression set is derived from the merge key, never restated beside it** (RM109). A gene
+    # is done when a row already sits under a key *this pass would write for it* — the key is
+    # `(gene, dataset)` and the two labels below are the only two datasets this pass writes, one per
+    # route (plus `absent_from`, which is whichever of the two the run consulted).
+    #
+    # It used to ask `source.startswith("gnomad")` instead, which is a proxy for the key rather than
+    # the key: a hand-written correction honestly recording `source="manual"` did not mark its gene
+    # done, the fetch ran anyway, and the file came back with two rows sharing one `(gene, dataset)`
+    # contradicting each other — which no compiler check reports. `clingen.py`, the sibling pass in
+    # this package, has always tested `(gene, dataset) in existing`; the shape was understood and
+    # simply not applied here.
+    #
+    # Scoping to the two labels is what keeps the fetch running for a *second authority's* row: a
+    # ClinGen dosage row for the same gene carries a different `dataset`, so it is a different key and
+    # not this pass's work. Keying on the gene alone is the older bug in the other direction.
+    pass_datasets = {dataset, API_CONSTRAINT_DATASET_LABEL}
+    done = {row.gene for row in existing.values() if row.dataset in pass_datasets}
     wanted = [g for g in genes if g not in done]
     fetched_at = now_utc_iso()
     out: list[GeneMetricsRow] = list(existing.values())

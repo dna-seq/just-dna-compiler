@@ -42,7 +42,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 | [PGx sources](#pgx-sources-clinpgx-cpic-pharmvar) | the ClinPGx key, CPIC traps, PharmVar assemblies and credentials | `annotation_id`, `PHARMVAR`, `cpic.` |
 | [Drafting](#drafting-and-the-authoring-surfaces) | append-not-mutate, placeholders, vocabularies, hints, RM73 closure + draft digests | `draft.`, `TEMPLATE_PLACEHOLDER`, `closure` |
 | [Schema evolution](#schema-evolution-columns-signatures-materialization) | optional-column legality, the three touch points, derived-not-stored, RM80, RM37 | `content_signature`, `COMPILER_MANAGED` |
-| [Snapshots and clients](#snapshots-caches-and-network-clients) | rate limits, `locations`, `ensure_*`, probe-table performance, retry knobs | `locations.`, `ensure_`, `probe_table` |
+| [Snapshots and clients](#snapshots-caches-and-network-clients) | rate limits, `locations`, `ensure_*`, probe-table performance, retry knobs, merge-pass suppression | `locations.`, `ensure_`, `probe_table` |
 | [Dogfooding](#dogfooding-adversarial-probing-and-how-a-finding-gets-filed) | how a probe is chosen, the adversarial role, fix-vs-surface | `dogfood`, `adversarial` |
 | [Testing traps](#testing-traps) | credentials, `.env` leakage across the suite | `api_key`, `load_env` |
 
@@ -1764,6 +1764,29 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 - `@constraint-two-releases` — **The two gene-constraint routes are different releases.** The live `gnomad_constraint` API field
   serves **v2.1.1**; v4.1 ships only in the bulk TSV. They carry different `dataset` labels, and
   `dataset` is inside the fact set. Don't "fix" a test that asserts they differ.
+
+- `@suppression-from-merge-key` — **A pass's fetch-suppression set must be DERIVED from the merge key,
+  never restated beside it.** `enrich_gene_metrics` merges on `(gene, dataset)` and decided "already
+  done" with `source.startswith("gnomad")` — a proxy for the key, and the two disagree exactly where it
+  matters: a hand-written correction honestly recording `source="manual"` did not mark its gene done,
+  the fetch ran anyway, and the sidecar came back with **two rows under one merge key** contradicting
+  each other. Nothing downstream reports that — the fact tables have no duplicate rule (RM107's
+  neighbour), so the manifest publishes both as ordinary. `clingen.py`, the sibling pass in the same
+  package, always tested `(gene, dataset) in existing`; the shape was understood and simply not applied.
+  The scoping half is the part to get right rather than skip: `done` asks whether a row sits under a key
+  **this pass would write**, which is the gene plus one of the two dataset labels it writes — keying on
+  the gene alone is the older bug in the other direction, where a second authority's ClinGen dosage row
+  looked like this pass's own work and suppressed the fetch. Same family as `@draft-appends` and
+  `@fieldnames-from-model`: derive, don't restate. (RM109.)
+
+- `@empty-work-is-a-path` — **The run with nothing to do is a code path, and the merge passes' documented
+  one.** `enrich_gene_metrics` bound `reference` inside `if wanted:` and read it unconditionally below,
+  so the **idempotent re-run** — every gene already has a row, which is what merge-not-clobber promises
+  is safe — and any module with no `variants.csv` raised `UnboundLocalError` out of the pass. Worse than
+  a crash: it is outside `GeneMetricsEnrichmentError`, so the single `except` RM101 built for this exact
+  caller caught nothing. Every existing merge test re-ran with `wanted` non-empty, which is how a green
+  2859-test suite never saw it. When a pass is documented as re-runnable, **run it twice on a table it
+  has already filled**, and once on a module that gives it nothing to want. (RM104.)
 
 - `@duckdb-vs-polars` — **Read snapshots with duckdb, not polars — but NOT for the reason this bullet used to give.**
   `polars` is `[dev]` in the enricher (builders only) and `duckdb` is core, so the convention is: builder

@@ -406,6 +406,59 @@ def test_the_re_run_and_the_gene_less_module_are_the_two_empty_wanted_paths(
     assert result.rows == [] and result.missing == []
 
 
+def test_the_fetch_suppression_set_is_the_merge_key_and_not_a_proxy_for_it(
+    tmp_path: Path, monkeypatch, constraint_cache: Path
+) -> None:
+    """RM109: `done` asked `source.startswith("gnomad")` where the merge key is `(gene, dataset)`.
+
+    So a hand-written correction that honestly records `source="manual"` did not mark its gene done,
+    the fetch ran anyway, and `gene_metrics.csv` came back with **two rows under one merge key**
+    contradicting each other. No compiler check reports that (fact tables have no duplicate rule), so
+    the module publishes both and the manifest reads as ordinary.
+
+    The negative control is the second half: a second authority's row for the same gene carries a
+    different `dataset`, so it is a different key and must NOT suppress this pass's own fetch — the
+    older bug, in the other direction, that `(gene, dataset)` keying exists to prevent.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+    header = (
+        "gene,gene_id,transcript,mane_select,pli,loeuf,oe_lof,oe_lof_lower,lof_z,mis_z,syn_z,"
+        "oe_mis,obs_lof,exp_lof,constraint_flags,haploinsufficiency,triplosensitivity,"
+        "dataset,source,status,fetched_at\n"
+    )
+    corrected = (
+        f"BRCA1,ENSG00000012048,,,,0.75,,,,,,,,,,,,{CONSTRAINT_DATASET_LABEL},manual,resolved,\n"
+    )
+    (spec / "gene_metrics.csv").write_text(header + corrected)
+
+    looked_up: list[list[str]] = []
+    monkeypatch.setattr(
+        gene_metrics, "lookup_snapshot",
+        lambda reference, genes: looked_up.append(list(genes)) or {},
+    )
+    result = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
+
+    assert looked_up == [], "a row already under this pass's own merge key must suppress the fetch"
+    assert [(r.gene, r.dataset, r.source, r.loeuf) for r in result.rows] == [
+        ("BRCA1", CONSTRAINT_DATASET_LABEL, "manual", 0.75)
+    ]
+    keys = [(r.gene, r.dataset) for r in result.rows]
+    assert len(keys) == len(set(keys)), "two rows under one merge key, which nothing downstream flags"
+
+    # The control: a ClinGen dosage row is a different authority under a different `dataset`, so the
+    # gene is not done and the snapshot is asked about it after all.
+    second = tmp_path / "second"
+    second.mkdir()
+    (second / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\n")
+    (second / "gene_metrics.csv").write_text(
+        header + "BRCA1,,,,,,,,,,,,,,,sufficient_evidence,,clingen_dosage,clingen,resolved,\n"
+    )
+    enrich_gene_metrics(second, offline=True, constraint_cache=constraint_cache)
+    assert looked_up == [["BRCA1"]]
+
+
 # ── VRS minting into the resolution table ───────────────────────────────────────────────────────
 
 

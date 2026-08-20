@@ -294,6 +294,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Don't compute a number and discard it — every consumer then recomputes it. `@dont-discard-computed`
 - A constant two deployments want different values of is a knob: a floor, not a flat set. `@retry-attempt-floor`
 - A shared rate limiter locks the bookkeeping, not the sleep. `@shared-pacing-gate`
+- A fetch-suppression set is derived from the merge key, never restated beside it. `@suppression-from-merge-key`
+- The run with nothing to do is a path: re-run a merge pass over a table it already filled. `@empty-work-is-a-path`
 - Probe a source's real file before modelling it; the docs lie by omission. `@probe-the-real-file`
 
 ## The design cycle (the order of things)
