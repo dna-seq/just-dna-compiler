@@ -630,9 +630,18 @@ class Literature(BaseModel):
     quotes_found: int = Field(
         default=0,
         description=(
-            "Of those, how many were located in a fulltext. Read it against `quotes_authored` AND "
-            "`open_access_count`: an unfound quote in a paywalled article was never checked, not "
-            "checked and missing."
+            "Of those, how many were located in a fulltext. Read it against `quotes_authored`, "
+            "`quotes_unchecked` AND `open_access_count`: an unfound quote in a paywalled article was "
+            "never checked, not checked and missing."
+        ),
+    )
+    quotes_unchecked: int = Field(
+        default=0,
+        description=(
+            "Citations whose `quotes_found` is null — the fulltext was never retrievable, so nothing "
+            "was established either way. `quotes_found` is a sum over the rows that DID answer, so "
+            "without this number a module where nothing was checked is indistinguishable from one "
+            "where every quote was checked and missed: both report zero (S56)."
         ),
     )
 

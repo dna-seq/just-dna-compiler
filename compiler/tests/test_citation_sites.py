@@ -341,3 +341,64 @@ def test_the_literature_registry_is_not_reported_as_undeclared(tmp_path: Path) -
     result = compile_module(spec, tmp_path / "out")
     assert result.success, result.errors
     assert not any("pubmed" in w for w in result.warnings), result.warnings
+
+
+# ── S56: the sidecar's quote counter against the quotes the table actually carries ───────────────
+
+
+def test_a_stale_quote_counter_is_reported_with_both_numbers() -> None:
+    """The shape four published modules are in: quotes written after the literature pass ran.
+
+    `literature.csv` is merge-not-clobber, so the row that recorded `quotes_authored=0` survives every
+    later run and the module compiles green while contradicting its own `studies.csv`. The finding
+    names both numbers, because "these disagree" leaves an author guessing which side to trust.
+    """
+    studies = [
+        StudyRow(rsid="rs1800562", pmid=_PMID, provenance_quote="a located passage"),
+        StudyRow(rsid="rs1799945", pmid=_PMID, provenance_quote="another located passage"),
+    ]
+    stale = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=0)]
+    findings = _cross_check_literature(stale, studies, {})
+    assert any(
+        "quotes_authored disagrees" in w and "records 0 but 2 quote(s) cite it" in w
+        for w in findings
+    ), findings
+
+    current = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=2)]
+    assert not any("quotes_authored disagrees" in w for w in _cross_check_literature(
+        current, studies, {}
+    ))
+
+
+def test_a_regex_counts_as_an_authored_locator_here_too() -> None:
+    """`quotes_authored` is what the pass counts, and the pass counts both locators.
+
+    A module using `provenance_regex` alone would otherwise be reported stale on every compile — a
+    finding no edit could clear, which this project treats as a defect wherever it appears.
+    """
+    studies = [StudyRow(rsid="rs1800562", pmid=_PMID, provenance_regex="located.{0,20}passage")]
+    rows = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=1)]
+    assert not any(
+        "quotes_authored disagrees" in w for w in _cross_check_literature(rows, studies, {})
+    )
+
+
+def test_a_bin_only_citation_carries_a_denominator_of_zero_rather_than_being_skipped() -> None:
+    """A bin cites but cannot quote, so its literature row is current at zero and must not warn.
+
+    Walking `bin_rows` directly to find the pmids reaches kinds that have no `pmid` column at all
+    (`DiplotypeRow`), which is why this goes through `binning_citations` — the same helper the orphan
+    split uses.
+    """
+    bins = {
+        "repeat_alleles.csv": [
+            RepeatAlleleRow(
+                gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="fully penetrant",
+                pmid=_PMID,
+            )
+        ]
+    }
+    rows = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=0)]
+    assert not any(
+        "quotes_authored disagrees" in w for w in _cross_check_literature(rows, [], bins)
+    )

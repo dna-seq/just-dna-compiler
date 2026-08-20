@@ -5143,6 +5143,14 @@ def _literature_block(rows: list[LiteratureRow]) -> Literature | None:
     sidecar recorded. `quotes_found` counts only rows where it is non-null: a null there means "no
     fulltext was retrievable", and folding that into zero would report an unchecked quote as a missing
     one — the single most misleading thing this block could say.
+
+    **That per-row guard is not enough on its own, and `quotes_unchecked` is what finishes it** (S56).
+    A sum over rows that are *all* null is `0`, so the sentence above described exactly what this
+    block ended up saying one aggregation later: a module where no fulltext was ever retrieved
+    published `quotes_found: 0`, indistinguishable from one where every quote was checked and missed.
+    The count of null rows is published beside it rather than the pair being made nullable, because a
+    reader needs the three states — found, missed, never asked — and `int | None` collapses the last
+    two back into "no number".
     """
     if not rows:
         return None
@@ -5156,6 +5164,7 @@ def _literature_block(rows: list[LiteratureRow]) -> Literature | None:
         abstract_only_count=sum(1 for r in rows if r.quote_source == "abstract"),
         quotes_authored=sum(r.quotes_authored or 0 for r in rows),
         quotes_found=sum(r.quotes_found for r in rows if r.quotes_found is not None),
+        quotes_unchecked=sum(1 for r in rows if r.quotes_found is None),
     )
 
 
@@ -5594,6 +5603,7 @@ def _cross_check_literature(
             f"the CSV, which is the pin that keeps a re-run cheap"
         )
     findings.extend(_check_quoted_article_licenses(kept, studies))
+    findings.extend(_check_quote_counter_is_current(kept, studies, bin_rows))
     return findings
 
 
@@ -5639,6 +5649,62 @@ def split_cited_literature(
         return list(rows), []
     kept = [r for r in rows if r.pmid in cited]
     return kept, [r for r in rows if r.pmid not in cited]
+
+
+def _check_quote_counter_is_current(
+    rows: list[LiteratureRow],
+    studies: list[StudyRow],
+    bin_rows: dict[str, list[MeasureBinRow]] | None = None,
+) -> list[str]:
+    """`literature.csv`'s `quotes_authored` against the quotes `studies.csv` actually carries (S56).
+
+    **The sidecar can be stale in exactly the way that matters and nothing said so.** It is
+    merge-not-clobber, so a literature pass that ran while `provenance_quote` was still empty wrote
+    `quotes_authored=0` and every later run treated that row as authoritative. Four published modules
+    are in that state — 3,668 authored quotes, every counter reading zero — and they compile green,
+    because the two files sit in one spec directory and nothing compared them.
+
+    Cheap and offline: the count is arithmetic over rows the compiler already holds open, and
+    `LITERATURE_FACT_FIELDS` keeps `quotes_authored` out of the fact hash on the stated grounds that
+    it *is derivable from `studies.csv`*. That is the argument for checking it here rather than
+    trusting the stored copy.
+
+    **A warning, not an error, and it names both numbers.** The sidecar being behind the table is a
+    staleness signal rather than a malformed module, and a finding that says only "these disagree"
+    leaves the author to work out which side to trust. Aggregated to one line, since a panel cites in
+    the hundreds — the same rule the licence check above obeys.
+
+    Reads both citation sites and the same `extract_pmids` normalizer for the same reason
+    `_cross_check_literature` does: a threshold-grounding `pmid` on a binning row is a citation, and
+    counting only `studies.csv` would report a current sidecar as stale on any binning module.
+    """
+    authored: dict[str, int] = {}
+    for study in studies:
+        if not (study.provenance_quote or study.provenance_regex):
+            continue
+        for pmid in extract_pmids(study.pmid):
+            authored[pmid] = authored.get(pmid, 0) + 1
+    # A bin row cites but carries no quote, so it contributes a denominator of zero rather than being
+    # skipped: a literature row reachable only from a bin must not read as "cited by nothing".
+    # Through `binning_citations`, which knows which kinds actually carry a `pmid` — walking
+    # `bin_rows` directly reaches `DiplotypeRow`, which has no such column.
+    for pmid in binning_citations(bin_rows or {}):
+        authored.setdefault(pmid, 0)
+
+    stale = sorted(
+        (row.pmid, row.quotes_authored or 0, authored.get(row.pmid, 0))
+        for row in rows
+        if (row.quotes_authored or 0) != authored.get(row.pmid, 0)
+    )
+    if not stale:
+        return []
+    return [
+        f"literature.csv's quotes_authored disagrees with studies.csv for {len(stale)} citation(s): "
+        + ", ".join(f"pmid {pmid} records {recorded} but {counted} quote(s) cite it" for
+                    pmid, recorded, counted in stale)
+        + " — the sidecar predates the quotes (it is merge-not-clobber, so a re-run keeps the old "
+        "row); re-run the literature pass to bring the counters and quotes_found up to date"
+    ]
 
 
 def _check_quoted_article_licenses(

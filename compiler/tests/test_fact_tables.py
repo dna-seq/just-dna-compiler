@@ -235,6 +235,47 @@ def test_the_literature_block_never_reports_unchecked_quotes_as_missing(tmp_path
     assert (block.quotes_authored, block.quotes_found) == (2, 1)
     # The unchecked quote is legible as unchecked: authored − found equals the non-open-access count.
     assert block.quotes_authored - block.quotes_found == block.row_count - block.open_access_count
+    # And it is stated rather than only inferable from the arithmetic above (S56).
+    assert block.quotes_unchecked == 1
+
+
+def test_a_module_where_nothing_was_checked_does_not_publish_a_confident_zero(tmp_path: Path) -> None:
+    """S56's second half: the per-row guard is right and does not survive the aggregation.
+
+    `quotes_found` sums the rows that answered, so over rows that are *all* null the sum is 0 — which
+    is the exact sentence `_literature_block`'s docstring calls the most misleading thing it could
+    say, arriving one aggregation later. Reproduced here as the state four published modules are in:
+    two quotes authored, no fulltext ever retrieved. `quotes_unchecked` is what separates it from a
+    module where both quotes were checked and neither was found.
+    """
+    spec = _spec(tmp_path, literature=True)
+    (spec / "literature.csv").write_text(
+        "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
+        "12345678,10.1234/2013/999990,,true,false,1,,pubmed,resolved,\n"
+        "23456789,10.1000/example,,true,false,1,,pubmed,resolved,\n",
+        encoding="utf-8",
+    )
+    nothing_checked = compile_module(spec, tmp_path / "a", resolve_with_ensembl=False)
+    assert nothing_checked.success, nothing_checked.errors
+    block = nothing_checked.manifest.literature
+    assert (block.quotes_authored, block.quotes_found) == (2, 0)
+    assert block.quotes_unchecked == 2
+
+    # The module it must not be confusable with: both checked, neither found.
+    (spec / "literature.csv").write_text(
+        "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
+        "12345678,10.1234/2013/999990,PMC999990,true,true,1,0,pubmed,resolved,\n"
+        "23456789,10.1000/example,PMC1234567,true,true,1,0,pubmed,resolved,\n",
+        encoding="utf-8",
+    )
+    checked_and_missing = compile_module(spec, tmp_path / "b", resolve_with_ensembl=False)
+    assert checked_and_missing.success, checked_and_missing.errors
+    other = checked_and_missing.manifest.literature
+    assert (other.quotes_authored, other.quotes_found) == (2, 0)
+    assert other.quotes_unchecked == 0
+    # Identical on the pair a reader would look at; separated only by the new counter.
+    assert (block.quotes_authored, block.quotes_found) == (other.quotes_authored, other.quotes_found)
+    assert block.quotes_unchecked != other.quotes_unchecked
 
 
 def test_a_nonexistent_citation_recorded_by_the_enricher_surfaces_at_compile(tmp_path: Path) -> None:
