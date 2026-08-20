@@ -237,7 +237,27 @@ def lookup_variant(
             )
         )
     _offer_coordinates(hint)
+    _state_position_outcome(hint, rsid)
     return hint
+
+
+def _state_position_outcome(hint: VariantHint, rsid: str | None) -> None:
+    """Say once, at the end, whether the rsID ended with a position — the thing no single link knows.
+
+    Each link reports what *it* searched and stops there, because whether the position remains unset
+    depends on legs that run after it: a snapshot miss falls through to live Ensembl online and is the
+    end of the road offline. The links used to answer that question for themselves, so a payload could
+    carry a locus and a finding saying the position was unset in the same breath (S61) — and a reader
+    told everywhere to trust findings over bare values reads that run as a failure. At emission time
+    the answer is genuinely unknown, which is the third state, so the link withholds it.
+
+    Only `lookup_variant` has both halves, so the consequence is stated here and nowhere else. Guarded
+    on `rsid` because a position-only lookup fills `rsid_candidates` and never `loci`: announcing an
+    unset position to a caller who supplied one would be the same false sentence with a new subject.
+    """
+    if not rsid or hint.loci:
+        return
+    hint.findings.append(Finding(None, None, "info", f"{rsid}: position remains unset"))
 
 
 def _lookup_from_cache(

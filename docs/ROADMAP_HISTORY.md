@@ -21,6 +21,61 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
+# The 2026-08-21 lookup round — a finding that contradicted the payload carrying it
+
+## RM125 — a cache link answered a question only the caller could answer, and said the opposite
+
+✅ **Shipped in `just-dna-enricher` on 2026-08-21**, motivating case
+[S61](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+`lookup_variant(rsid="rs4988235")` returned the correct live coordinate `2:135851076` and, in the same
+payload, a finding reading *"rs4988235: not in the injected Ensembl snapshot, position remains unset"*.
+Both halves of one response, disagreeing about whether the lookup had succeeded.
+
+**The reporter's framing is the item, and it is sharper than the row it is about.** Their consumer of
+this surface is an agent, and the instruction it carries everywhere is to read findings rather than
+trust a bare value — so a finding that contradicts the data does not merely mislead once, it teaches
+the reader to discount findings, on a surface whose entire discipline is that `null` means unchecked
+and a warning on a green run is the interesting output. They were explicit that the snapshot miss
+itself should stay recorded, since knowing a local cache is incomplete is what tells an author whether
+to warm it; the ask was only that the record stop asserting the position is unset.
+
+**This is the ordinary three-valued failure wearing an unusual costume.** At the moment the cache link
+speaks, whether the position remains unset is not false and not true — it is *unknown*, because a live
+leg that has not run yet may still answer. The house rule is to withhold, and the link asserted
+instead. The wording had already been half-corrected once, when it stopped saying "not in Ensembl" and
+started naming the snapshot it had actually searched; that fix addressed the link speaking for its
+**source** and left it speaking for the **rest of the run**.
+
+**Three shapes were offered and the architecture picks one.** Dropping the warning on a live hit loses
+the cache-warming signal the reporter wanted kept. Re-wording it at the emission site to *"resolved
+live"* is not implementable there at all — the emitter runs before the live leg. What is left is their
+third: the caller reconciles, *"since it is the function that knows both halves ran"*. Established
+while probing, and it makes the choice cheaper than it looks: `enrich()` discards both links' warning
+lists into `_`, so `lookup_variant` is the **only** reader either sentence has ever had. Each link now
+reports what it searched and stops; `lookup_variant` states `"{rsid}: position remains unset"` once at
+the end, guarded on there being an rsID, because a position-only lookup fills `rsid_candidates` and
+never `loci` and would otherwise be told its own supplied position was unset.
+
+**Widened past the report: the ClinVar twin had neither correction.** `clinvar.lookup_loci` is
+documented as signature-identical to `resolver.lookup_loci` — *"one implementation, no drift"* — and
+still emitted *"not found in ClinVar, position remains unset"*, speaking for the source exactly as the
+Ensembl half had before it was fixed. Reachable in the same call, since the cache loop breaks only on a
+hit, so a real run produced **two** false claims where the report scoped one. A pair described as one
+implementation is still two strings, and only one of them was ever reviewed — the `@registry-completeness`
+shape, arriving as a matched pair rather than a registry.
+
+**Why a green suite held it.** Neither phrase was pinned by any test, and every existing `lookup_variant`
+test passes an **empty** cache directory, so `resolve_*_reference` finds no snapshot and the per-rsID
+miss line is never emitted at all. The defect lived on a line the fixtures could not reach. The new
+tests build a populated snapshot that simply lacks the rsID under test — the reporter's own method,
+running the tool against real rsIDs instead of reading it.
+
+Severity was **already** `info` on this finding, which is worth recording because the reporter offered
+"downgrade to `info`" as half of one candidate fix: the level was right and the sentence was wrong. A
+**patch** — advisory findings are written nowhere, so no digest and no signature moves.
+
+
 # The 2026-08-19 doc-audit patch round — six of the eight, fixed
 
 The 2026-08-19 audit validated `just-module-creator`'s 24 per-table dossiers against this repo's code

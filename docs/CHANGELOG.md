@@ -34,7 +34,49 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-20 (latest) — the 2026-08-19 doc audit's six patches (RM104–RM107, RM109, RM111)
+## 2026-08-21 (latest) — a lookup finding that contradicted the payload carrying it (S61, RM125)
+
+**Lands in 0.6.6, still uncut.** All three packages already read `0.6.6` and the newest tag is
+`v0.6.5`, so this joins the two rounds below rather than needing a number of its own. `just-dna-enricher`
+only — no authored schema, no parquet, no manifest field, and advisory findings are written nowhere, so
+no digest and no signature moves. A **patch**. Publishing stays the maintainer's step.
+
+**`lookup_variant` could return a coordinate and deny it in the same breath.** `lookup_variant(rsid=
+"rs4988235")` came back with `2:135851076` in `loci` and, beside it, *"rs4988235: not in the injected
+Ensembl snapshot, position remains unset"*. The cache link emits that line and the live link fills the
+coordinate a few lines later; nothing revisited it. Reported by `just-module-creator`, whose reader of
+this surface is an agent under a standing instruction to trust findings over bare values — so the two
+halves of one response disagree about whether the lookup succeeded, and the durable cost is that a
+finding contradicting the data teaches the reader to discount findings.
+
+**The fix is the three-valued rule applied to a sentence rather than a cell.** At the moment the cache
+link speaks, whether the position remains unset is neither true nor false but *unknown* — a leg that
+has not run may still answer — so the link now reports only what it searched and withholds the rest.
+`lookup_variant`, the one caller that sees both halves, states `"{rsid}: position remains unset"` once
+at the end when nothing placed the variant. It is guarded on there being an rsID at all: a position-only
+lookup fills `rsid_candidates` and never `loci`, and an unguarded closing line would tell a caller its
+own supplied position was unset. The snapshot miss stays on the record, which the reporter asked for —
+knowing a local cache is incomplete is what tells an author whether to warm it.
+
+**The ClinVar twin had the same defect and an older one.** `clinvar.lookup_loci` is documented as
+signature-identical to `resolver.lookup_loci` ("one implementation, no drift") and still said *"not
+found in ClinVar, position remains unset"* — speaking for the source, which is exactly what the Ensembl
+half was corrected out of in 0.5. It is reachable in the same call (the cache loop breaks only on a
+hit), so a real run produced **two** false claims where the report scoped one. Both links now say *"not
+in the injected `<source>` snapshot"*.
+
+**Message texts changed, and they are an API.** The two snapshot-miss strings lost their trailing
+clause and the ClinVar one was reworded; `"{rsid}: position remains unset"` is now its own finding. A
+consumer grepping the old composite phrase should grep the two new ones. `SYMPTOMS.md` in the authoring
+skill and `ENRICHER.md` are updated. `enrich()` is unaffected — it discards both links' warning lists,
+so `lookup_variant` was the only reader either sentence ever had.
+
+**Why a green suite held it:** neither phrase was pinned by a test, and every existing `lookup_variant`
+test passed an **empty** cache directory, so no snapshot was located and the per-rsID miss line was
+never emitted. Six tests now cover it against a populated snapshot that simply lacks the rsID — the
+reporter's own method, running the tool against real rsIDs instead of reading it. Suite 2864 → 2870.
+
+## 2026-08-20 — the 2026-08-19 doc audit's six patches (RM104–RM107, RM109, RM111)
 
 **Bumped to 0.6.6, uncut.** All three packages read `0.6.6`; the newest tag is `v0.6.5`, so what sits
 on top of it is this round plus the S57–S60 batch below. Every item here is a **patch**: no authored

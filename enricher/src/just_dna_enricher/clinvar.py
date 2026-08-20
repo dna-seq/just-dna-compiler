@@ -191,7 +191,11 @@ def _lookup_positions_by_rsid(
         )
     for rsid in rsids:
         if rsid not in result:
-            warnings.append(f"{rsid}: not found in ClinVar, position remains unset")
+            # `resolver.lookup_loci`'s twin, and it owes the same two silences: an injected snapshot
+            # is what was searched, not ClinVar, and whether the position stays unset is the caller's
+            # to state once every leg has run (S61). This half kept the older wording straight through
+            # the pass that corrected the other one — signature-identical is not reviewed together.
+            warnings.append(f"{rsid}: not in the injected ClinVar snapshot")
     return dict(result)
 
 

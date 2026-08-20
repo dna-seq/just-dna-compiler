@@ -7,6 +7,7 @@ cross-examines comes back `applied=False` with a reason, and a check that could 
 
 from pathlib import Path
 
+import polars as pl
 import pytest
 from just_dna_compiler.hints import REDUNDANCY_BEARING
 from just_dna_enricher.eutils import NO_SUMMARY
@@ -175,6 +176,116 @@ def test_an_unreachable_ensembl_reports_unchecked_rather_than_absent(tmp_path: P
     # The claim that inverted the judgment is gone, and so is the inference-from-absence.
     assert not any("has no GRCh38 locus" in f.message for f in hint.findings)
     assert "ensembl-rest" not in hint.checked
+
+
+def _snapshot(tmp_path: Path, name: str, rows: dict) -> Path:
+    """A **populated** reference that simply lacks the rsID under test.
+
+    Every test above hands `lookup_variant` an empty directory, so `resolve_*_reference` finds no
+    snapshot and the per-rsID miss warning is never emitted at all. That is why S61's defect sat in a
+    green suite: the only line that could produce it was unreachable from the fixtures.
+    """
+    data = tmp_path / name / "data"
+    data.mkdir(parents=True)
+    pl.DataFrame(rows).write_parquet(data / "chr.parquet")
+    return tmp_path / name
+
+
+def _ensembl_snapshot(tmp_path: Path) -> Path:
+    return _snapshot(tmp_path, "ens", {"id": ["rs1801133"], "chrom": ["1"], "start": [11856377],
+                                       "ref": ["G"], "alt": ["A"]})
+
+
+def _clinvar_snapshot(tmp_path: Path) -> Path:
+    return _snapshot(tmp_path, "cv", {"rsid": ["rs334"], "chrom": ["11"], "start": [5227002],
+                                      "ref": ["T"], "alt": ["A"]})
+
+
+_LCT = {"chrom": "2", "start": 135851076, "ref": "G", "alts": "A"}
+
+
+def test_a_snapshot_miss_does_not_call_the_position_unset_once_live_fills_it(tmp_path: Path) -> None:
+    """S61. The cache link answered a question it could not yet know the answer to.
+
+    `lookup_variant` returned rs4988235 at 2:135851076 *and* a finding saying the position remained
+    unset, in one payload — the live leg that filled it runs after the link that spoke. A consumer
+    whose reader is an agent is told everywhere to trust findings over bare values, so the two halves
+    of one response disagree about whether the lookup succeeded.
+    """
+    hint = lookup_variant(
+        rsid="rs4988235",
+        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
+        clients=LookupClients(ensembl=_FakeEnsembl([_LCT]), eutils=_FakeEutils({})),
+    )
+    assert hint.loci == [_LCT]
+    assert not any("remains unset" in f.message for f in hint.findings)
+    # The miss itself is still on the record: knowing the local snapshot is incomplete is what tells
+    # an author whether to warm it, and dropping that was the repair the reporter argued against.
+    assert any("not in the injected Ensembl snapshot" in f.message for f in hint.findings)
+
+
+def test_the_clinvar_link_names_the_snapshot_it_searched_rather_than_clinvar(tmp_path: Path) -> None:
+    """The twin of the Ensembl link, and it kept the wording that link was fixed out of.
+
+    `clinvar.lookup_loci` is documented as signature-identical to `resolver.lookup_loci` — "one
+    implementation, no drift" — but only the Ensembl half was reworded when it stopped speaking for
+    its source. A snapshot that does not carry an rsID is not ClinVar declining to know it.
+    """
+    hint = lookup_variant(
+        rsid="rs4988235",
+        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
+        clients=LookupClients(ensembl=_FakeEnsembl([_LCT]), eutils=_FakeEutils({})),
+    )
+    assert any("not in the injected ClinVar snapshot" in f.message for f in hint.findings)
+    assert not any("not found in ClinVar" in f.message for f in hint.findings)
+
+
+@pytest.mark.parametrize(
+    "kwargs, clients",
+    [
+        (
+            {"offline": True},
+            lambda: LookupClients(ensembl=_FakeEnsembl([])),
+        ),
+        (
+            {},
+            lambda: LookupClients(ensembl=_FakeEnsembl([]), eutils=_FakeEutils({})),
+        ),
+        (
+            {},
+            lambda: LookupClients(ensembl=_FakeEnsembl([], unreachable=True), eutils=_FakeEutils({})),
+        ),
+    ],
+    ids=["offline", "live-answered-empty", "live-unreachable"],
+)
+def test_an_rsid_no_link_placed_still_ends_with_the_position_stated_unset(
+    tmp_path: Path, kwargs: dict, clients
+) -> None:
+    """Moving the sentence must not lose it. Each way a run can end unresolved still says so.
+
+    The clause was load-bearing offline, where a snapshot miss really is the end of the road, and the
+    reporter's ask was that it stop being asserted early — not that it stop being said.
+    """
+    hint = lookup_variant(
+        rsid="rs4988235",
+        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
+        clients=clients(), **kwargs,
+    )
+    assert hint.loci == []
+    unset = [f for f in hint.findings if f.message == "rs4988235: position remains unset"]
+    assert len(unset) == 1 and unset[0].level == "info"
+
+
+def test_a_position_only_lookup_is_never_told_its_position_is_unset(tmp_path: Path) -> None:
+    """The guard on the closing finding. A position-only question fills `rsid_candidates`, never
+    `loci`, so an unguarded "position remains unset" would replace one false sentence with another —
+    addressed this time to the caller who supplied the position."""
+    hint = lookup_variant(
+        chrom="1", start=11856377, ref="G", offline=True,
+        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
+        clients=LookupClients(),
+    )
+    assert not any("remains unset" in f.message for f in hint.findings)
 
 
 def test_a_known_pmid_offers_its_doi_but_never_applies_it() -> None:

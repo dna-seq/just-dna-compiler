@@ -74,9 +74,17 @@ emit and every table is drafted to that set (`*1` is kept automatically). Six al
 
 ## Resolution and enrichment
 
-**`not in the injected Ensembl snapshot, position remains unset`**
-The local snapshot does not contain it — **not** a claim that Ensembl does not. Online, the live link
-runs next. Offline, that is the end of the road and the row stays unresolved.
+**`not in the injected Ensembl snapshot`** / **`not in the injected ClinVar snapshot`**
+The local snapshot does not contain it — **not** a claim that Ensembl or ClinVar does not. Online, the
+live link runs next and frequently fills it. Neither line says whether the position ended up set,
+because at that point neither link knows: a leg that has not run yet may still answer. Useful on a
+green run for deciding whether the local cache is worth warming.
+
+**`<rsid>: position remains unset`**
+The closing word on a variant lookup, and the one line that does settle it: every link ran and none
+placed the variant. Offline that is the end of the road. Online it means live Ensembl either had no
+GRCh38 locus or could not be reached, and the finding immediately above says which — those are
+different answers, and only the second is worth re-running.
 
 **`cannot host the authored genotype … The event sizes differ`**
 A real contradiction, and a decidable one: re-anchoring an indel never changes how many bases it adds or

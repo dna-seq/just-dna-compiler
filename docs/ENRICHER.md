@@ -2322,6 +2322,25 @@ provisioned snapshot still costs no egress; and the snapshot's own warning stopp
 Ensembl, saying *"not in the injected Ensembl snapshot"* — the thing it actually searched. Naming the
 searched thing is the difference between "we did not look there" and "it is not there".
 
+**That warning kept a second clause it had no standing to write, and RM125 removed it.** It read
+*"not in the injected Ensembl snapshot, position remains unset"*, and the trailing half is a claim
+about a leg that has not run: online the live link follows and usually fills the coordinate, so
+`lookup_variant` returned rs4988235 at `2:135851076` beside a finding saying the position was unset.
+That is the ordinary three-valued failure — at emission the outcome is genuinely *unknown*, and the
+house rule is to withhold rather than guess. Each link now reports only what it searched, and
+`lookup_variant`, the one caller that sees both halves, states *"{rsid}: position remains unset"* once
+at the end when nothing placed the variant, guarded on there being an rsID at all (a position-only
+question fills `rsid_candidates`, never `loci`). The snapshot miss stays on the record either way,
+because knowing a local cache is incomplete is what tells an author whether to warm it.
+
+`enrich()` is untouched by this: it discards both links' warning lists, so `lookup_variant` was the
+only reader either sentence ever had. **The ClinVar twin needed the same repair and had not had the
+first one** — `clinvar.lookup_loci` is documented as signature-identical to `resolver.lookup_loci`,
+"one implementation, no drift", yet it still said *"not found in ClinVar, position remains unset"*,
+speaking for the source exactly as the Ensembl half had before it was fixed. Both now say *"not in the
+injected `<source>` snapshot"*. A pair described as one implementation is still two strings, and only
+one of them was reviewed.
+
 A live locus is **labelled live**. The advisory rows were hard-coded to `source="snapshot"`, which
 became a lie the moment the live route landed: a network answer claimed to come from a pinned file, in
 the one field an author reads to judge how reproducible the answer is. They now carry
