@@ -60,6 +60,40 @@ to generate each from. Two of the three had none. That is the report.*
 
 ## S50 — `--no-study-facts` is a permanent choice, and nothing says so
 
+**Status — accepted as a documentation defect; both sites fixed in the tree (not yet cut). No `RMn`:
+the behaviour is correct and only the prose was wrong, which is your own reading of it.**
+Your three-step sequence reproduced here exactly, with an injected client on the real pass:
+
+```
+enrich_gwas(spec, study_facts=False)  ->  pmid ''
+enrich_gwas(spec, study_facts=True)   ->  pmid ''          (row skipped, as you measured)
+rm gwas_effects.csv
+enrich_gwas(spec, study_facts=True)   ->  pmid '16199547'
+```
+
+Structurally it is what you said: `_merge_key` is the association id alone and `if key in seen:
+continue` fires **before** `_build_row`, so the row is skipped whole rather than rebuilt thinly.
+
+**Your candidate fix is what shipped, close to your wording**, in both places you named.
+[ENRICHER.md](ENRICHER.md)'s GWAS section now says the loss is permanent for the rows that run writes,
+that the merge is keyed on `association_id` so a later run skips rather than back-fills, and that
+deleting the file is the recovery. Your sharpest point is in there too, because it is the part that
+makes this worth more than a clause: every other delete-to-regenerate case in the tier is about a
+*stale* value, and this one is about a value that was never fetched — so the file looks complete and
+cannot be repaired incrementally. The `--no-study-facts` help carries the same, verified against
+`--help` rather than assumed.
+
+**Your rejected repair is rejected here for your reason, and it is the stronger of the two you gave.**
+A null `pmid` is not distinguishable from a study record that genuinely has none — the case `follow`'s
+404 arm deliberately produces — so a back-fill keyed on "the linked columns are null" would rewrite
+rows on a guess. That is the house rule about `None` never meaning `False`, and it is why the answer
+here is a sentence rather than a mechanism.
+
+Pinned by `test_a_no_study_facts_row_is_never_back_filled_by_a_later_run`, run as your three-step
+sequence rather than asserted off the code — the point being that step 2 looks like it should work.
+Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+<!-- triaged: 0.6.5 · sha 376e501239e4 -->
+
 *Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 as installed. Doc gap, not a code
 defect — the behaviour is the merge rule working correctly.*
 

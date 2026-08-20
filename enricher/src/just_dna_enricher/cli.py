@@ -454,7 +454,10 @@ def gwas_(
     study_facts: bool = typer.Option(
         True, "--study-facts/--no-study-facts",
         help="Follow each association's study and trait links. Costs 2 requests per association; "
-             "measured at 382 requests for one real module. Off keeps effects, drops pmid/trait/ancestry.",
+             "measured at 382 requests for one real module. Off keeps effects, drops pmid/trait/ancestry "
+             "PERMANENTLY for the rows it writes: the merge is keyed on association_id, so a later run "
+             "with study facts on skips those rows rather than back-filling. Delete gwas_effects.csv to "
+             "re-derive them.",
     ),
 ) -> None:
     """Fill gwas_effects.csv with the GWAS Catalog's published effect sizes for this module's rsIDs.

@@ -2824,6 +2824,16 @@ wholesale.
   because rs1800562's 189 associations each name their own study. 382 requests, zero cache hits.
   `--no-study-facts` exists because of that number and drops the cost to one request per variant,
   keeping the effects and losing the linked metadata.
+  **The loss is permanent for the rows it writes, and this is not the per-run trade the sentence above
+  reads like** (S50). The merge is keyed on `association_id` alone, and the skip happens *before* the
+  row is built — so a row written with `--no-study-facts` keeps `pmid`, `study_accession`, `ancestry`,
+  `trait` and `trait_efo_id` null, and a later run **with** study facts skips it rather than filling
+  it in. **Delete `gwas_effects.csv` to re-derive them.** Every other delete-to-regenerate case in this
+  tier is about a *stale* value; this one is about a value that was never fetched, so the file looks
+  complete — every column present, most cells populated — and cannot be repaired incrementally.
+  Back-filling instead was considered and refused: it would make the pass rewrite existing rows, which
+  is what merge-not-clobber exists to prevent, and a null `pmid` is not distinguishable from a study
+  record that has none — the case `follow`'s 404 arm deliberately produces.
 * **A 404 is the empty answer, not an outage.** The Catalog holds only variants with a published
   association, so it 404s on a rare clinical one. `GwasNotFound` keeps that typed: `associations_for`
   reports the empty answer (recorded as a `not_found` row), `follow` withholds one association's study

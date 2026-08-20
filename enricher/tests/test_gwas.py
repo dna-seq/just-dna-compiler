@@ -403,3 +403,33 @@ def test_skipping_study_facts_costs_one_request_per_variant(tmp_path: Path) -> N
     assert len(result.rows) == 2
     assert result.rows[0].effect_unit is not None      # the effect survived
     assert all(r.pmid is None for r in result.rows)    # the linked facts did not
+
+
+def _rows(spec: Path) -> list[dict]:
+    """The written table as dicts — the file is what a later run reads, so the file is what is checked."""
+    with open(spec / "gwas_effects.csv", newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_a_no_study_facts_row_is_never_back_filled_by_a_later_run(tmp_path: Path) -> None:
+    """S50: the cheap run is a permanent choice for the rows it writes, not a per-run trade.
+
+    The merge is keyed on `association_id` and the skip happens before the row is built, so a row
+    written without study facts keeps its linked columns null forever. Deleting the file is the only
+    recovery, and that is what the docs and the CLI help now say. Run as the three-step sequence the
+    reporter measured rather than asserted from the code, because the whole point is that step 2 looks
+    like it should work.
+    """
+    spec = _spec(tmp_path)
+
+    enrich_gwas(spec, client=_FakeClient(), dataset="d", study_facts=False)
+    thin = _rows(spec)
+    assert thin, "the cheap run must still write the effects"
+    assert all(not row["pmid"] for row in thin)
+
+    enrich_gwas(spec, client=_FakeClient(), dataset="d", study_facts=True)
+    assert [row["pmid"] for row in _rows(spec)] == [row["pmid"] for row in thin]
+
+    (spec / "gwas_effects.csv").unlink()
+    enrich_gwas(spec, client=_FakeClient(), dataset="d", study_facts=True)
+    assert all(row["pmid"] for row in _rows(spec))
