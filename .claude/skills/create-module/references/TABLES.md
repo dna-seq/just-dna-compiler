@@ -42,6 +42,14 @@ for a sharp value, a null bound for open-ended, and **always author the `unresol
 caller you expect reports the quantity as a decimal rather than a whole number, say so with
 `measure_tiling: continuous` and let the bins touch.
 
+**Say in the README what the bins mean, because today prose is the only path to a reader.** The four
+binning tables are specified ahead of the tools that read them: the lookup a consumer performs — take
+the measured quantity, select the row whose inclusive range contains it — is written down and, as of
+2026-08-20, no consumer implements it. Authoring the table is still the right move (the module is the
+durable thing, and the lookup is thirty lines whenever someone writes it), but a heteroplasmy or
+copy-number module renders nothing today unless its README says what the ranges mean. Write that
+paragraph as part of the module, not as an afterthought.
+
 **Two alleles on one chromosome vs one on each is a haplotype vs a diplotype.** `haplotypes.csv` is a
 junction table, so a haplotype defined by two SNPs is two rows — that is same-strand co-location, and
 it needs no predicate language. A `diplotypes.csv` row pairs two haplotypes, which is what *in trans*

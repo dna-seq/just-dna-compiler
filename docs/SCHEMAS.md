@@ -944,6 +944,60 @@ the check and is not: a `Number=1 String` cell is exactly how a packed multi-val
 so the flag would fire on the correct authoring of the flagship case. The distinction turns on `Type`,
 which this tier does not model, and where it cannot decide it withholds.
 
+### The measure lookup a conforming consumer implements — the second normative obligation (0.6, S58)
+
+The genotype half above tells a consumer what to do with a *call*. The binning family —
+`repeat_alleles.csv`, `copynumbers.csv`, `heteroplasmy.csv`, `activity_phenotype.csv`, all four built
+on `MeasureBinRow` — needs the other half: the consumer supplies a **measured quantity** and the module
+supplies the row that quantity falls in. One lookup serves all four, and it is stated here because
+until it was, an author could write a correct heteroplasmy module and have no way to learn that nothing
+downstream would read it.
+
+**Be plain about the state of play: this is specified ahead of its consumers.** As of 2026-08-20 no
+consumer we can check implements it — `just-dna-lite`, the reference consumer, reads the four tables
+only to count their rows. Authoring one of these tables is still worth doing (the module is the durable
+artifact and the lookup is thirty lines), but until a renderer exists, prose in the README is what
+reaches a reader, and an author should be told so rather than left to discover it.
+
+**The rule.** Given a measured value `x` of a known `measure_kind`:
+
+1. **Scope to the group.** Bins partition by the table's own key columns plus `trait_efo_id` —
+   `(gene, repeat_unit)` for repeats, `(gene, modifier_gene, effective_modifier_copy_number)` for copy
+   numbers, `(gene, reference_sequence, tissue, variant_key)` for heteroplasmy, `(gene,)` for activity
+   phenotype. `just_dna_format.binning._bin_groups` is that partition, and `validate_bins` enforces
+   non-overlap **within** a group only, so scoping wrongly is how a consumer meets an overlap the
+   compiler passed.
+2. **Select the row whose `[measure_min, measure_max]` contains `x`.** Both bounds are **inclusive on
+   every `measure_kind`**; a null bound is open (`-inf` / `+inf`); `measure_min == measure_max` is a
+   sharp value and legal.
+3. **Where two rows contain `x`, take the greater `measure_min`.** This is reachable only under
+   `continuous` tiling, where adjacent bins share an endpoint and the higher one owns it. Under
+   `quantised` a shared endpoint is an overlap error, and so it is for `activity_score`, which tiles as
+   neither — so on those the containing row is unique. Equal *lower* bounds are refused on every kind,
+   because this tie-break has nothing to order.
+4. **Compare in float32**, per RM62 — the rule and the reason it is not "narrow the bound" are in
+   [*Reading the VCF the pointers point at*](#reading-the-vcf-the-pointers-point-at-06-from-the-vcf-44-audit)
+   above. It bites hardest here, because a bin boundary is exactly the round decimal an author picks.
+5. **A missing measurement selects the `unresolved` sentinel row** — the row with `unresolved=true`,
+   which carries no range at all — and **never** the lowest bin, the reference bin, or nothing. This
+   is the tri-state rule again: no measurement is unknown, and unknown is not zero.
+6. **No row contains `x` → withhold.** Do not fall back to the nearest bin. Under `quantised` this is
+   expected at a value off the grid; under `continuous` `validate_bins` reports interior holes as
+   warnings, so a gap that reaches a consumer is one the author was told about.
+7. **`trait_efo_id` multiplies the answer, it does not disambiguate it.** Overlap *across* traits is
+   legal and means pleiotropy, so a measurement legitimately selects one row **per trait**. A lookup
+   returning a single row is wrong on the pleiotropic case.
+
+**Where the measurement comes from is the module's hint, not its claim.** `source_field` names the VCF
+field to read (`FORMAT/REPCN`, `FORMAT/AF`, `INFO/CN|FORMAT/DS`) and `source_element` says which of its
+values when the field carries several (`largest_alt`, `sum`, `annotated_alt`, …) — a named rule, never
+an index, and never an expression. Both are pointers: the measurement is the consumer's, and a consumer
+that cannot read the named field withholds rather than substituting one it can.
+
+**What the module still never contains** is the measurement itself. That is the data-agnostic line, and
+it is why this is a contract rather than a feature: the bins are the annotation, the value is the
+sample, and only the consumer holds both.
+
 ## Allele identity — the VRS allele id (0.5)
 
 `vrs.derive_vrs_allele_id(chrom, start, ref, alt, *, build="GRCh38") -> str | None` mints a GA4GH VRS

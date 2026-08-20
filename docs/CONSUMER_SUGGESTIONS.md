@@ -132,6 +132,56 @@ currently tell authors this is a known gap and cannot tell them who will close i
 
 ## S58 — four authored table kinds are unconsumable end to end, and nothing in the format says so
 
+**Status — accepted as the documentation defect you filed it as; both of your two closers shipped in
+the tree, and the third question they raise is filed as
+[RM122](ROADMAP.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
+[SCHEMAS.md](SCHEMAS.md) now carries the normative bin lookup beside the genotype one, opening with the
+plain sentence that the family is specified ahead of its consumers. You asked for either; you have both,
+because the paragraph without the admission would still have left an author guessing whether anything
+reads it today.
+
+**Your negative finding reproduced, against the one consumer we can check.** `just-dna-lite` — the
+reference consumer, and the tree that renders reports — touches `repeat_alleles`, `copynumbers`,
+`heteroplasmy` and `activity_phenotype` in exactly two places, both of which **count rows**: the
+lead-table roster that decides how a spec is routed, and the enrichment ceiling. Nothing selects a row
+by a measured value; there is no `measure_kind`, `measure_min` or `measure_max` anywhere in it. We
+cannot speak for consumers we cannot read, so the finding is scoped to that one and stated that way.
+
+**Your recap of the semantics was right in every particular except one, and the exception matters
+enough to be why a paragraph beats a summary.** `measure_tiling: continuous` is the tiling where
+adjacent bins **may** share an endpoint and the higher one owns it. Under `quantised` a shared endpoint
+is an *overlap error* — the grid reading is the stricter one, not the looser one — and `activity_score`,
+which defaults to neither, refuses a shared endpoint as well. The tie-break you need is one rule that
+covers all three: **among the rows whose inclusive range contains x, take the greatest `measure_min`**,
+which is unique because equal lower bounds are refused on every kind.
+
+Four things the paragraph states that a reader of the columns would not arrive at:
+
+- **Scope to the group before selecting.** `validate_bins` enforces non-overlap *within* a group —
+  the table's own key columns plus `trait_efo_id` — so a lookup that scopes wrongly meets an overlap the
+  compiler passed and is right to. `binning._bin_groups` is that partition, and its docstring already
+  said it is "the way a consumer's lookup groups them".
+- **`trait_efo_id` multiplies the answer.** Overlap *across* traits is legal and means pleiotropy, so
+  one measurement selects one row **per trait**. A lookup returning a single row is wrong on that case,
+  and it is the case a PGx-shaped consumer will meet first.
+- **Compare in float32** (RM62), which bites hardest on a bin boundary because a boundary is exactly
+  the round decimal an author picks. The rule is *compare in* float32, not *narrow the bound* — the
+  latter shipped once and is one-sided, since `float32(0.9)` lands below `0.9`.
+- **No match withholds; a missing measurement selects `unresolved`.** Two different answers, and
+  neither is the lowest bin.
+
+We also put a short paragraph in the authoring skill telling an author to write what the bins mean into
+the README, for exactly the reason you give: prose is the path to a reader today.
+
+**What we did not do, and why it is filed rather than shipped.** The obvious next step is to publish the
+lookup as a **function** — `alleles.split_genotype` is the precedent, and one leaf every tier calls is
+how two implementations are stopped from disagreeing. RM122 carries it, open, because the signature has
+real questions that only a consumer can settle: one row or one per trait, `None` for no-match or a
+three-state result separating *no match* from *unresolved selected*. Shipping a leaf against a
+hypothesis fixes the wrong thing and P3 keeps it working forever. **If you or anyone writes the lookup
+against the paragraph, your questions are the signature** — send them and RM122 closes.
+<!-- triaged: 0.6.6 · sha 161383883db1 -->
+
 **Reported by** just-module-creator, 2026-08-20. Three independent reproductions.
 
 The binning family — `repeat_alleles.csv`, `copynumbers.csv`, `heteroplasmy.csv`,

@@ -517,6 +517,40 @@ construction. Both are observable without asking anyone anything.
 formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
 natural-language question. Presence is the bit a check may read.
 
+## RM122 — the measure lookup is specified and nothing anywhere implements it
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** format ·
+**Motivating case** S58 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
+
+**The specification half shipped; this is the part that was not asked for and might still be right.**
+S58 reported that the four binning kinds annotate nothing downstream and asked for either a normative
+paragraph or an admission that the family is specified ahead of its consumers. Both are now in
+[SCHEMAS.md § The measure lookup a conforming consumer implements](SCHEMAS.md#the-measure-lookup-a-conforming-consumer-implements--the-second-normative-obligation-06-s58),
+and that closes the item they filed. What is filed here is the next question, which they did not ask:
+whether the rule should also exist as a **public function** so that the first two consumers to
+implement it cannot disagree.
+
+**The argument for.** It is the shape S51/RM115 settled one layer down — a rule kept as prose is a rule
+every reader re-derives, and the two derivations differ on exactly the cases that matter. Here those
+cases are enumerable and sharp: the continuous shared endpoint, the float32 comparison, `unresolved`
+versus no-match, and pleiotropy returning several rows rather than one. A consumer will get at least
+one of the four wrong, and the failure is silent — a wrong bin renders as a confident phenotype.
+`alleles.split_genotype` is the precedent: the *reader* half of RM81 shipped as one public leaf every
+tier calls, while the retype waits for a major. It costs the format tier nothing — pure arithmetic over
+loaded rows, pydantic-only, no dependency moves.
+
+**The argument against, and it is why this is open rather than done.** There is no consumer to check the
+shape against, which is the same reason `measure_step` is not a column: a signature fixed against a
+hypothesis fixes the wrong thing, and this one has real shape questions. Does it take rows or a table?
+Does it return one row, or one per `trait_efo_id` (the honest answer, and the inconvenient one)? Does it
+answer `None` for no-match, or a three-state result distinguishing *no match* from *unresolved selected*
+— which is what the house algebra would demand and what a `None` return would collapse. Getting that
+wrong ships a leaf whose first real user has to work around it, and P3 keeps it working forever.
+
+**What would settle it:** one consumer implementing the lookup against the paragraph. Their questions
+are the signature. Until then the paragraph is the contract and this stays filed — the same
+wait-for-the-demand rule that governs `measure_step`, applied to a function instead of a column.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
