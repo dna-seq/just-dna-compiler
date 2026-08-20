@@ -424,6 +424,46 @@ works if the check keeps reporting them.
 
 ## S53 — `content_signature` is whole-module-only, so anything finer has to restate `_resolve_spec_defaults` and re-derive the table roster
 
+**Status — accepted; your candidate fix shipped as [RM116](ROADMAP_HISTORY.md#rm116--content_signature-returned-only-its-hash-so-anything-finer-restated-the-fold) in the tree (not yet cut), and the docs half with it.**
+`compiler.spec_tables(spec_dir) -> tuple[dict[str, list[BaseModel]], str]` is public, with the
+signature and docstring you proposed; `content_signature` is now `_content_signature(*spec_tables(...))`
+and no logic moved. The `ValueError`-on-invalid-CSV contract carries over unchanged, and a test pins it
+over both functions rather than assuming it.
+
+**Both of your measurements reproduced before the fix, on the same reference example, to the
+character.** Renaming `sources.csv` → `licensing.csv` left `content_signature` at
+`sha256:44ad4449…`, and editing a `notice` cell in it left it there too. The fold pair reproduced as
+well: `compiler.content_signature` agreed across the two copies while `integrity.content_signature`
+over raw `load_csv_rows` output gave your `sha256:0b8dd27c…` for the yaml copy and a different value
+for the cells copy.
+
+**Your rejected alternative is rejected here for your reason.** Exporting `_TABLE_KINDS` and
+`_resolve_spec_defaults` separately hands out three pieces that must be assembled in one order — load
+with the declared build injected, fold, then hash — and the order is the half that is easy to get wrong.
+One function that returns the finished mapping cannot be assembled wrongly, which is your argument and
+it is the right one.
+
+**You can delete the restatement and the drift alarm with it.** `spec_tables` returns the folded rows,
+so a per-table comparison hashes exactly what the whole-module digest hashes:
+
+```python
+tables, build = spec_tables(spec_dir)
+assert integrity.content_signature(tables, build) == compiler.content_signature(spec_dir)
+```
+
+**The documentation half shipped too, since you said it was worth having either way.** COMPILER.md's
+public-surface entry now names which CSVs feed the hash, says the licensing table is outside it and
+that `integrity.source_signature` is what covers it, and states the fold with the consequence of
+omitting it. On your roster note — you are right that `DRAFTABLE` minus `SIDECAR_SPELLINGS` is a
+coincidence two files maintain rather than a contract, which is why the answer is the function and not
+a documented equality.
+
+Guards in `compiler/tests/test_content_signature.py`, on the RM37 fixtures that already model your
+measured pair; the fold test **demonstrates** the raw build disagreeing in the same test that shows the
+folded one does not, rather than asserting it. Suite 2813 → 2817. Not installable yet — check
+[CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+<!-- triaged: 0.6.5 · sha 655c0d535ca5 -->
+
 We are specifying the tool `MODULE_LIFECYCLE.md` §7 says nothing owns: *"what moved between two
 versions of this module"*. The design is a three-level ladder — one signature for whether the content
 moved, per-table for where, per-row for what — and levels two and three need the same rows

@@ -3847,19 +3847,34 @@ def _resolve_spec_defaults(rows: list[Any], defaults: Defaults) -> None:
             setattr(row, name, None if effective == model_default else effective)
 
 
-def content_signature(spec_dir: Path) -> str:
-    """Stable content identity over the raw authored data CSVs — name- and Ensembl-independent.
+def spec_tables(spec_dir: Path) -> tuple[dict[str, list[Any]], str]:
+    """The parsed, defaults-folded authored rows `content_signature` hashes, and the declared build.
 
-    Reads `variants.csv`, `studies.csv`, and any present 0.4 table CSVs, validates each row, and
-    hashes the normalized + deterministically-sorted rows via
-    `just_dna_format.integrity.content_signature`. The data is read **as authored** (no Ensembl
-    resolution, no parquet build), so this is cheap and reference-independent — a client can compute
-    it without recompiling and dedup against a registry, surviving both metadata-strip and a recompile
-    against a different reference. Raises `ValueError` if a present data CSV fails validation.
+    PUBLIC, and the reason is that everything finer than a whole-module hash needs these rows and had
+    no way to get them (S53). `content_signature` returned only the digest, so a tool answering *what
+    moved between two versions of this module* — per table, per row — had to rebuild the mapping
+    outside, and rebuilding it meant restating two private things: the table roster (`_TABLE_KINDS`)
+    and the `defaults:` fold (`_resolve_spec_defaults`, `_DEFAULTED_VARIANT_FIELDS`).
 
-    "As authored" means the *rows*, not the *spelling*: `module_spec.yaml`'s `defaults:` block is
-    folded into each variant row first (`_resolve_spec_defaults`, RM37), because a value written once
-    under `defaults:` and the same value written on every row are the same content.
+    **The fold is the part that silently produces a wrong answer**, which is why this returns the
+    finished mapping rather than exporting the pieces. A caller hashing `load_csv_rows` output directly
+    gets a different digest from `content_signature` for the same module: measured on
+    `reference_examples/hfe_hemochromatosis`, writing one `curator` value on every variant row in one
+    copy and the identical value under `defaults:` in another, `content_signature` agrees across the
+    pair (correct — RM37) while the raw-rows build disagrees, so a per-table comparison built the
+    obvious way reports twelve changed rows where there are none. Exporting `_TABLE_KINDS` and
+    `_resolve_spec_defaults` separately would hand out three pieces that must be assembled in one
+    order — load with the declared build injected, fold, then hash — and the order is the easy half to
+    get wrong. One function that returns the finished mapping cannot be assembled wrongly.
+
+    **The roster is authored tables only**, so the licensing table is outside it: `sources.csv` /
+    `licensing.csv` is hashed by `integrity.source_signature` instead, and neither renaming it nor
+    editing a cell in it moves `content_signature`. Both verified on the same example. That is correct
+    — the licence layer is its own identity — and it is stated here because it is the one authored,
+    hand-editable table a licence audit sends an author looking for.
+
+    Raises `ValueError` if a present data CSV fails validation, exactly as `content_signature` does:
+    the contract carries over unchanged, because that function is now this one plus the hash.
     """
     spec_dir = Path(spec_dir)
     # The declared build is part of the content, not metadata about it: identical coordinate rows on
@@ -3886,7 +3901,27 @@ def content_signature(spec_dir: Path) -> str:
             # and go nowhere else — the compile path loads its own copy.
             _resolve_spec_defaults(rows, config.defaults if config else Defaults())
         tables[csv_name] = rows
-    return _content_signature(tables, declared_build)
+    return tables, declared_build
+
+
+def content_signature(spec_dir: Path) -> str:
+    """Stable content identity over the raw authored data CSVs — name- and Ensembl-independent.
+
+    Reads `variants.csv`, `studies.csv`, and any present 0.4 table CSVs, validates each row, and
+    hashes the normalized + deterministically-sorted rows via
+    `just_dna_format.integrity.content_signature`. The data is read **as authored** (no Ensembl
+    resolution, no parquet build), so this is cheap and reference-independent — a client can compute
+    it without recompiling and dedup against a registry, surviving both metadata-strip and a recompile
+    against a different reference. Raises `ValueError` if a present data CSV fails validation.
+
+    "As authored" means the *rows*, not the *spelling*: `module_spec.yaml`'s `defaults:` block is
+    folded into each variant row first (`_resolve_spec_defaults`, RM37), because a value written once
+    under `defaults:` and the same value written on every row are the same content.
+
+    This is `spec_tables` plus the hash and nothing else, so a consumer wanting the rows behind the
+    digest — per-table or per-row work — calls that instead of restating the roster and the fold (S53).
+    """
+    return _content_signature(*spec_tables(spec_dir))
 
 
 def compile_module(

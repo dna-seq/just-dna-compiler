@@ -30,6 +30,48 @@ report, and it is the useful shape of it: a consumer who wants to generate rathe
 by a private name, will hand-keep the same lines every other consumer hand-keeps and will be the one who
 misses the next table. All four are additive or documentation; nothing removed, nothing retyped.
 
+## RM116 — `content_signature` returned only its hash, so anything finer restated the fold
+
+✅ **Shipped in `just-dna-compiler` on 2026-08-20**, motivating case
+[S53](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**The reporter is specifying the tool MODULE_LIFECYCLE §7 says nothing owns** — *what moved between two
+versions of this module* — as a three-level ladder: one signature for whether the content moved,
+per-table for where, per-row for what. Levels two and three need the rows `content_signature` hashes,
+and it returned the digest alone, so the mapping had to be rebuilt outside against two private things.
+
+**Both halves reproduced before the fix, on `reference_examples/hfe_hemochromatosis`.** Renaming
+`sources.csv` to `licensing.csv` and then editing a `notice` cell in it both left `content_signature`
+at `sha256:44ad4449…` — the reporter's own measured digest, to the character. And the fold: writing one
+`curator` value on every variant row in one copy and the identical value under `defaults:` in another,
+`compiler.content_signature` agreed across the pair (correct — RM37) while `integrity.content_signature`
+over raw `load_csv_rows` output disagreed, reproducing their `sha256:0b8dd27c…` for the yaml copy.
+
+**The roster half was a documentation defect and the fold half a correctness trap**, which is why the
+two land differently. A caller *can* derive the roster publicly — `draft.DRAFTABLE` minus
+`layout.SIDECAR_SPELLINGS` — but as the reporter says, that equality is a coincidence two files
+maintain rather than a contract, and it breaks in the direction that hashes an extra table. The fold has
+no public route at all, and its third line (`None if effective == model_default else effective`) is the
+one whose omission produces a signature that *looks* fine.
+
+**Shipped their candidate fix, `compiler.spec_tables(spec_dir) -> (tables, declared_build)`**, with
+`content_signature` becoming `_content_signature(*spec_tables(spec_dir))` and no logic moving. Their
+rejected alternative is rejected here for their reason: exporting `_TABLE_KINDS` and
+`_resolve_spec_defaults` separately hands out three pieces that must be assembled in one order — load
+with the declared build injected, fold, then hash — and one function returning the finished mapping
+cannot be assembled wrongly. The `ValueError`-on-invalid-CSV contract carries over because one function
+is now the other plus a hash, and a test pins that rather than trusting it.
+
+**The documentation half shipped too, since they asked for it either way.** COMPILER.md's public-surface
+entry now names which CSVs feed the hash, says the licensing table is outside it and why, and states the
+fold with the measured consequence of omitting it.
+
+**Guards.** Four in `compiler/tests/test_content_signature.py`, using the RM37 fixtures that already
+model the measured pair: the digest rebuilt from `spec_tables` output over three specs, the fold
+**demonstrated** rather than asserted (the raw build is shown to disagree in the same test that shows the
+folded one does not), the licence table shown outside the roster in both directions including the
+notice-cell edit, and the `ValueError` contract over both functions. 2813 → 2817.
+
 ## RM115 — a derived sidecar's merge key lived inside the pass that writes it
 
 ✅ **Shipped in `just-dna-format` + `just-dna-compiler` + `just-dna-enricher` on 2026-08-20**,

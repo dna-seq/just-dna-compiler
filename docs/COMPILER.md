@@ -36,6 +36,20 @@ Import from `just_dna_compiler.compiler`.
 - **`content_signature(spec_dir) -> str`** — the stable, name-/Ensembl-independent content identity over
   the raw authored data CSVs (no compile, no resolution); raises `ValueError` if a present data CSV is
   invalid. See [SCHEMAS.md § identity & integrity](SCHEMAS.md#identity--integrity).
+  **Which CSVs, exactly:** `variants.csv`, `studies.csv`, and any present table kind — the *authored*
+  roster. The licensing table (`sources.csv` / `licensing.csv`) is **outside it**: it is hashed by
+  `integrity.source_signature` instead, so neither its presence nor an edit to a `notice` cell in it
+  moves this digest. That is correct — the licence layer carries its own identity — and it is stated
+  because it is the one authored, hand-editable table a licence audit sends an author looking for (S53).
+- **`spec_tables(spec_dir) -> tuple[dict[str, list[BaseModel]], str]`** — the parsed, **defaults-folded**
+  rows `content_signature` hashes, plus the declared build. `content_signature` is exactly this plus the
+  hash, so anything finer than a whole-module digest — per-table, per-row, *what moved between two
+  versions* — builds on these rows instead of restating the roster and the fold (S53). Same
+  `ValueError`-on-invalid-CSV contract. **The fold is why this returns the finished mapping rather than
+  exporting the pieces:** a caller hashing `load_csv_rows` output directly gets a *different* digest for
+  the same module, because a value written once under `defaults:` and the same value written on every row
+  are one content (RM37) and only this path folds them — measured on `hfe_hemochromatosis`, the raw build
+  reports twelve changed rows where there are none.
 - **`compile_module(spec_dir, output_dir, compression="zstd", resolve_with_ensembl=True,
   ensembl_cache=None, compiled_by=None, ensembl_reference=None, log_files=None, provenance_file=None,
   logo_file=None, readme_file=None, authority_keys=None, strict=False, ba1_threshold=0.05)

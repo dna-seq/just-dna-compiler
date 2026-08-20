@@ -7,6 +7,7 @@ change listed, no file touched.
 """
 
 import csv
+import dataclasses
 import io
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from just_dna_compiler.hints import (
     REFUSAL_REASONS,
     Finding,
     HintReport,
+    TableKey,
     derived_model_for,
     describe_table,
     field_options,
@@ -519,9 +521,18 @@ def test_a_stamped_key_member_is_flagged_rather_than_presented_as_fillable() -> 
 
 
 def test_describe_table_carries_the_key_its_docstring_has_always_promised() -> None:
+    """Every field of `TableKey`, walked off the dataclass rather than hand-listed.
+
+    Hand-listing is what let `fallback` reach `key_fields` and not this dict for one commit (S51/S53
+    pass): a describing surface that carries some of the key is describing a different key. Walking
+    `fields()` means the next member is covered the day it is declared.
+    """
     described = describe_table("diplotypes.csv")
     key = key_fields("diplotypes.csv")
     assert key is not None
-    assert described["key"] == {
-        "columns": list(key.columns), "rule": key.rule, "stamped": list(key.stamped)
+    expected = {
+        f.name: list(v) if isinstance(v := getattr(key, f.name), tuple) else v
+        for f in dataclasses.fields(key)
     }
+    assert described["key"] == expected
+    assert set(described["key"]) == {f.name for f in dataclasses.fields(TableKey)}

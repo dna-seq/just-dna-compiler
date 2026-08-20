@@ -9,7 +9,7 @@ genuinely different data.
 
 from pathlib import Path
 
-from just_dna_compiler.compiler import compile_module, content_signature
+from just_dna_compiler.compiler import compile_module, content_signature, spec_tables
 
 _YAML = (
     "schema_version: '1.0'\n"
@@ -201,3 +201,94 @@ def test_a_different_curator_is_still_different_content(tmp_path: Path) -> None:
     (b / "variants.csv").write_text(_VARIANTS, encoding="utf-8")
     (b / "studies.csv").write_text(_STUDIES, encoding="utf-8")
     assert content_signature(a) != content_signature(b)
+
+
+# ── S53: the rows behind the digest, so nothing finer has to restate the fold ────────────────────
+
+
+def test_spec_tables_reproduces_the_digest_it_is_extracted_from(tmp_path: Path) -> None:
+    """`content_signature` is `spec_tables` plus the hash, so a caller can rebuild it exactly.
+
+    This is the property the whole surface exists for (S53): a per-table or per-row comparison needs
+    these rows, and one built outside must agree with the identity a registry deduplicates on.
+    """
+    from just_dna_format.integrity import content_signature as hash_tables
+
+    for spec in (_spec(tmp_path / "plain"), _per_row(tmp_path / "rows"),
+                 _in_defaults(tmp_path / "defaults")):
+        tables, build = spec_tables(spec)
+        assert hash_tables(tables, build) == content_signature(spec)
+
+
+def test_the_rows_spec_tables_returns_are_defaults_folded(tmp_path: Path) -> None:
+    """The trap S53 measured: the obvious build outside this function disagrees with the digest.
+
+    A caller hashing `load_csv_rows` output directly gets a different answer for the same module,
+    because `defaults:` has not been folded — so a per-table comparison reports every defaulted row
+    as changed. The pair here is the same one RM37 is about, and the failure is demonstrated rather
+    than asserted: the raw-rows build really does disagree, and the folded one really does not.
+    """
+    from just_dna_compiler.compiler import load_csv_rows
+    from just_dna_format.integrity import content_signature as hash_tables
+    from just_dna_format.spec import VariantRow
+
+    rows_spec = _per_row(tmp_path / "rows")
+    yaml_spec = _in_defaults(tmp_path / "defaults")
+
+    raw = {}
+    for name, spec in (("rows", rows_spec), ("yaml", yaml_spec)):
+        loaded, errors, _ = load_csv_rows(
+            spec / "variants.csv", VariantRow, "variants.csv", genome_build="GRCh38"
+        )
+        assert not errors, errors
+        raw[name] = hash_tables({"variants.csv": loaded}, "GRCh38")
+    assert raw["rows"] != raw["yaml"], "the unfolded build must be shown to disagree"
+
+    folded = {}
+    for name, spec in (("rows", rows_spec), ("yaml", yaml_spec)):
+        tables, build = spec_tables(spec)
+        folded[name] = hash_tables({"variants.csv": tables["variants.csv"]}, build)
+    assert folded["rows"] == folded["yaml"]
+
+
+def test_the_roster_is_authored_tables_and_the_licence_table_is_outside_it(tmp_path: Path) -> None:
+    """S53 had to probe for this, so it is now pinned rather than documented alone.
+
+    The licensing table is hashed by `integrity.source_signature`, not here — so neither its presence
+    nor a cell in it reaches `content_signature`. Both directions, because the interesting half is
+    that editing a `notice` cell moves nothing: that is the case a licence audit sends an author
+    looking for.
+    """
+    spec = _spec(tmp_path / "spec")
+    before = content_signature(spec)
+    tables, _ = spec_tables(spec)
+    assert "sources.csv" not in tables and "licensing.csv" not in tables
+
+    (spec / "sources.csv").write_text(
+        "source,layer,license,notice\n"
+        "clinvar,annotation,public-domain,courtesy of NCBI\n",
+        encoding="utf-8",
+    )
+    assert content_signature(spec) == before
+    assert "sources.csv" not in spec_tables(spec)[0]
+
+    (spec / "sources.csv").write_text(
+        "source,layer,license,notice\n"
+        "clinvar,annotation,public-domain,EDITED\n",
+        encoding="utf-8",
+    )
+    assert content_signature(spec) == before
+
+
+def test_spec_tables_raises_on_an_invalid_csv_exactly_as_the_digest_does(tmp_path: Path) -> None:
+    """The `ValueError`-on-invalid-CSV contract carries over, since one function is now the other."""
+    import pytest
+
+    spec = _spec(tmp_path / "spec")
+    (spec / "variants.csv").write_text(
+        _VARIANTS + "rs9999999,NOT_A_GENOTYPE,risk,x,GENE\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="variants.csv is invalid"):
+        spec_tables(spec)
+    with pytest.raises(ValueError, match="variants.csv is invalid"):
+        content_signature(spec)
