@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S57
+## The next item is S61
 
 **Claim ids from here, never from what this file shows.** S1–S46 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
@@ -49,3 +49,171 @@ by a reporter's argument against their own first option.
 
 Prose is left byte-for-byte when it is answered and when it is moved, so it stays the record of what was
 observed rather than of what was decided.
+
+---
+
+## S57 — `manifest.stats` is computed from `variants.csv` alone, so a module without one is invisible to a gene search
+
+**Reported by** just-module-creator (the authoring plugin), 2026-08-20. Six independent reproductions
+during a dossier audit; three of our per-table dossiers reached it separately before anyone connected
+them.
+
+`compiler.variant_stats` derives `stats.genes` from `variants.csv` and from nothing else. A module whose
+lead table is `diplotypes.csv`, `copynumbers.csv`, `activity_phenotype.csv` or `allele_function.csv`
+therefore publishes `gene_count: 0, genes: []` **however many of its rows carry a `gene` cell** — and the
+registry's gene index is fed from that field, so `registry_search(gene=…)` cannot return it.
+
+Measured on your own reference example: `cyp2c19_star_alleles` publishes `genes: []` with **106 rows
+carrying `gene=CYP2C19`**.
+
+**Why this is a report rather than a request.** The obvious repair is the wrong one and we have written a
+guard against it into our skills: adding an empty or invented `variants.csv` to make a PGx module
+discoverable trades a discoverability gap for a dishonest module, and `studies.csv` becomes required the
+moment `variants.csv` exists. So an author's only honest workaround today is prose — name the genes in
+the README, where a text search finds them — which is what we tell them to do.
+
+The question is whether `stats` is meant to describe **the module** or **`variants.csv`**. If the first,
+the fix is in `variant_stats`: union the `gene` column across every table kind that has one. If the
+second, then the field is doing what it says and the gap is the registry's index reading a
+variants-shaped field as a module-shaped one — in which case we will re-file this in their intake, and
+the docs should say plainly that `stats` describes one table.
+
+We have no preference between those two; we do have a preference for knowing which, because our skills
+currently tell authors this is a known gap and cannot tell them who will close it.
+
+---
+
+## S58 — four authored table kinds are unconsumable end to end, and nothing in the format says so
+
+**Reported by** just-module-creator, 2026-08-20. Three independent reproductions.
+
+The binning family — `repeat_alleles.csv`, `copynumbers.csv`, `heteroplasmy.csv`,
+`activity_phenotype.csv` — needs a consumer that takes a **measured quantity** and selects the row whose
+`[measure_min, measure_max]` contains it. As far as we can find, **no consumer implements that lookup**,
+so those four kinds annotate nothing downstream however correctly they are authored.
+
+The format side looks complete to us: bounds inclusive, `min == max` for a sharp value, a null bound for
+open-ended, `measure_tiling` deciding whether adjacent bins may share an endpoint, and the `unresolved`
+sentinel for an absent measurement. One lookup would serve all four.
+
+**What we are actually reporting is a documentation gap, not a missing feature**, because the feature is
+not yours to write. `SCHEMAS.md` specifies the consumer join contract for a genotype in normative detail
+— the three states, `*` as unknown, the callability pointers — and specifies nothing equivalent for a
+*measure*. So an author reading the docs cannot tell that authoring a heteroplasmy module produces
+nothing a reader will render today, and we had to establish it by looking.
+
+Two things would close it for us, either of them: a normative paragraph in `SCHEMAS.md` stating the bin
+lookup a conforming consumer must implement (which also gives whoever writes one a target), or an
+explicit sentence saying the binning family is specified ahead of its consumers. We tell authors the
+tables are still worth writing and to say in the README what the bins mean, since prose is the only path
+to a reader right now.
+
+---
+
+## S59 — three attestations record a check that could not have failed
+
+**Reported by** just-module-creator, 2026-08-20. Found while auditing what our own tools may claim.
+
+`verification.json` is the record a later reader trusts, and three cases inflate what it appears to say.
+None is a bug in the checking code; each is a check whose scope makes a green answer uninformative, and
+the record does not carry the distinction:
+
+1. **`enrich_pgx` grading CPIC's own table.** A module drafted from CPIC and then compared against CPIC
+   agrees by construction. You already solved exactly this for ClinVar: a `panel:` block pins the release
+   and `verify_clin_sig` **skips with a stated reason** rather than reporting a zero it could not have
+   avoided. The PGx side has no equivalent.
+2. **`hints._flag_advisory_columns` naming checkers that cannot see the table.** `REDUNDANCY_BEARING` is
+   keyed on a bare column name with no model attached, so the `clin_sig` advisory prints on binning
+   tables and the `clin_sig`/`evidence_level` advisories on `diplotypes.csv`, while the checkers it names
+   are driven from `variants.csv` and the PGx annotation tables. The advice stays right; a green run is
+   not evidence of agreement with anything.
+3. **`enrich_facts` collapsing "no constraint published" into "not asked".** Two different states, one
+   cell.
+
+The generalisation we would find most useful is the one your ClinVar skip already embodies: **a check
+that could not have failed should record *why* rather than record a zero.** `subjects=0` with no
+`skipped` key currently means "ran over nothing", and that is the right encoding — the gap is that a
+check which ran over a non-empty set it could not disagree with looks identical to one that genuinely
+agreed.
+
+We are not asking for a severity change. We are asking whether the record can carry the scope, so a
+reader can tell "checked and agreed" from "compared a source with itself".
+
+---
+
+## S60 — an author's correction to a derived table has nowhere to live except inside it
+
+**Reported by** just-module-creator, 2026-08-20. A 0.7-sized ask, and we think it is compiler work
+rather than ours — the argument for that is at the bottom.
+
+### The mechanic
+
+Every derived sidecar is merge-not-clobber: a pass that finds a subject already recorded leaves it
+alone. That is what lets a hand-corrected cell survive a re-run, and it is also why a re-run refreshes
+nothing. So the only way to ask a source whether it still says what the file says is to **delete the
+file and re-derive it** — which discards the author's rows along with the stale ones.
+`resolution.csv`'s `source="manual"` rows are the case that no re-run recovers, because a human worked
+them out.
+
+We built a non-destructive wrapper around that sequence (capture, verify the capture, delete,
+re-derive, classify, reapply what is provably the author's). It works, and it stops at the one thing it
+cannot do. When a subject is present in both the captured and the fresh copy with a differing fact, the
+fresh row is **either** a cell the author edited **or** a revision the source published, and with two
+data points there is no third to separate them. So it reports and refuses to resolve.
+
+That refusal is honest but it is a symptom. The cause is that **an author's judgement is stored inside
+a machine-derived file**, with no marker saying so — authored and derived mixed in one table.
+
+### What we would like instead
+
+A recognized **authored overlay table** that lies on top of a derived one and is never merged into it.
+One row per `(table, subject, field)` carrying the authored value, the reason in prose, who decided,
+and when. The derived files then become pure build products — `derived = f(source, overlay)` — and:
+
+- nothing is ever hand-edited, so re-derivation is non-destructive **by construction** rather than by a
+  wrapper being careful;
+- a difference between a fresh row and a previous one means the source revised, full stop. The
+  three-explanations ambiguity above stops existing rather than being reported;
+- the reason for a correction travels with the module instead of living in whoever's memory;
+- **the terminal state becomes detectable, and it is free.** An overlay row that no longer changes
+  anything means the source caught up — evidence that an authored judgement was later vindicated, which
+  is available nowhere else in this format today, and it makes the record retirable.
+
+### Two dependencies, one of them already filed
+
+The overlay's subject has to name a derived row exactly, and **the per-table merge key is not public** —
+each pass keys its own `existing` dict on a local expression. That is already **S51**. We currently
+derive the key as each table's `*_FACT_FIELDS` narrowed to the required columns, which reproduces the
+pass key on five of seven tables and is coarser on the other two; measured, that gives
+`resolution.csv (variant_key)`, `frequencies.csv (variant_key, population, dataset)`,
+`gene_metrics.csv (gene, dataset)`, `gene_validity.csv (gene, dataset)`, `literature.csv (pmid)`,
+`clinical_assertions.csv (variant_key, dataset)`,
+`gwas_effects.csv (association_id, variant_key, dataset)`. An overlay keyed on a derived guess is not
+something we would want to ship, so S51 is a prerequisite rather than a nice-to-have.
+
+The second: `RECOGNIZED_SPEC_FILES` has 24 entries and none of them is an overlay, and we found no
+`override` or `mask` notion anywhere in the schema or compiler source. A file we invent in a spec
+directory is dropped by the next server-side rebuild — the way `licensing.csv` was lost before registry
+0.16.2 — so we cannot make this travel on our own however we implement it.
+
+### It also changes what S52 is asking for
+
+**S52** asked you to pick a per-field shape for `provenance.json`, because an outrank is naturally per
+field and `rationale` is one string per `variant_key`. If an overlay table exists, that question
+narrows a long way: the overlay carries corrections to **derived** tables, and `provenance.json` goes
+back to being the reason-record for an **authored** cell that outranks a source — which is what it
+reads like it was designed for. If you can only do one of the two, we would rather have the overlay.
+We have written per-field records into `provenance.json` in the meantime and they re-emit into whatever
+you settle on.
+
+### Why the compiler and not us
+
+We can apply an overlay at build time ourselves, and we considered it. The reason we are asking anyway
+is that **an overlay is authored input, not a repair**. A compiler that reads it is doing what it
+already does with every other authored table — compiling what the author wrote — and none of
+report-never-repair is at stake, because nothing is being inferred or corrected on the author's behalf.
+Whereas if each downstream tool applies its own overlay, two consumers compiling the same spec directory
+can disagree about what the module says, and the artifact stops being a function of the spec.
+
+The business decision — *whether* this authored value outranks that source — stays ours, and we would
+not ask you to take it. What we are asking for is the place to put the answer.
