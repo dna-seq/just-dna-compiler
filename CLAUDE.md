@@ -181,6 +181,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - An all-digit genotype is a pasted `GT`; diagnose it before the arity check. `@gt-indices`
 - Check the relationship, not the members — chromosome granularity, repairing nothing. `@gene-locus-relationship`
 - Unknown files in a spec dir are tolerated; a near-miss table name is not. `@misspelled-tables`
+- "Keyed kind ⇒ dupe-checked" is not the line — which loop calls the checker is. `@which-loop-calls-the-checker`
 - A warning's text is an API: pin the phrase, and publish the denominator behind any flag. `@warning-text-is-api`
 - The compiler discards an uncited literature row; `literature.csv` keeps it. `@uncited-literature-dropped`
 

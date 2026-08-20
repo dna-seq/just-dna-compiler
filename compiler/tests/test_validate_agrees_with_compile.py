@@ -505,6 +505,50 @@ def test_possible_frequency_arithmetic_is_clean_on_both_sides(tmp_path: Path) ->
     assert _agree(spec, tmp_path / "fok_out", strict=True) == (True, True)
 
 
+def test_a_duplicate_source_layer_row_is_refused_on_both_sides(tmp_path: Path) -> None:
+    """RM107: `sources.csv` was the one keyed table the compiler never dupe-checked.
+
+    `SourceRow` is in `draft._CORE_DUPE_KEYS` keyed `(source, layer)`, so *drafting* refuses to append
+    over one, and `licensing.merge_sources_csv` merges on the same pair — every other writer in the
+    ecosystem treats it as the key. The compiler was the outlier: `_validate_table_kind` runs over
+    `_TABLE_KINDS` only, and `sources.csv` is a `_FACT_TABLES` member, so appending an exact copy of a
+    row compiled green under `--strict` with no warning of any kind and a **moved** `source_signature`.
+
+    The sharp case is the second one below: `licensing.csv`… `sources.csv` is the file the compile
+    gate keys on, so two rows for one `(source, layer)` may carry *opposite* `commercial_use`, and
+    whichever the gate happens to read decides whether the module compiles at all.
+    """
+    two_rows = _SOURCES.format(declared_use="non_commercial") + (
+        "cpic,annotation,CC BY-SA 4.0,https://cpicpgx.org/license/,CPIC,true,false,true,"
+        "non_commercial,cpic-2026\n"
+    )
+    spec = _spec(tmp_path / "dupe", sources__csv=two_rows)
+    result = validate_spec(spec, strict=True)
+    compiled = compile_module(spec, tmp_path / "dupe_out", resolve_with_ensembl=False, strict=True)
+
+    assert not result.valid and not compiled.success
+    assert any("duplicate row for key" in e and "cpic" in e for e in result.errors), result.errors
+    assert set(result.errors) <= set(compiled.errors)
+
+    # The contradicting pair: same key, opposite terms, and the gate reads one of them.
+    contradicting = _SOURCES.format(declared_use="non_commercial") + (
+        "cpic,annotation,CC BY-SA 4.0,https://cpicpgx.org/license/,CPIC,true,true,true,"
+        ",cpic-2026\n"
+    )
+    spec2 = _spec(tmp_path / "clash", sources__csv=contradicting)
+    assert validate_spec(spec2).valid is False
+    assert compile_module(spec2, tmp_path / "clash_out", resolve_with_ensembl=False).success is False
+
+    # Negative control: one source legitimately appears at two layers, which is why the key is the
+    # pair and not the name.
+    two_layers = _SOURCES.format(declared_use="non_commercial") + (
+        "cpic,resolution,CC BY-SA 4.0,https://cpicpgx.org/license/,CPIC,true,false,true,"
+        "non_commercial,cpic-2026\n"
+    )
+    spec3 = _spec(tmp_path / "layers", sources__csv=two_layers)
+    assert _both(spec3, tmp_path / "layers_out") == (True, True)
+
+
 def test_a_check_that_runs_on_both_sides_is_published_once(tmp_path: Path) -> None:
     """RM106: `compile_module` runs `validate_spec`, so a check living in both places prints twice.
 

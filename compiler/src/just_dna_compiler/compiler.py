@@ -262,8 +262,16 @@ def _key_of(row: Any) -> tuple:
     return tuple(getattr(row, name) for name in row._KEY_FIELDS)
 
 
+# `SourceRow` joined the map with RM107, and it is the one member that is not a `_TABLE_KINDS` entry:
+# `sources.csv`/`licensing.csv` is a fact table, so the `_TABLE_KINDS` loop never reached it and a
+# duplicate `(source, layer)` row compiled green under `--strict` — no warning, a moved
+# `source_signature`, and a pair free to carry *opposite* `commercial_use` in the one file the compile
+# gate keys on. Drafting has refused to append over that key since S48 and `licensing.merge_sources_csv`
+# merges on it, so the compiler was the only writer in the ecosystem not treating it as a key. The
+# fact-table loop in `validate_spec` now runs `_validate_table_kind` too, which is what gives the
+# entry below its effect; registering the model alone would have done nothing.
 _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
-    (HaplotypeRow, AlleleFunctionRow, DiplotypeRow, PgsRow, PharmVariantRow), _key_of
+    (HaplotypeRow, AlleleFunctionRow, DiplotypeRow, PgsRow, PharmVariantRow, SourceRow), _key_of
 )
 
 _INPUT_FILES: tuple[str, ...] = (
@@ -3186,7 +3194,12 @@ def _cross_validate_studies(
 def _validate_table_kind(
     csv_name: str, model: type[BaseModel], rows: list[Any]
 ) -> tuple[list[str], list[str]]:
-    """Table-level coherence for one 0.4 table kind, after per-row validation has passed.
+    """Table-level coherence for one table, after per-row validation has passed.
+
+    Run over the 0.4 authored kinds and, since RM107, over the injected fact tables as well — the
+    split was never a rule about which tables deserve the checks, only about which loop happened to
+    call this. A model with no entry in either registry gets `([], [])`, so widening the call site
+    tightens nothing that was not already keyed.
 
     Returns (errors, warnings). Two families of check:
 
@@ -3526,6 +3539,16 @@ def validate_spec(
         )
         all_errors.extend(injected_errors)
         all_warnings.extend(injected_warnings)
+        if injected_rows and not injected_errors:
+            # Table-level coherence for the fact tables too (RM107) — same function, same message, so
+            # a duplicate key reads identically wherever it is found. Named by the file actually read
+            # rather than by `csv_name`, since a sidecar may be under either spelling or under
+            # `derived/`.
+            tbl_errors, tbl_warnings = _validate_table_kind(
+                injected_path.name, model, injected_rows
+            )
+            all_errors.extend(tbl_errors)
+            all_warnings.extend(tbl_warnings)
         if model is ResolutionRow and not injected_errors:
             for injected_row in injected_rows:
                 membership_table.setdefault(injected_row.variant_key, []).append(injected_row)

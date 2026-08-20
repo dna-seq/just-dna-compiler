@@ -519,6 +519,19 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   side must still re-run the check to reach the real severity, and its warnings need de-duplicating on
   the message (`_check_contig_ploidy` is the existing model).
 
+- `@which-loop-calls-the-checker` — **"Keyed kind ⇒ dupe-checked" was never the dividing line — which
+  LOOP calls the checker was.** `_validate_table_kind` holds the duplicate-row rule and `validate_spec`
+  called it from the `_TABLE_KINDS` loop only, so `sources.csv` — a `_FACT_TABLES` member, keyed
+  `(source, layer)`, dupe-refused by drafting since S48 and merged on that pair by
+  `licensing.merge_sources_csv` — was the one keyed table nothing checked. Appending an exact copy of a
+  row compiled green under `--strict`: no warning, a moved `source_signature`, and a pair free to carry
+  **opposite `commercial_use`** in the one file the compile gate reads. Two things to carry. Registering
+  the model in `_TABLE_DUPE_KEYS` alone would have done **nothing** — write the red test first and let
+  it prove the wiring, because a map entry that no loop consults looks exactly like a fix. And when two
+  registries hold the same kind of rule for two families of table, ask what the split is *for*: here it
+  was accidental, so the call site widened and the second registry (`draft._CORE_DUPE_KEYS`, which was
+  carrying `SourceRow` only because the compiler had no key for it) gave the entry back. (RM107.)
+
 - `@validation-ceiling` — **Know the validation ceiling before adding a check.** [COMPILER.md](COMPILER.md) opens with
   *What the compiler can and cannot validate*: three strengthening classes it **can** do (formal
   conformance → validate-by-redundancy → content-addressed self-verification, which is the class VRS

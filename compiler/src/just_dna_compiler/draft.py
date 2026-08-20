@@ -91,11 +91,12 @@ DRAFTABLE: dict[str, type[BaseModel]] = {
 # them inline instead (`_cross_validate_variants` / `_cross_validate_studies`). Same keys, so a draft
 # can never append a row the compiler would then reject as a duplicate.
 # Derived from each model's `_KEY_FIELDS`, like `_TABLE_DUPE_KEYS` (S48) — the columns and the key
-# were two statements of one fact. `sources.csv`'s key is the same one `licensing.merge_sources_csv`
-# merges on, borrowed for the reason the other two are: a draft must not append a row the other writer
-# would treat as already present. One source legitimately appears at two layers.
+# were two statements of one fact.
+# `SourceRow` sat here too until RM107, borrowed because drafting needed the key and the compiler had
+# none; now that the compiler dupe-checks `sources.csv` itself, it belongs in `_TABLE_DUPE_KEYS` with
+# the other keyed tables and listing it twice would only invite the two copies to drift.
 _CORE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
-    (VariantRow, StudyRow, SourceRow), _key_of
+    (VariantRow, StudyRow), _key_of
 )
 
 
