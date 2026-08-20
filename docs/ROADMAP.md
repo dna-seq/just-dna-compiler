@@ -35,9 +35,11 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.6.6 is the current line, uncut** — all three packages read `0.6.6` in their
-`pyproject.toml`, and `v0.6.5` (2026-08-20, S50–S56) is the newest tag. What sits uncut on top of it is
-the S57–S60 batch (RM121–RM124) and the 2026-08-19 doc-audit patch round (RM104–RM107, RM109, RM111).
+**Status:** **0.6.6 is cut and tagged `v0.6.6`** (2026-08-21) — all three packages read `0.6.6` in
+their `pyproject.toml` and the tag is the newest. It carries **nine patch fixes**: the 2026-08-19
+doc-audit round (RM104–RM107, RM109, RM111), the two shipped items of the S57–S60 batch (RM121, RM123),
+and S61's lookup fix (RM125). RM122 and RM124 are the two of that batch still open, so they are not in
+it. Nothing sits uncut on top of the tag as this is written.
 **This paragraph read "0.6.4 is the current line" for two releases**, which is the same failure the
 *Active items* heading had and the reason both are called out rather than quietly corrected: a status
 line nobody re-reads is a status line that lies, so re-read this one whenever a version moves.

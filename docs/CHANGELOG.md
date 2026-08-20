@@ -36,8 +36,9 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-08-21 (latest) — a lookup finding that contradicted the payload carrying it (S61, RM125)
 
-**Lands in 0.6.6, still uncut.** All three packages already read `0.6.6` and the newest tag is
-`v0.6.5`, so this joins the two rounds below rather than needing a number of its own. `just-dna-enricher`
+**Cut as 0.6.6** across all three packages and tagged `v0.6.6` on 2026-08-21; this entry read "still
+uncut" until the tag landed the same day. It joins the two rounds below rather than taking a number of
+its own. Tagged is not published — `uv publish` is a separate step and the maintainer's. `just-dna-enricher`
 only — no authored schema, no parquet, no manifest field, and advisory findings are written nowhere, so
 no digest and no signature moves. A **patch**. Publishing stays the maintainer's step.
 
@@ -78,8 +79,9 @@ reporter's own method, running the tool against real rsIDs instead of reading it
 
 ## 2026-08-20 — the 2026-08-19 doc audit's six patches (RM104–RM107, RM109, RM111)
 
-**Bumped to 0.6.6, uncut.** All three packages read `0.6.6`; the newest tag is `v0.6.5`, so what sits
-on top of it is this round plus the S57–S60 batch below. Every item here is a **patch**: no authored
+**Cut as 0.6.6** across all three packages and tagged `v0.6.6` on 2026-08-21 — this entry read
+"bumped, uncut" until then. What the tag carries is this round, the S57–S60 batch below, and S61/RM125
+above: nine patch fixes in all. Every item here is a **patch**: no authored
 schema changed, nothing was retyped, no published identity moved. One behaviour tightens — a duplicate
 `(source, layer)` row in `licensing.csv`/`sources.csv` is now an **error** in both `validate` and
 `compile`, where it used to pass silently — so a spec carrying one stops compiling. Publishing stays
@@ -143,7 +145,7 @@ was green at 2859 tests throughout, and is 2864 now.
 
 ## 2026-08-20 — a dossier audit's four reports (S57–S60, RM121–RM124)
 
-**Not cut, and folded into 0.6.6** — this batch and the doc-audit patches above sit on the same uncut
+**Folded into 0.6.6, cut and tagged `v0.6.6` on 2026-08-21** — this batch and the doc-audit patches above sat on the same then-uncut
 number. Nothing here was added to an authored schema, nothing was retyped, and no published identity
 moved. Publishing is the maintainer's step, as always.
 

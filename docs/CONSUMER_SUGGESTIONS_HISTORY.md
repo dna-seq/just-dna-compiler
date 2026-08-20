@@ -4344,9 +4344,11 @@ Both now read *"not in the injected `<source>` snapshot"*.
 say nothing about the outcome, deliberately — a reader asking "did this resolve" should read the
 closing finding, or `loci`. `SYMPTOMS.md` in the authoring skill carries both entries.
 
-**Not installable yet — S34's standing rule.** This is in the tree and lands in **0.6.6**, which is
-bumped but **uncut**; the newest tag is `v0.6.5`. It travels with the S57–S60 batch and the 2026-08-19
-doc-audit round whenever 0.6.6 is cut and published, and that is the maintainer's step.
+**Cut, not published — S34's standing rule.** This shipped in **0.6.6**, cut and tagged `v0.6.6` on
+2026-08-21, alongside the S57–S60 batch and the 2026-08-19 doc-audit round: nine patch fixes on the tag.
+This paragraph said "bumped but uncut, newest tag `v0.6.5`" when it was written, a few hours earlier.
+**Tagged is still not installable** — `uv publish` is a separate step and the maintainer's, so check
+PyPI rather than this sentence before you pin it.
 
 **Why it survived a green suite**, since you noted that every test here checks the returned fields:
 neither phrase was pinned by any test, and every existing `lookup_variant` test passes an **empty**
