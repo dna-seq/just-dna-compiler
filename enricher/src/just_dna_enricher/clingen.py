@@ -36,6 +36,7 @@ from pathlib import Path
 
 import httpx
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
@@ -209,13 +210,13 @@ def enrich_dosage_sensitivity(
             rows=[], covered=[], missing=[], dataset="", source_row=None, skipped_offline=True
         )
 
-    existing: dict[tuple[str, str], GeneMetricsRow] = {}
+    existing: dict[tuple, GeneMetricsRow] = {}
     if output_path.exists():
         rows, errors, _ = load_csv_rows(output_path, GeneMetricsRow, "gene_metrics.csv")
         if errors:
             raise ClinGenError(f"existing gene_metrics.csv is invalid: {errors[0]}")
         for row in rows:
-            existing[(row.gene, row.dataset)] = row
+            existing[merge_key(row)] = row
 
     ratings, released = parse_curation_list(curation_text or fetch_curation_list(url))
     dataset = f"clingen_dosage_{released}"
@@ -224,8 +225,11 @@ def enrich_dosage_sensitivity(
     out: list[GeneMetricsRow] = list(existing.values())
     covered: list[str] = []
     missing: list[str] = []
+    # Read off the rows rather than rebuilding the merge key here — same reason the dict now reads
+    # `GeneMetricsRow._KEY_FIELDS` instead of restating `(gene, dataset)` (S51).
+    done = {row.gene for row in existing.values() if row.dataset == dataset}
     for gene in module_genes(spec_dir):
-        if (gene, dataset) in existing:
+        if gene in done:
             continue
         rating = ratings.get(gene)
         if rating is None or (rating.haploinsufficiency is None and rating.triplosensitivity is None):

@@ -96,6 +96,30 @@ def authored_field_names(model: type[BaseModel]) -> list[str]:
     ]
 
 
+def merge_key(row: BaseModel) -> tuple:
+    """The key that decides two rows of a machine-produced table are the same row.
+
+    The enricher pass that writes each sidecar merges rather than clobbers, so it holds an `existing`
+    dict and needs this tuple; **the pass reads it from here rather than restating it**, which is the
+    half that makes the pass and `hints.key_fields` unable to disagree (S51). Restated, they were two
+    statements of one fact — and the fact was legible nowhere outside the pass's own body, so every
+    consumer re-deriving a sidecar was guessing it.
+
+    `_KEY_FALLBACK_FIELDS`, where a kind declares one, is used when **every** primary member is null:
+    `GeneValidityRow` keys on the source's own `assertion_id` and falls back to the gene's grain when
+    the source published none. The two levels are tagged (`"id"` / `"grain"`) so a grain tuple can
+    never collide with an id that happens to equal it.
+
+    Raises `AttributeError` for a model declaring no key, which is the honest failure: a caller
+    reaching here for an unkeyed kind has a bug, and a silent `()` would merge every row into one.
+    """
+    primary = tuple(getattr(row, name) for name in row._KEY_FIELDS)  # type: ignore[attr-defined]
+    fallback: tuple[str, ...] = getattr(row, "_KEY_FALLBACK_FIELDS", ())
+    if not fallback or any(v is not None and v != "" for v in primary):
+        return ("id", *primary) if fallback else primary
+    return ("grain", *(getattr(row, name) for name in fallback))
+
+
 # ── Vocabulary-bound columns ────────────────────────────────────────────────────────────────────
 # Marker for a field whose value is drawn from a constrained vocabulary, carrying the members with it
 # so an authoring tool can offer them ("valid options to select from") without knowing the field.

@@ -29,6 +29,8 @@ per variant: rs4149056 alone carries dozens, across different traits, population
 collapsing them would pick a trait on the author's behalf.
 """
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import vocabulary
@@ -93,6 +95,11 @@ class GwasEffectRow(BaseModel):
     `resolution.csv` would be the module's fact rather than the source's. `variant_key` joins it to the
     weights rows; `rsid` is what the archive itself names.
     """
+
+    #: What makes two rows the same row: the Catalog's own association id, and nothing else.
+    #: **Per record, not per variant** — a variant gains associations as papers publish, so keying on
+    #: the variant would pin a module to whatever the Catalog held the first time (S51).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("association_id",)
 
     model_config = ConfigDict(extra="forbid")
 

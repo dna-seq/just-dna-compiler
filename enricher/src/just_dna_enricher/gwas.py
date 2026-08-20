@@ -43,6 +43,7 @@ from pathlib import Path
 
 import httpx
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_format.base import merge_key
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
@@ -357,8 +358,11 @@ def _merge_key(row: GwasEffectRow) -> tuple:
     made a re-run useless once — a variant gains associations as papers publish, and a coarse skip
     would pin the module to whatever the Catalog held the first time. The archive here is remote and
     growing, which is precisely the case that does not tolerate it.
+
+    Read off `GwasEffectRow._KEY_FIELDS` rather than restated, so this pass and the published
+    `hints.key_fields("gwas_effects.csv")` cannot drift apart (S51).
     """
-    return ("id", row.association_id)
+    return merge_key(row)
 
 
 def _sort_key(row: GwasEffectRow) -> tuple:

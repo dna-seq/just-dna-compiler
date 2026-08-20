@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S54
+## The next item is S56
 
 **Claim ids from here, never from what this file shows.** S1–S46 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
@@ -104,6 +104,53 @@ are null: it would make the pass rewrite existing rows, which is the one thing m
 exists to prevent, and "null" is not distinguishable from "the study record has no pmid" — a real
 case `follow`'s 404 arm deliberately produces.
 ## S51 — a derived sidecar's *merge key* lives inside its pass, so no consumer can reproduce it
+
+**Status — accepted, shipped as [RM115](ROADMAP_HISTORY.md#rm115--a-derived-sidecars-merge-key-lived-inside-the-pass-that-writes-it) in the tree (not yet cut).**
+`hints.key_fields(csv_name)` now answers for `resolution.csv` and all seven fact CSVs — it already
+routed derived names through `derived_model_for` after RM113, so the gap was that the seven models
+declared no key and it correctly withheld. Your candidate fix is what shipped, in the tier you named:
+each model declares `_KEY_FIELDS`, `just_dna_format.base.merge_key(row)` is the row-level answer, and
+**every pass keys its `existing` map off it** rather than restating the tuple — which is the half you
+identified as the one that makes the two unable to disagree.
+
+Both of your COARSE rows reproduced before the fix, against the published `*_FACT_FIELDS`:
+`gene_validity.csv` derived as `('gene', 'dataset')` and `clinical_assertions.csv` as
+`('variant_key', 'dataset')`. What they publish now:
+
+```
+gene_validity.csv        columns=('assertion_id',)
+                         fallback=('gene','disease_id','moi','submitter','dataset')
+clinical_assertions.csv  columns=('variant_key','variation_id')
+resolution.csv           columns=('variant_key',)   rule='subject'
+```
+
+**Two shapes your derivation could not have reached, and each is a wrong answer rather than a coarse
+one, so read `rule` and `fallback` as well as `columns`.** `resolution.csv`'s key is a **subject**, not
+a uniqueness constraint — `KEY_RULES` has a third member for it — so a tool asserting uniqueness there
+would report a legal one-to-many file as a duplicate; your own note already knew this ("a subject holds
+several rows"), and it is now machine-readable. And `gene_validity.csv`'s key has **two levels**:
+`assertion_id` where the source published one, the gene's grain where it did not. `TableKey.fallback`
+carries the second, tagged `"id"`/`"grain"` so a grain tuple cannot collide with an id equal to it.
+`gene_validity.csv` is the only table with a fallback today, which is exactly why it is a field and not
+a footnote — a consumer ignoring it is right about seven tables and wrong about the one where a gene
+carries several assertions.
+
+**Your `source="manual"` case should improve directly**, which is the consequence you put on the record.
+With `resolution.csv` published as `rule="subject"`, a hand-resolved row and a fresh `status="not_found"`
+row for the same `variant_key` are the same *subject* by construction rather than a collision — the
+group is what the pass replaces. The classification of which row within the group is the author's is
+still yours; what changed is that the ambiguity is no longer an artefact of an approximate key.
+
+**Your rewire found a defect of ours we would not otherwise have looked for.** Keying the maps off the
+declared tuples immediately mismatched three *lookup* sites that rebuilt the key positionally, and one
+was a latent break: `pmid not in existing` in the literature pass would have refetched every cited
+article on every run. All three now read the attribute off the row instead of unpacking a key.
+
+Documented in [ENRICHER.md § What makes two rows of a sidecar the same row](ENRICHER.md), with the whole
+table and the two shapes called out. Guards in `enricher/tests/test_merge_keys.py`; suite 2799 → 2813.
+Not installable yet — per the standing rule at the top of this file, check
+[CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+<!-- triaged: 0.6.5 · sha 3e1fdfb4f967 -->
 
 > **Triage note added 2026-08-20, after seeing how much you already have in flight.** If you are
 > ranking our open notes against each other: **this one first, `S52` second, and both behind anything of
@@ -451,3 +498,153 @@ CSVs feed the hash and that the licensing table does not, and note that `default
 a pointer to `_resolve_spec_defaults`' docstring. That closes the documentation half and leaves the
 restatement, so we would rather have the function; but the docs half is worth having either way, since
 the next consumer's first question is "which files does this cover".
+
+# Field notes from just-module-creator — the RM15 philosophy audit
+
+*Filed 2026-08-20, against format 0.6.1 / compiler 0.6.1 / enricher 0.6.4 as installed. Both items
+come out of one audit: we were re-reading every rule this repo adopted from yours to find the ones
+we took on authority rather than on reasons. `S11` is ours, and it did not survive the re-reading.
+`S54` is what we measured while checking it; `S55` is the withdrawal and what we would like instead.*
+
+## S54 — `quotes_found` is satisfied by the article's own title, and four published modules do exactly that
+
+*Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 as installed. Measured, not
+theorised — the numbers below are from your own tree.*
+
+**What we were doing.** Re-reading `S11`, our own note, the one that gave you the
+`attestation_bearing` refusal reason. Before arguing about whether a machine may locate a quote, we
+went to look at what the column actually holds in practice.
+
+**What we expected.** `provenance_quote` is documented as the passage a curator located, and
+`quotes_found` checks it against the Europe PMC fulltext. We expected the column to be mostly empty —
+that being the cost of the refusal we ourselves argued for.
+
+**What we found.** Across every `studies.csv` in your tree, 33 files and 44342 rows:
+
+```
+reference_examples/*/studies.csv        10 files, provenance_quote not even a column
+data/output/corrected_modules/*         4 files, 3668 rows, provenance_quote filled on 3668 of 3668
+```
+
+Those four are `aggression_anger`, `risk_impulsivity`, `cognitive_intelligence` and
+`big_five_personality` — the published `antonkulaga/*` modules. Every row carries a quote. But:
+
+```
+module                    rows   distinct pmids   distinct quotes   quotes per pmid   avg words
+cognitive_intelligence    2045              33                33                  1        15.6
+risk_impulsivity           695              19                19                  1        17.2
+big_five_personality       859              26                26                  1         9.9
+aggression_anger            69               3                 3                  1         7.0
+```
+
+**Exactly one distinct quote per PMID, on all four.** A passage located for a specific claim varies
+row to row, because different rows cite the same paper for different findings. One string per paper,
+repeated across every citing row, is structurally not a passage. It is a property of the *article*.
+
+It is the title. Verbatim, trailing period included:
+
+```
+studies.csv  pmid 24489884  provenance_quote "Genome-wide association study of proneness to anger."
+lookup_citation(24489884)   title            "Genome-wide association study of proneness to anger."
+```
+
+The same for the other two in that module, and the pattern holds across all 81 PMIDs.
+
+**Why this is a check defect and not only an authoring one.** A title appears in its own fulltext,
+always. So `_study_quote_found` matches, `quotes_found` equals `quotes_authored`, and the module
+reports full quote coverage — 2045 of 2045 — while establishing nothing whatsoever about whether any
+claim is in any paper. The check cannot fail on a title. It is satisfiable from `esummary` metadata
+without retrieving a single word of the article, which is the one thing the column exists to witness.
+
+This is worse than the failure `S11` was written to prevent. We asked you to refuse a machine-located
+*passage* on the grounds that it asserts a reading that never happened. What the refusal produced
+instead was a machine-copied *title* asserting the same thing, with the check agreeing.
+
+**Candidate fix — make the check able to fail.** Reject, or flag, a `provenance_quote` that is not
+distinguishable from article metadata you already hold:
+
+- if the quote equals the `title` for that PMID (normalised: case, trailing period, whitespace), it
+  is not a located passage — `quotes_found` should not count it, and `inspect_rows` should say so;
+- more generally, one identical quote across every row citing a PMID is a signal worth reporting
+  even when it is not the title, because a real passage varies with the claim.
+
+You already have the title: `CitationHint.title` shipped for `S12`. The comparison costs no request.
+
+**A candidate we think is wrong: a minimum length, or requiring `provenance_regex`.** Length does not
+separate a title from a passage — 17 words is a perfectly ordinary title and a perfectly ordinary
+sentence — and a regex is as copyable as a quote. The discriminator has to be *against the metadata
+you already have for that article*, not against the shape of the string.
+
+**What we did meanwhile.** Nothing in the data — these are not our modules and a quote is authored
+content we will not rewrite. On our side the audit is changing what we tell an author, and `S55` is
+the half that is yours.
+
+## S55 — we withdraw the reasoning behind `attestation_bearing`, and ask for the attributor it was missing
+
+*Filed 2026-08-20 by just-module-creator. This one is a retraction of our own argument, so the report
+is about reasoning rather than behaviour. `ATTESTATION_BEARING` itself may well be right for your
+layer; the case we handed you for it is not one we still hold.*
+
+**What we filed.** `S11`, which you accepted and shipped in 0.5.4 as a fifth refusal reason. Our
+argument, quoted from that note: *"a passage extracted from a fulltext a tool just fetched asserts a
+curator reading that never occurred. That is a false claim of provenance, not merely a vacuous
+check."* Your answer turned on the same hinge: *"no longer evidence that the claim is in the article,
+because nothing establishes a human ever looked."*
+
+**What we now think is wrong with it.** The sentence *nothing establishes a human ever looked* names
+the actual defect, and it is not the one we asked you to fix. It is a **missing attributor**, not an
+illegitimate reader. We treated "a machine read it" as the falsehood. But the machine does read it —
+our own `fetch_fulltext` hands the agent the entire article, and has since before `S11` — so the
+reading is real, and what the refusal protected was a fiction about *who* did it. The column stayed
+empty for the only reader actually present.
+
+**The evidence that this is not academic:** `S54`, above. The refusal did not produce human-located
+passages. It produced 3668 rows of title-as-quote in four published modules, with the check green.
+That is the outcome the rule bought.
+
+**Your own model already disagrees with our argument, in two places.** `Defaults.curator` defaults to
+the literal string `"ai-module-creator"` (`spec.py:296`) — an AI curator is not an edge case in this
+format, it is the documented default for every row. And `Contribution` already carries the whole
+vocabulary for saying who did what: `who` is *"a name, handle, **or model id**"*, `kind` ladders
+`{human, human_expert, human_certified}` against `{ai}` plus a scale `{agent, team, swarm}`, and
+`role` is `created|edited|audited|reviewed`. You have modelled mixed human/AI authorship carefully.
+`attestation_bearing` is the one place that then refuses the AI contributor a cell, and it refuses on
+our say-so.
+
+**What we would like: a per-row attributor on `StudyRow`.** `VariantRow` has `curator: str | None`
+("Curator override", `spec.py:513`). `StudyRow` has no such column — so a variant row can name who
+decided it and a quote cannot name who located it, which is backwards given which of the two is an
+attestation.
+
+```python
+# just_dna_format/spec.py, StudyRow
+curator: str | None = Field(default=None, description="Curator override")
+```
+
+That is the whole ask: the same field, on the table where the attestation lives. Then
+`provenance_quote` stops being a claim about an unnamed human and becomes a located passage with a
+named locator, resolvable against `authorship` — and `quotes_found` can finally be read for what it
+is, per locator, instead of as an undifferentiated coverage number.
+
+**Why the module-level `authorship` block is not enough.** Real work is mixed at row granularity: a
+scientist reads a review and an agent traverses its citations, in one module, in one pass. A
+module-level contributor list cannot say which of the two located row 1400. `VariantRow.curator`
+exists precisely because module-level defaults are not enough for a variant; the same is true here.
+
+**One thing this is explicitly not.** It does not move responsibility. An AI is not a subject of
+right, so the human author holds it entirely, whatever a `curator` cell says. The column records the
+real distribution of labour so a reviewer can route scrutiny — which is what `Contribution.kind`'s
+own docstring already says it is for ("route scrutiny by it") — and not so anyone can point at a
+model when a quote turns out to be wrong.
+
+**A candidate we think is wrong: a boolean `machine_located`.** Two-valued collapses the case that
+actually occurs — a passage an agent found and a human then confirmed — into one of two lies, and it
+cannot name *which* agent or *which* human. A free-text identifier resolvable against `authorship`
+carries both, and matches what `VariantRow` already does.
+
+**What we changed on our side, so you can weigh how much of this is ours to fix.** Our `CLAUDE.md`
+forbade an agent to locate a passage at all, citing `S11`. That prohibition is reversed as of
+2026-08-20: our agents may locate and write a `provenance_quote`, verbatim, and must record who
+located it. Until `StudyRow` has somewhere to put that, we can only write it to our own logs, where
+it does not travel with the module — which is the concrete cost of the gap, and the reason we are
+asking rather than working around it.

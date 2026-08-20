@@ -44,6 +44,7 @@ from pathlib import Path
 
 import httpx
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_format.base import merge_key
 from just_dna_format.gene_validity import GeneValidityRow
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
 
@@ -550,10 +551,11 @@ def _merge_key(row: GeneValidityRow) -> tuple:
     it survives a re-worded disease label. Otherwise the source's grain: gene, disease, mode of
     inheritance, submitter, release. Never `(gene, disease)` alone, which collapses 59 real ClinGen
     curations, and never without `submitter`, which collapses the disagreement GenCC exists to publish.
+
+    Read off `GeneValidityRow._KEY_FIELDS` / `_KEY_FALLBACK_FIELDS` rather than restated here, so
+    this pass and the published `hints.key_fields("gene_validity.csv")` cannot drift apart (S51).
     """
-    if row.assertion_id:
-        return ("id", row.assertion_id)
-    return ("grain", row.gene, row.disease_id, row.moi, row.submitter, row.dataset)
+    return merge_key(row)
 
 
 def _sort_key(row: GeneValidityRow) -> tuple:

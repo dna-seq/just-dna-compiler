@@ -16,6 +16,8 @@ rather than to one column, and the reverse writer's round-trip is covered by a t
 """
 
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import vocabulary
@@ -61,6 +63,12 @@ class GeneMetricsRow(BaseModel):
     derived reference fact, not an authored annotation — with `extra="forbid"` so a typo'd column is
     caught rather than dropped.
     """
+
+    #: What makes two rows the same row — the key both writers of this table merge on
+    #: (`enrich_gene_metrics` and the ClinGen dosage pass). Keyed by (gene, dataset) and not by gene:
+    #: one gene legitimately carries a row per authority, and keying on the gene alone made a second
+    #: authority's row look like this pass's own work and suppressed the fetch (S51).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene", "dataset")
 
     model_config = ConfigDict(extra="forbid")
 

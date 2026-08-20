@@ -34,7 +34,7 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import derive_variant_key
+from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from pydantic import ValidationError
@@ -266,7 +266,10 @@ def enrich_clinical_assertions(
         return _unusable(exc)
 
     fetched_at = now_utc_iso()
-    seen = {(row.variant_key, row.variation_id) for row in existing_rows}
+    # `ClinicalAssertionRow._KEY_FIELDS`, not a restated tuple: this pass and the published
+    # `hints.key_fields("clinical_assertions.csv")` then cannot disagree (S51). The two `seen.add`
+    # calls below build the same shape for a row that does not exist yet.
+    seen = {merge_key(row) for row in existing_rows}
     out: list[ClinicalAssertionRow] = list(existing_rows)
     covered: list[str] = []
     missing: list[str] = []

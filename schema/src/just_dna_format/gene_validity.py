@@ -34,6 +34,8 @@ else. It is not the same as `no_known_disease_relationship`, which is a graded v
 """
 
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import vocabulary
@@ -85,6 +87,21 @@ class GeneValidityRow(BaseModel):
     `GeneMetricsRow`/`LiteratureRow` are — a machine-produced reference fact rather than an authored
     annotation — with `extra="forbid"` so a typo'd column is caught rather than silently dropped.
     """
+
+    #: What makes two assertions the same assertion, and this key has **two levels** — the only
+    #: derived table that does. `assertion_id` when the source published one: it is the source's own
+    #: answer and it survives a re-worded disease label. When it did not, the source's grain decides,
+    #: which is what `_KEY_FALLBACK_FIELDS` names. Never `(gene, disease)` alone, which collapses 59
+    #: real ClinGen curations, and never without `submitter`, which collapses the disagreement GenCC
+    #: exists to publish (S51).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("assertion_id",)
+    _KEY_FALLBACK_FIELDS: ClassVar[tuple[str, ...]] = (
+        "gene",
+        "disease_id",
+        "moi",
+        "submitter",
+        "dataset",
+    )
 
     model_config = ConfigDict(extra="forbid")
 

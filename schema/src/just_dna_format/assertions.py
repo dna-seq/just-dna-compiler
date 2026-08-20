@@ -32,6 +32,8 @@ behalf.
 """
 
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import vocabulary
@@ -81,6 +83,12 @@ class ClinicalAssertionRow(BaseModel):
     reference fact, not an authored annotation — with `extra="forbid"` so a typo'd column is caught
     rather than silently dropped.
     """
+
+    #: What makes two rows the same row — the key `enrich_clinical_assertions` merges on. One allele
+    #: carries a row per archive record, so `variation_id` is in the key; a `null` there is a **value**
+    #: and not an absence, carrying the `not_found` row that states the archive was consulted and has
+    #: no record for this allele (S51).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "variation_id")
 
     model_config = ConfigDict(extra="forbid")
 

@@ -30,6 +30,60 @@ report, and it is the useful shape of it: a consumer who wants to generate rathe
 by a private name, will hand-keep the same lines every other consumer hand-keeps and will be the one who
 misses the next table. All four are additive or documentation; nothing removed, nothing retyped.
 
+## RM115 — a derived sidecar's merge key lived inside the pass that writes it
+
+✅ **Shipped in `just-dna-format` + `just-dna-compiler` + `just-dna-enricher` on 2026-08-20**,
+motivating case [S51](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**RM113's question, asked of the machine-produced tables, where the answer was one step further away.**
+For an authored kind the key at least existed as a lambda in `_TABLE_DUPE_KEYS`; for a fact sidecar it
+existed only as a dict-key expression in the body of the pass that writes it — `existing[(row.gene,
+row.dataset)] = row` and seven more like it. `key_fields` already routed derived names through
+`derived_model_for` after RM113, so it *would* have answered; the seven models simply declared no key
+and it correctly withheld. What shipped is the declarations, plus the half that keeps them honest.
+
+**The reporter's approximation, and why "safe" was not "right".** They derived the subject as the
+required members of the fact-field tuple — public pydantic over a public tuple, so it could not silently
+drift — and it agreed on five of eight tables. It was coarse on two, and those two are exactly the
+tables where one subject legitimately carries several rows: `gene_validity.csv` came out `(gene,
+dataset)`, dropping `disease_id`, and `clinical_assertions.csv` came out `(variant_key, dataset)`,
+dropping `variation_id`. Coarse is the safe direction for their tool — it reports more rows as ambiguous
+and auto-repairs fewer — but it demotes a gene's second real disease assertion into an ambiguity a human
+has to adjudicate, on the one table where a gene legitimately carries several. Both reproduced here
+before the fix, against the published `*_FACT_FIELDS` tuples.
+
+**Two shapes the obvious design could not express, and both would have been wrong answers rather than
+coarse ones.** `resolution.csv`'s key is not a uniqueness constraint at all: one rsID resolves to several
+loci, `locus_index` orders them, and the pass replaces the group whole — so `KEY_RULES` gains a third
+member, `subject`, and reporting `equality` there would tell a consumer a legal one-to-many file is a
+duplicate. And `gene_validity.csv`'s key has **two levels** — the source's own `assertion_id` where it
+published one, the gene's grain where it did not — so `TableKey` gains `fallback`, tagged `"id"`/`"grain"`
+so a grain tuple can never collide with an id that happens to equal it.
+
+**Shipped.** Seven models declare `_KEY_FIELDS` (`ResolutionRow` also `_KEY_RULE`, `GeneValidityRow`
+also `_KEY_FALLBACK_FIELDS`); `base.merge_key(row)` is the row-level answer; `TableKey` carries
+`fallback` and `KEY_RULES` carries `subject`; `describe_table`'s `key` block carries `fallback` too.
+**Every pass now keys its `existing` map through `merge_key`** — `enrich`, `enrich_frequencies`,
+`enrich_gene_metrics`, the ClinGen dosage pass, `enrich_literature`, `enrich_gwas`,
+`enrich_gene_validity`, `enrich_clinical_assertions` — which is the half that makes the pass and the
+surface unable to disagree, rather than merely agreeing today.
+
+**The rewire found three live restatements of the same fact, and one was a latent break.** Keying the
+map off a declared tuple immediately mismatched three *lookup* sites that rebuilt the key positionally:
+`covered_keys = {key for key, _population in existing}`, `if (gene, dataset) in existing`, and
+`pmid not in existing` — the last of which would have refetched every cited article on every run once
+the dict held tuples. All three now read the attribute off the row instead of unpacking a key, which is
+the shape that cannot break again when a member is added. That is `@dont-discard-computed`'s neighbour:
+a key derived in one place and re-derived positionally in another is the same defect as a hand-kept list.
+
+**Guards.** `enricher/tests/test_merge_keys.py` — the two-level key run rather than read, the `not_found`
+row keying apart from every record for its allele, the `subject` rule shown over several loci sharing a
+key, every published column asserted to be a real field of the model it keys (both levels), a fallback
+declared under a required primary rejected as unreachable, and every published key deduplicating the
+real sidecars the reference examples carry. Two existing tests changed meaning rather than being
+deleted: the withhold is now shown against a model with no `_KEY_FIELDS` instead of against tables that
+have since grown one, and the rule-membership equality walks the derived registry too. 2799 → 2813.
+
 ## RM113 — a table kind's natural-key *columns* were not obtainable, only its key *values*
 
 ✅ **Shipped in `just-dna-compiler` + `just-dna-format` on 2026-08-20**, motivating case

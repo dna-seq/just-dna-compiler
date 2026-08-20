@@ -282,11 +282,15 @@ class HintReport:
 
 
 #: How a kind decides that two rows collide. `frozenset[str]` + a validator, never an Enum
-#: (Principle 6). **Two readings, and they are not interchangeable:** `equality` means the key tuple
-#: must be unique, which the compiler enforces as a duplicate-row error; `overlap` means the key
-#: columns only *group* rows, and the collision rule inside a group is that their `[measure_min,
-#: measure_max]` ranges must not overlap — two bins can conflict while sharing no key at all.
-KEY_RULES: frozenset[str] = frozenset({"equality", "overlap"})
+#: (Principle 6). **Three readings, and none is interchangeable with another:** `equality` means the
+#: key tuple must be unique, which the compiler enforces as a duplicate-row error; `overlap` means the
+#: key columns only *group* rows, and the collision rule inside a group is that their `[measure_min,
+#: measure_max]` ranges must not overlap — two bins can conflict while sharing no key at all; and
+#: `subject` means the key names a group a pass *replaces whole*, where several rows sharing it is the
+#: normal shape rather than a duplicate. `resolution.csv` is the only `subject` table today — one rsID
+#: legitimately resolves to several loci — and it is the reason the member exists: reporting its key
+#: as `equality` would tell a consumer that a legal one-to-many file is a duplicate (S51).
+KEY_RULES: frozenset[str] = frozenset({"equality", "overlap", "subject"})
 
 
 @dataclass(frozen=True)
@@ -312,11 +316,20 @@ class TableKey:
     two variant-keyed kinds. They stay in `columns` because they really are part of the key; they are
     flagged because an author cannot type one, and a surface that presented them as fillable columns
     would be describing a cell that does not exist in their CSV.
+
+    `fallback` is the key used **when every column of `columns` is null**, and one derived table has
+    one: `gene_validity.csv` keys on the source's own `assertion_id`, and on the gene's grain when the
+    source published none. It is `()` everywhere else, and a consumer that ignores it is right about
+    seven of the eight tables — which is exactly why it is a field rather than a footnote (S51). A
+    fallback is only meaningful where the primary key can be absent, so a kind declaring one whose
+    primary column is required is a contradiction, and a test asserts it away rather than this
+    dataclass — the check needs the model, which a `TableKey` does not carry.
     """
 
     columns: tuple[str, ...]
     rule: str
     stamped: tuple[str, ...] = ()
+    fallback: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.rule not in KEY_RULES:
@@ -350,6 +363,17 @@ def key_fields(csv_name: str) -> TableKey | None:
     keyed kind. `natural_key` returns `None` for the binning kinds because their duplicate rule is
     *overlap*, not equality; this function still names their grouping columns and says
     `rule="overlap"`, which is the distinction a tool needs to explain either one.
+
+    **The machine-produced tables answer here too, and their key is the one the writing pass merges
+    on** (S51). It was readable only as a dict-key expression inside the body of each enricher pass,
+    so every consumer re-deriving a sidecar had to guess it — and the guess a reporting consumer
+    shipped, *the required members of the fact-field tuple*, was measurably coarse on two of the seven:
+    it dropped `disease_id` from `gene_validity.csv` and `variation_id` from `clinical_assertions.csv`,
+    the two tables where one subject legitimately carries several rows. Each pass now keys its
+    `existing` dict off the model's declared tuple, so the pass and this surface cannot disagree.
+
+    Reading `rule` matters as much as reading the columns: `resolution.csv`'s key is a **subject**, not
+    a unique row, and reporting it as `equality` would be a wrong answer rather than a coarse one.
     """
     try:
         model: type[BaseModel] = model_for(csv_name)
@@ -360,10 +384,17 @@ def key_fields(csv_name: str) -> TableKey | None:
         return None
     columns = tuple(_authored_spelling(model, name) for name in declared)
     authored = set(authored_field_names(model))
+    rule = getattr(model, "_KEY_RULE", None)
+    if rule is None:
+        rule = "overlap" if issubclass(model, MeasureBinRow) else "equality"
     return TableKey(
         columns=columns,
-        rule="overlap" if issubclass(model, MeasureBinRow) else "equality",
+        rule=rule,
         stamped=tuple(c for c in columns if c not in authored),
+        fallback=tuple(
+            _authored_spelling(model, name)
+            for name in getattr(model, "_KEY_FALLBACK_FIELDS", ())
+        ),
     )
 
 
@@ -420,7 +451,7 @@ def describe_table(csv_name: str) -> dict[str, Any]:
         # key of no columns are different claims.
         "key": (
             {"columns": list(table_key.columns), "rule": table_key.rule,
-             "stamped": list(table_key.stamped)}
+             "stamped": list(table_key.stamped), "fallback": list(table_key.fallback)}
             if (table_key := key_fields(csv_name)) is not None
             else None
         ),

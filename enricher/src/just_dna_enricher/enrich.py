@@ -17,7 +17,7 @@ from typing import Optional
 
 from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_rows
 from just_dna_compiler.resolution import hosting_verdict, undecided_reason
-from just_dna_format.base import derive_variant_key
+from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
@@ -485,6 +485,17 @@ class EnrichmentResult:
         return not self.unresolved
 
 
+def _subject_key(subject: object) -> tuple:
+    """The `existing` key for a subject awaiting resolution, over the columns `ResolutionRow` declares.
+
+    The dict is built with `base.merge_key` over real rows; a subject is a different type and cannot go
+    through it, so the columns are read off the same `_KEY_FIELDS` rather than restated as
+    `(v.variant_key,)`. A test asserts the two sides agree on a row built from a subject, which is what
+    keeps a future member added to the key from silently splitting the two halves of this lookup (S51).
+    """
+    return tuple(getattr(subject, name) for name in ResolutionRow._KEY_FIELDS)
+
+
 def enrich(
     spec_dir: Path,
     *,
@@ -576,7 +587,10 @@ def enrich(
         if errors:
             raise EnrichmentError(f"existing {resolution_path.name} is invalid: {errors[0]}")
         for row in rows:
-            existing.setdefault(row.variant_key, []).append(row)
+            # Keyed by the row's declared *subject* — `ResolutionRow._KEY_FIELDS`, whose rule is
+            # `subject` rather than `equality` because one rsID legitimately resolves to several loci
+            # and this pass replaces the group whole (S51).
+            existing.setdefault(merge_key(row), []).append(row)
 
     if genome_build != genome_build.strip() or genome_build != "GRCh38":
         logger.warning(
@@ -601,11 +615,11 @@ def enrich(
     # Partition the subjects that still need work (skip those an existing row already covers).
     need_pos = [
         v for v in subjects
-        if v.rsid is not None and v.chrom is None and v.variant_key not in existing
+        if v.rsid is not None and v.chrom is None and _subject_key(v) not in existing
     ]
     need_rsid = [
         v for v in subjects
-        if v.rsid is None and v.chrom is not None and v.variant_key not in existing
+        if v.rsid is None and v.chrom is not None and _subject_key(v) not in existing
     ]
     # Rows that authored BOTH halves of the identity. They need no resolution, which is exactly why
     # nothing used to look at them: they fall through to the verbatim branch below. But an authored
@@ -787,9 +801,10 @@ def enrich(
     par_twins_dropped: list[tuple[str, str, int]] = []
     for v in subjects:
         key = v.variant_key
-        if key in existing:
-            out.extend(existing[key])
-            if not any(r.chrom is not None for r in existing[key]):
+        subject = _subject_key(v)
+        if subject in existing:
+            out.extend(existing[subject])
+            if not any(r.chrom is not None for r in existing[subject]):
                 unresolved.append(key)
             continue
         if v.rsid is not None and v.chrom is None:

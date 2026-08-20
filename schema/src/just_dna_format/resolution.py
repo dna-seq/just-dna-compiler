@@ -18,6 +18,8 @@ must hash equal — see `RESOLUTION_FACT_FIELDS`).
 """
 
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from just_dna_format.base import vocabulary
@@ -54,6 +56,14 @@ class ResolutionRow(BaseModel):
     an rsid here obeys the same rule everywhere, and closes its namespace with `extra="forbid"` like
     the authored models so a typo'd column in `resolution.csv` is caught, not silently dropped.
     """
+
+    #: What makes two rows the same row — and here that is a *subject* rather than a unique row:
+    #: `enrich` builds `existing[variant_key] -> list[ResolutionRow]`, because one rsID legitimately
+    #: resolves to several loci (`locus_index` orders them) and a re-run replaces the group as a
+    #: whole. Hence `_KEY_RULE = "subject"`: uniqueness is *not* the rule, so a tool that treated
+    #: this like an equality key would call a legal one-to-many file a duplicate (S51).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key",)
+    _KEY_RULE: ClassVar[str] = "subject"
 
     model_config = ConfigDict(extra="forbid")
 

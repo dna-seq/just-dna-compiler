@@ -39,6 +39,8 @@ rather than storing a float.
 """
 
 
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import vocabulary
@@ -82,6 +84,11 @@ class LiteratureRow(BaseModel):
     `GeneMetricsRow` are — a machine-produced reference fact rather than an authored annotation — with
     `extra="forbid"` so a typo'd column is caught rather than silently dropped.
     """
+
+    #: What makes two rows the same row — the key the literature pass merges on. One article, one
+    #: row: the PMID is the article's identity, and this table describes articles rather than the
+    #: citations pointing at them (S51).
+    _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("pmid",)
 
     model_config = ConfigDict(extra="forbid")
 

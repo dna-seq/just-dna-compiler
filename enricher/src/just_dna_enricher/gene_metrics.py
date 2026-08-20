@@ -28,6 +28,7 @@ from pathlib import Path
 
 import duckdb
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
@@ -183,13 +184,13 @@ def enrich_gene_metrics(
     # Keyed by (gene, dataset), not by gene: one gene legitimately carries a row per authority — a
     # gnomAD constraint row and a ClinGen dosage row make different statements about it. Keying on the
     # gene alone made a second authority's row look like this pass's own work and suppressed the fetch.
-    existing: dict[tuple[str, str], GeneMetricsRow] = {}
+    existing: dict[tuple, GeneMetricsRow] = {}
     if output_path.exists():
         rows, errors, _ = load_csv_rows(output_path, GeneMetricsRow, "gene_metrics.csv")
         if errors:
             raise GeneMetricsEnrichmentError(f"existing gene_metrics.csv is invalid: {errors[0]}")
         for row in rows:
-            existing[(row.gene, row.dataset)] = row
+            existing[merge_key(row)] = row
 
     genes = module_genes(spec_dir)
     # "Already done" means done *by this pass*, judged on the route that wrote the row rather than on

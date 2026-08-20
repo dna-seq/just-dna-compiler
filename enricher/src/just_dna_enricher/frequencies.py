@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
-from just_dna_format.base import derive_variant_key
+from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
@@ -180,13 +180,13 @@ def enrich_frequencies(
     if errors:
         raise FrequencyEnrichmentError(f"resolution.csv is invalid: {errors[0]}")
 
-    existing: dict[tuple[str, str], FrequencyRow] = {}
+    existing: dict[tuple, FrequencyRow] = {}
     if frequencies_path.exists():
         rows, errors, _ = load_csv_rows(frequencies_path, FrequencyRow, "frequencies.csv")
         if errors:
             raise FrequencyEnrichmentError(f"existing frequencies.csv is invalid: {errors[0]}")
         for row in rows:
-            existing[(row.variant_key, row.population)] = row
+            existing[merge_key(row)] = row
 
     alleles, off_build = _alleles_from_resolution(resolution_rows)
     if off_build:
@@ -217,7 +217,9 @@ def enrich_frequencies(
 
     # Only fetch what no existing row already covers — a re-run after adding two variants costs one
     # request, not a full refetch of a table that is already right.
-    covered_keys = {key for key, _population in existing}
+    # Read off the rows, never by unpacking the merge key positionally: the key is
+    # `FrequencyRow._KEY_FIELDS` now, so a member added there would silently reshape this tuple (S51).
+    covered_keys = {row.variant_key for row in existing.values()}
     wanted = [a for a in alleles if a[0] not in covered_keys]
     # A locus gnomAD does not cover is not asked about at all. Two reasons, and the second is the
     # important one: the request would spend a slot of a 10-per-minute budget to learn nothing, and

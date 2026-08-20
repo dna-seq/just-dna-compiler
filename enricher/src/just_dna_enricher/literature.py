@@ -63,6 +63,7 @@ from pathlib import Path
 
 import httpx
 from just_dna_compiler.compiler import binning_citations, load_binning_rows, load_csv_rows
+from just_dna_format.base import merge_key
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
@@ -768,13 +769,13 @@ def enrich_literature(
             f"and this one has neither studies.csv rows nor a `pmid` on any binning row."
         )
 
-    existing: dict[str, LiteratureRow] = {}
+    existing: dict[tuple, LiteratureRow] = {}
     if output_path.exists():
         rows, errors, _ = load_csv_rows(output_path, LiteratureRow, "literature.csv")
         if errors:
             raise LiteratureEnrichmentError(f"existing literature.csv is invalid: {errors[0]}")
         for row in rows:
-            existing[row.pmid] = row
+            existing[merge_key(row)] = row
 
     citations = _citations(studies, bin_pmids)
     authored_total = sum(
@@ -800,7 +801,9 @@ def enrich_literature(
             spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi,
         )
 
-    wanted = [pmid for pmid in citations if pmid not in existing]
+    # Against the rows rather than the dict's keys, which are merge-key tuples and not bare PMIDs.
+    have = {row.pmid for row in existing.values()}
+    wanted = [pmid for pmid in citations if pmid not in have]
     fetched_at = now_utc_iso()
     result = LiteratureResult(rows=list(existing.values()), mode=mode,
                               cited=sorted(citations, key=int),

@@ -31,6 +31,7 @@ from just_dna_compiler.hints import (
 from just_dna_format.base import authored_field_names, field_vocabularies
 from just_dna_format.layout import sidecar_spellings
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
+from pydantic import BaseModel
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
@@ -479,16 +480,34 @@ def test_a_binning_kind_names_its_grouping_columns_and_says_the_rule_is_overlap(
     assert spec_rows.columns == ("gene",)
 
 
-def test_a_derived_table_with_no_declared_key_withholds_rather_than_inventing_one() -> None:
-    assert key_fields("frequencies.csv") is None
-    assert key_fields("resolution.csv") is None
+def test_a_kind_declaring_no_key_withholds_rather_than_inventing_one() -> None:
+    """The withhold is still the rule; what changed is which kinds have an answer to give (S51).
+
+    Every table this format reads now declares its key — the seven machine-produced ones did not
+    until S51 — so the honest `None` has to be shown against a model with no `_KEY_FIELDS` rather
+    than against a table that has since grown one.
+    """
+
+    class _Unkeyed(BaseModel):
+        pass
+
+    assert getattr(_Unkeyed, "_KEY_FIELDS", None) is None
+    unkeyed = [
+        csv_name
+        for csv_name in (*DRAFTABLE, *DERIVED_TABLE_MODELS)
+        if key_fields(csv_name) is None
+    ]
+    assert unkeyed == [], f"a kind lost its declared key: {unkeyed}"
 
 
 def test_every_rule_is_a_declared_member() -> None:
+    """Equality over the walked set, both ways: no kind invents a rule, and no member goes unused."""
     rules = {
-        key.rule for csv_name in DRAFTABLE if (key := key_fields(csv_name)) is not None
+        key.rule
+        for csv_name in (*DRAFTABLE, *DERIVED_TABLE_MODELS)
+        if (key := key_fields(csv_name)) is not None
     }
-    assert rules <= KEY_RULES and rules == KEY_RULES
+    assert rules == KEY_RULES
 
 
 def test_a_stamped_key_member_is_flagged_rather_than_presented_as_fillable() -> None:

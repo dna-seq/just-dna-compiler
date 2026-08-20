@@ -2662,6 +2662,34 @@ author working through this binary does not have to switch tools for a CSV heade
 [COMPILER.md § CLI](COMPILER.md) for the compiler's own table, including the three schema-tier
 functions (`keygen`, `sign`, `reference`) that surface there because `just-dna-format` ships no CLI.
 
+## What makes two rows of a sidecar the same row (S51)
+
+Every derived sidecar is merge-not-clobber, so each pass holds an `existing` map and must decide when
+an incoming row is one it already has. That decision **is published**: each row model declares
+`_KEY_FIELDS`, `just_dna_format.base.merge_key(row)` is what every pass keys its map on, and
+`just_dna_compiler.hints.key_fields(csv_name)` reports the same columns to a consumer holding only a
+filename. The pass and the surface are one statement rather than two, which is the half that keeps them
+from drifting — before 0.6.5 the key existed only as a dict-key expression inside each pass's body, so
+a tool re-deriving a sidecar had to guess it, and the guess was coarse on exactly the two tables where
+one subject legitimately carries several rows.
+
+| file | key | rule | note |
+|---|---|---|---|
+| `resolution.csv` | `variant_key` | **subject** | one rsID resolves to several loci (`locus_index` orders them); the pass replaces the group whole, so several rows sharing this key is the normal shape and **not** a duplicate |
+| `frequencies.csv` | `(variant_key, population)` | equality | one variant carries a row per ancestry group |
+| `gene_metrics.csv` | `(gene, dataset)` | equality | two writers (gnomAD constraint, ClinGen dosage); one gene legitimately carries a row per authority |
+| `gene_validity.csv` | `assertion_id`, falling back to `(gene, disease_id, moi, submitter, dataset)` | equality | the source's own id where it published one. Never `(gene, disease)` alone, which collapses 59 real ClinGen curations, and never without `submitter`, which collapses the disagreement GenCC exists to publish |
+| `clinical_assertions.csv` | `(variant_key, variation_id)` | equality | a null `variation_id` is a **value**, carrying the `not_found` row that states the archive was consulted and holds no record |
+| `gwas_effects.csv` | `association_id` | equality | per record, not per variant — a variant gains associations as papers publish |
+| `literature.csv` | `pmid` | equality | one article, one row |
+| `sources.csv` / `licensing.csv` | `(source, layer)` | equality | one source legitimately appears at two layers |
+
+**Read `rule` as well as `columns`.** `resolution.csv` is the only `subject` table today, and treating
+its key as a uniqueness constraint would report a legal one-to-many file as a duplicate. **And read
+`fallback`** — `gene_validity.csv` is the only table with one, and a consumer ignoring it is right
+about the other seven and wrong about the one where it matters. The two levels are tagged (`"id"` /
+`"grain"`), so a grain tuple can never collide with an id that happens to equal it.
+
 ## `resolution.csv` is provisional (0.5)
 
 The table's shape (`ResolutionRow` — columns, keying, the `status` vocabulary, how one-to-many expansion
