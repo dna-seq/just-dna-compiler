@@ -34,7 +34,67 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-20 (latest) — three schema facts a downstream surface could not generate (S47–S49, RM112–RM114)
+## 2026-08-20 (latest) — a triage batch of seven, and the one authored column in it (S50–S56, RM115–RM120)
+
+Not cut yet — `just-dna-format`/`just-dna-compiler` read `0.6.1` and `just-dna-enricher` `0.6.4`; these
+land in the next cut. Seven items from `just-module-creator` across three reports in one day. Additive
+only: **one new authored column** (`StudyRow.curator`), two new manifest/document fields, three new
+public names, two new checks and one documentation fix. Nothing removed, nothing retyped, no existing
+authored column moved — so an existing module's `content_signature` is unchanged, verified.
+
+**Two of the seven came from the reporter re-reading rules they had themselves asked us for**, and one
+is a retraction. That is worth recording as the useful shape of a consumer relationship rather than as
+a curiosity: S55 withdraws the argument behind S11, and S54 is the measurement they took while checking
+it — 3,668 quotes across four published modules that the rule had produced, all of them titles.
+
+- **RM115 — a derived sidecar's merge key is published, and every pass reads it.** RM113's question
+  asked of the machine-produced tables, where the key existed only as a dict-key expression inside each
+  writing pass. `hints.key_fields` already routed derived names through `derived_model_for`; the seven
+  fact models simply declared no key. The reporter's approximation was coarse on exactly the two tables
+  where one subject carries several rows, both reproduced. `KEY_RULES` gains `subject` for
+  `resolution.csv` (one rsID, several loci — reporting `equality` would call a legal file a duplicate)
+  and `TableKey` gains `fallback` for `gene_validity.csv`'s two-level key. `base.merge_key` is the
+  row-level answer and **every pass keys its `existing` map through it**, which is what stops the two
+  drifting. The rewire exposed three lookup sites restating the key positionally; one would have
+  refetched every cited article on every run.
+- **RM116 — `compiler.spec_tables(spec_dir)`.** The rows behind `content_signature`, defaults-folded,
+  plus the declared build; `content_signature` is now that plus the hash. Anything finer than a
+  whole-module digest had to restate the private roster and the `defaults:` fold, and the fold silently
+  produces a wrong answer — measured, the obvious build outside the function reports twelve changed rows
+  where there are none. COMPILER.md now names the roster and says the licensing table is outside it.
+- **RM117 — `ProvenanceItem.outranks`, and the check half filed.** `{column: why}`, so a module that
+  deliberately disagrees with a source can say which column and why. Per column, because a row may
+  outrank an archive on `clin_sig` while its `direction` is unjustified; per *variant*, because
+  `Provenance.item_count` is a published number meaning *variants carrying a record* and redefining it
+  is a silent break. Whether a check downgrades a mismatch to INFO is **open** (RM117): the
+  pre-emption guard is a convention the code cannot see, and a record is not yet bound to the value it
+  justifies.
+- **RM118 — a `provenance_quote` that is the article's own title is reported.** A title appears in its
+  own fulltext, so the quote check cannot fail on one — `quotes_found` equals `quotes_authored` while
+  nothing about any claim is established. `LiteratureResult.titles_as_quotes` plus a yellow CLI line.
+  The discriminator is the **metadata**, not the string's shape: length cannot separate a 17-word title
+  from a 17-word sentence. Warning-only. It answers for a **pinned** sidecar row too, which the reporter
+  corrected us on mid-triage: those four modules have every row pinned, so a check living in the fetch
+  loop would have fired on none of the 3,668 quotes it was written for.
+- **RM119 — a citation sidecar can no longer contradict its own `studies.csv`.** `literature.csv`
+  recorded `quotes_authored=0` beside 69 real quotes in four published modules, because it is
+  merge-not-clobber and the pass ran before the quotes existed. `_check_quote_counter_is_current` warns
+  naming both numbers. And **`Literature.quotes_unchecked`**: `_literature_block`'s per-row null guard
+  is right and does not survive aggregation — `sum()` over all-null rows is `0`, so the block published
+  exactly the sentence its own docstring calls the most misleading thing it could say.
+- **RM120 — `StudyRow.curator`.** Who located this row's quote: the field `VariantRow` has always had,
+  on the table where the attestation lives. Free text resolvable against `authorship`, never a
+  `machine_located` boolean. `ATTESTATION_BEARING` is unchanged. **Wiring it found that
+  `@three-touch-points` undercounts for `_write_studies_csv`** — there is a fourth site, the row dict,
+  where a missing key makes `DictWriter` write the header with an empty cell on every row: the reversed
+  spec re-validates and the value is gone, and only the digest fixed-point catches it.
+- **S50 — `--no-study-facts` is permanent for the rows it writes.** Documentation only, no `RMn`: the
+  merge rule is correct and the prose read as a per-run trade. ENRICHER.md and the CLI help now say the
+  linked columns are lost for those rows and that deleting `gwas_effects.csv` is the recovery.
+
+Suite 2784 → 2833.
+
+## 2026-08-20 — three schema facts a downstream surface could not generate (S47–S49, RM112–RM114)
 
 Not cut yet — `just-dna-format`/`just-dna-compiler` read `0.6.1` and `just-dna-enricher` `0.6.4`; these
 land in the next cut. Three items from `just-module-creator` in one sitting, all from the same work: their

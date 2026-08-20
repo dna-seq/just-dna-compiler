@@ -191,6 +191,16 @@ whitespace and a trailing period and **nothing more**, since a quote *containing
 quote of a paper that names itself; and the report fires only when **every** quote for a citation is
 the title, since a mixed citation has an author doing the work.
 
+**The reporter corrected their own report mid-triage, and the correction was load-bearing.** They
+measured the four modules' actual `literature.csv` and found `quotes_authored=0` with `quotes_found`
+empty on every row: the quote check had **never run** on any of the 3,668, because the sidecar was
+written before the quotes existed and is merge-not-clobber. So `quotes_found` never equalled
+`quotes_authored`, and — the part that matters here — a pinned row is not in `wanted`, so a check
+living in the fetch loop would have fired on none of them. Confirmed against the code and then against
+a test that fails on the first version. The summary is now fetched for **any cited PMID carrying a
+quote**, pinned or not, and the comparison runs over the merged ones too; `esummary` batches, so it
+costs no extra round trip in the common case. Their other two consequences are RM119.
+
 **One correction to the report, and it came from a failing test rather than from reading.** The claim
 that a title always appears in its own fulltext is *nearly* true: esummary gives the title with a
 trailing period, PMC5753237's JATS body carries it without, and `quote_matches` does not strip one, so

@@ -811,11 +811,18 @@ def enrich_literature(
                               quotes_authored=authored_total,
                               fulltext_requested=check_fulltext)
 
-    if wanted:
+    # **Titles are needed for MERGED rows too, which is the correction S54's reporter filed against
+    # their own report.** A pinned row is not in `wanted`, so the fetch loop never sees it — and on
+    # the four modules that motivated the title check, every row is pinned, so the check would not
+    # have fired on a single one of the 3,668 quotes it was written for. `esummary` batches, so
+    # adding the already-pinned PMIDs that carry a quote costs no extra round trip in the common
+    # case and nothing at all when there are none.
+    titled = [pmid for pmid in citations if pmid not in wanted and _has_quote(citations[pmid])]
+    if wanted or titled:
         owned_eutils = eutils is None
         client = eutils or EutilsClient()
         try:
-            summaries = client.esummary("pubmed", wanted)
+            summaries = client.esummary("pubmed", wanted + titled)
         except EutilsError as exc:
             raise LiteratureUnavailable(f"PubMed could not be reached: {exc}") from exc
         finally:
@@ -917,12 +924,22 @@ def enrich_literature(
                         fetched_at=fetched_at,
                     )
                 )
+            # The pinned rows: no row is written for them (the sidecar is authoritative) and the
+            # fulltext is never fetched, but the title comparison needs only the summary — so it
+            # answers here where `quotes_found` cannot.
+            for pmid in titled:
+                if _quote_is_the_title(
+                    [s for s in citations[pmid] if s.provenance_quote or s.provenance_regex],
+                    summaries.get(pmid, {}),
+                ):
+                    result.titles_as_quotes.append(pmid)
         finally:
             if owned_epmc:
                 epmc.close()
             if owned_crossref:
                 crossref.close()
 
+    result.titles_as_quotes = sorted(set(result.titles_as_quotes), key=int)
     result.rows.sort(key=lambda r: int(r.pmid))
     result.fulltext_checked = sorted(set(result.fulltext_checked), key=int)
     result.sources = sorted({r.source for r in result.rows if r.source})
@@ -1573,6 +1590,11 @@ def _normalized_title(text: str) -> str:
     normalizer aggressive enough to catch that would start rejecting located passages.
     """
     return " ".join(text.split()).rstrip(".").casefold()
+
+
+def _has_quote(studies: list[StudyRow]) -> bool:
+    """Whether any of these citing rows carries a locator at all."""
+    return any(s.provenance_quote or s.provenance_regex for s in studies)
 
 
 def _quote_is_the_title(quotes: list[StudyRow], summary: dict) -> bool:

@@ -1037,3 +1037,45 @@ def test_a_paywalled_article_is_still_compared_against_its_title(tmp_path: Path)
     result = _run(spec)
     assert result.rows[0].quotes_found is None      # never checked — no fulltext
     assert result.titles_as_quotes == [_PAYWALLED]
+
+
+def test_a_title_quote_is_reported_even_when_the_sidecar_row_is_already_pinned(
+    tmp_path: Path,
+) -> None:
+    """The reporter's correction to their own S54, and it is the case that actually occurs.
+
+    All four modules that motivated the title check ship a `literature.csv` written *before* the
+    quotes were authored: `quotes_authored=0`, `quotes_found` empty, every row pinned. A pinned row
+    is not in `wanted`, so the fetch loop never reaches it — the first version of this check would
+    not have fired on a single one of the 3,668 quotes it was written for.
+
+    The comparison needs only the summary, so it answers here where `quotes_found` structurally
+    cannot: the row is authoritative and stays untouched, and the finding is still raised.
+    """
+    title = _title_of(_REAL)
+    spec = _spec(tmp_path / "s", f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{title}"\n')
+    (spec / "literature.csv").write_text(
+        "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
+        f"{_REAL},10.1093/nar/gkx1153,,true,,0,,pubmed,resolved,2026-08-04T21:58:24Z\n",
+        encoding="utf-8",
+    )
+    result = _run(spec)
+
+    # The pinned row is authoritative and untouched — that is the merge rule, not a defect.
+    assert [r.quotes_authored for r in result.rows] == [0]
+    assert [r.quotes_found for r in result.rows] == [None]
+    # And the title is still reported, which is what the correction asked for.
+    assert result.titles_as_quotes == [_REAL]
+
+
+def test_a_pinned_row_whose_quote_is_a_real_passage_is_not_reported(tmp_path: Path) -> None:
+    """The negative half on the same path, so the merged branch is not just always-true."""
+    spec = _spec(
+        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
+    )
+    (spec / "literature.csv").write_text(
+        "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
+        f"{_REAL},10.1093/nar/gkx1153,,true,,0,,pubmed,resolved,2026-08-04T21:58:24Z\n",
+        encoding="utf-8",
+    )
+    assert _run(spec).titles_as_quotes == []

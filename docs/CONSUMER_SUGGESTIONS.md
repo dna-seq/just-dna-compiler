@@ -661,8 +661,23 @@ substance is untouched: the miss is punctuation and not evidence, the title *is*
 module whose two spellings agree gets the green check you describe. Both states are pinned in the same
 test, because the finding has to be independent of which way that falls.
 
-Your S11 point is the part we will be carrying forward, and it is answered in [S55](#s55--we-withdraw-the-reasoning-behind-attestation_bearing-and-ask-for-the-attributor-it-was-missing)
-rather than here. Documented in [ENRICHER.md § A quote that is the article's own title](ENRICHER.md).
+**On your correction, which arrived while this was being written: you are right, and the check has
+been changed.** Your consequence (1) is the one that mattered — a pinned `literature.csv` row is not
+in `wanted`, so the fetch loop never reaches it, and on the four modules that motivated this the check
+would not have fired on a single one of the 3,668 quotes. Confirmed against the code and then against
+a test that fails on the first version.
+
+Fixed by fetching the summary for **any cited PMID that carries a quote**, pinned or not, and running
+the comparison over the merged ones too. `esummary` batches, so it costs no extra round trip in the
+common case and nothing at all when no citation carries a quote. The pinned row itself stays
+authoritative and untouched — the merge rule is not what was wrong. Pinned both ways: a title-quote on
+a pinned row is reported, a real passage on a pinned row is not.
+
+Your consequences (2) and (3) are [S56](#s56--literaturecsv-can-claim-quotes_authored-0-beside-859-authored-quotes-and-nothing-compares-them),
+and both shipped there.
+
+Your S11 point is the part we will be carrying forward, and it is answered in S55 rather than here.
+Documented in [ENRICHER.md § A quote that is the article's own title](ENRICHER.md).
 Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
 <!-- triaged: 0.6.5 · sha 70e25439f0d5 -->
 
