@@ -2662,6 +2662,40 @@ author working through this binary does not have to switch tools for a CSV heade
 [COMPILER.md § CLI](COMPILER.md) for the compiler's own table, including the three schema-tier
 functions (`keygen`, `sign`, `reference`) that surface there because `just-dna-format` ships no CLI.
 
+## A quote that is the article's own title (S54)
+
+`quotes_found` checks a `provenance_quote` against the article's fulltext, and **a title appears in
+its own fulltext** — so a quote copied from the article's metadata makes the check pass while
+establishing nothing about whether any claim is in any paper. Four published modules are in exactly
+that state: 3,668 rows, **one distinct quote per PMID**, each verbatim the title. A passage located
+for a specific claim varies row to row, because different rows cite the same paper for different
+findings; one string per paper repeated across every citing row is structurally a property of the
+*article*, not of the claim.
+
+The pass reports it. `LiteratureResult.titles_as_quotes` lists the PMIDs whose every
+`provenance_quote` is the title, and the CLI prints it in yellow — a warning, never an exit code,
+because whether a title is an acceptable locator for a claim is the author's decision and what the
+tool can honestly say is that `quotes_found` is not evidence here.
+
+**The discriminator is the metadata, not the shape of the string.** A minimum length does not
+separate a title from a passage — seventeen words is an ordinary title and an ordinary sentence — and
+requiring a `provenance_regex` instead is no help, since a regex is as copyable as a quote. The
+comparison is against the title already held for that article (it arrives in the same `esummary`
+response that answers existence), so it costs no request and it answers for a **paywalled** article
+too, which is where `quotes_found` stays null and a reader has nothing else to go on.
+
+Two deliberate narrownesses. Normalisation is case, whitespace and a trailing period and nothing
+more — a quote that merely *contains* the title is a real quote of a paper that names itself, and an
+aggressive normalizer would start rejecting located passages. And the report fires only when **every**
+quote for a citation is the title: a module quoting the title on one row and a passage on another has
+an author doing the work.
+
+**One correction to the report, found against the recorded fulltext for PMC5753237.** A title appears
+in its own fulltext *nearly* always rather than always: esummary gives it with a trailing period, the
+JATS body carries it without, and `quote_matches` does not strip one — so that exact pair misses. The
+substance is unaffected, since the miss is punctuation rather than evidence, and a module whose two
+spellings agree gets the green check the report describes. Both states are pinned.
+
 ## What makes two rows of a sidecar the same row (S51)
 
 Every derived sidecar is merge-not-clobber, so each pass holds an `existing` map and must decide when

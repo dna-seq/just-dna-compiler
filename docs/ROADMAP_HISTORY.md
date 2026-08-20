@@ -72,6 +72,88 @@ model the measured pair: the digest rebuilt from `spec_tables` output over three
 folded one does not), the licence table shown outside the roster in both directions including the
 notice-cell edit, and the `ValueError` contract over both functions. 2813 → 2817.
 
+## RM119 — a citation sidecar could contradict its own studies.csv, and the manifest turned it into a confident zero
+
+✅ **Shipped in `just-dna-compiler` + `just-dna-format` on 2026-08-20**, motivating case
+[S56](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**Two separable halves, both reproduced against our own tree.**
+
+**The staleness half.** `aggression_anger/literature.csv` records `quotes_authored=0` on all three
+rows while its `studies.csv` carries 69 quotes — 65 of them citing pmid 29500382, which is the row
+reading zero. All four published modules are in that state, 3,668 quotes and not one counted. The
+mechanism is ordinary and is nobody's bug: the literature pass ran while `provenance_quote` was still
+empty, wrote what was true then, and the sidecar is merge-not-clobber so every later run keeps the old
+row. The module compiles green with a sidecar contradicting the table beside it in the same directory.
+
+**Why the compiler owes this.** Both files are loaded at the same moment and joined on `pmid`, and the
+count is arithmetic over rows already in memory. `LITERATURE_FACT_FIELDS`' own comment gives, as the
+reason `quotes_authored` is outside the fact hash, that it *"is derivable from `studies.csv`"* — which
+is precisely the argument for recomputing it at compile rather than trusting the stored copy. Shipped
+as `_check_quote_counter_is_current`, a warning naming both numbers per citation, aggregated to one
+line. It reads both citation sites through `binning_citations` — walking `bin_rows` directly reaches
+`DiplotypeRow`, which has no `pmid` column, and a suite failure caught that before it shipped.
+
+**The manifest half, and it is the more interesting one.** `_literature_block`'s docstring is right and
+its per-row guard works: `quotes_found` sums only non-null rows, because folding a null into zero would
+report an unchecked quote as a missing one — *"the single most misleading thing this block could say"*.
+What it cannot express is the total over rows that are **all** null: `sum(...)` over an empty selection
+is `0`, `Literature.quotes_found` is `int` with `default=0`, and the exact sentence the docstring warns
+against is what the block ends up saying one aggregation later. A published manifest read
+`quotes_authored: 0, quotes_found: 0` for a module with 69 authored quotes and no fulltext ever
+retrieved — indistinguishable from one where every quote was checked and missed.
+
+**Shipped `Literature.quotes_unchecked`** rather than making the pair nullable, which was the
+reporter's own preferred option and the right one: a reader needs three states — found, missed, never
+asked — and `int | None` collapses the last two back into "no number". Additive, out of
+`artifact.digest` like the rest of the block. The reporter's rejected candidate (treat `0` as `null`
+when no `quote_source` is set) is rejected for their reason: it silences the report without making the
+distinction visible, and guesses the author's intent from the absence of a second field.
+
+Pinned by a pair that is identical on `(quotes_authored, quotes_found)` and separated only by the new
+counter, which is the confusion the field exists to end.
+
+## RM118 — `quotes_found` could not fail on a title, and four published modules are titles
+
+✅ **Shipped in `just-dna-enricher` on 2026-08-20**, motivating case
+[S54](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**Measured against our own tree and reproduced here in full.** Four published `antonkulaga/*` modules
+carry a `provenance_quote` on every studies row — 3,668 of them — and **exactly one distinct quote per
+PMID**: `cognitive_intelligence` 2045 rows / 33 PMIDs / 33 quotes, `risk_impulsivity` 695/19/19,
+`big_five_personality` 859/26/26, `aggression_anger` 69/3/3. A passage located for a claim varies row
+to row, because different rows cite the same paper for different findings; one string per paper is
+structurally a property of the *article*. It is the title, verbatim including the trailing period.
+
+**Why this is a check defect and not only an authoring one.** A title appears in its own fulltext, so
+`_study_quote_found` matches, `quotes_found` equals `quotes_authored`, and the module publishes full
+quote coverage while establishing nothing about whether any claim is in any paper. The check is
+satisfiable from `esummary` metadata without retrieving a word of the article — which is the one thing
+the column exists to witness. The reporter's sharpest line is that this is *worse* than the failure S11
+was written to prevent: their own ask refused a machine-located passage, and what the refusal produced
+instead was a machine-copied title with the check agreeing.
+
+**The discriminator has to be the metadata**, which is the reporter's argument and it is right. A
+minimum length does not separate a title from a passage (seventeen words is an ordinary title and an
+ordinary sentence), and requiring a `provenance_regex` is no help because a regex is as copyable as a
+quote. `CitationHint.title` shipped for S12 and arrives in the same `esummary` response that answers
+existence, so the comparison costs no request — and it therefore answers for a **paywalled** article
+too, which is exactly where `quotes_found` stays null and a reader has nothing else.
+
+**Shipped** `LiteratureResult.titles_as_quotes` plus a yellow CLI line, warning-only and never an exit
+code: whether a title is an acceptable locator is the author's call, and what the tool can honestly say
+is that `quotes_found` is not evidence here. Two deliberate narrownesses — normalisation is case,
+whitespace and a trailing period and **nothing more**, since a quote *containing* the title is a real
+quote of a paper that names itself; and the report fires only when **every** quote for a citation is
+the title, since a mixed citation has an author doing the work.
+
+**One correction to the report, and it came from a failing test rather than from reading.** The claim
+that a title always appears in its own fulltext is *nearly* true: esummary gives the title with a
+trailing period, PMC5753237's JATS body carries it without, and `quote_matches` does not strip one, so
+that exact pair misses. The substance is unaffected — the miss is punctuation, not evidence — and both
+states are pinned: the finding fires either way, and a module whose two spellings agree gets the green
+check the report describes.
+
 ## RM115 — a derived sidecar's merge key lived inside the pass that writes it
 
 ✅ **Shipped in `just-dna-format` + `just-dna-compiler` + `just-dna-enricher` on 2026-08-20**,

@@ -203,6 +203,7 @@ class LiteratureResult:
     doi_verdicts_stale: int = 0                                # pinned DOI answers about another DOI
     doi_never_checked: int = 0                                 # cited DOIs no run has resolved
     noncommercial_quoted: list[str] = field(default_factory=list)   # quoted under a no-sale licence
+    titles_as_quotes: list[str] = field(default_factory=list)      # PMIDs whose quote IS the title (S54)
     fulltext_requested: bool = True                            # --fulltext/--no-fulltext, as run
     quotes_authored: int = 0
     quotes_found: int = 0
@@ -882,6 +883,12 @@ def enrich_literature(
                             1 for s in quotes
                             if _study_quote_found(s, text, regex_timeout=regex_timeout)
                         )
+                # Costs no request: the title arrived in the same `esummary` response that answered
+                # existence. Outside the `check_fulltext` guard deliberately — this compares the quote
+                # against metadata already held, so it answers even for a paywalled article whose
+                # fulltext was never retrievable, which is where the defect hides.
+                if quotes and _quote_is_the_title(quotes, summary):
+                    result.titles_as_quotes.append(pmid)
                 # What the retrieved text settled is tallied once, after the loop, over every row —
                 # see `_tally_quotes`. The per-row facts it reads (`quotes_authored`, `quotes_found`,
                 # `quote_source`) are written right here, so the tally is the same arithmetic applied
@@ -1557,6 +1564,45 @@ def _doi_token(raw: str) -> str | None:
     """The bare `10.x/y` token inside a free-form DOI cell, lowercased (DOIs are case-insensitive)."""
     match = DOI_PATTERN.search(raw)
     return match.group(0).rstrip(".,;").casefold() if match else None
+
+
+def _normalized_title(text: str) -> str:
+    """A title reduced to what a comparison should ignore: case, whitespace and a trailing period.
+
+    Nothing more. A quote *containing* the title is a real quote of a paper that names itself, and a
+    normalizer aggressive enough to catch that would start rejecting located passages.
+    """
+    return " ".join(text.split()).rstrip(".").casefold()
+
+
+def _quote_is_the_title(quotes: list[StudyRow], summary: dict) -> bool:
+    """Whether every `provenance_quote` for this citation is just the article's own title (S54).
+
+    **A title always appears in its own fulltext, so this check cannot fail on one** — `quotes_found`
+    equals `quotes_authored`, and the module reports full quote coverage while establishing nothing
+    about whether any claim is in any paper. Measured on four published modules: 3,668 rows, one
+    distinct quote per PMID, each verbatim the title including the trailing period. That is worse than
+    the failure the machine-located-passage refusal was written to prevent, because the check agrees.
+
+    **The discriminator is the metadata, not the shape of the string.** A minimum length does not
+    separate a title from a passage — seventeen words is an ordinary title and an ordinary sentence —
+    and requiring a regex instead is no help, since a regex is as copyable as a quote. The comparison
+    is against the title we already hold for that article, and it costs no request.
+
+    `every`, not `any`: a module that quotes the title on one row and a located passage on another has
+    an author who is doing the work, and flagging the citation would be noise. A citation where the
+    title is the only thing on offer is the reported case.
+    """
+    title = bibliographic(summary).get("title")
+    if not title:
+        return False
+    target = _normalized_title(title)
+    located = [s.provenance_quote for s in quotes if s.provenance_quote]
+    if not located or len(located) != len(quotes):
+        # Some row uses a regex, which this cannot judge — withhold rather than report (the house
+        # rule: unknown is not false).
+        return False
+    return all(_normalized_title(q) == target for q in located)
 
 
 def _study_quote_found(study: StudyRow, fulltext: str, *, regex_timeout: float) -> bool:

@@ -628,6 +628,44 @@ we took on authority rather than on reasons. `S11` is ours, and it did not survi
 
 ## S54 — `quotes_found` is satisfied by the article's own title, and four published modules do exactly that
 
+**Status — accepted, shipped as [RM118](ROADMAP_HISTORY.md#rm118--quotes_found-could-not-fail-on-a-title-and-four-published-modules-are-titles) in the tree (not yet cut). Your candidate fix, both halves of it.**
+Reproduced against our own tree before writing anything, and your numbers hold: 2045/33/33,
+695/19/19, 859/26/26, 69/3/3 — row count, distinct PMIDs and distinct quotes, one quote per PMID on
+all four. The quotes are titles.
+
+`LiteratureResult.titles_as_quotes` lists the PMIDs whose every `provenance_quote` is the article's
+title, and the CLI prints it in yellow. Warning, never an exit code: whether a title is an acceptable
+locator for a claim is the author's decision, and what the tool can honestly say is that
+`quotes_found` is not evidence there.
+
+**Your reasoning about the discriminator is what shipped, including the part that rejects the
+alternatives.** The comparison is against `bibliographic()`'s title, which arrives in the same
+`esummary` response that answers existence, so it costs no request — and it therefore answers for a
+**paywalled** article too, which we think is the better half of the deal: that is exactly where
+`quotes_found` stays null and a reader has nothing else to go on. Your rejected candidates are
+rejected for your reasons; length cannot separate a seventeen-word title from a seventeen-word
+sentence, and a regex is as copyable as a quote.
+
+Two narrownesses we added on top, both because an over-eager version of this would be worse than
+none. Normalisation is case, whitespace and a trailing period and **nothing more** — a quote that
+*contains* the title is a real quote of a paper that names itself. And it fires only when **every**
+quote for a citation is the title: a module quoting the title on one row and a passage on another has
+an author doing the work, and flagging it would be noise.
+
+**One correction to your report, and it came from a test failing rather than from re-reading you.**
+*"A title appears in its own fulltext, always"* is nearly true rather than true. Against the recorded
+JATS for PMC5753237, esummary gives `ClinVar: improving access to variant interpretations and
+supporting evidence.` **with** a trailing period, the article body carries it **without**, and
+`quote_matches` does not strip one — so that exact pair misses and `quotes_found` reads 0. The
+substance is untouched: the miss is punctuation and not evidence, the title *is* in the text, and a
+module whose two spellings agree gets the green check you describe. Both states are pinned in the same
+test, because the finding has to be independent of which way that falls.
+
+Your S11 point is the part we will be carrying forward, and it is answered in [S55](#s55--we-withdraw-the-reasoning-behind-attestation_bearing-and-ask-for-the-attributor-it-was-missing)
+rather than here. Documented in [ENRICHER.md § A quote that is the article's own title](ENRICHER.md).
+Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+<!-- triaged: 0.6.5 · sha 70e25439f0d5 -->
+
 *Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 as installed. Measured, not
 theorised — the numbers below are from your own tree.*
 
@@ -800,11 +838,91 @@ carries both, and matches what `VariantRow` already does.
 **What we changed on our side, so you can weigh how much of this is ours to fix.** Our `CLAUDE.md`
 forbade an agent to locate a passage at all, citing `S11`. That prohibition is reversed as of
 2026-08-20: our agents may locate and write a `provenance_quote`, verbatim, and must record who
-located it. Until `StudyRow` has somewhere to put that, we can only write it to our own logs, where
-it does not travel with the module — which is the concrete cost of the gap, and the reason we are
-asking rather than working around it.
+located it.
+
+### Addendum, hours later: we were wrong that there is nowhere to put it, and the real ask is narrower
+
+The paragraph above originally ended *"we can only write it to our own logs, where it does not travel
+with the module"*. We then actually did the remediation and published it, and both halves of that
+were wrong. Verified against a real publish and manifest read-back — three records survive:
+
+| Where we put it | Grain | On the published manifest |
+|---|---|---|
+| `module_spec.yaml: authorship` (`Contribution`) | per version | `manifest.authorship`, verbatim |
+| `provenance.json` — `ProvenanceItem.rationale`, keyed by `variant_key` | per **variant** | `manifest.provenance` `{generator, model, agent_version, item_count, sha256}` |
+| `logs/*.log` | per run, free text | `manifest.logs` `{name, sha256, size}` |
+
+`provenance.json` is close to what we are asking for and we should have said so: it is per-row-ish,
+free text, it travels, and `ProvenanceDoc` already carries `model` and `agent_version` in its header.
+So please read this report as narrower than it was written: **the gap is the `(row, quote)` grain, not
+the concept.** A `studies.csv` row is `(variant_key, pmid)`; `ProvenanceItem` is keyed on
+`variant_key` alone, so one variant cited by two papers for two different findings collapses into a
+single item and cannot say which passage came from where. That is the case a `StudyRow` attributor
+would fix and `provenance.json` cannot.
+
+**And the collapse is not hypothetical — it is the common case on a real module.** Measured on
+`data/output/corrected_modules/big_five_personality/studies.csv`, 859 rows over 735 distinct variants
+and 26 PMIDs:
+
+```
+pmids citing one variant   1     2     3     4     5
+variants                 640    75    14     3     3
+```
+
+**95 of 735 variants are cited by more than one paper**, up to five (`rs11082011` is cited by
+29292387, 29500382, 29942085, 30643256 and 35898629). And **37 of those are cited by different papers
+for different `trait_efo_id`s** — genuinely different findings about the same variant, each of which
+would carry its own located passage from its own article, and all of which map onto one
+`ProvenanceItem`. That is 13% of the module's variants, on a module of ordinary size, so a
+`variant_key`-grained attribution would be lossy for one row in eight before anybody did anything
+unusual.
+
+**One thing worth deciding while you are here.** `upgrade` deliberately carries neither
+`provenance.json` nor the logs — `carry = set(present) - {PROVENANCE_FILE}`, commented as *"they
+describe how the predecessor was built, and this mechanical re-publish has its own (absent)
+provenance"*. That reasoning is right for build metadata and we are not asking you to change it. But
+under it, a contract upgrade carries `studies.csv` forward with every quote intact and drops the only
+record of who located them. If the attributor lands on `StudyRow` it travels with the row and the
+question disappears; if instead you decide `provenance.json` is the answer, this is the corner that
+needs a rule.
 
 ## S56 — `literature.csv` can claim `quotes_authored: 0` beside 859 authored quotes, and nothing compares them
+
+**Status — accepted, both halves shipped as [RM119](ROADMAP_HISTORY.md#rm119--a-citation-sidecar-could-contradict-its-own-studiescsv-and-the-manifest-turned-it-into-a-confident-zero) in the tree (not yet cut).**
+Reproduced on our own copy of the data before writing: `aggression_anger/literature.csv` reads
+`quotes_authored=0` on all three rows while its `studies.csv` carries 69 quotes — 65 of them on pmid
+29500382, the row you quoted.
+
+**The comparison shipped as your first candidate, at compile.**
+`_check_quote_counter_is_current` counts the non-empty `provenance_quote`/`provenance_regex` cells per
+PMID and warns when the sidecar disagrees, naming both numbers as you asked, aggregated to one line.
+Warning rather than error, for your reason. Your `LITERATURE_FACT_FIELDS` observation is what settled
+where it goes — the comment already argues that `quotes_authored` is derivable from `studies.csv`, and
+that is the argument for recomputing rather than trusting the stored copy.
+
+**Your second candidate — recompute on merge — is not shipped, and we would still like it.** You are
+right that it fixes new runs and leaves every published module reporting zero, which is why the
+comparison came first; the pass-side half is enricher work and belongs with the next literature-pass
+change rather than being bolted on here. Your rejected candidate is rejected for your reason: treating
+`0` as `null` when no `quote_source` is set silences the report without making the distinction visible,
+and guesses the author's intent from the absence of a second field.
+
+**The second half is the better find and it shipped too.** You are exactly right about the mechanism:
+`_literature_block`'s per-row guard works and does not survive the aggregation, because `sum(...)` over
+rows that are all null is `0`. The docstring's own sentence is what the block ended up saying, one
+aggregation later. Shipped `Literature.quotes_unchecked` — your second option, and the right one for
+the reason you gave: three states need three numbers, and `int | None` collapses "never asked" and
+"asked and got nothing" back into "no number". It sits beside `open_access_count` as you predicted.
+Pinned by a pair of modules identical on `(quotes_authored, quotes_found)` and separated only by the
+new counter, which is the confusion it exists to end.
+
+One thing found while wiring it: reading both citation sites means going through `binning_citations`
+rather than walking the bin rows, because `DiplotypeRow` has no `pmid` column at all. The suite caught
+it. A bin-only citation now carries a denominator of zero rather than being skipped, so a literature
+row reachable only from a bin does not read as stale.
+
+Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+<!-- triaged: 0.6.5 · sha 45f7a4949545 -->
 
 *Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 / compiler 0.6.1 as installed.
 Found while remediating a real module's quotes; the numbers are from the four published

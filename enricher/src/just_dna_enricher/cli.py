@@ -626,6 +626,17 @@ def literature_(
             f"text in this module's annotation layer",
             fg=typer.colors.YELLOW,
         )
+    # Yellow and never an exit code, for the same reason: what the author wrote is a quote, and
+    # whether a title is an acceptable locator for their claim is theirs to decide. What the tool can
+    # say is that `quotes_found` establishes nothing here — a title always appears in its own
+    # fulltext, so this is the one shape the quote check cannot fail on (S54).
+    if result.titles_as_quotes:
+        typer.secho(
+            f"  provenance_quote is the article's own title: {result.titles_as_quotes} — a title "
+            f"appears in its own fulltext, so quotes_found cannot fail on it and establishes nothing "
+            f"about whether the claim is in the paper. Replace it with the passage the claim rests on",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command("pgx")

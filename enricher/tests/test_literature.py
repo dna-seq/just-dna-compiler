@@ -937,3 +937,103 @@ def test_an_offline_skip_never_asserts_the_sidecar_is_absent(tmp_path: Path) -> 
     assert record.skipped == "offline"
     assert "carries no literature.csv" not in (record.detail or "")
     assert "no citation this module makes carries a pinned answer" in (record.detail or "")
+
+
+# ── S54: a quote that is the article's own title ─────────────────────────────────────────────────
+
+
+def _title_of(pmid: str) -> str:
+    """The recorded title, read from the payload at runtime rather than pasted in."""
+    return _ESUMMARY["result"][pmid]["title"]
+
+
+def test_a_title_as_quote_is_reported_whatever_the_quote_check_makes_of_it(tmp_path: Path) -> None:
+    """S54's point stands, with one correction the real fulltext forced.
+
+    The report says a title *always* appears in its own fulltext, so `quotes_found` can never fail on
+    one. Against the recorded JATS for PMC5753237 that is nearly but not quite true: esummary gives
+    the title with a trailing period, the article body carries it without, and `quote_matches` does
+    not strip one — so this exact pair misses. The substance is unaffected, because the miss is
+    punctuation and not evidence: the title IS in the text, and a module whose esummary and body agree
+    on the punctuation gets the green check the report describes. Either way `quotes_found` is
+    answering a question nobody asked, which is why the finding is independent of it.
+    """
+    title = _title_of(_REAL)
+    spec = _spec(tmp_path / "s", f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{title}"\n')
+    result = _run(spec)
+
+    assert result.rows[0].quotes_authored == 1
+    assert result.titles_as_quotes == [_REAL]
+
+    # The title really is in the article; only the trailing period separates the two spellings.
+    text = extract_text(_FULLTEXT_XML)
+    assert not quote_matches(title, text)
+    assert quote_matches(title.rstrip("."), text)
+
+    # And spelled the way the body does, the check goes green while the finding still fires — which
+    # is the state the four measured modules are in.
+    bare = title.rstrip(".")
+    spec2 = _spec(tmp_path / "bare", f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{bare}"\n')
+    green = _run(spec2)
+    assert green.rows[0].quotes_found == green.rows[0].quotes_authored == 1
+    assert green.titles_as_quotes == [_REAL]
+
+
+def test_a_located_passage_is_not_reported_as_a_title(tmp_path: Path) -> None:
+    """The negative half, on the same article, with a phrase taken from its real fulltext."""
+    text = extract_text(_FULLTEXT_XML)
+    phrase = "variant interpretations"
+    assert phrase in text.casefold()
+
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},{phrase}\n")
+    result = _run(spec)
+    assert result.rows[0].quotes_found == 1
+    assert result.titles_as_quotes == []
+
+
+def test_the_title_comparison_ignores_case_and_the_trailing_period_and_nothing_else(
+    tmp_path: Path,
+) -> None:
+    """Normalisation is deliberately shallow, because an aggressive one starts rejecting passages.
+
+    The trailing period is in scope because the four measured modules carry it verbatim. A quote that
+    merely *contains* the title is a real quote of a paper that names itself, and is not reported.
+    """
+    title = _title_of(_REAL)
+    spelled = title.upper().rstrip(".")
+    spec = _spec(tmp_path / "a", f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{spelled}"\n')
+    assert _run(spec).titles_as_quotes == [_REAL]
+
+    containing = f"We follow the approach of {title} in this analysis"
+    spec2 = _spec(tmp_path / "b", f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{containing}"\n')
+    assert _run(spec2).titles_as_quotes == []
+
+
+def test_a_citation_quoting_the_title_on_one_row_and_a_passage_on_another_is_not_reported(
+    tmp_path: Path,
+) -> None:
+    """`every`, not `any` — an author doing the work on some rows is not the reported case.
+
+    The four measured modules carry exactly one distinct quote per PMID, repeated across every citing
+    row, which is the shape this targets. A mixed citation has a human in it.
+    """
+    title = _title_of(_REAL)
+    phrase = "variant interpretations"
+    spec = _spec(
+        tmp_path / "s",
+        f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{title}"\nrs1801133,{_REAL},{phrase}\n',
+    )
+    assert _run(spec).titles_as_quotes == []
+
+
+def test_a_paywalled_article_is_still_compared_against_its_title(tmp_path: Path) -> None:
+    """The comparison is against metadata already held, so it answers where the fulltext never could.
+
+    That matters: an article whose fulltext is unretrievable is exactly where `quotes_found` stays
+    null and a reader has nothing else to go on.
+    """
+    title = _title_of(_PAYWALLED)
+    spec = _spec(tmp_path / "s", f'rsid,pmid,provenance_quote\nrs334,{_PAYWALLED},"{title}"\n')
+    result = _run(spec)
+    assert result.rows[0].quotes_found is None      # never checked — no fulltext
+    assert result.titles_as_quotes == [_PAYWALLED]
