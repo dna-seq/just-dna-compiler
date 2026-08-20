@@ -425,24 +425,31 @@ says *stop*, so do not collapse them into one "the loop halts" rule. All are cou
 remembered:
 
 ```
-grep -c 'Status\*\* open — \*\*0\.6\*\*' docs/ROADMAP.md    # 0.6-targeted items
-grep -h '^version' */pyproject.toml                          # versus the top CHANGELOG heading
+grep -c 'Status\*\* open — \*\*a minor' docs/ROADMAP.md   # sizeable items, awaiting a minor
+grep -c 'Status\*\* open — \*\*a patch' docs/ROADMAP.md   # patch-level fixes
+grep -h '^version' */pyproject.toml                        # versus the top CHANGELOG heading
 ```
 
-**Ten or more sizeable open 0.6 items → 0.6 development should START. This is the dev-start trigger, and
-it is *not* "0.6 scope is closing".** Read it the wrong way — as a scope freeze, a ceiling, a
+**Count the idiom, not a fixed version number.** Those greps read the two forms `ROADMAP.md` actually
+uses — `**Status** open — **a minor, release undecided**` and `**a patch**` — because the first version
+of this block counted `**0.6**` and went on counting it after 0.6 shipped. It then returned `0` however
+full the queue was, which is the worst way for a counter to fail: a stale one reads as an all-clear, and
+the whole point of counting off the tree is that nothing here is remembered.
+
+**Twenty or more sizeable open items → development of the next minor should START. This is the dev-start
+trigger, and it is *not* "scope is closing".** Read it the wrong way — as a scope freeze, a ceiling, a
 stop-filing rule — and it inverts: it would silence the loop exactly when the release it feeds is ready
 to begin. A minor keeps taking additive items right up until it is cut, so filing continues after the
 trigger fires; what changes is that enough grounded work has accumulated to be worth *building*, and
 scheduling a build is the user's call. Re-read the set before calling it: an item that duplicates
 another, or that never had a reproduced case under it, is not grounded and should be merged or demoted
 rather than counted. If they all survive that pass — each with a motivating case and a reproduction —
-raise it with an `AskUserQuestion` (it shows red in herdr): the question is *shall 0.6 development
-start*, never *shall we stop filing*. Ask once per pass, not once per item over the line.
+raise it with an `AskUserQuestion` (it shows red in herdr): the question is *shall the next minor start*,
+never *shall we stop filing*. Ask once per pass, not once per item over the line.
 
-**Twenty sizeable open 0.6 items is the ceiling — there, stop filing and block.** A backlog that size
+**Thirty sizeable open items is the ceiling — there, stop filing and block.** A backlog that size
 means the dev-start trigger fired and went unanswered for long enough that the queue is no longer being
-managed by anyone, and a twenty-first item buys nothing: nobody reads that far, and an unread item is
+managed by anyone, and a thirty-first item buys nothing: nobody reads that far, and an unread item is
 indistinguishable from an unfiled one. Say what you would have filed, in the reply to the consumer, and
 block rather than adding to a list that has stopped being a plan.
 
@@ -456,9 +463,11 @@ contract, anything a consumer could act on and be harmed by. That is a judgement
 agent's to make; do not sit on one because a counter reads four.
 
 **The numbers will drift, and they are a trigger rather than a law.** This is an active testing phase, so
-they were picked to be roughly right and are expected to move. Update them here when they do — and note
-that the count is deliberately of *sizeable* items, since a batch of one-line legibility fixes is not the
-thing that needs a planning decision.
+they were picked to be roughly right and are expected to move — the two item counts were **10/20 until
+2026-08-20**, raised to 20/30 because a queue of eleven grounded items was nowhere near needing a
+planning decision and the loop was spending the trigger too early. Update them here when they move
+again — and note that the count is deliberately of *sizeable* items, since a batch of one-line
+legibility fixes is not the thing that needs a planning decision.
 
 ---
 
