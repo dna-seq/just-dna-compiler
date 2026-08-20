@@ -21,6 +21,174 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
+# The 2026-08-19 doc-audit patch round — six of the eight, fixed
+
+The 2026-08-19 audit validated `just-module-creator`'s 24 per-table dossiers against this repo's code
+and turned up eight code findings, filed as RM104–RM111 and none of them fixed at the time. Six were
+sized as patches and are below. **The two that are not here are not oversights**: RM108 (a ClinGen
+re-curation appends beside its predecessor) needs a currency notion decided before anything can be
+written, and RM110 (`constraint_flags` has two producers with two encodings) moves
+`gene_metrics.signature` for every module already carrying snapshot rows — legal, but a recompile the
+ecosystem should be told about. Both stay open as minors in [ROADMAP.md](ROADMAP.md).
+
+**What the six have in common is worth naming, because it is not "eight unrelated bugs".** Five of the
+six are a *derived* value that had been restated by hand somewhere else — a suppression set restated
+beside its merge key, an allowlist restated beside the extension set, a dupe key registered in the map
+one loop reads and not the one that would have found it, a check re-run without the filter its
+neighbour eleven lines away carries, a `Field` description restating an analogy that is true of a
+different field. The sixth is the empty-work path nobody runs. None of them was visible to the suite,
+which was green at 2859 tests throughout.
+
+## RM104 — `enrich_gene_metrics` raised `UnboundLocalError` on the ordinary re-run
+
+✅ **Shipped in `just-dna-enricher` on 2026-08-20**, from the 2026-08-19 doc audit
+(just-module-creator's `gene_metrics.md`).
+
+`reference` was bound only inside `if wanted:` and read unconditionally forty lines below as
+`constraint_routes_consulted = reference is not None or not offline`. So both runs where `wanted` comes
+back empty raised out of the pass: the **idempotent re-run**, where every gene already has a row, and
+any module with **no `variants.csv`**. Reproduced on a scratch `hboc_palb2` at enricher 0.6.4, offline
+and online, through the library and through the CLI.
+
+**Worse than a crash, which is why it was the only `high` in the batch.** The pass is documented as
+merge-not-clobber, so the re-run is the *supported* path, and RM101 built `GeneMetricsEnrichmentError`
+precisely so a caller could wrap this pass in one `except`. An `UnboundLocalError` is outside that
+contract, so every caller who followed RM101's advice was unprotected in exactly the case they were
+told to expect.
+
+One line — `reference: Path | None = None` before the branch, which is also the honest value, since
+with nothing wanted no snapshot was resolved. **The test is the part that mattered.** Every existing
+merge test re-runs with `wanted` non-empty, which is how a green suite never saw either path; the new
+one runs the pass twice over a table it has already filled and once on a module that names no gene, and
+fails with the original `UnboundLocalError` on the pre-fix tree. `@empty-work-is-a-path`.
+
+## RM107 — a duplicate `(source, layer)` row compiled green under `--strict`
+
+✅ **Shipped in `just-dna-compiler` on 2026-08-20**, from the 2026-08-19 doc audit
+(just-module-creator's `licensing.md`).
+
+`SourceRow` is keyed `(source, layer)` — `draft._CORE_DUPE_KEYS` refuses to append over it and
+`licensing.merge_sources_csv` merges on it, so every other writer in the ecosystem already treated it as
+the key. The compiler was the outlier. Measured on `hboc_palb2`: appending an exact copy of a row gave
+`strict compile ok: True`, no warning of any kind, `row_count` 7, and a **moved** `source_signature`. A
+duplicate carrying the *opposite* `commercial_use` also compiled green — and `licensing.csv` is the one
+file the compile gate keys on, so which of the two rows the gate reads decides whether the module
+compiles at all.
+
+**The fix as filed would have done nothing, and that is the durable half.** `_TABLE_DUPE_KEYS[SourceRow]`
+is only consulted by `_validate_table_kind`, which `validate_spec` called from its `_TABLE_KINDS` loop —
+and `sources.csv` is a `_FACT_TABLES` member, so no loop would have reached the new entry. Writing the
+red test first is what surfaced that: it failed on `valid=True` with the map entry already in place.
+What shipped is the call site widened — the fact-table loop runs `_validate_table_kind` too, named by
+the file actually read so either sidecar spelling reports itself — plus the map entry, plus `SourceRow`
+moved *out* of `draft._CORE_DUPE_KEYS`, which had been carrying it only because the compiler had no key
+for it. Parity comes free: `compile_module` runs `validate_spec` and returns its errors, so both
+commands refuse with one sentence.
+
+"Keyed kind ⇒ dupe-checked" was never the dividing line — which loop calls the checker was.
+`@which-loop-calls-the-checker`.
+
+**Checked while in there, since the item asked**: the map covers five of the nine authored kinds and the
+other four are the binning kinds, whose duplicate rule is *overlap* rather than equality and which
+`validate_bins` owns — so the authored side is complete. The remaining gap is the other fact tables,
+which have no duplicate rule at all; RM109's own defect produced exactly such a pair and nothing
+reported it. Not widened here: that is a tightening across every module carrying a fact sidecar, and it
+wants its own item.
+
+## RM109 — the gene-metrics fetch-suppression key was not derived from the merge key
+
+✅ **Shipped in `just-dna-enricher` on 2026-08-20**, from the 2026-08-19 doc audit
+(just-module-creator's `gene_metrics.md`).
+
+The merge key is `(gene, dataset)`; the suppression set was
+`{row.gene for row in existing.values() if (row.source or "").startswith("gnomad")}` — a proxy for the
+key, and the two disagree exactly where it matters. A hand-written correction that honestly records
+`source="manual"` did not mark its gene done, the fetch ran anyway, and the file came back with two rows
+sharing `(gene, dataset)` and contradicting each other. `compile_module` emits zero warnings on that
+(see RM107's closing note), so the manifest reports it as ordinary.
+
+`done` now asks whether a row already sits under a key **this pass would write** — the gene plus one of
+the two dataset labels it writes, one per route. Scoping to those two is the half worth keeping rather
+than collapsing to the gene: a second authority's ClinGen dosage row carries a different `dataset`, is a
+different key, and must not suppress this pass's fetch. That is the older bug in the other direction,
+and it is why the key is a pair. `clingen.py`, the sibling pass in the same package, has always tested
+`(gene, dataset) in existing`; the shape was understood and simply not applied here.
+
+The general rule is the durable half and is now written down: **a suppression set must be derived from
+the merge key, never restated beside it** — the same derive-don't-restate rule `@draft-appends` and
+`@fieldnames-from-model` carry. `@suppression-from-merge-key`.
+
+## RM106 — the `faf95` arithmetic warning was published twice
+
+✅ **Shipped in `just-dna-compiler` on 2026-08-20**, from the 2026-08-19 doc audit
+(just-module-creator's `frequencies.md`).
+
+`_check_frequency_arithmetic` runs in `validate_spec` (added by RM93 for parity) and again in the
+compile-side `_frequency_checks`, with no dedup — while `_literature_checks`, eleven lines below it,
+*does* filter and says why in a comment. Measured on a doctored `hboc_palb2`: **15 warnings, 14
+distinct**, the `faf95 … exceeds the group's own allele frequency` line appearing twice.
+`manifest.compilation.warnings` is a published field (RM44), so the duplicate is published, and any
+consumer counting warnings overstates what is wrong with the module.
+
+Filtered on the message, the idiom the neighbour already uses. Only the warnings need it: validate's
+errors abort the compile before that closure runs. Second instance of the shape after RM94, so the test
+asserts the general property beside the specific one — `len(warnings) == len(set(warnings))` over the
+whole published list — and fails `2 == 1` on the pre-fix tree. `@no-rerun-with-counts` grew the half it
+was missing: the rule already said never re-run a check whose message embeds a count, and the countless
+case still owes the filter.
+
+## RM105 — `logo.jpeg` compiled, was attested, and was never uploaded
+
+✅ **Shipped in `just-dna-enricher` on 2026-08-20**, from the 2026-08-19 doc audit
+(just-module-creator's `logo.md`).
+
+`manifest.LOGO_EXTENSIONS` is `{png, jpg, jpeg}` and `_collect_logo` iterates `sorted(...)`, so **`jpeg`
+wins over `jpg` over `png`** — while `upload._ALLOW_PATTERNS` hand-spelled `logo.png` and `logo.jpg` and
+not `logo.jpeg`. The result is a manifest attesting, by name and sha256, bytes the published repo does
+not carry: the exact failure `@publisher-allowlist-derived` exists to prevent, in the one place the
+allowlist was still hand-spelled. `verify_manifest(check_logo=True)` does not catch it either — an
+absent file is not a failure there, so an attestation check that tolerates absence cannot stand in for
+the publisher carrying the file.
+
+The logo half now derives from `LOGO_EXTENSIONS`, the way the readme half already derives from
+`README_CANDIDATES`. `_collect_logo`'s pick order is deliberately untouched: jpeg-winning is the fact
+that made this visible, not the defect, and changing it would move published artifacts. The test asserts
+**set equality** — a floor passes on the pre-fix tree, two of the three already being listed — and then
+compiles a real example carrying a `logo.jpeg` to check that what the manifest attests is what the plan
+sends.
+
+**The process lesson is the one to keep.** This skew was named twice and owned by nobody: once in the
+CHANGELOG entry that introduced the derived allowlist, and once in a code comment that deferred it
+(*"a pre-existing instance of that same skew, left alone here because widening it is not this item's
+decision"*). Deferring a neighbouring gap is fine; not filing it as an `RMn` in the same commit is how a
+known defect survives two releases.
+
+## RM111 — three shipped strings asserted a registry override of `license` that nothing performs
+
+✅ **Shipped in `just-dna-format` + `just-dna-compiler` on 2026-08-20**, from the 2026-08-19 doc audit
+(just-module-creator's `module_spec.md`).
+
+`ModuleSpecConfig.license`'s description (*"Advisory and registry-overridable, exactly like
+`module.version`: the marketplace stamps the canonical value on publish"*), the matching comment in the
+compiler's manifest builder, and `manifest.py`'s own module docstring all stated that a publishing
+registry overrides the authored `license`. Verified in the registry checkout: its publish path never
+writes that field. `module.version` really is stamped, so the analogy the strings lean on is sound for
+*version* and false for *license* — which is exactly how the claim survived review.
+
+**Intent decided the way the item predicted, and the code already agreed with it**: a licence
+declaration is the author's claim, and `_check_declared_license_agrees` compares it against the
+annotation-layer sources and *warns in both modes* rather than replacing either — the opposite of
+overriding it. So the strings were corrected, not the behaviour, and each now says what actually happens
+and names `module.version` as the field that is genuinely stamped.
+
+**Four sites, not three.** The item cited `normalize.py:40`; that line is the `IDENTITY_AUTHORITY_KEYS`
+note, which is correct about the identity keys and says nothing about `license`. The real third and
+fourth were `manifest.py`'s module docstring and `ModuleManifest.license`'s own description — so **two**
+shipped `Field(description=…)` were involved, as the item said, and they reach authors through
+`describe_table` / `authoring_reference`. `@field-description-is-a-claim`: an analogy inside a field
+description is a claim a reader will act on, and it does not travel with the field.
+
+
 # The RM10/RM11 session — a downstream MCP surface restated three schema facts it could not generate
 
 Four items from `just-module-creator` on 2026-08-20, filed together because they came out of one work

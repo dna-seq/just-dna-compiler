@@ -35,9 +35,13 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.6.4 is the current line** — `just-dna-enricher` reads `0.6.4`, tagged and built into
-`dist/`; format and compiler stay at `0.6.1`. Three partial cuts in a row, which is normal here: 0.6.2
-was RM101, 0.6.3 was S41–S44 and 0.6.4 is S45, and none of them touched a model or the compiler. `schema_version` stays `"1.0"` and has since 0.4. **Tagged is not published**: whether a
+**Status:** **0.6.6 is the current line, uncut** — all three packages read `0.6.6` in their
+`pyproject.toml`, and `v0.6.5` (2026-08-20, S50–S56) is the newest tag. What sits uncut on top of it is
+the S57–S60 batch (RM121–RM124) and the 2026-08-19 doc-audit patch round (RM104–RM107, RM109, RM111).
+**This paragraph read "0.6.4 is the current line" for two releases**, which is the same failure the
+*Active items* heading had and the reason both are called out rather than quietly corrected: a status
+line nobody re-reads is a status line that lies, so re-read this one whenever a version moves.
+`schema_version` stays `"1.0"` and has since 0.4. **Tagged is not published**: whether a
 version is installable from PyPI is a separate step and the maintainer's call, so check
 [CHANGELOG.md](CHANGELOG.md) before promising a field to anyone. 0.5.0 was released to PyPI on
 2026-08-07, with `just-dna-enricher` 0.5.0 the first release of that package.
@@ -163,8 +167,18 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Two: [RM102](#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch)
-and [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote).**
+**Six, and every one of them is a decision rather than a missing line of code:**
+[RM102](#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch),
+[RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote),
+[RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one),
+[RM110](#rm110--constraint_flags-has-two-producers-with-two-encodings-and-the-column-is-inside-the-fact-set),
+[RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
+and [RM122](#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it) — all minors,
+all with the release undecided. **The six patches filed beside them shipped on 2026-08-20**
+(RM104–RM107, RM109, RM111) and moved to
+[ROADMAP_HISTORY § the 2026-08-19 doc-audit patch round](ROADMAP_HISTORY.md#the-2026-08-19-doc-audit-patch-round--six-of-the-eight-fixed),
+which is what leaves this heading holding design questions only — a shape worth noticing rather than
+reading as a quiet queue: what is left is what nobody has decided, not what nobody has typed.
 RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
 [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
 with their rationale and with the five places the eight filings turned out to understate what was
@@ -319,82 +333,6 @@ CHANGELOG and DOGFOOD_0_6_FINDINGS all describe the int refusal as the **pre-0.6
 widening fixed. The hazard is the unquoted *decimal*, which is still refused and deliberately so.
 
 
-## RM104 — `enrich_gene_metrics` raises `UnboundLocalError` on the ordinary re-run
-
-**Severity** high · **Status** open — **a patch** · **Owner** enricher ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
-
-`reference` is bound only inside `if wanted:`, and read unconditionally further down as
-`constraint_routes_consulted = reference is not None or not offline`. So the two cases where `wanted`
-comes back empty — **the idempotent re-run**, where every gene already has a `gnomad*` row, and **any
-module with no `variants.csv`** — raise `UnboundLocalError` out of the pass. Reproduced on a scratch
-`hboc_palb2` at enricher 0.6.4, offline and online, through the library and through the CLI.
-
-**Why it is worse than a crash.** The pass is documented as merge-not-clobber, so the re-run is the
-*supported* path, and RM101 built `GeneMetricsEnrichmentError` precisely so a caller could wrap this
-pass in one `except`. An `UnboundLocalError` is outside that contract, so every caller who followed
-RM101's advice is unprotected in exactly the case they were told to expect.
-
-**Fix.** `reference = None` before the branch. The test is the part that matters: run the pass
-**twice** on a fixture with rows already present, and once on a module with no `variants.csv`. The
-existing merge test re-runs with `wanted` non-empty, which is why a green suite has never seen this.
-
-## RM105 — `logo.jpeg` compiles and is attested, and the publisher never uploads it
-
-**Severity** medium · **Status** open — **a patch** · **Owner** enricher (+ format, for the constant) ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `logo.md`)
-
-`manifest.LOGO_EXTENSIONS` is `{png, jpg, jpeg}` and `_collect_logo` iterates `sorted(...)`, so
-**`jpeg` wins over `jpg` over `png`** and a spec dir holding two logos silently ships the jpeg.
-`upload._ALLOW_PATTERNS` lists `logo.png` and `logo.jpg` and **not** `logo.jpeg`. The result is a
-manifest attesting bytes the published repo does not carry — the exact failure
-`@publisher-allowlist-derived` exists to prevent, in the one place the allowlist is still hand-spelled.
-`verify_manifest(check_logo=True)` does not catch it either: an absent file is not a failure there.
-
-It is named in the CHANGELOG entry that introduced the derived allowlist, and in a code comment that
-defers it (*"a pre-existing instance of that same skew, left alone here because widening it is not this
-item's decision"*), and no `RMn` has owned it since.
-
-**Fix.** Derive the logo half of `_ALLOW_PATTERNS` from `LOGO_EXTENSIONS`, the way the readme half
-already derives from `README_CANDIDATES`. One line, plus a test that walks `LOGO_EXTENSIONS` and
-asserts **set equality** with what the allowlist admits — a floor would pass today.
-
-## RM106 — the `faf95` arithmetic warning is published twice
-
-**Severity** medium · **Status** open — **a patch** · **Owner** compiler ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `frequencies.md`)
-
-`_check_frequency_arithmetic` runs in `validate_spec` (added by RM93 for parity) and again in the
-compile-side `_frequency_checks`, with no dedup. `_literature_checks`, eleven lines below it, *does*
-filter — *"a finding living in both places would otherwise print twice (the `_check_contig_ploidy`
-idiom)"*. Measured on a doctored `hboc_palb2`: **15 warnings, 14 distinct**, the
-`faf95 … exceeds the group's own allele frequency` line appearing twice. `manifest.compilation.warnings`
-is a published field (RM44), so the duplicate is published, and any consumer counting warnings
-overstates what is wrong with the module. Same shape as the shipped RM94; violates
-`@no-rerun-with-counts`.
-
-**Fix.** `w for w in … if w not in all_warnings`, matching `_literature_checks`. The test asserts
-`len(warnings) == len(set(warnings))` over a module that trips the check — an assertion worth applying
-to the whole warning list, since this is the second instance of the shape.
-
-## RM107 — a duplicate `(source, layer)` row compiles green under `--strict`
-
-**Severity** medium · **Status** open — **a patch** · **Owner** compiler ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `licensing.md`)
-
-`SourceRow` is in `draft._CORE_DUPE_KEYS` keyed `(source, layer)` — so *drafting* refuses to append
-over one — and absent from `compiler._TABLE_DUPE_KEYS`, so *compiling* never checks it. Measured on
-`hboc_palb2`: appending an exact copy of a row gave `strict compile ok: True`, no warning of any kind,
-`row_count` 7, and a **moved** `source_signature`. A duplicate carrying the **opposite**
-`commercial_use` also compiled green — and `licensing.csv` is the file the compile gate keys on.
-
-`licensing.merge_sources_csv` merges on the same pair, so every other writer in the ecosystem already
-treats it as the key. The compiler is the outlier.
-
-**Fix.** `_TABLE_DUPE_KEYS[SourceRow] = lambda r: (r.source, r.layer)`. Worth checking the same
-question for the other kinds while in there: the map covers five of the nine authored kinds, and
-"keyed kind ⇒ dupe-checked" is not the dividing line anyone assumes it is.
-
 ## RM108 — a ClinGen re-curation appends a second row and nothing marks the superseded one
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
@@ -416,25 +354,6 @@ currency notion has to be decided before it can be written: is the newest `class
 answer, or is a re-curation two facts a consumer should see both of? The enricher's own merge test
 re-runs the *identical* export, so it cannot see this either — the test is part of the fix.
 
-## RM109 — the gene-metrics fetch-suppression key is not derived from the merge key
-
-**Severity** medium · **Status** open — **a patch** · **Owner** enricher ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
-
-The merge key is `(gene, dataset)`; the fetch-suppression key is
-`{row.gene for row in existing.values() if (row.source or "").startswith("gnomad")}`. So a hand-written
-correction that honestly records itself as `source="manual"` does **not** mark the gene done, the fetch
-runs anyway, and the file comes back with two rows sharing `(gene, dataset)` and contradicting each
-other. `compile_module` emits zero warnings (see RM107's neighbour: fact tables have no dupe check
-either), and the manifest reports it as ordinary.
-
-`clingen.py` — a sibling pass in the same package — gets this right, testing `if (gene, dataset) in
-existing`. So the shape is understood; it was simply not applied here.
-
-**Fix.** Derive `done` from the merge key. The general rule is worth writing down beside the fix:
-**a suppression set must be derived from the merge key, never restated beside it** — the same
-derive-don't-restate rule `@draft-appends` and the drafting guards already carry.
-
 ## RM110 — `constraint_flags` has two producers with two encodings, and the column is inside the fact set
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
@@ -454,26 +373,6 @@ is legal — a fact signature moving is not a compatibility break — but it is 
 should be told about, which makes it a minor with a CHANGELOG line rather than a quiet fix. Decide the
 canonical encoding first (pipe-joined string, or null-when-empty on both legs), then move both
 producers to it in one release, and correct the field description in the same change.
-
-## RM111 — three shipped strings assert a registry override of `license` that nothing performs
-
-**Severity** low · **Status** open — **a patch** · **Owner** format ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `module_spec.md`)
-
-`spec.py:355` (*"Advisory and registry-overridable, exactly like `module.version`"*), the matching
-comment at `compiler.py:5220`, and `normalize.py:40` all state that a publishing registry overrides
-the authored `license`. Verified in the registry checkout: its publish path never writes that field.
-`module.version` really is stamped, so the analogy the strings lean on is sound for *version* and
-false for *license* — which is exactly how the claim survived review.
-
-Two shipped `Field(description=…)` are involved, so this ships to authors through
-`describe_table`/`authoring_reference` and is read as a contract.
-
-**Fix.** Decide the intent, then make one side true: either correct the three strings (the cheap and
-probably right answer — a licence declaration is the author's claim, and the compiler already checks
-it against `licensing.csv` rather than replacing it), or file the override as registry work. Do not
-leave them disagreeing; a `Field(description=…)` is the most-read documentation in the repo.
-
 
 ## RM117 — an outrank record exists and no check reads it, and what a check should do is undecided
 

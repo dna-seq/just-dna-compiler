@@ -34,11 +34,76 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-20 (latest) — a dossier audit's four reports (S57–S60, RM121–RM124)
+## 2026-08-20 (latest) — the 2026-08-19 doc audit's six patches (RM104–RM107, RM109, RM111)
 
-**Not cut.** All three packages read `0.6.5`; the work below is uncut in the tree and the next number
-would be **0.6.6**, a patch on every half of it — nothing was added to an authored schema, nothing was
-retyped, and no published identity moved. Publishing is the maintainer's step, as always.
+**Bumped to 0.6.6, uncut.** All three packages read `0.6.6`; the newest tag is `v0.6.5`, so what sits
+on top of it is this round plus the S57–S60 batch below. Every item here is a **patch**: no authored
+schema changed, nothing was retyped, no published identity moved. One behaviour tightens — a duplicate
+`(source, layer)` row in `licensing.csv`/`sources.csv` is now an **error** in both `validate` and
+`compile`, where it used to pass silently — so a spec carrying one stops compiling. Publishing stays
+the maintainer's step.
+
+Six of the eight findings the 2026-08-19 audit turned up (it validated `just-module-creator`'s 24
+per-table dossiers against this repo's code). **RM108 and RM110 are deliberately not here**: the first
+needs a currency notion decided before a re-curation can be marked superseded, and the second moves
+`gene_metrics.signature` for every module already carrying snapshot rows — legal, but a recompile the
+ecosystem should be told about. Both stay open as minors.
+
+**Five of the six were a derived value restated by hand somewhere else** — a suppression set beside its
+merge key, an allowlist beside the extension set, a dupe key in the one map the finding loop does not
+read, a check re-run without the filter its neighbour eleven lines away carries, a field description
+restating an analogy true of a different field. The sixth is the empty-work path nobody runs. The suite
+was green at 2859 tests throughout, and is 2864 now.
+
+- **[RM104](ROADMAP_HISTORY.md#rm104--enrich_gene_metrics-raised-unboundlocalerror-on-the-ordinary-re-run)
+  — the gene-metrics re-run raised out of the pass** (`just-dna-enricher`). `reference` was bound inside
+  `if wanted:` and read unconditionally below it, so the **idempotent re-run** — the path
+  merge-not-clobber documents as supported — and any module with no `variants.csv` raised
+  `UnboundLocalError`. That is outside `GeneMetricsEnrichmentError`, so the single `except` RM101 built
+  for exactly this caller caught nothing. The fix is one line; the test is the part that matters, since
+  every existing merge test re-ran with `wanted` non-empty.
+- **[RM107](ROADMAP_HISTORY.md#rm107--a-duplicate-source-layer-row-compiled-green-under---strict)
+  — a duplicate `(source, layer)` row compiled green under `--strict`** (`just-dna-compiler`). No
+  warning, a moved `source_signature`, and a pair free to carry opposite `commercial_use` in the one
+  file the compile gate reads. **The consumer-visible change is the tightening**: both commands now
+  refuse with `"<file>: duplicate row for key ('<source>', '<layer>')"`. A module whose licensing table
+  carries one will need it removed. `licensing.merge_sources_csv` already merges on that pair, so
+  re-running the enricher's licensing writer collapses the pair — checked — but it keeps the **last** row
+  under the key, so where the two rows disagree (the case worth catching) picking the right one is a
+  human's call and not the writer's. One source at two layers is unaffected, which is why the key is a
+  pair.
+- **[RM109](ROADMAP_HISTORY.md#rm109--the-gene-metrics-fetch-suppression-key-was-not-derived-from-the-merge-key)
+  — a hand-written gene-metrics row did not suppress the fetch** (`just-dna-enricher`). The merge key is
+  `(gene, dataset)` and "already done" asked `source.startswith("gnomad")`, so a correction recording
+  `source="manual"` was re-fetched and the file came back with two rows under one key contradicting each
+  other. Now derived from the key, scoped to the two dataset labels this pass writes so a ClinGen dosage
+  row for the same gene still does not suppress it.
+- **[RM106](ROADMAP_HISTORY.md#rm106--the-faf95-arithmetic-warning-was-published-twice)
+  — the `faf95` warning was published twice** (`just-dna-compiler`). `_check_frequency_arithmetic` runs
+  in `validate_spec` (RM93) and again on the compile side, and the compile side had no filter — so the
+  line appeared twice in `manifest.compilation.warnings`, a published field, and a consumer counting
+  warnings overstated what was wrong with the module. Measured at 15 warnings, 14 distinct. **A consumer
+  pinning warning counts may see one fewer**; the text is unchanged.
+- **[RM105](ROADMAP_HISTORY.md#rm105--logojpeg-compiled-was-attested-and-was-never-uploaded)
+  — `logo.jpeg` was attested and never uploaded** (`just-dna-enricher`). `LOGO_EXTENSIONS` admits
+  `jpeg` and discovery sorts, so the spelling the compiler *prefers* was the one `_ALLOW_PATTERNS`
+  dropped, and the published manifest attested bytes the repo did not carry. The logo half now derives
+  from `LOGO_EXTENSIONS`, as the readme half already derives from `README_CANDIDATES`. **Anyone who
+  published a module with a `logo.jpeg` should re-publish**; the discovery order is deliberately
+  unchanged, so nothing else moves.
+- **[RM111](ROADMAP_HISTORY.md#rm111--three-shipped-strings-asserted-a-registry-override-of-license-that-nothing-performs)
+  — the `license` strings claimed an override nothing performs** (`just-dna-format` +
+  `just-dna-compiler`). Two shipped `Field(description=…)`, a module docstring and a code comment said a
+  publishing registry stamps the authored `license`; it does not, and what the compiler actually does is
+  warn when the declaration contradicts the annotation-layer sources. Documentation only — no behaviour
+  changed — but it reaches authors through `describe_table`/`authoring_reference`, so a consumer
+  rendering those descriptions will see new text.
+
+## 2026-08-20 — a dossier audit's four reports (S57–S60, RM121–RM124)
+
+**Not cut, and folded into 0.6.6** — this batch and the doc-audit patches above sit on the same uncut
+number. Nothing here was added to an authored schema, nothing was retyped, and no published identity
+moved. Publishing is the maintainer's step, as always.
 
 Four reports from `just-module-creator`, filed the same day after they audited their own per-table
 dossiers and their own attestations. Two are ours to fix, one is a documentation gap with a code-shaped
