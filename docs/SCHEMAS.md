@@ -1670,6 +1670,18 @@ do not), `populations`/`variant_count` on `frequency`, `genes` on `gene_metrics`
 `literature`, and the licence roll-up on `sources` (`licenses`, `attributions`, the per-layer facets
 and the derived `commercial_use` / `redistribution`). All six are out of `artifact.digest`.
 
+**`stats` describes the module, not `variants.csv`.** `Stats` is the card/detail block a catalog
+facets on — `variant_count`, `study_count`, `gene_count`/`genes`, `categories` and the three ClinVar
+counters. The gene facets are a **union over every authored table kind carrying a `gene` column**, and
+the registry above lists eight besides `variants.csv`, seven of which make `gene` required. Until
+RM121 they were derived from `variants.csv` alone, so a module whose lead table was `diplotypes.csv`
+or `allele_function.csv` published `genes: []` however many of its rows named a gene, and a gene
+search fed from that field could not reach it. A **derived** sidecar's genes are deliberately not in
+the union: a gene reaches `gene_metrics.csv` because a pass looked it up, not because the author said
+the module is about it — `gene_metrics.genes` is where that set lives, one block down. `stats` is
+outside both identities (`manifest.json` is not a hashed artifact file, and `content_signature` is over
+authored rows), so correcting it moved no published digest.
+
 `verification?` (RM45) is the seventh block and the one that is **not** a sidecar summary: it carries
 no `row_count` and no `sources` union, because its records are few and are embedded whole rather than
 left in the table. It has its own section above, including the reason nothing in it is trusted.

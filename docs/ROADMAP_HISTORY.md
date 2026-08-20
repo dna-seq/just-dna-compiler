@@ -30,6 +30,63 @@ report, and it is the useful shape of it: a consumer who wants to generate rathe
 by a private name, will hand-keep the same lines every other consumer hand-keeps and will be the one who
 misses the next table. All four are additive or documentation; nothing removed, nothing retyped.
 
+## RM121 — `manifest.stats` described one table and was published as if it described the module
+
+✅ **Shipped in `just-dna-compiler` + `just-dna-format` on 2026-08-20**, motivating case
+[S57](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+
+**The reporter asked which of two things `stats` is, and said they had no preference between the two
+answers — only a preference for knowing.** Either `stats.genes` describes the module, in which case
+`variant_stats` was wrong to read one table, or it describes `variants.csv`, in which case the field is
+honest and the registry's gene index is reading a variants-shaped number as a module-shaped one. **The
+model had already answered**: `Stats`'s own docstring says *"card/detail stats derived from the spec"*,
+and a spec is not a table of itself. So this is an unimplemented sentence rather than a design choice —
+the same shape as RM113, where `describe_table` had promised a key since 0.5 and never carried one.
+
+**Reproduced on the module they named.** `reference_examples/cyp2c19_star_alleles/` has no
+`variants.csv` at all and publishes `gene_count: 0, genes: []` against **1,332 rows naming CYP2C19** —
+106 in `haplotypes.csv` (the number they measured), 1,190 in `diplotypes.csv`, 36 in
+`allele_function.csv`. Seven of the eight non-variant gene-bearing models make `gene` **required**, so
+these are modules that know their genes exactly and published none of them. Seven of our own sixteen
+reference examples carry no `variants.csv`.
+
+**What made it ours rather than a documentation note is the workaround it forces.** They had already
+written a guard into their skills against the obvious repair — adding an empty or invented
+`variants.csv` to become discoverable — because `studies.csv` becomes required the moment `variants.csv`
+exists, so the honest module is the undiscoverable one and the discoverable one is a fiction. A gap an
+author can only close by writing something untrue is not a gap the author owns.
+
+**Shipped as `module_stats` beside `variant_stats`, not as a rename.** `variant_stats` names which
+table it reads, and renaming it would be a major on S14's rule — a rename is a removal plus an
+addition, and the addition being legal does not make the rename legal. The two differ in exactly two
+keys. `_GENE_BEARING_TABLE_KINDS` derives from `_TABLE_KINDS` by `"gene" in model.model_fields`, the
+same one-liner `_POSITIONAL_TABLE_KINDS` uses, so a kind added later enters the union by construction:
+the defect being fixed *is* a hand-scoped notion of which tables count, and closing it with a second
+hand-kept list would have been the same defect wearing a fix's name.
+
+**Derived sidecars are deliberately outside the union.** A gene reaches `gene_metrics.csv` because a
+pass looked it up, not because the author said the module is about it, and `gene_metrics.genes` already
+publishes that set one block down. The exclusion is structural rather than a filter — `_TABLE_KINDS`
+holds authored kinds only, which is the line the 0.5 fact-table rework drew.
+
+**One thing the fix moved that the report could not have seen.** The post-symbolic-drop re-derive lived
+*inside* the loop's `variants.csv` branch, which was right while the stats read one table and became
+wrong the moment they read nine: `pharm_variants.csv` is the other droppable kind and it carries a
+`gene`, so a drop that removed the last row naming a gene would have left it in a published manifest —
+the RM44 class of defect that branch was itself written against, recreated by the fix for it. Moved
+after the loop and pinned with a two-row fixture where one row drops and one survives.
+
+**A patch, and the check that says so.** `manifest.json` is not one of the hashed artifact files and
+`content_signature` is over authored rows, so no `stats` value can move either identity; measured
+byte-for-byte on the example above, both unchanged. Nothing was added to an authored schema and nothing
+was retyped. `compiler/tests/test_module_stats.py` runs the real compile over the whole reference
+corpus with the expected gene set computed from the CSVs at run time; six of its eight tests were
+watched failing against the old behaviour before the fix was kept. Suite 2835 → 2843.
+
+**What is not ours, and the reply says so.** The registry's gene index consuming this field is theirs;
+what we owed was a field that means what it says. Documented in
+[SCHEMAS.md § The output half](SCHEMAS.md#the-output-half--manifest-models) and on `Stats` itself.
+
 ## RM116 — `content_signature` returned only its hash, so anything finer restated the fold
 
 ✅ **Shipped in `just-dna-compiler` on 2026-08-20**, motivating case

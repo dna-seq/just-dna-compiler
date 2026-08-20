@@ -54,6 +54,53 @@ observed rather than of what was decided.
 
 ## S57 — `manifest.stats` is computed from `variants.csv` alone, so a module without one is invisible to a gene search
 
+**Status — accepted; it is the first reading, and the fix shipped in the tree as
+[RM121](ROADMAP_HISTORY.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
+(not yet cut; see the standing rule at the top of this file).** `stats` describes **the module**.
+`stats.genes` is now a union over every authored table kind carrying a `gene` column, so nothing needs
+re-filing in the registry's intake and your skills can stop telling authors this is a known gap.
+
+**You did not need to leave the choice to us, and the reason is worth having.** `Stats`'s own docstring
+has always read *"card/detail stats derived from the spec at compile time"* — from the spec, not from a
+table of it — so `variant_stats` was an unimplemented sentence rather than a decision anyone made. That
+is the same shape as S48/RM113, where `describe_table` had been promising a key since 0.5 and never
+carried one. When a field's documented meaning and its implementation disagree, the documented meaning
+is the one we treat as the contract.
+
+**Your measurement reproduced, and the module is worse off than you reported.**
+`reference_examples/cyp2c19_star_alleles/` publishes `genes: []` against **1,332** rows naming
+CYP2C19 — your 106 in `haplotypes.csv`, plus 1,190 in `diplotypes.csv` and 36 in
+`allele_function.csv`. **Seven of our own sixteen reference examples have no `variants.csv`**, and
+seven of the eight non-variant gene-bearing models make `gene` *required*, so the affected modules are
+precisely the ones that know their genes exactly.
+
+**The guard you wrote into your skills is what made this ours.** An author whose only route to
+discoverability is inventing an empty `variants.csv` — which then drags `studies.csv` in behind it —
+is being asked to publish a fiction to be found, so the honest module is the invisible one. A gap that
+can only be closed by writing something untrue is not a gap the author owns. Keep the README advice
+until a release carries this; it stops being necessary then.
+
+Three details you will meet:
+
+- **`variant_stats` is unchanged and still reads `variants.csv` alone.** The wider answer arrived
+  beside it as `module_stats(variants, kind_rows)`, because renaming a published function is a major on
+  the rule S14 established — a rename is a removal plus an addition. The two differ in exactly two keys.
+- **Derived sidecars are not in the union, deliberately.** A gene reaches `gene_metrics.csv` because a
+  pass looked it up, not because the author said the module is about it; that set is already published
+  as `manifest.gene_metrics.genes`. If your index wants both, it should union them knowingly.
+- **No identity moved.** `manifest.json` is not a hashed artifact file and `content_signature` is over
+  authored rows, so no `stats` value can reach either — measured byte-for-byte on the module above.
+  This is a **patch**, so a recompile publishes the genes and republishes the same digest.
+
+Wiring it found a defect the report could not have seen: the post-symbolic-drop re-derive of `stats`
+sat inside the loop's `variants.csv` branch, which was correct while the number read one table.
+`pharm_variants.csv` is the other droppable kind and it carries a `gene`, so the fix would have left a
+dropped row's gene in a published manifest — the exact class the branch was written against. Moved
+after the loop, pinned with a fixture where one row drops and one survives.
+
+The registry half stays yours: what we owed was a field that means what it says.
+<!-- triaged: 0.6.6 · sha f8881d2d793d -->
+
 **Reported by** just-module-creator (the authoring plugin), 2026-08-20. Six independent reproductions
 during a dossier audit; three of our per-table dossiers reached it separately before anyone connected
 them.

@@ -1151,6 +1151,16 @@ _POSITIONAL_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
     if {"chrom", "start"} <= set(model.model_fields)
 )
 
+#: The table kinds carrying a `gene` column, derived from `_TABLE_KINDS` the same way and for the same
+#: reason: a hand-kept list goes stale the moment a kind is added, and this one feeds a **published
+#: manifest number** (S57). Seven of the eight non-variant kinds make `gene` *required*, so a module
+#: built on any of them knows its genes exactly while `manifest.stats.genes` used to publish `[]`.
+_GENE_BEARING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
+    (csv_name, model)
+    for csv_name, _parquet, model in _TABLE_KINDS
+    if "gene" in model.model_fields
+)
+
 
 def _apply_positional_resolution(
     rows_by_csv: dict[str, list[Any]],
@@ -3779,8 +3789,14 @@ def validate_spec(
         stats["module_name"] = config.module.name
     if kind_row_counts:
         stats["table_rows"] = kind_row_counts
-    if variants:
-        stats.update(variant_stats(variants))
+    gene_bearing = {
+        csv_name: loaded_kinds.get(csv_name) or [] for csv_name, _model in _GENE_BEARING_TABLE_KINDS
+    }
+    # Unconditional where it used to be `if variants:` — a table-only module has no variant rows and is
+    # exactly the module whose genes were being dropped (S57). The keys this adds for such a module are
+    # all zero, which is what `Stats` already defaults them to, so no manifest number moves by it.
+    if variants or any(gene_bearing.values()):
+        stats.update(module_stats(variants, gene_bearing))
 
     return ValidationResult(
         valid=len(all_errors) == 0,
@@ -3812,6 +3828,44 @@ def variant_stats(variants: list[VariantRow]) -> dict[str, Any]:
         "pathogenic_count": sum(1 for v in variants if v.pathogenic),
         "benign_count": sum(1 for v in variants if v.benign),
     }
+
+
+def module_stats(
+    variants: list[VariantRow], kind_rows: dict[str, list[Any]] | None = None
+) -> dict[str, Any]:
+    """`variant_stats` plus the gene facets taken over **every** authored table, not just variants.
+
+    PUBLIC, and it exists rather than a second parameter on `variant_stats` because that function's
+    name is a promise about which table it reads and renaming it would be a major (S14's rule). What
+    the two return differs in exactly two keys.
+
+    **`stats` describes the module, and `Stats` has always said so** — *"card/detail stats derived from
+    the spec"*, not from one table of it. `variant_stats` nevertheless derived `genes` from
+    `variants.csv` alone, so a module whose lead table is `diplotypes.csv`, `allele_function.csv`,
+    `copynumbers.csv` or any other gene-bearing kind published `gene_count: 0, genes: []` however many
+    of its rows named a gene — and a registry's gene index is fed from that field, so the module was
+    unreachable by a gene search (S57). Measured on `reference_examples/cyp2c19_star_alleles/`: 1,332
+    rows carrying `gene=CYP2C19` across three tables, and `genes: []`.
+
+    The honest workaround an author was left with was prose in the README, and the *dishonest* one —
+    inventing an empty `variants.csv` to be discoverable — is what makes this ours to fix rather than a
+    documentation note.
+
+    Only authored kinds count. `_GENE_BEARING_TABLE_KINDS` derives from `_TABLE_KINDS`, which
+    deliberately excludes the derived fact sidecars, so a gene reaching `gene_metrics.csv` because a
+    pass looked it up never becomes a gene the module claims to be about.
+    """
+    stats = variant_stats(variants)
+    genes = set(stats["genes"])
+    for csv_name, _model in _GENE_BEARING_TABLE_KINDS:
+        for row in (kind_rows or {}).get(csv_name) or []:
+            gene = getattr(row, "gene", None)
+            if gene:
+                genes.add(gene)
+    ordered = sorted(genes)
+    stats["gene_count"] = len(ordered)
+    stats["genes"] = ordered
+    return stats
 
 
 #: The `Defaults` fields a `VariantRow` may also carry on the row, resolved before hashing (RM37).
@@ -4042,13 +4096,16 @@ def compile_module(
     for table, drop_rows in symbolic_drops.items():
         if table == "variants.csv":
             variants = _apply_symbolic_drops(variants, drop_rows)
-            # Re-derive the variant facets over what survived. `validate_spec` computed them from the
-            # full set, and `weights_rows` counts the parquet, so leaving them would publish a
-            # `variant_count` higher than the artifact holds (the RM44 class: a manifest number a
-            # catalog keys on and cannot check).
-            validation.stats.update(variant_stats(variants))
         else:
             kind_rows[table] = _apply_symbolic_drops(kind_rows[table], drop_rows)
+    if symbolic_drops:
+        # Re-derive the stats over what survived. `validate_spec` computed them from the full set, and
+        # `weights_rows` counts the parquet, so leaving them would publish a `variant_count` higher
+        # than the artifact holds (the RM44 class: a manifest number a catalog keys on and cannot
+        # check). **After the whole loop, not inside its `variants.csv` branch** — since S57 put the
+        # gene facets on every authored kind, a drop that empties the last row naming a gene in a
+        # *kind* table has to move `genes` too, and the old placement could not see one.
+        validation.stats.update(module_stats(variants, kind_rows))
 
     # The source-independent resolution table (0.5), if authored/produced beside the spec. When
     # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and

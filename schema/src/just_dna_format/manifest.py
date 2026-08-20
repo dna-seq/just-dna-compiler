@@ -154,11 +154,17 @@ class Display(BaseModel):
 
 
 class Stats(BaseModel):
-    """Card/detail stats derived from the spec at compile time.
+    """Card/detail stats derived from the spec at compile time — from **the spec**, not from one table.
 
     `clinvar_count`/`pathogenic_count`/`benign_count` summarize the per-row ClinVar quality flags
     that `weights.parquet` already carries, so consumers can facet on them without reading the
     artifact (SPEC ROADMAP item 5). They are additive and default to 0 for older manifests.
+
+    `gene_count`/`genes` are a **union over every authored table kind with a `gene` column**, which is
+    what the first sentence has always said and what the compiler did not do until RM121: they were
+    read off `variants.csv` alone, so a star-allele or copy-number module published `[]` while every
+    one of its rows named a gene, and a registry gene index fed from this field could not find it.
+    Derived fact tables are excluded on purpose — `gene_metrics.genes` carries those.
     """
 
     variant_count: int = 0
