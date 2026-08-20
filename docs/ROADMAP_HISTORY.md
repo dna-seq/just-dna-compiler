@@ -113,6 +113,50 @@ distinction visible, and guesses the author's intent from the absence of a secon
 Pinned by a pair that is identical on `(quotes_authored, quotes_found)` and separated only by the new
 counter, which is the confusion the field exists to end.
 
+## RM120 — the table where the attestation lives could not name its attributor
+
+✅ **Shipped in `just-dna-format` + `just-dna-compiler` on 2026-08-20**, motivating case
+[S55](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator — **a retraction of their own S11**.
+
+**The reporter withdrew the argument they gave us for `ATTESTATION_BEARING`, and the withdrawal is
+right.** S11 said a passage extracted from a fulltext a tool just fetched *"asserts a curator reading
+that never occurred"*, and our own answer turned on the same hinge: *"nothing establishes a human ever
+looked."* That sentence names the defect and it is not the one the refusal fixes. It is a **missing
+attributor**, not an illegitimate reader — the machine does read the article, so the reading is real
+and what the rule protected was a fiction about *who* did it. The column then stayed empty for the only
+reader actually present.
+
+**The evidence that this is not academic is RM118.** The refusal did not produce human-located
+passages; it produced 3,668 rows of title-as-quote in four published modules with the check green.
+
+**Our own model already disagreed with the argument, in two places the reporter found.**
+`Defaults.curator` defaults to the literal `ai-module-creator` — an AI curator is the documented
+default for every row rather than an edge case — and `Contribution` carries the whole vocabulary for
+saying who did what, with `who` reading *"a name, handle, or model id"* and `kind` laddering
+`{human, human_expert, human_certified}` against `{ai}`. `attestation_bearing` was the one place that
+then refused the AI contributor a cell.
+
+**Shipped `StudyRow.curator`**, the same field `VariantRow` has had all along, on the table where the
+attestation lives. The asymmetry it closes is the reporter's: a variant row could name who decided it
+while a quote could not name who located it, though the quote is the attestation of the two. Free text
+resolvable against `authorship`, never a `machine_located: bool` — two-valued collapses *an agent found
+it and a human confirmed it* into one of two lies and cannot name which agent or which human. It
+records the distribution of labour so a reviewer can route scrutiny; it does not move responsibility,
+which the human author holds regardless.
+
+**`ATTESTATION_BEARING` is unchanged and stays right for our layer**, which is the reporter's own
+reading. A provider still must not fill the quote; what changed is that an author who *does* locate a
+passage now has somewhere to say so.
+
+**The interesting half is what wiring it found: `@three-touch-points` undercounts for this writer.**
+`_write_studies_csv` names its columns in a `fieldnames` list **and** fills a row dict, and naming a
+column in the first but not the second writes the *header* with an empty cell on every row —
+`DictWriter` fills a missing key silently. The reversed spec looked right and re-validated, and the
+value was gone; only the digest fixed-point assertion caught it. The comment on that list now says so,
+and a behavioural guard fills every authored `StudyRow` column and asserts each survives the reverse,
+derived from the model so a column added later cannot quietly fall outside it. Both guards were shown
+to fail on the buggy code before being kept. 2830 → 2833.
+
 ## RM118 — `quotes_found` could not fail on a title, and four published modules are titles
 
 ✅ **Shipped in `just-dna-enricher` on 2026-08-20**, motivating case

@@ -417,6 +417,22 @@ provenance columns `doi?` (DOI grammar), `provenance_quote?`, `provenance_regex?
 author time — a declarative pattern grammar, Principle 1). 0.5 adds the **queryable p-value**:
 `p_value_num?`, the same number typed, constrained to (0, 1] — an exact `0` is a source's own
 underflow rather than a probability, so it is rejected instead of stored as a confident zero.
+0.6 adds **`curator?`** — who located that passage: a name, handle, or model id resolvable against
+the manifest's `authorship` (S55).
+
+- **Row-level, because the work is mixed at row granularity.** A human may read a review while an
+  agent traverses its citations, in one module, in one pass, and a module-level contributor list
+  cannot say which of the two located row 1400. `VariantRow.curator` exists for exactly that reason
+  one table over, and the asymmetry it left was backwards: a variant row could name who decided it
+  while a quote could not name who located it, though the quote is the attestation.
+- **Free text, never a `machine_located: bool`.** Two-valued collapses the case that actually occurs
+  — a passage an agent found and a human then confirmed — into one of two lies, and it cannot name
+  *which* agent or *which* human. `Contribution.who` already reads "a name, handle, or model id".
+- **It records labour, not responsibility.** An AI is not a subject of right, so the human author
+  holds responsibility entirely whatever this cell says. What the column buys is that a reviewer can
+  route scrutiny — the axis `Contribution.kind`'s own docstring exists for.
+- **An AI curator is the documented default, not an edge case**: `Defaults.curator` is the literal
+  string `ai-module-creator`.
 
 - **`neg_log10_p` is derived, not authored.** It is materialized into `studies.parquet` (the scale a
   consumer filters and plots on — `7.3` is genome-wide significance) and absent from the CSV, the same

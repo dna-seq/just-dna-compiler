@@ -265,7 +265,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 ### Schema evolution
 
 - A new optional column or table is minor-legal; removal, promotion to required and retyping are major. `@optional-column-legal`
-- An authored column is three touch points, and the reverse `fieldnames` list is the missed one. `@three-touch-points`
+- An authored column is three touch points; the reverse half is really two, and the row dict fails silently. `@three-touch-points`
 - Derived-not-stored is the pattern for a convenience number. `@derived-not-stored`
 - Store a source's value verbatim except when the encoding lies about its own order. `@verbatim-except-order`
 - The 0.3 axes are a passthrough — never fill `direction` from `state` at compile. `@axes-passthrough`

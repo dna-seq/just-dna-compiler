@@ -6022,6 +6022,8 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 "doi": s.doi,
                 "provenance_quote": s.provenance_quote,
                 "provenance_regex": s.provenance_regex,
+                # ── 0.6: who located that passage (S55). ──
+                "curator": s.curator,
                 # ── 0.5: the queryable p-value. The authored number passes through; `neg_log10_p` is
                 # DERIVED on write and absent from `StudyRow`'s fields, so `_write_studies_csv` cannot
                 # emit it and the next compile re-derives the identical column (the `allele_frequency`
@@ -6049,6 +6051,7 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "doi": pl.Utf8,
         "provenance_quote": pl.Utf8,
         "provenance_regex": pl.Utf8,
+        "curator": pl.Utf8,
         "p_value_num": pl.Float64,
         "neg_log10_p": pl.Float64,
     }
@@ -6773,9 +6776,14 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         # 0.3 additive columns, plus `effect_allele` (RM91, 0.6) beside the magnitude it qualifies.
         # This list is the third of `@three-touch-points` and the one that gets missed: a column
         # absent here reaches the parquet and then vanishes on reverse, which fails P7 silently.
+        # **This writer has a FOURTH, and it is worse than the third** (found adding `curator`, S55):
+        # the row dict below. Naming a column here and not there writes the *header* with an empty
+        # cell on every row — `DictWriter` fills a missing key silently — so the reversed spec looks
+        # right, re-validates, and loses the value. The digest fixed-point assertion is what catches
+        # it; a column-presence check does not.
         "stat_significance", "effect_size", "effect_measure", "effect_allele", "trait_efo_id",
-        # 0.4 provenance columns (RM11/RM12, from the 0.5 scope)
-        "doi", "provenance_quote", "provenance_regex",
+        # 0.4 provenance columns (RM11/RM12, from the 0.5 scope), and 0.6's locator beside them (S55)
+        "doi", "provenance_quote", "provenance_regex", "curator",
         # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
         # write, so re-emitting it would author a value the next compile recomputes anyway.
         "p_value_num",
@@ -6807,6 +6815,7 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "doi": _scalar_cell(row.get("doi")),
                     "provenance_quote": _scalar_cell(row.get("provenance_quote")),
                     "provenance_regex": _scalar_cell(row.get("provenance_regex")),
+                    "curator": _scalar_cell(row.get("curator")),
                     "p_value_num": _scalar_cell(row.get("p_value_num")),
                 }
             )

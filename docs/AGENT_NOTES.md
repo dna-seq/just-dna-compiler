@@ -1669,6 +1669,16 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   under `_TABLE_KINDS` are exempt — `_build_table`/`_write_table_csv` are generic over `model_fields`,
   so `DiplotypeRow.recommendation_strength` needed no compiler change at all.
 
+  **The third is really two, and the halves fail differently** — found adding `StudyRow.curator` (S55,
+  RM120). `_write_studies_csv` and `_write_variants_csv` each name their columns in a `fieldnames`
+  list **and** fill a row dict, and the phrase "`fieldnames` list + `_scalar_cell` mapping" reads as
+  one site. Miss the list and the column is simply absent, which is loud. Miss the **dict** and
+  `csv.DictWriter` fills the key with an empty string, so the header is right, every cell is blank,
+  the reversed spec re-validates, and the value is gone — the quiet failure of the two. A
+  column-presence assertion passes; only the digest fixed-point catches it. The guard that survives
+  a future column is behavioural: fill every authored field of the model, round-trip, and assert no
+  cell came back empty (`test_every_column_the_studies_writer_declares_is_actually_written`).
+
 - `@derived-not-stored` — **Derived-not-stored is the house pattern for a convenience number**: store the exact parts in the
   CSV, materialize the derived value into parquet as a `@property`, and let it fall away on reverse
   because it is not a model field. `FrequencyRow.allele_frequency` (AC/AN) and

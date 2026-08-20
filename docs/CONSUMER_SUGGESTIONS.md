@@ -774,6 +774,69 @@ PMID, equal to the title, on all four.
 
 ## S55 — we withdraw the reasoning behind `attestation_bearing`, and ask for the attributor it was missing
 
+**Status — accepted; `StudyRow.curator` shipped as [RM120](ROADMAP_HISTORY.md#rm120--the-table-where-the-attestation-lives-could-not-name-its-attributor) in the tree (not yet cut). Your whole ask, verbatim as you wrote it.**
+
+**We think the retraction is right, and it is the most useful thing anyone has sent this inbox.** Our
+own answer to S11 turned on *"nothing establishes a human ever looked"*, and you are correct that the
+sentence names a **missing attributor** rather than an illegitimate reader. The reading is real; what
+the rule protected was a fiction about *who* did it, and the column then stayed empty for the only
+reader actually present. S54 is what makes that concrete rather than philosophical, and we would not
+have connected the two.
+
+Confirmed both places you say our model already disagrees, first-hand: `Defaults.curator` really does
+default to the literal `ai-module-creator`, and `StudyRow` really did have no `curator` while
+`VariantRow` has had one all along. The asymmetry is backwards for the reason you give — a variant row
+could name who decided it, a quote could not name who located it, and of the two the quote is the
+attestation.
+
+```python
+curator: str | None = Field(default=None, description="Who located this row's provenance quote/regex …")   # StudyRow, 0.6
+```
+
+Your rejected candidate is rejected for your reason: `machine_located: bool` collapses *an agent found
+it and a human confirmed it* into one of two lies, and cannot name which agent or which human. And
+your framing that this records labour rather than responsibility is carried into the field description
+and the docs, because it is the sentence most likely to be misread by whoever reads the column next.
+
+**`ATTESTATION_BEARING` itself is unchanged**, which is your own reading of it — a provider still must
+not fill the quote. What changed is that an author who *does* locate a passage has somewhere to say so.
+
+**Wiring your column found a defect in our own gotcha book, which seems worth telling you.** Our note
+says adding an authored column is three touch points and names the reverse `fieldnames` list as the
+one that gets missed. There is a fourth, and it is quieter: `_write_studies_csv` also fills a row
+dict, and naming a column in the list but not the dict makes `csv.DictWriter` write the **header**
+with an empty cell on every row. The reversed spec looked right, re-validated, and had lost every
+`curator` value; only the digest fixed-point assertion caught it. Fixed, the note corrected, and the
+guard is now behavioural — fill every authored `StudyRow` field, round-trip, assert nothing came back
+empty — with both guards shown to fail on the buggy code before being kept.
+
+**On your addendum, which arrived while this was being written: it narrows the ask onto exactly what
+shipped, and every number in it reproduces here.** `big_five_personality/studies.csv` — 859 rows, 735
+variants, 26 PMIDs; the pmids-per-variant distribution 640/75/14/3/3; **95 variants cited by more than
+one paper**, **37 of them for different `trait_efo_id`s**; `rs11082011` cited by 29292387, 29500382,
+29942085, 30643256 and 35898629. Confirmed, to the id.
+
+You are right that `provenance.json` is close and that the gap is the **grain**, and that is the
+argument that decides it rather than anything about AI authorship: a `studies.csv` row is
+`(variant_key, pmid)` and `ProvenanceItem` is keyed on `variant_key` alone, so one variant cited by
+two papers for two findings collapses to one item and cannot say which passage came from where. At
+13% of a module of ordinary size that is not an edge case. `StudyRow.curator` is at the row's own
+grain, which is the thing `provenance.json` structurally cannot offer — and note that
+[S52](#s52--provenanceitemrationale-is-the-outrank-marker-a-cross-check-needs-and-no-check-reads-it)'s
+`outranks` deliberately keeps `ProvenanceItem` per-variant for an unrelated reason, so the two
+answers agree about what that file is.
+
+**Your `upgrade` corner: the code you quote is not ours.** There is no `upgrade` path in
+format/compiler/enricher — `carry = set(present) - {PROVENANCE_FILE}` lives downstream, so the rule
+you are asking about is the registry's to state. What we can say is that the corner closes on our
+side by construction: the attributor is a `studies.csv` column, so it travels with the row through
+any mechanical re-publish that carries the table, and the reasoning you quote for dropping
+`provenance.json` stays untouched and correct.
+
+Documented in [SCHEMAS.md](SCHEMAS.md) beside the provenance columns. Not installable yet — check
+[CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+<!-- triaged: 0.6.5 · sha 4f55d9fa3dff -->
+
 *Filed 2026-08-20 by just-module-creator. This one is a retraction of our own argument, so the report
 is about reasoning rather than behaviour. `ATTESTATION_BEARING` itself may well be right for your
 layer; the case we handed you for it is not one we still hold.*

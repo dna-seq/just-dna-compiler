@@ -383,3 +383,94 @@ def test_a_phased_genotype_still_finds_its_annotation(tmp_path: Path) -> None:
     # a key the probe cannot reproduce would cause.
     reversed_csv = (tmp_path / "reversed" / "variants.csv").read_text(encoding="utf-8")
     assert "PhasedTrait" in reversed_csv and "UnphasedTrait" in reversed_csv
+
+
+def test_a_quote_locator_survives_the_round_trip(tmp_path: Path) -> None:
+    """S55: `StudyRow.curator` names who located the passage, and must reach a reader.
+
+    All three touch points at once — the parquet build, its schema, and the reverse `fieldnames` list
+    that `@three-touch-points` names as the one that gets missed. A column absent from the third
+    reaches the parquet and then vanishes on reverse, which fails P7 silently, so this asserts both
+    ends rather than only the parquet.
+
+    Partially set on purpose: a row whose quote nobody attributed must come back null rather than
+    inheriting its neighbour's locator, which is the shape the `priority` regression above is about.
+    """
+    studies = (
+        "rsid,pmid,provenance_quote,curator\n"
+        "rs1,12345678,a located passage,claude-opus-5\n"
+        "rs1,22222222,another passage,\n"
+    )
+    orig, recompiled = _roundtrip(tmp_path, _P_VARIANTS, studies)
+
+    for d in (orig, recompiled):
+        rows = pl.read_parquet(d / "studies.parquet").sort("pmid").to_dicts()
+        assert [r["curator"] for r in rows] == ["claude-opus-5", None]
+
+    reversed_studies = _read_csv(tmp_path / "reversed" / "studies.csv")
+    assert "curator" in reversed_studies[0]
+    assert [r["curator"] for r in reversed_studies] == ["claude-opus-5", ""]
+
+
+def test_naming_a_quote_locator_does_not_move_the_content_signature(tmp_path: Path) -> None:
+    """A new optional column is minor-legal only if an existing module's identity is unchanged.
+
+    Two specs identical but for the locator: `content_signature` must differ, because an authored
+    column carrying a value IS content — and a spec that leaves it unset must hash exactly as it did
+    before the column existed, which is the half P3 actually promises. The second is what this
+    demonstrates, by comparing an unset spec against one whose CSV has no such column at all.
+    """
+    from just_dna_compiler.compiler import content_signature
+
+    without_column = _write(
+        tmp_path / "a", _P_VARIANTS, "rsid,pmid,provenance_quote\nrs1,12345678,a passage\n"
+    )
+    column_present_unset = _write(
+        tmp_path / "b", _P_VARIANTS, "rsid,pmid,provenance_quote,curator\nrs1,12345678,a passage,\n"
+    )
+    filled = _write(
+        tmp_path / "c",
+        _P_VARIANTS,
+        "rsid,pmid,provenance_quote,curator\nrs1,12345678,a passage,claude-opus-5\n",
+    )
+
+    assert content_signature(without_column) == content_signature(column_present_unset)
+    assert content_signature(filled) != content_signature(without_column)
+
+
+def test_every_column_the_studies_writer_declares_is_actually_written(tmp_path: Path) -> None:
+    """The fourth touch point, guarded behaviourally rather than by reading the source (S55).
+
+    `_write_studies_csv` names its columns in a `fieldnames` list AND fills a row dict, and naming a
+    column in the first but not the second writes the header with an empty cell on every row —
+    `DictWriter` fills a missing key silently. That is how `curator` shipped a reversed spec that
+    re-validated and had lost the value.
+
+    Rather than pin the two lists against each other, this fills every authored `StudyRow` column
+    that survives to the parquet and asserts the reversed CSV carries a value in each. A column added
+    to `fieldnames` and forgotten in the dict comes back empty here, whatever the source looks like.
+    """
+    import csv as _csv
+
+    from just_dna_format.spec import StudyRow
+
+    filled = {
+        "rsid": "rs1", "pmid": "12345678", "population": "EUR", "p_value": "5e-8",
+        "conclusion": "an association", "study_design": "GWAS", "stat_significance": "significant",
+        "effect_size": "1.4", "effect_measure": "OR", "effect_allele": "A",
+        "trait_efo_id": "EFO:0000305", "doi": "10.1000/demo", "provenance_quote": "a passage",
+        "provenance_regex": "a[a-z ]+passage", "curator": "claude-opus-5", "p_value_num": "5e-8",
+    }
+    # Derived from the model, so a column added to StudyRow without a value here fails loudly rather
+    # than being quietly excluded from the guard.
+    authored = set(StudyRow.model_fields) - {"chrom", "start", "ref"}   # position half, unset here
+    assert authored <= set(filled), f"give the guard a value for {sorted(authored - set(filled))}"
+
+    header = ",".join(filled)
+    studies = f"{header}\n" + ",".join(filled[c] for c in filled) + "\n"
+    _roundtrip(tmp_path, _P_VARIANTS, studies)
+
+    with (tmp_path / "reversed" / "studies.csv").open(newline="", encoding="utf-8") as handle:
+        row = next(iter(_csv.DictReader(handle)))
+    empty = sorted(c for c in filled if not (row.get(c) or "").strip())
+    assert empty == [], f"declared but never written by _write_studies_csv: {empty}"

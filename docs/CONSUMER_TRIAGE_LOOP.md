@@ -618,6 +618,21 @@ Each of these was a bug in the loop, not a hypothetical:
   identically for every value except the empty one, which is exactly the value no test reaches by
   accident; the general form is that a knob's disabling value is its own case and needs its own probe.
 
+- **A `#` at column 1 inside a fenced code block ends the section, and the ledger cannot tell.**
+  `BOUNDARY_RE` is `^#{1,2} ` and knows nothing about fences, so a python comment written flush left
+  in a reply — `# StudyRow, 0.6` above a field declaration, which is the natural way to label a
+  snippet — truncates the section there. Everything after it, **including the marker**, is outside
+  the body the ledger reads, so `stored_sha` returns `None` and a freshly-stamped section reports
+  `unmarked-reply` forever. It looks exactly like the git-sha failure below and has a different
+  cause; what distinguishes them is that `stored_sha` on the hand-sliced section finds the marker
+  while the tool's own `sections()` does not. Found writing S55's reply. **The fix is on the writing
+  side** — indent the comment or put it at the end of the line — for the same reason the `**Status`
+  preamble collision is: teaching the splitter about fences means teaching it about indented fences,
+  tildes and nested blocks, and the failure is rare and self-announcing once you know the shape. It
+  also affects the *consumer's* prose, so if a report ever arrives with a flush-left `#` in a
+  snippet, that section's body is short and the fix is still not to edit their text: stamp by hand
+  after checking `sections()` agrees, and say so.
+
 - **A marker can be stamped with a git commit sha, and it fails twice over.** S36's read
   `<!-- triaged: 0.6.0 · sha cbeeb8f -->`, which is a real commit in this repo and not a fingerprint at
   all. `MARKER_RE` wants exactly twelve hex characters, so seven made the marker **invisible**: the

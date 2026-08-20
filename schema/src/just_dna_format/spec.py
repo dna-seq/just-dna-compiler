@@ -991,6 +991,33 @@ class StudyRow(AuthoredModel):
         ),
     )
 
+    # ── 0.6 additive column: who located the passage above (S55) ──
+    # `VariantRow.curator` has always let a row name who decided it; the table where the *attestation*
+    # lives had no such column, so a quote could not name its locator. That asymmetry is backwards
+    # given which of the two is an attestation, and it is what made `attestation_bearing` bite: the
+    # refusal protected a fiction about *who* read the article rather than the reading itself, and the
+    # column then stayed empty for the only reader actually present. An AI curator is not an edge case
+    # here — `Defaults.curator` defaults to the literal `ai-module-creator`.
+    #
+    # **Free text resolvable against `authorship`, never a `machine_located: bool`.** Two-valued
+    # collapses the case that actually occurs — a passage an agent found and a human then confirmed —
+    # into one of two lies, and it cannot name *which* agent or *which* human. `Contribution.who`
+    # already reads "a name, handle, or model id" for exactly this reason.
+    #
+    # **It records labour, never responsibility.** An AI is not a subject of right, so the human
+    # author holds it entirely whatever this cell says; the point is that a reviewer can route
+    # scrutiny, which is what `Contribution.kind`'s own docstring says its axis is for.
+    curator: str | None = Field(
+        default=None,
+        description=(
+            "Who located this row's provenance quote/regex — a name, handle, or model id, resolvable "
+            "against the manifest's `authorship`. Row-level because real work is mixed at row "
+            "granularity: a human may read a review while an agent traverses its citations, in one "
+            "module, in one pass. Records the distribution of labour so a reviewer can route "
+            "scrutiny; it does not move responsibility, which the human author holds regardless."
+        ),
+    )
+
     # ── 0.5 additive column: the queryable form of `p_value` above ──
     # `p_value` stays the verbatim record (free-form, and kept by P8 — retyping or removing it is a
     # 1.0 item). This carries the same number in a form that sorts and thresholds.
