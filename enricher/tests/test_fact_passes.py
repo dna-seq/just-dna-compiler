@@ -375,6 +375,37 @@ def test_gene_metrics_round_trips_through_its_csv(tmp_path: Path, constraint_cac
         assert before.model_dump() == after.model_dump()
 
 
+def test_the_re_run_and_the_gene_less_module_are_the_two_empty_wanted_paths(
+    tmp_path: Path, constraint_cache: Path
+) -> None:
+    """RM104: `reference` was bound inside `if wanted:` and read unconditionally below it.
+
+    Both runs where `wanted` comes back empty therefore raised `UnboundLocalError` straight out of the
+    pass — the **idempotent re-run**, which is the path merge-not-clobber documents as supported, and
+    any module with **no `variants.csv`**. An `UnboundLocalError` is outside
+    `GeneMetricsEnrichmentError`, so the single `except` RM101 built for exactly this caller caught
+    nothing. The existing merge tests all re-run with `wanted` non-empty, which is why a green suite
+    never saw either path.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "variants.csv").write_text(
+        "rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,BRCA1\nrs2,A/G,risk,x,MYH7\n"
+    )
+    first = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
+    second = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
+
+    # Merge-not-clobber: the re-run returns the same table, and asks for nothing.
+    assert [r.model_dump() for r in second.rows] == [r.model_dump() for r in first.rows]
+    assert second.covered == [] and second.missing == [] and second.unconsulted == []
+
+    # …and a module that names no gene at all takes the same branch.
+    gene_less = tmp_path / "gene_less"
+    gene_less.mkdir()
+    result = enrich_gene_metrics(gene_less, offline=True, constraint_cache=constraint_cache)
+    assert result.rows == [] and result.missing == []
+
+
 # ── VRS minting into the resolution table ───────────────────────────────────────────────────────
 
 

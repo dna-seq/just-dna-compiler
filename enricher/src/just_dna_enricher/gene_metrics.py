@@ -204,6 +204,13 @@ def enrich_gene_metrics(
 
     # ── snapshot link (offline-capable, first) ─────────────────────────────────────────────────
     from_snapshot: dict[str, dict] = {}
+    # Bound before the branch, not inside it (RM104): `constraint_routes_consulted` below reads this
+    # unconditionally, so the two runs where `wanted` comes back empty — the **idempotent re-run**,
+    # which is the pass's documented merge-not-clobber path, and any module with no `variants.csv` —
+    # raised `UnboundLocalError` straight out of the pass. That is outside `GeneMetricsEnrichmentError`,
+    # so the one `except` RM101 built for exactly this caller caught nothing. `None` is also the honest
+    # value: with nothing wanted, no snapshot was resolved.
+    reference: Path | None = None
     if wanted:
         reference = resolve_constraint_reference(constraint_cache)
         if reference is None and not offline and download:
