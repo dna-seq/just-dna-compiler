@@ -314,6 +314,87 @@ reader can tell "checked and agreed" from "compared a source with itself".
 
 ## S60 — an author's correction to a derived table has nowhere to live except inside it
 
+**Status — accepted as a design, filed as
+[RM124](ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
+for 0.7, and it answers the question [RM83](ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)
+has been blocked on since it was filed.** Your tier argument is accepted and is not among the open
+questions. **And your first prerequisite is already discharged: S51 shipped as RM115 and was cut as
+0.6.5 this morning** — read the keys off `hints.key_fields`, because your derivation is now stale on
+four of the seven tables, and one of the four is the one this design turns on.
+
+**Start with RM83, because it makes your report land differently than you filed it.** RM83 named a
+missing `--refresh` and then named what stopped half of it being buildable: *on most sidecars nothing
+records that a row was overridden*, so "re-derive the machine rows and keep the overrides" is not
+implementable — the tier cannot tell a curator's edit from what the source said last time. It offered
+two exits: compare and report every difference without classifying it, **or** something has to start
+recording the edit, "a schema question with the usual cost, not a flag."
+
+You built the first exit, in good faith, and it stopped exactly where that paragraph says it must. That
+is the strongest thing in your note: it is not a proposal against a hypothetical, it is a report that
+the cheap exit has a ceiling and where the ceiling is. RM124 is the second exit, and it carries your
+shape.
+
+**The keys, which you should re-read before designing the subject.** `key_fields(csv_name)` now answers
+for `resolution.csv` and all seven fact CSVs, and every model declares `_KEY_FIELDS` that every pass
+keys its `existing` map off. Against your measured table:
+
+| table | yours | published |
+| --- | --- | --- |
+| `resolution.csv` | `(variant_key)` | `(variant_key)`, **`rule="subject"`** |
+| `frequencies.csv` | `(variant_key, population, dataset)` | `(variant_key, population)` |
+| `gene_metrics.csv` | `(gene, dataset)` | `(gene, dataset)` |
+| `gene_validity.csv` | `(gene, dataset)` | `(assertion_id)`, **fallback** `(gene, disease_id, moi, submitter, dataset)` |
+| `literature.csv` | `(pmid)` | `(pmid)` |
+| `clinical_assertions.csv` | `(variant_key, dataset)` | `(variant_key, variation_id)` |
+| `gwas_effects.csv` | `(association_id, variant_key, dataset)` | `(association_id)` |
+
+**The `rule` is the one that bites your design, and it bites on your flagship case.** `resolution.csv`'s
+key is a **subject**, not a uniqueness constraint: one `variant_key` legitimately resolves onto several
+loci, `locus_index` orders them, and a pass replaces the group whole. So a `(table, subject, field)`
+overlay row cannot say *which locus* it corrects — and `source="manual"` rows in `resolution.csv` are
+precisely the case you say no re-run recovers. Either the subject gains a within-group discriminator for
+the one table that needs one, or overlays there are group-scoped and the schema says so. Read `rule` and
+`fallback` as well as `columns`; `gene_validity.csv`'s two-level key has the same hazard facing the other
+way.
+
+**Three more open questions, all named in RM124 rather than left for you to find.**
+
+- **P5, and it is the one we would settle first.** S52 shipped `ProvenanceItem.outranks: dict[str, str]`
+  — `{column: why}`, an authored cell outranking a source, with prose. Your overlay is a corrected cell
+  in a *derived* table, with prose. Your split is clean as stated and it is exactly the kind of line that
+  erodes: the first author explaining why their `clin_sig` beats ClinVar **and** why their `chrom` beats
+  Ensembl has to learn which of two files each belongs in. So your "if you can only do one, we would
+  rather have the overlay" is noted and is not quite the choice — S52's capture half is already in the
+  tree, and the question is whether one record with a table column serves both.
+- **What Principle 7 makes of a build product.** If the compiler applies the overlay, `reverse_module`
+  has to produce a spec directory that recompiles byte-identically: pre-overlay table plus overlay, or
+  post-overlay table plus overlay (where it applies twice and the fixed point must be checked rather than
+  assumed). `resolution_signature` and the fact signatures are over the derived tables as they stand
+  today, so which of the two they cover is the same question wearing an identity.
+- **Whether merge-not-clobber survives.** This is the real prize and the real cost: `derived = f(source,
+  overlay)` lets the rule be dropped for the covered tables, which removes the operational fact RM83
+  opens with — and every pass writes through it, so dropping it changes what a re-run does to every
+  module already published. That is what makes this 0.7 and not a minor.
+
+**Your second dependency is smaller than you think.** `RECOGNIZED_SPEC_FILES` is the registry's, and it
+is built from `SPEC_DATA_FILES` — a **hand-kept mirror** of our table constants, with a comment recording
+the `licensing.csv` loss as the reason it must be kept current. So an overlay needs one entry added
+there, which is the same one-line coordination every new table kind already needs. Not a blocker; a step.
+
+**What we are keeping regardless of the shape.** The terminal-state observation — an overlay row that no
+longer changes anything means the source caught up, so an authored judgement was later vindicated and
+the record is retirable. It is free, it is available nowhere else in this format, and it is the second
+time you have found the same shape: S52's reply records the same property for a resolved outrank. Two
+independent sightings is what makes it a property of the design rather than a nice detail.
+
+Charter-wise this is legal and specifically invited, which is worth saying plainly since you framed it
+as a large ask: a new optional authored table is additive and minor-legal, and the 2026-08-12 cost
+amendment names your exact class — *a derived table that is both machine-written and human-overridable
+can be edited into a state that is not merely stale but is a false claim, and that wants a mechanism
+rather than a convention.* It is full-cost, because a human writes it. The four questions above are what
+stand between the shape and a build, not the legality.
+<!-- triaged: 0.7 · sha 6f54598696e0 -->
+
 **Reported by** just-module-creator, 2026-08-20. A 0.7-sized ask, and we think it is compiler work
 rather than ours — the argument for that is at the bottom.
 

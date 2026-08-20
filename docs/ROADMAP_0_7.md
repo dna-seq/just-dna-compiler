@@ -940,6 +940,14 @@ performable rather than merely readable.
   compares against the source and reports every difference without classifying it, or something has to
   start recording the edit — and that second option is a schema question with the usual cost, not a flag.
 
+  **The second option now has a proposed shape and a motivating case: [RM124](#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it),
+  filed 2026-08-20 from S60.** A consumer built the *first* option — a non-destructive
+  capture/delete/re-derive/reapply wrapper — and it stops precisely where this paragraph says it must,
+  on a subject present in both copies with a differing fact. Their answer is an authored overlay table
+  that is never merged into the derived one, so the edit is recorded by construction. RM124 carries the
+  four questions it leaves open; this item stays the *refresh operation*, which the overlay makes
+  implementable rather than replaces.
+
 ### What it must not become
 
 A pass that **applies** the newer value. Rewriting an authored or curator-set cell destroys the evidence
@@ -1295,3 +1303,98 @@ two reasons COMPILER.md § Resolution already gives — a source's allele list i
 often as a module is wrong, and dropping rows changes what `reverse_module` reads back, which
 Principle 7 forbids. The reporter argued the same case against their own first candidate, and they are
 right.
+
+## RM124 — an author's correction to a derived table has nowhere to live except inside it
+
+**Severity** medium-high · **Status** open — a shape proposed by a consumer who built the workaround,
+tier argued, four questions unsettled · **Owner** format + compiler · **Motivating case**
+S60 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md) · **Answers the blocking sub-question of
+[RM83](#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)**
+
+### What RM83 was blocked on, and what this is
+
+RM83 named a missing operation — a `--refresh` that re-asks and reports — and named the thing that made
+half of it unbuildable: *on most sidecars nothing records that a row was overridden*, so "re-derive the
+machine rows and keep the overrides" cannot be implemented, because the tier cannot tell a curator's
+edit from what the source said last time. It offered two exits: compare and report every difference
+without classifying it, or **something has to start recording the edit**, which it called a schema
+question with the usual cost.
+
+This is that second exit, proposed by a consumer who built the first one and hit its ceiling. They wrote
+a non-destructive wrapper around the delete-and-re-derive sequence — capture, verify the capture, delete,
+re-derive, classify, reapply what is provably the author's — and it stops exactly where RM83 predicted:
+when a subject is present in both copies with a differing fact, the fresh row is *either* a cell the
+author edited *or* a revision the source published, and with two data points there is no third to
+separate them. Their tool reports and refuses to resolve, which is the honest outcome and is a symptom.
+
+### The proposed shape
+
+A recognized **authored overlay table** that lies on top of a derived one and is never merged into it:
+one row per `(table, subject, field)` carrying the authored value, the reason in prose, who decided, and
+when. The derived files become pure build products — `derived = f(source, overlay)` — and four things
+follow, three of which are theirs and all of which check out:
+
+- nothing is hand-edited, so re-derivation is non-destructive **by construction** rather than by a
+  wrapper being careful;
+- a difference between a fresh row and a previous one means the source revised, full stop; the
+  three-explanations ambiguity stops existing rather than being reported;
+- the reason for a correction travels with the module instead of living in someone's memory;
+- **the terminal state becomes detectable and it is free** — an overlay row that no longer changes
+  anything means the source caught up, which is evidence that an authored judgement was later vindicated
+  and is available nowhere else in this format. That is the observation to keep whatever else changes;
+  it is the same shape as S52's, recorded there for the same reason.
+
+### The charter, first-hand
+
+Legal, and specifically invited. A new optional authored table is additive and minor-legal (P3), it
+demotes nothing (P8), it is data and not code (P1), and it is authored input rather than a fetch (P2) —
+a compiler reading it is doing what it already does with every other authored table. Under the 2026-08-12
+cost amendment it is the **full-cost** layer, a human writes it; but that same amendment is what names
+this class in the first place — *a derived table that is both machine-written and human-overridable can
+be edited into a state that is not merely stale but is a false claim, and that wants a mechanism rather
+than a convention.* RM45 discharged that for exactly one table by making `verification.json` unwritable
+by hand. Nothing discharges it for the six where overriding **is** the intended feature.
+
+### Four questions, and none of them is the tier
+
+**Their tier argument is accepted and is not an open question.** An overlay is authored input, not a
+repair, so report-never-repair is not at stake; and if each downstream tool applies its own overlay, two
+consumers compiling one spec directory disagree about what the module says and the artifact stops being a
+function of the spec. That settles *where*, and leaves:
+
+1. **`(table, subject, field)` is not enough, and the table it fails on is their flagship case.** RM115
+   shipped the merge keys they were blocked on, and it published something their derivation could not
+   reach: `resolution.csv`'s key is `rule="subject"`, not a uniqueness constraint. One `variant_key`
+   legitimately resolves onto several loci, `locus_index` orders them, and a pass replaces the group
+   whole — so a subject names a *group of rows*, and an overlay row keyed on it cannot say which locus it
+   corrects. Their `source="manual"` rows are in exactly that table. Either the subject gains a
+   within-group discriminator for the one table that needs one, or overlays on `resolution.csv` are
+   group-scoped and say so. `gene_validity.csv` needs the same care in a different direction — its key
+   has two levels (`assertion_id` else the gene's grain), so an overlay written against one level is
+   silent about rows keyed by the other.
+2. **P5: this and `provenance.json` must not become two records of one concept.** S52 shipped
+   `ProvenanceItem.outranks: dict[str, str]` — `{column: why}`, an authored cell outranking a source,
+   with prose. The overlay is a corrected cell in a *derived* table, with prose. Their split is clean as
+   stated (authored vs derived) and it is exactly the kind of line that erodes: the first author who
+   wants to explain why their `clin_sig` beats ClinVar *and* why their `chrom` beats Ensembl has to learn
+   which of two files each belongs in. Decide whether one record with a table column serves both, or
+   whether the two are genuinely different axes, **before** either grows a second field.
+3. **What P7 makes of a build product.** If the compiler applies the overlay, `reverse_module` has to
+   reproduce a spec directory that recompiles byte-identically — which means deciding whether it re-emits
+   the *pre-overlay* derived table plus the overlay, or the post-overlay table with the overlay beside it
+   (in which case the overlay applies twice and the fixed point has to be checked, not assumed).
+   `resolution_signature` and the fact signatures are over the derived tables as they stand today, so
+   which of the two they cover is the same question wearing an identity.
+4. **Whether merge-not-clobber survives.** The real prize is that `derived = f(source, overlay)` lets the
+   rule be dropped for the tables the overlay covers, which removes the operational fact RM83 opens with.
+   The real cost is that every pass writes through it, and dropping it changes what a re-run does to every
+   module already published. That is the part that makes this 0.7 rather than a minor.
+
+### The dependency that is real but routine
+
+The registry rebuilds a spec directory from its own `RECOGNIZED_SPEC_FILES`, and a name missing there is
+a file dropped on the next re-publish — which is how `licensing.csv` was lost before their 0.16.2. That
+tuple is built from `SPEC_DATA_FILES`, a **hand-kept mirror** of our table constants, so an overlay needs
+one entry added there. It is the same one-line change every new table kind already needs, and their own
+comment records the scar; it is a coordination step, not a design blocker.
+
