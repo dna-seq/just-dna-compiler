@@ -532,6 +532,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   was accidental, so the call site widened and the second registry (`draft._CORE_DUPE_KEYS`, which was
   carrying `SourceRow` only because the compiler had no key for it) gave the entry back. (RM107.)
 
+- `@field-description-is-a-claim` — **An analogy inside a `Field(description=…)` is a claim a reader
+  will act on, and it does not travel with the field.** Three shipped strings said the authored
+  `license` was "advisory and registry-overridable, exactly like `module.version`" — checked in the
+  registry's own checkout, its publish path never writes that field. `module.version` really is stamped,
+  which is exactly how the sentence survived review: the analogy is true of the field it was copied
+  *from*. What the compiler actually does with `license` is the opposite of overriding it —
+  `_check_declared_license_agrees` compares it against the annotation-layer sources and warns in both
+  modes. Two descriptions were involved, so this reached authors through `describe_table` /
+  `authoring_reference`, which is the most-read documentation in the repo. When you catch a doc string
+  and the code disagreeing, **make one side true and say which** rather than softening the sentence.
+  (RM111. The item cited `normalize.py:40` as the third site; that line is the `IDENTITY_AUTHORITY_KEYS`
+  note, which is correct about the identity keys — the real third and fourth sites were
+  `manifest.py`'s module docstring and its own `license` field.)
+
 - `@validation-ceiling` — **Know the validation ceiling before adding a check.** [COMPILER.md](COMPILER.md) opens with
   *What the compiler can and cannot validate*: three strengthening classes it **can** do (formal
   conformance → validate-by-redundancy → content-addressed self-verification, which is the class VRS

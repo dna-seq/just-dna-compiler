@@ -5350,7 +5350,10 @@ def _build_manifest(
         literature=literature,
         sources=sources,
         verification=verification,
-        # Author-declared and registry-overridable, the same advisory pattern as module.version.
+        # Author-declared and copied through verbatim. NOT the `module.version` pattern, which a
+        # publishing registry really does stamp: nothing overwrites this field, and
+        # `_check_declared_license_agrees` compares it against the annotation-layer sources and warns,
+        # which is the opposite of replacing it (RM111).
         license=config.license,
         # RM92: what the module's `weight` column means, copied verbatim. Advisory like `license`,
         # so it reaches the manifest and neither identity half.

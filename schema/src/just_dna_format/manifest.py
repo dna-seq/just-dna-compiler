@@ -3,9 +3,11 @@ The `manifest.json` contract — the single source of truth for a compiled annot
 
 Mirrors SPEC §4. Fields known at compile time (display, stats, compilation, inputs, artifact)
 are filled by the compiler; marketplace-level fields (namespace, version, owner, published_at,
-canonical_id) are `Optional` and filled by the marketplace on publish. `license` is the one hybrid:
-since 0.5 an author may declare it in `module_spec.yaml` and the compiler copies it through, with the
-marketplace still overriding on publish — the same advisory-then-stamped pattern as `version`.
+canonical_id) are `Optional` and filled by the marketplace on publish. `license` reads like one of
+them and is not: since 0.5 an author declares it in `module_spec.yaml`, the compiler copies it through
+and cross-checks it against the licensing table, and no registry stamps over it. `version` is the field
+that really is advisory-then-stamped, and describing the two as one pattern was a claim nothing
+performed (RM111).
 
 This module is intentionally dependency-light (Pydantic + stdlib only) so both
 `just-dna-pipelines` (which emits the manifest) and `just-dna-marketplace` (which consumes and
@@ -1322,8 +1324,10 @@ class ModuleManifest(BaseModel):
         default=None,
         description=(
             "Module-wide licence. Author-declared via `module_spec.yaml`'s `license:` and copied "
-            "through by the compiler; the marketplace overrides on publish. The per-source detail "
-            "lives in `sources`, which is where a redistributor should look."
+            "through by the compiler, which cross-checks it against the annotation-layer sources "
+            "and warns on a contradiction rather than overwriting it — nothing downstream stamps "
+            "this field. The per-source detail lives in `sources`, which is where a redistributor "
+            "should look."
         ),
     )
     weighting: Weighting | None = Field(

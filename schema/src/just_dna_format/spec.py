@@ -352,10 +352,13 @@ class ModuleSpecConfig(BaseModel):
         default=None,
         description=(
             "Optional licence the author declares for the module as a whole, e.g. 'CC-BY-SA-4.0'. "
-            "Advisory and registry-overridable, exactly like `module.version`: the marketplace "
-            "stamps the canonical value on publish. The authoritative per-source record is "
-            "`sources.csv`, which round-trips; this key is a human convenience and is NOT "
-            "reconstructed by the lossy `reverse_module` (same class as `panel`/`authorship`)."
+            "The author's own claim, and nothing overwrites it: the compiler copies it through and "
+            "**checks** it against the annotation-layer rows of the licensing table, warning in both "
+            "modes when they disagree rather than replacing either. Advisory only in the sense that "
+            "no gate reads it — unlike `module.version`, which a publishing registry really does "
+            "stamp. The authoritative per-source record is `sources.csv`, which round-trips; this "
+            "key is a human convenience and is NOT reconstructed by the lossy `reverse_module` "
+            "(same class as `panel`/`authorship`)."
         ),
     )
     weighting: Weighting | None = Field(
