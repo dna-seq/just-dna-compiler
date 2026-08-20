@@ -31,10 +31,10 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**Adopted through gist revision `bd793a8ce98b729f00b97733d38ed82d4d127a48`**, published 2026-08-18 —
+**Adopted through gist revision `a74366fa6d728d104664370bfc37b9593a3a2a55`**, published 2026-08-21 —
 and that one is ours, an outward push rather than an adoption, so it is in sync by construction. It
-supersedes `ab7e2a89c48d…` (committed 2026-08-16), which was the baseline the digest check was first
-pinned to. Same sha back means nothing has arrived and the sync-in is finished for that pass; a
+supersedes `bd793a8ce98b…` (2026-08-18) and, before that, `ab7e2a89c48d…` (2026-08-16), which was the
+baseline the digest check was first pinned to. Same sha back means nothing has arrived and the sync-in is finished for that pass; a
 different one means pull the files and read the diff. **Update this line, with its date, whenever an
 adoption *or* a push lands** — it is the baseline, and a stale one re-diffs work already taken, which
 after a push means re-reading your own writing as though a stranger had sent it.
@@ -91,14 +91,21 @@ being true here when §5's permit was granted, and a watcher that pauses because
 sit in a document saying it does not. Updating the gist is a publish and stays the user's to authorize;
 it was authorized for that push and is not a standing permission.
 
-**One item is owed outward again as of 2026-08-21**, and it is pattern material rather than local
-tuning: *stamp the arrival fingerprint, not the value the ledger prints after you write the reply*
-(§6). The gist does not carry the wrong sentence — it simply never says which sha to write, and a
-reader who reasonably guesses "run the ledger and copy what it prints" walks into the trap on every
-reply longer than a paragraph, which is most of them. Nothing else is owed: the §4 thresholds and the
-§5 permit have no counterpart there at all, deliberately or otherwise, so the stale-counter correction
-of 2026-08-20 (*count the idiom, not a fixed version number*) has nothing to be stale in. Whether the
-generic copy should grow those two sections is a separate question and a larger push.
+**One item was owed outward on 2026-08-21 and was pushed the same day**: *stamp the arrival
+fingerprint, not the value the ledger prints after you write the reply* (§6). That is pattern material
+rather than local tuning — the gist never carried the wrong sentence, it simply never said which sha to
+write, so a reader who reasonably guesses "run the ledger and copy what it prints" walks into the trap
+on every reply longer than a paragraph, which is most of them. It went into the gist's Step 3, where the
+stamping actually happens, and the baseline above moved with it. Nothing is owed outward as of that
+revision.
+
+**§4 and §5 are deliberately not generalized, decided 2026-08-21 — do not re-raise this.** The published
+copy has never carried a thresholds section or an unattended-permit section, and it should not: the
+numbers are this tree's tuning and the permit is this tree's grant, so a generic copy stating either
+would be publishing a local decision as though it were the pattern. The practical consequence is that
+the stale-counter correction of 2026-08-20 (*count the idiom, not a fixed version number*) has nothing
+to be stale in over there, and a future pass that notices the absence should read it as intended rather
+than as a debt.
 
 **The live document holds only what is unanswered.** An item moves to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) once its reply is written, which is
