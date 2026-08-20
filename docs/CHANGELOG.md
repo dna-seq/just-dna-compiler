@@ -36,8 +36,9 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-08-20 (latest) — a triage batch of seven, and the one authored column in it (S50–S56, RM115–RM120)
 
-Not cut yet — `just-dna-format`/`just-dna-compiler` read `0.6.1` and `just-dna-enricher` `0.6.4`; these
-land in the next cut. Seven items from `just-module-creator` across three reports in one day. Additive
+**Cut as 0.6.5** across all three packages and tagged `v0.6.5` on 2026-08-20 — the aligned number, since
+schema, compiler and enricher all moved in this batch. Tagged is not published: `uv publish` is a
+separate step and the maintainer's. Seven items from `just-module-creator` across three reports in one day. Additive
 only: **one new authored column** (`StudyRow.curator`), two new manifest/document fields, three new
 public names, two new checks and one documentation fix. Nothing removed, nothing retyped, no existing
 authored column moved — so an existing module's `content_signature` is unchanged, verified.
@@ -96,8 +97,8 @@ Suite 2784 → 2833.
 
 ## 2026-08-20 — three schema facts a downstream surface could not generate (S47–S49, RM112–RM114)
 
-Not cut yet — `just-dna-format`/`just-dna-compiler` read `0.6.1` and `just-dna-enricher` `0.6.4`; these
-land in the next cut. Three items from `just-module-creator` in one sitting, all from the same work: their
+**Shipped in 0.6.5**, cut and tagged on 2026-08-20 with the batch above. Three items from
+`just-module-creator` in one sitting, all from the same work: their
 MCP tools had answers that **restated** a schema fact instead of generating it, and two of the three had
 no public symbol to generate from. Additive only — new public names beside the old, nothing removed or
 retyped, no authored column moved, so `content_signature` is untouched everywhere.

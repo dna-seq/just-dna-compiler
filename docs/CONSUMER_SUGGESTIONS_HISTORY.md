@@ -2745,7 +2745,7 @@ to generate each from. Two of the three had none. That is the report.*
 
 ## S50 — `--no-study-facts` is a permanent choice, and nothing says so
 
-**Status — accepted as a documentation defect; both sites fixed in the tree (not yet cut). No `RMn`:
+**Status — accepted as a documentation defect; both sites fixed in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). No `RMn`:
 the behaviour is correct and only the prose was wrong, which is your own reading of it.**
 Your three-step sequence reproduced here exactly, with an injected client on the real pass:
 
@@ -2776,7 +2776,7 @@ here is a sentence rather than a mechanism.
 
 Pinned by `test_a_no_study_facts_row_is_never_back_filled_by_a_later_run`, run as your three-step
 sequence rather than asserted off the code — the point being that step 2 looks like it should work.
-Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+Cut and tagged `v0.6.5` on 2026-08-20; publishing is a separate step and the maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before assuming you can install it.
 <!-- triaged: 0.6.5 · sha 376e501239e4 -->
 
 *Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 as installed. Doc gap, not a code
@@ -2825,7 +2825,7 @@ case `follow`'s 404 arm deliberately produces.
 
 ## S51 — a derived sidecar's *merge key* lives inside its pass, so no consumer can reproduce it
 
-**Status — accepted, shipped as [RM115](ROADMAP_HISTORY.md#rm115--a-derived-sidecars-merge-key-lived-inside-the-pass-that-writes-it) in the tree (not yet cut).**
+**Status — accepted, shipped as [RM115](ROADMAP_HISTORY.md#rm115--a-derived-sidecars-merge-key-lived-inside-the-pass-that-writes-it) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published).**
 `hints.key_fields(csv_name)` now answers for `resolution.csv` and all seven fact CSVs — it already
 routed derived names through `derived_model_for` after RM113, so the gap was that the seven models
 declared no key and it correctly withheld. Your candidate fix is what shipped, in the tier you named:
@@ -2868,8 +2868,8 @@ article on every run. All three now read the attribute off the row instead of un
 
 Documented in [ENRICHER.md § What makes two rows of a sidecar the same row](ENRICHER.md), with the whole
 table and the two shapes called out. Guards in `enricher/tests/test_merge_keys.py`; suite 2799 → 2813.
-Not installable yet — per the standing rule at the top of this file, check
-[CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+Cut and tagged `v0.6.5` on 2026-08-20; per the standing rule at the top of this file, tagged is not
+installed — publishing is a separate step and the maintainer's.
 <!-- triaged: 0.6.5 · sha 3e1fdfb4f967 -->
 
 > **Triage note added 2026-08-20, after seeing how much you already have in flight.** If you are
@@ -2957,7 +2957,7 @@ sees.
 
 ## S52 — `ProvenanceItem.rationale` is the outrank marker a cross-check needs, and no check reads it
 
-**Status — accepted, split as you proposed: the capture half shipped in the tree (not yet cut), the
+**Status — accepted, split as you proposed: the capture half shipped in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published), the
 check half is filed as [RM117](ROADMAP.md#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided) with the reasons it is not obviously right.**
 
 **Taking your explicit ask first, since you said it unblocks you more than the check behaviour does:
@@ -3000,7 +3000,7 @@ asking anyone anything, and they do not depend on the severity question being se
 
 Documented in [SCHEMAS.md § `provenance.json` and the outrank record](SCHEMAS.md), including that
 nothing reads it today — stated rather than left for the next person to grep for, since that is how you
-found it. Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+found it. Cut and tagged `v0.6.5` on 2026-08-20; publishing is a separate step and the maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before assuming you can install it.
 <!-- triaged: 0.6.5 · sha b67b4f769fd2 -->
 
 *Filed 2026-08-20 from `just-module-creator`, against format/compiler 0.6.1 and enricher 0.6.4 as
@@ -3190,7 +3190,7 @@ works if the check keeps reporting them.
 
 ## S53 — `content_signature` is whole-module-only, so anything finer has to restate `_resolve_spec_defaults` and re-derive the table roster
 
-**Status — accepted; your candidate fix shipped as [RM116](ROADMAP_HISTORY.md#rm116--content_signature-returned-only-its-hash-so-anything-finer-restated-the-fold) in the tree (not yet cut), and the docs half with it.**
+**Status — accepted; your candidate fix shipped as [RM116](ROADMAP_HISTORY.md#rm116--content_signature-returned-only-its-hash-so-anything-finer-restated-the-fold) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published), and the docs half with it.**
 `compiler.spec_tables(spec_dir) -> tuple[dict[str, list[BaseModel]], str]` is public, with the
 signature and docstring you proposed; `content_signature` is now `_content_signature(*spec_tables(...))`
 and no logic moved. The `ValueError`-on-invalid-CSV contract carries over unchanged, and a test pins it
@@ -3226,8 +3226,8 @@ a documented equality.
 
 Guards in `compiler/tests/test_content_signature.py`, on the RM37 fixtures that already model your
 measured pair; the fold test **demonstrates** the raw build disagreeing in the same test that shows the
-folded one does not, rather than asserting it. Suite 2813 → 2817. Not installable yet — check
-[CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+folded one does not, rather than asserting it. Suite 2813 → 2817. Cut and tagged `v0.6.5` on 2026-08-20; publishing to PyPI is a separate step and the
+maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before assuming you can install it.
 <!-- triaged: 0.6.5 · sha 655c0d535ca5 -->
 
 We are specifying the tool `MODULE_LIFECYCLE.md` §7 says nothing owns: *"what moved between two
@@ -3314,7 +3314,7 @@ we took on authority rather than on reasons. `S11` is ours, and it did not survi
 
 ## S54 — `quotes_found` is satisfied by the article's own title, and four published modules do exactly that
 
-**Status — accepted, shipped as [RM118](ROADMAP_HISTORY.md#rm118--quotes_found-could-not-fail-on-a-title-and-four-published-modules-are-titles) in the tree (not yet cut). Your candidate fix, both halves of it.**
+**Status — accepted, shipped as [RM118](ROADMAP_HISTORY.md#rm118--quotes_found-could-not-fail-on-a-title-and-four-published-modules-are-titles) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). Your candidate fix, both halves of it.**
 Reproduced against our own tree before writing anything, and your numbers hold: 2045/33/33,
 695/19/19, 859/26/26, 69/3/3 — row count, distinct PMIDs and distinct quotes, one quote per PMID on
 all four. The quotes are titles.
@@ -3363,7 +3363,7 @@ Your consequences (2) and (3) are **S56**, below in this file, and both shipped 
 
 Your S11 point is the part we will be carrying forward, and it is answered in S55 rather than here.
 Documented in [ENRICHER.md § A quote that is the article's own title](ENRICHER.md).
-Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+Cut and tagged `v0.6.5` on 2026-08-20; publishing is a separate step and the maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before assuming you can install it.
 <!-- triaged: 0.6.5 · sha 70e25439f0d5 -->
 
 *Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 as installed. Measured, not
@@ -3550,7 +3550,7 @@ needs a rule.
 
 ## S55 — we withdraw the reasoning behind `attestation_bearing`, and ask for the attributor it was missing
 
-**Status — accepted; `StudyRow.curator` shipped as [RM120](ROADMAP_HISTORY.md#rm120--the-table-where-the-attestation-lives-could-not-name-its-attributor) in the tree (not yet cut). Your whole ask, verbatim as you wrote it.**
+**Status — accepted; `StudyRow.curator` shipped as [RM120](ROADMAP_HISTORY.md#rm120--the-table-where-the-attestation-lives-could-not-name-its-attributor) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). Your whole ask, verbatim as you wrote it.**
 
 **We think the retraction is right, and it is the most useful thing anyone has sent this inbox.** Our
 own answer to S11 turned on *"nothing establishes a human ever looked"*, and you are correct that the
@@ -3609,8 +3609,8 @@ side by construction: the attributor is a `studies.csv` column, so it travels wi
 any mechanical re-publish that carries the table, and the reasoning you quote for dropping
 `provenance.json` stays untouched and correct.
 
-Documented in [SCHEMAS.md](SCHEMAS.md) beside the provenance columns. Not installable yet — check
-[CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+Documented in [SCHEMAS.md](SCHEMAS.md) beside the provenance columns. Cut and tagged `v0.6.5` on 2026-08-20; publishing to PyPI is a separate step and the
+maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before assuming you can install it.
 <!-- triaged: 0.6.5 · sha 4f55d9fa3dff -->
 
 *Filed 2026-08-20 by just-module-creator. This one is a retraction of our own argument, so the report
@@ -3732,7 +3732,7 @@ that is about the sidecar and the manifest rather than about the quote itself.*
 
 ## S56 — `literature.csv` can claim `quotes_authored: 0` beside 859 authored quotes, and nothing compares them
 
-**Status — accepted, both halves shipped as [RM119](ROADMAP_HISTORY.md#rm119--a-citation-sidecar-could-contradict-its-own-studiescsv-and-the-manifest-turned-it-into-a-confident-zero) in the tree (not yet cut).**
+**Status — accepted, both halves shipped as [RM119](ROADMAP_HISTORY.md#rm119--a-citation-sidecar-could-contradict-its-own-studiescsv-and-the-manifest-turned-it-into-a-confident-zero) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published).**
 Reproduced on our own copy of the data before writing: `aggression_anger/literature.csv` reads
 `quotes_authored=0` on all three rows while its `studies.csv` carries 69 quotes — 65 of them on pmid
 29500382, the row you quoted.
@@ -3765,7 +3765,7 @@ rather than walking the bin rows, because `DiplotypeRow` has no `pmid` column at
 it. A bin-only citation now carries a denominator of zero rather than being skipped, so a literature
 row reachable only from a bin does not read as stale.
 
-Not installable yet — check [CHANGELOG.md](CHANGELOG.md) for whether the version was cut.
+Cut and tagged `v0.6.5` on 2026-08-20; publishing is a separate step and the maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before assuming you can install it.
 <!-- triaged: 0.6.5 · sha 45f7a4949545 -->
 
 *Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 / compiler 0.6.1 as installed.
