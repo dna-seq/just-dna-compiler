@@ -26,7 +26,7 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
 from just_dna_format.identity import is_valid_version
-from just_dna_format.manifest import README_CANDIDATES
+from just_dna_format.manifest import LOGO_EXTENSIONS, README_CANDIDATES
 from pydantic import BaseModel, Field
 
 from just_dna_enricher.locations import (
@@ -44,8 +44,11 @@ _MANIFEST_FILENAME = "manifest.json"
 # named here in the same commit that adds it. The candidate list is imported rather than spelled out:
 # the compiler discovers a readme from `README_CANDIDATES` and this publisher must accept exactly the
 # set the compiler can produce, or an author who wrote `README.rst` publishes a manifest attesting a
-# file the repo does not carry. `logo.jpeg` is a pre-existing instance of that same skew, left alone
-# here because widening it is not this item's decision.
+# file the repo does not carry. **The logo half is derived the same way (RM105).** It was the hand-
+# spelled pair `logo.png`/`logo.jpg` while `manifest.LOGO_EXTENSIONS` is `{png, jpg, jpeg}` and
+# `_collect_logo` picks the first in `sorted()` order — so `jpeg` wins, and a spec dir holding one
+# shipped a manifest attesting bytes the published repo did not carry. `verify_manifest(check_logo=True)`
+# does not catch it either: an absent file is not a failure there.
 #
 # **The parquet half is derived from the compiler's own list, never restated here (S35, RM89).** It
 # used to be the hand-kept triple `weights`/`annotations`/`studies`, written when a module *meant* a
@@ -58,8 +61,7 @@ _MANIFEST_FILENAME = "manifest.json"
 _ALLOW_PATTERNS = [
     *ARTIFACT_PARQUETS,
     _MANIFEST_FILENAME,
-    "logo.png",
-    "logo.jpg",
+    *(f"logo.{ext}" for ext in sorted(LOGO_EXTENSIONS)),
     *README_CANDIDATES,
 ]
 # `weights.parquet` is the one lead table the compiler never emits alone: a SNP core always produces

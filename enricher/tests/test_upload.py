@@ -11,6 +11,7 @@ import yaml
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, compile_module
 from just_dna_enricher.cli import app
 from just_dna_enricher.upload import (
+    _ALLOW_PATTERNS,
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_REPO_ID,
     PublishCollisionError,
@@ -23,6 +24,7 @@ from just_dna_enricher.upload import (
 from just_dna_format.integrity import build_artifact
 from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.manifest import (
+    LOGO_EXTENSIONS,
     README_CANDIDATES,
     Artifact,
     Display,
@@ -130,6 +132,39 @@ def test_plan_upload_carries_the_readme_the_compiler_attests(tmp_path: Path) -> 
         alt = _compiled_module(tmp_path / f"m-{name}")
         (alt / name).write_text("prose\n", encoding="utf-8")
         assert name in plan_upload(alt, "m").files, name
+
+
+def test_every_logo_the_compiler_can_ship_is_a_logo_the_publisher_uploads(tmp_path: Path) -> None:
+    """RM105: the logo half of the allowlist was hand-spelled `logo.png`/`logo.jpg`.
+
+    `manifest.LOGO_EXTENSIONS` is `{png, jpg, jpeg}` and `_collect_logo` takes the first in `sorted()`
+    order, so **`jpeg` wins over `jpg` over `png`** — and `logo.jpeg` was the one spelling the
+    publisher dropped. The manifest then attests, by name and sha256, bytes the published repo does not
+    carry, which is exactly what deriving the readme half from `README_CANDIDATES` exists to prevent.
+    `verify_manifest(check_logo=True)` does not catch it: an absent file is not a failure there.
+
+    Set equality, not a floor — a floor passes on the pre-fix tree, since two of the three were
+    already listed.
+    """
+    assert {p for p in _ALLOW_PATTERNS if p.startswith("logo.")} == {
+        f"logo.{ext}" for ext in LOGO_EXTENSIONS
+    }
+
+    for ext in sorted(LOGO_EXTENSIONS):
+        module_dir = _compiled_module(tmp_path / f"logo-{ext}")
+        (module_dir / f"logo.{ext}").write_bytes(b"image-bytes")
+        assert f"logo.{ext}" in plan_upload(module_dir, "m").files, ext
+
+    # …and end to end through a real compile, which is where the skew was actually visible: the
+    # winning spelling is the one the publisher used to drop.
+    spec = tmp_path / "spec"
+    shutil.copytree(_EXAMPLES / _EXAMPLE, spec)
+    (spec / "logo.jpeg").write_bytes(b"jpeg-bytes")
+    out = tmp_path / "compiled"
+    compile_module(spec, out)
+    manifest = read_manifest(out / "manifest.json")
+    assert manifest.logo is not None and manifest.logo.name == "logo.jpeg"
+    assert manifest.logo.name in plan_upload(out, "hfe").files
 
 
 def test_weights_parquet_never_travels_alone(tmp_path: Path) -> None:

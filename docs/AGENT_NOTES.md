@@ -1877,6 +1877,16 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   a second drift impossible rather than merely unlikely. An absent or unreadable `manifest.json` still
   **withholds** (tri-state, like RM84's `version_unknown_reason`), so a directory without one stays
   publishable.
+  **The logo half was the last hand-spelled member, and it was wrong (RM105).** `logo.png`/`logo.jpg`
+  sat there while `manifest.LOGO_EXTENSIONS` admits `jpeg` and `_collect_logo` picks the first in
+  `sorted()` order — so **`jpeg` wins**, and the one spelling discovery prefers was the one the
+  publisher dropped. Two lessons past the fix. The skew was **named twice and owned by nobody**: the
+  CHANGELOG entry that introduced the derived allowlist mentions it, and a code comment deferred it
+  ("widening it is not this item's decision"), which is how a known defect survives two releases — if
+  you defer a neighbouring gap, file it as an `RMn` in the same commit. And `verify_manifest(check_logo=True)`
+  does **not** catch it, because an absent file is not a failure there: an attestation check that
+  tolerates absence cannot substitute for the publisher carrying the file. Test it as **set equality**
+  over `LOGO_EXTENSIONS` — a floor passed, two of three already being listed.
 
 - `@off-switch-needs-a-probe` — **A knob's disabling value is its own case, and reading the code is not
   running it.** Two instances a day apart, and neither was visible in review. The watcher's `BRANCH`
