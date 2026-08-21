@@ -171,7 +171,7 @@ Two consequences worth stating outright:
 
 **Six as of 2026-08-21.** Four of them carry no open decision — their shape is settled and nothing is
 left but the typing — and **[RM126](#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
-and [RM127](#rm127--the-release-class-table-and-the-release-practice-disagree), filed the same day from
+and [RM127](#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one), filed the same day from
 [S62](CONSUMER_SUGGESTIONS_HISTORY.md), are decisions again**: what a release should declare about its
 own output, and which of two rules sizes a release. RM127 is the maintainer's rather than an agent's.
 The settled four are:
@@ -488,8 +488,11 @@ whole of which is patch releases:
 `studies.parquet` grew by exactly 257 bytes on each of the ten because **RM120 added the authored
 column `curator`**, first present in `v0.6.5`. So the *parquet schema* moved across a patch interval,
 which is the sharpest form of the finding and the one the reporter had not seen — they reported
-changed manifest fields. `stats.genes`/`stats.gene_count` moved on eight (RM121) and
-`literature.quotes_unchecked` appeared on three (RM119).
+changed manifest fields. `stats.genes`/`stats.gene_count` moved on **seven** (RM121) and
+`literature.quotes_unchecked` appeared on three (RM119). **Six of the sixteen changed a published,
+indexed manifest field with *both* hashes byte-identical** — `apoe_epsilon` went `genes: []` →
+`["APOE"]` at the same `artifact.digest` and the same `content_signature`. That is the sharpest number
+here and the one the surface has to answer to.
 
 **Authored identity held throughout**, which is the charter working as designed: an unset optional
 column is omitted from `content_signature`, so nothing a consumer keys on moved. That is exactly why
@@ -520,61 +523,99 @@ tracking `latest` receives), so the decision is the consumer's and only the fact
   cheap — check out the previous tag into a detached worktree, compile `reference_examples/`, diff the
   manifests, and fail when the declared hints disagree with what actually moved.
 
+**The shape, decided 2026-08-21 in the S62 thread — two axes, and only one of them is measurable.**
+
+- **`output_differs` — measured.** One record per release, produced by the sweep: parquet schema,
+  parquet bytes, `content_signature`, and the set of changed manifest fields. Intervals compose as a
+  **union over the releases in `(a, b]`**, so storage is linear rather than O(releases²) and
+  *moved-and-moved-back still counts as moved*, which is the right reading for staleness. Backfillable
+  for 0.6.1→0.6.6 by measurement with the harness that produced the numbers above; older intervals stay
+  honestly `unknown`.
+- **Correction versus addition — declared.** Only the person fixing the bug knows whether the stored
+  value was **wrong** (`stats.genes`) or merely **absent** (`curator`), and no diff can tell them
+  apart: both look like "a field changed". This is the canary — *not a minor, but rebuild time* — and
+  it is the half the consumer cannot compute for themselves at any price.
+- **The gate is what keeps the declaration honest.** A release whose sweep shows a changed field with
+  no declaration covering it **fails**. That is what stops this becoming the hand-kept map everyone
+  agrees it must not be: the measurement forces the declaration rather than the author remembering to
+  write one. A release where nothing moved records a measured zero **with its evidence**, never
+  silence (`@tautology-zero`).
+
+**This does not contradict the reporter's "no `should_rebuild` verdict", and the item must say so.**
+Their objection is to a *cost* verdict, because the cost differs per consumer. The correction flag is
+not a cost judgement — it is a fact about whether a value we published was wrong, which is upstream
+knowledge only this repo holds. The per-axis breakdown stays exposed underneath it, so a consumer who
+wants the facts rather than the flag still has them. A bare boolean with nothing under it would deserve
+their objection exactly.
+
+**Tiers.** The record, its model and a pure `needs_recompile(compiled_under, current)` belong in
+`just-dna-format` — a static table plus a function, which pydantic-only holds comfortably, and format
+is the tier every consumer has. The **sweep instrument** belongs in the compiler, since producing a
+record means compiling. The **gate** runs in the bump → `uv sync` → tag sequence rather than as an
+ordinary test, because it needs the previous release actually installed. Keyed on `compiler_version`,
+which is what `manifest.compilation` already stamps and what a consumer holds. **Scope v1 to
+compiler-derived outputs and say so** — enricher-side outputs stay unmeasured rather than unchanged.
+
 **Open, because the representation is not obvious.** An interval table is O(releases²) unless it is
 composed from per-release records, and composing them means deciding whether the axes are unions
 (a field that moved and moved back still moved) — probably yes, but that is a decision. The tier is
 open too: the natural caller is a consumer of `just-dna-compiler`, and the hints describe compiler
 behaviour, but a verify-only consumer holding `just-dna-format` alone has the same question about a
-manifest it can read. **Sizing depends on [RM127](#rm127--the-release-class-table-and-the-release-practice-disagree), which is the same question asked of ourselves.**
+manifest it can read. **[RM127](#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one) is why this is needed rather than a nicety**: a corrected derivation is a bug fix,
+deferring it to a minor means serving a wrong value meanwhile, so the release number cannot carry
+staleness and a second channel is the only resolution left.
 
-## RM127 — the release-class table and the release practice disagree
+## RM127 — a corrected derivation has no release class, and the version number is the wrong place to carry one
 
-**Severity** medium · **Status** open — **a minor, release undecided** — filed 2026-08-21 · **Owner**
-maintainer (a policy decision, not a code one) · **Motivating case**
+**Severity** medium · **Status** open — **a minor, release undecided** — filed 2026-08-21, **rewritten
+the same day** · **Owner** maintainer (one charter question) + compiler · **Motivating case**
 [S62](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry)
 
-Two documents state different rules for the same change, and a consumer was bitten relying on one.
+**This entry was first filed as *the release table and the practice disagree*, and that was aimed at
+the wrong target.** The original framing indicted `StudyRow.curator` shipping in 0.6.5. It should not
+have: `curator` is additive, no already-published module can carry it, no stored value became wrong,
+and the only consequence is that a recompile writes different bytes — which P4 already declines to
+guarantee across compiler versions. Sizing it as a patch is defensible, and the table calling it a
+minor is the table being strict rather than the cut being wrong. The original text is preserved in
+[ROADMAP_HISTORY § the 2026-08-21 output-contract round](ROADMAP_HISTORY.md#the-2026-08-21-output-contract-round--what-a-patch-may-change-about-a-compiled-artifact).
 
-- **The stated rule.** [CONSUMER_TRIAGE_LOOP § Step 1](CONSUMER_TRIAGE_LOOP.md#step-1--charter-legality-first-hand)
-  sizes *a new optional column, table, or manifest field* as a **minor**, and [CHANGELOG](CHANGELOG.md)'s
-  preamble says additive work — *including a new optional column or table* — is `0.6.0`.
-- **What happened.** `StudyRow.curator` shipped in **0.6.5**, a patch. The cut's own CHANGELOG entry
-  names it — *"Additive only: one new authored column"* — so this was not an oversight; it was sized
-  by a different test, *"an existing module's `content_signature` is unchanged, verified"*. RM121's
-  record reasons the same way: *"A patch: `manifest.json` is outside `artifact.digest` and `stats`
-  outside `content_signature`, measured."*
+**The real item is RM121, and it is a change class the taxonomy does not have.** `stats.genes` is an
+*existing published field whose derivation was corrected* — the same spec now yields a different
+value. Nothing was added, removed, promoted or retyped. The three rows we have are *additive → minor*,
+*legibility → patch*, *removal/promotion/retype → major*, and a corrected derivation is in none of
+them. It did not fall between two rules; it fell outside the list.
 
-**Both tests are defensible and they are not the same test.** *Is it additive?* and *does authored
-identity move?* diverge exactly where S62 landed: a new optional column is additive **and** leaves
-`content_signature` untouched, so the first calls it minor and the second calls it a patch. The
-identity test is arguably the better one — it is what the 2026-08-11 amendment was reaching for when
-it retired *anything that moves `artifact.digest` is 1.0* — but it is not what either document says,
-and the gap between them is not written down anywhere.
+**Why it read as safe, and this is the mechanism.** The only test applied was *does authored identity
+move?* But `stats` sits outside `content_signature` **by design** — it is a derived facet, not
+content. So that test returns "safe" for *any* change to `stats` whatsoever, including replacing it
+with nonsense. It cannot fail there. It was not evidence; it was a tautology, and `@tautology-zero` is
+our own name for the shape — *a check that cannot fail must not report a zero*. RM123 shipped that
+same week about compile checks; the identical error was made one level up, in the release-sizing
+argument, where nothing was watching for it.
 
-**The consequence is not internal.** A consumer's rebuild rule reads *patch ⇒ same contract, no
-action*, which is a reasonable reading of the stated table; under the practised rule a patch can add a
-parquet column. Whatever [RM126](#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
-publishes has to be true of what we actually do, so this is upstream of it: a hints surface built
-against the stated rule would declare `parquet_schema=False` for the very interval that added
-`curator`.
+**And the structural half.** The property that makes a derived field cheap to change is the same
+property that makes the change undetectable downstream. `stats` is outside identity, so changing it
+costs nothing by the identity test *and* no digest, no signature and no `revalidate` can see it move.
+**Measured: six of sixteen reference examples changed a published, indexed manifest field while both
+hashes stayed byte-identical.** The cheapest changes to make are exactly the ones with no detection
+channel, and the identity test rewards them.
 
-**Not decided here, and deliberately not decided by an agent** — it sizes every future release and it
-is the maintainer's call. The three candidates, so they are not re-argued as new:
+**The version number cannot carry this, and the reason closes the original question rather than
+answering it.** A corrected derivation is a **bug fix**. Deferring it to the next minor means
+knowingly serving a wrong value for an undefined period, which is not a trade anybody should take —
+so "make it a minor" is not available, and neither is any other scheme that encodes staleness in the
+release class. SemVer answers *is the code contract compatible*; it was never designed to answer *are
+your stored outputs stale*, and those are orthogonal. **They must be separated rather than reconciled**
+— which dissolves this entry's original three candidates instead of picking one.
 
-- *The table is right; 0.6.5 was mis-sized.* Honest, and costs a `0.7.0` for the next additive column.
-  Note it does not require unshipping anything — `curator` is out and works.
-- *The practice is right; the table should say so.* Then the rule becomes **"a change that moves no
-  authored identity may take a patch"**, and both documents get rewritten to say it. This is the
-  cheaper rule and the one the amendment's logic points at, but it is a real narrowing of what a patch
-  promises, and it has to be published loudly rather than adopted quietly.
-- *Split the axis.* Keep *additive ⇒ minor* for the **authored** surface (a column an author writes)
-  and allow a patch for derived/manifest fields. That matches the 0.6 cost amendment's own tiering —
-  an authored schema is full cost, a manifest field approximately free — and it would have sized
-  RM120 as a minor and RM121 as a patch, which is probably what everyone intended.
-
-**Do not retro-edit the 0.6.5 or RM121 records to match whichever wins.** They are the record of what
-was decided and why, and rewriting them would destroy the evidence that the two tests ever diverged —
-which is the whole finding.
+**What is left here is one charter question**, and it is the maintainer's: does P3's sentence — *"a new
+optional column… lands in a minor: the authored identity is unchanged, and only a recompile's
+`artifact.digest` moves"* — get amended to say that release class and artifact staleness are different
+axes, with the second carried by the mechanism in
+[RM126](#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)? The sentence
+currently states a ruling and, in the same breath, offers the identity test as its rationale — which
+is exactly the reading that sized RM121, so leaving it unamended leaves the trap armed. Everything
+else RM127 used to ask now belongs to RM126.
 
 # Not format scope
 

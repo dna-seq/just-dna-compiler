@@ -4493,6 +4493,18 @@ because this item asked.
 three packages, and no compatibility helper under another name either. We assume the symbol is yours;
 we mention it because the absence is part of what you are reporting, and because a reply that let the
 attribution stand would put a function in our record that nobody can grep for.
+**Correction, 2026-08-21, same day.** Two things in the reply above are wrong and are corrected
+here rather than edited out. **`stats.genes` moved on seven modules, not eight** — recounted off the
+same compiled corpus. And the reply's framing of the fault was too broad: `StudyRow.curator` shipping
+in a patch is *defensible* — it is additive, no already-published module can have it, and no stored
+value became wrong — so the release table calling it a minor is the table being strict, not the cut
+being wrong. **The defect is RM121 alone, and it is a different change class**: `stats.genes` is an
+existing published field whose derivation was *corrected*, so the same spec yields a different value.
+That is neither additive nor a removal/retype, and the release taxonomy has no row for it. The sharper
+measurement, which the reply should have led with: **six of sixteen modules changed a published,
+indexed manifest field while both hashes stayed byte-identical.** [RM127](ROADMAP.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
+is rewritten around that.
+
 <!-- triaged: 0.6.6 · sha 0cd5660ebae9 -->
 
 **Reported by** just-dna-registry, 2026-08-21, adopting `0.6.1 / 0.6.1 / 0.6.4` → `0.6.6` across all

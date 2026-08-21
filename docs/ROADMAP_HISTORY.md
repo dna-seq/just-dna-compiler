@@ -23,6 +23,46 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
+# The 2026-08-21 output-contract round — what a patch may change about a compiled artifact
+
+One report from a new consumer, just-dna-registry ([S62](CONSUMER_SUGGESTIONS_HISTORY.md)), and the
+two items it produced are open in [ROADMAP.md](ROADMAP.md). What belongs here is **a framing that was
+filed and then withdrawn the same day**, kept because the withdrawn version is the more tempting one
+and will be re-proposed by anyone who reads only the measurement.
+
+**RM127 was first filed as *the release-class table and the release practice disagree*.** The argument
+ran: our table sizes a new optional column as a **minor**; `StudyRow.curator` shipped in **0.6.5**, a
+patch, and the cut's own entry names it (*"Additive only: one new authored column"*); so the rule we
+state and the rule we practise disagree and one of them must give. Three candidates were recorded —
+the table is right and 0.6.5 was mis-sized; the practice is right and both documents should say *a
+change that moves no authored identity may take a patch*; or split the axis so authored surface sizes
+the release and derived surface does not.
+
+**It was withdrawn because it indicts the wrong release.** `curator` is additive, no already-published
+module can carry it, and **no stored value became wrong** — the only consequence is that a recompile
+writes different bytes, which P4 already declines to guarantee across compiler versions. Sizing it as
+a patch is defensible; the table calling it a minor is the table being strict, not the cut being
+wrong. Chasing that disagreement would have produced a rule change that fixed nothing the consumer
+reported.
+
+**The defect is RM121, and it is a change class the taxonomy does not have** — an existing published
+field whose *derivation was corrected*, so the same spec yields a different value. Neither additive nor
+a removal/retype. And because a corrected derivation is a **bug fix**, deferring it to a minor means
+knowingly serving a wrong value meanwhile, so no release-class scheme can carry it: the version number
+answers *is the code contract compatible*, never *are your stored outputs stale*. The two axes have to
+be separated rather than reconciled, which dissolves all three original candidates instead of choosing
+among them. The rewritten entry is
+[RM127](ROADMAP.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one).
+
+**The lesson worth keeping is the tautology.** The safety argument for RM121 was *`content_signature`
+is unchanged, measured* — true, and incapable of being false, because `stats` sits outside
+`content_signature` by design. A check that cannot fail was read as a pass (`@tautology-zero`), one
+level up from where that rule is usually applied. The same property has a second edge: a field outside
+identity is a field no digest, no signature and no `revalidate` can see move, so **the cheapest changes
+to make are exactly the ones with no detection channel.** Measured across 0.6.1→0.6.6: six of sixteen
+reference examples changed a published, indexed manifest field with *both* hashes byte-identical.
+
+
 # The 2026-08-21 decision round — six undecided minors answered in one pass
 
 [ROADMAP.md § Active items](ROADMAP.md#active-items) held six items whose common property was that
