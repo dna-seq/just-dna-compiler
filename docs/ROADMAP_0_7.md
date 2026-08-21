@@ -8,6 +8,11 @@ than accumulating in one document nobody can read as a plan.
 Everything here is **additive under Principles 3/4/8** — a new optional column or table — so none of it
 is waiting on a version. Each waits on a design question, a corpus, or a consumer.
 
+**RM122 arrived here on 2026-08-21 from the active roadmap**, and the move is the point rather than
+a detail: it was filed under *open, release undecided* when nothing about it was undecided. An item
+waiting on a caller belongs in this file. A heading that says "undecided" turns a park into a
+backlog item nobody can close.
+
 **Five of these were taken back into 0.6 on 2026-08-16, and this file no longer decides them.** RM55's
 fix, RM72, RM82, RM84 and RM87 were sorted into
 [PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md), which re-asked whether the release they were filed against
@@ -21,6 +26,55 @@ Indexed in [RM_TOC.md](RM_TOC.md). The 0.6 decisions that touched these items ar
 [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md) and [PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md).
 
 ---
+
+## RM122 — the measure lookup is specified and nothing anywhere implements it
+
+**Severity** medium · **Status** **parked on demand, moved here 2026-08-21** — additive and
+minor-legal whenever it is wanted; what it waits on is a caller, not a decision · **Owner** format ·
+**Motivating case** S58 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
+
+**The specification half shipped; this is the part that was not asked for and might still be right.**
+S58 reported that the four binning kinds annotate nothing downstream and asked for either a normative
+paragraph or an admission that the family is specified ahead of its consumers. Both are now in
+[SCHEMAS.md § The measure lookup a conforming consumer implements](SCHEMAS.md#the-measure-lookup-a-conforming-consumer-implements--the-second-normative-obligation-06-s58),
+and that closes the item they filed. What is filed here is the next question, which they did not ask:
+whether the rule should also exist as a **public function** so that the first two consumers to
+implement it cannot disagree.
+
+**The argument for.** It is the shape S51/RM115 settled one layer down — a rule kept as prose is a rule
+every reader re-derives, and the two derivations differ on exactly the cases that matter. Here those
+cases are enumerable and sharp: the continuous shared endpoint, the float32 comparison, `unresolved`
+versus no-match, and pleiotropy returning several rows rather than one. A consumer will get at least
+one of the four wrong, and the failure is silent — a wrong bin renders as a confident phenotype.
+`alleles.split_genotype` is the precedent: the *reader* half of RM81 shipped as one public leaf every
+tier calls, while the retype waits for a major. It costs the format tier nothing — pure arithmetic over
+loaded rows, pydantic-only, no dependency moves.
+
+**The argument against, and it is why this is open rather than done.** There is no consumer to check the
+shape against, which is the same reason `measure_step` is not a column: a signature fixed against a
+hypothesis fixes the wrong thing, and this one has real shape questions. Does it take rows or a table?
+Does it return one row, or one per `trait_efo_id` (the honest answer, and the inconvenient one)? Does it
+answer `None` for no-match, or a three-state result distinguishing *no match* from *unresolved selected*
+— which is what the house algebra would demand and what a `None` return would collapse. Getting that
+wrong ships a leaf whose first real user has to work around it, and P3 keeps it working forever.
+
+**What would settle it:** one consumer implementing the lookup against the paragraph. Their questions
+are the signature. Until then the paragraph is the contract and this stays filed — the same
+wait-for-the-demand rule that governs `measure_step`, applied to a function instead of a column.
+
+**Decided 2026-08-21: wait for demand, and the wait is the answer rather than a way of postponing
+one.** The four shape questions are the reason — does the lookup take rows or a table, does it return
+one row or one per `trait_efo_id` (the honest answer, and the inconvenient one), does it answer `None`
+for no-match or a three-state result distinguishing *no match* from *unresolved selected*. There is
+nobody to check any of those against, and P3 keeps a wrong leaf working forever. This is the same
+wait-for-the-demand rule that keeps `measure_step` out of the schema, applied to a function.
+
+**It moved out of the active roadmap because "undecided release" was the wrong bucket for it.** Nothing
+about this is undecided; it is parked, which is what this file is for, and it sat under a heading that
+made it read like an unmade call. **The settling event is specific**: one consumer implementing the
+lookup against the paragraph in [SCHEMAS.md](SCHEMAS.md#the-measure-lookup-a-conforming-consumer-implements--the-second-normative-obligation-06-s58).
+Their questions are the signature — file it back in the active roadmap when they arrive, not before.
+
 
 ## RM23 — Computational predictor scores as a table
 

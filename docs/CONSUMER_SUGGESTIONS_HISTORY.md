@@ -1611,7 +1611,7 @@ shipped before anybody asked for it.
 ## S39 — a library call loads the caller's `.env` into `os.environ`, and it silently un-did a consumer's test isolation
 
 **Status — accepted, and it split in two: a bug we had not seen, fixed in the tree; the default you
-asked about, filed as [RM102](ROADMAP.md#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch).**
+asked about, filed as [RM102](ROADMAP_HISTORY.md#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths).**
 
 **The bug is the one you did not report.** Probing your report found that `load_dotenv_file=False` —
 the parameter you correctly identified as the machinery already being there — **did nothing at all**,
@@ -3958,7 +3958,7 @@ currently tell authors this is a known gap and cannot tell them who will close i
 
 **Status — accepted as the documentation defect you filed it as; both of your two closers shipped in
 the tree, and the third question they raise is filed as
-[RM122](ROADMAP.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
+[RM122](ROADMAP_0_7.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
 [SCHEMAS.md](SCHEMAS.md) now carries the normative bin lookup beside the genotype one, opening with the
 plain sentence that the family is specified ahead of its consumers. You asked for either; you have both,
 because the paragraph without the admission would still have left an author guessing whether anything

@@ -34,6 +34,53 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-21 — just-dna-lite's consumer-side changes from the just-module-creator hand-off
+
+**Consumer-side only; nothing in this repo changed.** Recorded because the working agreement asks
+for cross-repo integration changes, and because the agents most affected are the hand-off's own
+authors — they asked just-dna-lite for ~60 reads and this is what the first tranche did. Their
+document lives at `just-dna-lite/docs/CONSUMER_HANDOFF_from_just-module-creator.md`; the reply, with
+a verdict per item, is at `just-dna-lite/docs/reviews/consumer-handoff-triage.md`.
+
+**A correction to what a consumer believed about the published corpus.** Both that repo's CLAUDE.md
+and the hand-off assumed no module on HuggingFace publishes a `manifest.json` — CLAUDE.md said "every
+module on HuggingFace today" and the hand-off called the logo fallback "dead code in production" on
+the same premise. Measured 2026-08-21 against `just-dna-seq/annotators`: **all ten modules publish
+one.** Attestation (INTEGRATION_0_6 § 2.8) is therefore the *normal* discovery path there and probing
+is the exception. Checked for the failure that implies — a file present at the path but absent from
+`artifact.files` is now dropped where it used to be probed and found — and the attested set matches
+what is present on all ten, so no side table was lost.
+
+**RM43's status was stale downstream by two releases.** just-dna-lite's docs still said the
+`pharm_variants` coordinate fill "waits on RM43", and two comments in its annotation engine asserted
+that the compiler applies `resolution.csv` to `weights.parquet` alone. Verified against installed
+compiler 0.6.1 (`compiler.py:499`) and corrected. Consequence worth knowing if you maintain a similar
+consumer: **classify a lead table by the values it holds, not by its family name.** Both generations
+are live — that repo's shipped `pharmgkb` is a 0.5 artifact measuring 0 of 1482 rows placed, while a
+0.6 recompile of the same spec qualifies for a position join — so a value probe routes both correctly
+and no `positional_rows` gate is needed in the join path.
+
+**A phase asymmetry that is a consumer bug, not a format one, and is now reported rather than
+silent.** A VCF reader that sorts a genotype (as that repo's does) cannot match an authored genotype
+held in homolog order, in either ordering. Sorting the *module* side is not the fix — it folds `A|G`
+and `G|A` into one key and manufactures a match the module never stated — so the module side still
+never sorts and the unmatchable rows are now counted and logged before normalization strips the `|`
+that reveals them. Nothing here needs to change; noted so another consumer does not "fix" it by
+sorting.
+
+**Two consumer-side reads that now use this repo's own constants rather than restating them.**
+`README_CANDIDATES` reached that repo's HuggingFace publisher allowlist, which had omitted it — so
+`manifest.readme` attested a file the upload never sent, and `verify_manifest(check_readme=True)`
+passed anyway because absent is not a failure there. And discovery now keeps `identity.version`,
+`artifact.digest` and the `weighting` block from a remote manifest it was already fetching and
+validating; before, every remotely discovered module reported no provenance at all. All three stay
+tri-state.
+
+**Filed separately in [ROADMAP.md](ROADMAP.md):** `manifest.stats.genes` is derived from
+`variants.csv` alone, so a module whose gene is stated only in a PGx or binning table publishes
+`gene_count: 0` and cannot be found by gene. Originally measured by just-module-creator; relayed
+because neither consumer owns `variant_stats`.
+
 ## 2026-08-21 (latest) — a lookup finding that contradicted the payload carrying it (S61, RM125)
 
 **Cut as 0.6.6** across all three packages and tagged `v0.6.6` on 2026-08-21; this entry read "still
@@ -183,7 +230,7 @@ than record a zero.*
   The six unscoped columns are checked claims — RM43 puts resolution on the positional kinds, RM47 makes
   a bin a second citation site — and scoping either from the checker-name strings would have suppressed
   a *true* advisory.
-- **[RM122](ROADMAP.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it)
+- **[RM122](ROADMAP_0_7.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it)
   — the binning family is now specified for consumers, and says so.** [SCHEMAS.md](SCHEMAS.md) gains the
   normative **measure lookup** beside the genotype join contract: scope to the group, select the row whose
   inclusive range contains the value, greatest `measure_min` on a shared endpoint, compare in float32
@@ -529,7 +576,7 @@ This is the **second** knob in two days whose disabling value did not disable �
 `@off-switch-needs-a-probe`. Run the disabling value; a test that passes the enabling value and a test
 that passes nothing are the same path.
 
-**What that fix does not reach is [RM102](ROADMAP.md#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch),
+**What that fix does not reach is [RM102](ROADMAP_HISTORY.md#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths),
 and S39's reporter hit the default path.** The enricher loads a whole `.env` into `os.environ` from
 *library* code, so asking where the ClinVar cache is can hand a process credentials for sources it
 never named — and `override=False` skips a variable that is **present**, which means *deleting* one is

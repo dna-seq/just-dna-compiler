@@ -2,6 +2,8 @@
 
 Split out of [ROADMAP.md](ROADMAP.md), which is **forward-only**: it now carries active work and
 nothing else. This file keeps the *rationale* of every `RMn` that shipped from the 0.6 line onward —
+and, since 2026-08-21, of the ones **closed by a decision not to do them**, which leave the active
+file for the same reason and are just as worth not re-deriving —
 the earlier ones are in the archive named below — because a lot of it is reasoning worth not
 re-deriving, including one entry that corrects an argument it originally made.
 
@@ -19,6 +21,82 @@ derived — and were never duplicated here.
 through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 0.6 design round.
 [RM_TOC.md](RM_TOC.md) indexes both halves plus the open roadmap, so it is where to look an item up.
 
+
+
+# The 2026-08-21 decision round — six undecided minors answered in one pass
+
+[ROADMAP.md § Active items](ROADMAP.md#active-items) held six items whose common property was that
+every one of them was a *decision* rather than a missing line of code, and none had been made. All six
+were answered in a single pass on 2026-08-21. Four stayed open with their shape settled or narrowed and
+are still in the active file (RM103's manifest half, RM108, RM110, RM117); **RM122** parked on demand
+and moved to [ROADMAP_0_7.md](ROADMAP_0_7.md); **RM103's refusal half** moved to
+[ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker); and **RM102** closed
+outright, which is why it is here.
+
+**The finding worth keeping is about the queue rather than any item in it.** Two of the six were not
+design-blocked at all. RM110's encoding was already pinned by a test on one of its two producers, so
+nothing was undecided — it was parked because normalizing the other producer moves a fact signature
+and the round that found it was a *patch* round, which is a release-class objection that reads, in a
+status line, exactly like an open design question. RM102's was the mirror image: the entry argued two
+candidate repairs at length and the thing nobody had written down was that **no incident had ever
+followed from the behaviour**, which made "close it" a live option that had never been on the list.
+Both cost more attention than they were worth, and the same question would have found both: *what
+would a decision here actually change?*
+
+## RM102 — the enricher loads a `.env` into `os.environ` from library paths
+
+✖ **Closed 2026-08-21 as a decision not to act**, after the half of it that was a real defect had
+already shipped. Motivating case [S39](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
+**Owner** enricher.
+
+**What shipped, and it was the actual bug.** `load_dotenv_file=False` reached none of the six cache
+resolvers: each passes its `default_*_cache_dir()` as an *argument*, and that helper went through a
+`_cache_dir` whose `load_env()` was unconditional, so the file was loaded before the resolver looked at
+its own flag. The knob did nothing at all. Threaded through `_cache_dir` and the six
+`default_*_cache_dir` helpers in **0.6.3**, with `test_locations.py` running each resolver in a
+subprocess and pinning both directions plus the pre-fix arrangement, and a twelfth test walking both
+families so a seventh resolver cannot quietly reopen it. That is `@off-switch-needs-a-probe` and
+`@registry-completeness` in one repair.
+
+**What was filed and is now closed.** Everything the repair does not reach: `load_dotenv` writes the
+*whole* file into `os.environ`, not the cache variables alone, and four credential paths — `net`,
+`eutils`, `literature`, `pharmvar` — call `load_env()` with **no flag at all**, deliberately, because
+a credential is loaded where it is read (`@credential-where-read`). So a caller passing `False`
+everywhere still has the process environment mutated by the first network client they construct.
+
+**Why it closed rather than shipping a fix.** The record holds exactly one incident, and it is not one:
+S39's reporter lost about an hour to a test named `test_a_token_does_not_leak_between_sessions` failing
+with *"The server is configured offline"* instead of its assertion, because their fixture had cleared
+a variable with `monkeypatch.delenv` and `override=False` — which skips a variable that is
+**present** — let the file refill it. The credential involved was their own, in their own process,
+from their own `.env`; nothing crossed a boundary, no build shipped wrong data. Weighed against that:
+both candidate repairs cost a full minor, and the better-looking one is **silent for every caller who
+never passed the parameter**, so a deployment pointing its cache through `.env` alone simply stops
+finding it — the exact "the cache is right there" report the unconditional load was added to end
+(S14's shape: the addition being legal does not make the change legal).
+
+**The two repairs, recorded so they are not re-proposed as if new.**
+
+- *Flip the default and leave loading to the entry point.* Right shape — a CLI loading `.env` is
+  ordinary, a library function doing it while answering "where is the cache" is not — but a bare flip
+  is silent, so the honest route is warn-in-one-minor-then-flip, and it has to cover the four flagless
+  credential paths too or it is an assurance that is not one.
+- *Narrow it to the cache variables.* Rejected on its own terms: it makes the enricher a filter over
+  somebody else's file, and the allowlist becomes a hand-kept list of every variable any tier might
+  read — `@registry-completeness`, arriving as a design rather than as a bug. It also does not answer
+  the reporter's actual complaint, which is about mutating the process environment at all.
+
+**What stands as the answer for 0.x.** [ENRICHER.md](ENRICHER.md) § cache locations states that the
+load writes into `os.environ`, that it is a library path rather than a CLI one, that `override=False`
+skips a variable that is present so *deleting* one is what lets the file win, and names both the switch
+and the flagless credential paths. That was the reporter's own fallback ask. Their defence — walking
+`sys.modules` and replacing every bound `load_dotenv`, rather than patching `dotenv.load_dotenv`, since
+every `from dotenv import load_dotenv` holds its own binding — is correct and stays correct.
+
+**Reopen it if the record changes**, and the trigger is specific: something worse than a lost hour —
+a credential reaching a subprocess, a crash report, or any boundary at all. The failure mode argues for
+watching rather than for building, because it is **green in CI and different on every developer's
+machine**, which is the shape that stays undiagnosed longest.
 
 
 # The 2026-08-21 lookup round — a finding that contradicted the payload carrying it

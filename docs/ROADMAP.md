@@ -169,18 +169,40 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Six, and every one of them is a decision rather than a missing line of code:**
-[RM102](#rm102--the-enricher-loads-a-env-into-osenviron-from-library-paths-and-only-half-of-that-has-an-off-switch),
-[RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote),
+**Four, and for the first time since this heading was refilled, not one of them is a decision:**
+[RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
+(the manifest half only),
 [RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one),
-[RM110](#rm110--constraint_flags-has-two-producers-with-two-encodings-and-the-column-is-inside-the-fact-set),
+[RM110](#rm110--constraint_flags-has-two-producers-with-two-encodings-and-the-column-is-inside-the-fact-set)
+and
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
-and [RM122](#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it) — all minors,
-all with the release undecided. **The six patches filed beside them shipped on 2026-08-20**
+(the observability half only) — all minors, all with the release undecided, all with their shape
+settled and nothing left in them but the typing. **Count them off the sections, not off the
+sentence**: this line said *three* for as long as it took to notice that a narrowed item is still an
+item, which is the same arithmetic failure recorded two paragraphs down.
+
+**The 2026-08-21 decision round is what emptied the other half.** Six items stood here, every one of
+them a decision rather than a missing line of code, and one pass answered all six: **RM102** closed
+outright, **RM122** parked on demand and moved to [ROADMAP_0_7.md](ROADMAP_0_7.md), **RM117** narrowed
+to the half that costs nobody a decision, and **RM103** split — the manifest half stays here, the
+refusal is a tightening and moved to [§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker). The
+reasoning is in
+[ROADMAP_HISTORY § the 2026-08-21 decision round](ROADMAP_HISTORY.md#the-2026-08-21-decision-round--six-undecided-minors-answered-in-one-pass).
+
+**Two of the six turned out not to be design-blocked at all, and that is the finding worth keeping.**
+RM110's encoding was already pinned by a test on one producer — `test_gnomad.py` asserts an empty flag
+list is `None`, *not* `""` — so nothing was undecided; it was parked because normalizing the other
+producer moves a fact signature and the round that found it was a *patch* round. That is a
+release-class reason wearing a design label, and it held the item for two days of looking harder than
+it was. RM102's was the mirror image: the item read as a security question and the record held one lost
+hour and no incident, which is a disposition nobody had asked for out loud. **Ask what a filed
+decision would actually change before treating it as one** — a status line saying *undecided* is not
+evidence that anything is.
+
+**The six patches filed beside them shipped on 2026-08-20**
 (RM104–RM107, RM109, RM111) and moved to
-[ROADMAP_HISTORY § the 2026-08-19 doc-audit patch round](ROADMAP_HISTORY.md#the-2026-08-19-doc-audit-patch-round--six-of-the-eight-fixed),
-which is what leaves this heading holding design questions only — a shape worth noticing rather than
-reading as a quiet queue: what is left is what nobody has decided, not what nobody has typed.
+[ROADMAP_HISTORY § the 2026-08-19 doc-audit patch round](ROADMAP_HISTORY.md#the-2026-08-19-doc-audit-patch-round--six-of-the-eight-fixed).
+
 RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
 [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
 with their rationale and with the five places the eight filings turned out to understate what was
@@ -227,62 +249,11 @@ same commit.
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM102 — the enricher loads a `.env` into `os.environ` from library paths, and only half of that has an off-switch
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** S39 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
-
-**The half that is already fixed is not this item.** `load_dotenv_file=False` reached none of the six
-cache resolvers — the default directory is computed as an *argument*, and `_cache_dir` loaded the file
-unconditionally on its way in — so the knob did nothing at all. That is a defect against the
-parameter's own contract and it is repaired in the tree (0.6.3, uncut), with the leak demonstrated
-before and after over all six resolvers. What is filed here is everything the repair does **not**
-reach, and it is a design question rather than a bug.
-
-**What a consumer actually meets.** `load_dotenv` writes the whole file into `os.environ`, not the
-cache variables alone, so a process that asks where the ClinVar cache is inherits whatever credentials
-sit in the nearest `.env` above its working directory — for a service, credentials for sources it never
-asked about. `override=False` reads as the cautious direction and hides the sharp edge: it skips a
-variable that is **present**, so *deleting* one is exactly what lets the file supply it. S39's reporter
-lost a test's isolation that way and spent an hour inside their own fixture, because the failure is
-green on CI (no `.env` there) and different on every developer's machine. Their own repair —
-sweeping `sys.modules` and replacing every bound `load_dotenv` with a no-op — is the right defence
-today and stays right whatever this item decides, since a `from dotenv import load_dotenv` binding is
-per-module and patching `dotenv` reaches none of them.
-
-**Two candidate repairs, and what is wrong with each.**
-
-- *Flip the default to `load_dotenv_file=False` and leave loading to the entry point.* The machinery
-  exists and the shape is right: a CLI loading `.env` is ordinary, a library function doing it while
-  answering "where is the cache" is not. But a default flip is **silent for every caller who never
-  passed the parameter** — nothing raises, nothing warns, and a deployment that pointed its cache
-  through `.env` alone simply stops finding it, which is the "the cache is right there" report the
-  unconditional load was added to end. That is S14's shape: the addition being legal does not make the
-  change legal. Under the charter's cadence a deprecation has to be **actionable**, so the honest
-  route is a release that warns when a load would have happened and no explicit choice was made, then
-  the flip — which is a minor's worth of work, not a patch's.
-- *Narrow it to the cache variables — load the file, set only `JUST_DNA_*`.* Tempting, and it keeps
-  every existing deployment working. It is wrong for a different reason: it makes the enricher a
-  filter over somebody else's file, so a `.env` holding `NCBI_API_KEY` (which this codebase reads, by
-  `@credential-where-read`) would need that name on the allowlist too, and the allowlist is then a
-  hand-kept list of every variable any tier might ever read — the exact registry-not-a-list defect
-  this repo keeps repairing. It also cannot answer the reporter's real complaint, which is about
-  mutating the process environment at all rather than about which keys.
-
-**And the flagless half.** `net`, `eutils`, `literature` and `pharmvar` call `load_env()` with **no
-parameter**, deliberately — a credential has to be loaded where it is read (`@credential-where-read`,
-RM100). So a caller who passes `load_dotenv_file=False` everywhere still has `os.environ` mutated by
-the first network client they construct, and no switch exists to stop it. Whatever this item decides
-has to decide it for both halves or it decides nothing: a knob that covers the cache resolvers and not
-the credential paths is a knob that reads as an assurance and is not one.
-
-**Not blocking anything.** The behaviour is documented now (ENRICHER § cache locations names the
-mutation, the sharp edge in `override=False`, and the switch), which was the reporter's fallback ask
-and is what the patch line can honestly carry.
-
 ## RM103 — a version with no digits coerces to `0.0.0`, which is a real version nobody wrote
 
-**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** format ·
+**Severity** low-medium · **Status** open — **the manifest half only, a minor, release
+undecided**; the refusal half is a tightening and moved to
+[§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker) on 2026-08-21 · **Owner** format ·
 **Motivating case** S42 (just-dna-lite, in CONSUMER_SUGGESTIONS_HISTORY.md)
 
 `ModuleInfo(version="abc").version` is `"0.0.0"`. `normalize_version` strips every non-digit, finds
@@ -299,29 +270,28 @@ reject because the pre-0.4 corpus is full of `v2` and `3`, and 0.6 widened it at
 `1.5`, `v1.2.3-beta` — is working as intended and stays. What is at issue is the *digitless* case
 alone, where there is no authorial intent to read and the function invents one.
 
-**Why it is filed rather than fixed: a new refusal is a tightening, and tightenings size the release.**
-Refusing `version: "abc"` makes a spec that compiles today fail tomorrow, which is exactly the RM50 /
-RM48 class — both shipped in **0.6.0** as minor work, not as a patch, and INTEGRATION_0_6 § 1 lists
-them under *"two checks can newly refuse an author's spec"* precisely because a consumer compiling
-other people's specs (just-dna-pipelines) sees CI go red. Severity orders the queue; legality sizes the
-release, and this one is a minor.
+**Decided 2026-08-21: the item splits, and only the additive half stays here.** Surfacing
+`version_coerced_from` in the manifest is purely additive and minor-legal on every reading of the
+charter. Refusing a digitless version is a *tightening*, and it moved to
+[§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker) because the two readings of the charter
+genuinely disagree and settling that is not this item's job: RM50 and RM48 both shipped new refusals
+in **0.6.0** as minor work, and INTEGRATION_0_6 § 1 lists them under *"two checks can newly refuse an
+author's spec"* precisely because a consumer compiling other people's specs sees CI go red — while
+Principle 8's forbidden-moves clause is written to keep anything previously valid from becoming
+invalid. Precedent says minor; the principle's stated purpose says major. **Neither half of this item
+needed that answer, and the entry was holding its own additive half hostage to it** — which is why
+the split is the decision and not a way of ducking one.
 
-**Three candidate repairs, and what each costs.**
+**What ships here.** `version_coerced_from` already holds the authored text, and the compiler already
+**warns**, naming both values (*"module.version 'abc' was read as SemVer '0.0.0'"*); `validate_spec`
+reports it identically, so there is no parity gap to close. What is missing is the *manifest*: publish
+the authored string beside `identity.version`, so the fabrication is auditable in the artifact and not
+only in a build log somebody had to have kept. It does not stop a bad value being published and was
+never claimed to — it makes one legible afterwards, which is the whole of the ask that is additive.
 
-- *Refuse a digitless version.* The reporter's implicit ask and the cleanest end state: an
-  unparseable version is an error, with a message naming the fix the way the float branch already
-  does. It is a tightening (above), and under the charter's cadence the honest route to it is a
-  deprecation an author can act on — warn in one minor, refuse in the next — since there is a real
-  corpus out there and we have already been surprised once by what it contains.
-- *Keep coercing but record it in the manifest.* `version_coerced_from` already holds the authored
-  text and the compiler already **warns**, naming both values (*"module.version 'abc' was read as
-  SemVer '0.0.0'"*) — `validate_spec` reports it identically, so there is no parity gap. Surfacing
-  that string in the manifest would make the fabrication auditable rather than invisible, and it is
-  purely additive. It does not stop the bad value being published, so it is a complement to the first
-  option and not a substitute.
-- *Coerce to something that cannot be mistaken for a version.* Rejected: there is no such SemVer.
-  Every three-number string is a legal version, so any sentinel is someone's real one — which is the
-  whole complaint, restated.
+**A sentinel stays rejected.** Coercing to something that cannot be mistaken for a version has no
+target: every three-number string is a legal SemVer, so any sentinel is someone's real one — the
+complaint restated.
 
 **What the reporter should do meanwhile, and it is not nothing.** The compiler already tells them:
 both `compile` and `validate` emit the coercion warning with the authored string in it, so a build
@@ -337,8 +307,9 @@ widening fixed. The hazard is the unquoted *decimal*, which is still refused and
 
 ## RM108 — a ClinGen re-curation appends a second row and nothing marks the superseded one
 
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `gene_validity.md`)
+**Severity** medium · **Status** open — **shape decided 2026-08-21**; a minor, release undecided ·
+**Owner** enricher · **Motivating case** the 2026-08-19 doc audit (just-module-creator's
+`gene_validity.md`)
 
 `_merge_key` returns `("id", row.assertion_id)` when the source published one — the right rule in
 general, and wrong here, because ClinGen's assertion id **embeds the curation timestamp**
@@ -349,17 +320,34 @@ exports differing only in date and grade: the file came back with both, and
 `["definitive", "refuted"]` — with nothing anywhere saying which is current. `classification_date` and
 `dataset` are the only discriminators and no consumer reads either.
 
-**Why it needs design rather than a patch.** This is S45's shape, and S45's answer was *name the
-superseded rows, delete nothing* — but S45 could tell superseded from current by the rsID's merge
-status, and here the only signal is a date the format does not otherwise treat as authoritative. A
-currency notion has to be decided before it can be written: is the newest `classification_date` the
-answer, or is a re-curation two facts a consumer should see both of? The enricher's own merge test
-re-runs the *identical* export, so it cannot see this either — the test is part of the fix.
+**Decided 2026-08-21: the newest `classification_date` is current, and nothing is deleted.** That is
+S45's answer carried over to a weaker signal, and taking it means accepting one thing this format has
+not accepted before — that a date is authoritative for currency. The concession is narrower than it
+looks. The date decides *ordering* and nothing else: it never says a classification is right, both
+rows stay in the file so the drift stays visible, and the superseded one is **marked** rather than
+dropped, so a consumer wanting the history has it and a consumer wanting the answer no longer has to
+reconstruct one. `manifest.gene_validity.classifications` then publishes the current classification
+instead of a pair as far apart as `["definitive", "refuted"]`.
+
+**What the fix has to contain, and the middle one is what gets forgotten.** A re-curated assertion has
+to be recognised as the same assertion — ClinGen's id embeds the timestamp, so the id alone cannot do
+it, and the recognition belongs beside `_merge_key` rather than inside it. The superseded marking needs
+a column, which is additive and minor-legal. And **the merge test has to stop re-running an identical
+export**: it cannot see this defect at all as written, so it is part of the fix rather than the thing
+that confirms it.
+
+**What was rejected, and why it is worth writing down.** Stripping the timestamp out of the merge key
+is the smallest change and removes the pair at source, but it overwrites the earlier curation — the
+opposite of S45 — and turns visible drift into invisible drift, which is the thing this item is about.
+Publishing both facts and leaving the consumer to choose was the honest alternative and lost on one
+point: every consumer then implements the same date comparison, and they will not all implement it the
+same way.
 
 ## RM110 — `constraint_flags` has two producers with two encodings, and the column is inside the fact set
 
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
+**Severity** medium · **Status** open — **decided 2026-08-21**; a minor because it moves a fact
+signature, not because anything is unsettled · **Owner** enricher · **Motivating case** the
+2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
 
 The live API route writes `"|".join(sorted(flags)) if flags else None`. The snapshot route copies
 gnomAD's TSV cell verbatim, and gnomAD writes a **JSON array literal** there; `[]` is not in
@@ -369,29 +357,73 @@ published v4.1 snapshot: **17,403 of 18,111 rows** carry `"[]"`. Every consumer 
 two ways gives two different cells. The field description (*"kept verbatim and pipe-joined"*) is true
 of one producer only.
 
-**Why it is not a patch.** `constraint_flags` is inside `GENE_METRICS_FACT_FIELDS`, so normalizing
-`"[]"` → null **moves `gene_metrics.signature`** for every module already carrying snapshot rows. That
-is legal — a fact signature moving is not a compatibility break — but it is a recompile the ecosystem
-should be told about, which makes it a minor with a CHANGELOG line rather than a quiet fix. Decide the
-canonical encoding first (pipe-joined string, or null-when-empty on both legs), then move both
-producers to it in one release, and correct the field description in the same change.
+**Decided 2026-08-21: pipe-joined when non-empty, `None` when empty, on both legs.** There was never
+a second candidate. `enricher/tests/test_gnomad.py` already pins exactly this on the live producer —
+`assert myh7["constraint_flags"] is None  # empty flag list → null, not ""` — so the contract exists,
+is tested, and the snapshot producer simply never implemented it. **The item was filed as needing a
+decision when what it needed was a release**, and that is the part worth keeping: the round that found
+it was a *patch* round, normalizing the cell moves `gene_metrics.signature`, and a signature move is
+not patch work — a release-class objection that reads, in a status line, exactly like an open design
+question.
+
+**Re-measured on the published v4.1 snapshot, and it is worse than this entry first recorded.** Not one
+of the 18,111 rows is null or empty, so `if row.constraint_flags:` is true for **18,111 of 18,111 —
+100%**, not 96%: the 708 genuinely flagged rows are stored as JSON array literals too
+(`["outlier_mis","outlier_syn"]`), so a consumer splitting on `|` gets one bogus token rather than two
+flags. Only **3.9%** of genes are actually flagged. The fix is therefore not "empty → null" alone —
+the non-empty cells need parsing as well, and the field description (*"kept verbatim and pipe-joined"*)
+is false on the snapshot leg in both directions.
+
+**The third consequence is what makes normalizing-at-read insufficient.** `constraint_flags` is inside
+`GENE_METRICS_FACT_FIELDS`, so the same gene fetched two ways already produces two different
+`gene_metrics.signature` values. A public accessor normalizing on the way out would fix what consumers
+*read* and leave that divergence in the artifact, which is why the normalization goes in the cell.
+
+**Cost, measured rather than estimated.** One row in our own corpus: `reference_examples/hboc_palb2/`
+carries `constraint_flags=[]`, so its `gene_metrics.signature` and `artifact.digest` move and nothing
+else in the sixteen examples does. Beyond that it is whatever consumers have compiled from the
+snapshot, which nobody has counted — hence the CHANGELOG line, which is the entire reason this is a
+minor rather than a patch.
 
 ## RM117 — an outrank record exists and no check reads it, and what a check should do is undecided
 
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher (+ compiler,
-if the severity ladder moves) ·
+*(Heading kept for its anchor; since 2026-08-21 the "undecided" half is decided — see the status line.)*
+
+**Severity** medium · **Status** open — **narrowed 2026-08-21 to the observability half**; a minor,
+release undecided. The severity half is **closed**, not deferred · **Owner** enricher ·
 **Motivating case** [S52](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
 
 **The half that shipped.** `ProvenanceItem.outranks` — `{column: why}`, per column, additive, in the
 tree since 2026-08-20 — so an author overriding a checked value has somewhere to record *why*, and the
 capture half the reporter is building has a place to write. Neither identity moves. See SCHEMAS.md.
 
-**The half that is open, and it is a design decision rather than a missing line of code.** The
-proposal is that a filled record change the **severity** of a source-mismatch: WARNING today, INFO
-where a record names the column. Never silence and never a pass — the record is an author's assertion,
-not evidence, and a green check would re-create the vacuity problem through the back door.
+**Decided 2026-08-21: the severity half is dropped, and the free half is what this item now is.**
+The proposal was that a filled record change the severity of a source-mismatch — WARNING today, INFO
+where a record names the column. It is closed rather than deferred, on the three objections below and
+on one that outranks them: **the 0.7 authored-overlay work supersedes the question.**
+[RM124](ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
+carries it as its own open question 2 — `outranks` and an overlay are both an authored value beating a
+source with prose attached, the split between them is *exactly the kind of line that erodes*, and that
+entry says outright to decide whether one record serves both **before either grows a second field**.
+Giving `outranks` a severity consequence now is growing that field. Deciding the ladder first would
+fix a shape against machinery about to move underneath it — the same error as fixing a signature
+against a hypothesis.
 
-**Why this is not obviously right, which is why it is filed rather than shipped.**
+**What this item is, and it costs nobody a decision.** Two signals the check can already compute,
+because it runs on every compile and needs nobody's permission:
+
+- **A mismatch that has since resolved.** The archive caught up to the outrank — the author was right
+  and the source moved. That is a trust signal available nowhere else in this format, and it is
+  observable without asking anyone anything.
+- **A record whose row's value has changed again.** Stale by construction: the justification was
+  written about a value that is no longer there. This is the binding problem showing up as an
+  observation instead of as a mechanism, which is the honest place for it until there is a binding.
+
+Neither touches the severity ladder, neither puts a verdict under authored control, and both stay
+correct whatever 0.7 does to the authored model.
+
+**The three objections the severity half never answered**, kept because they are the record of why
+it is closed rather than parked:
 
 - **It puts a checked verdict under authored control**, which nothing else in this format does. Every
   other severity here is a property of the finding; this one would be a property of a cell the author
@@ -409,48 +441,9 @@ not evidence, and a green check would re-create the vacuity problem through the 
   downgrade silently persists. Any severity change probably wants the binding *first*, which is a
   larger design than the severity ladder.
 
-**What is genuinely free and worth having whatever is decided**, because the check already runs every
-compile: a mismatch that has since **resolved** means the archive caught up to the outrank, which is a
-trust signal available nowhere else, and a record whose row's value has changed again is stale by
-construction. Both are observable without asking anyone anything.
-
 **Do not answer this by parsing the prose.** The field is freeform because the judgement is not
 formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
 natural-language question. Presence is the bit a check may read.
-
-## RM122 — the measure lookup is specified and nothing anywhere implements it
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** format ·
-**Motivating case** S58 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
-
-**The specification half shipped; this is the part that was not asked for and might still be right.**
-S58 reported that the four binning kinds annotate nothing downstream and asked for either a normative
-paragraph or an admission that the family is specified ahead of its consumers. Both are now in
-[SCHEMAS.md § The measure lookup a conforming consumer implements](SCHEMAS.md#the-measure-lookup-a-conforming-consumer-implements--the-second-normative-obligation-06-s58),
-and that closes the item they filed. What is filed here is the next question, which they did not ask:
-whether the rule should also exist as a **public function** so that the first two consumers to
-implement it cannot disagree.
-
-**The argument for.** It is the shape S51/RM115 settled one layer down — a rule kept as prose is a rule
-every reader re-derives, and the two derivations differ on exactly the cases that matter. Here those
-cases are enumerable and sharp: the continuous shared endpoint, the float32 comparison, `unresolved`
-versus no-match, and pleiotropy returning several rows rather than one. A consumer will get at least
-one of the four wrong, and the failure is silent — a wrong bin renders as a confident phenotype.
-`alleles.split_genotype` is the precedent: the *reader* half of RM81 shipped as one public leaf every
-tier calls, while the retype waits for a major. It costs the format tier nothing — pure arithmetic over
-loaded rows, pydantic-only, no dependency moves.
-
-**The argument against, and it is why this is open rather than done.** There is no consumer to check the
-shape against, which is the same reason `measure_step` is not a column: a signature fixed against a
-hypothesis fixes the wrong thing, and this one has real shape questions. Does it take rows or a table?
-Does it return one row, or one per `trait_efo_id` (the honest answer, and the inconvenient one)? Does it
-answer `None` for no-match, or a three-state result distinguishing *no match* from *unresolved selected*
-— which is what the house algebra would demand and what a `None` return would collapse. Getting that
-wrong ships a leaf whose first real user has to work around it, and P3 keeps it working forever.
-
-**What would settle it:** one consumer implementing the lookup against the paragraph. Their questions
-are the signature. Until then the paragraph is the contract and this stays filed — the same
-wait-for-the-demand rule that governs `measure_step`, applied to a function instead of a column.
 
 # Not format scope
 
@@ -527,6 +520,32 @@ release is assembled.
 Version-axis note: `schema_version` is `"1.0"` while the packages are `0.x` (now `0.5.0`). At `1.0`,
 either align them or document explicitly that they track different things (wire format vs. package
 release).
+
+### `module.version` — refusing a digitless version
+
+**Severity** low-medium · **Status** queued for 1.0 — **filed here on 2026-08-21 by the RM103 split**,
+and filed as a charter question rather than as a fix
+
+Split off [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote),
+whose additive half stays open as a minor. `normalize_version("abc")` returns `"0.0.0"` — a legal
+SemVer and a plausible pre-release marker — and it reaches `identity.version` in a published
+`manifest.json`. Refusing it instead is the cleanest end state and is the reporter's implicit ask; the
+coercion for every **digit-bearing** case (`v2`, `3`, `1.5`, `v1.2.3-beta`) is RM17's decision and
+stays.
+
+**It is here because the two readings of the charter disagree, and nothing had made them argue.**
+Precedent says minor: RM50 and RM48 both shipped new refusals in **0.6.0** as minor work, and
+INTEGRATION_0_6 § 1 lists them under *"two checks can newly refuse an author's spec"*. Principle 8's
+purpose says major: its forbidden-moves clause exists so that nothing previously valid becomes
+invalid, and a spec that compiles today failing tomorrow is exactly that. **The clause is written about
+*fields* — requiredness and retyping — and a new refusal on a *value* is an axis it does not name**,
+which is why both readings are defensible and why neither is written down.
+
+Filing it here takes the conservative branch by default. That is a decision worth revisiting
+deliberately rather than by precedent, because the answer governs RM50 and RM48 retroactively and every
+future check: **if a new value-refusal is minor-legal, say so in the Constitution; if it is not, two
+0.6.0 changes were mis-sized.** Whoever picks this up should settle the general rule first and let
+`module.version` fall out of it.
 
 ### `VariantRow.variant_key` / `authored_ident` are inside `content_signature`; the 0.6 stamped fields are not
 
@@ -1111,3 +1130,24 @@ coord-keyed rows as position-only). A strict failure is the nudge toward the dri
 New ideas enter here as freeform suggestions, then graduate through the design cycle
 (feedback → USE_CASES lens → PROPOSAL → shipped or parked as an `RMn` above).
 
+
+- **`manifest.stats.genes` is derived from `variants.csv` alone, so a table-only module publishes
+  `gene_count: 0`.** Relayed from just-dna-lite (2026-08-21), originally measured by
+  just-module-creator; filed here because neither of us owns `variant_stats` and we could not tell
+  whether it had already been reported. `compiler.py` computes
+  `genes = sorted({v.gene for v in variants if v.gene})`, so a module whose gene is stated only in a
+  PGx or binning table — `pharm_variants`, `haplotypes`, `diplotypes`, `allele_function`,
+  `copynumbers`, `repeat_alleles` — publishes `gene_count: 0, genes: []` despite naming its gene on
+  every row. The registry indexes `version_genes` straight off that field, so such a module is
+  **unfindable by gene** in the catalog. Reported measured on a CYP2D6 `activity_phenotype` module,
+  the corpus's own CYP2C19 example, and the shipped HTT manifest.
+
+  Two candidate homes and we have no view on which is right: widen `variant_stats` to union the
+  `gene` column of whichever families the module carries, or leave the manifest alone and index the
+  PGx tables' `gene` directly registry-side. The first makes `stats.genes` mean "genes this module
+  is about" rather than "genes in `variants.csv`", which is a semantic change to a published field
+  even though it is additive in type — worth a Principle 3 read before it is treated as a minor.
+
+  Consumer-side context: the symptom surfaces in just-dna-lite's discovery path, but nothing there
+  can fix it — we read the field, we do not compute it. Full triage in that repo at
+  `docs/reviews/consumer-handoff-triage.md`.
