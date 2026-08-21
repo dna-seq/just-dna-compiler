@@ -169,7 +169,12 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Four, and for the first time since this heading was refilled, not one of them is a decision:**
+**Six as of 2026-08-21.** Four of them carry no open decision — their shape is settled and nothing is
+left but the typing — and **[RM126](#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+and [RM127](#rm127--the-release-class-table-and-the-release-practice-disagree), filed the same day from
+[S62](CONSUMER_SUGGESTIONS_HISTORY.md), are decisions again**: what a release should declare about its
+own output, and which of two rules sizes a release. RM127 is the maintainer's rather than an agent's.
+The settled four are:
 [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
 (the manifest half only),
 [RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one),
@@ -455,6 +460,121 @@ it is closed rather than parked:
 **Do not answer this by parsing the prose.** The field is freeform because the judgement is not
 formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
 natural-language question. Presence is the bit a check may read.
+
+## RM126 — nothing tells a consumer what a release changed about compiled *output*
+
+**Severity** medium · **Status** open — **a minor, release undecided** — filed 2026-08-21 · **Owner**
+compiler (+ format for the type) · **Motivating case** [S62](CONSUMER_SUGGESTIONS_HISTORY.md)
+(just-dna-registry)
+
+A registry sweeping its catalog for artifacts that should be recompiled has two questions it can
+answer and one it cannot. *Is the stored input still legal?* — re-run `validate_spec`, which answers
+`ok`. *Was this compiled under a contract-incompatible compiler?* — compare versions, and a patch is
+compatible. Neither is the question a changed derivation raises: **would recompiling this artifact
+produce different output than the stored one?** Today the only way to answer it is to enrich into a
+scratch directory, recompile and diff — which is the operation, not a triage for it.
+
+**Reproduced here, and it is wider than the report.** All sixteen `reference_examples/` compiled under
+`v0.6.1` (detached worktree) and under `0.6.6`, spec inputs byte-identical across the interval — the
+whole of which is patch releases:
+
+| | measured |
+|---|---|
+| changed at least one published manifest field | **16 / 16** |
+| moved `artifact.digest` (and `artifact.files` with it) | **10 / 16** |
+| moved `content_signature` | **0 / 16** |
+
+`compilation.compiled_at` is a timestamp and is excluded as noise. The digest movement is not noise:
+`studies.parquet` grew by exactly 257 bytes on each of the ten because **RM120 added the authored
+column `curator`**, first present in `v0.6.5`. So the *parquet schema* moved across a patch interval,
+which is the sharpest form of the finding and the one the reporter had not seen — they reported
+changed manifest fields. `stats.genes`/`stats.gene_count` moved on eight (RM121) and
+`literature.quotes_unchecked` appeared on three (RM119).
+
+**Authored identity held throughout**, which is the charter working as designed: an unset optional
+column is omitted from `content_signature`, so nothing a consumer keys on moved. That is exactly why
+no existing surface can see this — a digest comparison, a signature comparison and a `revalidate` all
+correctly report no change while an indexed field goes stale.
+
+**The shape asked for** is a declaration keyed on the **interval** rather than on a version, because
+the question is always *compiled under X, installed Y*, with the axes separated — parquet schema,
+parquet bytes, `content_signature`, and the set of manifest fields. Deliberately **not** a
+`should_rebuild` verdict: the same fact carries different costs per consumer (a stale cache is a free
+rebuild for `just-dna-lite`; for a registry it mints an immutable PATCH and moves what a client
+tracking `latest` receives), so the decision is the consumer's and only the fact is ours.
+
+**Three things the design has to get right, and the third is why this is filed rather than shipped.**
+
+- **Unknown must be a state, not an empty result.** Asked about an interval the installed package has
+  no record of — an artifact compiled under something newer, or older than the table reaches — the
+  answer is *cannot say*, never *nothing changed*. That is the house tri-state (`None` is never
+  `False`), and without it the surface is worse than nothing, because a consumer would stop
+  recompiling on the strength of a silence.
+- **`content_signature` needs its own axis, separate from bytes.** For a registry a signature is a
+  permanent global duplicate-content claim that only a purge frees, so *the identity moved in a patch*
+  is an answer to fail loudly on rather than merely to act on. Our sweep says it has never happened;
+  the axis exists so that stays checkable rather than remembered.
+- **A hand-kept per-release map is the defect wearing a public name.** The reporter said so themselves,
+  and it is `@registry-completeness` — five of the six RM104–RM111 fixes were a derived value restated
+  by hand. So the map has to be a **measurement**: the sweep above is the guard's prototype, and it is
+  cheap — check out the previous tag into a detached worktree, compile `reference_examples/`, diff the
+  manifests, and fail when the declared hints disagree with what actually moved.
+
+**Open, because the representation is not obvious.** An interval table is O(releases²) unless it is
+composed from per-release records, and composing them means deciding whether the axes are unions
+(a field that moved and moved back still moved) — probably yes, but that is a decision. The tier is
+open too: the natural caller is a consumer of `just-dna-compiler`, and the hints describe compiler
+behaviour, but a verify-only consumer holding `just-dna-format` alone has the same question about a
+manifest it can read. **Sizing depends on [RM127](#rm127--the-release-class-table-and-the-release-practice-disagree), which is the same question asked of ourselves.**
+
+## RM127 — the release-class table and the release practice disagree
+
+**Severity** medium · **Status** open — **a minor, release undecided** — filed 2026-08-21 · **Owner**
+maintainer (a policy decision, not a code one) · **Motivating case**
+[S62](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry)
+
+Two documents state different rules for the same change, and a consumer was bitten relying on one.
+
+- **The stated rule.** [CONSUMER_TRIAGE_LOOP § Step 1](CONSUMER_TRIAGE_LOOP.md#step-1--charter-legality-first-hand)
+  sizes *a new optional column, table, or manifest field* as a **minor**, and [CHANGELOG](CHANGELOG.md)'s
+  preamble says additive work — *including a new optional column or table* — is `0.6.0`.
+- **What happened.** `StudyRow.curator` shipped in **0.6.5**, a patch. The cut's own CHANGELOG entry
+  names it — *"Additive only: one new authored column"* — so this was not an oversight; it was sized
+  by a different test, *"an existing module's `content_signature` is unchanged, verified"*. RM121's
+  record reasons the same way: *"A patch: `manifest.json` is outside `artifact.digest` and `stats`
+  outside `content_signature`, measured."*
+
+**Both tests are defensible and they are not the same test.** *Is it additive?* and *does authored
+identity move?* diverge exactly where S62 landed: a new optional column is additive **and** leaves
+`content_signature` untouched, so the first calls it minor and the second calls it a patch. The
+identity test is arguably the better one — it is what the 2026-08-11 amendment was reaching for when
+it retired *anything that moves `artifact.digest` is 1.0* — but it is not what either document says,
+and the gap between them is not written down anywhere.
+
+**The consequence is not internal.** A consumer's rebuild rule reads *patch ⇒ same contract, no
+action*, which is a reasonable reading of the stated table; under the practised rule a patch can add a
+parquet column. Whatever [RM126](#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+publishes has to be true of what we actually do, so this is upstream of it: a hints surface built
+against the stated rule would declare `parquet_schema=False` for the very interval that added
+`curator`.
+
+**Not decided here, and deliberately not decided by an agent** — it sizes every future release and it
+is the maintainer's call. The three candidates, so they are not re-argued as new:
+
+- *The table is right; 0.6.5 was mis-sized.* Honest, and costs a `0.7.0` for the next additive column.
+  Note it does not require unshipping anything — `curator` is out and works.
+- *The practice is right; the table should say so.* Then the rule becomes **"a change that moves no
+  authored identity may take a patch"**, and both documents get rewritten to say it. This is the
+  cheaper rule and the one the amendment's logic points at, but it is a real narrowing of what a patch
+  promises, and it has to be published loudly rather than adopted quietly.
+- *Split the axis.* Keep *additive ⇒ minor* for the **authored** surface (a column an author writes)
+  and allow a patch for derived/manifest fields. That matches the 0.6 cost amendment's own tiering —
+  an authored schema is full cost, a manifest field approximately free — and it would have sized
+  RM120 as a minor and RM121 as a patch, which is probably what everyone intended.
+
+**Do not retro-edit the 0.6.5 or RM121 records to match whichever wins.** They are the record of what
+was decided and why, and rewriting them would destroy the evidence that the two tests ever diverged —
+which is the whole finding.
 
 # Not format scope
 

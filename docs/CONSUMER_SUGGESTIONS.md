@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S62
+## The next item is S63
 
 **Claim ids from here, never from what this file shows.** S1–S46 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
@@ -53,3 +53,48 @@ observed rather than of what was decided.
 ---
 
 ---
+
+---
+
+# RebuildHints(
+#     parquet_schema=False,          # columns added/removed/retyped
+#     parquet_bytes=False,           # a recompile writes different bytes
+#     content_signature=False,       # the identity moved  ← the one that must never surprise us
+#     manifest_fields={"stats.genes", "stats.gene_count", "compilation.warnings"},
+#     unknown_interval=False,
+# )
+```
+
+Three properties we would need, in descending order of how much they matter to us:
+
+1. **`unknown_interval` must exist and must not be spelled as an empty result.** Asked about an interval
+   the installed package has no record of — an artifact compiled under something newer than what is
+   installed, or older than the table reaches — the answer has to be *I cannot say*, never *nothing
+   changed*. This is your own rule about a value two opposite histories can produce, applied to a version
+   table, and without it the hint is strictly worse than no hint: a consumer would stop recompiling on the
+   strength of a silence.
+2. **`content_signature` needs its own axis, separate from bytes.** For this service a signature is a
+   permanent global `409 duplicate_content` claim that only a purge frees, so "the identity moved in a
+   patch" is the one answer we would want to fail loudly on rather than merely act on.
+3. **The declaration needs a guard, or it becomes the thing it is fixing.** A hand-kept per-release map
+   is precisely the shape of five of the six RM104–RM111 fixes, and closing this with one would be the
+   defect wearing a public name. We think you already have the enforcement: compile the reference
+   examples under the previous release and diff, and fail when the declared hints disagree with what
+   actually moved. That also makes the map a *measurement* rather than an author's recollection of what
+   they touched, which is the half we would trust.
+
+**What we are deliberately not asking for: a `should_rebuild` verdict.** The same fact carries different
+costs per consumer — for `just-dna-lite` a stale cache is a free rebuild, while for us a rebuild mints an
+immutable PATCH, spends a version number, and moves what a client tracking `latest` receives. So the
+decision is ours and should stay ours; what we cannot get anywhere is the fact.
+
+**One thing that is a different question, filed here only so it is not conflated.** RM107 (a duplicate
+`(source, layer)` row is now an error) does not make a stored artifact stale — it makes some *specs*
+newly invalid, which is "will my next publish still work?" rather than "is what I stored out of date".
+Our `revalidate` already answers that axis by re-running `validate_spec`, and it answers it correctly,
+so we are not asking for anything there. If a hints surface ever grows a `newly_refused` field we would
+read it, but the existing route works and this item does not depend on it.
+
+**Reproduced against** `just-dna-compiler` 0.6.6 installed, on a catalog of versions stamped
+`compiler_version` 0.6.1. Our side of it is in `services/upgrade.py::ContractGap.acts_by_default`, which
+now carries this analysis as a comment, and in the 0.20.0 release notes.

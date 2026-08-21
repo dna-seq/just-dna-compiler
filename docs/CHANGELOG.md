@@ -34,7 +34,48 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-21 (latest) — the triage loop's threshold counter went blind for the second time
+## 2026-08-21 (latest) — a patch changed a parquet schema, and nothing could say so (S62, RM126, RM127)
+
+**Nothing shipped; two items filed.** A new consumer, **just-dna-registry**, adopted
+`0.6.1 → 0.6.6` and ran the catalog sweep whose job is to find published artifacts that should be
+recompiled. It correctly reported nothing to do, at all three layers, while `manifest.stats.genes` —
+which feeds their gene facet — sat stale on every star-allele and copy-number module they publish.
+
+**Measured, and wider than the report.** All sixteen `reference_examples/` compiled under `v0.6.1`
+in a detached worktree and again under `0.6.6`, spec inputs byte-identical across the interval, which
+is entirely patch releases: **16/16 changed a published manifest field, 10/16 moved `artifact.digest`,
+0/16 moved `content_signature`.** The digest movement is `studies.parquet` +257 bytes on each of the
+ten — **RM120's `curator` column, first present in `v0.6.5`.** So the *parquet schema* moved across a
+patch interval, which the reporter had not seen; they reported changed manifest fields.
+
+Authored identity held on all sixteen, which is the charter working: an unset optional column is
+omitted from `content_signature`. That is precisely why nothing can see this — a digest comparison, a
+signature comparison and `revalidate` are each correct to report no change while an indexed field goes
+stale. **[RM126](ROADMAP.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)**
+is the missing third axis, asked for as an interval-keyed declaration with the axes separated,
+explicitly not a `should_rebuild` verdict, and with unknown-interval as a *state* rather than an empty
+result. The guard it needs is a measurement rather than a hand-kept map, and the sweep above is its
+prototype.
+
+**[RM127](ROADMAP.md#rm127--the-release-class-table-and-the-release-practice-disagree) is the finding
+underneath, and it is the maintainer's to settle.** Our release table sizes a new optional column as a
+**minor**; `curator` shipped in a patch, deliberately, sized by a different test — *"`content_signature`
+is unchanged, verified"* — which RM121's record also uses. Both tests are defensible, they are not the
+same test, and they diverge exactly where this consumer landed. The gap is written down nowhere and a
+consumer's rebuild rule rests on the published half. It is upstream of RM126, since a hints surface
+built against the stated rule would declare `parquet_schema=False` for the very interval that added
+the column.
+
+**Not an instance, and separated deliberately:** RM106's warning de-duplication. The release table
+already sizes a warning or a count as patch-level legibility, so `compilation.warnings` was never
+promised stability across a patch. It is the argument *for* the reporter's axis decomposition — warning
+text is patch-legal and a column is not, so one "did the output change" bit would have been useless.
+
+**Scope of the negative:** the sweep is an offline compile over sixteen specs. Enricher-side outputs
+were not compared across the interval, so `verification.json` and the documents RM123 touched are
+unmeasured rather than unchanged.
+
+## 2026-08-21 — the triage loop's threshold counter went blind for the second time
 
 **Documentation only; no package changed.** The [triage loop](CONSUMER_TRIAGE_LOOP.md) § 4 counters
 grep `ROADMAP.md` for open items to decide when to ask the user whether the next minor should start.

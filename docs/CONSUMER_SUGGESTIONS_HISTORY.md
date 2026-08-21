@@ -85,6 +85,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S59** three attestations that could not have failed — RM123
 - **S60** an authored overlay over a derived table — RM124 (0.7)
 - **S61** a snapshot-miss finding denied the position beside it — RM125
+- **S62** nothing says what a release changed about output — RM126, RM127
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4399,3 +4400,153 @@ both halves ran.
 We are not proposing that the snapshot miss go unrecorded — knowing the local cache is incomplete has
 real value for anyone deciding whether to warm it. The ask is only that the record stop asserting the
 position is unset when the payload it travels in carries the position.
+
+# just-dna-registry — what a patch may change about a compiled artifact (2026-08-21)
+
+The first report from this consumer, filed while adopting `0.6.1 / 0.6.1 / 0.6.4` → `0.6.6` across all
+three tiers. Not a defect report: every layer of their catalog sweep behaved as documented and still
+found nothing to do while an indexed manifest field went stale underneath it.
+
+## S62 — a patch changed a published field, and nothing a consumer can read said so
+
+**Status — accepted, and filed as two items: [RM126](ROADMAP.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+for the surface you asked for, [RM127](ROADMAP.md#rm127--the-release-class-table-and-the-release-practice-disagree)
+for the thing underneath it that you found without naming.** Nothing ships yet — the second one sizes
+the first, and it is the maintainer's decision rather than ours. Your analysis stands in full, and
+probing it widened the case twice.
+
+**You understated it, and here is the measurement.** All sixteen `reference_examples/` compiled under
+`v0.6.1` in a detached worktree and again under `0.6.6`, spec inputs verified byte-identical across the
+interval (only a README moved), and that whole interval is patch releases:
+
+| | measured |
+|---|---|
+| changed at least one published manifest field | **16 / 16** |
+| moved `artifact.digest`, and `artifact.files` with it | **10 / 16** |
+| moved `content_signature` | **0 / 16** |
+
+`compilation.compiled_at` is a timestamp and is excluded as noise. The digest movement is not:
+`studies.parquet` grew by exactly **257 bytes** on each of the ten, because RM120 added the authored
+column `curator`, first present in **`v0.6.5`**. So it is not only manifest fields — **the parquet
+schema moved across a patch interval**, which is your `parquet_schema` axis, the one you ranked just
+below signature. On your catalog that is a changed column set on every module carrying `studies.parquet`.
+
+**Your third layer is the reason none of this is visible, and it is us working as designed.**
+`content_signature` held on all sixteen, because an unset optional column is omitted from it. So the
+authored identity really did not move, a digest comparison really is correct to say nothing happened,
+and `revalidate` really is right to answer `ok`. Every rule you have is sound and the composition is
+still blind. That is the defect, and it is ours.
+
+**One correction to the report, and it narrows the indictment rather than the finding.** RM106 is not
+an instance. Our own release table sizes *a warning, a count, an error message* as patch-level
+legibility work, so `manifest.compilation.warnings` was never promised stability across a patch and a
+consumer pinning warning counts was relying on something we do not offer. Keeping it separate matters
+because it is the case *for* your axis decomposition rather than against it: warning text is
+patch-legal and a column is not, so a single "did the output change" bit would have been useless to you
+even if it existed. The real instances in this interval are RM120 (the column), RM121
+(`stats.genes`/`gene_count`, eight modules) and RM119 (`literature.quotes_unchecked`, three).
+
+**And the second finding, which is yours by implication.** Our release table says a new optional
+column, table or manifest field is a **minor**; `curator` shipped in a patch, and 0.6.5's own changelog
+entry names it — *"Additive only: one new authored column"* — so it was sized deliberately, by a
+different test: *"an existing module's `content_signature` is unchanged, verified."* Both tests are
+defensible and they are not the same test, and they diverge exactly where you landed. Your premise
+*"a compiler patch changes nothing about compiled output"* was never our stated rule; but the rule we
+state and the rule we practise disagree, that gap is written down nowhere, and you read the published
+half. RM127 records the three candidates and does not pick one. Whatever RM126 publishes has to be true
+of what we actually do, which is why it is filed second and blocks the first.
+
+**On your three properties: all three are accepted as constraints, not as nice-to-haves.**
+
+1. **`unknown_interval` as a state rather than an empty result** is the house rule verbatim — three
+   values, and `None` is never `False`. You are right that without it the surface is worse than
+   nothing, and the reason is the one we apply everywhere: withhold when the answer is unknown, never
+   negate. It is in RM126 as a constraint on the type, not a field to add later.
+2. **`content_signature` on its own axis** is accepted for your reason. Our sweep says it has never
+   moved in a patch; the axis exists so that stays *checkable* rather than remembered, which is the
+   distinction that decides most things here.
+3. **The guard.** You called the hand-kept map correctly — it is the registry-not-a-list defect with a
+   public name, and it is the shape of five of the six RM104–RM111 fixes. Your proposed enforcement is
+   right and cheaper than you may think: the sweep in this reply **is** the prototype, and it took one
+   worktree and one loop. A map derived that way is a measurement rather than an author's recollection,
+   which as you say is the half worth trusting.
+
+**We are not building `should_rebuild`, and your argument for that is the one we would have made.** The
+same fact costs you an immutable PATCH and a moved `latest`, and costs `just-dna-lite` a free cache
+rebuild. Ours is the fact; the decision stays yours.
+
+**Your `--apply --force` re-baseline is the right thing to run meanwhile**, and your reason for
+rejecting a hardcoded "0.6.6 is interesting" check is the same reason we would have rejected it — a
+landmark test is a boolean frozen at one era boundary, and it answers wrong for every version after.
+
+**What we did not measure, so you should not read this as covering it.** The sweep is an offline
+compile over sixteen specs: it says nothing about enricher-side outputs, so `verification.json` and the
+documents RM123 touched were not compared across the interval. If your catalog stores those, treat them
+as unmeasured rather than unchanged.
+
+**Your RM107 aside is correctly scoped and needs nothing from us.** It is the *will my next publish
+still work* axis, `validate_spec` answers it, and you are right that it does not make a stored artifact
+stale. If a hints surface grows a `newly_refused` field it will be because that axis earned one, not
+because this item asked.
+
+**One small thing:** `version.contract_compatible` is not ours — there is no `version.py` in any of the
+three packages, and no compatibility helper under another name either. We assume the symbol is yours;
+we mention it because the absence is part of what you are reporting, and because a reply that let the
+attribution stand would put a function in our record that nobody can grep for.
+<!-- triaged: 0.6.6 · sha 0cd5660ebae9 -->
+
+**Reported by** just-dna-registry, 2026-08-21, adopting `0.6.1 / 0.6.1 / 0.6.4` → `0.6.6` across all
+three tiers. Not a defect report: everything below behaved as documented. The finding is that two
+correct rules compose into a silently wrong outcome, and the missing piece is a fact only this repo
+holds.
+
+**What we ran.** After `uv sync` onto 0.6.6, `registry upgrade --dry-run` over the catalog — the sweep
+whose whole job is to find published versions that should be recompiled under the current contract.
+
+**What we expected.** RM121 changes `manifest.stats.genes` from a `variants.csv`-only derivation to a
+union over every authored gene-bearing table. We index that field: a registry's gene facet is fed from
+it, which is the consequence RM121's own docstring names. So every already-published star-allele,
+diplotype and copy-number module in our catalog is carrying `genes: []` and is unreachable by `?gene=`,
+and the recompile that fixes it is exactly what the sweep exists to schedule.
+
+**What happened.** The sweep reported nothing to do, correctly, at every layer:
+
+* Our gap detector compares `manifest.compilation.compiler_version` against the installed compiler under
+  your own `version.contract_compatible`. `0.6.1` vs `0.6.6` is a **patch** — same contract — and we
+  deliberately do not act on a patch, because acting would mint a fresh immutable PATCH per module every
+  time a dependency moved and the sweep would never be finished.
+* Our `revalidate` audit re-runs the current `validate_spec` over each version's stored spec inputs.
+  It answers **`ok`**, also correctly: nothing is wrong with those specs. The stale value is not in the
+  input, it is in an output field that the compiler used to compute differently.
+
+So we have a rule for *"is the stored input still legal?"* and a rule for *"was this compiled under a
+contract-incompatible compiler?"*, and both answer no-action. Neither is the question RM121 raises,
+which is a third axis: **would recompiling this artifact produce different output than the stored one?**
+
+**We can answer that axis today, but only by doing the expensive thing we are trying to decide whether
+to do** — enrich into a scratch dir, recompile, diff. That is minutes per module, catalog-wide, and it
+*is* the operation, not a triage for it.
+
+**What we did meanwhile.** Documented an explicit `registry upgrade --apply --force` as the operator's
+re-baseline for this release, scoped per module, with a note that it costs a version number each. We
+also considered and rejected teaching our detector that `0.6.6` specifically is worth acting on: this
+codebase removed exactly that pattern in its 0.18.0 (a boolean frozen at one era boundary, which
+answered "no gap" for every version of the following era), under the rule *never date a stored artifact
+by testing for a landmark; compare versions*. A hardcoded list of interesting versions is that defect
+with more entries.
+
+**RM121 is not the only instance in this release, which is what makes it a contract question rather
+than a one-off.** RM106 de-duplicates the `faf95` warning, so `manifest.compilation.warnings` — a
+published list — shipped 15 entries where 14 were distinct, and a consumer pinning warning counts sees
+one fewer after a **patch**. Two output-visible changes in one patch pair is enough to say the premise
+"a compiler patch changes nothing about compiled output" no longer holds, and the premise is what every
+consumer's rebuild rule currently rests on.
+
+**What we think is missing.** A machine-readable, offline-queryable declaration of what a release
+changes about the *output* of a compile, keyed on the **interval** rather than on a single version —
+because the question is always "compiled under X, installed Y". Sketch, and the field names matter less
+than the axes:
+
+```python
+from just_dna_compiler import rebuild_hints
+rebuild_hints(compiled_under="0.6.1", current="0.6.6")
