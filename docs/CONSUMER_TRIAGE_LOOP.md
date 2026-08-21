@@ -31,10 +31,13 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**Adopted through gist revision `a74366fa6d728d104664370bfc37b9593a3a2a55`**, published 2026-08-21 —
-and that one is ours, an outward push rather than an adoption, so it is in sync by construction. It
-supersedes `bd793a8ce98b…` (2026-08-18) and, before that, `ab7e2a89c48d…` (2026-08-16), which was the
-baseline the digest check was first pinned to. Same sha back means nothing has arrived and the sync-in is finished for that pass; a
+**Adopted through gist revision `fffbcc65653b0f46c3bb48808d5df14a4c28930b`**, published 2026-08-21 and
+adopted the same day — a genuine inbound adoption, the first since the channel was built, and the one
+that paid for it. It supersedes `a74366fa6d72…` (2026-08-21, ours, an outward push), `bd793a8ce98b…`
+(2026-08-18) and, before that, `ab7e2a89c48d…` (2026-08-16), which was the baseline the digest check was
+first pinned to. **The scripts were byte-identical across that revision** — everything that arrived was
+prose, which is worth knowing because it means the auto-adopt gate below was satisfied trivially: with no
+`fingerprint()` change there was nothing to restamp. Same sha back means nothing has arrived and the sync-in is finished for that pass; a
 different one means pull the files and read the diff. **Update this line, with its date, whenever an
 adoption *or* a push lands** — it is the baseline, and a stale one re-diffs work already taken, which
 after a push means re-reading your own writing as though a stranger had sent it.
@@ -96,8 +99,16 @@ fingerprint, not the value the ledger prints after you write the reply* (§6). T
 rather than local tuning — the gist never carried the wrong sentence, it simply never said which sha to
 write, so a reader who reasonably guesses "run the ledger and copy what it prints" walks into the trap
 on every reply longer than a paragraph, which is most of them. It went into the gist's Step 3, where the
-stamping actually happens, and the baseline above moved with it. Nothing is owed outward as of that
-revision.
+stamping actually happens, and the baseline above moved with it.
+
+**One item is owed outward as of 2026-08-21, and has not been pushed**: *the fence gotcha splits an
+archive, not just the ledger* (§6). The gist carries the furniture entry for prose moving **in** — a
+footer swallowed by the last section — and it carries the flush-left `#` gotcha as a ledger problem, but
+it does not join them: `triage-archive.py` shares `BOUNDARY_RE`, so the same line that truncates a
+reading truncates a **move**, and half a report ends up in the wrong file with the verification
+reporting clean. That is pattern material rather than local tuning — every adopting tree runs the same
+splitter — and the S62 repair here is the worked instance. Pushing it is a publish and is the user's to
+authorize; it is recorded here so the debt is visible until it is.
 
 **§4 and §5 are deliberately not generalized, decided 2026-08-21 — do not re-raise this.** The published
 copy has never carried a thresholds section or an unattended-permit section, and it should not: the
@@ -223,7 +234,7 @@ collapsed, so trailing whitespace and reflowing do not count as a change. Four v
 |---|---|---|
 | `new` | no reply, no marker | triage it |
 | `revised` | marker present, fingerprint moved | the consumer edited an answered item — re-triage |
-| `unmarked-reply` | answered before the ledger existed | `--backfill` stamps the marker |
+| `unmarked-reply` | answered before the ledger existed | `--backfill` stamps the marker — **only for replies older than the ledger**, never one you just wrote (§6) |
 | `current` | marker matches | nothing to do |
 
 ### Why not git
@@ -367,6 +378,29 @@ resolution."* Same rule as drafting: it appends, it never mutates.
 
 One reply may cover several sections, as the 0.5.2 block does for S3–S6. The ledger understands that
 shape and marks each covered section individually, since one paragraph cannot carry four fingerprints.
+
+**Stamp the fingerprint the section carried *before* the reply existed**, and do **not** copy the value
+the ledger prints once your reply is in place and the marker is not yet. With no marker to stop at,
+`reply_end()` falls back to the single-paragraph rule, so paragraphs two onward of your own reply leak
+into the hash. That contaminated value is not an edge case — it is the normal state of every section at
+the moment you go to stamp it, and any reply worth writing is longer than one paragraph.
+
+**Do not reach for `--backfill` to dodge that.** It computes the same contaminated value, and it puts the
+marker somewhere that makes the mistake permanent and silent — §6 has the reproduction. It is for replies
+older than the ledger, and only those.
+
+**The placeholder recipe needs nothing remembered, and it is the reliable way to get the value.** Stamp
+twelve zeros at the end of the reply as you write it:
+
+```
+<!-- triaged: <version> · sha 000000000000 -->
+```
+
+Then run the ledger. With a marker present the reply is excluded whole, so the `revised` line prints the
+true fingerprint — `sha <real>  (was 000000000000)` — and you paste that back and re-run to confirm
+`current`. Do not rely on having kept the value from when the section read `new`: it is the same number,
+but a batch that answers two items after both arrived never printed either of them alone. That is
+exactly the shape of the S63/S64 pair, which arrived four minutes apart.
 
 ### Step 4 — move the answered item to the history file
 
@@ -700,13 +734,73 @@ Each of these was a bug in the loop, not a hypothetical:
   this file's own prescription until 2026-08-21.** The contamination is not special to a malformed
   marker — it is the *normal* state of a section you have just replied to and not yet stamped, which is
   every section at the moment you go to stamp it. The value to write is the one the section carried
-  **before the reply existed**: the ledger prints it when the item arrives, and `--backfill` is correct
-  for the same reason. Writing S61's reply reproduced it exactly — unmarked, the section hashed to
+  **before the reply existed** — the ledger prints it when the item arrives. *This entry used to add
+  "and `--backfill` is correct for the same reason", which is false and is corrected in the entry
+  below: the tool computes the contaminated value too.* Writing S61's reply reproduced it exactly — unmarked, the section hashed to
   `143952a318dc`, and stamping that read `revised  (was 143952a318dc)` against the true `9e026ea11585`.
   Checked in a scratch copy rather than argued, which is cheap and is the habit this file keeps asking
   for. So: **stamp the arrival fingerprint, then re-run the ledger and confirm `current`.** The
   confirmation is the whole check either way and it is two seconds — it is also what catches this if you
   stamp the wrong value regardless, which is why the failure has never survived a pass that ran it.
+
+- **`--backfill` is for replies older than the ledger, and stamps the wrong sha on a reply you just
+  wrote — silently, and permanently.** Adopted from the gist on 2026-08-21 and reproduced here against
+  our own copy before being written down. It computes the fingerprint from the file *as it stands*, and
+  with no marker present yet `reply_end()` falls back to the single-paragraph rule, so paragraphs two
+  onward of a fresh multi-paragraph reply are hashed as if the consumer had written them. Step 3 warns
+  against hand-copying that value; the tool computes it the same way, so reaching for `--backfill` to
+  avoid the hazard walks straight into it.
+
+  **One root cause, two symptoms, and which one you get depends on where the marker ends up.** On a
+  three-paragraph fixture, arrival fingerprint `5c9ee39c5c6f`:
+
+  - **Hand-stamping the printed value**, marker at the end of the reply where the Step 3 example puts
+    it: the marker terminates the reply properly, the next run recomputes over the consumer's prose
+    alone, and the section reads `revised  (was 8fb615edf9ad)` against text nobody edited. Loud, and
+    self-announcing.
+  - **`--backfill` itself**: `backfill()` walks to the end of the `**Status` *paragraph* — the
+    `while lines[end + 1].strip() != ""` loop — and appends the marker there, not at the end of the
+    reply. `reply_end()` therefore stops at paragraph one on the next run exactly as it did on this one,
+    the contamination is **stable**, and the section reads `current`. Nothing ever reports it. The
+    stored fingerprint permanently covers our own reply prose, and the first thing to surface it is a
+    later edit to *our* paragraphs two onward arriving as a consumer revision.
+
+  So the reassuring advice — *re-run the ledger and confirm `current`* — is exactly the check that
+  passes in the worse case. It catches the hand-stamp and is blind to the tool. **A stable wrong answer
+  outranks an unstable one**, which is why the twelve-zero placeholder in Step 3 is the recipe rather
+  than either of these: with a marker already present the reply is excluded whole, and the ledger prints
+  the true arrival value for you. On the same fixture it printed `5c9ee39c5c6f` back, matching what the
+  section hashed to before the reply was written.
+
+- **A section span is bounded by headings, and a document has furniture at both ends that is not a
+  heading.** Anything above the first item or below the last one belongs to an item as far as the span
+  logic is concerned. Two instances, arrived from opposite directions, and the fingerprint check is
+  blind to both for the same reason — fingerprints cover the consumer's prose, so anything that is
+  neither reply nor prose travels wherever the span puts it, silently.
+
+  **Furniture moving *in*** (adopted from the gist, found in another repo): an inbox ending with a line
+  like `*One item is open: S13.*` hands that line to the last item, and the move verifies clean because
+  the footer sat inside the fingerprint on both sides. Repair: delete the footer from the history file,
+  re-run the ledger for the new value, hand-edit the marker — the one case where `revised` over
+  unchanged prose is *expected*, because the removed line was never the consumer's — then restore the
+  inbox's own footer, which the archived copy took with it.
+
+  **Prose moving *out*** (found here, 2026-08-21, and the more expensive half): S62's report contained a
+  fenced python block with `# RebuildHints(` written flush left inside it. That is the fence gotcha above, whose known
+  cost was a blinded ledger — but `triage-archive.py` shares `BOUNDARY_RE`, so the span it *cut* ended
+  there too. Half of S62 went to the history file, ending mid-block with an unclosed fence; the
+  commented expected-return, the closing fence and seven further paragraphs including the "Reproduced
+  against" attestation stayed in the live inbox, orphaned under the preamble, where they sat through a
+  commit and a release. The archiver reported "every fingerprint intact" and was right to. **So the
+  fence gotcha is not only a ledger problem: it can split a report across two files, and neither the
+  verification nor the ledger can see it.** Repaired in `51e6bba`, verbatim and verified by byte
+  occurrence rather than by eye; S62 read `current` before and after at the same sha, which is the proof
+  that the ledger never saw either half.
+
+  Two cheap lints follow, and they are not the fingerprint check: `grep -c '^```' ` over a section must
+  be even, and an archived group's last item should leave no `# ` heading behind it with nothing under
+  it. Also worth knowing: each archive pass leaves the `---` that preceded the section it cut, so they
+  accumulate one per pass — three had piled up before anyone looked.
 
 ---
 
