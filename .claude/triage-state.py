@@ -52,20 +52,95 @@ MARKER_RE = re.compile(r"<!-- *triaged:.*?sha +([0-9a-f]{12}) *-->")
 # and dropping one is editorial — so hashing it lets our own separator edit report as `revised`. Same
 # family as the marker exclusion. Adopted from the published gist, where a second repo hit it first.
 RULE_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
+# A fenced block opens on ``` or ~~~ indented up to three spaces, and closes on a run of the same
+# character at least as long carrying no info string. Everything inside is somebody's snippet.
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def fenced_lines(lines: list[str]) -> tuple[set[int], int | None]:
+    """(indices sitting inside a fenced code block, index of an unclosed opening fence or None).
+
+    **A `#` at column 1 inside a fence is a comment in a consumer's snippet, not a heading**, and
+    every span in both tools is bounded by headings. Treating one as a boundary truncates the span
+    — which blinds the ledger to the tail of a section and, because `triage-archive.py` shares
+    `BOUNDARY_RE`, cuts a report in half on the way to the history file. That is not hypothetical:
+    S62 spent a commit and a release split across the two documents, and the archiver's own
+    verification reported it clean, because a fingerprint covers the consumer's prose and both
+    halves hashed the same truncated body. See CONSUMER_TRIAGE_LOOP.md § 6.
+
+    An unclosed fence is returned rather than raised so the caller can refuse: with no closer the
+    scan swallows the rest of the document, which is a worse failure than the one this fixes.
+    """
+    inside: set[int] = set()
+    fence: str | None = None
+    opened_at: int | None = None
+    for i, line in enumerate(lines):
+        found = FENCE_RE.match(line)
+        if found:
+            run = found.group(1)
+            if fence is None:
+                fence, opened_at = run, i
+                inside.add(i)
+                continue
+            inside.add(i)
+            if run[0] == fence[0] and len(run) >= len(fence) and not found.group(2).strip():
+                fence, opened_at = None, None
+            continue
+        if fence is not None:
+            inside.add(i)
+    return inside, opened_at
+
+
+def fence_findings(lines: list[str]) -> list[str]:
+    """Structural complaints about fences, as lines of prose. Empty means the document is sound.
+
+    Both are silent failures the fingerprint check cannot reach, because a fingerprint covers the
+    consumer's prose and says nothing about where a section *ends*:
+
+    * an unclosed block swallows every heading below it, so spans run to the end of the document;
+    * a `## Sn` heading sitting inside a block is invisible to the ledger — the section vanishes
+      from the roster rather than reporting a bad verdict, which is the worse way to fail.
+
+    The second is not hypothetical. `cf4c3bd` archived S55's span truncated at a flush-left `#`,
+    stranding 76 lines in the inbox; a later pass swept them back in under S54, where the block's
+    opening fence was missing because it had travelled with S55. That left an unmatched closer,
+    and once spans became fence-aware it hid `## S55` completely.
+    """
+    fenced, open_at = fenced_lines(lines)
+    out = []
+    if open_at is not None:
+        out.append(
+            f"line {open_at + 1}: fenced block is never closed — every heading below it reads as "
+            f"code, so every span from here runs to the end of the document"
+        )
+    for i, line in enumerate(lines):
+        if i in fenced and SECTION_RE.match(line):
+            out.append(
+                f"line {i + 1}: {line.strip()[:60]!r} sits inside a fenced block — the ledger "
+                f"cannot see this section at all"
+            )
+    return out
+
+
+def boundary_after(lines: list[str], start: int, fenced: set[int] | None = None) -> int:
+    """Index of the first heading after `start` that really ends a section, or len(lines)."""
+    if fenced is None:
+        fenced, _ = fenced_lines(lines)
+    for j in range(start + 1, len(lines)):
+        if j not in fenced and BOUNDARY_RE.match(lines[j]):
+            return j
+    return len(lines)
 
 
 def sections(lines: list[str]) -> list[tuple[str, int, list[str]]]:
     """Split into (id, 1-based heading line, body lines). Ids repeat if the doc repeats them."""
+    fenced, _ = fenced_lines(lines)
     out = []
     for start, line in enumerate(lines):
-        if not SECTION_RE.match(line):
+        if start in fenced or not SECTION_RE.match(line):
             continue
         ident = "S" + SECTION_RE.match(line).group(1)
-        end = len(lines)
-        for j in range(start + 1, len(lines)):
-            if BOUNDARY_RE.match(lines[j]):
-                end = j
-                break
+        end = boundary_after(lines, start, fenced)
         out.append((ident, start + 1, lines[start + 1 : end]))
     return out
 
@@ -80,11 +155,12 @@ def block_replies(lines: list[str]) -> dict[str, int]:
     backfilled marker for it would go.
     """
     covered: dict[str, int] = {}
+    fenced, _ = fenced_lines(lines)
     for start, line in enumerate(lines):
-        if not line.startswith("# "):
+        if start in fenced or not line.startswith("# "):
             continue
         for i in range(start + 1, len(lines)):
-            if BOUNDARY_RE.match(lines[i]):  # preamble ends at the first section
+            if i not in fenced and BOUNDARY_RE.match(lines[i]):  # preamble ends at the first section
                 break
             if not STATUS_RE.match(lines[i]):
                 continue
@@ -221,6 +297,8 @@ def main() -> int:
         return 2
 
     lines = doc.read_text().splitlines()
+    for complaint in fence_findings(lines):
+        print(f"STRUCTURE  {doc.name}:{complaint}", file=sys.stderr)
     covered = block_replies(lines)
     rows = [(ident, line, *classify(body, ident in covered))
             for ident, line, body in sections(lines)]
@@ -253,13 +331,13 @@ def backfill(doc: pathlib.Path, lines: list[str], rows: list, covered: dict[str,
     because one paragraph cannot carry four different fingerprints.
     """
     edits = []
+    fenced, _ = fenced_lines(lines)
     for ident, line, verdict, current, _ in rows:
         if verdict != "unmarked-reply":
             continue
         end, standalone = None, False
-        for i in range(line, len(lines)):
-            if BOUNDARY_RE.match(lines[i]):
-                break
+        stop = boundary_after(lines, line - 1, fenced)
+        for i in range(line, stop):
             if STATUS_RE.match(lines[i]):
                 end = i
                 while end + 1 < len(lines) and lines[end + 1].strip() != "":
@@ -267,9 +345,7 @@ def backfill(doc: pathlib.Path, lines: list[str], rows: list, covered: dict[str,
                 break
         if end is None and ident in covered:  # shared block reply, mark the section itself
             end, standalone = line, True
-            for i in range(line, len(lines)):
-                if BOUNDARY_RE.match(lines[i]):
-                    break
+            for i in range(line, stop):
                 if lines[i].strip():
                     end = i
         if end is None:

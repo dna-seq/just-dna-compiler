@@ -3478,82 +3478,6 @@ Three consequences, and the third is why we are correcting the record rather tha
 Everything else in this entry stands, including the measurement it opens with: one distinct quote per
 PMID, equal to the title, on all four.
 
-# just_dna_format/spec.py, StudyRow
-curator: str | None = Field(default=None, description="Curator override")
-```
-
-That is the whole ask: the same field, on the table where the attestation lives. Then
-`provenance_quote` stops being a claim about an unnamed human and becomes a located passage with a
-named locator, resolvable against `authorship` — and `quotes_found` can finally be read for what it
-is, per locator, instead of as an undifferentiated coverage number.
-
-**Why the module-level `authorship` block is not enough.** Real work is mixed at row granularity: a
-scientist reads a review and an agent traverses its citations, in one module, in one pass. A
-module-level contributor list cannot say which of the two located row 1400. `VariantRow.curator`
-exists precisely because module-level defaults are not enough for a variant; the same is true here.
-
-**One thing this is explicitly not.** It does not move responsibility. An AI is not a subject of
-right, so the human author holds it entirely, whatever a `curator` cell says. The column records the
-real distribution of labour so a reviewer can route scrutiny — which is what `Contribution.kind`'s
-own docstring already says it is for ("route scrutiny by it") — and not so anyone can point at a
-model when a quote turns out to be wrong.
-
-**A candidate we think is wrong: a boolean `machine_located`.** Two-valued collapses the case that
-actually occurs — a passage an agent found and a human then confirmed — into one of two lies, and it
-cannot name *which* agent or *which* human. A free-text identifier resolvable against `authorship`
-carries both, and matches what `VariantRow` already does.
-
-**What we changed on our side, so you can weigh how much of this is ours to fix.** Our `CLAUDE.md`
-forbade an agent to locate a passage at all, citing `S11`. That prohibition is reversed as of
-2026-08-20: our agents may locate and write a `provenance_quote`, verbatim, and must record who
-located it.
-
-### Addendum, hours later: we were wrong that there is nowhere to put it, and the real ask is narrower
-
-The paragraph above originally ended *"we can only write it to our own logs, where it does not travel
-with the module"*. We then actually did the remediation and published it, and both halves of that
-were wrong. Verified against a real publish and manifest read-back — three records survive:
-
-| Where we put it | Grain | On the published manifest |
-|---|---|---|
-| `module_spec.yaml: authorship` (`Contribution`) | per version | `manifest.authorship`, verbatim |
-| `provenance.json` — `ProvenanceItem.rationale`, keyed by `variant_key` | per **variant** | `manifest.provenance` `{generator, model, agent_version, item_count, sha256}` |
-| `logs/*.log` | per run, free text | `manifest.logs` `{name, sha256, size}` |
-
-`provenance.json` is close to what we are asking for and we should have said so: it is per-row-ish,
-free text, it travels, and `ProvenanceDoc` already carries `model` and `agent_version` in its header.
-So please read this report as narrower than it was written: **the gap is the `(row, quote)` grain, not
-the concept.** A `studies.csv` row is `(variant_key, pmid)`; `ProvenanceItem` is keyed on
-`variant_key` alone, so one variant cited by two papers for two different findings collapses into a
-single item and cannot say which passage came from where. That is the case a `StudyRow` attributor
-would fix and `provenance.json` cannot.
-
-**And the collapse is not hypothetical — it is the common case on a real module.** Measured on
-`data/output/corrected_modules/big_five_personality/studies.csv`, 859 rows over 735 distinct variants
-and 26 PMIDs:
-
-```
-pmids citing one variant   1     2     3     4     5
-variants                 640    75    14     3     3
-```
-
-**95 of 735 variants are cited by more than one paper**, up to five (`rs11082011` is cited by
-29292387, 29500382, 29942085, 30643256 and 35898629). And **37 of those are cited by different papers
-for different `trait_efo_id`s** — genuinely different findings about the same variant, each of which
-would carry its own located passage from its own article, and all of which map onto one
-`ProvenanceItem`. That is 13% of the module's variants, on a module of ordinary size, so a
-`variant_key`-grained attribution would be lossy for one row in eight before anybody did anything
-unusual.
-
-**One thing worth deciding while you are here.** `upgrade` deliberately carries neither
-`provenance.json` nor the logs — `carry = set(present) - {PROVENANCE_FILE}`, commented as *"they
-describe how the predecessor was built, and this mechanical re-publish has its own (absent)
-provenance"*. That reasoning is right for build metadata and we are not asking you to change it. But
-under it, a contract upgrade carries `studies.csv` forward with every quote intact and drops the only
-record of who located them. If the attributor lands on `StudyRow` it travels with the row and the
-question disappears; if instead you decide `provenance.json` is the answer, this is the corner that
-needs a rule.
-
 ## S55 — we withdraw the reasoning behind `attestation_bearing`, and ask for the attributor it was missing
 
 **Status — accepted; `StudyRow.curator` shipped as [RM120](ROADMAP_HISTORY.md#rm120--the-table-where-the-attestation-lives-could-not-name-its-attributor) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). Your whole ask, verbatim as you wrote it.**
@@ -3617,7 +3541,7 @@ any mechanical re-publish that carries the table, and the reasoning you quote fo
 
 Documented in [SCHEMAS.md](SCHEMAS.md) beside the provenance columns. Cut and tagged `v0.6.5` on 2026-08-20; publishing to PyPI is a separate step and the
 maintainer's, so check [CHANGELOG.md](CHANGELOG.md) before assuming you can install it.
-<!-- triaged: 0.6.5 · sha 4f55d9fa3dff -->
+<!-- triaged: 0.6.5 · sha 9c28c7ce0d4c -->
 
 *Filed 2026-08-20 by just-module-creator. This one is a retraction of our own argument, so the report
 is about reasoning rather than behaviour. `ATTESTATION_BEARING` itself may well be right for your
@@ -4409,8 +4333,8 @@ found nothing to do while an indexed manifest field went stale underneath it.
 
 ## S62 — a patch changed a published field, and nothing a consumer can read said so
 
-**Status — accepted, and filed as two items: [RM126](ROADMAP.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
-for the surface you asked for, [RM127](ROADMAP.md#rm127--the-release-class-table-and-the-release-practice-disagree)
+**Status — accepted, and filed as two items: [RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+for the surface you asked for, [RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
 for the thing underneath it that you found without naming.** Nothing ships yet — the second one sizes
 the first, and it is the maintainer's decision rather than ours. Your analysis stands in full, and
 probing it widened the case twice.
@@ -4502,10 +4426,10 @@ being wrong. **The defect is RM121 alone, and it is a different change class**: 
 existing published field whose derivation was *corrected*, so the same spec yields a different value.
 That is neither additive nor a removal/retype, and the release taxonomy has no row for it. The sharper
 measurement, which the reply should have led with: **six of sixteen modules changed a published,
-indexed manifest field while both hashes stayed byte-identical.** [RM127](ROADMAP.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
+indexed manifest field while both hashes stayed byte-identical.** [RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
 is rewritten around that.
 
-<!-- triaged: 0.6.6 · sha 0cd5660ebae9 -->
+<!-- triaged: 0.6.6 · sha b41bdd76f12b -->
 
 **Reported by** just-dna-registry, 2026-08-21, adopting `0.6.1 / 0.6.1 / 0.6.4` → `0.6.6` across all
 three tiers. Not a defect report: everything below behaved as documented. The finding is that two

@@ -148,8 +148,8 @@ Three scripts, all in `.claude/`, none packaged:
 | | |
 |---|---|
 | `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing. The only one that is really bash |
-| `.claude/triage-state.py` | the ledger: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn` |
-| `.claude/triage-archive.py` | moves answered sections into the history file and **verifies** each fingerprint survived the move |
+| `.claude/triage-state.py` | the ledger: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn`. Also prints `STRUCTURE` lines when a fenced block breaks the section boundaries |
+| `.claude/triage-archive.py` | moves answered sections into the history file and **verifies** each fingerprint survived the move. **Refuses outright** on a `STRUCTURE` finding, since a span that ends at the wrong line moves the wrong bytes and the fingerprint check cannot see it |
 
 **Run the two Python ones, never `bash` them** — `./.claude/triage-state.py` or
 `python3 .claude/triage-state.py`. They carried a `.sh` extension until 2026-08-16 and the mismatch had
@@ -689,13 +689,24 @@ Each of these was a bug in the loop, not a hypothetical:
   the body the ledger reads, so `stored_sha` returns `None` and a freshly-stamped section reports
   `unmarked-reply` forever. It looks exactly like the git-sha failure below and has a different
   cause; what distinguishes them is that `stored_sha` on the hand-sliced section finds the marker
-  while the tool's own `sections()` does not. Found writing S55's reply. **The fix is on the writing
-  side** — indent the comment or put it at the end of the line — for the same reason the `**Status`
-  preamble collision is: teaching the splitter about fences means teaching it about indented fences,
-  tildes and nested blocks, and the failure is rare and self-announcing once you know the shape. It
-  also affects the *consumer's* prose, so if a report ever arrives with a flush-left `#` in a
-  snippet, that section's body is short and the fix is still not to edit their text: stamp by hand
-  after checking `sections()` agrees, and say so.
+  while the tool's own `sections()` does not. Found writing S55's reply.
+
+  **This was a writing-side rule until 2026-08-21, and that was the wrong call — it is fixed in the
+  tools now.** The original reasoning was that teaching the splitter about fences means teaching it
+  about indented fences, tildes and nested blocks, and that the failure is *rare and self-announcing
+  once you know the shape*. Both halves of that turned out to be false, which is why the entry below
+  it exists: the shape occurred twice more, and it announced nothing either time — it split S55 and
+  then S62 across two documents while every check reported green. The deciding argument is that the
+  rule had **no owner for the case that matters**. A flush-left `#` in *our* reply we can indent; one
+  in a consumer's report we may not touch, and that is the standing rule this loop will not break. A
+  writing-side fix that cannot be applied to half its cases is not a fix.
+
+  `fenced_lines()` in the ledger now tracks ``` and ~~~ openers indented up to three spaces, closing
+  on a run of the same character at least as long with no info string, and every span in both tools
+  is derived from it — `sections`, `block_replies`, `backfill`, `section_span`, `group_span` and
+  `current_group`. `triage-archive.py` imports them rather than keeping its own copy, because the two
+  tools disagreeing about a boundary is exactly how S62 got cut in half. `fence_findings()` is the
+  backstop for what the tracker still cannot parse, and the archiver **refuses** rather than warning.
 
 - **The §4 counter has now failed twice, by two different routes, and both were silent.** The first
   time it counted a literal `**0.6**` and went on counting it after 0.6 shipped. The fix was to count
@@ -797,10 +808,14 @@ Each of these was a bug in the loop, not a hypothetical:
   occurrence rather than by eye; S62 read `current` before and after at the same sha, which is the proof
   that the ledger never saw either half.
 
-  Two cheap lints follow, and they are not the fingerprint check: `grep -c '^```' ` over a section must
-  be even, and an archived group's last item should leave no `# ` heading behind it with nothing under
-  it. Also worth knowing: each archive pass leaves the `---` that preceded the section it cut, so they
-  accumulate one per pass — three had piled up before anyone looked.
+  **Both are now guarded in code rather than described here.** `fence_findings()` reports an unclosed
+  block and a `## Sn` heading swallowed by one; the ledger prints them as `STRUCTURE` lines and
+  `triage-archive.py` refuses to move anything while either is true, before it writes. The historical
+  shapes are pinned in `schema/tests/test_triage_tools.py`, including a test that walks the *old*
+  boundary scan over S62's real shape and shows it stopping inside the fence — a guard nobody has
+  watched fail is a guess. What is still yours to notice: an archived group's last item leaves its
+  `# ` heading behind with nothing under it, and each pass leaves the `---` that preceded the section
+  it cut, so those accumulate one per pass — three had piled up before anyone looked.
 
 ---
 

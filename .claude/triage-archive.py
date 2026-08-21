@@ -24,6 +24,7 @@ Usage:
     .claude/triage-archive.py S8 S10 [--dry-run]
 """
 
+import importlib.util
 import pathlib
 import re
 import subprocess
@@ -37,7 +38,18 @@ LEDGER = HERE / "triage-state.py"
 
 SECTION_RE = re.compile(r"^## +S(\d+)\b")
 GROUP_RE = re.compile(r"^# +\S")
-BOUNDARY_RE = re.compile(r"^#{1,2} ")
+
+# The span logic is DERIVED from the ledger rather than restated beside it. The two tools disagreeing
+# about where a section ends is precisely how S62 came to be split across both documents: they each
+# carried their own copy of the boundary scan, so a fix to one left the other cutting at the wrong
+# line. `triage-state.py` is already the authority for fingerprints; it is the authority for spans too.
+# The hyphen in the filename is why this is importlib rather than a plain import.
+_spec = importlib.util.spec_from_file_location("triage_state", LEDGER)
+_ledger = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_ledger)
+fenced_lines = _ledger.fenced_lines
+boundary_after = _ledger.boundary_after
+fence_findings = _ledger.fence_findings
 
 
 def section_span(lines: list[str], ident: str) -> tuple[int, int]:
@@ -46,12 +58,7 @@ def section_span(lines: list[str], ident: str) -> tuple[int, int]:
         found = SECTION_RE.match(line)
         if not found or "S" + found.group(1) != ident:
             continue
-        end = len(lines)
-        for j in range(i + 1, len(lines)):
-            if BOUNDARY_RE.match(lines[j]):
-                end = j
-                break
-        return i, end
+        return i, boundary_after(lines, i)
     raise SystemExit(f"{ident}: no such section in {LIVE.name}")
 
 
@@ -76,24 +83,27 @@ def group_span(lines: list[str], before: int) -> tuple[int, int] | None:
     out loud rather than inventing one — naming a group (who reported it, when) is editorial, the same
     reason the contents line is not generated either.
     """
-    headings = [i for i, line in enumerate(lines) if GROUP_RE.match(line)]
+    fenced, _ = fenced_lines(lines)
+    headings = [i for i, line in enumerate(lines) if i not in fenced and GROUP_RE.match(line)]
     start = None
     for i in headings[1:]:  # [0] is the document title
         if i < before:
             start = i
     if start is None:
         return None
-    end = len(lines)
-    for j in range(start + 1, len(lines)):
-        if BOUNDARY_RE.match(lines[j]):
-            end = j
-            break
-    return start, end
+    return start, boundary_after(lines, start, fenced)
 
 
 def current_group(lines: list[str]) -> str | None:
-    """Text of the last `# ` heading in a file, or None."""
-    found = [line for line in lines if GROUP_RE.match(line)]
+    """Text of the last `# ` heading in a file, or None.
+
+    Fence-aware, because a flush-left comment in somebody's snippet is not a group heading and this
+    is the function that was fooled: `# just_dna_format/spec.py, StudyRow`, a python comment inside
+    S55's report, was read as one and carried 76 lines of orphaned prose into the history file under
+    the wrong section. See `fence_findings` in the ledger.
+    """
+    fenced, _ = fenced_lines(lines)
+    found = [line for i, line in enumerate(lines) if i not in fenced and GROUP_RE.match(line)]
     return found[-1] if found else None
 
 
@@ -120,6 +130,21 @@ def main() -> int:
         raise SystemExit(__doc__)
     if not HISTORY.is_file():
         raise SystemExit(f"no history file at {HISTORY} — create it first")
+
+    # Refuse before touching anything. A fence problem means a span does not end where it looks like
+    # it ends, and the move's own verification cannot catch that: fingerprints cover the consumer's
+    # prose, so a truncated span hashes identically on both sides of a cut that lost half a report.
+    # This is the guard S62 and S55 both needed and neither had.
+    complaints = [f"{doc.name}:{c}" for doc in (LIVE, HISTORY)
+                  for c in fence_findings(doc.read_text().splitlines())]
+    if complaints:
+        raise SystemExit(
+            "refusing to archive — a fenced block breaks the section boundaries:\n  "
+            + "\n  ".join(complaints)
+            + "\n\nA span that ends at the wrong line moves the wrong bytes, and the fingerprint\n"
+              "check cannot see it. Repair the document first; do NOT edit the consumer's prose to\n"
+              "suit the tool — a missing fence usually means an earlier pass already split a report."
+        )
 
     before = fingerprints(LIVE)
     missing = [i for i in idents if i not in before]
