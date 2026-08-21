@@ -34,6 +34,32 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-08-21 (latest) — the triage loop's threshold counter went blind for the second time
+
+**Documentation only; no package changed.** The [triage loop](CONSUMER_TRIAGE_LOOP.md) § 4 counters
+grep `ROADMAP.md` for open items to decide when to ask the user whether the next minor should start.
+The 2026-08-21 decision round rewrote all four open items' status lines to lead with what had just
+been decided, which pushed the release-class phrase out of the slot the grep reads and wrapped one of
+them across a line. **The count read zero with four grounded items in the file** — the direction that
+matters, because a zero reads as an all-clear.
+
+This is the counter's **second** failure: the first counted a literal `**0.6**` and kept counting it
+after 0.6 shipped, fixed by counting the idiom instead. The idiom then drifted. The durable half of
+the repair is that the release-class token is now named as a **fixed field** in
+[ROADMAP § Active items](ROADMAP.md#active-items) — verbatim, on one line, with everything else the
+status wants to say after it — so the rule sits where a status line is *written* rather than only in
+the file that reads it. The incident is in [CONSUMER_TRIAGE_LOOP § 6](CONSUMER_TRIAGE_LOOP.md#6-gotchas-found-while-building-this).
+A phrase a tool greps is an API whether or not the tool belongs to a consumer (`@warning-text-is-api`).
+
+Also: the CHANGELOG's `(latest)` marker had stayed on the second entry when the decision round
+prepended a new one, against this file's own newest-first rule. Moved — **and then it went stale a
+second time within the same pass**, when this entry was prepended above the one that had just been
+corrected. That is twice in two prepends. The marker is a *derived* fact — "the topmost entry in a
+newest-first file" — restated by hand, which is the exact pattern the RM104–RM111 batch named as the
+thing worth carrying out of it, and the file's preamble already says *Newest first*. Surfaced rather
+than acted on, because retiring a convention across every heading is a bigger call than this pass:
+the next person to trip on it has the evidence to delete the marker outright.
+
 ## 2026-08-21 — just-dna-lite's consumer-side changes from the just-module-creator hand-off
 
 **Consumer-side only; nothing in this repo changed.** Recorded because the working agreement asks
@@ -81,7 +107,7 @@ tri-state.
 `gene_count: 0` and cannot be found by gene. Originally measured by just-module-creator; relayed
 because neither consumer owns `variant_stats`.
 
-## 2026-08-21 (latest) — a lookup finding that contradicted the payload carrying it (S61, RM125)
+## 2026-08-21 — a lookup finding that contradicted the payload carrying it (S61, RM125)
 
 **Cut as 0.6.6** across all three packages and tagged `v0.6.6` on 2026-08-21; this entry read "still
 uncut" until the tag landed the same day. It joins the two rounds below rather than taking a number of

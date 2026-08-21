@@ -181,6 +181,17 @@ settled and nothing left in them but the typing. **Count them off the sections, 
 sentence**: this line said *three* for as long as it took to notice that a narrowed item is still an
 item, which is the same arithmetic failure recorded two paragraphs down.
 
+**The release-class token in a status line is a fixed field, not prose — a tool reads it.** An open
+item's `**Status**` reads `open —` and then, immediately and in bold, `a minor, release undecided`
+(or `a patch, …`), because the triage loop's threshold counters grep for exactly that to decide when
+to ask whether the next minor should start. An item saying the same thing in other words is invisible
+to them, and a counter seeing nothing reads as an all-clear. So write the token verbatim, keep it
+**on one line** so a line-based grep sees it whole, and put whatever else the status needs —
+*narrowed*, *shape decided*, *the manifest half only* — after its closing `**`. The 2026-08-21
+decision round rewrote all four lines below and took the count from six to zero while four items sat
+here; that is the second failure of this counter, the first having been that it counted a version
+number that then shipped.
+
 **The 2026-08-21 decision round is what emptied the other half.** Six items stood here, every one of
 them a decision rather than a missing line of code, and one pass answered all six: **RM102** closed
 outright, **RM122** parked on demand and moved to [ROADMAP_0_7.md](ROADMAP_0_7.md), **RM117** narrowed
@@ -251,8 +262,8 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 ## RM103 — a version with no digits coerces to `0.0.0`, which is a real version nobody wrote
 
-**Severity** low-medium · **Status** open — **the manifest half only, a minor, release
-undecided**; the refusal half is a tightening and moved to
+**Severity** low-medium · **Status** open — **a minor, release undecided** — the manifest half
+only; the refusal half is a tightening and moved to
 [§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker) on 2026-08-21 · **Owner** format ·
 **Motivating case** S42 (just-dna-lite, in CONSUMER_SUGGESTIONS_HISTORY.md)
 
@@ -307,7 +318,7 @@ widening fixed. The hazard is the unquoted *decimal*, which is still refused and
 
 ## RM108 — a ClinGen re-curation appends a second row and nothing marks the superseded one
 
-**Severity** medium · **Status** open — **shape decided 2026-08-21**; a minor, release undecided ·
+**Severity** medium · **Status** open — **a minor, release undecided** — shape decided 2026-08-21 ·
 **Owner** enricher · **Motivating case** the 2026-08-19 doc audit (just-module-creator's
 `gene_validity.md`)
 
@@ -345,9 +356,9 @@ same way.
 
 ## RM110 — `constraint_flags` has two producers with two encodings, and the column is inside the fact set
 
-**Severity** medium · **Status** open — **decided 2026-08-21**; a minor because it moves a fact
-signature, not because anything is unsettled · **Owner** enricher · **Motivating case** the
-2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
+**Severity** medium · **Status** open — **a minor, release undecided** — decided 2026-08-21; the
+minor is because it moves a fact signature, not because anything is unsettled · **Owner** enricher ·
+**Motivating case** the 2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
 
 The live API route writes `"|".join(sorted(flags)) if flags else None`. The snapshot route copies
 gnomAD's TSV cell verbatim, and gnomAD writes a **JSON array literal** there; `[]` is not in
@@ -389,8 +400,8 @@ minor rather than a patch.
 
 *(Heading kept for its anchor; since 2026-08-21 the "undecided" half is decided — see the status line.)*
 
-**Severity** medium · **Status** open — **narrowed 2026-08-21 to the observability half**; a minor,
-release undecided. The severity half is **closed**, not deferred · **Owner** enricher ·
+**Severity** medium · **Status** open — **a minor, release undecided** — narrowed 2026-08-21 to the
+observability half; the severity half is **closed**, not deferred · **Owner** enricher ·
 **Motivating case** [S52](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
 
 **The half that shipped.** `ProvenanceItem.outranks` — `{column: why}`, per column, additive, in the

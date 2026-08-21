@@ -445,11 +445,17 @@ grep -c 'Status\*\* open — \*\*a patch' docs/ROADMAP.md   # patch-level fixes
 grep -h '^version' */pyproject.toml                        # versus the top CHANGELOG heading
 ```
 
-**Count the idiom, not a fixed version number.** Those greps read the two forms `ROADMAP.md` actually
+**Count the idiom, not a fixed version number — and the idiom is a fixed field `ROADMAP.md` protects.**
+Those greps read the two forms `ROADMAP.md` actually
 uses — `**Status** open — **a minor, release undecided**` and `**a patch**` — because the first version
 of this block counted `**0.6**` and went on counting it after 0.6 shipped. It then returned `0` however
 full the queue was, which is the worst way for a counter to fail: a stale one reads as an all-clear, and
-the whole point of counting off the tree is that nothing here is remembered.
+the whole point of counting off the tree is that nothing here is remembered. **It then failed a
+second time when the idiom itself drifted**, which is why
+[ROADMAP.md § Active items](ROADMAP.md#active-items) now states that the release-class phrase is a
+fixed field written verbatim and kept on one line. §6 has the incident; the short version is that a
+counter reading prose is only as stable as the sentence it reads, so the sentence has to know it is
+being read.
 
 **Twenty or more sizeable open items → development of the next minor should START. This is the dev-start
 trigger, and it is *not* "scope is closing".** Read it the wrong way — as a scope freeze, a ceiling, a
@@ -656,6 +662,30 @@ Each of these was a bug in the loop, not a hypothetical:
   also affects the *consumer's* prose, so if a report ever arrives with a flush-left `#` in a
   snippet, that section's body is short and the fix is still not to edit their text: stamp by hand
   after checking `sections()` agrees, and say so.
+
+- **The §4 counter has now failed twice, by two different routes, and both were silent.** The first
+  time it counted a literal `**0.6**` and went on counting it after 0.6 shipped. The fix was to count
+  the *idiom* instead — and on 2026-08-21 the idiom moved: a decision round rewrote all four open
+  items' status lines to lead with what had just been decided (`**shape decided 2026-08-21**`,
+  `**narrowed … to the observability half**`), pushing the release-class phrase out of the slot the
+  grep reads and, in one case, wrapping it across a line so no line-based grep could match it whole.
+  The count went **six to zero with four grounded items in the file**, which is the worst direction
+  for this failure: a zero reads as an all-clear, and the whole reason §4 counts off the tree is that
+  nothing here is remembered. Found by reading the tree rather than by the counter, because the
+  counter cannot report its own blindness.
+
+  **The general shape is that a counter reading prose needs a fixed field, and the field has to be
+  named as load-bearing where it is *written*, not only where it is read.** Both failures happened
+  because the phrase lived in `ROADMAP.md` while the only statement that it mattered lived here, in
+  the file the person editing a status line is not reading. So the rule now sits in
+  [ROADMAP.md § Active items](ROADMAP.md#active-items) as well: the release-class token is verbatim,
+  on one line, and anything else the status wants to say goes after it. That is
+  `@warning-text-is-api` applied to our own documents — a phrase a tool greps is an API whether or
+  not the tool is a consumer's.
+
+  A smaller trap sits inside the fix: the paragraph that *documents* the phrase reproduced it, and
+  the counter obligingly counted the documentation, reading five for four items. Describe the field
+  without spelling it contiguously.
 
 - **A marker can be stamped with a git commit sha, and it fails twice over.** S36's read
   `<!-- triaged: 0.6.0 · sha cbeeb8f -->`, which is a real commit in this repo and not a fingerprint at
