@@ -36,7 +36,8 @@ PharmVar's OpenAPI document and its licence text).
 
 | Doc | Answers | Grep for |
 | --- | --- | --- |
-| [CONSTITUTION.md](docs/CONSTITUTION.md) | the 8 principles + goals/non-goals. Wins over any plan. | `grep -n '^[0-9]\+\. \*\*' docs/CONSTITUTION.md` |
+| [CONSTITUTION.md](docs/CONSTITUTION.md) | the 9 principles + goals/non-goals. Wins over any plan. **Rules only** — no reasoning lives there | `grep -n '^[0-9]\+\. \*\*' docs/CONSTITUTION.md` |
+| [CONSTITUTION_AMENDMENTS_HISTORY.md](docs/CONSTITUTION_AMENDMENTS_HISTORY.md) | *why* each amendment was made — the reasoning the charter bans from itself | `grep -n '^## ' docs/CONSTITUTION_AMENDMENTS_HISTORY.md` |
 | [AGENT_NOTES.md](docs/AGENT_NOTES.md) | the long-form gotcha book behind this file | `grep -n '^## ' docs/AGENT_NOTES.md`, then the symbol name |
 | [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list | `grep -n 'RM47' docs/RM_TOC.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, the reserved-namespace and 1.0-cleanup trackers | `grep -n '^## RM' docs/ROADMAP.md` |
@@ -67,10 +68,16 @@ rule → `grep -rn 'hosting_verdict' docs/ schema/ compiler/ enricher/`; a warni
 1. **[docs/CONSTITUTION.md](docs/CONSTITUTION.md) — the durable charter. READ IT BEFORE JUDGING OR
    CHANGING ANYTHING.** Declarative-not-code, no network, backward-compat within a major,
    integrity-as-identity, orthogonal axes, the vocabulary idiom, round-trip/idempotency, requiredness
-   compatibility. When a plan conflicts with it, it wins; **an audit that has not read it is
-   incomplete**, since P3/P7/P8 decide whether a change is even legal. It is **self-contained** — it
-   names no other document, and the navigation into the living material is here. Never add an outward
-   pointer to it.
+   compatibility, release-class-is-not-staleness, and what a change costs by layer. When a plan
+   conflicts with it, it wins; **an audit that has not read it is incomplete**, since P3/P7/P8 decide
+   whether a change is even legal. It is **self-contained** — it names no other document, and the
+   navigation into the living material is here. Never add an outward pointer to it.
+
+   **It is rules only, by its own header item**: no reasoning, evidence, open questions, superseded
+   states or rhetoric, and no outward reference beyond a published version a rule turns on. When you
+   amend it, the *rule* goes there and the *why* goes in
+   [CONSTITUTION_AMENDMENTS_HISTORY.md](docs/CONSTITUTION_AMENDMENTS_HISTORY.md) — which may cite `RMn`
+   and consumer reports freely. That split is what keeps a file read in full from growing.
 
    **Never delegate a Constitution question to a spawned agent — read it yourself, in full.** A
    summary of a charter drops the qualifier the decision turned on ("additive" vs "non-breaking",
