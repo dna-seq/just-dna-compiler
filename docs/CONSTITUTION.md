@@ -9,6 +9,12 @@ only by deliberate amendment.** When any other document, plan, or convention in 
 with this one, this document wins; when a plan graduates into a durable rule, promote it here on
 purpose.
 
+**Rules only.** This file is read in full before any decision, so it stays short. Reasoning,
+evidence, open questions, superseded states and rhetoric belong in the maintained documents, never
+here. It names no other document and no roadmap item — a reader holding only this file must resolve
+every reference in it from the file. A published version number is the one outward fact it may cite,
+and only where a rule turns on one.
+
 ## Goals
 
 - Be the **declarative schema contract** for just-dna annotation modules and the **reference
@@ -96,11 +102,22 @@ purpose.
    cycle, a rename) or an explicit statement that no action is needed. A removal whose upgrade path is
    left to the reader to work out is not ready to ship, however long it was deprecated first.
 
-   A new **optional** column, or a new optional table, is additive and lands in a minor: the authored
-   identity — `content_signature` and the per-input hashes — is unchanged, and only a recompile's
-   `artifact.digest` moves. **Removing** a column, **promoting** one to required, or **retyping** one
-   is major-only: each breaks an existing reader or invalidates published data. The concrete list of
-   items queued for the next major is maintained separately, as living material.
+   A new **optional** column, or a new optional table, is additive and lands in a minor. **Removing** a
+   column, **promoting** one to required, or **retyping** one is major-only: each breaks an existing
+   reader or invalidates published data. The concrete list of items queued for the next major is
+   maintained separately, as living material.
+
+   **Release class and artifact staleness are different axes.** Those rules size a change by what it
+   does to a *reader of the schema*, never by whether a value already published is now wrong. A
+   **corrected derivation** is that case: it adds, removes and retypes nothing, so no rule above
+   reaches it, yet every artifact compiled earlier holds a value we no longer stand behind. Being a bug
+   fix it **may ship in any release** — deferring serves a wrong value meanwhile — but never
+   **silently**: each release declares its corrections, readable offline and without recompiling.
+   Unmitigated breakage is no more permitted here than at a major.
+
+   **Authored identity is not the sizing test.** An unchanged `content_signature` says an additive
+   change is safe *for identity* and nothing more: it is incapable of failing for what the signature
+   excludes — every derived facet — and a check that cannot fail is not a pass.
 
 4. **Integrity and immutability.** All hashes are SHA-256, lowercase hex, prefixed `sha256:`.
    Identity has two halves and they answer different questions. `artifact.digest` (a Merkle root over
@@ -156,6 +173,22 @@ purpose.
    the major bump. This complements Principle 3 (additive within a major) by pinning the *requiredness*
    axis specifically, because it was the axis most easily missed.
 
+9. **What a change costs, by layer.** Principles 3, 4 and 8 rule on whether a change is *legal*; this
+   one prices a legal one, so a review weighs it instead of reaching for an instinct about file count.
+   The cost of an addition depends on the layer it lands in:
+   - **Parquet columns — approximately free.** Materialized and derived; no human ever types one, and
+     an author cannot see one.
+   - **Derived CSVs — half.** Machine-written, so no author has to learn the shape; but a human *can*
+     still open and edit one, and that is discouraged rather than merely unmentioned.
+   - **Authored schemas — full.** A human writes them. Every column is a burden on the rare author,
+     and it is that author the DSL exists for.
+
+   The *one concern per table, do not burden the rare author* gate is a rule about the **authored**
+   layer: it does not price a parquet column at all, and prices a machine-written sidecar at half. A
+   derived table that is both machine-written and human-overridable can be edited into a state that is
+   not merely stale but a false claim, which wants a mechanism rather than a convention. This principle
+   adds no permission and removes none — every addition answers to Principles 3 and 8 first.
+
 ## Amendments
 
 This document is amended deliberately, never incidentally. Plans, release history, the
@@ -163,57 +196,3 @@ reserved-namespace and 1.0-cleanup trackers, and coding-style conventions (type 
 absolute imports) all live in their own documents, never here. If any of them conflicts with a
 principle above, this document governs — resolve the conflict by amending one or the other on
 purpose, not by letting the two drift.
-
-**0.5 amendment — the network tier.** Goal 2, the two Non-goals on dependencies and network, and
-Principle 2 were amended to introduce `just-dna-enricher`: a third, network-capable tier that
-*produces* the injected `resolution.csv` the compiler consumes. The change is additive and scoped, not
-a reversal — `just-dna-format` and `just-dna-compiler` become *more* strictly inject-only (they own no
-source convention and never fetch), and HuggingFace/httpx/tenacity are confined to the enricher, never
-reaching the dependency-light tiers a verify-only or compile-only client installs. This completes the
-`just-dna-datasets`/"cache authority leaves the compiler" decoupling recorded in the 0.4.1 plan.
-
-**0.6 amendment — the retirement cadence, and mitigation at a major.** Principle 3's two-step
-retirement read *deprecate at the major, remove at the next*, which put every superseded name through
-two full major lines and made the cheap half of the process wait on the expensive one. Deprecation
-removes nothing and breaks no reader — it is warn-only — so it needs no major to authorize it. The
-cadence is now **deprecate in a minor, remove at the next major** (0.6 → 1.0, 1.2 → 2.0), scoped by the
-requirement that the warning be **actionable**: a deprecation an author cannot comply with is a finding
-no edit can clear, which this project treats as a defect wherever else it appears. This ratifies
-existing practice rather than inventing one — `just-dna-compiler`'s `ensembl_cache` parameter has
-emitted a `DeprecationWarning` since 0.5 while continuing to work, with removal queued for 1.0, which
-is precisely the shape the old wording forbade. The same amendment adds the obligation that a major
-carry its **upgrade procedure**: the charter has always permitted breakage at a major, and now requires
-it to arrive mitigated.
-
-**0.6 amendment — what a schema change costs, by layer.** Principles 3, 4 and 8 rule on whether a change
-is *legal*: additive is minor, removal and promotion-to-required and retyping are major. They say nothing
-about what a legal change *costs*, and the absence has been showing up as a recurring instinct that there
-are "too many tables" — an instinct that is correct about some additions and wrong about others, with no
-stated way to tell which. The cost of an addition depends on the layer it lands in:
-
-- **Parquet columns — approximately free.** Materialized and derived; no human ever types one, and an
-  author cannot see one. A stamped, compiler-managed column is the cheapest thing this format can add.
-- **Derived CSVs — half.** Machine-written, so no author has to learn the shape; but a human *can* still
-  open and edit one, and that should be discouraged rather than merely unmentioned.
-- **Authored schemas — full.** A human writes them. Every column is a burden on the rare author, and it
-  is that author the DSL exists for.
-
-Two consequences make the rule operative rather than decorative. First, the *one concern per table, do
-not burden the rare author* gate is a rule about the **authored** layer: it does not price a parquet
-column at all, and it prices a machine-written sidecar at half. A new derived fact table is not the same
-kind of object as a new authored table, and treating the two alike is what made obviously-worthwhile
-additions look like sprawl. Second, discouraging hand-editing of a derived file is a live design concern
-and not a style note — a derived table that is both machine-written and human-overridable can be edited
-into a state that is not merely stale but is a false claim, and that wants a mechanism rather than a
-convention.
-
-This amendment adds no permission and removes none: what is legal is unchanged, and every addition still
-answers to Principles 3 and 8 first. It states the price so that a design review can weigh a legal change
-instead of reaching for an unexamined instinct about file count.
-
-The same 0.5 amendment **removed `duckdb` from the compiler tier**, which is why Goal 2 now names
-polars/pyyaml/typer alone. Resolution moved from an in-compiler DuckDB query over an injected reference
-to the injected `resolution.csv` table, so the whole SQL/cache-location half went to the enricher and
-the compiler became pure-Python. This is a *tightening* of Goal 2's dependency-light commitment, not a
-new allowance, and it is recorded here because Goal 2 read as though duckdb were still sanctioned there
-for a full release after it had gone.
