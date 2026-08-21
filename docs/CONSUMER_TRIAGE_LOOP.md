@@ -449,7 +449,8 @@ rejected if one changed. Do this by hand only if the tool cannot (it prints what
   pass: read it off [RM_TOC.md](RM_TOC.md), which indexes every item in both roadmap files.
 - **Commit as you go, one commit per item** — see the grant in §5 for what that covers and where it
   stops. Stage explicit paths; never `git add -A`. (This bullet read *do not commit* until 2026-08-11,
-  which was the global default before the loop had a permit of its own.)
+  when the loop got a permit of its own; the global default followed on 2026-08-21 and now says the
+  same thing everywhere.)
 - **Say what was skipped.** If an item is left untriaged, leave it `new` rather than writing a
   placeholder reply. An empty verdict is honest; a hedged one is not.
 - **Run the whole suite after each fix, and `ruff check` before you finish.** Six code fixes in one pass
@@ -528,10 +529,13 @@ legibility fixes is not the thing that needs a planning decision.
 
 ## 5. What the loop agent may do unattended
 
-A standing grant, given 2026-08-11, that **overrides the global "only commit when asked" default for
-this loop and nothing else.** It exists because a batch that sits uncommitted for a whole pass is one
-`/clear` away from being unattributable, and because the §4 thresholds are worthless if the agent cannot
-act on them.
+A standing grant, given 2026-08-11, back when it **overrode** the global "only commit when asked"
+default for this loop and nothing else. Since 2026-08-21 the global preference is commit-as-you-go with
+tagging delegated, so the committing half is no longer special — what stays specific to this loop is
+doing it **unattended**, across a long pass, including the version bump and dist build that a §4
+threshold fires. It exists because a batch that sits uncommitted for a whole pass is one `/clear` away
+from being unattributable, and because the §4 thresholds are worthless if the agent cannot act on
+them.
 
 **Granted.** Commit as you go — one commit per item, the loop's existing serial rule, with the `Sn`/`RMn`
 in the message. Bump a version, tag it, and clean and build dists when a §4 threshold fires; bumping is
