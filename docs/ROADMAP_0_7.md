@@ -27,6 +27,122 @@ Indexed in [RM_TOC.md](RM_TOC.md). The 0.6 decisions that touched these items ar
 
 ---
 
+**RM126 arrived here on 2026-08-21 and is the one item in this file that is owed rather than
+offered.** Everything else here waits on a design question, a corpus or a caller. RM126 waits on
+nobody: the Constitution was amended the same day to require that a release declare its corrections,
+so the charter now names a channel that does not exist. It is filed here because it is 0.7-sized, not
+because it is deferred.
+
+## RM126 — nothing tells a consumer what a release changed about compiled *output*
+
+**Severity** medium-high · **Status** **queued for 0.7, moved here 2026-08-21 — to be built, not
+parked.** The charter now *requires* this channel: Principle 3 says a corrected derivation may ship in
+any release but never silently, and this is the declaration it mandates. Until it exists the charter
+describes a surface that is not there · **Owner** format (record + `needs_recompile`) + compiler
+(the sweep) · **Motivating case** [S62](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry)
+
+A registry sweeping its catalog for artifacts that should be recompiled has two questions it can
+answer and one it cannot. *Is the stored input still legal?* — re-run `validate_spec`, which answers
+`ok`. *Was this compiled under a contract-incompatible compiler?* — compare versions, and a patch is
+compatible. Neither is the question a changed derivation raises: **would recompiling this artifact
+produce different output than the stored one?** Today the only way to answer it is to enrich into a
+scratch directory, recompile and diff — which is the operation, not a triage for it.
+
+**Reproduced here, and it is wider than the report.** All sixteen `reference_examples/` compiled under
+`v0.6.1` (detached worktree) and under `0.6.6`, spec inputs byte-identical across the interval — the
+whole of which is patch releases:
+
+| | measured |
+|---|---|
+| changed at least one published manifest field | **16 / 16** |
+| moved `artifact.digest` (and `artifact.files` with it) | **10 / 16** |
+| moved `content_signature` | **0 / 16** |
+
+`compilation.compiled_at` is a timestamp and is excluded as noise. The digest movement is not noise:
+`studies.parquet` grew by exactly 257 bytes on each of the ten because **RM120 added the authored
+column `curator`**, first present in `v0.6.5`. So the *parquet schema* moved across a patch interval,
+which is the sharpest form of the finding and the one the reporter had not seen — they reported
+changed manifest fields. `stats.genes`/`stats.gene_count` moved on **seven** (RM121) and
+`literature.quotes_unchecked` appeared on three (RM119). **Six of the sixteen changed a published,
+indexed manifest field with *both* hashes byte-identical** — `apoe_epsilon` went `genes: []` →
+`["APOE"]` at the same `artifact.digest` and the same `content_signature`. That is the sharpest number
+here and the one the surface has to answer to.
+
+**Authored identity held throughout**, which is the charter working as designed: an unset optional
+column is omitted from `content_signature`, so nothing a consumer keys on moved. That is exactly why
+no existing surface can see this — a digest comparison, a signature comparison and a `revalidate` all
+correctly report no change while an indexed field goes stale.
+
+**The shape asked for** is a declaration keyed on the **interval** rather than on a version, because
+the question is always *compiled under X, installed Y*, with the axes separated — parquet schema,
+parquet bytes, `content_signature`, and the set of manifest fields. Deliberately **not** a
+`should_rebuild` verdict: the same fact carries different costs per consumer (a stale cache is a free
+rebuild for `just-dna-lite`; for a registry it mints an immutable PATCH and moves what a client
+tracking `latest` receives), so the decision is the consumer's and only the fact is ours.
+
+**Three things the design has to get right, and the third is why this is filed rather than shipped.**
+
+- **Unknown must be a state, not an empty result.** Asked about an interval the installed package has
+  no record of — an artifact compiled under something newer, or older than the table reaches — the
+  answer is *cannot say*, never *nothing changed*. That is the house tri-state (`None` is never
+  `False`), and without it the surface is worse than nothing, because a consumer would stop
+  recompiling on the strength of a silence.
+- **`content_signature` needs its own axis, separate from bytes.** For a registry a signature is a
+  permanent global duplicate-content claim that only a purge frees, so *the identity moved in a patch*
+  is an answer to fail loudly on rather than merely to act on. Our sweep says it has never happened;
+  the axis exists so that stays checkable rather than remembered.
+- **A hand-kept per-release map is the defect wearing a public name.** The reporter said so themselves,
+  and it is `@registry-completeness` — five of the six RM104–RM111 fixes were a derived value restated
+  by hand. So the map has to be a **measurement**: the sweep above is the guard's prototype, and it is
+  cheap — check out the previous tag into a detached worktree, compile `reference_examples/`, diff the
+  manifests, and fail when the declared hints disagree with what actually moved.
+
+**The shape, decided 2026-08-21 in the S62 thread — two axes, and only one of them is measurable.**
+
+- **`output_differs` — measured.** One record per release, produced by the sweep: parquet schema,
+  parquet bytes, `content_signature`, and the set of changed manifest fields. Intervals compose as a
+  **union over the releases in `(a, b]`**, so storage is linear rather than O(releases²) and
+  *moved-and-moved-back still counts as moved*, which is the right reading for staleness. Backfillable
+  for 0.6.1→0.6.6 by measurement with the harness that produced the numbers above; older intervals stay
+  honestly `unknown`.
+- **Correction versus addition — declared.** Only the person fixing the bug knows whether the stored
+  value was **wrong** (`stats.genes`) or merely **absent** (`curator`), and no diff can tell them
+  apart: both look like "a field changed". This is the canary — *not a minor, but rebuild time* — and
+  it is the half the consumer cannot compute for themselves at any price.
+- **The gate is what keeps the declaration honest.** A release whose sweep shows a changed field with
+  no declaration covering it **fails**. That is what stops this becoming the hand-kept map everyone
+  agrees it must not be: the measurement forces the declaration rather than the author remembering to
+  write one. A release where nothing moved records a measured zero **with its evidence**, never
+  silence (`@tautology-zero`).
+
+**This does not contradict the reporter's "no `should_rebuild` verdict", and the item must say so.**
+Their objection is to a *cost* verdict, because the cost differs per consumer. The correction flag is
+not a cost judgement — it is a fact about whether a value we published was wrong, which is upstream
+knowledge only this repo holds. The per-axis breakdown stays exposed underneath it, so a consumer who
+wants the facts rather than the flag still has them. A bare boolean with nothing under it would deserve
+their objection exactly.
+
+**Tiers.** The record, its model and a pure `needs_recompile(compiled_under, current)` belong in
+`just-dna-format` — a static table plus a function, which pydantic-only holds comfortably, and format
+is the tier every consumer has. The **sweep instrument** belongs in the compiler, since producing a
+record means compiling. The **gate** runs in the bump → `uv sync` → tag sequence rather than as an
+ordinary test, because it needs the previous release actually installed. Keyed on `compiler_version`,
+which is what `manifest.compilation` already stamps and what a consumer holds. **Scope v1 to
+compiler-derived outputs and say so** — enricher-side outputs stay unmeasured rather than unchanged.
+
+**Open, because the representation is not obvious.** An interval table is O(releases²) unless it is
+composed from per-release records, and composing them means deciding whether the axes are unions
+(a field that moved and moved back still moved) — probably yes, but that is a decision. The tier is
+open too: the natural caller is a consumer of `just-dna-compiler`, and the hints describe compiler
+behaviour, but a verify-only consumer holding `just-dna-format` alone has the same question about a
+manifest it can read. **[RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
+is why this is needed rather than a nicety**, and it is now **closed**: a corrected derivation is a bug
+fix, deferring it to a minor means serving a wrong value meanwhile, so the release number cannot carry
+staleness and a second channel is the only resolution left. The charter amendment of 2026-08-21 made
+that a rule, which is what turns this item from a nicety into a debt.
+
+---
+
 ## RM122 — the measure lookup is specified and nothing anywhere implements it
 
 **Severity** medium · **Status** **parked on demand, moved here 2026-08-21** — additive and

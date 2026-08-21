@@ -34,7 +34,42 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-21 (latest) — a patch changed a parquet schema, and nothing could say so (S62, RM126, RM127)
+## 2026-08-21 (latest) — the Constitution says rules only, and gained three (RM127 closed, RM126 → 0.7)
+
+**Documentation only; no package changed.** [S62](CONSUMER_SUGGESTIONS_HISTORY.md)'s finding was that a
+*corrected derivation* — an existing published field whose derivation changes, so the same spec yields
+a different value — is in none of the three sizing rows, and that the safety argument used to clear it
+(*`content_signature` is unchanged, measured*) is **incapable of failing**, because `stats` sits outside
+the signature by design. A check that cannot fail read as a pass (`@tautology-zero`), one level up from
+where RM123 caught the same shape the same week.
+
+**Principle 3 gains two rules.** *Release class and artifact staleness are different axes* — a corrected
+derivation is a bug fix, so it **may ship in any release**, since deferring it to a minor means
+knowingly serving a wrong value meanwhile; what it may not do is ship **silently**. And *authored
+identity is not the sizing test*, which disarms the clause that sized RM121.
+
+**The charter is now rules only, by its own header item**, and came out **11.5% smaller (17,239 →
+15,263 bytes) while gaining three rules.** Reasoning, evidence, open questions, superseded states and
+rhetoric are banned from it, along with any outward reference beyond a published version a rule turns
+on — the old phrasing said the file *"points to no other document"* as a description and `the 0.4.1
+plan` drifted in anyway, so it is now an instruction. The four existing amendment entries moved
+**verbatim** to the new [CONSTITUTION_AMENDMENTS_HISTORY.md](CONSTITUTION_AMENDMENTS_HISTORY.md), which
+may cite `RMn` and consumer reports freely.
+
+**Principle 9 exists because the audit caught a rule about to be deleted.** The cost-by-layer pricing —
+parquet approximately free, derived CSV half, authored schema full — was stated *only* inside an
+amendment entry, and is cited by CLAUDE.md's coding standards. Moving the amendments out wholesale
+would have silently removed it, so it was promoted to a numbered principle instead.
+
+**[RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
+is closed** — filed, rewritten and answered inside one pass.
+**[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+moves to 0.7 as owed rather than deferred**: the amendment obliges a release to declare its
+corrections, and that channel does not exist yet, so the charter currently names a surface that is not
+there. Two axes — `output_differs` measured by a previous-tag sweep, correction-versus-addition
+declared — with a gate that fails a release whose measured change carries no declaration.
+
+## 2026-08-21 — a patch changed a parquet schema, and nothing could say so (S62, RM126, RM127)
 
 **Nothing shipped; two items filed.** A new consumer, **just-dna-registry**, adopted
 `0.6.1 → 0.6.6` and ran the catalog sweep whose job is to find published artifacts that should be
@@ -54,13 +89,13 @@ sixteen changed a published, indexed manifest field with *both* hashes byte-iden
 went `genes: []` → `["APOE"]` at the same `artifact.digest` and the same `content_signature`.
 (`stats.genes` moved on seven modules; an earlier draft of this entry said eight.) That is precisely why nothing can see this — a digest comparison, a
 signature comparison and `revalidate` are each correct to report no change while an indexed field goes
-stale. **[RM126](ROADMAP.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)**
+stale. **[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)**
 is the missing third axis, asked for as an interval-keyed declaration with the axes separated,
 explicitly not a `should_rebuild` verdict, and with unknown-interval as a *state* rather than an empty
 result. The guard it needs is a measurement rather than a hand-kept map, and the sweep above is its
 prototype.
 
-**[RM127](ROADMAP.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one) was filed and rewritten the same
+**[RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one) was filed and rewritten the same
 day, and the withdrawal is the useful part.** It first read *the release table and the practice
 disagree*, indicting `curator`'s patch. Withdrawn: `curator` is additive, no published module can carry
 it, **no stored value became wrong**, so a patch is defensible and the table is merely strict. The

@@ -52,7 +52,7 @@ knowingly serving a wrong value meanwhile, so no release-class scheme can carry 
 answers *is the code contract compatible*, never *are your stored outputs stale*. The two axes have to
 be separated rather than reconciled, which dissolves all three original candidates instead of choosing
 among them. The rewritten entry is
-[RM127](ROADMAP.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one).
+[RM127](#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one).
 
 **The lesson worth keeping is the tautology.** The safety argument for RM121 was *`content_signature`
 is unchanged, measured* — true, and incapable of being false, because `stats` sits outside
@@ -61,6 +61,68 @@ level up from where that rule is usually applied. The same property has a second
 identity is a field no digest, no signature and no `revalidate` can see move, so **the cheapest changes
 to make are exactly the ones with no detection channel.** Measured across 0.6.1→0.6.6: six of sixteen
 reference examples changed a published, indexed manifest field with *both* hashes byte-identical.
+
+
+## RM127 — a corrected derivation has no release class, and the version number is the wrong place to carry one
+
+✅ **Severity** medium · **Status** **CLOSED 2026-08-21 — the charter was amended the same day it was
+filed**, which is the whole item; filed, rewritten and answered within one pass · **Owner** maintainer
+· **Motivating case** [S62](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry)
+
+**What shipped.** Principle 3 gained two rules — *Release class and artifact staleness are different
+axes* and *Authored identity is not the sizing test* — and the charter gained a **Rules only** header
+item plus Principle 9, the cost-by-layer pricing promoted out of an amendment entry where it had been
+the only rule stated nowhere else. The reasoning moved to `CONSTITUTION_AMENDMENTS_HISTORY.md`, a new
+file, and the charter came out **11.5% smaller while gaining three rules**. The obligation the
+amendment creates — a release declares its corrections — is owed by
+[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output),
+queued for 0.7, and until it is built the charter names a channel that does not exist.
+
+**This entry was first filed as *the release table and the practice disagree*, and that was aimed at
+the wrong target.** The original framing indicted `StudyRow.curator` shipping in 0.6.5. It should not
+have: `curator` is additive, no already-published module can carry it, no stored value became wrong,
+and the only consequence is that a recompile writes different bytes — which P4 already declines to
+guarantee across compiler versions. Sizing it as a patch is defensible, and the table calling it a
+minor is the table being strict rather than the cut being wrong. The original text is preserved in
+[the 2026-08-21 output-contract round](#the-2026-08-21-output-contract-round--what-a-patch-may-change-about-a-compiled-artifact).
+
+**The real item is RM121, and it is a change class the taxonomy does not have.** `stats.genes` is an
+*existing published field whose derivation was corrected* — the same spec now yields a different
+value. Nothing was added, removed, promoted or retyped. The three rows we have are *additive → minor*,
+*legibility → patch*, *removal/promotion/retype → major*, and a corrected derivation is in none of
+them. It did not fall between two rules; it fell outside the list.
+
+**Why it read as safe, and this is the mechanism.** The only test applied was *does authored identity
+move?* But `stats` sits outside `content_signature` **by design** — it is a derived facet, not
+content. So that test returns "safe" for *any* change to `stats` whatsoever, including replacing it
+with nonsense. It cannot fail there. It was not evidence; it was a tautology, and `@tautology-zero` is
+our own name for the shape — *a check that cannot fail must not report a zero*. RM123 shipped that
+same week about compile checks; the identical error was made one level up, in the release-sizing
+argument, where nothing was watching for it.
+
+**And the structural half.** The property that makes a derived field cheap to change is the same
+property that makes the change undetectable downstream. `stats` is outside identity, so changing it
+costs nothing by the identity test *and* no digest, no signature and no `revalidate` can see it move.
+**Measured: six of sixteen reference examples changed a published, indexed manifest field while both
+hashes stayed byte-identical.** The cheapest changes to make are exactly the ones with no detection
+channel, and the identity test rewards them.
+
+**The version number cannot carry this, and the reason closes the original question rather than
+answering it.** A corrected derivation is a **bug fix**. Deferring it to the next minor means
+knowingly serving a wrong value for an undefined period, which is not a trade anybody should take —
+so "make it a minor" is not available, and neither is any other scheme that encodes staleness in the
+release class. SemVer answers *is the code contract compatible*; it was never designed to answer *are
+your stored outputs stale*, and those are orthogonal. **They must be separated rather than reconciled**
+— which dissolves this entry's original three candidates instead of picking one.
+
+**What is left here is one charter question**, and it is the maintainer's: does P3's sentence — *"a new
+optional column… lands in a minor: the authored identity is unchanged, and only a recompile's
+`artifact.digest` moves"* — get amended to say that release class and artifact staleness are different
+axes, with the second carried by the mechanism in
+[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)? The sentence
+currently states a ruling and, in the same breath, offers the identity test as its rationale — which
+is exactly the reading that sized RM121, so leaving it unamended leaves the trap armed. Everything
+else RM127 used to ask now belongs to RM126.
 
 
 # The 2026-08-21 decision round — six undecided minors answered in one pass
