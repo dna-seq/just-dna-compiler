@@ -31,16 +31,21 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**Adopted through gist revision `fffbcc65653b0f46c3bb48808d5df14a4c28930b`**, published 2026-08-21 and
-adopted the same day — a genuine inbound adoption, the first since the channel was built, and the one
-that paid for it. It supersedes `a74366fa6d72…` (2026-08-21, ours, an outward push), `bd793a8ce98b…`
-(2026-08-18) and, before that, `ab7e2a89c48d…` (2026-08-16), which was the baseline the digest check was
-first pinned to. **The scripts were byte-identical across that revision** — everything that arrived was
-prose, which is worth knowing because it means the auto-adopt gate below was satisfied trivially: with no
-`fingerprint()` change there was nothing to restamp. Same sha back means nothing has arrived and the sync-in is finished for that pass; a
-different one means pull the files and read the diff. **Update this line, with its date, whenever an
-adoption *or* a push lands** — it is the baseline, and a stale one re-diffs work already taken, which
-after a push means re-reading your own writing as though a stranger had sent it.
+**In sync through gist revision `fd7c3b5e462fcc27c8f597b24f466738c1b42991`**, ours, pushed 2026-08-21,
+so it is in sync by construction. It supersedes `32967e3699c0…` — also ours, the same day, and the
+substantive one, since `fd7c3b5e…` only adds the CDN note below — and before those `fffbcc65653b…`
+(2026-08-21), which was a genuine inbound adoption, the first since the channel was built and the one
+that paid for it. Earlier still: `a74366fa6d72…` (2026-08-21, ours), `bd793a8ce98b…` (2026-08-18) and
+`ab7e2a89c48d…` (2026-08-16), the baseline the digest check was first pinned to.
+
+**The scripts were byte-identical across the inbound revision** — everything that arrived was prose, so
+the auto-adopt gate below was satisfied trivially: with no `fingerprint()` change there was nothing to
+restamp.
+
+Same sha back means nothing has arrived and the sync-in is finished for that pass; a different one means
+pull the files and read the diff. **Update this line, with its date, whenever an adoption *or* a push
+lands** — it is the baseline, and a stale one re-diffs work already taken, which after a push means
+re-reading your own writing as though a stranger had sent it.
 
 `history[0]` is the newest entry, checked and not recalled — its `committed_at` equals the gist's
 `updated_at`. Getting that orientation backwards is the failure worth guarding, because it does not
@@ -49,11 +54,22 @@ while nothing came through it. If `api.github.com` is ever unreachable, the fall
 GET against the raw URLs carrying a stored `ETag`, where a `304` is the same "unchanged" answer. Build
 one or the other, never both.
 
-When the digest has moved, the files are at `<gist>/raw/<name>`, and the local names differ for the
-watcher only (`watch-inbox.sh` → `.claude/watch-suggestions.sh`):
+**Pin the raw fetch to the revision the digest check just returned.** The bare
+`<gist>/raw/<name>` URL is CDN-cached and goes stale for a good while after a write — measured on
+2026-08-21, immediately after our own push: the API reported the new revision while every unversioned
+raw URL still served the previous one, and `Cache-Control: no-cache` did not shift it.
+`<gist>/raw/<version>/<name>` was correct straight away. This matters because the two halves disagree
+in the worst direction: the digest says *something arrived*, the files say *nothing changed*, and the
+natural reading is that the digest check is broken. It is the `history[0]` hazard one layer down —
+an inbound channel that looks healthy while nothing comes through it.
+
+The local names differ for the watcher only (`watch-inbox.sh` → `.claude/watch-suggestions.sh`):
 
 ```bash
-G=https://gist.githubusercontent.com/winternewt/54b94bda01812be937b892146d1bb254/raw
+GIST=54b94bda01812be937b892146d1bb254
+V=$(curl -sf "https://api.github.com/gists/$GIST" \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])')
+G=https://gist.githubusercontent.com/winternewt/$GIST/raw/$V
 for f in triage-state.py triage-archive.py; do curl -sfL "$G/$f" -o "/tmp/gist-$f"; done
 diff -u /tmp/gist-triage-state.py .claude/triage-state.py     # noisy: most of it is parameterization
 ```
@@ -101,14 +117,16 @@ write, so a reader who reasonably guesses "run the ledger and copy what it print
 on every reply longer than a paragraph, which is most of them. It went into the gist's Step 3, where the
 stamping actually happens, and the baseline above moved with it.
 
-**One item is owed outward as of 2026-08-21, and has not been pushed**: *the fence gotcha splits an
-archive, not just the ledger* (§6). The gist carries the furniture entry for prose moving **in** — a
-footer swallowed by the last section — and it carries the flush-left `#` gotcha as a ledger problem, but
-it does not join them: `triage-archive.py` shares `BOUNDARY_RE`, so the same line that truncates a
-reading truncates a **move**, and half a report ends up in the wrong file with the verification
-reporting clean. That is pattern material rather than local tuning — every adopting tree runs the same
-splitter — and the S62 repair here is the worked instance. Pushing it is a publish and is the user's to
-authorize; it is recorded here so the debt is visible until it is.
+**Three items went outward on 2026-08-21, in revision `32967e36…`, with the CDN note following in
+`fd7c3b5e…`, and nothing is owed as of it.**
+The gist had the furniture entry for prose moving **in** — a footer swallowed by the last section — and
+no flush-left `#` gotcha at all, in either half; it now carries the joined version, since
+`triage-archive.py` shares the boundary scan and the same line that truncates a *reading* truncates a
+*move*. Also pushed: the fence-aware span logic with its refusal, and a `corpus()` fix for `--next`,
+which read a fixed inbox/history pair while the same document describes splitting the history file —
+on a fixture with a split-off half the published copy returned an id five short of the true one, each
+of them already answered. All three were reproduced against the gist's own scripts in a scratch repo
+before being pushed, which is the only way to tell a generic defect from a local one.
 
 **§4 and §5 are deliberately not generalized, decided 2026-08-21 — do not re-raise this.** The published
 copy has never carried a thresholds section or an unattended-permit section, and it should not: the
