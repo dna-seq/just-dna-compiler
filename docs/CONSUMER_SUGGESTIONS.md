@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S65
+## The next item is S75
 
 **Claim ids from here, never from what this file shows.** S1–S46 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
@@ -272,3 +272,736 @@ and name what overrunning costs.
 **Reproduced against** format / compiler / enricher **0.6.6** installed (`just_dna_format.__file__`
 under `.venv/lib/python3.14/site-packages/`), spec `assets/fto_bmi` in `just-module-creator`, both
 compiles strict and green apart from the two warnings in the table.
+
+---
+
+## S65 — we built the consumer half of RM126, and it narrows what RM126 has to publish
+
+**Reported by** just-dna-registry, 2026-08-21. A follow-up to **S62**, filed as a new item because that
+one was answered and archived the same day — this is what building the consumer side taught us, and it
+arrived after your reply rather than before it. Shipped as `services/rebuild.py` in our **0.21.0**.
+
+**First, three corrections to our own S62, since a report we filed is a claim we made.**
+
+* **RM106 is not an instance, and we accept the correction.** We had it in a shipped changelog entry and
+  in a test docstring; both now carry the correction rather than a silent edit, because the reason is
+  the case *for* your axis decomposition — warning text is patch-legal and a corrected derivation is
+  not, so a single "did the output change" bit would have been useless to us either way.
+* **`version.contract_compatible` is ours, not yours.** It lives in `just_dna_registry/version.py`, and
+  our sentence *"under your own `version.contract_compatible`"* was simply wrong. Thank you for refusing
+  to let the attribution stand — a symbol nobody can grep for is exactly the kind of thing that survives
+  in a record for years.
+* **The flush-left `#` in our fenced block is what truncated S62's span**, and it cost you an archive
+  repair. We have written the hazard into our own agent guidelines, and this item is authored without
+  one.
+
+**What we built.** For a manifest field that is a pure function of the authored rows, the current answer
+can be recomputed from stored inputs — no enrichment, no parquet, no network, just a temp dir and a CSV
+parse — using `spec_tables` for the defaults-folded rows and `module_stats` for the derivation itself. A
+difference against the published manifest is then *evidence* rather than a version comparison, so our
+sweep acts on it under a plain apply instead of asking an operator for an override.
+
+**The hint that matters most: recomputability splits RM126 in half, and you already shipped the better
+half.** `spec_tables` (RM116) is what makes the recomputation correct rather than approximate — the
+`defaults:` fold is precisely the part a caller reimplements wrongly — and `module_stats` being public
+(RM121) is what makes it *your* derivation rather than our imitation of it. Neither landed for this
+reason. Together they answer the entire authored-row-derived class without a hints table existing at
+all.
+
+So the interval-keyed table only has to cover what a consumer **cannot** recompute. What would help most
+is therefore not a bigger table but a small published **roster**: which manifest fields are pure
+functions of the authored rows. That is a fact you hold and we currently guess at, and it shrinks RM126
+rather than growing it.
+
+**Second: your measurement changed our operator advice, and part of it is invisible from here.** Ten of
+sixteen moving `artifact.digest` on a 257-byte `studies.parquet` growth is not something we could have
+found from outside, and it is now written into our code as the reason a digest comparison cannot stand
+in for this axis. We also took the note about your sweep's own limit literally:
+`literature.quotes_unchecked` (RM119) is a published manifest field we cannot recompute, because it
+derives from a sidecar rather than from authored rows — so the enricher-written blocks are now named in
+our unmeasurable list rather than quietly assumed unchanged.
+
+**Third: convergence is a hard requirement on anything a consumer acts on unattended, and it is easy to
+miss.** Our first design had a loop in it. If a hint fires for a version compiled by the *exact*
+compiler now installed, recompiling derives the same value again — so an automated sweep mints a fresh
+PATCH every run, forever, which is the failure the "a patch is not a gap" rule exists to prevent,
+re-entering through a different door. We close it by refusing to act when the compiler is identical, and
+reporting an anomaly instead. **Your interval-keyed shape gets this for free**, because the interval
+from a version to itself is empty — worth stating in RM126 as load-bearing rather than incidental, since
+a field-keyed or "latest known defect" shape would not have the property. It is also what bounds a false
+positive to one wasted version number per module ever, which is what made us willing to act
+automatically at all.
+
+**Fourth: the pre-drop/post-drop asymmetry is the exact boundary that roster has to draw, and it cannot
+be seen from outside.** `validate_spec` computes `stats` over the full row set; `compile_module`
+re-derives them over the survivors **only when the symbolic-allele drop removed something**. A
+recomputation from authored rows is therefore the pre-drop side, so `manifest.stats` and the
+recomputation legitimately disagree — permanently, under any compiler — for a module that lost the sole
+row naming a gene. "Pure function of the authored rows" is thus **conditionally** true for `stats`, and a
+roster that stated it without the condition would send consumers to spend version numbers on modules
+that are perfectly current.
+
+We discriminate on `variant_count`: when the recomputed count disagrees with the published one, a drop
+happened and we downgrade the whole comparison to *not measurable* rather than reporting drift. Reading
+the warning text was the other option and we rejected it for the reason your own catalogue rule gives —
+a warning's wording is yours to change, and only the pinned catalogue is an API.
+
+**Fifth, small and additive: a `compilation.dropped_rows` counter would close the residue.** The guard
+above catches a drop from `variants.csv`, because `variant_count` moves. A symbolic-allele drop inside a
+*kind* table moves no counter a published manifest carries, so from outside it is indistinguishable from
+real drift. With such a counter the `stats` half of the roster becomes unconditionally checkable.
+
+**On scoping RM126: please design for coexistence, not replacement.** Our probes sit behind one named
+seam so that a probe whose field your hint covers retires by deletion. We may keep one or two anyway,
+and that is not a vote of no confidence — a recomputation checks the artifact actually in front of us, a
+hint states what a release did in general, and the two fail differently. So RM126 does not need to be
+scoped around covering everything we currently probe. The useful division is that you state what a
+release did, and we check what a specific stored artifact says.
+
+**One thing we are deliberately not asking again.** You said you are not building `should_rebuild`, and
+we agree — building the decision ourselves is what surfaced the convergence requirement, the pre-drop
+boundary and the `variant_count` guard, none of which we would have found by consuming a verdict.
+
+---
+## S66 — `enrich()` writes `resolution.csv` once, at the very end, in place, with no lock — so a run killed at minute 29 has written nothing, and one killed mid-write leaves a valid-looking short file
+
+**Reported by** just-module-creator (the authoring plugin), 2026-08-22. Found by two independent
+unattended runs on 2026-08-21, both against enricher 0.6.6; the second hit it without knowing the first
+had. It is the one item in this batch that cost real work rather than clarity, so it is first.
+
+### The shape, in the installed package
+
+`just_dna_enricher/enrich.py` — every path we opened is under
+`.venv/lib/python3.14/site-packages/`, printed beside the answer:
+
+```
+$ uv run --project /data/sources/just-module-creator python -c "
+import just_dna_enricher; print(just_dna_enricher.__file__)"
+/data/sources/just-module-creator/.venv/lib/python3.14/site-packages/just_dna_enricher/__init__.py
+```
+
+* **One write, at the end.** The only call to `_write_resolution_csv` is `enrich.py:1248`, inside the
+  `if write:` at `1247` — after the resolver chain, after `verify_reference_alleles`, after
+  `diagnose_wrong_build`, after `compare_clin_sig`, after `check_rsids`, and after both `strict`
+  raises at `1228` and `1240`. Nothing is persisted before it.
+* **The writer truncates in place.** `_write_resolution_csv` at `enrich.py:1565` is
+  `open(output_path, "w", …)` plus a `csv.DictWriter` loop. No temp file, no `os.replace`, no `fsync`.
+  A process killed between the truncate and the last row leaves a syntactically valid CSV that is
+  simply short — and short is the one failure mode this table cannot report about itself.
+* **Two more files ride in the same tail, and both writers have the same shape.**
+  `record_verification` at `enrich.py:1253` and `record_source_terms` at `enrich.py:1277`. The first
+  lands in the format tier's `verification.py:357`, which is `path.write_text(...)`; the second in
+  `licensing.py:489`, which is `Path(path).open("w", …)`. Neither is atomic either, so one kill can
+  leave the module carrying a truncated `resolution.csv`, a truncated `verification.json` and a
+  truncated `sources.csv` at once.
+* **No lock anywhere.** `grep -n "flock\|fcntl\|os.replace\|NamedTemporary\|fsync"` over the whole
+  installed `just_dna_enricher/*.py` returns nothing. The existing table is read at `enrich.py:584-593`
+  and rewritten at `1248`, so the read-modify-write window is **the entire run** — thirty minutes on
+  the modules below. Two concurrent enrichments of one spec directory are last-writer-wins over a
+  merge, and neither knows.
+
+### What it cost, and why the merge design makes this worse rather than better
+
+Two runs, 330 and 474 variants, were killed by a **client-side idle timeout at 1800 s**. Both had
+resolved essentially every variant by then. Both wrote **nothing** — half an hour of successful
+per-variant network work discarded because one late call in the tail had not returned.
+
+That is the part we want to put in front of you rather than the crash: the sidecar's documented
+character is **merge-not-clobber** — `enrich.py:579` says so in those words, and `ResolutionRow`'s key
+rule is `subject`, which S51 established. A merge-shaped table is exactly the table for which a
+partial write is *safe*: an interrupted run that had flushed 300 of 330 rows would leave a file the
+next run reads, keys on, and completes. The design that would make incremental persistence correct is
+already in place; only the persistence is missing.
+
+**And a kill is not the end of the run.** The worker thread cannot be interrupted from the client side,
+so the aborted run kept going. The author, seeing nothing written, restored the module's published
+330-row `resolution.csv` and re-enriched — which returned `resolved: 330, sources: ["cache"]`
+instantly and correctly. The zombie then reached `enrich.py:1248` and overwrote that file with **162
+distinct rsIDs**, plus a rewritten `verification.json`. The module then validated, closed and compiled
+green: nothing downstream can see that a table halved.
+
+**The mechanism for the shrink is in your own code and is not a bug** — it is what makes the
+last-writer-wins window dangerous rather than merely untidy. Three branches contribute **no row at all**
+for a subject that got no answer: `enrich.py:873` (the live link was asked and never answered),
+`enrich.py:881` (no link ran, RM98), and `enrich.py:903` (nothing is GRCh38-gated). Each has a good
+comment explaining why writing `not_found` there would be a fabricated negative, and we agree with all
+three. The consequence is that an interrupted-then-completed run does not write *worse* rows; it writes
+**fewer**, and a shorter `resolution.csv` is indistinguishable from a module whose author resolved less.
+
+### What we did about it meanwhile
+
+Nothing that helps anyone else: we restored the file from the published module and re-ran. There is no
+guard we can build on our side, because the write we would have to make atomic is inside `enrich()`.
+
+### Asks, in the order we would take them
+
+1. **`tmp` + `os.replace` on all three writers.** Smallest, purely local, and it removes the
+   truncated-file class outright. `os.replace` is atomic on the same filesystem on every platform you
+   support, and `verification.json`'s writer is already a single `write_text` so it is a two-line
+   change there.
+2. **Incremental or checkpointed persistence of `resolution.csv`.** Flush the resolved rows before the
+   verification passes run, or every N subjects. The merge semantics already make a partial file the
+   correct input to the next run — this is the ask that turns thirty lost minutes into thirty
+   recovered ones, and it is the one we care about most.
+3. **An advisory lock over the read-modify-write window.** A lockfile beside the sidecar, or `flock` on
+   the file itself. Even a refusal — *"another enrichment is in progress"* — would have prevented the
+   zombie overwrite entirely.
+4. **A progress callback on `enrich()`.** There is none in the signature (`enrich.py:499` onward), and
+   the pass reports through `logger` to stderr, so a caller driving it over a transport has no
+   in-band signal at all and cannot keep a connection alive through a thirty-minute call. A
+   `progress: Callable[[int, int], None] | None = None` would be enough; we are not asking for a
+   protocol.
+
+We would take (1) alone as a real improvement, and (1)+(2) as a complete answer.
+
+**Reproduced against** format / compiler / enricher **0.6.6** installed, line numbers read from
+`.venv/lib/python3.14/site-packages/just_dna_enricher/enrich.py` (1591 lines).
+
+---
+
+## S67 — `_verify_vrs_ids` emits one warning per allele where `_vrs_coverage` aggregates the same class, so the better-resolved module gets the flood
+
+**Reported by** just-module-creator, 2026-08-22. Companion to **S68**, which asks for the structure
+that would make a wall of warnings survivable in general; this one is the single local fix that does
+not need any of it. Both were found in the same unattended run.
+
+### The two paths, side by side
+
+Both live in `just_dna_compiler/compiler.py` and both walk the same `resolution.csv` rows:
+
+* `_verify_vrs_ids` at **2597** — for each allele whose `vrs_id` is *present* but not recomputable
+  offline, appends its own line: `f"{message}; carried unverified."` at **2671**.
+* `_vrs_coverage` at **2682** — for each allele whose `vrs_id` is *absent*, increments
+  `gaps[reason]`, and `_vrs_coverage_warnings` at **2797** turns the whole dict into a handful of
+  lines grouped by cause.
+
+**Which path a row lands in is decided by whether the enricher minted an id for it**, and nothing
+else. `_verify_vrs_ids` skips `row.vrs_id is None` outright (`2651`), because "nothing to check" is
+correctly not a finding. So an indel with no id is one line in an aggregate; the *same* indel with an
+enricher-minted id is a line of its own, on the reason at **2928**: *"is not a single-base
+substitution, so justifying it needs the reference sequence — minted upstream by the enricher, not
+recomputable here"*.
+
+### Measured, 2026-08-21, on two modules from the run that found this
+
+| module | resolution rows | rows with a `vrs_id` | indels | compile warnings | of which per-allele VRS |
+|---|---|---|---|---|---|
+| A | 101 | 101 | 47 | **85** | **80** |
+| B | 57,595 | 0 | 26,810 | **7** | 1, aggregated |
+
+The 57,595-row module is quiet because nothing minted ids for it. The 101-row module is loud because
+something did. **Noise is inversely proportional to how well-resolved the module is**, which inverts
+the incentive the whole minting story exists to create.
+
+The consequence is not aesthetic. The three warnings an author of module A could actually act on —
+heterozygous, homozygous and reference-homozygote genotypes with no matching row — were items **83,
+84 and 85** of 85.
+
+### Why we think the fix is uncontroversial
+
+Your own docstring at `compiler.py:2633-2634` already states the governing rule: *"a finding no
+authored edit could clear is not a `strict` matter"* — which is why `_BLAME_TIER` is a warning rather
+than an error in both modes. The same argument applies one step further out: a finding no authored edit
+could clear is not a finding worth **one line per row** either. `_vrs_coverage`'s own docstring makes
+the aggregation case in the same file: *"Gaps are grouped by why, because the reasons have completely
+different remedies and a bare 'N missing' hides which one you have."*
+
+**Ask:** group `_verify_vrs_ids`'s `_BLAME_TIER` warnings by `reason` the way `_vrs_coverage` already
+groups gaps — one line per reason with a count and a few named `variant_key`s, exactly the shape
+`sequences.summarize_ref_mismatches` uses (three examples plus *"and N more"*). `_BLAME_ROW` stays
+per-row: it is an error, it is rare, and it names a row that contradicts itself.
+
+**What we are not asking for.** Not suppression, and not a cap that silently drops lines — the
+coverage number matters and an author who wants the list should get it. Aggregation keeps the count
+truthful while making the other 5 warnings visible.
+
+**Reproduced against** compiler **0.6.6** installed
+(`.venv/lib/python3.14/site-packages/just_dna_compiler/compiler.py`, 6911 lines).
+
+---
+
+## S68 — `warnings` is a flat `list[str]` with no code, no count and no way to tell a finding an author can clear from one they cannot
+
+**Reported by** just-module-creator, 2026-08-22. The general half of **S67**: that one asks for a
+single aggregation, this one asks whether the channel it lands in has enough structure to be read at
+all. Two asks, one restructure, so one item.
+
+### What the type is
+
+```
+$ grep -n '^class \|    warnings:' .venv/lib/python3.14/site-packages/just_dna_compiler/models.py
+11:class ValidationResult(BaseModel):
+16:    warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings")
+36:class ClosureResult(BaseModel):
+64:    warnings: list[str] = Field(default_factory=list)
+67:class CompilationResult(BaseModel):
+73:    warnings: list[str] = Field(default_factory=list)
+```
+
+All three results, and through them everything a consumer surfaces — our `validate_module`,
+`compile_module` and `registry_check` all pass the list through field-for-field, because collapsing it
+ourselves would be us inventing a vocabulary you own.
+
+### Why a flat list stops working
+
+**It is not readable at the sizes it reaches.** A compile of a **190-row** module in the 2026-08-21 run
+returned roughly **14 kB** of warnings. `strict=false` does not help — it changes what counts as an
+*error*, not how much prose the warning channel carries. Every consumer-facing document on both sides
+of this seam, ours included, tells an author that warnings on a green run are the real output; that
+instruction is only followable if the output can be read.
+
+**And nothing in the string says whether the author can do anything about it.** The VRS lines say so in
+their own prose — *"minted upstream by the enricher, not recomputable here"* (`compiler.py:2928`) — so
+no edit to the spec clears them, ever. They sit in the same list, at the same level, as a
+genotype-coverage gap that only the author can close. An author reading top-to-bottom cannot sort the
+one from the other without knowing the codebase.
+
+**You already compute the discriminator and spend it on severity only.** `_BLAME_TIER` / `_BLAME_ROW`
+at `compiler.py:2831-2832` is exactly *whose limit this is*, and its comment says *"blame decides
+severity and nothing else"*. The closure warning at `compiler.py:5205` is the same distinction reached
+from the other end — *"a finding the author can clear, but whose severity is not the mode's
+business"*. So the fact exists at the point each warning is built and is discarded on the way out.
+
+### Two asks, and they are the same change
+
+1. **Warnings as objects with a stable `code` and a `count`**, repeats collapsed. The `code` is the
+   part that ends substring-matching on prose, which RM44 already made a rule for the manifest and
+   which applies verbatim here — we match on warning text today because there is nothing else to match
+   on, and your changelog is right that wording is patch-legal.
+2. **Carry the actionability out with it** — `actionable: true | false`, or a split between `warnings`
+   and a `carried` / `notes` list. Deriving it from `blame` and from the closure branch covers the two
+   cases we can see; you will know whether the others classify as cleanly.
+
+**A minimal answer that breaks nothing, if the model change is too big for a minor.** Add
+`warnings_summary: dict[str, int]` beside the existing list — code to count — and leave `warnings`
+exactly as it is. Every existing consumer keeps working, and one that wants a readable digest has one.
+We would take that and stop asking.
+
+**What we are deliberately not asking for.** Not a cap, not truncation, and not a verbosity flag. All
+three hide findings rather than organise them, and the author who most needs the hidden ones is the
+author with the most warnings.
+
+**Reproduced against** compiler **0.6.6** installed. The 14 kB figure is from the 2026-08-21 run and is
+reported rather than re-measured here; the type, the three result models and the blame constants are
+read from the installed package at the lines above.
+
+---
+
+## S69 — the `panel:` deprecation warning says *"nothing else is lost"*, and three fields it is the only home of have no replacement
+
+**Reported by** just-module-creator, 2026-08-22.
+
+### The warning
+
+`compiler.py:3423-3431`:
+
+> `module_spec.yaml` declares a `panel:` block. It is deprecated in 0.6 and removed at 1.0: the
+> compiler never materialized rows from it, and the one thing that did read it — the enricher's
+> ClinVar clin_sig cross-check, deciding whether a drafted module is being compared against its own
+> source — now reads the `dataset` column of the module's licence row, which
+> `just-dna-enricher draft-panel` writes itself. **Delete the block; the rows it describes are the
+> authored `variants.csv` rows, and nothing else is lost.**
+
+The first two sentences are exactly right and we have verified the replacement: `clinical.py:165-173`
+recomputes `clinvar_dataset_label(reference)` and compares it against the `dataset` of the
+`source="clinvar", layer="annotation"` licence row, and `clinvar_draft.py:704` is what writes it. The
+tautology marker really did move.
+
+**It is the last clause that does not hold.** `GenePanelSpec` carries five fields, not one:
+
+```
+$ uv run --project /data/sources/just-module-creator python -c "
+from just_dna_format.manifest import GenePanelSpec
+for n, f in GenePanelSpec.model_fields.items(): print(n, '|', f.annotation)"
+source            | str
+reference         | str | None
+reference_sha256  | str | None
+genes             | list[str]
+significance      | list[str]
+```
+
+`SourceRow.dataset` is documented as *"Which release the data came from, e.g. `clinpgx_2026-07-05`"* —
+a release label, one string. It cannot carry `genes`, it cannot carry `significance`, and it is not a
+digest, so it cannot carry `reference_sha256`. An author who follows the warning deletes the only
+place any of those three is written, and `manifest.panel` (`compiler.py:5377`, `manifest.py:1473`)
+goes to `null` with them.
+
+### Why each of the three is load-bearing rather than decorative
+
+* **`genes` states the denominator.** In the run that found this, one drafted module declared 425
+  panel genes and `validate_module` reported `gene_count: 298`. The difference — 127 genes that were
+  searched and yielded no qualifying variant — is derivable **only** from the block. With it deleted,
+  *"this gene is not in the panel"* and *"this gene is in the panel and had nothing to report"* become
+  the same absence, and they are opposite statements about the module's coverage.
+* **`significance` states the predicate.** It is what makes a panel module's row set reproducible:
+  the same genes against the same release with a different significance filter is a different module.
+* **`reference_sha256` is a digest and `dataset` is a name.** ClinVar reissues; a release label does
+  not pin bytes. This is the same distinction your own `clinvar_dataset_label` draws internally when
+  it falls back to `source_sha256` — the label is a name *or* a digest, and only one of those two
+  spellings pins anything.
+
+### The sharper half: the replacement field is legitimately empty, and your own drafter says so
+
+`clinvar_draft.py:691-699` — when the snapshot has no readable `release.json`,
+`clinvar_dataset_label` returns `None` (`clinvar.py:58-67`) and the drafter warns that *"the licence
+row records no dataset"*. That is the right behaviour and we are not filing it. But it means a module
+can carry a populated `panel:` block **and** an empty `dataset`, and today the compiler tells that
+author to delete the block on the strength of a replacement their module does not have. In the run
+that found this, a module drafted 2026-08-10 had an empty `dataset` while one drafted 2026-08-19 had a
+filled one — and because `merge_sources_file` is never-clobber, re-running the pass does not backfill
+it. There is no path from that module to the state the warning assumes.
+
+### Asks — either one closes this
+
+1. **Make the warning conditional on the replacement actually being present.** If the `clinvar` /
+   `annotation` licence row has a non-empty `dataset`, warn as today. If it does not, either stay
+   silent or say what is missing. This is the smaller change and it is honest under both states.
+2. **Or narrow the sentence and keep the block's data.** *"…the rows it describes are the authored
+   `variants.csv` rows. `genes`, `significance` and `reference_sha256` have no replacement; keep the
+   block until 1.0 if you need them recorded."* If they should have a home past 1.0, the shape that
+   already exists is `manifest.weighting` — a descriptive authored block the compiler records and does
+   not act on, which is what `panel:` has been since 0.6 anyway.
+
+**What we are not asking for.** Not un-deprecating `panel:`. The compiler was right that it
+materializes nothing, and RM4 was right that the tautology marker belonged on the licence row. The
+defect is one clause of one sentence, and a backfill path for the modules that followed it.
+
+**Reproduced against** format / compiler / enricher **0.6.6** installed. The 425/298 and empty-`dataset`
+measurements are from the 2026-08-21 run and are reported rather than re-measured — we have no
+panel-bearing spec in a tree either of us can inspect, which is itself worth noting: none of the
+sixteen `reference_examples/` carries a `panel:` block, so the deprecation has no worked example on
+either side.
+
+---
+
+## S70 — `verification.json` counts a check's findings and keeps none of them, and `clinical_significance` is the only check where that leaves nothing at all
+
+**Reported by** just-module-creator, 2026-08-22. Companion to **S71**, which is about the same file at
+the document level.
+
+### The measurement
+
+Two modules from the 2026-08-21 run, read out of their `verification.json`:
+
+```
+check: clinical_significance   subjects: 141616   findings: 20   detail: null
+check: clinical_significance   subjects: 618629   findings: 32   detail: null
+```
+
+Fifty-two rows across two modules assert a clinical significance that ClinVar's own records do not
+support, and **nothing anywhere says which rows**.
+
+### Why this check specifically, and not the other four
+
+We went looking for the rows before filing, and the reason they are not findable is precise. Of the
+five checks `enrich()` records (`enrich.py:1318-1530`):
+
+| check | where its findings survive |
+|---|---|
+| `reference_allele` | `detail=` at `enrich.py:1345`, via `summarize_ref_mismatches` — grouped by diagnosis, three `variant_key`s named per group plus *"and N more"* |
+| `rsid_coordinate_agreement` | `detail=` at `enrich.py:1524` — up to `DETAIL_LIMIT` disagreements, plus what was not compared and why |
+| `rsid_currency` | **per row, in `resolution.csv`** — `row.rsid_status` and `row.rsid_current` are stamped at `enrich.py:1092-1093` and are columns of the written file (`_FIELDNAMES`, `enrich.py:80`) |
+| `genome_build_agreement` | count only — but its subjects *are* `reference_allele`'s mismatches, so the candidate rows are reachable from the row above |
+| `clinical_significance` | **nowhere.** `ran(...)` at `enrich.py:1432-1438` passes `subjects`, `findings`, `source` and `release`, and no `detail` |
+
+The conflicts do exist at runtime: `compare_clin_sig` returns them, they reach
+`EnrichmentResult.clin_sig_conflicts` (`enrich.py:1158`), and every one is written to the logger at
+`enrich.py:1055-1057`. That is stderr — it survives the process and nothing else. No sidecar carries
+them, and `verification.json` records the count.
+
+### Why an author cannot work around it
+
+The instruction every consumer document on this seam gives — ours in the strongest terms — is that a
+mismatch against an archive means **checking both sides**: the row may be wrong, and the archive may be
+stale, retracted or superseded. That instruction is exactly right and it is why we do not want the
+enricher conforming the row silently. But it is unexecutable against a finding that has no name. An
+author holding *"20 of 141,616"* can neither defend the twenty nor correct them, and re-running the
+pass to see the log again costs the full ClinVar comparison.
+
+### Asks
+
+1. **Write the findings.** A derived sidecar keyed by `variant_key` carrying the authored value, the
+   source's value, and whether the two are *opposed* or merely *different* — the distinction
+   `ClinSigConflict.opposed` already draws at `enrich.py:1055-1056`. **This is the input side of
+   S52/RM117 and we think the two are the same work seen from opposite ends**: `ProvenanceItem.
+   outranks` is where an author records *why* their row outranks the archive, and it shipped in 0.6.5
+   — but an author can only write one for a row they can name, and this check is the thing that knows
+   which rows those are. We are not re-asking S52; we are saying its answer has no reachable trigger
+   until a conflict has a name. That is the shape S60 argued for
+   from the other direction, and the merge-key machinery `hints.key_fields` publishes already covers a
+   new sidecar. If a sidecar is too much, `detail=` with the `summarize_ref_mismatches` treatment —
+   grouped, N named, *"and M more"* — would already make the check actionable.
+2. **Surface a one-line summary where an author is standing.** `validate_spec` and `compile_module`
+   both read the file — `_verification_block` at `compiler.py:5115` is deliberately shared between them
+   — and both warn when it is *stale* or carries no *closure*. Neither says anything about a record
+   reporting a **non-zero `findings`**. We checked: nothing in `compiler.py` reads
+   `VerificationRecord.findings`. The counts do reach `manifest.verification.checks[]`
+   (`verification.py:289-296`), so a consumer that goes looking will find them — but the author running
+   `validate` sees a green result with warnings about closure and nothing about fifty-two contested
+   rows.
+
+**What we are not asking for.** Not an error, not a `strict` matter, and emphatically not an
+auto-correction. A conflict is a question, not a defect, and half the time the archive is the stale
+side. We want the question askable.
+
+**Reproduced against** enricher **0.6.6** installed
+(`.venv/lib/python3.14/site-packages/just_dna_enricher/enrich.py`). The two `subjects`/`findings` pairs
+are from the 2026-08-21 run and are reported rather than re-measured; every line reference above was
+read in the installed package.
+
+---
+
+## S71 — `verification.json`'s `producer` is a single document-level field, so a merge restamps records it did not produce
+
+**Reported by** just-module-creator, 2026-08-22. Companion to **S70**; small, and the merge it is about
+is otherwise correct.
+
+### What we saw
+
+A module already carried a `clinical_significance` record produced by enricher **0.6.4**. We ran
+`check_identifiers`, which merged new records in. The resulting file reports
+`producer: just-dna-enricher 0.6.6` for the whole document — including the 0.6.4 record, which that
+release did not produce.
+
+**The merge itself did the right thing and we want that on the record**, because it is the part that
+took thought: `merge_records` (`verification.py:299`) kept the older `ran` record rather than letting
+this run's silence delete it, and RM72's rule that a fresh *skip* does not displace an earlier *answer*
+held. Nothing was lost. What moved was only the attribution.
+
+### The shape
+
+```
+$ uv run --project /data/sources/just-module-creator python -c "
+from just_dna_format.manifest import VerificationRecord, Verification
+print('record:', list(VerificationRecord.model_fields))
+print('block :', list(Verification.model_fields))"
+record: ['check', 'subjects', 'findings', 'skipped', 'detail', 'source', 'release', 'checked_at']
+block : ['signature', 'module_hash', 'producer', 'produced_at', 'closure', 'checks']
+```
+
+Every other field that describes *an individual piece of work* is on the record: `source` names the
+authority, `release` names the snapshot, `checked_at` names when. `producer` — which names **who ran
+it** — is the one that sits on the document, and `record_verification` fills it from
+`producer_label()` at `enrich.py`'s call site (`verification.py:168`, `producer=producer_label()`)
+every time the file is rewritten, whatever the records came from.
+
+`produced_at` has the same scope and is fine there: it genuinely describes the document's last write.
+`producer` reads as a claim about the checks.
+
+### Why it is worth a field rather than a note
+
+It is the field that tells a reader whether a record predates a fix. Your own S45 is the worked case:
+a drafter defect fixed in enricher 0.6.4 left records that a later release names differently. A reader
+triaging *"was this check put before or after that release"* has `checked_at` — a timestamp they must
+map to a release by hand — and a `producer` that is guaranteed to say the newest thing that touched
+the file.
+
+**Ask:** move `producer` onto `VerificationRecord`, beside `source` / `release` / `checked_at`, and
+keep the document-level one as *"what last wrote this file"* if it is useful (it pairs naturally with
+`produced_at`). `merge_records` already carries a whole record across, so the per-record value travels
+for free; only the constructors need it.
+
+**What we are not asking for.** Not a schema break. If a required field on `VerificationRecord` is too
+much for a minor, `producer: str | None` defaulting to `None` reads correctly as *"written before this
+was recorded"*, which is honest and is the same three-valued shape the rest of this file uses.
+
+**Reproduced against** format / enricher **0.6.6** installed.
+
+---
+
+## S72 — `stats`' scalar counters still describe `variants.csv` alone, so a `pharm_variants` module publishes `unique_rsids: 0` beside 1,482 rsIDs
+
+**Reported by** just-module-creator, 2026-08-22. **A follow-up to S57**, which you accepted and fixed in
+RM121 — this is the residue that fix deliberately did not cover, and we are filing it because your own
+reply settled the principle that decides it.
+
+### The residue
+
+S57 asked whether `stats` describes **the module** or **`variants.csv`**, and your answer was
+unambiguous: *"`stats` describes **the module**. `Stats`'s own docstring has always read 'card/detail
+stats derived from the spec' — from the spec, not from a table of it."* `module_stats`
+(`compiler.py:3856`) now unions `genes` and `gene_count` across every gene-bearing kind, and that
+half is fixed.
+
+The scalar counters were not, and the code says so in the comment beside the change
+(`compiler.py:3818-3820`):
+
+> Unconditional where it used to be `if variants:` — a table-only module has no variant rows and is
+> exactly the module whose genes were being dropped (S57). **The keys this adds for such a module are
+> all zero**, which is what `Stats` already defaults them to, so no manifest number moves by it.
+
+So `module_stats` calls `variant_stats` (`compiler.py:3833`) unchanged, and for a module with no
+`variants.csv`:
+
+```
+variant_count   = len({v.variant_key for v in []})            -> 0
+unique_rsids    = len({v.rsid for v in [] if ...})            -> 0
+study_count     = len(studies)                                -> 0
+clinvar_count / pathogenic_count / benign_count               -> 0
+```
+
+Measured in the 2026-08-21 run on a **1,482-row `pharm_variants.csv`** module: `variant_count: 0`,
+`unique_rsids: 0`, `study_count: 0`, with the real number present only in `stats["table_rows"]`
+(`compiler.py:3814`).
+
+**`unique_rsids: 0` is the one that is simply false rather than merely narrow.** `rsid` is the first
+authored column of `pharm_variants.csv` (`scaffold.authored_field_names(model_for('pharm_variants.csv'))`)
+and 1,482 rows carry one. The counter reports none. It is not part of the table's key — that is
+`key_fields('pharm_variants.csv')` → `columns=('variant_key', 'drug', 'genotype',
+'phenotype_category', 'annotation_id')`, `stamped=('variant_key',)` — but the key is not what
+`unique_rsids` claims to count.
+
+### Why zero is the wrong value even under the old reading
+
+This is the three-valued rule broken in the producer's own output, and it is the rule your
+`VerificationRecord` docstring states better than we can: *"`subjects=0` with no `skipped` means the
+check ran and had nothing in scope, which is not the same as not running."* A `variant_count` of `0`
+says *this module has no variants*. For a PGx module that is true and harmless. `unique_rsids: 0` says
+*this module names no rsIDs*, and that is false. A consumer cannot tell "counted, and the answer is
+none" from "this counter does not apply here", and a registry keying a facet off either one inherits
+the collapse — which is the S57 failure exactly, one field over.
+
+### Asks
+
+1. **`None` for a counter whose table is absent**, where the field type allows it. `variant_count: 0`
+   for a module with a present-but-empty `variants.csv` stays `0`; a module with no such table gets
+   `null`. This is the RM44/S31 counter rule applied to `stats`.
+2. **A family-independent `row_count`**, or promote `table_rows` from a de-facto key to a documented
+   one. `table_rows` already carries the honest number and nothing in `Stats`' documented contract
+   mentions it.
+
+### Related, and in this item because it is the same field: a delimiter inside a single-valued cell
+
+The same module carries 33 rows whose `gene` cell reads `IFNL3;IFNL4` — that spelling comes straight
+out of the upstream ClinPGx export, so it is not the author's invention. `module_stats`
+(`compiler.py:3887`) does `genes.add(gene)` on the raw cell, so `"IFNL3;IFNL4"` becomes a **third
+gene** in `stats.genes` beside `IFNL3` and `IFNL4`, and `gene_count` counts it.
+
+`VariantRow.gene` is `str | None` with no validator and no metadata, and neither is any other kind's:
+
+```
+$ uv run --project /data/sources/just-module-creator python -c "
+from just_dna_format.spec import VariantRow
+f = VariantRow.model_fields['gene']; print(f.annotation, f.metadata, repr(f.description))"
+str | None [] 'Gene symbol, e.g. MTHFR'
+```
+
+Nothing splits it and nothing flags it. Since S57 made `genes` the field a registry gene index is fed
+from, a composite value is now a search term nobody will ever type. **We are not asking you to split
+on a delimiter** — that would guess at a vocabulary, and `IFNL3;IFNL4` may legitimately mean *the
+locus*, which is a real thing in that dataset. A warning naming the rows would be enough, and it
+belongs beside the other authored-value hints rather than in a validator that refuses.
+
+**Reproduced against** compiler **0.6.6** installed. The 1,482-row and 33-row figures are from the
+2026-08-21 run; the code paths, the zero-derivation and the absent `gene` validator were read in the
+installed package at the lines given.
+
+---
+
+## S73 — an open question, not a defect: `pharm_variants.csv` has no citation column, so a ClinPGx-drafted module makes 1,482 clinical claims with nowhere to cite them
+
+**Reported by** just-module-creator, 2026-08-22. **We are asking what the intended model is, not
+asserting that something is broken** — we could not find the answer in either tree and we would rather
+ask than write a guess into our skills.
+
+### What we found
+
+```
+$ uv run --project /data/sources/just-module-creator python -c "
+from just_dna_compiler.scaffold import model_for, authored_field_names
+m = model_for('pharm_variants.csv')
+print(len(m.model_fields), list(m.model_fields))
+print(len(authored_field_names(m)), authored_field_names(m))"
+16 ['rsid', 'chrom', 'start', 'ref', 'alts', 'gene', 'genotype', 'variant_key', 'authored_ident',
+    'drug', 'phenotype_category', 'annotation_id', 'response', 'evidence_level', 'trait_efo_id',
+    'conclusion']
+13 ['rsid', 'chrom', 'start', 'ref', 'gene', 'genotype', 'drug', 'phenotype_category',
+    'annotation_id', 'response', 'evidence_level', 'trait_efo_id', 'conclusion']
+```
+
+Sixteen model fields, thirteen of them authored (the `stub_template` header). None of them is a PMID,
+a DOI or any other citation. `evidence_level: 1A` is the closest thing, and it is a pointer at
+*somebody else's grading of evidence they hold* rather than at the evidence.
+
+Beside it, `variants.csv` + `studies.csv` is a two-table design where the second table exists to carry
+exactly this: `pmid`, `provenance_quote`, and since 0.6.5 `curator`. `COMPANION_KINDS` pulls
+`studies.csv` in behind `variants.csv` and — per S49 — deliberately does not pull it behind everything.
+
+### The question
+
+**Is a `pharm_variants` module supposed to carry citations at all?**
+
+Three readings we can construct, and we have no basis for choosing:
+
+1. **No, by design.** The module cites ClinPGx as a whole, through the licence row's `source` and
+   `dataset`, and per-row citation is ClinPGx's job rather than the module's. Under this reading
+   `evidence_level` is the intended provenance handle and the design is complete.
+2. **Yes, through `studies.csv`.** An author who wants to cite adds one and keys it — but the two
+   keys do not line up. `key_fields('studies.csv')` keys a study on `variant_key`, while
+   `key_fields('pharm_variants.csv')` returns
+   `columns=('variant_key', 'drug', 'genotype', 'phenotype_category', 'annotation_id')`,
+   `rule='equality'`, `stamped=('variant_key',)`. So one study row attaches to every drug, genotype
+   and phenotype category recorded for that variant, and the claims a PGx module makes are per-row
+   rather than per-variant. We do not think this works as-is, which is why we are not just doing it.
+3. **Yes, and the column is missing.** In which case this stops being a question.
+
+We are asking for the **intended provenance model to be stated**, wherever such a statement belongs —
+the model's docstring, `SCHEMAS.md`, or a line in the table's own documentation. Whichever of the three
+is right, an author should not have to derive it, and today they cannot: nothing on either side of
+this seam says.
+
+### Why we are asking rather than deciding
+
+Our skills teach `provenance_quote` and per-row citation hard, on the strength of S54 and S55 — a
+module whose claims cannot be traced to a paper is the failure mode we spend the most words on. A
+1,482-row drug-response module is a large body of clinical claims to leave outside that rule, and we
+do not want to tell an author either *"cite everything"* or *"this table does not need citations"*
+without knowing which one you meant. A one-sentence answer closes this and we will write it into the
+dossier.
+
+**Checked against** format / compiler **0.6.6** installed. The 1,482-row figure is from the 2026-08-21
+run; the field lists above were produced against the installed package just now.
+
+---
+
+## S74 — `ModuleSpecConfig` is public and the only thing that produces one is private, so every consumer re-parses `module_spec.yaml` by hand
+
+**Reported by** just-module-creator · **Filed** 2026-08-24 · **Severity** low, and it is an API-surface
+gap rather than a defect
+
+`ModuleSpecConfig` is exported from `just_dna_format.spec` and is the model of the one file every
+module has. The function that turns a `module_spec.yaml` on disk into one is
+`just_dna_compiler.compiler._load_yaml(path, authority_keys=None)` — underscored, and there is no
+public route beside it. Checked against the installed 0.6.6 rather than the tree:
+
+```python
+# nothing public in format or compiler returns a ModuleSpecConfig
+public functions returning ModuleSpecConfig: NONE
+# and the registry's specfiles module has no loader either
+just_dna_registry.specfiles: ['RENAMED_ON_UPLOAD', '__loader__']
+```
+
+**What that costs a consumer.** We do not reach into private APIs, so we `yaml.safe_load` the file
+ourselves in two places and read the keys we need out of a raw dict. That is fine until it is not:
+the defaults-folding, the authority-key dropping and the error list your loader produces are all
+things we now silently do not get, and a consumer reading `weighting:` or `authorship:` out of a bare
+dict is reading a shape your model owns without your model's validation. It also puts **PyYAML** in
+our dependency list for no reason other than that yours is not reachable — we have just declared it
+rather than leaning on it transitively, and it is the only dependency we carry that exists purely to
+work around a private symbol.
+
+**The ask is one line of surface, not new behaviour.** Either export the existing function under a
+public name, or add a thin `load_spec(path) -> ModuleSpecConfig` beside `read_verification` and
+`read_manifest`, which is exactly the shape those two already have and which is what made us look for
+it in the first place. If the errors-and-dropped-keys tuple is the reason it is private, a
+`strict=True` variant that raises would suit a consumer better than the tuple does.
+
+**What we are doing meanwhile:** parsing it ourselves and reading only `weighting`, `authorship`,
+`license` and `module` — no defaults folding, no authority keys. If the answer is that consumers
+should not read `module_spec.yaml` at all and should go through `validate_spec`'s result instead, that
+is a complete answer and we will take it; `ValidationResult.stats` does not carry these blocks today,
+which is why we did not.
+
+**Found while** building an offline audit surface that reports "this module fills `weight` on 190 rows
+and declares no `weighting:`" — the case where an author who deliberately authors no weights and an
+author who forgot are the same bytes.

@@ -1162,3 +1162,210 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   Consumer-side context: the symptom surfaces in just-dna-lite's discovery path, but nothing there
   can fix it — we read the field, we do not compute it. Full triage in that repo at
   `docs/reviews/consumer-handoff-triage.md`.
+
+- **An authored `report:` block — let a module say how its rows should be presented.** Proposal from
+  just-dna-lite (2026-08-21), from a survey of everything our report decides *for* a module. Full
+  write-up with wiring points and the constraint list at
+  `/data/sources/just-dna-lite/docs/MODULE_REPORT_CONFIG.md`; this is the format-side half.
+
+  The bulk of what we found needs no format change at all — a module's `Display` block already
+  carries `title`/`description`/`report_title`/`icon`/`icon_set`/`color`, and we never read it at
+  report time: a locally compiled or registry-installed module gets it copied once into our own
+  config at registration, and a module discovered remotely gets nothing at all, even though we fetch
+  and validate its whole manifest to decide its kind. That is ours to fix and is planned on our
+  side; noted here only because it is the reason the corpus looks like it has no display metadata.
+  (One thing worth knowing on your side: `icon_set` is dropped on every path we have, so the
+  vocabulary you validate it against has had no consumer here.) What is left over is a small set of
+  decisions the *author* is better placed to make than any consumer, and which have nowhere to live:
+
+  - **`categories:`** — key → `{title, description, order}`. Our report carries five hardcoded
+    longevity pathway headings with hand-written prose, reachable only through a surviving
+    `elif mod_name == "longevitymap"` name gate. The prose is a property of the module. Given a
+    place to put it, the special case becomes a data check, and a second module wanting pathway
+    sections needs no consumer code.
+  - **`sort_by:`** — closed vocabulary over columns that already exist (`weight_abs`,
+    `evidence_level`, `effect_size`, `clin_sig`, `priority`, `p_value`, `gene`, `authored`). We
+    currently *guess* the ranking axis from the lead table: `abs(weight)` for weights-led,
+    ClinPGx evidence rank for `pharm_variants`. That guess is right twice by luck and has no
+    answer for the binning families.
+  - **`preview_rows:` / a row budget** — how many rows lead before the fold. Ours is one global
+    constant applied identically to a 20-row curated module and a 53k-locus ClinVar panel.
+  - **`weight_display:` + a declared weight range** — strictly presentational. We are aware this
+    borders on `Weighting`, whose docstring explicitly refuses a typed *precedence* field, and we
+    are not asking to reopen that: nothing here blends, combines or reinterprets weights. The
+    concrete defect is that our colour ramp hardcodes `min(|w|*200, 200)`, an implicit 0–1
+    assumption, while RM92 correctly says the scale is free text — so a `log(OR)` module is
+    coloured wrong and we cannot tell. A machine-readable range, or simply *do not render a weight
+    column*, is the narrow fix.
+
+  Shape we would expect, and which we think keeps it cheap: **advisory, same class as
+  `panel`/`authorship`/`license`/`weighting`** — out of `artifact.digest`, out of
+  `content_signature`, not reconstructed by `reverse_module`, additive-optional and therefore a
+  minor under Principle 3 as amended. Absent is tri-state and must mean *the module has not said*,
+  never a default; every module in the corpus predates it, so absent is the normal path for the
+  whole 0.x tail.
+
+  One thing we would ask the format to say out loud if this lands, because it is a contract point
+  and not a consumer preference: **a `report:` block governs the presentation of the module's own
+  content and nothing else.** It must not be able to suppress a consumer's integrity apparatus —
+  an inferred/hom-ref-restored badge, a `locus_count > 1` ambiguity caveat, licence attribution,
+  module provenance, or the record that a module was skipped. Each of those exists in our report
+  because its absence previously read as a positive claim, and a knob that can turn one off is a
+  knob that lets a module launder a caveat. Stating the boundary in the field docs is what stops a
+  future consumer from implementing it the permissive way.
+
+  No view from us on whether this is one block or several, or whether `categories:` belongs beside
+  `module:` rather than inside a `report:` block — the placement is yours.
+
+---
+
+## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
+
+**Nothing here is a request to change an artifact, and none of it is urgent.** We ran a
+revision/curation pass over all ten modules in `data/interim/v1_port/` driven entirely through the
+installed authoring surface (just-module-creator 0.18.0 against format / compiler / enricher
+**0.6.6**), and wrote up 26 findings in
+[`just-dna-lite/docs/MODULE_DOGFOODING.md`](../../just-dna-lite/docs/MODULE_DOGFOODING.md). Seven of
+them are the plugin's. The rest are compiler- or enricher-tier and are listed here so the plugin
+maintainers do not have to relay them. **All ten modules validate clean with zero errors** — every
+item below is about what a green run does and does not tell an author.
+
+The corpus is a fair sample of the awkward cases: six hand-curated Gen-I ports (8–528 variants), three
+ClinVar-drafted panels (57k / 70k / 309k variants), and one `pharm_variants`-led PGx module.
+
+### The one we would rank first
+
+**`_verify_vrs_ids` emits one warning per allele, and `_vrs_coverage` aggregates — so the
+better-resolved module produces the flood.** (`compiler.py:2648` / `:2680`; § D2.)
+
+| module | resolution rows | with `vrs_id` | indel rows | indel rows **with** `vrs_id` | warnings from `validate_spec` |
+|---|---|---|---|---|---|
+| `superhuman` | 101 | 101 | 47 | **47** | **85**, of which 80 are one VRS line per allele |
+| `cardio` | 57,595 | 30,785 | 26,810 | **0** | **7**, of which 1 is the aggregated coverage line |
+
+An absent id is "nothing to check" and lands in one tidy coverage sentence; an id that is *present and
+not offline-justifiable* gets its own warning. Same underlying fact — an indel identity needs the
+reference sequence — reported as one line or as eighty depending on whether the enricher happened to
+mint something. A 190-row module is the worst case in our corpus, and it is the size a human is most
+likely to be working on interactively. `_vrs_coverage`'s grouping already exists one function away.
+
+### Presentation of findings (compiler)
+
+- **§ D3 — `warnings` is `list[str]` with no code, no count and no cap.** On `superhuman` the three
+  warnings an author can act on (8 het / 31 hom-alt / 46 ref-hom genotypes with no row) are items 83,
+  84 and 85. A `warnings_summary: {code: count}` beside the list would be enough and breaks no caller.
+- **§ D4 — nothing marks a warning an author cannot clear.** The VRS ones say it themselves
+  (*"minted upstream by the enricher, not recomputable here"*) and sit at the same level as a real
+  curation gap. `compiler.py:2634` already reasons about exactly this — *"a finding no authored edit
+  could clear is not a `strict` matter"* — and applies it to severity but not to presentation. The
+  `blame` discriminator is already computed.
+
+### Messages that mislead
+
+- **§ D19 — the `panel:` deprecation says "nothing else is lost", and for a drafted panel that is
+  false.** (`compiler.py:3425`.) `cancer`'s block carries **425 genes**, a `significance` filter and a
+  `reference_sha256`; the replacement — the licence row's `dataset` — carries `clinvar_2026-06-27`, a
+  release *name*. `validate_spec` reports `gene_count: 298` for that module, so 127 panel genes yielded
+  no variant and only the block being deleted distinguishes *not in the panel* from *in the panel,
+  nothing found*. Worse, **`cardio`'s `dataset` cell is empty** — it was drafted 2026-08-10, before the
+  drafter filled it — so following the instruction deletes its only record of which snapshot it came
+  from, and `refresh_sidecar` will not backfill a sidecar that is already present. A conditional
+  warning, or carrying `panel` into `manifest.json` the way `weighting` is, would settle it.
+
+### Absences that pass in silence (compiler)
+
+Each would be one extra clause on a warning that already fires, and the closure warning is the model —
+it fires correctly on all ten.
+
+- **§ D5 — `superhuman` has 190 rows with `weight` empty on every one and no `weighting:` block.**
+  Green strict compile, `weights_rows: 190`, no remark. "Authors none deliberately" and "forgot" are
+  the same bytes, and `weighting:` is the field that exists to tell them apart. We sum `weight` per
+  module, so it renders 0.0 across the board while showing 190 findings.
+- **§ D17 — eight of ten modules carry no `verification.json` at all** and nothing says so, while the
+  two that do get a closure warning. *"A check that could not run is not a check that passed"* has no
+  counterpart for the check that was never run.
+- **§ D12 / D26 — the six curated modules declare `version: null`, `license: null`, `authorship: []`,
+  and their `sources.csv` carries only an `ensembl / resolution` row** — nothing at
+  `layer: annotation`. All six render *Not stated* for version, digest and terms in our report's
+  *Modules in this report* table, which is the table that exists to tie a report to the bytes behind
+  it. The licence compile gate is scoped to PGx sources, so originally-curated content gets no signal
+  in either direction — no nag, and no way to record *deliberately unlicensed for now*.
+
+### `stats` (compiler)
+
+- **§ D7 — for a `pharm_variants`-led module the scalar counters are `0`, not `null`.** `pharmgkb`
+  (1,482 rows) reports `variant_count: 0`, `unique_rsids: 0`, `study_count: 0`, with the real number
+  only in `table_rows`. `unique_rsids: 0` is wrong rather than inapplicable — the table is keyed on
+  `rsid`. This is the tri-state rule the format enforces everywhere else (*"null never means zero"*),
+  inverted in its own output. A family-independent `row_count` would also help.
+- **§ D6 — `stats` reports fill for `genes`/`clinvar`/`pathogenic`/`benign` and nothing else.** Five of
+  our six curated modules have `category` empty on every row and `categories: []` is reported without
+  comment; `direction`, `stat_significance` and `trait_efo_id` are empty corpus-wide. A per-column fill
+  count is one pass over rows the validator has already loaded, and it turns *what is there to curate*
+  from a question into a table.
+- **§ D9 — `IFNL3;IFNL4` counts as a gene.** `pharmgkb` reports `gene_count: 33` including all three of
+  `IFNL3`, `IFNL4` and `IFNL3;IFNL4` (33 rows carry the joined cell, straight from the ClinPGx export).
+  Nothing flags a delimiter in a single-valued cell.
+
+### `verification.json` (enricher)
+
+- **§ D16 — the record counts findings and does not keep them.** `cancer`:
+  `clinical_significance`, 141,616 subjects, **20 findings**, `detail: null`. `pathogenic`: 618,629
+  subjects, **32 findings**, `detail: null`. Fifty-two rows in our two largest modules assert a
+  `clin_sig` ClinVar disagrees with, and there is no way to learn which — no sidecar, and
+  `review_queue` covers overrides rather than check findings. The MCP instruction block is emphatic
+  that a mismatch means *check both sides*, and neither side is checkable for a finding you cannot
+  name. A `verification_findings.csv` keyed on `variant_key` with both values would close it. Related:
+  nothing rolls the count up into `validate_spec`, so a pass driven by the validator never learns the
+  record exists.
+- **§ D20 — `producer` is top-level over a merged record set.** `check_identifiers` on `cancer`
+  correctly **preserved** the 0.6.4-produced `clinical_significance` record and appended three — and
+  rewrote `producer` to `just-dna-enricher 0.6.6`, so the file now attributes to 0.6.6 a record it did
+  not produce. `checked_at` survives, so it is recoverable. `producer` looks like it belongs beside
+  `source`, `release` and `checked_at` on the record.
+
+### Two the linter could take, and one routing question
+
+- **§ D14 — nothing checks `conclusion` against anything, including the other cells on its own row.**
+  It is `required`, `redundancy_bearing: null`, and absent from `attestation_bearing` — all correct,
+  and none of that implies it cannot be *checked*. `lint_rows` over twelve real `thrombophilia` rows
+  returned `errors: 0, warnings: 0` on a set containing `rs1799963 A/A` → *"**GA** carriers have 6.74x
+  risk"* (the `A/G` row above it says *"GA carriers have 2.8x"*), `rs2519093 C/T` → *"**TT** genotype is
+  associated…"*, and `rs1799889 G/G` with `state: risk` under text reading *"…is not increased"*. Two
+  rules, no external source:
+  - a conclusion naming a genotype **built from alleles at this rsID's own locus** that is not this
+    row's — measured **20 hits in 1,418 rows** across the six curated modules, precision ≈ 60% by hand
+    inspection, so `warning` not `error`. (The locus restriction is what makes it usable: an earlier
+    version flagged *"raised plasma triglyceride (**TG**) levels"*.) The two worst are `coronary`
+    `rs17514846`, whose `C/C` and `A/A` conclusions are **swapped**, and `coronary` `rs11591147`,
+    scored `protective +1.2` on `T/T` under text saying `GG` is protective.
+  - `state` is `risk`/`protective` and the conclusion negates it.
+  - A third shape we are **not** proposing as a rule but would like somewhere to record a decision
+    about: 480 `longevitymap` rows share a conclusion across genotypes carrying different weights.
+    Plausibly correct for a GWAS port — the association is one statement and only the dose differs —
+    but a reader sees identical prose and different numbers, and nothing in the module says whether
+    that was intended.
+- **§ D13 — nothing notices a row in the wrong family.** `superhuman` authors `rs56185968` as one
+  `variants.csv` row with no coordinates and genotype `G/G`; resolution expanded it to a **23-allele
+  GT ladder** (`G`, `GTGTG`, … up to 45 bases), which is where 22 of that module's VRS warnings come
+  from. `module-tables` states the rule (*a repeat count is a binning table, not a variant row*) and
+  `repeat_alleles.csv` exists for it. The signal — a resolved locus whose ALT set is a tandem ladder —
+  is already computed.
+
+### Two small ones
+
+- **§ D11 — `just_dna_compiler/__init__.py` exports nothing.** `dir(just_dna_compiler)` is `[]`, so
+  `from just_dna_compiler import validate_spec` raises `ImportError`; the working import is
+  `just_dna_compiler.compiler`. Our own `CLAUDE.md` documented the top-level form, so the drift was on
+  both sides — corrected on ours. Flagging only in case the empty `__init__` is unintended.
+- **§ D10 — `logo.png` travels through a compile and is not on the registry's roster.**
+  `just_dna_registry.specfiles.RECOGNIZED_SPEC_FILES` has 24 names and no image and no log;
+  `compile_module` copies both into the output (verified — a compile of `superhuman` emitted
+  `logo.png` and `v1_port.log` beside the five parquets). All ten of our modules ship a `logo.png` and
+  we consume it in the module cards and the report. Whichever way it should go, it currently survives a
+  compile and would not survive a server-side rebuild. No view from us on which is right — we would
+  just like it decided and written down.
+
+**Everything above is a note, not a request, and we are not tracking any of it.** Where an entry is
+already covered by an item in `PROPOSAL_0_6_PT2` or `ROADMAP_0_7` that we have not read closely enough,
+the existing item wins.
