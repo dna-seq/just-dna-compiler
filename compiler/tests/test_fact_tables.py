@@ -1565,3 +1565,69 @@ def test_discarding_uncited_literature_converges_on_the_round_trip(tmp_path: Pat
         pl.read_parquet(tmp_path / "two" / "literature.parquet")["pmid"].to_list()
         == reversed_pmids
     )
+
+
+def test_carried_vrs_ids_are_grouped_by_reason_not_reported_per_allele() -> None:
+    """The better-resolved module must not be the loud one (S67).
+
+    Which path an allele takes is decided by whether the enricher minted an id for it and by nothing
+    else: `_vrs_coverage` aggregates the alleles with **no** id, and this pass used to emit one line
+    per id **present**. So noise ran inversely to how well-resolved a module was — the reported pair
+    was a 101-row module producing 80 of its 85 warnings here against a 57,595-row module producing
+    one aggregated line, with the three findings its author could act on at positions 83, 84 and 85.
+
+    Twelve indels, one cause. The assertion is that the count survives the grouping: this is not a
+    cap, and an author who wants the coverage number still has it.
+    """
+    from just_dna_compiler.compiler import _verify_vrs_ids
+
+    rows = [
+        _res_row(variant_key=f"11:{5227000 + i}:C:CA", ref="C", alts="CA", vrs_id=_SICKLE)
+        for i in range(12)
+    ]
+    errors, warnings = _verify_vrs_ids(rows)
+    assert errors == []
+    assert len(warnings) == 1, f"twelve alleles, one cause, one line — got {len(warnings)}"
+
+    line = warnings[0]
+    assert line.startswith("12 allele(s):"), line
+    assert "could not be verified" in line and "carried unverified" in line
+    # Three named, then the remainder counted — the `summarize_ref_mismatches` shape.
+    assert "11:5227000:C:CA" in line and "and 9 more" in line
+
+
+def test_grouping_keeps_distinct_reasons_distinct() -> None:
+    """Aggregation groups by cause, so two causes never collapse into one line.
+
+    The failure this guards is the tempting cheap version — "collapse the VRS warnings" — which would
+    hide that a module has two different problems, and the reasons have different remedies. That is
+    `_vrs_coverage_warnings`' own argument for grouping by why rather than reporting a bare total.
+    """
+    from just_dna_compiler.compiler import _verify_vrs_ids
+
+    indels = [_res_row(variant_key=f"11:{5227000 + i}:C:CA", ref="C", alts="CA", vrs_id=_SICKLE)
+              for i in range(4)]
+    other_build = [_res_row(variant_key=f"11:{5228000 + i}:T:A", genome_build="GRCh37",
+                            vrs_id=_SICKLE) for i in range(2)]
+    _errors, warnings = _verify_vrs_ids(indels + other_build)
+
+    assert len(warnings) == 2, warnings
+    # Descending count, so the biggest group leads — the same order the coverage half emits.
+    assert warnings[0].startswith("4 allele(s):") and warnings[1].startswith("2 allele(s):")
+    reasons = {w.split("— ", 1)[1] for w in warnings}
+    assert len(reasons) == 2, f"two causes must not collapse into one: {reasons}"
+
+
+def test_a_row_blamed_finding_stays_per_row() -> None:
+    """`_BLAME_ROW` is an error, is rare, and names a row contradicting itself — it does not group.
+
+    Explicitly excluded from the aggregation by the reporter, and correctly: a per-reason line for an
+    error the author must fix individually would remove the one thing they need, which is which row.
+    """
+    from just_dna_compiler.compiler import _verify_vrs_ids
+
+    rows = [_res_row(variant_key=f"k{i}", chrom=None, start=None, vrs_id=_SICKLE) for i in range(3)]
+    errors, warnings = _verify_vrs_ids(rows)
+    assert warnings == []
+    assert len(errors) == 3, "an error naming a row must stay one line per row"
+    assert {f"k{i}" for i in range(3)} == {e.split(":", 1)[0] for e in errors}

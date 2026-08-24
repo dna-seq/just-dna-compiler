@@ -1367,6 +1367,24 @@ VRS allele identity covers {identified}/{alleles} allele(s) in resolution.csv ({
 {missing} carry no ga4gh:VA. id. Anything keying on the VA sees only the covered fraction.
 ```
 
+**Its twin, for ids that are present and that this tier cannot recompute, is grouped the same way
+since 0.6.7 (S67)** — one line per reason, descending count then reason, three `variant_key`s named
+and the rest counted:
+
+```
+{count} allele(s): vrs_id could not be verified — {reason}; carried unverified ({a}, {b}, {c}, and
+{n} more).
+```
+
+The two halves used to disagree about shape, and which half an allele landed in was decided by
+whether the enricher happened to mint an id for it — nothing else. So `_vrs_coverage` aggregated the
+alleles with **no** id while `_verify_vrs_ids` emitted one line per id **present**, and warning noise
+ran *inversely* to how well-resolved a module was: 80 of one 101-row module's 85 warnings came from
+here, with the three findings its author could act on at positions 83, 84 and 85, while a 57,595-row
+module with nothing minted was quiet. `_BLAME_ROW` findings are **not** grouped — they are errors,
+they are rare, and each names a row that contradicts itself, which is the one thing a per-reason line
+would take away.
+
 Three more sentences worth quoting exactly, because each states a consequence rather than a status: the
 closure reminder (`This module records no closure: … Compiling without one is a warning today;
 requiring it is filed for 1.0 (RM73).`), the symbolic-allele drop (`Those row(s) are DROPPED from the

@@ -573,6 +573,45 @@ We would take (1) alone as a real improvement, and (1)+(2) as a complete answer.
 
 ## S67 — `_verify_vrs_ids` emits one warning per allele where `_vrs_coverage` aggregates the same class, so the better-resolved module gets the flood
 
+**Status — accepted; shipped 2026-08-24 in `just-dna-compiler`, as a patch.** Grouped by `reason`,
+exactly as asked and in exactly the `summarize_ref_mismatches` shape: descending count then reason,
+three `variant_key`s named, `and N more` for the rest. `_BLAME_ROW` stays per-row for the three
+reasons you gave.
+
+**Your framing is the argument and we are not improving on it.** *Which path a row lands in is
+decided by whether the enricher minted an id for it, and nothing else* — that sentence is the item.
+Both passes walk the same rows, both report the same underlying fact (an indel identity needs the
+reference sequence), and the shapes differed because the two functions were written at different
+times rather than because the findings differ. **Noise inversely proportional to how well-resolved
+the module is** is the consequence worth writing down, and we have put it in COMPILER.md beside the
+warning catalogue so the next person to add a VRS finding meets it.
+
+**You were also right about which argument settles it.** `compiler.py:2633-2634` says *a finding no
+authored edit could clear is not a `strict` matter*, and it applies one step out unchanged: a finding
+no authored edit could clear is not worth one line per row either. That is the whole justification, it
+was already in the file, and it had been spent on severity only — which is the same shape as the
+`blame` discriminator you flag in **S68**, computed and then dropped on the way out.
+
+**A patch, not a minor.** Warning wording is patch-legal, no verdict moves, and the pinned substrings
+survive — `"could not be verified"` is in the grouped line and the suite's contract assertions pass
+untouched.
+
+**Three things the tests pin, and the third is the one we would have got wrong.** That the count
+survives the grouping, since this is not a cap and the coverage number matters. That two distinct
+reasons never collapse into one line — the tempting cheap version is "collapse the VRS warnings",
+which would hide that a module has two different problems with two different remedies, and that is
+`_vrs_coverage_warnings`' own stated reason for grouping by *why*. And that `_BLAME_ROW` still emits
+one line per row: a per-reason line for an error the author must fix individually removes the only
+thing they need, which is *which row*.
+
+**On your module A, the effect is 80 lines to a small number of reason lines**, so the three
+genotype-coverage findings you could act on are no longer items 83–85 of 85. **S68** is where the
+general question goes — this fix makes one wall shorter and does nothing about the channel's
+structure, which is your point there and it stands on its own.
+
+<!-- triaged: 0.6.7 · sha 9886db1793f6 -->
+
+
 **Reported by** just-module-creator, 2026-08-22. Companion to **S68**, which asks for the structure
 that would make a wall of warnings survivable in general; this one is the single local fix that does
 not need any of it. Both were found in the same unattended run.

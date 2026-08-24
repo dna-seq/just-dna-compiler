@@ -2646,7 +2646,15 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
     scalar column does not.
     """
     errors: list[str] = []
-    warnings_out: list[str] = []
+    # `_BLAME_TIER` findings are collected and grouped at the end rather than appended as they are
+    # found (S67). Which path an allele takes is decided by whether the enricher happened to mint an
+    # id for it — `_vrs_coverage` aggregates the ones with **no** id, this pass reported one line per
+    # id **present** — so noise ran inversely to how well-resolved a module was: a 101-row module with
+    # every id minted produced 80 of its 85 warnings here, while a 57,595-row module with none minted
+    # produced one aggregated line. The three findings its author could act on were items 83, 84 and
+    # 85. Grouping by reason is what `_vrs_coverage_warnings` already does one function away, on the
+    # argument its own docstring makes.
+    carried: dict[str, list[str]] = {}
     for row in resolution_rows:
         if row.vrs_id is None:
             continue
@@ -2668,7 +2676,7 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
                         f"drop the vrs_id."
                     )
                 else:
-                    warnings_out.append(f"{message}; carried unverified.")
+                    carried.setdefault(reason, []).append(where)
                 continue
             if recomputed != vrs_id:
                 errors.append(
@@ -2676,7 +2684,40 @@ def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], li
                     f"from {row.chrom}:{row.start} {row.ref}>{alt} ({recomputed}) — a substitution's "
                     f"id is deterministic here, so this is corruption, not a difference of opinion."
                 )
-    return errors, warnings_out
+    return errors, _carried_vrs_warnings(carried)
+
+
+#: How many `variant_key`s a grouped finding names before it says "and N more". Three, matching
+#: `sequences.summarize_ref_mismatches`, which is the shape this was asked for in: enough to go and
+#: look at one, few enough that the line stays a line.
+_VRS_CARRIED_EXAMPLES = 3
+
+
+def _carried_vrs_warnings(carried: dict[str, list[str]]) -> list[str]:
+    """One line per *reason* for the ids this tier cannot recompute, with a count and named examples.
+
+    Not a cap and not suppression: the count stays truthful and every reason still appears, which is
+    what the reporter asked for and what the coverage half already does. What goes away is the one
+    line per allele, which carried no information the reason and the count do not — every allele in a
+    group failed for the identical cause, and none of them is fixable by an authored edit at all.
+
+    Sorted by descending count then by reason, the same order `_vrs_coverage_warnings` emits its
+    groups in, so the two halves of the VRS story read the same way round. Deterministic because
+    warning text is an API and a set-ordered one would differ between runs.
+    """
+    lines: list[str] = []
+    for reason, wheres in sorted(carried.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        named = ", ".join(wheres[:_VRS_CARRIED_EXAMPLES])
+        more = (
+            f", and {len(wheres) - _VRS_CARRIED_EXAMPLES} more"
+            if len(wheres) > _VRS_CARRIED_EXAMPLES
+            else ""
+        )
+        lines.append(
+            f"{len(wheres)} allele(s): vrs_id could not be verified — {reason}; carried unverified "
+            f"({named}{more})."
+        )
+    return lines
 
 
 def _vrs_coverage(resolution_rows: list[ResolutionRow]) -> tuple[int, int, dict[str, int]]:
