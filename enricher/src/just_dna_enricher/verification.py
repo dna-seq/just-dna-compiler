@@ -202,6 +202,7 @@ def ran(
         release=release,
         detail=detail,
         checked_at=now or now_utc_iso(),
+        producer=producer_label(),
     )
 
 
@@ -224,4 +225,5 @@ def skipped(
         detail=detail,
         source=source,
         checked_at=now or now_utc_iso(),
+        producer=producer_label(),
     )

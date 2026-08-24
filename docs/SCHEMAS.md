@@ -1542,9 +1542,23 @@ nothing at all. The binding hash and the proof-of-work do not change this: they 
 **stale** record on an honestly-produced module, which is the accidental case, and nothing here is
 built to resist a deliberate one. A holder of the module's own bytes can confirm the block by
 recomputing `module_binding(authored_input_entries(spec_dir))` and comparing it with
-`verification.module_hash`; a holder of only the manifest cannot, and should treat the block as a
-claim by whoever `producer` names. The real guarantee in this format is `manifest.signature`, a
-detached Ed25519 signature over `artifact.digest` made by a party the client pins.
+`verification.module_hash`; a holder of only the manifest cannot, and should treat each record as a
+claim by whoever **that record's** `producer` names. The real guarantee in this format is
+`manifest.signature`, a detached Ed25519 signature over `artifact.digest` made by a party the client
+pins.
+
+**`producer` is on the record as well as on the block, and the two answer different questions
+(S71).** `VerificationRecord.producer` names who put *that* check, beside the `source`, `release` and
+`checked_at` that already describe that one piece of work; `Verification.producer` names what last
+**wrote the file**, pairing with `produced_at`. The split exists because `merge_records` deliberately
+carries an older run's record across rather than letting a newer run's silence delete it, so the
+document-level field is restamped over records the naming release did not produce — a module carrying
+a 0.6.4 `clinical_significance` record came back attributing it to 0.6.6. Read the per-record field
+when asking *does this check predate that fix*, which is the question `checked_at` alone answers only
+by hand-mapping a timestamp to a release. Both are outside the fact set for the same reason
+`checked_at` is — who ran a check is a fact about the run, not about the module — so the field is
+additive and moved no published `verification.signature`. It is `str | None`, and `None` on a record
+written before 0.6.7 reads as *not recorded*, never as a particular release.
 
 ## The resolution table (0.5, **provisional**)
 

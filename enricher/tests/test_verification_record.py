@@ -674,3 +674,63 @@ def test_an_answer_over_bytes_that_moved_gives_way_to_this_runs_skip(tmp_path: P
         "acmg_secondary_findings"
     ]
     assert kept.skipped == "offline"
+
+
+def test_a_merge_does_not_restamp_the_record_it_carried_across(tmp_path: Path) -> None:
+    """`producer` is per-record, so an older run's attribution survives a newer run's write (S71).
+
+    The reported shape: a module carried a `clinical_significance` record put by 0.6.4, a later pass
+    merged new records in, and the document then reported `producer: just-dna-enricher 0.6.6` for the
+    whole file — including the record that release did not produce. The merge itself was right and is
+    the point: `merge_records` deliberately keeps the older `ran` rather than letting this run's
+    silence delete it, so the only thing that moved was the attribution.
+
+    The older record is written by hand rather than by running an old release, which is the only way
+    to have one: what is being pinned is that `record_verification` carries a foreign `producer`
+    through untouched, not that any particular version string is produced.
+    """
+    spec = _module(tmp_path)
+    old = ran("clinical_significance", subjects=141_616, findings=20, source="clinvar").model_copy(
+        update={"producer": "just-dna-enricher 0.6.4", "checked_at": "2026-08-10T00:00:00Z"}
+    )
+    record_verification([old], spec, error=_Boom)
+    record_verification([ran("rsid_currency", subjects=12, findings=1)], spec, error=_Boom)
+
+    doc = read_verification(spec / VERIFICATION_JSON)
+    by_check = {r.check: r for r in doc.records}
+    assert set(by_check) == {"clinical_significance", "rsid_currency"}
+
+    assert by_check["clinical_significance"].producer == "just-dna-enricher 0.6.4", (
+        "the merge restamped a record it did not produce — the S71 defect"
+    )
+    assert by_check["rsid_currency"].producer == producer_label()
+    # The document-level field is the honest one for what it now means: who last wrote the file.
+    assert doc.producer == producer_label()
+
+
+def test_producer_is_outside_the_fact_set_so_adding_it_moved_no_signature() -> None:
+    """A new field on a record whose fact-hash is published has to be shown not to move it.
+
+    `producer` is producer noise in exactly the sense `checked_at` is — *who* ran a check is a fact
+    about the run, not about the module — so it stays out of `VERIFICATION_FACT_FIELDS`, and every
+    `verification.signature` already published is unaffected.
+    """
+    from just_dna_format.verification import VERIFICATION_FACT_FIELDS, verification_signature
+
+    assert "producer" not in VERIFICATION_FACT_FIELDS
+    record = ran("reference_allele", subjects=30, findings=0, source="ensembl", release="113")
+    assert verification_signature([record]) == verification_signature(
+        [record.model_copy(update={"producer": None})]
+    )
+
+
+def test_a_record_written_before_this_field_reads_as_not_recorded(tmp_path: Path) -> None:
+    """`None` is the honest value for an older record, and it is not any particular release.
+
+    The three-valued rule the rest of the file follows: a document from 0.6.6 or earlier cannot say
+    who put its checks, and defaulting it to the reading version would manufacture the exact false
+    attribution this item is about.
+    """
+    from just_dna_format.manifest import VerificationRecord
+
+    assert VerificationRecord(check="rsid_currency", subjects=1, findings=0).producer is None

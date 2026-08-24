@@ -23,6 +23,49 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
+# The 2026-08-24 consumer round (S63–S74)
+
+Twelve items from two reporters, triaged in one pass. The per-item record is in
+[CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md); what is here is the reasoning
+behind each `RMn` the round produced.
+
+## RM129 — `producer` described the document and was read as describing the checks
+
+**Shipped in `just-dna-format` + `just-dna-enricher` on 2026-08-24**, a minor. `verification.json`
+carried `producer` at the document level only, and `record_verification` refills it from
+`producer_label()` on every write — so a merge that correctly **kept** an older run's record
+restamped that record's attribution to the writing release. Reported against a module carrying a
+0.6.4 `clinical_significance` record that came back attributed to 0.6.6.
+
+**The reporter's argument is the item and it is an argument from the other fields.** Every field
+describing *one piece of work* was already on the record — `source` (which authority answered),
+`release` (which snapshot), `checked_at` (when) — and `producer`, naming *who ran it*, was the only
+one on the document. Once the list is written out that way the asymmetry reads as an oversight rather
+than a design, and the fix is where the field goes rather than what it says.
+
+**`produced_at` stays on the document and is correct there**, which is the discriminator worth
+keeping: it genuinely describes the file's last write, and so does `producer` **under its new
+reading**. The two are now a pair meaning *what last wrote this file*, and the per-record field means
+*who put this check*. `Verification.producer`'s own description had said *"Tool and version that put
+the checks"* — the false claim, sitting in the printed contract where `describe`/`reference` render it
+verbatim — and correcting it was part of the fix, not a follow-up (`@field-description-is-a-claim`).
+
+**Three obligations a new field on a fact-hashed record owes, discharged rather than assumed.**
+`producer` is outside `VERIFICATION_FACT_FIELDS` on exactly the reasoning that excluded `checked_at`
+(*who* ran a check is a fact about the run, not about the module), so no published
+`verification.signature` moved — asserted by a test rather than reasoned about. It is `str | None`
+defaulting to `None`, so a record written before 0.6.7 reads as *not recorded*; defaulting it to the
+reading version would manufacture the false attribution the item is about, which is the tri-state rule
+applied to a provenance field. And `merge_records` carries whole records, so the value travels with
+no change to the merge — pinned by a test that hand-builds a 0.6.4 record, merges over it, and asserts
+the old attribution survives.
+
+**What was not changed: the merge.** The reporter went out of their way to record that
+`merge_records` did the right thing — RM72's rule that a fresh *skip* does not displace an earlier
+*answer* held, and nothing was lost. That mattered to the triage: a report framed as "the merge is
+broken" would have aimed the repair at the one part that was correct.
+
+
 # The 2026-08-21 output-contract round — what a patch may change about a compiled artifact
 
 One report from a new consumer, just-dna-registry ([S62](CONSUMER_SUGGESTIONS_HISTORY.md)), and the

@@ -865,6 +865,44 @@ read in the installed package.
 
 ## S71 — `verification.json`'s `producer` is a single document-level field, so a merge restamps records it did not produce
 
+**Status — accepted; shipped 2026-08-24 in `just-dna-format` + `just-dna-enricher` as
+[RM129](ROADMAP_HISTORY.md#rm129--producer-described-the-document-and-was-read-as-describing-the-checks),
+a minor.** Your ask as written: `producer: str | None` on `VerificationRecord`, beside
+`source`/`release`/`checked_at`, and the document-level one kept for what it actually means.
+
+**Your argument from the other fields is the whole case and we are recording it as such.** Every
+field describing *an individual piece of work* was already on the record — which authority answered,
+which snapshot, when — and `producer`, naming who ran it, was the one sitting on the document. That
+asymmetry is what made the restamp possible rather than merely unfortunate, and it reads as an
+oversight once the list is written out the way you wrote it.
+
+**We also fixed the sentence, not just the field.** `Verification.producer`'s description read *"Tool
+and version that put the checks"* — which is exactly the false claim, sitting in the printed contract
+where `describe`/`reference` render it. It now says it names what last **wrote the file**, pairs with
+`produced_at`, and is not a claim about the checks, and it points at the per-record field for the
+question it cannot answer. A description that survives its own field becoming wrong is a repeat of a
+defect we have a rule about, so it gets corrected in the same commit rather than softened.
+
+**Three things established before shipping, because a new field on a record with a published fact-hash
+owes them.** `producer` is **outside** `VERIFICATION_FACT_FIELDS`, on precisely the reasoning that put
+`checked_at` outside it — who ran a check is a fact about the run, not about the module — so no
+published `verification.signature` moved, and a test asserts that rather than assuming it. It is
+`str | None` defaulting to `None`, exactly the shape you proposed; `None` on an older record reads as
+*not recorded* and specifically not as any release, since defaulting it to the reading version would
+manufacture the very attribution the item is about. And `merge_records` does carry it across for free,
+as you predicted — the test writes a hand-built 0.6.4 record, merges a new one over it, and asserts
+the old attribution survives.
+
+**Thank you for putting the merge on the record as correct.** That half took more care than the
+defect: RM72's rule that a fresh *skip* does not displace an earlier *answer* is doing real work
+there, and a report that had described the whole thing as "the merge is broken" would have pointed the
+fix at the one part that was right. Your triage case — *was this check put before or after that
+release* — is now answerable without hand-mapping a timestamp, and it is written into SCHEMAS beside
+the attestation as the reason the two fields both exist.
+
+<!-- triaged: 0.6.7 · sha 0becb402ecc1 -->
+
+
 **Reported by** just-module-creator, 2026-08-22. Companion to **S70**; small, and the merge it is about
 is otherwise correct.
 

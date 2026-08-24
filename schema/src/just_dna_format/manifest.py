@@ -1021,6 +1021,17 @@ class VerificationRecord(BaseModel):
             f"the fact set. {UNTRUSTED_NOTE}"
         ),
     )
+    producer: str | None = Field(
+        default=None,
+        description=(
+            "Tool and version that put **this** check, beside the `source`/`release`/`checked_at` "
+            "that also describe this one piece of work. Null on a record written before 0.6.7, which "
+            "reads correctly as *not recorded* rather than as any particular release. Producer noise "
+            "like `checked_at`, so it is outside the fact set and adding it moved no signature. Read "
+            "this rather than the block-level `producer` when asking whether a record predates a fix "
+            f"— a merge rewrites that one and cannot rewrite this. {UNTRUSTED_NOTE}"
+        ),
+    )
 
     @field_validator("check")
     @classmethod
@@ -1183,7 +1194,12 @@ class Verification(BaseModel):
     )
     producer: str | None = Field(
         default=None,
-        description=f"Tool and version that put the checks. {UNTRUSTED_NOTE}",
+        description=(
+            "Tool and version that last **wrote this file**, pairing with `produced_at`. It is not a "
+            "claim about the checks: `merge_records` deliberately carries an older run's record "
+            "across, so this is restamped over records it did not produce (S71). The per-record "
+            f"`VerificationRecord.producer` is the one that answers *who put this check*. {UNTRUSTED_NOTE}"
+        ),
     )
     produced_at: str | None = Field(
         default=None,
