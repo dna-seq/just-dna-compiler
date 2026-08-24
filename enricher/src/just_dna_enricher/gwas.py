@@ -45,6 +45,7 @@ import httpx
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.gwas import GwasEffectRow
+from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import VariantRow
@@ -391,7 +392,7 @@ def _cell(value: object) -> str:
 
 def _write_gwas_csv(rows: list[GwasEffectRow], output_path: Path) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs)."""
-    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+    with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

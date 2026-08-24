@@ -35,6 +35,7 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import derive_variant_key, merge_key
+from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.resolution import ResolutionRow
 from pydantic import ValidationError
@@ -395,7 +396,7 @@ def _sort_key(row: ClinicalAssertionRow) -> tuple:
 
 def _write_assertions_csv(rows: list[ClinicalAssertionRow], output_path: Path) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs)."""
-    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+    with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

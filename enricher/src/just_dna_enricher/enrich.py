@@ -19,6 +19,7 @@ from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_
 from just_dna_compiler.resolution import hosting_verdict, undecided_reason
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.binning import HeteroplasmyRow
+from just_dna_format.layout import atomic_writer
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import ResolutionRow
@@ -1563,7 +1564,7 @@ def _clinvar_release(reference: Path | None) -> str | None:
 
 
 def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
-    with open(output_path, "w", encoding="utf-8", newline="") as f:
+    with atomic_writer(output_path, newline="") as f:
         writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for r in rows:

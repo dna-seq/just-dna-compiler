@@ -456,6 +456,62 @@ it is closed rather than parked:
 formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
 natural-language question. Presence is the bit a check may read.
 
+## RM128 — `enrich()` persists nothing until its tail, so a run killed at minute 29 has written nothing
+
+**Severity** medium · **Status** open — **a minor, release undecided** — the corruption half shipped
+2026-08-24; what is left is three asks that each change a documented behaviour · **Owner** enricher ·
+**Motivating case** S66 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
+
+**The truncation half is closed and is not this item.** Every sidecar writer in the workspace now goes
+through `layout.atomic_writer` / `atomic_write_text`, so a killed process leaves the previous table
+rather than a short one. Nine writers were routed where three were reported, and the guard walks the
+set. What is left is the part the reporter cared about most and the two beside it, all three of which
+are decisions rather than missing lines.
+
+**Ask 2 — incremental or checkpointed persistence — turns on one question nobody has answered: is a
+`strict` refusal allowed to leave rows behind?** Today `enrich(mode="strict")` is atomic in a second
+sense the atomic writers do not provide: it raises at `enrich.py:1228`/`:1240` *before* the single
+`if write:` block, so a refused run leaves the module exactly as it was. Checkpointing means the
+resolver's answers are on disk when a later gate refuses, and the module then carries a
+`resolution.csv` a refusal produced. The reporter's argument for why that is safe is good and is
+recorded rather than paraphrased: the sidecar's documented character is merge-not-clobber, the key is
+`subject` (S51), so a partial table is the *correct input* to the next run — and a re-run over
+checkpointed rows hits cache and is instant, which is strictly better for the author than the
+thirty discarded minutes that motivated the item. The counter-argument is that "a refused strict run
+changes nothing" is a property somebody may be relying on, and it is not written down anywhere as a
+promise, which is exactly the state in which it gets broken by accident. **Decide the promise first,
+then the checkpoint.** A mode-conditional checkpoint is refused in advance: a flag must mean the same
+thing in every function that takes one, and `write=True` meaning "at the end" under `strict` and
+"as we go" under `best_effort` is that defect wearing a schedule.
+
+**Ask 3 — an advisory lock over the read-modify-write window — buys the most and costs a new failure
+mode.** The window really is the whole run: the table is read at `enrich.py:584-593` and rewritten at
+`:1248`, so two concurrent enrichments of one spec directory are last-writer-wins over a merge and
+neither knows. The reported incident is the sharp form — a client-side kill does not stop the worker,
+so a zombie run reached the write and overwrote a restored 330-row table with 162 rows, and the
+module then validated, closed and compiled green. Nothing downstream can see that a table halved,
+because the three branches that deliberately write **no row** for an unanswerable subject
+(`enrich.py:873`, `:881`, `:903`) make a shorter table indistinguishable from a module whose author
+resolved less. Those branches are right and are not in scope. What blocks the lock is that a lockfile
+left by exactly the kill this item is about then blocks every subsequent run, which is a worse
+unattended failure than the one it prevents — so it needs a staleness rule, and a staleness rule for
+a lock is a clock, which this repo has refused before (`@hash-the-probe`: guard the plan, not the
+clock). `flock` on the file itself has neither problem and does not survive the process, which is
+probably the answer; it is untested here on the network filesystems a consumer may use.
+
+**Ask 4 — a progress callback on `enrich()` — is additive and is the incident's actual root cause.**
+The pass reports through `logger` to stderr, so a caller driving it over a transport has no in-band
+signal, and both reported runs died to a client-side idle timeout at 1800 s with essentially every
+variant resolved. `progress: Callable[[int, int], None] | None = None` is minor-legal and breaks
+nothing. It is here rather than shipped because the resolver chain is not a per-subject loop in
+`enrich()` — it is batched inside `resolver.py` — so the unit the callback reports is a design
+choice (subjects, links, or phases), and a leaf shipped against a guess is one P3 keeps working
+forever. The reporter explicitly did not ask for a protocol.
+
+**What is not in scope.** Not the three no-row branches, which are correct. Not a `not_found` row for
+an unanswered subject — that is the fabricated negative each branch's comment refuses, and
+`@unreachable-not-absent` is the rule.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

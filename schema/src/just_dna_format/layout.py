@@ -5,8 +5,11 @@ splits them back apart — four parties, one layout. `just_dna_enricher.location
 disagreement about a snapshot's layout so far has been silent, and this is the same class of fact one
 tier down, so it lives in the schema tier where both consumers import it rather than copy it.
 
-Nothing here fetches, parses or validates. It is `pathlib` and two tuples of names, which is why it can
-sit in the dependency-light tier at all.
+Nothing here fetches, parses or validates. It is the standard library and two tuples of names, which is
+why it can sit in the dependency-light tier at all — `pathlib` for the places, and since S66 `os` plus
+`tempfile` for the *writing*, because how a sidecar is put on disk turned out to be the same class of
+fact as where: four parties agreeing on the name is worth nothing if a killed run leaves half a table
+under it.
 
 **Scope is the machine-written sidecars only** — `resolution.csv` and the fact tables. The authored DSL
 (`module_spec.yaml`, `variants.csv`, `studies.csv`, the table kinds) has exactly one legal name in
@@ -16,7 +19,12 @@ silent-success shape this codebase treats as the worst kind of mistake. Only the
 move, because only they have a machine that knows where to put them.
 """
 
+import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TextIO
 
 #: `sources.csv` is the deprecated spelling and `licensing.csv` the one 0.6 introduces (RM51).
 #:
@@ -183,3 +191,61 @@ def deprecation_notice(path: Path, name: str, *, shown_as: str | None = None) ->
         f"— rename it to {preferred_spelling(name)!r}. It is read exactly as before until then; the "
         f"compiled parquet and the manifest key keep their current names, which only a major may change."
     )
+
+
+def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Path:
+    """Write `text` to `path` so a reader ever only sees the whole file or the previous one.
+
+    The naive `write_text` truncates in place, so a process killed between the truncate and the last
+    byte leaves a file that is **syntactically valid and simply short** — the one failure mode a table
+    cannot report about itself, because a resolution table with 162 of 330 rows looks exactly like a
+    module whose author resolved less (S66). Every sidecar here is read back and merged by the next
+    run, so a short file is not merely lost work: it is silently believed.
+
+    Same directory for the temp file, because `os.replace` is only atomic within a filesystem and a
+    tempdir may be on another one. `fsync` before the replace so the bytes are on disk and not merely
+    in the page cache — a machine that loses power after the rename would otherwise expose an empty
+    file where a complete one used to be, which is strictly worse than what we started with.
+    """
+    with atomic_writer(path, encoding=encoding) as handle:
+        handle.write(text)
+    return Path(path)
+
+
+@contextmanager
+def atomic_writer(
+    path: Path, *, encoding: str = "utf-8", newline: str | None = None
+) -> Iterator[TextIO]:
+    """A text handle whose writes land at `path` only if the block completes.
+
+    The `csv.DictWriter` half of the same guarantee — the writers pass `newline=""` exactly as they do
+    to `open`, so routing one through this changes the emitted bytes not at all.
+
+    On any exception the partial temp file is removed and `path` is left untouched, which is the
+    property that makes this safe to wrap around a writer that can raise mid-table: today a row whose
+    cell fails to serialize leaves the previous table truncated at that row.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # `delete=False` because the file has to survive `close()` to be renamed; the `finally` below is
+    # what actually deletes it, on every path that does not reach the replace.
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115 — the `with tmp:` below is the context manager
+        mode="w",
+        encoding=encoding,
+        newline=newline,
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    )
+    tmp_path = Path(tmp.name)
+    try:
+        with tmp:
+            yield tmp
+            tmp.flush()
+            os.fsync(tmp.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        # Reached with the temp already gone on the success path; `missing_ok` is what makes the one
+        # `finally` serve both, rather than an `except` that has to re-raise.
+        tmp_path.unlink(missing_ok=True)

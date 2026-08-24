@@ -365,6 +365,76 @@ boundary and the `variant_count` guard, none of which we would have found by con
 ---
 ## S66 — `enrich()` writes `resolution.csv` once, at the very end, in place, with no lock — so a run killed at minute 29 has written nothing, and one killed mid-write leaves a valid-looking short file
 
+**Status — accepted. Ask 1 shipped 2026-08-24; asks 2, 3 and 4 are filed as
+[RM128](ROADMAP.md#rm128--enrich-persists-nothing-until-its-tail-so-a-run-killed-at-minute-29-has-written-nothing),
+open, a minor, release undecided.** Every line of your reading holds against the tree and not only
+against the installed package — one write at `enrich.py:1248`, a truncating writer, no `flock`,
+`fcntl`, `os.replace`, `NamedTemporary` or `fsync` anywhere in any of the three packages, and the
+read-modify-write window really is the whole run.
+
+**We fixed nine writers where you reported three.** `layout.atomic_writer` / `atomic_write_text` in
+the format tier — temp file in the same directory, `fsync`, `os.replace` — and every sidecar writer
+in the workspace now goes through it: `resolution.csv`, `verification.json` and `sources.csv` as you
+asked, plus `clinical_assertions.csv`, `gene_metrics.csv`, `gene_validity.csv`, `frequencies.csv`,
+`gwas_effects.csv` and `literature.csv`. The six you did not name had the identical shape, reached by
+each being copied from its neighbour, so a fix scoped to the report would have left the next writer
+inheriting whichever neighbour it came from. The guard is an AST walk over the set with an equality
+assertion rather than a floor, and it was watched failing on the pre-fix source of all four spot-checked
+writers before being kept.
+
+**The half of your report we would not have got to on our own is why the short file is the dangerous
+residue rather than the annoying one.** You joined it to merge-not-clobber and to the three no-row
+branches yourself, and that join is the item: a truncated `resolution.csv` is read back, keyed on
+`subject`, and *believed*, because `enrich.py:873`/`:881`/`:903` make "fewer rows" a state the table
+reaches honestly. We have written that pairing into ENRICHER.md under the merge-key table rather than
+beside the writers, since the merge is what gives truncation its teeth, and into the gotcha book as
+`@atomic-sidecar-write`. Your three branches are correct and are explicitly out of scope in RM128 — a
+`not_found` row for a subject nothing could answer is the fabricated negative each comment refuses.
+
+**Two things the fix had to get right that are worth naming, because both are ways it could have been
+a no-op that looked like a fix.** The temp file goes in the *same directory*, since `os.replace` is
+atomic only within a filesystem and a `/tmp` default would have silently degraded to a copy on any
+split mount. And `newline=""` is passed through rather than defaulted: `csv.writer` terminates with
+`\r\n`, the sidecars are hashed inputs on one path, and RM82's newline normalization was built around
+exactly that byte — a helper that quietly normalized it would have moved bindings on the
+machine-written half of the corpus, which is precisely the half that carries CRLF. A test asserts the
+emitted bytes are identical to what `open` produced.
+
+**Why 2, 3 and 4 are filed rather than shipped — each is a decision, and we would rather have your
+view than guess.**
+
+- **Ask 2 (checkpointing), the one you care about most.** Your argument that merge semantics make a
+  partial file *correct input* is right, and we verified it: `existing` is read at `enrich.py:584-593`
+  and keyed by `merge_key`, so checkpointed rows are picked up and completed, and a re-run over them
+  hits cache and is instant. What stops us doing it unattended is a second atomicity nobody wrote
+  down: today `strict` raises at `:1228`/`:1240` *before* the `if write:` block, so a refused run
+  leaves the module exactly as it was. Checkpointing means a refusal leaves rows behind. We think that
+  is probably fine and possibly better, but "a refused strict run changes nothing" is the kind of
+  property that gets broken by accident precisely because it was never a promise — so it gets decided
+  first. One shape is refused in advance so you know it is not the answer: a checkpoint that fires
+  under `best_effort` and not under `strict` makes `write=True` mean two things, which is a defect we
+  have a rule against.
+- **Ask 3 (the lock).** It buys the most — it is the only one of the four that would have stopped the
+  zombie overwrite outright, and your account of that is the sharpest thing in the report: the module
+  validated, closed and compiled green over a table that had halved. What blocks it is that a lockfile
+  left by exactly the kill this item is about then blocks every subsequent run, which is a worse
+  unattended failure than the one it prevents; a staleness rule for a lock is a clock, and we have
+  refused clocks before. `flock` on the file has neither problem and is probably the answer — we have
+  not tested it on the network filesystems a consumer might use, which is the remaining work.
+- **Ask 4 (the progress callback).** Additive, minor-legal, and it is the incident's actual root
+  cause — both runs died to a client-side 1800 s idle timeout with essentially everything resolved.
+  It is not shipped only because the resolver chain is not a per-subject loop in `enrich()`; it is
+  batched inside `resolver.py`, so *what unit* the callback counts (subjects, links, phases) is a
+  signature decision, and a leaf shipped against a guess is one P3 keeps working forever. If you have
+  a preference from the transport side, that is the input that settles it — you are the caller.
+
+**What you can do now:** upgrade when 0.6.7 is cut and the truncated-file class is gone. The lost-work
+class is not, so a long unattended run still wants the timeout raised on your side until RM128's
+second half lands.
+
+<!-- triaged: 0.6.7 · sha 1b43eba05679 -->
+
+
 **Reported by** just-module-creator (the authoring plugin), 2026-08-22. Found by two independent
 unattended runs on 2026-08-21, both against enricher 0.6.6; the second hit it without knowing the first
 had. It is the one item in this batch that cost real work rather than clarity, so it is first.

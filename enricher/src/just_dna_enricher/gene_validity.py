@@ -46,6 +46,7 @@ import httpx
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.gene_validity import GeneValidityRow
+from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
 
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_genes
@@ -577,7 +578,7 @@ def _sort_key(row: GeneValidityRow) -> tuple:
 
 def _write_gene_validity_csv(rows: list[GeneValidityRow], output_path: Path) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs)."""
-    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+    with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

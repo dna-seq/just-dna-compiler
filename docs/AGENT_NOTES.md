@@ -1782,6 +1782,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Snapshots, caches and network clients
 
+- `@atomic-sidecar-write` — **A writer that truncates in place leaves a valid short file, and a
+  merge-not-clobber table cannot tell that from an honest one (S66, RM128).** Nine sidecar writers
+  across the enricher and the format tier all had the shape `open(path, "w")` + `csv.DictWriter`, so a
+  kill between the truncate and the last row left a table that parses cleanly and is simply shorter.
+  For `resolution.csv` that is the worst possible residue: the next run reads it back and merges on
+  `subject`, and three branches in `enrich()` deliberately write **no row** for a subject nothing could
+  answer, so a truncated table is byte-indistinguishable from a module whose author resolved less. The
+  reported incident had a client-killed run keep going, reach the write, and replace a restored 330-row
+  table with 162 rows — after which the module validated, closed and compiled green. Fixed with
+  `layout.atomic_writer` / `atomic_write_text` (temp file **in the same directory**, since `os.replace`
+  is atomic only within a filesystem; `fsync` before the rename, or a power loss exposes an empty file
+  where a complete one was). Three things worth keeping:
+  - **The helper lives in `layout.py`, beside *where* a sidecar goes.** How it is put on disk turned
+    out to be the same class of fact as where — four parties agreeing on the name buys nothing if a
+    killed run leaves half a table under it. That moved the module docstring's own claim (*"it is
+    `pathlib` and two tuples of names"*), which was corrected rather than left to drift.
+  - **`newline=""` is passed through, never defaulted.** `csv.writer` terminates with `\r\n`, the
+    sidecars are hashed inputs on one path, and the attestation's newline normalization (RM82) was
+    built around exactly that byte — a helper that quietly changed it would move bindings on the
+    machine-written half of the corpus, which is the half that carries CRLF.
+  - **Three writers were reported and nine were fixed.** The other six were the same shape reached by
+    copying a neighbour, so a fix scoped to the report is `@registry-completeness` waiting to happen;
+    the guard walks the set with an AST check and asserts an equality, not a floor.
+
 - `@gnomad-rate-limits` — **Rate limits are load-bearing in `gnomad.py`.** 10 requests/IP/60s, so everything is batched (20
   aliases; 29 returns HTTP 400) behind a 6s pacing gate on an **injectable clock** — tests prove the
   interval without really sleeping. Per-alias GraphQL errors must never sink a batch; a *pathless* error

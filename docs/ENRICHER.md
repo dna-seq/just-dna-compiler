@@ -2750,6 +2750,32 @@ its key as a uniqueness constraint would report a legal one-to-many file as a du
 about the other seven and wrong about the one where it matters. The two levels are tagged (`"id"` /
 `"grain"`), so a grain tuple can never collide with an id that happens to equal it.
 
+### How a sidecar is written, and why merge-not-clobber makes that load-bearing (S66)
+
+**Every sidecar writer goes through `just_dna_format.layout.atomic_writer` / `atomic_write_text`** —
+a temp file in the same directory, `fsync`, then `os.replace`. Same directory because `os.replace` is
+only atomic within a filesystem; `fsync` before the rename so a machine losing power cannot expose an
+empty file where a complete one used to be.
+
+This sits under the merge table above rather than beside the writers because the merge is what makes
+truncation dangerous. A writer that truncates in place leaves, on a kill, a file that is
+**syntactically valid and simply short** — and a short `resolution.csv` is not detected as damaged by
+anything, it is read back, keyed on `subject`, and *believed*. Three branches in `enrich()` write **no
+row** for a subject nothing could answer (`@unreachable-not-absent`, and each is correct), so fewer
+rows is a state the table reaches legitimately: a truncated table and a module whose author resolved
+less are the same bytes. The reported incident is the sharp form — a run killed client-side kept going,
+reached the write, and replaced a restored 330-row table with 162 rows, after which the module
+validated, closed and compiled green.
+
+`enricher/tests/test_atomic_sidecar_writes.py` walks the writers rather than testing one: three of the
+nine were reported and the other six had the identical shape, so a fix scoped to the report would have
+left the next writer inheriting whichever neighbour it was copied from.
+
+**What this does not fix**, and what [RM128](ROADMAP.md#rm128--enrich-persists-nothing-until-its-tail-so-a-run-killed-at-minute-29-has-written-nothing)
+holds: `enrich()` still persists nothing until its tail, so a run killed before the write has written
+nothing at all — atomically. The lost-work half, the missing lock over a read-modify-write window that
+spans the entire run, and the absent progress callback are each a decision rather than a missing line.
+
 ## `resolution.csv` is provisional (0.5)
 
 The table's shape (`ResolutionRow` — columns, keying, the `status` vocabulary, how one-to-many expansion

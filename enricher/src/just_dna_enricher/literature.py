@@ -64,6 +64,7 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import binning_citations, load_binning_rows, load_csv_rows
 from just_dna_format.base import merge_key
+from just_dna_format.layout import atomic_writer
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
@@ -1647,7 +1648,7 @@ def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
     Generic over the fields rather than a per-column dict literal, for the reason `_FIELDNAMES` gives:
     a hand-kept renderer is the same thing as a hand-kept column list, one edit later.
     """
-    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+    with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

@@ -306,6 +306,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A fetch-suppression set is derived from the merge key, never restated beside it. `@suppression-from-merge-key`
 - The run with nothing to do is a path: re-run a merge pass over a table it already filled. `@empty-work-is-a-path`
 - Probe a source's real file before modelling it; the docs lie by omission. `@probe-the-real-file`
+- A sidecar writer is atomic or it leaves a valid short file a merge believes. `@atomic-sidecar-write`
 
 ## The design cycle (the order of things)
 

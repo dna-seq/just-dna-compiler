@@ -31,7 +31,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from just_dna_compiler.compiler import load_csv_rows
-from just_dna_format.layout import SOURCES_CSV, SidecarCollision, sidecar_write_path
+from just_dna_format.layout import (
+    SOURCES_CSV,
+    SidecarCollision,
+    atomic_writer,
+    sidecar_write_path,
+)
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
@@ -486,7 +491,7 @@ def _cell(value: object) -> str:
 
 def write_sources_csv(rows: list[SourceRow], path: Path) -> None:
     """Write `sources.csv` in a fixed column order (normalized, like every reverse writer)."""
-    with Path(path).open("w", encoding="utf-8", newline="") as handle:
+    with atomic_writer(Path(path), newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=SOURCES_FIELDNAMES)
         writer.writeheader()
         for row in rows:

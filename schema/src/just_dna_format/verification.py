@@ -49,6 +49,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from just_dna_format.integrity import IntegrityError, artifact_digest, fact_signature, verify_signature
+from just_dna_format.layout import atomic_write_text
 from just_dna_format.manifest import (
     Closure,
     FileEntry,
@@ -356,10 +357,11 @@ def read_verification(path: Path) -> VerificationDoc:
 
 def write_verification(doc: VerificationDoc, path: Path) -> Path:
     """Write the document as indented JSON, with a trailing newline. Returns the path written."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(doc.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    return path
+    # Atomic since S66: this is written in `enrich()`'s tail beside `resolution.csv` and
+    # `sources.csv`, so one kill used to be able to truncate all three at once — and a half-written
+    # attestation is the worst of the three, because a document that fails to parse is how a module
+    # loses every check record it ever had.
+    return atomic_write_text(Path(path), doc.model_dump_json(indent=2) + "\n")
 
 
 def _ordered(records) -> list[VerificationRecord]:

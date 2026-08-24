@@ -30,6 +30,7 @@ import duckdb
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
+from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
 
@@ -378,7 +379,7 @@ def _write_gene_metrics_csv(rows: list[GeneMetricsRow], output_path: Path) -> No
     Every metric here is a float by nature, so unlike the frequency table there is no integer form to
     fall back on — `_cell` gives them one canonical rendering, and the round-trip test proves it.
     """
-    with open(output_path, "w", encoding="utf-8", newline="") as handle:
+    with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:
