@@ -203,3 +203,58 @@ def test_module_stats_is_variant_stats_plus_the_gene_facets() -> None:
     wide = module_stats([], {})
     assert narrow == wide
     assert {"gene_count", "genes"} <= set(narrow)
+
+
+def test_a_kind_table_drop_moves_a_published_counter(tmp_path: Path) -> None:
+    """A drop from a *kind* table moved no published number at all, so it looked like drift (S65).
+
+    A drop from `variants.csv` moves `stats.variant_count`, which is how a consumer recomputing a
+    manifest field from stored inputs discriminates *this compile discarded rows* from *the spec
+    changed*. A drop inside `pharm_variants.csv` moved nothing — `variant_count` is unaffected,
+    `gene_count` only moves if the dropped row held the last mention of a gene — so from outside it
+    was indistinguishable from real drift, and a consumer acting on that spends a version number on a
+    module that is perfectly current.
+
+    `compilation.dropped_rows` is that number. Empty is a real answer rather than an absence: the
+    check runs on every compile, so `{}` means nothing was dropped.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_SPEC_YAML)
+    (spec / "allele_function.csv").write_text(
+        "gene,allele,function_status\nCYP2C19,*2,no_function\n"
+    )
+    header = "rsid,chrom,start,ref,genotype,gene,drug,conclusion\n"
+    kept_row = "rs2469808710,2,120926480,A,A/AT,GLI2,warfarin,a spelled insertion\n"
+    (spec / "pharm_variants.csv").write_text(
+        header
+        + "rs2104016493,2,47410090,T,<DEL>/T,MSH2,warfarin,a deletion with no stated length\n"
+        + kept_row
+    )
+    dropped = compile_module(spec, tmp_path / "out")
+    assert dropped.success, dropped.errors
+    assert dropped.manifest.compilation.dropped_rows == {"pharm_variants.csv": 1}
+    # The premise: variant_count cannot see it, which is why the counter had to exist.
+    assert dropped.manifest.stats.variant_count == 0
+
+    (spec / "pharm_variants.csv").write_text(
+        header
+        + "rs2104016493,2,47410090,T,<DEL:913>/T,MSH2,warfarin,a 913 bp MSH2 deletion\n"
+        + kept_row
+    )
+    kept = compile_module(spec, tmp_path / "kept")
+    assert kept.success, kept.errors
+    assert kept.manifest.compilation.dropped_rows == {}, "nothing dropped is {}, not absent"
+
+
+def test_dropped_rows_is_additive_and_moves_neither_identity(tmp_path: Path) -> None:
+    """A new manifest field, so it owes the same proof every one of them does."""
+    spec = _EXAMPLES / "hfe_hemochromatosis"
+    result = compile_module(spec, tmp_path / "out")
+    assert result.success, result.errors
+    assert result.manifest.compilation.dropped_rows == {}
+
+    from just_dna_format.manifest import Compilation
+
+    # Optional with a default, so every manifest written before this field still validates.
+    assert Compilation().dropped_rows == {}

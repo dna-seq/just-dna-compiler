@@ -141,6 +141,46 @@ fix, deferring it to a minor means serving a wrong value meanwhile, so the relea
 staleness and a second channel is the only resolution left. The charter amendment of 2026-08-21 made
 that a rule, which is what turns this item from a nicety into a debt.
 
+### Four constraints handed back by the consumer who built the other half (S65, 2026-08-21)
+
+just-dna-registry shipped the recomputation side as `services/rebuild.py` in their 0.21.0 and reported
+what building it taught them. Each of these narrows the design and none was visible from here.
+
+- **Convergence is a hard requirement, and the obvious shape fails it.** If a hint fires for a version
+  compiled by the *exact* compiler now installed, recompiling derives the same value again — so an
+  automated sweep mints a fresh PATCH every run, forever. That is the *a patch is not a gap* rule
+  re-entering by a different door. **The interval-keyed shape gets this for free, because the interval
+  from a version to itself is empty** — so state that as load-bearing rather than incidental, since a
+  field-keyed or "latest known defect" shape would not have the property. It is also what bounds a
+  false positive to one wasted version number per module ever, which is what made them willing to act
+  unattended at all.
+- **Recomputability splits the problem in half, and the better half already shipped.** For a manifest
+  field that is a pure function of the authored rows, a consumer can recompute the *current* answer
+  from stored inputs — no enrichment, no parquet, no network — using `spec_tables` (RM116) for the
+  defaults-folded rows and `module_stats` (RM121) for the derivation. Neither landed for this reason.
+  **So what would help most is not a bigger table but a small published roster: which manifest fields
+  are pure functions of the authored rows.** That is a fact we hold and they guess at, and it *shrinks*
+  this item rather than growing it. The interval-keyed table then only has to cover what a consumer
+  cannot recompute — `literature.quotes_unchecked` (RM119) is their worked example, since it derives
+  from a sidecar rather than from authored rows.
+- **The roster's boundary is conditional, and the condition is invisible from outside.** `validate_spec`
+  computes `stats` over the full row set; `compile_module` re-derives over the survivors **only when
+  the symbolic-allele drop removed something**. So a recomputation from authored rows is the *pre-drop*
+  side, and `manifest.stats` legitimately disagrees with it — permanently, under any compiler — for a
+  module that lost the sole row naming a gene. A roster stating "pure function of the authored rows"
+  without that condition would send consumers to spend version numbers on modules that are current.
+- **`compilation.dropped_rows` closes the residue, and shipped 2026-08-24.** Their guard discriminates
+  on `variant_count`, which catches a drop from `variants.csv`; a drop inside a *kind* table moved no
+  published counter at all. With the counter, the `stats` half of the roster is unconditionally
+  checkable. They rejected reading the warning text for the reason our own catalogue rule gives.
+
+**Scope it for coexistence rather than replacement, at the reporter's request.** Their probes sit
+behind one named seam so a probe this covers retires by deletion, and they may keep one or two anyway
+— a recomputation checks the artifact actually in front of them, a hint states what a release did in
+general, and the two fail differently. **The useful division: we state what a release did, they check
+what a specific stored artifact says.** And they are not re-asking for `should_rebuild`; building the
+decision themselves is what surfaced all four constraints above.
+
 ---
 
 ## RM122 — the measure lookup is specified and nothing anywhere implements it

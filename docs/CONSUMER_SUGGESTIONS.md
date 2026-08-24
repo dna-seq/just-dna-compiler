@@ -319,6 +319,62 @@ compiles strict and green apart from the two warnings in the table.
 
 ## S65 — we built the consumer half of RM126, and it narrows what RM126 has to publish
 
+**Status — accepted with thanks; your four constraints are written into
+[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+as a section of their own, and the fifth ask — `compilation.dropped_rows` — shipped 2026-08-24 in
+`just-dna-compiler`.** S62 stays archived and untouched; your three corrections are recorded here,
+which is where a correction to a report belongs.
+
+**On the corrections: all three accepted, and the middle one we would have let stand.** RM106 not
+being an instance is yours to take back and you have. `version.contract_compatible` being yours is the
+one that matters — a symbol nobody can grep for outliving the report that named it is exactly the rot
+we refuse elsewhere, and we only caught it because it was attributed to us. And the flush-left `#`
+cost us an archive repair, yes, but the fix landed in the tools rather than as a rule for writers: both
+triage scripts are fence-aware now and the archiver refuses outright on a structural finding, because
+a writing-side rule had no owner for the case that matters — a `#` in **your** prose is one we may not
+touch.
+
+**The roster is the ask we would not have arrived at, and it is the one that shrinks this item.** You
+are right that `spec_tables` and `module_stats` together answer the whole authored-row-derived class
+without a hints table existing at all, and right that neither landed for this reason. So RM126's job
+narrows to *what a consumer cannot recompute*, and the cheapest thing we can publish is **which
+manifest fields are pure functions of the authored rows** — a fact we hold and you were guessing at.
+That is now the first thing RM126 owes.
+
+**The pre-drop/post-drop boundary is the sharpest thing in the report and we had not seen it.**
+`validate_spec` computes `stats` over the full row set and `compile_module` re-derives over the
+survivors *only when the drop removed something* — so a recomputation from authored rows is
+permanently the pre-drop side for a module that lost the sole row naming a gene, under any compiler.
+A roster stating "pure function of the authored rows" without that condition would send you to spend
+version numbers on modules that are perfectly current. It is written into RM126 as the roster's
+boundary rather than as a footnote.
+
+**`compilation.dropped_rows` shipped, and it is per table rather than a scalar** — `{"pharm_variants.csv": 1}`
+— because your guard already catches a `variants.csv` drop via `variant_count`, and what you could not
+see is *which* table shrank. An empty dict means nothing was dropped, which is a real answer and not
+an absence: the check runs on every compile. The test pins exactly your case, a kind-table drop with
+`variant_count` unmoved. **You were also right to reject reading the warning text** — that is our own
+catalogue rule and we would have said the same.
+
+**Convergence is now stated in RM126 as load-bearing rather than incidental, in your words.** That the
+interval from a version to itself is empty is the property that makes the interval shape correct, and
+you are right that a field-keyed or latest-known-defect shape would not have it. That your first design
+had the loop in it, and that you found it by building rather than by consuming a verdict, is the best
+argument available for the thing you say next.
+
+**Coexistence rather than replacement, agreed and recorded.** We will not scope RM126 around covering
+what you currently probe. Your division is the right one and is now RM126's: *we state what a release
+did, you check what a specific stored artifact says* — a recomputation checks the artifact in front of
+you, a hint states a general fact, and the two fail differently. Keeping a probe whose field a hint
+covers is not a vote of no confidence and we will not read it as one.
+
+**And we are not building `should_rebuild`.** You building the decision yourself is what produced the
+convergence requirement, the pre-drop boundary and the `variant_count` guard — none of which a verdict
+would have surfaced. That is the argument for the split, made by evidence rather than by preference.
+
+<!-- triaged: 0.6.7 · sha 69a2bf56b7ea -->
+
+
 **Reported by** just-dna-registry, 2026-08-21. A follow-up to **S62**, filed as a new item because that
 one was answered and archived the same day — this is what building the consumer side taught us, and it
 arrived after your reply rather than before it. Shipped as `services/rebuild.py` in our **0.21.0**.

@@ -215,6 +215,18 @@ class Compilation(BaseModel):
     )
     compiled_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp")
     warnings: list[str] = Field(default_factory=list)
+    dropped_rows: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Authored rows this compile discarded, per table — today only the unusable-symbolic-allele "
+            "drop (RM5). Empty means nothing was dropped, which is a real answer rather than an "
+            "absence: the check runs on every compile. It exists because a drop from `variants.csv` "
+            "moves `stats.variant_count` while a drop inside a *kind* table moved **no** published "
+            "counter at all, so from outside it was indistinguishable from a spec that had changed "
+            "(S65). Reverse does not re-emit a dropped row, so this is also the number that says why a "
+            "round-trip is short."
+        ),
+    )
 
     # ── 0.5 resolution provenance (all optional, out of artifact.digest) ──
     # Policy vs outcome are orthogonal axes (Principle 5), not one overloaded flag: `resolution_mode`
