@@ -552,3 +552,97 @@ def test_neither_branch_claims_nothing_else_is_lost(tmp_path: Path) -> None:
         emitted = [w for w in validate_spec(spec).warnings if "`panel:` block" in w]
         assert "nothing else is lost" not in emitted[0]
         assert all(field in emitted[0] for field in unreplaced), emitted[0]
+
+
+#: Proof-of-work bits for the attestation fixtures below. The production constant is 20 (~0.7s per
+#: document); a reader refuses anything mined at less, so the constant is patched for the whole test
+#: rather than passed to `attest` alone.
+_EASY_BITS = 8
+
+
+@pytest.fixture
+def attested(monkeypatch):
+    """Write a `verification.json` bound to a spec as it stands, cheap enough to mine in a test."""
+    from just_dna_format import verification as verification_module
+
+    monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", _EASY_BITS)
+
+    def _write(spec: Path, records) -> Path:
+        from just_dna_compiler.compiler import authored_input_entries
+        from just_dna_format.verification import attest, module_binding, write_verification
+
+        doc = attest(
+            records,
+            module_binding(authored_input_entries(spec)),
+            producer="test",
+            produced_at="2026-08-24T00:00:00Z",
+            difficulty=_EASY_BITS,
+        )
+        write_verification(doc, spec / "verification.json")
+        return spec
+
+    return _write
+
+
+def test_a_check_that_found_something_is_said_where_the_author_is_standing(
+    tmp_path: Path, attested
+) -> None:
+    """Nothing read `VerificationRecord.findings`, so fifty-two contested rows were silent (S70).
+
+    The counts do reach `manifest.verification.checks[]`, so a consumer that goes looking finds them —
+    but the author running `validate` saw a green result with warnings about closure and nothing about
+    the rows a source disagrees with. Reported as 20 of 141,616 and 32 of 618,629 on two real modules.
+    """
+    from just_dna_format.manifest import VerificationRecord
+
+    spec = attested(
+        _write_spec(tmp_path / "s"),
+        [
+            VerificationRecord(check="clinical_significance", subjects=141_616, findings=20,
+                               source="clinvar", detail="20 opposed: 1:100:A:G (pathogenic vs benign)"),
+            VerificationRecord(check="reference_allele", subjects=300, findings=0, source="ensembl"),
+        ],
+    )
+    warnings = [w for w in validate_spec(spec).warnings if "records 20 finding" in w]
+    assert len(warnings) == 1, warnings
+    assert "clinical_significance (20 of 141616)" in warnings[0]
+    # A finding is a question, not a defect — and the reference_allele record found nothing, so it
+    # must not appear at all.
+    assert "reference_allele" not in warnings[0]
+    assert "never fails a build" in warnings[0]
+
+
+def test_a_clean_attestation_says_nothing_about_findings(tmp_path: Path, attested) -> None:
+    """A check that could not fail must not report a zero — the same rule, on the other side."""
+    from just_dna_format.manifest import VerificationRecord
+
+    spec = attested(
+        _write_spec(tmp_path / "s"),
+        [VerificationRecord(check="reference_allele", subjects=300, findings=0, source="ensembl")],
+    )
+    assert not [w for w in validate_spec(spec).warnings if "finding(s) across" in w]
+
+
+def test_the_findings_warning_is_published_once_despite_running_on_both_sides(
+    tmp_path: Path, attested
+) -> None:
+    """The message embeds counts and `_verification_block` runs in validate AND compile.
+
+    Normally that is the `@no-rerun-with-counts` trap: a check re-run after resolution reports the
+    same finding with two different numbers, message-dedup cannot collapse two different sentences,
+    and both reach `manifest.compilation.warnings` — a published field contradicting itself. It is
+    safe here for the reason the call site already gives: the input is `verification.json`, which no
+    compile step touches, so both passes reach a byte-identical sentence. Pinned rather than argued.
+    """
+    from just_dna_format.manifest import VerificationRecord
+
+    spec = attested(
+        _write_spec(tmp_path / "s"),
+        [VerificationRecord(check="clinical_significance", subjects=99, findings=7, source="clinvar")],
+    )
+    result = compile_module(spec, tmp_path / "o", resolve_with_ensembl=False)
+    assert result.success, result.errors
+
+    emitted = [w for w in result.warnings if "finding(s) across" in w]
+    assert len(emitted) == 1, emitted
+    assert emitted == [w for w in result.manifest.compilation.warnings if "finding(s) across" in w]

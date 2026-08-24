@@ -873,6 +873,49 @@ either side.
 
 ## S70 — `verification.json` counts a check's findings and keeps none of them, and `clinical_significance` is the only check where that leaves nothing at all
 
+**Status — accepted. Ask 2 and the cheap half of ask 1 shipped 2026-08-24; the sidecar is filed as
+[RM130](ROADMAP.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on),
+open, a minor.** Your table of where each check's findings survive is correct check by check, and your
+claim that **nothing in `compiler.py` reads `VerificationRecord.findings`** is confirmed against the
+tree — one grep, no hits.
+
+**Ask 2 first, because it was the cheapest and the most obviously missing.** `validate` and `compile`
+now say that a record reports findings, naming each check and its denominator: *"verification.json
+records 20 finding(s) across 1 check(s): clinical_significance (20 of 141616)…"*. The sentence says a
+finding is a disagreement rather than a defect, that this never fails a build, and where to record a
+justified one. A record reporting **zero** says nothing at all — a check that could not fail must not
+report a zero, which is the rule your S59 established and which applies to the reporting side too.
+
+**The cheap half of ask 1: `clinical_significance` now writes a `detail`**, grouped on `opposed` with
+the `verification.examples` aggregation so a 618,629-subject module cannot put a list in the message.
+It names the rows and **both values** — `1:100:A:G (pathogenic vs benign)` — because your point is
+that an author must be able to check both sides, and a bare key sends them back to the comparison.
+Grouping on `opposed` rather than by count is your own distinction: `ClinSigConflict.opposed` already
+draws it and it is the one that decides what to do.
+
+**The sidecar is filed rather than shipped, and the reason is a decision a neighbouring item says to
+make first.** You are right that this is the input side of S52/RM117 — `outranks` can only be written
+for a row an author can name, so the record and the trigger are one piece of work seen from two ends,
+and a `detail` string makes the rows nameable to a *human* without making them joinable. What stops us
+building it this pass is **RM124's open question 2**, from S60: it asks whether one record serves both
+an authored overlay and `outranks`, on the grounds that both are *an authored value beating a source
+with prose*, and it says to settle that **before either grows a second field**. A conflict sidecar is a
+third table in that family, so shipping it now would answer RM124 by accident — which is the failure
+mode your S60 was filed to prevent.
+
+**One thing settled in advance so it does not have to be re-derived: the key cannot be a bare
+`variant_key`.** `compare_clin_sig` compares an authored call for a **genotype**, and
+`annotations.parquet` keys on genotype for the same reason, so a conflict is per
+`(variant_key, genotype)` — a variant-keyed table would collapse two authored calls that disagree with
+the archive differently. That is in RM130.
+
+**Nothing about severity moved, per your last paragraph and our own rule.** No error, no `strict`
+matter, no auto-correction; the ClinVar cross-check still never escalates, and the new warning says in
+its own text that the archive is the stale side often enough that this cannot fail a build.
+
+<!-- triaged: 0.6.7 · sha 7eca8f9cafc6 -->
+
+
 **Reported by** just-module-creator, 2026-08-22. Companion to **S71**, which is about the same file at
 the document level.
 

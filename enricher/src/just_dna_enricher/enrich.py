@@ -1284,6 +1284,34 @@ def enrich(
     return result
 
 
+def _clin_sig_detail(conflicts: Sequence[ClinSigConflict]) -> str | None:
+    """Which rows disagreed, grouped by whether the two calls are *opposed* or merely different.
+
+    The check counted its findings and kept none of them (S70). Every conflict reached the logger and
+    nothing else, so a record reading `findings: 20, detail: null` left an author able neither to
+    defend the twenty nor to correct them — and re-running to see the log again costs the full ClinVar
+    comparison. Of the five checks `enrich()` records this was the only one whose findings survived
+    nowhere: `reference_allele` and `rsid_coordinate_agreement` carry a `detail`, and `rsid_currency`
+    stamps its verdict onto the resolution rows themselves.
+
+    Grouped on `opposed` because that is the distinction the conflict already draws and the one that
+    decides what to do: an opposed pair (pathogenic-class against benign-class) is the finding worth
+    acting on, a difference is worth knowing. `verification.examples` is the shared aggregation rule,
+    so this cannot become the per-row list the CPIC lesson is about.
+    """
+    if not conflicts:
+        return None
+    parts = []
+    for label, group in (
+        ("opposed", [c for c in conflicts if c.opposed]),
+        ("differing", [c for c in conflicts if not c.opposed]),
+    ):
+        if group:
+            named = examples([f"{c.variant_key} ({c.authored} vs {c.clinvar})" for c in group])
+            parts.append(f"{len(group)} {label}: {named}")
+    return "; ".join(parts)
+
+
 def _verification_records(
     *,
     offline: bool,
@@ -1436,6 +1464,7 @@ def _verification_records(
                 findings=len(clin_sig_conflicts),
                 source="clinvar",
                 release=clinvar_release,
+                detail=_clin_sig_detail(clin_sig_conflicts),
             )
         )
 

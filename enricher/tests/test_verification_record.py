@@ -734,3 +734,52 @@ def test_a_record_written_before_this_field_reads_as_not_recorded(tmp_path: Path
     from just_dna_format.manifest import VerificationRecord
 
     assert VerificationRecord(check="rsid_currency", subjects=1, findings=0).producer is None
+
+
+def _conflict(key: str, authored: str, clinvar: str, *, opposed: bool):
+    from just_dna_enricher.clinical import ClinSigConflict
+
+    return ClinSigConflict(
+        variant_key=key, genotype="A/G", chrom="1", start=1, ref="A", alt="G",
+        authored=authored, clinvar=clinvar, review_stars=2, review_status="criteria_provided",
+        condition=None, opposed=opposed,
+    )
+
+
+def test_the_clin_sig_check_now_names_the_rows_it_disagreed_with(tmp_path: Path) -> None:
+    """`clinical_significance` was the only check whose findings survived nowhere (S70).
+
+    Of the five `enrich()` records, `reference_allele` and `rsid_coordinate_agreement` carry a
+    `detail`, and `rsid_currency` stamps its verdict onto the resolution rows themselves. This one
+    passed `subjects`, `findings`, `source` and `release` and no detail — so a record reading
+    `findings: 20, detail: null` left an author able neither to defend the twenty nor correct them,
+    and re-running to see the log again costs the full ClinVar comparison.
+
+    Grouped on `opposed`, which is the distinction the conflict already draws and the one that decides
+    what to do about it.
+    """
+    from just_dna_enricher.enrich import _clin_sig_detail
+
+    conflicts = [
+        _conflict("1:100:A:G", "pathogenic", "benign", opposed=True),
+        _conflict("1:200:A:G", "pathogenic", "likely_pathogenic", opposed=False),
+        _conflict("1:300:A:G", "benign", "uncertain_significance", opposed=False),
+    ]
+    detail = _clin_sig_detail(conflicts)
+
+    assert "1 opposed" in detail and "2 differing" in detail
+    # Both values, so an author can see which side to check without re-running the comparison.
+    assert "1:100:A:G (pathogenic vs benign)" in detail
+    assert _clin_sig_detail([]) is None, "no conflicts is no detail, not an empty sentence"
+
+
+def test_the_detail_aggregates_rather_than_listing_every_row() -> None:
+    """It uses the shared `examples` rule, so 618,629 subjects cannot put a list in the message."""
+    from just_dna_enricher.enrich import _clin_sig_detail
+    from just_dna_enricher.verification import DETAIL_LIMIT
+
+    many = [_conflict(f"1:{i}:A:G", "pathogenic", "benign", opposed=True) for i in range(40)]
+    detail = _clin_sig_detail(many)
+    assert "40 opposed" in detail
+    assert f"and {40 - DETAIL_LIMIT} more" in detail
+    assert detail.count("vs benign") == DETAIL_LIMIT

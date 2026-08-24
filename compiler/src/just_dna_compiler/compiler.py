@@ -5200,7 +5200,46 @@ def _verification_block(spec_dir: Path) -> tuple[Verification | None, list[str]]
     has now closed four times.
     """
     block, warnings = _read_verification_block(spec_dir)
-    return block, [*warnings, *_closure_warning(block)]
+    return block, [*warnings, *_closure_warning(block), *_findings_warning(block)]
+
+
+def _findings_warning(block: Verification | None) -> list[str]:
+    """Say that a check *found something*, where the author is standing (S70).
+
+    Nothing read `VerificationRecord.findings` at all: the counts reached
+    `manifest.verification.checks[]`, so a consumer that went looking found them, while the author
+    running `validate` saw a green result with warnings about closure and nothing about the rows a
+    source disagrees with. Reported as 20 of 141,616 and 32 of 618,629 on two real modules.
+
+    **A question, never a defect** — warning in both modes and never a `strict` matter, the
+    `_closure_warning` class. Half the time the archive is the stale side, which is the whole reason
+    the ClinVar cross-check does not escalate under `strict` either; making this fatal would have the
+    format arbitrate a clinical disagreement, one tier further out than the check that refuses to.
+
+    **The message carries counts and runs on both sides, which is normally the `@no-rerun-with-counts`
+    trap and is not one here.** That rule fires where *resolution* changes a check's input between the
+    two passes, so the same finding is reported with two different numbers and message-dedup cannot
+    collapse them. This check's input is `verification.json`, which no compile step touches — the
+    reason `_verification_block`'s call site already gives for being safe to double — so both passes
+    reach a byte-identical sentence and the existing dedup collapses it. Pinned by a test rather than
+    left to the argument.
+    """
+    if block is None:
+        return []
+    found = [r for r in block.checks if r.findings]
+    if not found:
+        return []
+    named = ", ".join(
+        f"{r.check} ({r.findings} of {r.subjects})"
+        for r in sorted(found, key=lambda r: (-r.findings, r.check))
+    )
+    return [
+        f"verification.json records {sum(r.findings for r in found)} finding(s) across "
+        f"{len(found)} check(s): {named}. A finding is a disagreement between this module and a "
+        f"source, not a defect — the archive is the stale side often enough that this never fails a "
+        f"build. Read the record's `detail` for which rows, and record why the module is right in "
+        f"`provenance.json`'s `outranks` where it is."
+    ]
 
 
 def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[str]]:

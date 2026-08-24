@@ -512,6 +512,45 @@ forever. The reporter explicitly did not ask for a protocol.
 an unanswered subject — that is the fabricated negative each branch's comment refuses, and
 `@unreachable-not-absent` is the rule.
 
+## RM130 — a check's findings are counted and not kept, so a conflict has no name to act on
+
+**Severity** medium · **Status** open — **a minor, release undecided** — the observability half
+shipped 2026-08-24 · **Owner** enricher · **Motivating case** S70 (just-module-creator) in
+CONSUMER_SUGGESTIONS_HISTORY.md
+
+**What shipped, and it is the cheap half of ask 1 plus all of ask 2.** `clinical_significance` now
+writes a `detail` grouped on `opposed` with `verification.examples`' aggregation, so an author can see
+which rows and both values without re-running the comparison; and `_findings_warning` says at
+`validate`/`compile` that a record reports a non-zero `findings` — nothing read
+`VerificationRecord.findings` at all before, so twenty contested rows out of 141,616 were visible only
+to a consumer who went looking in `manifest.verification.checks[]`.
+
+**What is left is the sidecar, and it is deliberately not shipped because a neighbouring item says to
+decide something first.** The reporter asks for a derived table keyed on `variant_key` carrying the
+authored value, the source's value, and whether the two are *opposed* or merely *different* — and they
+are right that this is **the input side of RM117**: `ProvenanceItem.outranks` records *why* a row
+outranks an archive, and an author can only write one for a row they can name. A `detail` string makes
+the rows nameable to a human; it does not make them joinable.
+
+**The blocker is RM124's open question 2, and it is exactly on point.** That item asks whether one
+record serves both an authored overlay and `outranks` — *both are an authored value beating a source
+with prose* — and says to decide that **before either grows a second field**. A new conflict sidecar is
+a third table in the same family, so shipping it now pre-empts the decision RM124 exists to make. The
+question to settle first: is the conflict record an *input* to the overlay family (a derived table the
+author reads and answers in `provenance.json`), or is it the overlay's own evidence column? Those give
+different keys and different lifetimes.
+
+**One thing that is settled and worth not re-deriving.** The key cannot be a bare `variant_key`: a
+conflict is per `(variant_key, genotype)` because `compare_clin_sig` compares an authored call for a
+*genotype*, and `annotations.parquet` keys on genotype for the same reason (`@annotations-keys-genotype`).
+A table keyed on the variant alone would collapse two authored calls that disagree with the archive
+differently.
+
+**Not in scope, on the reporter's own scoping**: no escalation, no `strict` matter, and emphatically no
+auto-correction. A conflict is a question and half the time the archive is the stale side, which is why
+the ClinVar cross-check does not escalate under `strict` (`@clinsig-never-escalates`) and why the
+warning that shipped says so in its own text.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

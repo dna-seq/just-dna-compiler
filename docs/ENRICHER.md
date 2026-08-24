@@ -2750,6 +2750,37 @@ its key as a uniqueness constraint would report a legal one-to-many file as a du
 about the other seven and wrong about the one where it matters. The two levels are tagged (`"id"` /
 `"grain"`), so a grain tuple can never collide with an id that happens to equal it.
 
+### A check's findings, and where each one's survive (S70)
+
+`verification.json` records **counts**, and until 0.6.7 `clinical_significance` was the only one of
+the five checks `enrich()` puts whose findings then survived nowhere at all:
+
+| check | where its findings survive |
+|---|---|
+| `reference_allele` | `detail=`, via `summarize_ref_mismatches` — grouped by diagnosis, three keys named per group plus *"and N more"* |
+| `rsid_coordinate_agreement` | `detail=` — up to `DETAIL_LIMIT` disagreements, plus what was not compared and why |
+| `rsid_currency` | **per row in `resolution.csv`** — `rsid_status` and `rsid_current` are columns of the written file |
+| `genome_build_agreement` | count only, but its subjects *are* `reference_allele`'s mismatches, so the candidate rows are reachable |
+| `clinical_significance` | `detail=` since 0.6.7, grouped on `opposed`. Before that: the logger, and nothing else |
+
+The conflicts always existed at runtime — `compare_clin_sig` returns them and every one is logged —
+but stderr survives the process and nothing else does, so a record reading `findings: 20,
+detail: null` left an author able neither to defend the twenty nor correct them, and re-running to see
+the log again costs the full ClinVar comparison. `_clin_sig_detail` groups on `ClinSigConflict.opposed`
+because that is the distinction that decides what to do (an opposed pair is worth acting on, a
+difference is worth knowing) and names **both** values, since the standing instruction on a mismatch is
+to check both sides and a bare key cannot be checked at all.
+
+**The compiler now says so too.** `_findings_warning` reports a non-zero `findings` at `validate` and
+`compile`; nothing read `VerificationRecord.findings` before, so the counts reached
+`manifest.verification.checks[]` and an author running the validator saw a green result. A record
+reporting zero says nothing — a check that could not fail must not report one.
+
+**What is still owed is [RM130](ROADMAP.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on):**
+a `detail` makes the rows nameable to a human, not joinable. The sidecar that would make them joinable
+is the input side of RM117 and is blocked on RM124's question about whether one record serves both an
+overlay and `outranks`.
+
 ### How a sidecar is written, and why merge-not-clobber makes that load-bearing (S66)
 
 **Every sidecar writer goes through `just_dna_format.layout.atomic_writer` / `atomic_write_text`** —
