@@ -481,6 +481,32 @@ repeat_unit)`; `HeteroplasmyRow`→`(gene, reference_sequence, tissue, variant_k
 `NC_001807` mtDNA lineage, fraction ∈ [0,1]). `validate_bins()` is a table-level check: overlapping
 resolved ranges in a key group are a compile error; interior coverage gaps are warnings.
 
+**Where a citation attaches, table by table, and the rule that decides it (S73).** *A row cites when
+its claim is finer-grained than `studies.csv`' key.* `studies.csv` keys on `(variant_key, pmid)`, so a
+study row attaches to a **variant** — which is right for `variants.csv`, whose rows are per
+`(variant_key, genotype)` and whose claims a per-variant citation covers. It is wrong wherever a table
+makes several distinct claims about one variant, because one study row would then attach to all of
+them indiscriminately. That is why RM47 put `pmid` on the **bin row** rather than widening
+`studies.csv`, and the same reasoning reaches one table it has not yet been applied to:
+
+| table | its claims are per | cites through |
+|---|---|---|
+| `variants.csv` | `(variant_key, genotype)` | `studies.csv` — full provenance: `pmid`, `provenance_quote`, `curator`, population, effect size |
+| the four binning kinds | the bin's own key + `[measure_min, measure_max]` | `MeasureBinRow.pmid` on the row (RM47), with `literature.csv` describing the article |
+| `pharm_variants.csv` | `(variant_key, drug, genotype, phenotype_category, annotation_id)` | **nothing today — [RM132](ROADMAP.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant)** |
+
+So of the three readings a reporter can construct, the third is the intended one: a `pharm_variants`
+module **is** supposed to carry citations, and the column is missing rather than deliberately absent.
+Reading 1 — *the module cites ClinPGx as a whole through the licence row, and `evidence_level` is the
+provenance handle* — is not the design: `evidence_level` is a pointer at somebody else's **grading of**
+evidence, not at the evidence, and the licence row states redistribution terms rather than grounding a
+claim. Reading 2 — *use `studies.csv`* — fails on the keys exactly as it looks like it does, and is
+the reason RM47 exists rather than a gap RM47 left.
+
+**What the enricher writes today is `literature.csv`, and that is the describing half, not the citing
+half.** A `pharm_variants` module can already carry article records; what it cannot do is say **which
+row** any of them grounds.
+
 **What the sentinel rule actually enforces — one side of it.** The contract is that a missing
 measurement selects the `unresolved` row, so a table without one leaves a consumer with nothing to
 match. The compile path enforces only the **upper** bound of that: `_validate_table_kind` counts

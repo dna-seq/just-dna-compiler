@@ -1334,6 +1334,54 @@ installed package at the lines given.
 
 ## S73 — an open question, not a defect: `pharm_variants.csv` has no citation column, so a ClinPGx-drafted module makes 1,482 clinical claims with nowhere to cite them
 
+**Status — answered: your third reading is the intended one, and the column is missing rather than
+deliberately absent. Stated in [SCHEMAS.md](SCHEMAS.md) as you asked, and the column is filed as
+[RM132](ROADMAP.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant),
+open, a minor.**
+
+**The one-sentence answer: a row cites when its claim is finer-grained than `studies.csv`' key.** That
+is the rule, and it decides every table without anyone having to ask again. `studies.csv` keys on
+`(variant_key, pmid)`, so a study row attaches to a **variant** — which is exactly right for
+`variants.csv`, whose rows are per `(variant_key, genotype)`. It is wrong wherever one variant carries
+several distinct claims.
+
+**We had already decided this, one release ago, for a different table — and you reconstructed the
+argument without knowing that.** RM47 put `pmid` on the **bin row** rather than widening `studies.csv`,
+for your reason exactly: *the bin row cites; the citation table describes*. Your reading 2 fails on the
+keys precisely as you suspected, and your instinct not to build on it is the same call we made. The
+gap is that nobody carried the rule across to `pharm_variants.csv`, whose key is the longest in the
+schema.
+
+**On reading 1, since it was the plausible one and we want it closed rather than merely unchosen.**
+`evidence_level` is not the provenance handle: it points at somebody else's *grading of* evidence
+rather than at the evidence, which is your own phrasing and it is right. And the licence row's
+`source`/`dataset` state redistribution terms and which snapshot the rows came from — they say nothing
+about which study grounds a given drug–genotype claim. So the module is not "citing ClinPGx as a
+whole" in any sense that discharges a per-row claim. Both are written into SCHEMAS beside the new
+citation-site table so the next person meets the refutation rather than re-deriving it.
+
+**Why the column is filed rather than shipped in this pass, and it is not hesitation about the
+answer.** RM47's recorded lesson is that the column is the smaller half: **both** literature
+cross-check sites have to learn the new citation site in the same release — `_cross_check_literature`
+and `enrich_literature` — or every citation from it reads as a stale orphan in one direction and is
+invisible in the other, which its own note calls *evidence that the format never checks, worse than
+the gap*. That is a piece of work across three tiers, not a field.
+
+**One thing genuinely open, and your skills are the reason it matters.** Whether `provenance_quote`
+follows `pmid` here. The binning side deliberately said no — the row cites, the table describes, which
+is what stops `StudyRow`'s whole provenance column set migrating across one column at a time. We think
+the same holds, and we are flagging it rather than assuming it because you teach `provenance_quote`
+and per-row citation hard, on S54/S55, and a 1,482-row body of clinical claims is exactly where that
+question gets asked next. Your view would settle it.
+
+**For the dossier meanwhile:** a `pharm_variants` module **is** supposed to carry citations; today it
+can carry `literature.csv` article records, which is the *describing* half, and it has no way to say
+which row any of them grounds. Teaching "cite everything" is right and currently unexecutable for this
+table — which is a fact about our schema, not about the author.
+
+<!-- triaged: 0.6.7 · sha d5038107cbd4 -->
+
+
 **Reported by** just-module-creator, 2026-08-22. **We are asking what the intended model is, not
 asserting that something is broken** — we could not find the answer in either tree and we would rather
 ask than write a guess into our skills.

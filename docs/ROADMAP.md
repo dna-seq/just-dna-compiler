@@ -604,6 +604,51 @@ vocabulary needs and is worth doing once.
 All three hide findings rather than organising them, and the author with the most warnings is the one
 who most needs the hidden ones.
 
+## RM132 — `pharm_variants.csv` makes a clinical claim per row and cites per variant
+
+**Severity** medium · **Status** open — **a minor, release undecided** — shape settled 2026-08-24 by
+the RM47 precedent · **Owner** format + compiler + enricher · **Motivating case** S73
+(just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
+
+A ClinPGx-drafted module carried **1,482** drug-response rows and had nowhere to cite any of them.
+Sixteen model fields, thirteen authored, none a PMID or DOI.
+
+**The question the reporter asked was which of three provenance models was intended, and the tree
+already answers it — RM47 decided this shape one release ago for a different table.** *The bin row
+cites; the citation table describes.* The rule underneath is: **a row cites when its claim is
+finer-grained than `studies.csv`' key.** `studies.csv` keys on `(variant_key, pmid)`, so a study row
+attaches to a *variant*; `pharm_variants.csv` keys on `(variant_key, drug, genotype,
+phenotype_category, annotation_id)`, so one study row would attach to every drug, genotype and
+phenotype category recorded for that variant. The reporter reached that conclusion themselves and
+declined to build on it, which is the right call.
+
+**So the answer is the third reading and the column is missing rather than deliberately absent.**
+`evidence_level` is not the provenance handle — it points at somebody else's *grading of* evidence
+rather than at the evidence — and the licence row's `source`/`dataset` state redistribution terms, not
+grounding. Both are recorded in SCHEMAS beside the citation-site table so nobody re-derives them.
+
+**What the fix contains, and the second half is what makes it a piece of work rather than a column.**
+`PharmVariantRow.pmid`, optional, free-form under the same grammar as `StudyRow.pmid` and
+`MeasureBinRow.pmid` — additive and minor-legal. And **both literature cross-check sites have to learn
+the new citation site in the same release**: `_cross_check_literature` in the compiler and
+`enrich_literature` in the enricher. That obligation is not inferred; it is RM47's recorded lesson in
+its own words — *shipping the column without both would be evidence the format never checks, which is
+worse than the gap* — because every citation from the new site would otherwise read as a stale orphan
+in one direction and be invisible in the other. The enricher must reach the rows through **public**
+compiler symbols, as `load_binning_rows`/`binning_citations` already do for the bins; a second copy of
+the table roster in the enricher is the RM40/RM41 shape.
+
+**Open, and it is the only thing genuinely undecided**: whether `provenance_quote` follows. On the
+binning side it deliberately did not — the bin row cites and `studies.csv`/`literature.csv` describe,
+which is what stops `StudyRow`'s whole provenance column set migrating one column at a time. The same
+argument should hold here, and it is worth stating rather than assuming, because the reporter's skills
+teach `provenance_quote` and per-row citation hard, and a 1,482-row body of clinical claims is exactly
+where somebody will ask for the quote next. P9 prices this: `pharm_variants.csv` is an **authored**
+table, so every column is full cost.
+
+**Not in scope**: widening `studies.csv`' key, which is the repair that looks obvious and is the one
+RM47 already refused — it would make a study row's subject depend on which table read it.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
