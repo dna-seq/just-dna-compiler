@@ -34,7 +34,65 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-21 (latest) — the Constitution says rules only, and gained three (RM127 closed, RM126 → 0.7)
+## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
+
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a patch, not yet cut.** Two
+reporters, twelve items, answered serially. Eight shipped code, four are filed; the counts below are
+off the tree rather than remembered.
+
+**Filed:** RM128 (`enrich()`'s lost work), RM130 (a conflict sidecar), RM131 (`warnings` structure),
+RM132 (`pharm_variants.csv` citations), RM133 (an amendable card subtitle), plus the `stats` counter
+retype queued to the 1.0 tracker.
+
+**The two findings that cost real work:**
+
+- **A sidecar writer that truncates in place leaves a valid short file, and a merge believes it
+  (S66).** Nine writers across the enricher and format tiers used `open(path, "w")` + `csv.DictWriter`,
+  so a killed process left a table that parses cleanly and is simply shorter. For `resolution.csv`
+  that is the worst residue available: the next run reads it back, merges on `subject`, and believes
+  it — and the three branches of `enrich()` that deliberately write **no row** for an unanswerable
+  subject make "fewer rows" a state the table reaches honestly. The reported incident had a
+  client-killed run keep going, reach the write, and replace a restored 330-row table with **162**
+  rows, after which the module validated, closed and compiled green. Fixed with
+  `layout.atomic_writer`/`atomic_write_text`. **Three writers were reported and nine were routed** —
+  the guard walks the set with an AST check and asserts an equality, and was watched failing on
+  pre-fix source first.
+- **The better-resolved module was the loud one (S67).** `_verify_vrs_ids` emitted one warning per
+  allele where `_vrs_coverage` aggregates the same fact, and which path an allele took was decided by
+  whether the enricher happened to mint an id for it. Noise ran *inversely* to how well-resolved a
+  module was: 80 of a 101-row module's 85 warnings, with the three findings its author could act on at
+  positions 83–85, against a 57,595-row module producing one line. The governing rule was already in
+  the file — *a finding no authored edit could clear is not a `strict` matter* — spent on severity
+  alone.
+
+**Also shipped:** field descriptions on the three `ModuleInfo` fields that had none, plus a guard
+asserting every authored field across 28 models carries one (S63). `VerificationRecord.producer`, so
+a merge stops restamping records it did not produce, with the document-level field's own description
+corrected because it *was* the false claim (S71/RM129). The `panel:` deprecation gated on its
+replacement existing and no longer claiming *"nothing else is lost"* — both halves, since gating alone
+leaves the false clause standing (S69). A `detail` on the clin-sig record and a warning when any check
+reports findings; nothing read `VerificationRecord.findings` at all (S70). `row_count`, `table_rows`
+documented, and a composite-`gene` warning (S72). `compilation.dropped_rows`, closing the residue a
+consumer's recomputation guard could not see (S65). Public `load_spec`, ending a private-symbol reach
+the enricher itself was making (S74).
+
+**Two answers are the deliverable and shipped no code.** S64 asked us to justify the attestation
+binding or split it along `content_signature`'s line — the split is refused because that line excludes
+**name, version and namespace**, so a binding drawn there makes a closure **transferable across a
+rename**; and the route that actually unblocks the registry is registry-owned metadata
+(`IDENTITY_AUTHORITY_KEYS`' shape), which means their endpoint was never gated on us. S73 asked which
+provenance model `pharm_variants.csv` was meant to use, and the tree had answered it a release earlier
+under a rule nobody had stated generally: **a row cites when its claim is finer-grained than
+`studies.csv`' key.**
+
+**A 26-finding dogfooding note had arrived in `ROADMAP.md` rather than the inbox**, where the ledger
+cannot see it. Eight of its findings had `Sn` twins; the other eight are dispositioned in place — one
+(D17) did not reproduce, one (D11) is our own documented policy, three went to the idea-book with the
+cheap half separated from the design half, and one is cross-repo.
+
+Suite 2881 → 2916 (+8 skipped), green throughout; `ruff check` clean.
+
+## 2026-08-21 — the Constitution says rules only, and gained three (RM127 closed, RM126 → 0.7)
 
 **Documentation only; no package changed.** [S62](CONSUMER_SUGGESTIONS_HISTORY.md)'s finding was that a
 *corrected derivation* — an existing published field whose derivation changes, so the same spec yields
