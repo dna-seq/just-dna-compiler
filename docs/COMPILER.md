@@ -41,6 +41,18 @@ Import from `just_dna_compiler.compiler`.
   `integrity.source_signature` instead, so neither its presence nor an edit to a `notice` cell in it
   moves this digest. That is correct — the licence layer carries its own identity — and it is stated
   because it is the one authored, hand-editable table a licence audit sends an author looking for (S53).
+- **`load_spec(path, *, authority_keys=None) -> ModuleSpecConfig`** — the public route to a parsed
+  `module_spec.yaml`, raising `SpecError` (a `ValueError`) on anything wrong. Sibling of
+  `just_dna_format.read_manifest` / `read_verification`: one loader per file a module carries, same
+  raise-don't-return contract. It exists because the **model** was public from the start and the only
+  thing producing one was `_load_yaml`, so a consumer wanting `weighting:`, `authorship:` or `license`
+  hand-parsed the file, lost the authority-key handling and every diagnosis, and carried PyYAML purely
+  to work around a private symbol — the enricher itself was doing the same thing across the tier
+  boundary (S74). `_load_yaml` keeps its `(config, errors, dropped)` tuple for `validate_spec`, which
+  accumulates diagnoses from a dozen sources; that difference is why both exist. It is in **this** tier
+  rather than the format one because parsing YAML needs `pyyaml`, and the format tier is
+  `pydantic` + `cryptography` by charter. **It does not fold `defaults:`** — that is per row and is
+  `spec_tables` below; the pairing is `load_spec` for the yaml's blocks, `spec_tables` for the rows.
 - **`spec_tables(spec_dir) -> tuple[dict[str, list[BaseModel]], str]`** — the parsed, **defaults-folded**
   rows `content_signature` hashes, plus the declared build. `content_signature` is exactly this plus the
   hash, so anything finer than a whole-module digest — per-table, per-row, *what moved between two

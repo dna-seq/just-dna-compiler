@@ -646,3 +646,65 @@ def test_the_findings_warning_is_published_once_despite_running_on_both_sides(
     emitted = [w for w in result.warnings if "finding(s) across" in w]
     assert len(emitted) == 1, emitted
     assert emitted == [w for w in result.manifest.compilation.warnings if "finding(s) across" in w]
+
+
+def test_load_spec_is_the_public_route_to_a_modulespecconfig(tmp_path: Path) -> None:
+    """`ModuleSpecConfig` was public and the only thing producing one was not (S74).
+
+    A consumer wanting `weighting:`, `authorship:` or `license` had to `yaml.safe_load` the file and
+    read a raw dict — losing the authority-key handling and every diagnosis below, and carrying
+    PyYAML for no reason except that ours was unreachable. `enrich.py` imports `_load_yaml` directly,
+    which is the same reach into a private symbol from inside the workspace.
+    """
+    from just_dna_compiler.compiler import load_spec
+
+    spec = _write_spec(tmp_path / "s")
+    config = load_spec(spec / "module_spec.yaml")
+
+    from just_dna_format.spec import ModuleSpecConfig
+
+    assert isinstance(config, ModuleSpecConfig)
+    assert config.module.name
+
+
+def test_load_spec_raises_where_the_validator_accumulates(tmp_path: Path) -> None:
+    """The tuple return is why `_load_yaml` was private, and it is right for a validator.
+
+    `validate_spec` collects errors from a dozen sources and reports them together. A caller who just
+    wants the object should not have to check a tuple's second element to discover it got `None` —
+    which is the shape `read_manifest` and `read_verification` already settled on.
+    """
+    from just_dna_compiler.compiler import SpecError, load_spec
+
+    missing = tmp_path / "nowhere" / "module_spec.yaml"
+    with pytest.raises(SpecError, match="not found"):
+        load_spec(missing)
+
+    bad = tmp_path / "module_spec.yaml"
+    bad.write_text("module: [1, 2]\n", encoding="utf-8")
+    with pytest.raises(SpecError):
+        load_spec(bad)
+
+    # A ValueError subclass, so a caller already bracketing loads the way `read_verification`'s
+    # callers do keeps working without knowing this type exists.
+    assert issubclass(SpecError, ValueError)
+
+
+def test_load_spec_strips_injected_authority_keys(tmp_path: Path) -> None:
+    """The behaviour a hand-rolled `yaml.safe_load` silently does not get."""
+    from just_dna_compiler.compiler import SpecError, load_spec
+    from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
+
+    spec = _write_spec(tmp_path / "s")
+    path = spec / "module_spec.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "module:\n", "module:\n  namespace: someregistry\n", 1
+        ),
+        encoding="utf-8",
+    )
+
+    # Without the injected set it is a stray key, exactly as `extra="forbid"` intends.
+    with pytest.raises(SpecError, match="namespace"):
+        load_spec(path)
+    assert load_spec(path, authority_keys=IDENTITY_AUTHORITY_KEYS).module.name

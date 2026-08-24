@@ -15,7 +15,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from just_dna_compiler.compiler import _load_yaml, _restamp_for_build, load_csv_rows
+from just_dna_compiler.compiler import (
+    SpecError,
+    _restamp_for_build,
+    load_csv_rows,
+    load_spec,
+)
 from just_dna_compiler.resolution import hosting_verdict, undecided_reason
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.binning import HeteroplasmyRow
@@ -356,14 +361,18 @@ def spec_genome_build(spec_dir: Path) -> str:
     """
     if not (spec_dir / "module_spec.yaml").exists():
         return "GRCh38"
-    config, errors, _ = _load_yaml(spec_dir / "module_spec.yaml")
-    if config is None:
+    # Through the public loader since S74 — this call site is what made the case that one was needed,
+    # since the workspace's own network tier was reaching into `_load_yaml`. It already raised on the
+    # `None` half of the tuple, which is `load_spec`'s contract, so the translation is the only thing
+    # left here: a pass owes its caller its own exception type.
+    try:
+        config = load_spec(spec_dir / "module_spec.yaml")
+    except SpecError as exc:
         raise EnrichmentError(
-            f"cannot read the module's genome_build: {errors[0] if errors else 'module_spec.yaml is '
-            'unreadable'}. Enrichment resolves against one assembly and records the answer under the "
-            f"module's declared build, so it will not choose one for you — fix module_spec.yaml, or "
-            f"pass genome_build= explicitly."
-        )
+            f"cannot read the module's genome_build: {exc}. Enrichment resolves against one assembly "
+            f"and records the answer under the module's declared build, so it will not choose one for "
+            f"you — fix module_spec.yaml, or pass genome_build= explicitly."
+        ) from exc
     return config.genome_build
 
 

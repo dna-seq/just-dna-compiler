@@ -697,6 +697,48 @@ def _collect_readme(
 # ── File loading helpers ───────────────────────────────────────────────────────
 
 
+class SpecError(ValueError):
+    """A `module_spec.yaml` that could not be loaded — see `load_spec`.
+
+    A `ValueError` subclass so a caller that already brackets a load with `except (OSError,
+    ValueError)`, the way `read_verification`'s callers do, keeps working without knowing this type
+    exists.
+    """
+
+
+def load_spec(path: Path, *, authority_keys: Iterable[str] | None = None) -> ModuleSpecConfig:
+    """Load and validate a `module_spec.yaml`, raising on anything wrong (S74).
+
+    The public route to a `ModuleSpecConfig`. The model has always been exported from
+    `just_dna_format.spec` and the only thing that produced one was `_load_yaml`, underscored — so a
+    consumer wanting `weighting:` or `authorship:` had to `yaml.safe_load` the file and read a raw
+    dict, losing the authority-key handling and every diagnosis below, and carrying **PyYAML** for no
+    reason except that ours was unreachable. Sibling of `just_dna_format.read_manifest` and
+    `read_verification`: same shape, same contract, one per file a module carries.
+
+    It lives here rather than in the format tier because loading it needs `pyyaml`, and the format
+    tier is `pydantic` + `cryptography` by charter. A consumer already depending on the compiler —
+    which every caller of `validate_spec` is — can drop their own PyYAML with this.
+
+    `authority_keys` is inject-only and unchanged: pass
+    `just_dna_format.normalize.IDENTITY_AUTHORITY_KEYS` so a registry-stamped
+    `namespace:`/`owner:`/`canonical_id:` is stripped before validation rather than tripping
+    `extra="forbid"`. The format applies none by default, and a key outside the injected set still
+    trips. **Which keys were dropped is not reported here** — that is `validate_spec`'s `.info`, and a
+    caller who needs it wants the validator rather than the loader.
+
+    Raises `SpecError` with every diagnosis joined, where `_load_yaml` returns them for accumulation.
+    That difference is the whole reason both exist: `validate_spec` collects errors from a dozen
+    sources and reports them together, which is right for a validator and wrong for a loader — a
+    caller who just wants the object should not have to check a tuple's second element to find out
+    it got `None`.
+    """
+    config, errors, _dropped = _load_yaml(Path(path), authority_keys)
+    if config is None:
+        raise SpecError("; ".join(errors) or f"module_spec.yaml could not be loaded from {path}")
+    return config
+
+
 def _load_yaml(
     path: Path, authority_keys: Iterable[str] | None = None
 ) -> tuple[ModuleSpecConfig | None, list[str], list[str]]:

@@ -1344,6 +1344,50 @@ run; the field lists above were produced against the installed package just now.
 
 ## S74 — `ModuleSpecConfig` is public and the only thing that produces one is private, so every consumer re-parses `module_spec.yaml` by hand
 
+**Status — accepted; shipped 2026-08-24 as `just_dna_compiler.compiler.load_spec`, a minor.** Your
+second shape, verbatim: `load_spec(path, *, authority_keys=None) -> ModuleSpecConfig`, raising
+`SpecError` rather than returning a tuple, beside `read_manifest` and `read_verification` because that
+is the sibling you named and it is the right one.
+
+**Your guess about why it was private is correct, and it is the whole design.** The tuple exists
+because `validate_spec` accumulates errors from a dozen sources and reports them together, which is
+right for a validator and wrong for a loader — a caller who wants the object should not have to check
+a tuple's second element to find out it got `None`. So both exist now: `_load_yaml` keeps the
+accumulating shape for the validator, and `load_spec` raises. `SpecError` is a `ValueError` subclass,
+so a caller already bracketing loads the way `read_verification`'s callers do keeps working without
+knowing the type exists.
+
+**It is in the compiler, not the format tier, and that is not an oversight.** Loading it needs
+`pyyaml`, and `just-dna-format` is `pydantic` + `cryptography` by charter — a verify-only consumer
+must not pull a YAML parser. You already depend on the compiler (every caller of `validate_module`
+does), so **you can drop your PyYAML declaration**, which was the concrete cost you named.
+
+**One correction, because you would otherwise expect something the function does not do.**
+`_load_yaml` does *not* fold `defaults:` — it validates the YAML into `ModuleSpecConfig`, and the
+block stays a block. The fold happens per row, and the public route to folded rows is
+**`spec_tables`** (RM116), which exists for exactly the reason you give here: it was added because a
+caller re-deriving it got it wrong, and it is the piece your own S65 calls *"precisely the part a
+caller reimplements wrongly"*. So the pairing is `load_spec` for the yaml's own blocks —
+`weighting`, `authorship`, `license`, `module` — and `spec_tables` for the rows. Authority-key
+dropping and the diagnoses you do get.
+
+**Which keys were dropped is deliberately not returned.** That is `validate_spec`'s `.info`, and a
+caller who needs it wants the validator rather than the loader; putting it on `load_spec` would
+reintroduce the tuple in a new shape.
+
+**On your fallback — "consumers should go through `validate_spec`'s result instead" — that is not the
+answer, and you were right not to take it.** `ValidationResult.stats` does not carry these blocks,
+as you say, and running a full validation to read `authorship:` is the wrong cost. Reading the file is
+legitimate; what was missing was a supported way to do it.
+
+**The evidence that this was ours rather than a preference: `enrich.py` imports `_load_yaml`
+directly.** The workspace's own network tier reaches into the private symbol, which is the clearest
+statement available that no public route existed. That is now the one caller left to migrate on our
+side.
+
+<!-- triaged: 0.6.7 · sha b9d0445a5feb -->
+
+
 **Reported by** just-module-creator · **Filed** 2026-08-24 · **Severity** low, and it is an API-surface
 gap rather than a defect
 
