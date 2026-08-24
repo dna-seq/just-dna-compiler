@@ -527,10 +527,19 @@ managed by anyone, and a thirty-first item buys nothing: nobody reads that far, 
 indistinguishable from an unfiled one. Say what you would have filed, in the reply to the consumer, and
 block rather than adding to a list that has stopped being a plan.
 
-**Around ten accumulated patch-level fixes → publish time, call the user.** The signal that they have
-accumulated is the CHANGELOG carrying a version the `pyproject.toml` files do not, which is exactly the
-state the tree is in as this is written. Cutting and publishing is the user's domain — never bump a
-version, tag, or publish; ask.
+**Around ten accumulated patch-level fixes → publish time.** The signal that they have accumulated is
+the CHANGELOG carrying a version the `pyproject.toml` files do not. **Publishing** is the user's domain
+and always an ask; **bumping, tagging and building a dist are inside §5's grant** for a patch, which is
+that section's own worked example.
+
+**But the grant is scoped to a patch, and a batch's release class is set by its most additive item.**
+This sentence read *never bump a version, tag, or publish; ask* until 2026-08-24, which was written
+before §5 existed and then contradicted it — found by running the loop, on a pass whose twelve items
+were mostly warnings and error messages and which therefore *looked* like a patch. Three of them added
+an optional field or a public function, so the batch cut as a **minor**. The rule that resolves both
+halves: **legality sizes the release** (§3 Step 1), so count the class of the most additive item rather
+than the mood of the batch — and a minor is an ask, because §4's other trigger is already *shall the
+next minor start* and cutting one is the same decision arriving from the other end.
 
 **Fewer is fine when something is critical** — a wrong published number, a false claim in a printed
 contract, anything a consumer could act on and be harmed by. That is a judgement call and it is the

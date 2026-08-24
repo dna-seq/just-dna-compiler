@@ -36,7 +36,11 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
 
-**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a patch, not yet cut.** Two
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, not yet cut.**
+Most of what follows is patch-class legibility, but three changes are each independently additive
+and so size the release under P3: `VerificationRecord.producer`, `compilation.dropped_rows`, and
+the new public `load_spec`. Legality sizes the release and severity only orders the queue inside
+it, so a pass that is mostly warnings still cuts as a minor when one field is new. Two
 reporters, twelve items, answered serially. Eight shipped code, four are filed; the counts below are
 off the tree rather than remembered.
 
