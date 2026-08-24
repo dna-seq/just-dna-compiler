@@ -551,6 +551,59 @@ auto-correction. A conflict is a question and half the time the archive is the s
 the ClinVar cross-check does not escalate under `strict` (`@clinsig-never-escalates`) and why the
 warning that shipped says so in its own text.
 
+## RM131 — `warnings` is a flat `list[str]`, and the discriminator that would make it readable is computed and discarded
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler ·
+**Motivating case** S68 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
+
+`ValidationResult`, `ClosureResult` and `CompilationResult` all carry `warnings: list[str]` with no
+code, no count and no way to tell a finding an author can clear from one they cannot. A compile of a
+190-row module returned roughly **14 kB** of warnings. `strict=false` does not help — it changes what
+counts as an *error*, not how much prose the channel carries — and every document on both sides of
+this seam tells an author that warnings on a green run are the real output, which is followable only
+if the output can be read.
+
+**The reporter's sharpest observation is that we already compute the answer and spend it on severity
+alone.** `_BLAME_TIER`/`_BLAME_ROW` is literally *whose limit this is*, and its own comment says
+*"blame decides severity and nothing else"*; `_closure_warning` reaches the same distinction from the
+other end (*"a finding the author can clear, but whose severity is not the mode's business"*). So the
+actionability of each finding exists at the point it is built and is dropped on the way out. S67 is
+the same shape one level down and was fixed there.
+
+**Why the minimal version the reporter offered is not the free win it looks like.** They proposed
+`warnings_summary: dict[str, int]` — code to count — beside an untouched list, and said they would
+take it and stop asking. The field is additive and harmless; **the `code` is not.** A published
+vocabulary is permanent within a major under P3 and P6, so the first code set we ship is the one every
+consumer keys on forever, and it has to be derived across roughly 29 append sites and 16 returning
+helpers that were never written to be classified. Shipping a plausible set unattended is exactly the
+*leaf shipped against a hypothesis* that P3 then keeps working forever. That is the whole of the
+deferral: the container is free and the vocabulary is the release.
+
+**Three candidate derivations, and none is obviously right.**
+
+- **From the pinned catalogue.** COMPILER.md already lists the substrings the suite pins as contract,
+  and `@warning-text-is-api` says a phrase a tool greps *is* an API. Codes derived from those would be
+  honest and would cover exactly the findings consumers already match on — but it is a partial set by
+  construction, and a `warnings_summary` that silently omits unpinned findings is worse than none,
+  because a consumer reading a digest believes it complete.
+- **From the emission site.** Mechanical and complete, but it keys on where the code lives rather than
+  on what the finding *is*, so a refactor renames a published key. That is the rename P3 forbids
+  arriving through the back door.
+- **From the check, as a first-class argument.** Each check names its own code where it is built, the
+  way `VALID_VERIFICATION_CHECKS` already does for the attestation. Most work, most stable, and it has
+  a precedent in this repo that is already a closed vocabulary a consumer keys on.
+
+**The actionability half should probably land first and separately**, because it needs no vocabulary
+at all: `blame` and the closure branch already classify two of the families, and the reporter's own
+fallback shape — a `carried`/`notes` list beside `warnings` rather than a field on each — is additive,
+invents nothing, and answers the question they actually asked (*can I do anything about this?*). What
+it needs is for every emission site to say which side it is on, which is the same audit the code
+vocabulary needs and is worth doing once.
+
+**Not in scope, on the reporter's own scoping and ours**: no cap, no truncation, no verbosity flag.
+All three hide findings rather than organising them, and the author with the most warnings is the one
+who most needs the hidden ones.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

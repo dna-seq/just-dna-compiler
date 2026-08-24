@@ -673,6 +673,57 @@ truthful while making the other 5 warnings visible.
 
 ## S68 — `warnings` is a flat `list[str]` with no code, no count and no way to tell a finding an author can clear from one they cannot
 
+**Status — accepted as real and filed as
+[RM131](ROADMAP.md#rm131--warnings-is-a-flat-liststr-and-the-discriminator-that-would-make-it-readable-is-computed-and-discarded),
+open, a minor, release undecided. We did not take the minimal version, and you are owed the reason
+because you explicitly offered to stop asking for it.**
+
+**The diagnosis is right and the best line in it is yours:** *you already compute the discriminator
+and spend it on severity only.* `_BLAME_TIER`/`_BLAME_ROW`'s own comment says *"blame decides severity
+and nothing else"*, `_closure_warning` reaches the same distinction from the other end, and both throw
+it away on the way out. **S67 is that shape one level down** and we fixed it there, which is the part
+of your report that shipped this pass — the 190-row module's VRS flood is now a few grouped lines, so
+the three findings its author could act on are no longer items 83–85 of 85.
+
+**Why `warnings_summary: dict[str, int]` is not the free win it looks like.** The field is additive
+and harmless. **The `code` is not.** A published vocabulary is permanent within a major under P3 and
+P6, so the first set we ship is the one you and every other consumer key on forever — and it has to be
+derived across roughly 29 append sites and 16 returning helpers that were never written to be
+classified. Shipping a plausible set in a triage pass is precisely the *leaf shipped against a
+hypothesis* the charter then keeps working indefinitely. The container is free; the vocabulary is the
+release. You half-anticipated this — *"if the model change is too big for a minor"* — but the
+expensive half is not the model, it is the naming.
+
+**Three candidate derivations are in RM131, and the reason none is obviously right is worth having
+now**, because your view would move it. From the **pinned catalogue** in COMPILER.md: honest, and
+exactly the findings consumers already match on — but partial by construction, and a digest that
+silently omits unpinned findings is worse than no digest, since a consumer reading a summary believes
+it complete. From the **emission site**: mechanical and total, but it keys on where the code lives, so
+a refactor renames a published key, which is the rename P3 forbids arriving through the back door.
+From the **check itself**, named where the finding is built, the way `VALID_VERIFICATION_CHECKS`
+already works: most work, most stable, and it has a precedent here that is already a closed vocabulary
+a consumer keys on. We lean at the third and have not committed.
+
+**Your fallback shape is probably the thing that lands first, and it is the better half of the ask
+anyway.** A `carried`/`notes` list beside `warnings` needs **no vocabulary at all**, is additive,
+breaks no consumer, and answers the question an author actually has — *can I do anything about this?*
+— which the count never does. `blame` and the closure branch already classify two families; what it
+needs is every emission site saying which side it is on, which is the same audit the codes need, done
+once.
+
+**What we are not doing, and it is your own list**: no cap, no truncation, no verbosity flag. All
+three hide findings rather than organising them, and the author with the most warnings is the one who
+most needs the hidden ones. That sentence is in RM131 in your words because it forecloses the cheap
+repair somebody will propose.
+
+**Concretely for you meanwhile:** `warnings` is unchanged, so nothing on your side breaks, and S67
+alone should take a large bite out of the 14 kB on any module whose ids were minted. If you have a
+preference between the three derivations, that is the input that moves this — you are the consumer
+who would key on it.
+
+<!-- triaged: 0.6.7 · sha ed6cb3422c35 -->
+
+
 **Reported by** just-module-creator, 2026-08-22. The general half of **S67**: that one asks for a
 single aggregation, this one asks whether the channel it lands in has enough structure to be read at
 all. Two asks, one restructure, so one item.
