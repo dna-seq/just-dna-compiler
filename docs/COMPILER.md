@@ -1624,6 +1624,21 @@ a patch: the objection is that filling a blank asserts what no curator wrote, no
    file's bytes and break the round-trip fixed point for any module carrying it. A warning the author
    acts on is the route.
 
+   **The warning has two branches since 0.6.7, and it stopped claiming nothing else is lost (S69).**
+   Both halves were wrong in a way gating alone would not have fixed. `GenePanelSpec` carries **five**
+   fields and `SourceRow.dataset` is one release *label*: it cannot hold `genes` — the denominator,
+   and the only thing separating *this gene is not in the panel* from *it is in the panel and had
+   nothing to report* (reported as 425 declared genes against `gene_count: 298`) — it cannot hold
+   `significance`, the predicate that makes a panel module's row set reproducible, and it is a name
+   rather than a digest so it cannot hold `reference_sha256`. All three now say so in the message.
+   And the replacement is legitimately **absent** on a module drafted before the drafter filled
+   `dataset`: `merge_sources_file` is never-clobber, so re-running does not backfill it, and there is
+   no path from such a module to the state the old sentence assumed. So the check moved behind the
+   licence rows — a deprecation is legal in a minor only where its audience can *act* on it (P3), and
+   whether they can is a fact about a value the pass had not read when the warning fired. With no
+   filled `clinvar`/`annotation` `dataset` it now says **do not delete the block yet**, names what to
+   fill first, and warns that a re-draft will not do it.
+
 ## Consequences worth knowing
 
 - **`weights.parquet`/`studies.parquet` carry the 0.3 columns + a `phased` bit**, so a re-compile under

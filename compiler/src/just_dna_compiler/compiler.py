@@ -3456,21 +3456,6 @@ def validate_spec(
             f"dropped injected authority keys from module: block (registry-stamped, not authored): "
             f"{dropped_authority}"
         )
-    # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
-    # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
-    # cadence is deprecate in a minor, remove at the next major, and the deprecation is *actionable*
-    # here because the thing that replaced it needs nothing from the author: the enricher records the
-    # drafted-from release into the licence row's `dataset` column itself.
-    if config is not None and config.panel is not None:
-        all_warnings.append(
-            "module_spec.yaml declares a `panel:` block. It is deprecated in 0.6 and removed at 1.0: "
-            "the compiler never materialized rows from it, and the one thing that did read it — the "
-            "enricher's ClinVar clin_sig cross-check, deciding whether a drafted module is being "
-            "compared against its own source — now reads the `dataset` column of the module's "
-            "licence row, which `just-dna-enricher draft-panel` writes itself. Delete the block; the "
-            "rows it describes are the authored variants.csv rows, and nothing else is lost."
-        )
-
     # `module.version` is advisory (the registry stamps the canonical Identity.version) and is COERCED
     # to SemVer by `ModuleInfo` since 0.5 (RM17). Report the rewrite rather than performing it here:
     # the model already did it, and `version_coerced_from` is how it says so. A clean
@@ -3554,6 +3539,7 @@ def validate_spec(
     resolution_by_build: dict[str, list[ResolutionRow]] = {}
     # Filled from `literature.csv` below; cross-checked once `studies.csv` is loaded further down.
     literature_rows: list[LiteratureRow] = []
+    source_rows: list[SourceRow] = []
 
     # The injected tables: `resolution.csv` and the four 0.5 fact sidecars. They are not
     # `_TABLE_KINDS` — they are machine-produced and fact-hashed rather than authored DSL — but they
@@ -3629,12 +3615,63 @@ def validate_spec(
             # compile-only for the same reason `_check_allele_membership` was: nobody asked.
             literature_rows = injected_rows
         if model is SourceRow and not injected_errors:
+            # Stashed for the `panel:` deprecation below, which cannot fire until it knows whether
+            # the replacement field is actually filled (S69) — the same reason `literature_rows` is
+            # held rather than checked in place.
+            source_rows = injected_rows
             # The licence gate, run here for the same reason. It refuses in **both** modes and is pure
             # computation over injected bytes (the compiler holds no source→licence map, P2), so there
             # is nothing about it that needs an output directory — it was simply only wired into
             # `compile_module`. It is also the refusal most expensive to discover late: a module drafted
             # entirely from a no-sale source compiles right up to the gate.
             all_errors.extend(_check_license_gate(injected_rows))
+
+    # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
+    # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
+    # cadence is deprecate in a minor, remove at the next major.
+    #
+    # **It fires from here rather than beside `_load_yaml` because a deprecation in a minor is legal
+    # only where its audience can ACT on it (P3), and whether they can depends on a value this pass
+    # has not read until now (S69).** The replacement is the licence row's `dataset`, and a module
+    # drafted before the drafter filled that column has an empty one — `merge_sources_file` is
+    # never-clobber, so re-running the pass does not backfill it, and there is no path from such a
+    # module to the state the old sentence assumed. It told that author to delete the block on the
+    # strength of a replacement their module does not have.
+    #
+    # The other half is that the old sentence's closing clause was false in **both** states.
+    # `GenePanelSpec` carries five fields and `dataset` is one release *label*: it cannot hold
+    # `genes` (the denominator — which genes were searched and yielded nothing, the only thing
+    # separating *not in the panel* from *in the panel, nothing found*), it cannot hold
+    # `significance` (the predicate that makes the row set reproducible), and it is a name rather
+    # than a digest so it cannot hold `reference_sha256`. So the advice is narrowed rather than
+    # merely gated.
+    if config is not None and config.panel is not None:
+        replaced = any(
+            row.source == "clinvar" and row.layer == "annotation" and (row.dataset or "").strip()
+            for row in source_rows
+        )
+        unreplaced = (
+            "`genes`, `significance` and `reference_sha256` have no replacement anywhere — keep the "
+            "block until 1.0 if you need them recorded."
+        )
+        if replaced:
+            all_warnings.append(
+                "module_spec.yaml declares a `panel:` block. It is deprecated in 0.6 and removed at "
+                "1.0: the compiler never materialized rows from it, and the one thing that did read "
+                "it — the enricher's ClinVar clin_sig cross-check, deciding whether a drafted module "
+                "is being compared against its own source — now reads the `dataset` column of the "
+                "module's licence row, which `just-dna-enricher draft-panel` writes itself. The rows "
+                f"it describes are the authored variants.csv rows. {unreplaced}"
+            )
+        else:
+            all_warnings.append(
+                "module_spec.yaml declares a `panel:` block, which is deprecated in 0.6 and removed "
+                "at 1.0 — but this module has no clinvar/annotation licence row carrying a "
+                "`dataset`, which is what replaced the block's one reader. Do NOT delete the block "
+                "yet: it is currently the only record of which snapshot this module was drafted "
+                "from. Fill the licence row's `dataset` first (re-drafting will not backfill it — "
+                f"the merge is never-clobber), then delete. {unreplaced}"
+            )
 
     # The verification attestation (RM45). Read here as well as in `compile_module` under the standing
     # rule — pure computation over injected bytes with no `output_dir` belongs in the pre-flight too —

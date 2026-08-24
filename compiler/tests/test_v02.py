@@ -463,3 +463,92 @@ def test_an_outrank_record_stays_out_of_both_identities(tmp_path: Path) -> None:
     b = _compile(marked, tmp_path / "ob")
     assert a.content_signature == b.content_signature
     assert a.artifact.digest == b.artifact.digest
+
+
+def _with_clinvar_licence(spec: Path, dataset: str) -> Path:
+    """A `clinvar`/`annotation` licence row — the thing that replaced the `panel:` block's reader.
+
+    Written by hand because none of the sixteen `reference_examples/` carries a `panel:` block at
+    all, which the reporter noted and which is why the deprecation had no worked example on either
+    side of the seam.
+    """
+    import csv
+
+    from just_dna_compiler.scaffold import authored_field_names
+    from just_dna_format.sources import SourceRow
+
+    fields = authored_field_names(SourceRow)
+    row = SourceRow(
+        source="clinvar",
+        layer="annotation",
+        dataset=dataset,
+        license="public_domain",
+        declared_use="unstated",
+    )
+    with open(spec / "sources.csv", "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerow({f: getattr(row, f) if getattr(row, f) is not None else "" for f in fields})
+    return spec
+
+
+def test_the_panel_deprecation_refuses_to_advise_deletion_with_no_replacement(
+    tmp_path: Path,
+) -> None:
+    """A deprecation is legal in a minor only where its audience can act on it (S69).
+
+    The reported case is a module drafted 2026-08-10, before the drafter filled `dataset`, whose
+    licence row therefore carries none — and `merge_sources_file` is never-clobber, so re-running the
+    pass does not backfill it. There is no path from that module to the state the old sentence
+    assumed, and following its advice deletes the module's only record of which snapshot it came
+    from. So the warning has to know whether the replacement is present, which is why it moved behind
+    the licence rows.
+    """
+    spec = _write_spec(tmp_path / "s")
+    assert not (spec / "sources.csv").exists()
+
+    emitted = [w for w in validate_spec(spec).warnings if "`panel:` block" in w]
+    assert len(emitted) == 1
+    assert "Do NOT delete the block yet" in emitted[0]
+    assert "never-clobber" in emitted[0], "an author needs to know a re-draft will not fix it"
+
+    # An empty cell is an absence, not a value: the same branch, for the reported `cardio` shape.
+    _with_clinvar_licence(spec, "")
+    still = [w for w in validate_spec(spec).warnings if "`panel:` block" in w]
+    assert "Do NOT delete the block yet" in still[0]
+
+
+def test_the_panel_deprecation_advises_deletion_once_the_replacement_is_there(
+    tmp_path: Path,
+) -> None:
+    """With a filled `dataset` the old advice is correct again, and is what fires."""
+    spec = _with_clinvar_licence(_write_spec(tmp_path / "s"), "clinvar_2026-06-27")
+
+    emitted = [w for w in validate_spec(spec).warnings if "`panel:` block" in w]
+    assert len(emitted) == 1
+    assert "Do NOT delete the block yet" not in emitted[0]
+    assert "removed at 1.0" in emitted[0] and "draft-panel" in emitted[0]
+
+
+def test_neither_branch_claims_nothing_else_is_lost(tmp_path: Path) -> None:
+    """The clause that was false in *both* states, which gating alone would not have fixed.
+
+    `GenePanelSpec` carries five fields and `SourceRow.dataset` is one release label. It cannot hold
+    `genes` — the denominator, and the only thing separating *not in the panel* from *in the panel,
+    nothing found*, which the reporter measured as 425 declared against `gene_count: 298`. It cannot
+    hold `significance`, the predicate that makes the row set reproducible. And it is a name rather
+    than a digest, so it cannot hold `reference_sha256`; ClinVar reissues, and a release label does
+    not pin bytes.
+    """
+    from just_dna_format.manifest import GenePanelSpec
+
+    unreplaced = {"genes", "significance", "reference_sha256"}
+    assert unreplaced < set(GenePanelSpec.model_fields)
+
+    for dataset in ("", "clinvar_2026-06-27"):
+        spec = _write_spec(tmp_path / f"s{len(dataset)}")
+        if dataset:
+            _with_clinvar_licence(spec, dataset)
+        emitted = [w for w in validate_spec(spec).warnings if "`panel:` block" in w]
+        assert "nothing else is lost" not in emitted[0]
+        assert all(field in emitted[0] for field in unreplaced), emitted[0]

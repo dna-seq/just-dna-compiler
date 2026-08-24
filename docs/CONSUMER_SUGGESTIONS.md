@@ -740,6 +740,52 @@ read from the installed package at the lines above.
 
 ## S69 — the `panel:` deprecation warning says *"nothing else is lost"*, and three fields it is the only home of have no replacement
 
+**Status — accepted; shipped 2026-08-24 in `just-dna-compiler`, as a patch. We took both of your
+asks, because they fix different halves and neither alone is enough.** You offered them as
+alternatives — *either one closes this* — and the probing said otherwise: gating the warning leaves
+the false clause standing in the branch that still fires, and narrowing the sentence leaves an author
+told to delete a block whose replacement their module does not have.
+
+**Ask 2, the sentence.** The closing clause is now *"the rows it describes are the authored
+variants.csv rows. `genes`, `significance` and `reference_sha256` have no replacement anywhere — keep
+the block until 1.0 if you need them recorded."* Your three arguments are each the reason one field is
+named, and the `genes` one is the sharpest thing in the report: with the block deleted, *this gene is
+not in the panel* and *this gene is in the panel and had nothing to report* become the same absence,
+and they are opposite statements about the module's coverage. Your 425-against-`gene_count: 298`
+measurement is what makes that concrete, and it is in COMPILER.md now.
+
+**Ask 1, the gate, and it turned out to be a charter point rather than a nicety.** P3 permits a
+deprecation in a minor **only where its audience can act on it** — the replacement exists and the
+deprecated thing is not still mandatory — and whether that holds depends on a value the check had not
+read: it fired beside `_load_yaml`, before the licence rows were loaded. So the check moved behind
+them (`source_rows` is stashed the way `literature_rows` already was), and with no filled
+`clinvar`/`annotation` `dataset` it now says **do not delete the block yet**, names filling the licence
+row as the thing to do first, and says that re-drafting will not do it because the merge is
+never-clobber. Your point that there is *no path from that module to the state the warning assumes*
+is exactly the condition P3 names, and we had not noticed the deprecation was resting on it.
+
+**An empty cell is an absence, not a value**, so your `cardio` shape takes the same branch as a module
+with no licence row at all. Tested both ways.
+
+**On the fixture gap you flagged — you were right and it was the reason the defect survived.** None of
+the sixteen `reference_examples/` carries a `panel:` block, so the deprecation had no worked example
+on either side. The existing test used a hand-written spec and asserted only that the message
+contained `"dataset"`, which both of our new branches satisfy — so it would have passed over either
+defect. The licence row is now hand-built in the test, and the three assertions are: the unreplaced
+branch refuses deletion and says why, the replaced branch gives the old advice, and **neither branch
+claims "nothing else is lost"**, checked against `GenePanelSpec.model_fields` rather than against a
+copy of the field list.
+
+**What we did not do, per your own scoping.** `panel:` is not un-deprecated — the compiler was right
+that it materializes nothing and RM4 was right about where the tautology marker belongs. We also did
+not carry the block into `manifest.json` the way `weighting` is: that is your option 2's second half,
+it is a real candidate for the same reasons you give, and it is a minor rather than a patch, so it
+waits for someone to want the fields *after* 1.0 rather than being decided by this item. The warning
+now says to keep the block, which is the honest interim.
+
+<!-- triaged: 0.6.7 · sha ae749c00ff13 -->
+
+
 **Reported by** just-module-creator, 2026-08-22.
 
 ### The warning
