@@ -3890,6 +3890,17 @@ def validate_spec(
         stats["module_name"] = config.module.name
     if kind_row_counts:
         stats["table_rows"] = kind_row_counts
+    # The family-independent size, promoted from de-facto to documented (S72). The scalar counters
+    # below describe `variants.csv` alone, so `variant_count: 0` on a `pharm_variants`-led module is
+    # narrow rather than wrong — but a caller asking *how big is this module* had only `table_rows`,
+    # which nothing in the contract mentioned.
+    #
+    # `variants.csv` and `studies.csv` are the SNP core and sit OUTSIDE `_TABLE_KINDS`, so they are
+    # added by hand rather than swept up — the first draft summed `kind_row_counts` alone and
+    # reported `row_count: 0` for a twelve-variant module, which is the very defect this key exists
+    # to fix, one family over. Counted as authored rows (not distinct keys, which is `variant_count`'s
+    # job) so the number means the same thing for every family.
+    stats["row_count"] = sum(kind_row_counts.values()) + len(variants) + len(studies)
     gene_bearing = {
         csv_name: loaded_kinds.get(csv_name) or [] for csv_name, _model in _GENE_BEARING_TABLE_KINDS
     }
@@ -3898,6 +3909,7 @@ def validate_spec(
     # all zero, which is what `Stats` already defaults them to, so no manifest number moves by it.
     if variants or any(gene_bearing.values()):
         stats.update(module_stats(variants, gene_bearing))
+    all_warnings.extend(_check_composite_gene_cells(variants, gene_bearing))
 
     return ValidationResult(
         valid=len(all_errors) == 0,
@@ -3906,6 +3918,48 @@ def validate_spec(
         info=all_info,
         stats=stats,
     )
+
+
+#: Separators that make a `gene` cell look like a list. Not a splitting rule — a detection one. `;`
+#: is the reported case (ClinPGx exports `IFNL3;IFNL4` for the locus); the others are here because a
+#: cell carrying any of them has the same effect on `stats.genes` and the same ambiguity about intent.
+_GENE_LIST_SEPARATORS = (";", ",", "|", "/")
+
+
+def _check_composite_gene_cells(
+    variants: list[VariantRow], kind_rows: dict[str, list[Any]]
+) -> list[str]:
+    """Warn when a single-valued `gene` cell looks like a list, and split nothing (S72).
+
+    Since RM121 made `stats.genes` the field a registry's gene index is fed from, a composite cell
+    becomes a **third gene** beside its two parts — `module_stats` does `genes.add(gene)` on the raw
+    value — so `IFNL3;IFNL4` is published as a search term nobody will ever type. `VariantRow.gene` is
+    `str | None` with no validator and neither is any other kind's, so nothing noticed.
+
+    **It reports and never repairs, which is the reporter's own scoping and the right call.** Splitting
+    would guess at a vocabulary, and `IFNL3;IFNL4` may legitimately name *the locus*, which is a real
+    thing in that dataset — the value also came straight out of an upstream export rather than being
+    the author's invention, so refusing it would refuse a faithful transcription. Naming the rows lets
+    a human decide which of the two it is; that is all this can honestly do.
+
+    Aggregated by cell rather than emitted per row: the reported module carried 33 rows sharing one
+    value, and a per-row warning would be 33 lines saying one thing.
+    """
+    seen: dict[str, int] = {}
+    for row in [*variants, *(r for rows in kind_rows.values() for r in rows)]:
+        gene = (getattr(row, "gene", None) or "").strip()
+        if gene and any(sep in gene for sep in _GENE_LIST_SEPARATORS):
+            seen[gene] = seen.get(gene, 0) + 1
+    if not seen:
+        return []
+    named = ", ".join(f"{cell!r} ({count} row(s))" for cell, count in sorted(seen.items()))
+    return [
+        f"{len(seen)} gene cell(s) contain a list separator and are published as single gene names: "
+        f"{named}. `stats.genes` is what a registry's gene index reads, so a composite value becomes "
+        f"a gene nobody will search for, beside its parts. Nothing is split here — a composite may "
+        f"legitimately name the locus — so either give the row one symbol, or leave it and know the "
+        f"index will not find the module by either part."
+    ]
 
 
 def variant_stats(variants: list[VariantRow]) -> dict[str, Any]:

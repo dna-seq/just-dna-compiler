@@ -1631,3 +1631,53 @@ def test_a_row_blamed_finding_stays_per_row() -> None:
     assert warnings == []
     assert len(errors) == 3, "an error naming a row must stay one line per row"
     assert {f"k{i}" for i in range(3)} == {e.split(":", 1)[0] for e in errors}
+
+
+def test_a_gene_cell_that_looks_like_a_list_is_named(tmp_path: Path) -> None:
+    """A composite `gene` becomes a third gene in the registry index, and nothing noticed (S72).
+
+    Since RM121 made `stats.genes` what a gene index is fed from, `module_stats` doing `genes.add`
+    on the raw cell publishes `IFNL3;IFNL4` beside `IFNL3` and `IFNL4` — a search term nobody will
+    type. `VariantRow.gene` is `str | None` with no validator, and neither is any other kind's.
+
+    Reported on 33 rows sharing one value, straight out of a ClinPGx export, so the warning
+    aggregates by **cell**: 33 lines saying one thing is the shape this repo keeps having to undo.
+    """
+    from just_dna_compiler.compiler import _check_composite_gene_cells
+
+    class _Row:
+        def __init__(self, gene):
+            self.gene = gene
+
+    rows = [_Row("IFNL3;IFNL4") for _ in range(33)] + [_Row("IFNL3"), _Row("IFNL4"), _Row(None)]
+    warnings = _check_composite_gene_cells([], {"pharm_variants.csv": rows})
+
+    assert len(warnings) == 1, "one line per module, not per row"
+    assert "'IFNL3;IFNL4' (33 row(s))" in warnings[0]
+    # Reports, never repairs: the composite may legitimately name the locus.
+    assert "Nothing is split here" in warnings[0]
+
+    assert _check_composite_gene_cells([], {"pharm_variants.csv": [_Row("IFNL3")]}) == []
+
+
+def test_row_count_is_family_independent(tmp_path: Path) -> None:
+    """`variant_count: 0` is narrow rather than wrong, and nothing published the honest number (S72).
+
+    The scalar counters describe `variants.csv` alone, so a `pharm_variants`-led module reported
+    `variant_count: 0` beside 1,482 rows with the real number only in the undocumented `table_rows`.
+    `row_count` is that number, and it must count the SNP core too: `variants.csv` and `studies.csv`
+    sit **outside** `_TABLE_KINDS`, so summing the kind counts alone reports 0 for a variants-led
+    module — the same defect one family over, which is how the first draft of this got it wrong.
+    """
+    from just_dna_compiler.compiler import validate_spec
+
+    examples = Path(__file__).resolve().parents[2] / "reference_examples"
+
+    table_led = validate_spec(examples / "cyp2c19_star_alleles").stats
+    assert table_led["variant_count"] == 0, "the premise: this module has no variants.csv"
+    assert table_led["row_count"] == sum(table_led["table_rows"].values())
+    assert table_led["row_count"] > 0
+
+    variant_led = validate_spec(examples / "hfe_hemochromatosis").stats
+    assert "table_rows" not in variant_led, "the premise: this module has no kind tables"
+    assert variant_led["row_count"] >= variant_led["variant_count"] + variant_led["study_count"] > 0

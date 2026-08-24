@@ -706,6 +706,44 @@ future check: **if a new value-refusal is minor-legal, say so in the Constitutio
 0.6.0 changes were mis-sized.** Whoever picks this up should settle the general rule first and let
 `module.version` fall out of it.
 
+### `stats`' scalar counters read `0` where the table is absent, and cannot say "inapplicable"
+
+**Severity** low-medium · **Status** queued for 1.0 — **filed here on 2026-08-24 from S72**, because
+the fix is a retype of published fields and nothing smaller reaches it
+
+`variant_stats` derives `variant_count`, `unique_rsids`, `study_count` and the ClinVar counts from
+`variants.csv` alone, so a module led by any other kind publishes `0` for all of them. Measured on a
+**1,482-row `pharm_variants.csv`** module: `variant_count: 0`, `unique_rsids: 0`, `study_count: 0`.
+
+**`unique_rsids: 0` is the one that is simply false rather than merely narrow**, and the reporter is
+right about why: `rsid` is the first authored column of `pharm_variants.csv` and 1,482 rows carry one,
+so the counter reports none of something that is there. `variant_count: 0` for a module with no
+`variants.csv` is *true* and unhelpful; this one is untrue.
+
+**The ask is `None` where the table is absent, and it is a retype.** `Stats.variant_count` and its
+siblings are `int` with a default of `0` in a **published** `manifest.json`, so widening to
+`int | None` breaks any reader that compares or sums them — P3 names retyping as major-only precisely
+for that, and this is the ordinary case rather than a stretch of the rule. The same holds one layer
+down for `ValidationResult.stats`: the dict is `dict[str, Any]`, so nothing retypes formally, but its
+keys are a documented contract and changing `0` to `None` breaks the same arithmetic. Sizing it as a
+minor because "the field is only advisory" is the move RM127 recorded as the tempting one.
+
+**It is the right end state, though, and that is why it is filed rather than refused.** The reporter's
+framing is our own rule in our own output: `VerificationRecord`'s docstring says *"`subjects=0` with no
+`skipped` means the check ran and had nothing in scope, which is not the same as not running"*, and
+`stats` inverts it — a consumer cannot tell *counted, and the answer is none* from *this counter does
+not apply here*. A registry keying a facet off either inherits the collapse, which is the S57 failure
+one field over.
+
+**What shipped instead, and it is not a substitute.** `row_count` (documented, family-independent) and
+`table_rows` (promoted from de-facto to contract) give a caller the honest number today, and the field
+description now says in terms that `0` in the scalar counters means *no `variants.csv` rows* and never
+*no data*. That makes the counters readable; it does not make them correct.
+
+**Decide it with the `module.version` refusal above**, which is the other charter question on this
+tracker: both turn on how far P3/P8's field-shaped clauses reach, and answering one without the other
+is how two defensible readings stay unwritten.
+
 ### `VariantRow.variant_key` / `authored_ident` are inside `content_signature`; the 0.6 stamped fields are not
 
 **Severity** low · **Status** queued for 1.0 — align the two, one way or the other

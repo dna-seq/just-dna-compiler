@@ -25,10 +25,18 @@ class ValidationResult(BaseModel):
     stats: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Summary stats (populated only when the spec has variants). De-facto contract keys: "
-            "`variant_count` (distinct variant keys), `unique_rsids`, `gene_count`, `genes` (sorted, "
-            "None filtered), `categories` (sorted, None filtered), `study_count`, `clinvar_count`, "
-            "`pathogenic_count`, `benign_count`, and `module_name` (when the yaml loaded)."
+            "Summary stats for the module. Contract keys: `variant_count` (distinct variant keys), "
+            "`unique_rsids`, `gene_count`, `genes` (sorted, None filtered), `categories` (sorted, "
+            "None filtered), `study_count`, `clinvar_count`, `pathogenic_count`, `benign_count`, "
+            "`module_name` (when the yaml loaded), `table_rows` (**every** authored table kind the "
+            "module carries → its row count) and `row_count` (their sum: the family-independent "
+            "size of the module).\n\n"
+            "**Read `table_rows`/`row_count` rather than `variant_count` when you want *how big is "
+            "this module*.** The scalar counters above them describe `variants.csv` and nothing "
+            "else, so a module led by `pharm_variants.csv`, `diplotypes.csv` or any other kind "
+            "reports `variant_count: 0` and `unique_rsids: 0` however many rows it has — 0 there "
+            "means *no variants.csv rows*, never *no data* (S72). `gene_count`/`genes` are the "
+            "exception and do describe the whole module, since RM121."
         ),
     )
 

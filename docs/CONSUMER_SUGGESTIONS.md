@@ -1140,6 +1140,55 @@ was recorded"*, which is honest and is the same three-valued shape the rest of t
 
 ## S72 — `stats`' scalar counters still describe `variants.csv` alone, so a `pharm_variants` module publishes `unique_rsids: 0` beside 1,482 rsIDs
 
+**Status — accepted, and split. Ask 2 and the gene-delimiter warning shipped 2026-08-24 in
+`just-dna-compiler`; ask 1 is queued for 1.0 in
+[ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker), because it is a retype and
+nothing smaller reaches it.** Reproduced on `reference_examples/cyp2c19_star_alleles`:
+`variant_count: 0, unique_rsids: 0` with `table_rows` carrying 1,332.
+
+**You are right that `unique_rsids: 0` is a different kind of wrong from the others, and it is the
+sentence that carried the item.** `variant_count: 0` for a module with no `variants.csv` is *true* and
+unhelpful; `unique_rsids: 0` beside 1,482 rows whose first authored column is `rsid` is untrue. And
+your framing — our own three-valued rule inverted in the producer's own output, quoting
+`VerificationRecord`'s docstring back at us — is exactly it. That is in the tracker entry in your
+terms.
+
+**Why ask 1 is not a minor.** `Stats.variant_count` and its siblings are `int` in a **published**
+`manifest.json`, so widening to `int | None` breaks any reader that compares or sums them, and P3
+names retyping as major-only for precisely that reason. `ValidationResult.stats` is `dict[str, Any]`
+so nothing retypes formally — but its keys are a documented contract and `0` → `None` breaks the same
+arithmetic one layer down. Sizing it as a minor on the grounds that the field is "only advisory" is
+the move RM127 recorded as the tempting one, and we are not making it. **We think it is the right end
+state**, which is why it is filed rather than refused, and it is queued beside the `module.version`
+refusal because both turn on how far P3/P8's field-shaped clauses reach.
+
+**Ask 2 shipped, and we took both halves of your "or".** `table_rows` is promoted from a de-facto key
+to a documented one, and `row_count` is beside it: the family-independent number, the sum across every
+authored table. The `stats` description now says in terms that `0` in the scalar counters means *no
+`variants.csv` rows* and never *no data*, and points a caller asking *how big is this module* at
+`row_count`. That makes the counters readable without pretending it makes them correct.
+
+**One thing worth telling you because you would have hit it.** The first draft of `row_count` summed
+the kind-table counts alone and reported **0 for a twelve-variant module** — `variants.csv` and
+`studies.csv` are the SNP core and sit outside `_TABLE_KINDS`. That is this very item's defect, one
+family over, reproduced inside its own fix. It is pinned by a test that asserts both directions.
+
+**The delimiter warning shipped as you scoped it: it reports and splits nothing.** Your two reasons
+are the reasons — splitting guesses at a vocabulary, and `IFNL3;IFNL4` may legitimately name the
+locus. We would add a third: the value came out of an upstream export rather than from the author, so
+refusing it would refuse a faithful transcription. It aggregates by **cell**, not by row, since your
+case was 33 rows sharing one value. The message says what it costs — `stats.genes` is what a gene
+index reads, so a composite is published beside its parts as a term nobody will search for — and
+leaves the call to a human.
+
+**And thank you for filing this against your own accepted item.** S57's reply settled that `stats`
+describes the module, we shipped the gene half, and the comment beside that change says *"the keys
+this adds for such a module are all zero"* — which reads as a note about harmlessness and was in fact
+the residue. A reporter who reads our own change comment back to us is the most useful kind.
+
+<!-- triaged: 0.6.7 · sha 69b0980f68de -->
+
+
 **Reported by** just-module-creator, 2026-08-22. **A follow-up to S57**, which you accepted and fixed in
 RM121 — this is the residue that fix deliberately did not cover, and we are filing it because your own
 reply settled the principle that decides it.
