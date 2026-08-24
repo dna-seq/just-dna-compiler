@@ -1508,6 +1508,49 @@ New ideas enter here as freeform suggestions, then graduate through the design c
 
 ---
 
+- **An absence that is a decision has no way to say so — `weight`, `weighting:`, `license`,
+  `authorship`, and every sparse column.** From just-dna-lite's 2026-08-21 dogfooding pass (D5, D6,
+  D12/D26), dispositioned below. One module authors no `weight` on 190 rows and declares no
+  `weighting:`; six declare `version: null`, `license: null`, `authorship: []`; `direction`,
+  `stat_significance` and `trait_efo_id` are empty across the whole corpus. In every case
+  **"deliberately none" and "forgot" are the same bytes** — which is the house tri-state rule aimed at
+  *authoring completeness* rather than at data, and the one place we do not apply it.
+
+  Two halves that should not be answered by accident, because one is cheap and one is a schema
+  decision. **A per-column fill count in `stats`** is one pass over rows the validator has already
+  loaded, turns *what is there to curate* from a question into a table, and commits to nothing. And
+  **a way to declare an absence intentional** — which is a new authored surface, full cost under P9,
+  and needs a shape before it needs a field: `weighting:` already exists to say a module has no
+  weights, so the question may be narrower than it looks (does the *presence* of the block, rather
+  than a new field, discharge it?). The compile gate's precedent is that licensing is data rather than
+  a flag, and `declared_use`'s is that a third state beats a mode.
+
+- **A resolved ALT set that is a tandem ladder is a row in the wrong family.** From the same pass
+  (D13). `superhuman` authors `rs56185968` as one `variants.csv` row with no coordinates and genotype
+  `G/G`; resolution expanded it to a **23-allele** ladder (`G`, `GTGTG`, … up to 45 bases), which is
+  where 22 of that module's VRS warnings came from. `repeat_alleles.csv` exists for exactly this and
+  the authoring skill states the rule, but nothing notices. The signal is already computed, which is
+  what makes it attractive.
+
+  What stops it being an item today: *looks like a ladder* is a heuristic, and a false positive tells
+  an author to move a row that belongs where it is. Wants a rule sharp enough to be an `info` at worst
+  — and note it would have fired on a module whose other 22 warnings were the S67 flood, so the two
+  interact.
+
+- **Nothing checks a `conclusion` against the other cells on its own row.** From the same pass (D14),
+  and the reporter measured it before proposing it: **20 hits in 1,418 rows, ≈60% precision by hand
+  inspection**, which is why they asked for `warning` rather than `error`. Two of the finds are worth
+  quoting because they are exactly what a curation check is for — `coronary` `rs17514846`'s `C/C` and
+  `A/A` conclusions are **swapped**, and `rs11591147` is scored `protective +1.2` on `T/T` under text
+  saying `GG` is protective. Two candidate rules, neither needing an external source: a conclusion
+  naming a genotype **built from alleles at this row's own rsID locus** that is not this row's, and a
+  `state` of `risk`/`protective` that the conclusion negates.
+
+  The locus restriction is the idea that makes it tractable — an earlier version of theirs flagged
+  *"raised plasma triglyceride (**TG**) levels"*. What has to be designed is the false-positive rate: a
+  40% miss on a warning an author reads on every compile is how a channel stops being read, which is
+  S68's problem arriving from the other direction.
+
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 
 **Nothing here is a request to change an artifact, and none of it is urgent.** We ran a
@@ -1658,3 +1701,72 @@ it fires correctly on all ten.
 **Everything above is a note, not a request, and we are not tracking any of it.** Where an entry is
 already covered by an item in `PROPOSAL_0_6_PT2` or `ROADMAP_0_7` that we have not read closely enough,
 the existing item wins.
+
+### Disposition of the note above — every finding, 2026-08-24
+
+The note arrived in this file rather than in the inbox, so the triage ledger could not see it: an
+inbox the ledger cannot see is a backlog nobody sees, which is the whole reason
+[CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md) is the one door. Their prose is left byte-for-byte
+above and this is the answer beside it. **Eight of the sixteen findings arrived a second time as
+`Sn` items** from just-module-creator and were answered there; the other eight had no ledger entry of
+any kind and are dispositioned here, because the reporter says they are not tracking them and an
+undispositioned note is one nobody reads again.
+
+**Answered as `Sn`, in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md):** D2 → S67
+(shipped, the VRS flood is grouped by reason). D3 + D4 → S68 (filed as RM131; the `blame`
+discriminator they name is the item). D19 → S69 (shipped, both halves — the warning is conditional
+*and* stopped claiming nothing else is lost). D16 → S70 (shipped: `detail` on the clin-sig record and
+a findings warning; the sidecar is RM130). D20 → S71 (shipped, `producer` per record). D7 + D9 → S72
+(`row_count` and the delimiter warning shipped; the `0`→`None` retype is queued for 1.0).
+
+**D17 — "eight of ten carry no `verification.json` and nothing says so" — does not reproduce, and this
+is the one worth reading.** A module with no attestation at all *does* warn: `_closure_warning` is
+keyed on the **outcome**, not on the file, and its docstring says so — one sentence covers all three
+ways a compile publishes no closure, because what an author needs to know is the same in each.
+Verified by deleting `verification.json` from `apoe_epsilon` and re-validating: the closure warning
+fires. What is genuinely absent is a statement that *no checks were run*, which is a different claim
+from *authoring was never declared finished* — and it is deliberately not made, because warning about
+an unverified module would fire on nearly every module in this repository.
+
+**D11 — `just_dna_compiler/__init__.py` exports nothing — reproduces exactly** (`dir()` is `[]`,
+`from just_dna_compiler import validate_spec` raises) **and is intended.** CLAUDE.md's own rule is
+*avoid `__all__` / pure re-export `__init__.py`s — they obscure where a symbol lives*, so
+`just_dna_compiler.compiler` is the supported import path and the empty `__init__` is the policy
+rather than an oversight. The reporter corrected their side already. Related and now fixed: **S74**
+shipped `load_spec`, because the symbol they actually could not reach was a private one.
+
+**D5, D6, D12/D26 are one finding seen three ways, and it is the strongest thing in the note.** A
+module that authors no `weight` on 190 rows and declares no `weighting:`; a `stats` that reports fill
+for four columns and nothing else while `direction`, `stat_significance` and `trait_efo_id` are empty
+corpus-wide; six modules declaring `version: null`, `license: null`, `authorship: []`. In each,
+**"deliberately none" and "forgot" are the same bytes**, which is the tri-state rule pointed at
+authoring completeness rather than at data. Filed below as an idea-book entry rather than an `RMn`
+because the shape is undecided — a per-column fill count in `stats` is cheap and mechanical, while
+*declaring* that an absence is intentional is a schema question, and the two should not be answered by
+accident.
+
+**D13 — a repeat ladder authored as a `variants.csv` row — is real and is the sharpest of the
+remainder.** `superhuman`'s `rs56185968` resolved to a 23-allele tandem ladder, which is where 22 of
+that module's VRS warnings came from, and `repeat_alleles.csv` exists for exactly that. They are right
+that the signal is already computed. Idea-book below; it is a check with a clear input, and what stops
+it being an immediate `RMn` is that a resolved ALT set that *looks* like a ladder is a heuristic, and a
+false positive tells an author to move a row that belongs where it is.
+
+**D14 — nothing checks `conclusion` against the other cells on its own row — is real, is measured, and
+the measurement is why it is not filed as a check yet.** Their own number is **20 hits in 1,418 rows at
+≈60% precision**, and they proposed `warning` rather than `error` for that reason. Two of their finds
+are serious enough to quote: `coronary` `rs17514846`'s `C/C` and `A/A` conclusions are **swapped**, and
+`rs11591147` is scored `protective +1.2` on `T/T` under text saying `GG` is protective. A 40%
+false-positive rate on a warning an author must read every compile is the thing to design against, and
+their locus-restriction is the idea that makes it tractable. Idea-book below. Their third shape — 480
+`longevitymap` rows sharing a conclusion across genotypes with different weights — they explicitly did
+not propose as a rule and we are not treating as one; it is the *"nothing says whether that was
+intended"* problem again, which is D5's shape.
+
+**D10 — `logo.png` and the log survive a compile and are not on the registry's roster — is a real
+cross-repo inconsistency and is not ours to settle alone.** Verified on our side: `compile_module`
+copies both into the output deliberately (`logo_file`/`log_files` are parameters, `manifest.logo` and
+`manifest.logs[]` are published entries). `RECOGNIZED_SPEC_FILES` is the registry's list. Either the
+roster grows or the copy stops, and the reporter is right that the current state means a module
+survives a compile and would not survive a server-side rebuild. Raised with the registry rather than
+decided here; recorded so it is not lost.
