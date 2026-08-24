@@ -649,6 +649,64 @@ table, so every column is full cost.
 **Not in scope**: widening `studies.csv`' key, which is the repair that looks obvious and is the one
 RM47 already refused — it would make a study row's subject depend on which table read it.
 
+## RM133 — a card subtitle has no amendable home, and the binding is not where that gets fixed
+
+**Severity** low-medium · **Status** open — **a minor, release undecided** — the binding question it
+arrived with is **answered and closed** · **Owner** format (+ registry, for the half that is theirs) ·
+**Motivating case** S64 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
+
+Measured by the reporter: editing `module.description` from 44 words to 11 moves **no**
+`content_signature`, **no** `artifact.digest`, **no** fact signature — and drops the closure, because
+`manifest.inputs` covers the raw bytes of `module_spec.yaml`. `README.md`, by a wide margin the longer
+prose, is outside `inputs` and freely amendable. The shortest fixable prose in the system was the one
+that could not be fixed.
+
+**The binding stays as it is, and the reason is the partition, not the cost.** The ask was to split it
+along the line `content_signature` already draws. That line is stated in `integrity.py` and excludes
+**name, version and namespace** alongside title and colour — so a binding drawn there makes a closure
+**transferable across a rename**: a module closed and signed by a named reviewer keeps its attestation
+after its identity is changed. `content_signature` excludes those *so a registry strip does not move
+content identity*, which is right for a content-dedup key and exactly wrong for an attestation. The two
+hashes cannot share a partition because they answer opposite questions about the same fields. **Do not
+re-propose this.**
+
+The reporter's narrower six-field version (`title`/`description`/`report_title`/`icon`/`icon_set`/
+`color`) does **not** carry that attack and is recorded as the better form of the idea. It inherits the
+cost they named themselves — hashing a *parse* of the yaml, and so every canonicalization question
+`content_signature` answers, with two hashes able to disagree about what counts as display. RM82 is the
+precedent that prices it: the last change to the binding turned on being *a byte transform needing no
+loader, no parse and no schema knowledge*, and refused BOM/whitespace/final-newline because each
+*"makes the binding more content-ish without making it content"*. A field-aware split crosses that line
+on purpose.
+
+**What the binding buys, since the reporter asked and could not construct it:** it is the *reviewer's*
+claim rather than the artifact's. The other two hashes answer *is this the same data* and *are these
+the same bytes*; this one answers *is this the same document a named person signed off*. A card
+subtitle is a claim about what the rows mean, so excluding it would make the attestation cover less
+than the reviewer actually read.
+
+**The route that actually unblocks it, and it is the item.** The framing *"the binding overrides the
+registry's rule from a layer below"* assumes an amend must **rewrite the stored `module_spec.yaml`**.
+It need not: `normalize.IDENTITY_AUTHORITY_KEYS` (`namespace`, `owner`, `canonical_id`) is the standing
+precedent for **registry-owned** metadata that sits beside the module rather than inside it, with
+`strip_authority_keys` handing the spec to our validator without them. A registry-owned display
+override leaves the stored bytes untouched, so `manifest.inputs` still matches, `verify_manifest` still
+passes and the closure stands. **So the registry's `amend_display` is not gated on this item** — it is
+gated on whether the amended value is registry-owned or a spec rewrite.
+
+**What is left to design: where a bounded `short_description` lives so that it lands amendable.** Not
+on `ModuleInfo` — under the answer above every field in `module_spec.yaml` is on the un-amendable side,
+so putting it there reproduces the defect in a new place, which is the reporter's own objection and it
+is correct. Their argument for why a `max_length` is legitimate on a **new** field where it is not on
+`description` holds and is why this is a real item: a field that exists to fit a fixed layout is
+*specified* by that layout, it refuses nothing anyone has written, and absent it everything behaves as
+today. Calibration from the live catalog: ~**120 characters**, against a measured 71 (comfortable) and
+467 (the case that prompted it).
+
+**Not in scope**: render-time truncation or folding, which hides prose an author chose to write and
+leaves the spec as wrong; and anything retroactive to the seven published modules, which met every
+requirement that existed.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

@@ -281,6 +281,16 @@ whitespace and a missing final newline are still edits. → [SCHEMAS § the
 closure](SCHEMAS.md#the-closure-rm73--the-authoring-phase-ended) and
 [MODULE_LIFECYCLE § 6.2](MODULE_LIFECYCLE.md), where both are measured.
 
+**Can the binding exclude the display metadata, so fixing a card subtitle does not un-close my module?**
+No, and the reason is the partition rather than the cost. Splitting it along `content_signature`'s line
+looks right and is not: that line excludes **name, version and namespace** too, so a binding drawn
+there lets a closure survive a rename — the reviewer's attestation travels to a module with a different
+identity. `content_signature` excludes them so a registry strip does not move *content* identity, which
+is correct for a dedup key and exactly wrong for an attestation. The binding answers *is this the same
+document a named person signed off*, which is why it is coarse. The fix for an already-published
+subtitle is registry-owned metadata stored beside the module (the `IDENTITY_AUTHORITY_KEYS` shape), not
+a smaller binding. → [ROADMAP § RM133](ROADMAP.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed).
+
 **Why does the binding cover only the authored files and not the sidecars?**
 Because the derived sidecars carry a `fetched_at` per row, so binding to them would perish the
 attestation on a re-enrichment that changed nothing anyone claimed. Read source currency off each

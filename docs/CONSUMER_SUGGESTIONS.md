@@ -178,6 +178,79 @@ authored.
 
 ## S64 — display metadata is inside the attestation binding, so shortening a card subtitle wipes the closure and produces a byte-identical artifact
 
+**Status — answered (a): the binding is justified, and here is the attack you could not construct.
+`short_description` is filed as
+[RM133](ROADMAP.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed),
+open — but not on `ModuleInfo`, because there it would reproduce the defect. And the answer to your
+ordering question is better than you expected: registry S16 is *not* gated on us.**
+
+Your measurement is right in every cell, and the `README.md` control is what makes it an argument
+rather than a complaint. We are not disputing any of it.
+
+**The attack, and it is in the partition you cited rather than the six fields you listed.** You asked
+us to *"split the binding along the line you already drew"* — the `content_signature` partition. That
+line is stated in `integrity.py` and it excludes **name, version and namespace** alongside title and
+colour. A binding drawn there makes a closure **transferable across a rename**: take a module closed
+and signed by a named reviewer, change `module.name` and `namespace`, and the attestation still holds
+— the closer's claim travels to a module with a different identity. `content_signature` excludes those
+deliberately, *so that a registry strip does not change content identity*, and that is exactly right
+for a content-dedup key. It is exactly wrong for an attestation, which is the one artifact that must
+not survive an identity change. So the two hashes cannot share a partition, and the reason is not
+cost — it is that they answer opposite questions about the same fields.
+
+**Your narrower six-field list does not have that attack**, and we want to be honest about that rather
+than let the sharper version stand for both. `title`/`description`/`report_title`/`icon`/`icon_set`/
+`color` really are display-only. What that version inherits is the cost **you** named: it has to hash a
+*parse* of the yaml, so it acquires every canonicalization question `content_signature` answers, and
+when the two disagree about what counts as display an author gets two different answers to "did my
+edit count". You asked whether that is the blocker. It is a blocker, and RM82 is the precedent that
+settles how much weight it carries: when the binding was last changed, the deciding property was that
+newline normalization is *a byte transform needing no loader, no parse and no schema knowledge* — and
+the item explicitly refused the obvious next steps (BOM, trailing whitespace, final newline) on the
+grounds that each *"makes the binding more content-ish without making it content"*. A field-aware
+split is that line crossed deliberately.
+
+**What the binding buys, stated plainly, since that was the ask.** It is the **reviewer's** claim, not
+the artifact's. `content_signature` and `artifact.digest` already answer *is this the same data* and
+*are these the same bytes*; the binding answers *is this the same document a named person read and
+signed off*. A closer reads `module_spec.yaml` — including what the module says it is — and a card
+subtitle is a claim about what the rows mean. A module whose rows are honest and whose card
+mis-describes them is a real failure mode, and it is the one you said you could not construct: it is
+not a substitution attack, it is that the attestation would then cover less than the reviewer actually
+reviewed. We would rather it stayed coarse and honest than became precise and partial.
+
+**Now the part that unblocks you, and we think it is the actual answer to the item.** You framed this
+as *the binding overriding the registry's rule from a layer below*, and that framing assumes an amend
+must **rewrite the stored `module_spec.yaml`**. It does not have to, and there is already a precedent
+for exactly this in the format: `normalize.IDENTITY_AUTHORITY_KEYS` — `namespace`, `owner`,
+`canonical_id` — are **registry-owned**, stamped beside the module rather than authored into it, and
+`strip_authority_keys` exists so a consumer can hand the spec to our validator with them removed. A
+registry-amendable display value is the same shape. If `amend_display` stores an override the registry
+owns, the stored `module_spec.yaml` is untouched, `manifest.inputs` still matches, `verify_manifest`
+still passes, and the closure stands. **So registry S16 is not gated on this item** — it is gated on
+whether the amended value is registry-owned or a spec rewrite, which is their call and ours to
+support. Please pass that on; we think it is a cheaper route than either of your (a)/(b).
+
+**Which is why `short_description` is filed but explicitly not as a `ModuleInfo` field.** You are right
+that a bounded field which still costs a version to fix reproduces the problem in a new place — and
+under (a), *every* field in `module_spec.yaml` is on the un-amendable side, so putting it there is that
+exact reproduction. Your argument for why a `max_length` on a **new** field is legitimate where one on
+`description` is not, is correct and we have recorded it: a field that exists to fit a fixed layout is
+specified by that layout, and it invalidates nothing anyone has written. What RM133 has to settle is
+where such a field lives so it lands amendable. Your 120-character calibration and the 71-vs-467
+measurement are in the item.
+
+**Nothing retroactive to the seven published modules**, agreed, and for your reason.
+
+**And S63's "the repair belongs where the prose is authored" is in genuine tension with this item**,
+which we noted there. The resolution is that both are true of different repairs: the *norm* belongs
+where the prose is authored, which is why the field description shipped; the *fix for a subtitle
+already published* cannot live there, because the module is closed and its bytes are attested. Those
+are different problems and it took your two items side by side to see that.
+
+<!-- triaged: 0.6.7 · sha b3e1234da021 -->
+
+
 Companion to `S63`, which asked for field descriptions on `ModuleInfo.title/description/report_title`.
 This one is about what those fields *cost*, and it is worse than we told our own users yesterday. The
 registry half is filed as `just-dna-registry` `S16`; **this one is the prerequisite** and the ordering
