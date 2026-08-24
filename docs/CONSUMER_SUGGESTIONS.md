@@ -54,6 +54,48 @@ observed rather than of what was decided.
 
 ## S63 — the three required `ModuleInfo` fields are the only ones with no `Field(description=…)`, and the catalog shows what that costs
 
+**Status — accepted; shipped 2026-08-24 in `just-dna-format`, as a patch.** Reproduced exactly, in
+the tree rather than only in your installed copy: those three are the only fields in the block
+carrying no description, and they are the three an author must replace before a spec validates.
+
+**We took your three sentences nearly as written, and the one we widened is `description`.** Your
+proposed text is the field's text: what it is for, the 5–15-word band, and — the part that matters —
+*say what this module distinguishes, not how it was made*, naming `weighting:`, `authorship:` and
+`README.md` as the homes that are meant for methodology. That last clause is why the fix reaches your
+sharper half. Four specs sharing a byte-identical fifteen-word methodology sentence is not a length
+problem, and a description that said only "keep it short" would not have stopped it: the field whose
+job is telling a module apart from its neighbours was doing the exact opposite on four cards at once,
+and an author needs to be told where the sentence *should* go, not just that it is too long here.
+
+**We did not add a `max_length`, for your reasons, and a test now pins that it stays absent** — with
+the argument in its docstring, so the next person to propose one meets it rather than re-deriving it.
+Your framing is right on all three counts: a ceiling refuses a merely verbose spec, refuses it after
+the prose was written, and makes finished work retroactively invalid for failing a requirement that
+did not exist when it was published.
+
+**What we did beyond the ask, because three named fields is a symptom and the class is the item.**
+There is now a guard that walks `_ALL_MODELS` — 28 models — and asserts that **every authored field
+carries a description**, as an equality rather than a count. `describe`, `requirements` and
+`reference` render these verbatim, so a blank one is the authoring surface going silent at the moment
+an author is filling that cell; the three you found were simply the ones where that silence was most
+expensive. It was watched failing on the pre-fix state (exactly your three) before being kept. The
+corpus is now at zero, and the next field added blank cannot ship.
+
+**On the length norm being an inherited assumption — that is worth more than the fix.** You went and
+measured seven published modules rather than asserting the band, found six of seven outside it, and
+established that nothing upstream or downstream had ever said so. We had not said it either, which is
+why your two documents could assert it in good faith and be unfalsifiable. The field now says it in
+the one place an author is looking when they type the line, which is the half neither of us had.
+
+**We agree the registry clamping is not ours and should not be filed there either**, and for your
+reason: clamping hides prose an author chose to write while leaving the spec exactly as wrong. Note
+that `S64` then argues the repair belongs somewhere the author can still reach *after* publishing,
+which is a real tension with "the repair belongs where the prose is authored" — the answer to that
+one is where it gets resolved.
+
+<!-- triaged: 0.6.7 · sha be123afbaead -->
+
+
 `module.title`, `module.description` and `module.report_title` are the three fields an author *must*
 replace before a spec validates. They are also the only fields in `ModuleInfo` that carry no field
 description at all:

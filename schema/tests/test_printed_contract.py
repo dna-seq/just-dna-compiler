@@ -222,3 +222,50 @@ def test_the_narrowing_rule_reaches_the_column_an_author_fills_in() -> None:
     # redeclares it — the four binning tables an author picks between must all say the same thing.
     for kind in ("HeteroplasmyRow", "RepeatAlleleRow", "CopyNumberRow", "ActivityPhenotypeRow"):
         assert _described(kind, "measure_max") == described
+
+
+def test_every_authored_field_carries_a_description() -> None:
+    """A field an author must fill and cannot read about is undocumented, not self-evident (S63).
+
+    `describe`, `requirements` and `reference` render `Field(description=...)` verbatim, so a blank
+    one is not "no comment needed" — it is the authoring surface saying nothing at the moment the
+    author is filling that cell. The three found by the report were `ModuleInfo.title`,
+    `.description` and `.report_title`: the only undescribed fields in the block, and the three an
+    author *must* replace before a spec validates, so the surface explained `icon_set`'s vocabulary
+    and was silent about the line a browsing consumer reads first.
+
+    Walked over `_ALL_MODELS` and asserted as an **equality**, the way the vocabulary guards above
+    it are. A count or a floor would be satisfied by the state the report found, and a name list
+    would not cover the next model somebody adds.
+    """
+    from just_dna_format.base import authored_field_names
+    from just_dna_format.reference import _ALL_MODELS
+
+    undescribed = [
+        f"{name}.{field}"
+        for name, model in _ALL_MODELS.items()
+        for field in authored_field_names(model)
+        if not (model.model_fields[field].description or "").strip()
+    ]
+    assert undescribed == []
+
+
+def test_the_description_field_states_where_methodology_goes_instead() -> None:
+    """The report's sharper half was repetition, not length, and the fix has to reach it.
+
+    Four specs in the reporter's corpus ended with the byte-identical fifteen-word methodology
+    sentence, so the field whose job is telling a module apart from its neighbours was doing the
+    opposite on four cards at once. Naming the homes that *are* meant for methodology is what makes
+    that actionable; saying only "keep it short" would not have.
+
+    Deliberately **not** paired with a `max_length`: a ceiling refuses a merely verbose spec, refuses
+    it after the prose is written, and would retroactively invalidate published modules that met
+    every requirement that existed.
+    """
+    from just_dna_format.spec import ModuleInfo
+
+    text = ModuleInfo.model_fields["description"].description
+    assert "weighting:" in text and "authorship:" in text and "README.md" in text
+    assert ModuleInfo.model_fields["description"].metadata == [], (
+        "description must carry no length constraint — see the docstring above"
+    )

@@ -127,9 +127,31 @@ class Display(BaseModel):
     """Shared display metadata for a module. The authoring DSL's `spec.ModuleInfo` extends this
     (adding `name`), so the fields and their validation are defined here once."""
 
-    title: str
-    description: str
-    report_title: str
+    # These three carried no description at all until S63 — the only fields in the block that did,
+    # and the three an author *must* replace before a spec validates. So the surface that tells an
+    # author what `icon_set` accepts said nothing whatever about the line a browsing consumer reads
+    # first. What each one is for is stated here; how long it should be is a norm rather than a rule,
+    # and deliberately not a `max_length` (see below).
+    title: str = Field(
+        description="Human-readable module name — the heading a consumer shows for this module."
+    )
+    description: str = Field(
+        description=(
+            "One short sentence — roughly 5–15 words — saying what this module is *about*. It is the "
+            "subtitle beside the title wherever a module is listed, so its job is to tell this module "
+            "apart from the ones next to it. **Methodology does not belong here**: how the rows were "
+            "curated, validated or weighted has homes that persist and are meant for it — `weighting:`, "
+            "`authorship:` and `README.md`. A sentence several of your modules share describes none of "
+            "them. Not length-checked, because verbosity is a matter of taste rather than of "
+            "correctness and a ceiling would refuse a spec after the prose was written."
+        )
+    )
+    report_title: str = Field(
+        description=(
+            "Heading for the rendered per-consumer report, where that differs from `title` — `title` "
+            "names the module in a catalog, this names the section a reader sees in their own results."
+        )
+    )
     icon: str = Field(
         default="database", description="Icon name within `icon_set` — the no-logo fallback glyph"
     )
