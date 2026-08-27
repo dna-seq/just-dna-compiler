@@ -713,6 +713,67 @@ today. Calibration from the live catalog: ~**120 characters**, against a measure
 leaves the spec as wrong; and anything retroactive to the seven published modules, which met every
 requirement that existed.
 
+## RM134 — PubMind as a literature-derived cross-check source
+
+**Severity** low-medium · **Status** open — **assessed, adoption not started; phase 1 is a minor,
+release undecided** · **Owner** enricher · **Motivating case** the PubMind paper
+(doi:10.1038/s41467-026-76834-4, 20 August 2026), assessed 2026-08-28 · **Full assessment**
+[PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md)
+
+PubMind extracts variant–disease–pathogenicity associations from 41.7 M PubMed abstracts and 5.4 M PMC
+full texts with LLaMA-3.3-70B behind a fine-tuned BERT triage stage. It is **a source, not a
+competitor**: its own discussion calls it *"a literature-grounded complement to human curated
+databases"*, and the description holds one layer further down — it produces assertions and stops
+exactly where we start, at identity, integrity, licensing and the round trip. The only contested
+surface is its pitch to institutions wanting their own interpretation database, which is our module
+author's use case; what it hands them is a SQLite file behind a Flask app.
+
+**What is reachable, measured against the bytes rather than the paper.** The web API takes `gene`,
+MONDO and PMID/PMCID only — an rsID query is refused — and returns aggregate counts, never a record,
+which the response says outright. So the single per-variant channel is the coordinate table ANNOVAR
+redistributes as `hg38_pubmind_db` (2026-08-24, 6.5 MB gzipped, 909,224 rows: `PVID`,
+`pathogenicity_sum`, `paper_level_pathogenicity_score`, `confidence` 0–3). Its coordinates are
+**VCF-style despite the ANNOVAR packaging** — no `-` alleles anywhere, deletions carry the anchor base
+— so it joins our `chrom`/`start`/`ref`/`alts` with no translation. Whether the indels are
+left-normalized is not established.
+
+**It is much smaller than 909,224.** 439,388 rows (48 %) are **enumerated codon alternatives, not
+observed variants**: where only a protein change was recovered from text, every codon encoding that
+amino acid is written out, and 439,383 of those triplets need two or three simultaneous base changes
+to reach the reported protein — which is a statement about the protein, not a position anyone can
+genotype.
+Decomposing the single-base codons leaves **342,209 distinct `chrom:start:ref:alt` keys over 305,935
+loci** as the honest joinable layer. 523 rows have `Ref == Alt`.
+
+**Consolidation is on extracted text, never on a coordinate**, so PubMind has record identity where we
+have variant identity: 68,744 coordinate keys (8.4 %) carry more than one PVID, worst case 35. At
+chr6:26092913 G>A (HFE C282Y) eight PVIDs disagree four ways, and one of them — `PVID926871`, verdict
+**Benign** — pairs `rs1800562` with gene *TMPRSS6*, a chromosome 22 gene on a chromosome 6 variant.
+`_gene_locus_conflicts` catches that shape today (`@gene-locus-relationship`).
+
+**Worth on our own corpus**: 173 of 423 GRCh38 `reference_examples` loci matched (40.9 %), 190 of 589
+authored ALTs exactly (32.3 %), and where both sides state a verdict they agree on 83 of 134 (62 %),
+every disagreement running our-pathogenic vs their-uncertain-or-benign. That profile — real breadth,
+low confidence — is a **cross-check source, not a fact source**.
+
+**Phase 1, the item**: a report-only pass mirroring the ClinVar `clin_sig` precedent — warning-tier in
+both modes, never escalating under `strict` (`@clinsig-never-escalates`), nothing written into the
+artifact. hg38-only with a named skip on GRCh37; codon decomposition with the excluded count in the
+warning text (`@warning-text-is-api`); every PVID on a contested coordinate reported rather than
+tie-broken; found/absent/unreachable plus `--offline` (`@unreachable-not-absent`); `PUBMIND_TERMS` in
+`licensing.py` recording `None` where the terms are genuinely unestablished.
+
+**Phase 2 — carrying a PubMind value into a module — is blocked and stays blocked**, on RM27 designing
+the redistribution axis (`@redistribution-ungated`) and on CHOP stating the ANNOVAR-distributed table's
+data terms. The software is academic-non-commercial by `LICENSE.md`, the paper is CC BY-NC-ND, and the
+table itself publishes nothing, which is **unknown rather than permissive** (`@no-named-licence`). The
+per-record `LLM_reasoning` and evidence passages — the actual novelty, and the material closest to a
+`provenance_quote` — are licence-gated and reachable through no open channel at all.
+
+**Phase 3 is the valuable one**: a drafting hint that surfaces the verdict, confidence, paper count and
+PMIDs beside a cell an author fills. It may **not** pre-fill `clin_sig`, because phase 1 cross-examines
+that cell against the same source (`@hint-redundancy-bearing`).
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
