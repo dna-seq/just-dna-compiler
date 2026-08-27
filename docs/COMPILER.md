@@ -1380,7 +1380,7 @@ VRS allele identity covers {identified}/{alleles} allele(s) in resolution.csv ({
 ```
 
 **Its twin, for ids that are present and that this tier cannot recompute, is grouped the same way
-since 0.6.7 (S67)** — one line per reason, descending count then reason, three `variant_key`s named
+since S67** — one line per reason, descending count then reason, three `variant_key`s named
 and the rest counted:
 
 ```
@@ -1636,7 +1636,7 @@ a patch: the objection is that filling a blank asserts what no curator wrote, no
    file's bytes and break the round-trip fixed point for any module carrying it. A warning the author
    acts on is the route.
 
-   **The warning has two branches since 0.6.7, and it stopped claiming nothing else is lost (S69).**
+   **The warning has two branches since S69, and it stopped claiming nothing else is lost.**
    Both halves were wrong in a way gating alone would not have fixed. `GenePanelSpec` carries **five**
    fields and `SourceRow.dataset` is one release *label*: it cannot hold `genes` — the denominator,
    and the only thing separating *this gene is not in the panel* from *it is in the panel and had

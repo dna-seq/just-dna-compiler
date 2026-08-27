@@ -1584,7 +1584,7 @@ when asking *does this check predate that fix*, which is the question `checked_a
 by hand-mapping a timestamp to a release. Both are outside the fact set for the same reason
 `checked_at` is — who ran a check is a fact about the run, not about the module — so the field is
 additive and moved no published `verification.signature`. It is `str | None`, and `None` on a record
-written before 0.6.7 reads as *not recorded*, never as a particular release.
+written before the field existed reads as *not recorded*, never as a particular release.
 
 ## The resolution table (0.5, **provisional**)
 

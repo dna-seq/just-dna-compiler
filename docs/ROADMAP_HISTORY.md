@@ -54,7 +54,7 @@ verbatim — and correcting it was part of the fix, not a follow-up (`@field-des
 `producer` is outside `VERIFICATION_FACT_FIELDS` on exactly the reasoning that excluded `checked_at`
 (*who* ran a check is a fact about the run, not about the module), so no published
 `verification.signature` moved — asserted by a test rather than reasoned about. It is `str | None`
-defaulting to `None`, so a record written before 0.6.7 reads as *not recorded*; defaulting it to the
+defaulting to `None`, so a record written before the field existed reads as *not recorded*; defaulting it to the
 reading version would manufacture the false attribution the item is about, which is the tri-state rule
 applied to a provenance field. And `merge_records` carries whole records, so the value travels with
 no change to the merge — pinned by a test that hand-builds a 0.6.4 record, merges over it, and asserts

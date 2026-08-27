@@ -4589,7 +4589,7 @@ that `S64` then argues the repair belongs somewhere the author can still reach *
 which is a real tension with "the repair belongs where the prose is authored" — the answer to that
 one is where it gets resolved.
 
-<!-- triaged: 0.6.7 · sha be123afbaead -->
+<!-- triaged: next-minor · sha be123afbaead -->
 
 
 `module.title`, `module.description` and `module.report_title` are the three fields an author *must*
@@ -4744,7 +4744,7 @@ where the prose is authored, which is why the field description shipped; the *fi
 already published* cannot live there, because the module is closed and its bytes are attested. Those
 are different problems and it took your two items side by side to see that.
 
-<!-- triaged: 0.6.7 · sha b3e1234da021 -->
+<!-- triaged: next-minor · sha b3e1234da021 -->
 
 
 Companion to `S63`, which asked for field descriptions on `ModuleInfo.title/description/report_title`.
@@ -4947,7 +4947,7 @@ covers is not a vote of no confidence and we will not read it as one.
 convergence requirement, the pre-drop boundary and the `variant_count` guard — none of which a verdict
 would have surfaced. That is the argument for the split, made by evidence rather than by preference.
 
-<!-- triaged: 0.6.7 · sha 69a2bf56b7ea -->
+<!-- triaged: next-minor · sha 69a2bf56b7ea -->
 
 
 **Reported by** just-dna-registry, 2026-08-21. A follow-up to **S62**, filed as a new item because that
@@ -5108,11 +5108,11 @@ view than guess.**
   signature decision, and a leaf shipped against a guess is one P3 keeps working forever. If you have
   a preference from the transport side, that is the input that settles it — you are the caller.
 
-**What you can do now:** upgrade when 0.6.7 is cut and the truncated-file class is gone. The lost-work
+**What you can do now:** upgrade when the next minor is cut and the truncated-file class is gone. The lost-work
 class is not, so a long unattended run still wants the timeout raised on your side until RM128's
 second half lands.
 
-<!-- triaged: 0.6.7 · sha 1b43eba05679 -->
+<!-- triaged: next-minor · sha 1b43eba05679 -->
 
 
 **Reported by** just-module-creator (the authoring plugin), 2026-08-22. Found by two independent
@@ -5247,7 +5247,7 @@ genotype-coverage findings you could act on are no longer items 83–85 of 85. *
 general question goes — this fix makes one wall shorter and does nothing about the channel's
 structure, which is your point there and it stands on its own.
 
-<!-- triaged: 0.6.7 · sha 9886db1793f6 -->
+<!-- triaged: next-minor · sha 9886db1793f6 -->
 
 
 **Reported by** just-module-creator, 2026-08-22. Companion to **S68**, which asks for the structure
@@ -5359,7 +5359,7 @@ alone should take a large bite out of the 14 kB on any module whose ids were min
 preference between the three derivations, that is the input that moves this — you are the consumer
 who would key on it.
 
-<!-- triaged: 0.6.7 · sha ed6cb3422c35 -->
+<!-- triaged: next-minor · sha ed6cb3422c35 -->
 
 
 **Reported by** just-module-creator, 2026-08-22. The general half of **S67**: that one asks for a
@@ -5472,7 +5472,7 @@ it is a real candidate for the same reasons you give, and it is a minor rather t
 waits for someone to want the fields *after* 1.0 rather than being decided by this item. The warning
 now says to keep the block, which is the honest interim.
 
-<!-- triaged: 0.6.7 · sha ae749c00ff13 -->
+<!-- triaged: next-minor · sha ae749c00ff13 -->
 
 
 **Reported by** just-module-creator, 2026-08-22.
@@ -5602,7 +5602,7 @@ the archive differently. That is in RM130.
 matter, no auto-correction; the ClinVar cross-check still never escalates, and the new warning says in
 its own text that the archive is the stale side often enough that this cannot fail a build.
 
-<!-- triaged: 0.6.7 · sha 7eca8f9cafc6 -->
+<!-- triaged: next-minor · sha 7eca8f9cafc6 -->
 
 
 **Reported by** just-module-creator, 2026-08-22. Companion to **S71**, which is about the same file at
@@ -5717,7 +5717,7 @@ fix at the one part that was right. Your triage case — *was this check put bef
 release* — is now answerable without hand-mapping a timestamp, and it is written into SCHEMAS beside
 the attestation as the reason the two fields both exist.
 
-<!-- triaged: 0.6.7 · sha 0becb402ecc1 -->
+<!-- triaged: next-minor · sha 0becb402ecc1 -->
 
 
 **Reported by** just-module-creator, 2026-08-22. Companion to **S70**; small, and the merge it is about
@@ -5824,7 +5824,7 @@ describes the module, we shipped the gene half, and the comment beside that chan
 this adds for such a module are all zero"* — which reads as a note about harmlessness and was in fact
 the residue. A reporter who reads our own change comment back to us is the most useful kind.
 
-<!-- triaged: 0.6.7 · sha 69b0980f68de -->
+<!-- triaged: next-minor · sha 69b0980f68de -->
 
 
 **Reported by** just-module-creator, 2026-08-22. **A follow-up to S57**, which you accepted and fixed in
@@ -5961,7 +5961,7 @@ can carry `literature.csv` article records, which is the *describing* half, and 
 which row any of them grounds. Teaching "cite everything" is right and currently unexecutable for this
 table — which is a fact about our schema, not about the author.
 
-<!-- triaged: 0.6.7 · sha d5038107cbd4 -->
+<!-- triaged: next-minor · sha d5038107cbd4 -->
 
 
 **Reported by** just-module-creator, 2026-08-22. **We are asking what the intended model is, not
@@ -6071,7 +6071,7 @@ directly.** The workspace's own network tier reaches into the private symbol, wh
 statement available that no public route existed. That is now the one caller left to migrate on our
 side.
 
-<!-- triaged: 0.6.7 · sha b9d0445a5feb -->
+<!-- triaged: next-minor · sha b9d0445a5feb -->
 
 
 **Reported by** just-module-creator · **Filed** 2026-08-24 · **Severity** low, and it is an API-surface

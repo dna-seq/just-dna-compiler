@@ -36,7 +36,10 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
 
-**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, not yet cut.**
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately
+left uncut (2026-08-27).** The number is not decided, so nothing here names one: the replies'
+markers read `next-minor` and every doc dates a change by its `Sn` rather than by a version that
+does not exist yet. Answered is not installable, and here it is not even tagged.
 Most of what follows is patch-class legibility, but three changes are each independently additive
 and so size the release under P3: `VerificationRecord.producer`, `compilation.dropped_rows`, and
 the new public `load_spec`. Legality sizes the release and severity only orders the queue inside

@@ -2752,7 +2752,7 @@ about the other seven and wrong about the one where it matters. The two levels a
 
 ### A check's findings, and where each one's survive (S70)
 
-`verification.json` records **counts**, and until 0.6.7 `clinical_significance` was the only one of
+`verification.json` records **counts**, and until S70 `clinical_significance` was the only one of
 the five checks `enrich()` puts whose findings then survived nowhere at all:
 
 | check | where its findings survive |
@@ -2761,7 +2761,7 @@ the five checks `enrich()` puts whose findings then survived nowhere at all:
 | `rsid_coordinate_agreement` | `detail=` — up to `DETAIL_LIMIT` disagreements, plus what was not compared and why |
 | `rsid_currency` | **per row in `resolution.csv`** — `rsid_status` and `rsid_current` are columns of the written file |
 | `genome_build_agreement` | count only, but its subjects *are* `reference_allele`'s mismatches, so the candidate rows are reachable |
-| `clinical_significance` | `detail=` since 0.6.7, grouped on `opposed`. Before that: the logger, and nothing else |
+| `clinical_significance` | `detail=` since S70, grouped on `opposed`. Before that: the logger, and nothing else |
 
 The conflicts always existed at runtime — `compare_clin_sig` returns them and every one is logged —
 but stderr survives the process and nothing else does, so a record reading `findings: 20,

@@ -1037,7 +1037,8 @@ class VerificationRecord(BaseModel):
         default=None,
         description=(
             "Tool and version that put **this** check, beside the `source`/`release`/`checked_at` "
-            "that also describe this one piece of work. Null on a record written before 0.6.7, which "
+            "that also describe this one piece of work. Null on a record written before this field "
+            "existed, which "
             "reads correctly as *not recorded* rather than as any particular release. Producer noise "
             "like `checked_at`, so it is outside the fact set and adding it moved no signature. Read "
             "this rather than the block-level `producer` when asking whether a record predates a fix "
