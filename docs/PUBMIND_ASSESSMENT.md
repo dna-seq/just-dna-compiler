@@ -172,126 +172,274 @@ inference engine over the literature — that is its entire contribution. So the
 adjacent by accident; the thing PubMind does best is a thing we are constitutionally not in the
 business of doing, which is precisely what makes it a good source and a poor competitor.
 
-**Phase 1 is legal and it is a minor.** It adds no column, no table and no field, so Principles 3 and
-8 are not reached — there is nothing to promote, retype or remove, and no already-published module
-becomes invalid. It lives wholly in `just-dna-enricher`, the only tier permitted to fetch (Principle
-2), and it writes nothing into the artifact, so the compile path neither imports it nor depends on it.
-What makes it a minor rather than a patch is a new pass and a new warning phrase, both of which a
-consumer can grep for; a correction to an existing derivation would be the other case, and this is
-not one.
+**All four sections are legal, and the batch is a minor.** Nothing below adds, removes, retypes or
+promotes a schema field, so Principles 3 and 8 are not reached — no already-published module becomes
+invalid, and there is nothing for a major to gate. All of it lives in `just-dna-enricher`, the only
+tier permitted to fetch (Principle 2), and none of it writes into the compile path, which never
+imports it. What makes the batch a minor rather than a patch is new commands, a new snapshot kind and
+new warning phrases, every one of which a consumer can grep for; a corrected derivation would be the
+other case and this is not one.
 
-**Phase 2 answers to Principle 5 before it answers to anything else.** A `pubmind_score` would be
-tempting to define as one number covering how many papers spoke, how confidently, and in which
-direction — three axes in one field, which is the anti-pattern Principle 5 exists to name, and which
-Principle 3 then makes permanent for the rest of the major. Principle 9 prices whichever shape
-survives: a parquet column is approximately free, a machine-written sidecar half, an authored column
-full — so a literature-derived score belongs on the derived side, never as a cell an author types.
+**The derived snapshot is priced at approximately nothing, and that is Principle 9 doing its job.** A
+parquet the machine writes and no author ever types is the free layer. The section that would cost
+something is the one nobody is asking for: a `pubmind_score` **authored** column would be full price,
+and Principle 5 rules on it before the price matters. A single score covering how many papers spoke,
+how confidently, and in which direction is three axes in one field — the anti-pattern Principle 5
+exists to name, made permanent for the rest of the major by Principle 3. The snapshot keeps them
+apart, `pubmind_sig` / `pathogenicity_score` / `confidence`, and the split is not cosmetic.
 
-**Phase 3 is priced by Principle 9 and costs nothing**, because a drafting hint is not a schema layer
-at all — it changes what a tool shows an author, not what the DSL asks of them.
+**Drafting is where Principle 3's one-way door actually bites.** Drafted rows land in `variants.csv`
+using columns that already exist, so the draft itself adds nothing — but `--min-confidence`,
+`derivation` and the `pubmind` entry in `DRAFT_PROJECTIONS` are names that become permanent the moment
+they ship, which is exactly what Principle 5's "audit every new name against likely future additions"
+asks for. `derivation` in particular wants checking against the possibility of a second
+literature-derived source arriving later.
 
-**Nothing here touches Principle 7.** No phase changes what `compile → reverse → compile` carries,
-which is what keeps the whole assessment additive.
+**Nothing here touches Principle 7.** No section changes what `compile → reverse → compile` carries.
+A drafted row round-trips because it is an ordinary authored row; the snapshot is not part of the
+artifact at all. That is what keeps the whole batch additive.
 
 ## The plan
 
-### Phase 1 — a report-only cross-check, and nothing lands in an artifact
+**Directed 2026-08-28: build both halves.** An earlier draft of this section stopped at a report-only
+cross-check and recorded everything downstream as blocked. That is now overtaken — the ask is a
+ClinVar-shaped **derived table with PubMind as the annotation authority**, plus a **three-way
+cross-check reporting concordance and discordance against ClinVar**. The licensing constraint has not
+changed and is not waved away; it moves from *reason not to design* to *precondition on shipping*, and
+[Gate](#the-gate-and-what-lifts-it) below says exactly which step it holds.
 
-Mirror the ClinVar `clin_sig` precedent exactly. A new enricher pass reads the cached PubMind
-coordinate table, joins the module's resolved subjects, and **reports** where a module's authored
-`clin_sig` disagrees with PubMind's aggregate — never repairs, never fills a cell
-(`@enrichment-is-validation`). Report-only means no PubMind bytes reach the parquet, which sidesteps
-redistribution entirely and makes the unstated data terms a warning rather than a blocker.
+One word needs pinning before anything else. **"Authority" here means an authoritative annotation
+source in the sense ClinVar is one — never `resolution.csv`'s `authority` column** (`@source-vs-authority`).
+Nothing PubMind produces may ever enter `resolution.csv`. Its coordinates are PyEnsembl back-mappings
+of text the model extracted, codon-enumerated and multi-PVID; treating that as a resolution link would
+put a derived guess where a resolved identity belongs. PubMind annotates loci that something else
+resolved.
 
-Severity is warning-tier in **both** modes and must never escalate under `strict`. The reasoning is
-the same one written down for ClinVar (`@clinsig-never-escalates`) and it is stronger here: a
-disagreement with an LLM's aggregate over the literature is a statement about the extraction's limits
-at least as often as about the module, and the 62 % agreement measured above is not a number a gate
-can be built on.
+### A. `pubmind build` — the derived snapshot
 
-The design constraints that are not negotiable:
+Mirror `clinvar_build.py` in structure, and mirror `@duckdb-vs-polars` in mechanics: builder in
+polars, fixed column order so a rebuild is byte-identical (P7). Registered as a `pubmind` sub-app
+beside `clinvar`, so the surface reads `just-dna-enrich pubmind build` / `… publish`, matching the
+`clinvar build`/`clinvar publish` pair a reader already knows.
 
-- **hg38 only.** The published table is GRCh38 and there is no GRCh37 equivalent. A GRCh37 module gets
-  the pass skipped with a named reason, the way `refget_supports_build` answers the same predicate
-  (`@refget-raises`), not a silent no-op.
-- **Decompose before joining, and publish the denominator.** Single-base codon rows decompose onto
-  their differing position; rows needing ≥2 simultaneous substitutions are excluded, counted, and the
-  count appears in the warning text, because a warning's text is an API and a denominator behind a
-  flag is the standing requirement (`@warning-text-is-api`). A pass that silently drops 48 % of the
-  file reads as full coverage.
-- **`Ref == Alt` rows are dropped and counted separately.** 523 of them; they are not variants.
-- **PVID fan-out is a finding, not a tie-break.** Where a coordinate carries several PVIDs with
-  disagreeing verdicts, report all of them. Picking one would be deriving an answer from an ordering
-  nobody defined, and the multiplicity is itself the useful signal.
-- **Three-valued, plus nobody-asked.** found / absent / unreachable, and `--offline` with no cache is
-  the fourth state the house rule insists on naming separately (`@unreachable-not-absent`). Absence
-  from PubMind is not evidence of anything: it means no paper in the corpus discussed the variant in
-  text the triage stage kept.
-- **Never persist a URL the API hands back.** Both `website_result_url` and `website_detail_url`
-  currently return `http://localhost:5016/...` — a deployment leak on their side. Derive links from
-  `https://pubmind.wglab.org/` ourselves.
+Input is the ANNOVAR-redistributed `hg38_pubmind_db.txt.gz`, downloaded by `--download` or supplied by
+`--table`, exactly as `clinvar build` takes `--vcf` or `--download`. Output is a snapshot directory:
+one parquet under `data/`, plus `release.json`, laid out through `locations` like every other snapshot
+(`@snapshot-layout-locations`).
 
-Mechanics follow the existing client contract without exception: retry then translate, both legs, into
-a `PubMindUnavailable` subclass rather than a flat error (`@client-exception-contract`); every pass
-that consults the source writes its `SourceRow` (`@write-the-sourcerow`); the cache path resolves
-through `locations`; the snapshot is pinned by sha256 **and** ETag/Last-Modified so an upstream
-revision surfaces as a finding rather than a silent change of answer; refresh merges, never clobbers
-(`@sidecar-authoritative`).
+**Schema.** `_empty_schema()`'s split is the model — resolver-link columns first, annotation after —
+except that here *no* column is a resolver link, which is the point above made structural:
+
+| Column | From | Note |
+| --- | --- | --- |
+| `chrom`, `start`, `ref`, `alt` | `Chr/Start/Ref/Alt` | the join key; VCF-style already, `start` is the 1-based POS (`@start-1based`) |
+| `pvid` | `PVID` | their record id, not a variant id — see the fan-out rule below |
+| `pubmind_sig` | mapped `pathogenicity_sum` | normalized into `VALID_CLIN_SIG` |
+| `pubmind_sig_raw` | `pathogenicity_sum` verbatim | so the mapping stays auditable and nothing is lost, exactly as `clin_sig_raw` does for CLNSIG |
+| `pathogenicity_score` | `paper_level_pathogenicity_score` | nullable, and null means *not computed*, never 0.0 |
+| `confidence` | `confidence` | 0–3, the `review_stars` analogue |
+| `derivation` | computed | `direct` for a `1/1` row, `codon` for a decomposed triplet, `indel` for a length-changing one |
+
+`_CLIN_SIG_MAP` is the precedent for the mapping and its default: a token with no module axis becomes
+`other` rather than being dropped. The six PubMind values map cleanly — `Pathogenic` → `pathogenic`,
+`Pathogenic/Likely pathogenic` → `pathogenic`, `Benign` → `benign`, `Benign/Likely benign` → `benign`,
+`Uncertain significance` → `uncertain_significance`, `Conflicting` → `conflicting` — and the two
+composite tokens are the ones worth arguing about, since collapsing `P/LP` to `pathogenic` loses the
+distinction our own vocabulary can carry. Keep both: `pubmind_sig_raw` holds the composite and
+`pubmind_sig` holds the mapped call, and no consumer has to re-parse a slash.
+
+**Normalization is where the measured defects get handled, and every drop is counted.** Silent
+truncation reads as full coverage, so each of these lands as a number in `release.json`
+(`@dont-discard-computed`):
+
+- decompose a codon triplet differing at exactly one base onto that base's position (**160,090** rows
+  in the 2026-08-24 file), stamped `derivation=codon`;
+- drop triplets needing ≥2 simultaneous substitutions (**439,383**) and longer MNV blocks (**5**) —
+  they assert a protein change, not a genotypable position;
+- drop `Ref == Alt` rows (**523**);
+- keep length-changing rows (**20,131**) but stamp them `derivation=indel`, because left-normalization
+  is unverified and a consumer needs to be able to exclude them without re-deriving why;
+- **keep every PVID on a contested coordinate as its own row.** 68,744 coordinates carry more than
+  one, worst case 35, and their verdicts disagree. Collapsing them would mean choosing a winner by an
+  ordering nobody defined — `mode()` over an unsorted group is the exact shape the ordering rule bans.
+  The multiplicity is a finding, and section B is where it surfaces.
+
+**`release.json` carries the provenance and the aggregate.** Source URL, the file's sha256, its ETag
+and Last-Modified (all three available, all three recorded, so an upstream revision becomes a finding
+rather than a silent change of answer), the PubMind-DB version, our builder version, and the drop
+counts above. `_merge_release_block` is the existing shape for adding a block without clobbering a
+sibling snapshot's (`@snapshot-accumulates`).
+
+**`pubmind publish` is refused, and that is the design, not an omission.** PharmVar is the standing
+precedent (`@gated-source-caches`): every gated source gets a cache, and PharmVar's is deliberately
+unpublishable, because a bulk file arriving under terms we cannot establish is not a file we may pass
+on. An unestablished permission is not a permission. So the command exists and refuses with the
+reason, rather than not existing — a missing command reads as an oversight somebody will helpfully add.
+
+### B. The cross-check: module ↔ ClinVar ↔ PubMind
+
+This runs beside the existing ClinVar `clin_sig` check rather than replacing it, and it answers a
+question that check cannot: *do two independent authorities agree about this variant, and where they
+do not, which one is our row standing with?*
+
+**Per variant, the outcome is a triple, and unknown is withheld rather than negated.** Each of the
+three sides independently answers pathogenic-class / benign-class / uncertain / **absent** /
+**unreachable**, and the combination is classified — Kleene, not withhold-on-any-unknown, because
+`unknown AND false` really is `false`:
+
+| Outcome | Meaning |
+| --- | --- |
+| `concordant` | ClinVar and PubMind both spoke and agree, and the authored row agrees with them |
+| `authored_dissents` | the two authorities agree with each other and the module does not |
+| `authorities_differ` | ClinVar and PubMind spoke and disagree — the interesting case, and the one nothing today can report |
+| `pubmind_only` | PubMind has a call where ClinVar has none: literature-derived coverage, the reason to adopt at all |
+| `clinvar_only` | ClinVar has a call where PubMind has none |
+| `neither` | absent from both — evidence of nothing, and it must not be reported as agreement |
+| `unchecked` | a side was unreachable, or nobody asked (`--offline`, no snapshot) |
+
+`ClinSigConflict.opposed` already draws the line the severity turns on: **opposed** (pathogenic-class
+vs benign-class) is the finding worth acting on, merely **different** is worth knowing. Reuse that
+distinction rather than inventing a second one — a discordance between `pathogenic` and
+`uncertain_significance` is not the same event as one between `pathogenic` and `benign`, and our own
+corpus has 32 of the first and 19 of the second.
+
+**Severity is warning-tier in both modes and never escalates under `strict`.** `@clinsig-never-escalates`
+is the precedent and it applies with more force here: a disagreement with an LLM's aggregate over the
+literature is a statement about the extraction's limits at least as often as about the module. 62 %
+agreement is not a number a gate is built on. `authorities_differ` in particular is not a defect in
+the module at all — it is a fact about the field — and reporting it as one would be wrong.
+
+**Aggregates land in two places, and only one of them recomputes.** Build time stamps
+corpus-wide concordance into `release.json` — our own reproduction of their 10.6 % ClinVar-overlap and
+>80 % concordance claims, against our own denominator and our own normalization, which is the only way
+those numbers mean anything to us. Enrich time reports per module. The build-time number is computed
+once and never recomputed by a later pass, because a message embedding a count that runs twice
+publishes two numbers (`@no-rerun-with-counts`); the enrich-time check dedupes on message, which is
+the normal case for a check running on both sides.
+
+**Absence is not disagreement, and it is not one thing.** A variant missing from PubMind means no
+paper in the corpus discussed it in text the DistilBERT triage stage kept — not that the literature is
+silent, and certainly not that the variant is benign. `--offline` with no snapshot is a third state
+beside asked-and-failed and asked-and-absent (`@unreachable-not-absent`), and a check that could not
+run must not report a zero (`@tautology-zero`).
+
+### C. Drafting from PubMind as an authority
+
+`draft-panel` drafts from ClinVar today. PubMind gets the same treatment through **`--source pubmind`
+on the existing command rather than a new `draft-pubmind`** — the two produce the same row shapes into
+the same tables from the same gene argument, and a second command would duplicate the genotype
+worklist, the placeholder guard, the dedup-against-`variants.csv` pass and the refusal summary, all of
+which are the parts that are hard to get right. `draft-clinpgx` is a separate command because it
+writes *different tables*; this does not.
+
+What changes behind the flag:
+
+- **`--min-confidence` is the `min_review_stars` analogue**, defaulting to a floor rather than 0.
+  PubMind's confidence 0–3 counts evidence depth the same way stars count review depth, and a
+  confidence-0 row is a single paragraph in a single paper.
+- **Identity is coordinate-whole or nothing** (`@identity-whole-or-none`). Most PubMind rows carry no
+  rsID at all — the HFE example resolves through one, the BRCA1 example has `rsid: "-"` — so the
+  provider fills `chrom`/`start`/`ref`/`alt` together or refuses the row and says which cells it could
+  not establish. Half an identity is worse than none.
+- **A `derivation=codon` row is drafted with that fact attached, and `derivation=indel` is not drafted
+  at all** by default, since left-normalization is unverified.
+- **Rows append, never mutate** (`@draft-appends`); a `<<REPLACE>>` placeholder protects `genotype` as
+  it does for ClinVar (`@placeholder-protects-decision`); the provider writes its own `SourceRow`
+  (`@write-the-sourcerow`), and a test that strips `declared_use` and asserts the compile refuses is
+  what keeps that row load-bearing.
+
+**The self-agreement trap, and the existing answer to it.** A module drafted from PubMind and then
+cross-checked against PubMind agrees with itself, and a check that agrees with itself has told nobody
+anything. `@draft-digest` is exactly this problem solved once: the provider hashes the table it wrote
+projected onto the column its own cross-check later reads, stamps `SourceRow.draft_digest`, and the
+check recomputes it and skips when the value has not moved. Add `pubmind` to `DRAFT_PROJECTIONS`
+projected onto `clin_sig`, and remember the two things that entry warns about — the projection is over
+**raw CSV cells** at draft time, when the table is still full of placeholders, and the skip is a
+**conjunction** of release *and* digest, so a matching digest against a newer snapshot is still a real
+comparison.
+
+The ClinVar half of section B is unaffected by this and is the reason the three-way check is worth
+more than either two-way: a PubMind-drafted module still gets a genuine independent opinion, from
+ClinVar.
+
+### D. The hint surface
+
+Unchanged from the earlier draft and still the cheapest thing here: `hint-variant` surfaces the
+verdict, confidence, paper count and PMIDs beside a cell an author is about to fill. It may **not**
+pre-fill `clin_sig` (`@hint-redundancy-bearing`) — the cell section B cross-examines cannot be filled
+by the source doing the cross-examining, which is the same defect `@draft-digest` handles for the
+drafting path, one layer up and without a digest to rescue it.
+
+### The gate, and what lifts it
+
+Sections A and D are buildable now. Sections B and C **acquire and carry** PubMind values, and both
+turn on one unanswered question:
+
+1. **The ANNOVAR-distributed table publishes no data terms.** `LICENSE.md` covers the *software*
+   (academic, non-commercial, CHOP tech-transfer for anything else); the paper is CC BY-NC-ND; the
+   table itself says nothing. Unknown is not permissive (`@no-named-licence`). **The unblock action is
+   to ask** — WGLab and CHOP's Office of Technology Transfer, in writing, whether the ANNOVAR-shipped
+   subset may be redistributed and on what terms. Nobody else can answer it, and it will not resolve
+   itself by the file continuing to download without a key.
+2. **RM27 still owes the redistribution axis** (`@redistribution-ungated`). `redistribution` is
+   recorded and not gated, so there is no machinery that would refuse to publish a module carrying
+   bytes we may not pass on. That is a gate on *publishing such a module*, not on building the
+   snapshot or running the check locally — worth separating, because conflating them is what stalled
+   this whole area in the earlier draft.
 
 `PUBMIND_TERMS` goes in `licensing.py` beside the others, recording what is establishable and `None`
 for what is not — `license=None`, `license_url` pointing at CHOP's `LICENSE.md`, `commercial_use=None`,
-`redistribution=None`, attribution to CHOP and the paper. Nulls here are load-bearing: they are the
-difference between "the terms permit this" and "we could not establish the terms".
+`redistribution=None`, attribution to CHOP and the paper. The nulls are load-bearing: `licensing.py`
+defines null as *"the terms could not be established"*, which is a weaker and more honest statement
+than either permission or refusal, and it is the state we are actually in.
 
-### Phase 2 — carrying a PubMind value, which is blocked and stays blocked
-
-Anything that puts a PubMind number *into* a module — a `pubmind_score` column, a drafted row, a
-studies entry sourced from `formatted_reference` — is gated on two independent things, and neither is
-ours to resolve unilaterally:
-
-1. **RM27 must design the redistribution axis first.** `redistribution` is recorded today and not
-   gated (`@redistribution-ungated`), so there is no machinery that could refuse to publish a module
-   carrying bytes we may not pass on.
-2. **The data terms have to be established**, by asking CHOP, not by inferring from the fact that the
-   file downloads without a key.
-
-Recorded so it is not re-proposed each time somebody notices the file is small and open.
-
-### Phase 3 — the authoring surface, which is the actually valuable one
-
-The highest-value use of PubMind is not a compile-time check at all: it is a **drafting hint** for an
-author deciding whether a variant is worth a row and what the literature says about it. That is where
-the 40.9 % locus coverage pays, and where a low-confidence, literature-derived signal is appropriate
-because a human reads it before anything is written.
-
-The constraint is the one that already governs hints: a hint may not fill a cell a Class-2 check
-cross-examines (`@hint-redundancy-bearing`). A PubMind verdict may **not** pre-fill `clin_sig`,
-because the cross-check in Phase 1 compares `clin_sig` against that same source, and a check that
-reads back what a hint wrote agrees with itself. Surfacing the verdict, the confidence, the paper
-count and the PMIDs beside an empty cell is allowed and is the whole point.
+Client mechanics follow the existing contract without exception: retry then translate, both legs, into
+a `PubMindUnavailable` subclass rather than a flat error (`@client-exception-contract`); the cache path
+resolves through `locations`; refresh merges, never clobbers (`@sidecar-authoritative`). And never
+persist a URL their API hands back — `website_result_url` and `website_detail_url` both currently
+return `http://localhost:5016/...`, a deployment leak on their side. Derive links from
+`https://pubmind.wglab.org/` ourselves.
 
 ### Tests
 
 Real fixtures, real paths, values computed at runtime — and specifically **no row counts copied out of
-this document into an assertion**. The counts above are a dated reading of a file that will move; a
-test that pins them fails on the next ANNOVAR release for no reason. What to pin instead:
+this document into an assertion**. The counts here are a dated reading of a file that will move; a
+test pinning them fails on the next ANNOVAR release for no reason. Assert the relationships instead:
 
-- codon decomposition, as a property: a synthetic 3/3 row differing at one base decomposes to the
-  right position and allele; one differing at two bases is excluded and counted.
-- the excluded-row denominator appears in the warning text, phrase pinned.
-- the hg38 gate refuses a GRCh37 module by name.
-- `--offline` with no cache reports unreachable, distinctly from absent, and does not report a zero
+- **codon decomposition as a property** — a synthetic 3/3 row differing at one base decomposes to the
+  right position and allele; one differing at two is excluded; the exclusion count in `release.json`
+  plus the kept count equals the input row count, an equality over a walked set rather than a floor
+  (`@registry-completeness`).
+- **the `VALID_CLIN_SIG` mapping is total** — every distinct `pathogenicity_sum` in the fixture maps to
+  a vocabulary member, and `pubmind_sig_raw` round-trips the composite tokens verbatim.
+- **rebuild is byte-identical** from the same input, which is what the fixed column order buys.
+- **all seven concordance outcomes are reachable**, each from a constructed three-way case, and
+  `authorities_differ` is warning-tier under `strict` — the assertion that would have caught an
+  escalation.
+- **`neither` never reports as agreement**, and `unchecked` under `--offline` reports no zero
   (`@tautology-zero`).
-- the multi-PVID case reports every PVID, using the real chr6:26092913 shape.
-- `PUBMIND_TERMS` produces a `SourceRow`, and stripping `declared_use` makes the compile refuse.
+- **the multi-PVID case reports every PVID**, using the real chr6:26092913 shape: eight records, four
+  distinct verdicts, and the one pairing `rs1800562` with *TMPRSS6* flagged by the gene/locus check.
+- **the draft digest skips on an unmoved `clin_sig` and fires once the cell is edited**, and does
+  *not* skip against a newer release with a matching digest.
+- **a PubMind-drafted module still gets its ClinVar opinion** — the check that proves the three-way
+  design earns its keep.
+- **`PUBMIND_TERMS` produces a `SourceRow`**, stripping `declared_use` makes the compile refuse, and
+  `pubmind publish` refuses with its reason named.
 
 ## Open questions
 
 - Are the indel rows left-normalized? Unestablished, and it decides whether the 20,131 length-changing
   rows can be joined at all.
 - What are the ANNOVAR-distributed table's data terms? Only CHOP can answer, and the answer decides
-  whether Phase 2 is ever reachable.
+  whether sections B and C are ever shippable.
 - Does the table get a stable release cadence? One snapshot dated 2026-08-24 is not a cadence, and the
   refresh design depends on it.
 - Is the PVID stable across releases? If it is not, then nothing about a PubMind reference is
   citable, and the pass should record coordinates rather than PVIDs.
+- Is `derivation` the right name, or is it already too narrow? Principle 5 asks that a new name be
+  audited against likely future additions, and a second literature-derived source arriving later would
+  want the same column with different members. The alternative is a source-scoped name now.
+- Should build-time concordance be computed over the whole table or only over rows a module could
+  plausibly reach? The whole table reproduces their published claim; a reachable subset is the number
+  an author actually cares about. They are different denominators and only one can be the headline.

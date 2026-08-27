@@ -713,11 +713,12 @@ today. Calibration from the live catalog: ~**120 characters**, against a measure
 leaves the spec as wrong; and anything retroactive to the seven published modules, which met every
 requirement that existed.
 
-## RM134 — PubMind as a literature-derived cross-check source
+## RM134 — PubMind as a literature-derived annotation authority, and a ClinVar concordance check
 
-**Severity** low-medium · **Status** open — **assessed, adoption not started; phase 1 is a minor,
-release undecided** · **Owner** enricher · **Motivating case** the PubMind paper
-(doi:10.1038/s41467-026-76834-4, 20 August 2026), assessed 2026-08-28 · **Full assessment**
+**Severity** low-medium · **Status** open — **assessed and designed 2026-08-28, no code written; the
+batch is a minor, release undecided** · **Owner** enricher · **Motivating case** the PubMind paper
+(doi:10.1038/s41467-026-76834-4, 20 August 2026), and a user direction on 2026-08-28 to design both a
+ClinVar-shaped derived table and a ClinVar concordance check · **Full design**
 [PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md)
 
 PubMind extracts variant–disease–pathogenicity associations from 41.7 M PubMed abstracts and 5.4 M PMC
@@ -756,23 +757,55 @@ authored ALTs exactly (32.3 %), and where both sides state a verdict they agree 
 every disagreement running our-pathogenic vs their-uncertain-or-benign. That profile — real breadth,
 low confidence — is a **cross-check source, not a fact source**.
 
-**Phase 1, the item**: a report-only pass mirroring the ClinVar `clin_sig` precedent — warning-tier in
-both modes, never escalating under `strict` (`@clinsig-never-escalates`), nothing written into the
-artifact. hg38-only with a named skip on GRCh37; codon decomposition with the excluded count in the
-warning text (`@warning-text-is-api`); every PVID on a contested coordinate reported rather than
-tie-broken; found/absent/unreachable plus `--offline` (`@unreachable-not-absent`); `PUBMIND_TERMS` in
-`licensing.py` recording `None` where the terms are genuinely unestablished.
+**The design, directed 2026-08-28, is four sections.** An earlier draft of this entry stopped at a
+report-only check and recorded the rest as blocked; that framing is overtaken, and the licence
+constraint moves from *reason not to design* to *precondition on shipping*.
 
-**Phase 2 — carrying a PubMind value into a module — is blocked and stays blocked**, on RM27 designing
-the redistribution axis (`@redistribution-ungated`) and on CHOP stating the ANNOVAR-distributed table's
-data terms. The software is academic-non-commercial by `LICENSE.md`, the paper is CC BY-NC-ND, and the
-table itself publishes nothing, which is **unknown rather than permissive** (`@no-named-licence`). The
-per-record `LLM_reasoning` and evidence passages — the actual novelty, and the material closest to a
-`provenance_quote` — are licence-gated and reachable through no open channel at all.
+**A. `pubmind build` / `pubmind publish`**, a sub-app beside `clinvar`, mirroring `clinvar_build.py`:
+polars builder, fixed column order for a byte-identical rebuild (P7), one parquet plus `release.json`
+through `locations`. Schema follows `_empty_schema()`'s split, except **no column is a resolver link** —
+"authority" here means an authoritative *annotation* source the way ClinVar is one, never
+`resolution.csv`'s `authority` (`@source-vs-authority`), because PubMind's coordinates are PyEnsembl
+back-mappings of extracted text. `pathogenicity_sum` maps into `VALID_CLIN_SIG` with the composite kept
+verbatim in `pubmind_sig_raw`, the `clin_sig_raw` precedent. Every normalization drop is **counted into
+`release.json`** rather than silently applied (`@dont-discard-computed`): 160,090 codon rows decomposed,
+439,388 enumerations and 523 `Ref == Alt` rows dropped, 20,131 indels kept but stamped, and PVID
+fan-out kept as separate rows because collapsing it would pick a winner by an ordering nobody defined.
+**`publish` refuses**, on the PharmVar precedent (`@gated-source-caches`) — a bulk file under terms we
+cannot establish is not one we may pass on, and the command exists and refuses rather than being
+absent, which would read as an oversight somebody helpfully fixes.
 
-**Phase 3 is the valuable one**: a drafting hint that surfaces the verdict, confidence, paper count and
-PMIDs beside a cell an author fills. It may **not** pre-fill `clin_sig`, because phase 1 cross-examines
-that cell against the same source (`@hint-redundancy-bearing`).
+**B. A three-way check, module ↔ ClinVar ↔ PubMind**, beside the existing ClinVar `clin_sig` check
+rather than replacing it. Seven outcomes — `concordant`, `authored_dissents`, **`authorities_differ`**
+(the case nothing today can report), `pubmind_only`, `clinvar_only`, `neither`, `unchecked` — combined
+under Kleene, with unknown withheld and never negated. `ClinSigConflict.opposed` already draws the
+severity line (opposed vs merely different) and is reused rather than re-invented. Warning-tier in both
+modes, never escalating (`@clinsig-never-escalates`), and `authorities_differ` is not a module defect at
+all. Corpus-wide concordance is stamped into `release.json` **at build time only** — our own
+reproduction of their 10.6 % / >80 % claims against our denominator — because a message embedding a
+count that runs twice publishes two numbers (`@no-rerun-with-counts`).
+
+**C. Drafting**, through `--source pubmind` on the existing `draft-panel` rather than a new command,
+since it writes the same tables from the same gene argument and a twin would duplicate the genotype
+worklist, placeholder guard and dedup pass. `--min-confidence` is the `min_review_stars` analogue;
+identity is coordinate-whole or nothing (`@identity-whole-or-none`), most PubMind rows carrying no
+rsID. **The self-agreement trap has an existing answer**: a module drafted from PubMind and then checked
+against PubMind agrees with itself, so `pubmind` joins `DRAFT_PROJECTIONS` projected onto `clin_sig`
+(`@draft-digest`) — raw CSV cells at draft time, and the skip a conjunction of release **and** digest.
+The ClinVar half of B is unaffected, which is why the three-way shape earns its keep.
+
+**D. The hint surface**, unchanged and cheapest: surface verdict, confidence, paper count and PMIDs
+beside the cell, and never pre-fill `clin_sig` (`@hint-redundancy-bearing`) — the same defect
+`@draft-digest` solves one layer down, without a digest to rescue it.
+
+**The gate is one unanswered question, and asking is the unblock action.** A and D are buildable now;
+B and C acquire and carry values. The ANNOVAR-distributed table publishes **no data terms** —
+`LICENSE.md` covers the software (academic, non-commercial), the paper is CC BY-NC-ND, the table itself
+says nothing, and unknown is not permissive (`@no-named-licence`). Ask WGLab and CHOP's Office of
+Technology Transfer in writing; it will not resolve itself by the file continuing to download without
+a key. Separately, RM27 still owes the redistribution axis (`@redistribution-ungated`) — a gate on
+*publishing a module that carries such bytes*, not on building the snapshot or running the check
+locally, and conflating the two is what stalled this area in the first draft.
 
 # Not format scope
 
