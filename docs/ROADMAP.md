@@ -464,6 +464,8 @@ natural-language question. Presence is the bit a check may read.
 
 ## RM128 — `enrich()` persists nothing until its tail, so a run killed at minute 29 has written nothing
 
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm128--enrich-persists-nothing-until-its-tail-so-a-run-killed-at-minute-29-has-written-nothing) on 2026-08-28 — BUILDS in 0.7, all three asks.** Ask 2's dilemma dissolved: the run becomes a **transaction** — durable staging beside the target plus an atomic commit at the gate — which keeps *a refused strict run changes nothing* as a written promise **and** recovers the thirty minutes, so the trade was never necessary. Same-directory staging makes a cross-partition move structurally impossible; a flag keeps the staging files for debugging. Ask 3 is `flock`, ask 4 is `(done, total)` over **subjects**, with the unit argued rather than guessed.
+
 **Severity** medium · **Status** open — **a minor, release undecided** — the corruption half shipped
 2026-08-24; what is left is three asks that each change a documented behaviour · **Owner** enricher ·
 **Motivating case** S66 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
@@ -520,6 +522,8 @@ an unanswered subject — that is the fabricated negative each branch's comment 
 
 ## RM130 — a check's findings are counted and not kept, so a conflict has no name to act on
 
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on) on 2026-08-28 — BUILDS in 0.7; its blocker is answered.** RM124's question 2 resolved as a succession, so the sidecar ships keyed `(variant_key, genotype)` as the **overlay's input side**: a conflict is a question and an overlay row is the answer. Its documentation names `overrides.csv` and never `outranks`, so authors are steered onto the mechanism that survives 1.0.
+
 **Severity** medium · **Status** open — **a minor, release undecided** — the observability half
 shipped 2026-08-24 · **Owner** enricher · **Motivating case** S70 (just-module-creator) in
 CONSUMER_SUGGESTIONS_HISTORY.md
@@ -558,6 +562,8 @@ the ClinVar cross-check does not escalate under `strict` (`@clinsig-never-escala
 warning that shipped says so in its own text.
 
 ## RM131 — `warnings` is a flat `list[str]`, and the discriminator that would make it readable is computed and discarded
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm131--warnings-is-a-flat-liststr-and-the-discriminator-that-would-make-it-readable-is-discarded) on 2026-08-28 — BUILDS in 0.7, both halves, sequenced.** Two facts shrank it: `manifest.compilation.warnings` already ships, and `artifact_digest` is over the parquet `FileEntry` list, so the manifest sits outside the digest and a richer channel costs no hash — **there is no metainfo artifact to build.** Actionability first (a `carried` list beside an unchanged `warnings`), then codes named by each check; the ~29-site audit is done once for both. RM124's suppressed rows report here, aggregated by reason.
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler ·
 **Motivating case** S68 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
@@ -612,6 +618,8 @@ who most needs the hidden ones.
 
 ## RM132 — `pharm_variants.csv` makes a clinical claim per row and cites per variant
 
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant) on 2026-08-28 — BUILDS in 0.7, and it is the item that makes the round's sort rule load-bearing.** A full-cost authored column is taken anyway because **the risk P9 prices — getting the shape wrong — was spent by RM47 a release ago**, so demand has nothing left to fix. `PharmVariantRow.pmid` plus both cross-check sites in the same release; `provenance_quote` does **not** follow, stated rather than implied.
+
 **Severity** medium · **Status** open — **a minor, release undecided** — shape settled 2026-08-24 by
 the RM47 precedent · **Owner** format + compiler + enricher · **Motivating case** S73
 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
@@ -656,6 +664,8 @@ table, so every column is full cost.
 RM47 already refused — it would make a study row's subject depend on which table read it.
 
 ## RM133 — a card subtitle has no amendable home, and the binding is not where that gets fixed
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm133--a-card-subtitle-has-no-amendable-home) on 2026-08-28 — BUILDS in 0.7, on the authored layer at zero cost.** `short_description` joins the registry-owned family as a **separate** frozenset beside `IDENTITY_AUTHORITY_KEYS`, stripped by the same function, so the stored bytes are untouched and the closure stands; the ~120-character calibration ships as a constant rather than being guessed at downstream.
 
 **Severity** low-medium · **Status** open — **a minor, release undecided** — the binding question it
 arrived with is **answered and closed** · **Owner** format (+ registry, for the half that is theirs) ·
@@ -882,6 +892,30 @@ release is assembled.
 Version-axis note: `schema_version` is `"1.0"` while the packages are `0.x` (now `0.5.0`). At `1.0`,
 either align them or document explicitly that they track different things (wire format vs. package
 release).
+
+### RM135 — `ProvenanceItem.outranks` is superseded by the overlay, and one of them has to go
+
+**Severity** low-medium · **Status** queued for 1.0 — **filed 2026-08-28 by
+[PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)**,
+which decided the succession rather than the merge · **Owner** format
+
+RM124's `overrides.csv` records an authored value beating a source, with prose. `ProvenanceItem.outranks`
+— `{column: why}`, shipped by S52 — records an authored value beating a source, with prose. They are one
+concept in two files, split on authored-versus-derived, and Principle 5 says decide before either grows a
+second field. The proposal decided: **both stand in 0.7 and the unification lands here.**
+
+**The rule that survives is the simpler one — the *existence* of an override in an authored table
+auto-beats the derived value**, with no separate declaration to write. By Venn diagram the overlay's logic
+is a partial superset of what `outranks` allows and reaches it more directly, so once an author controls
+both derived overrides and authored tables the `outranks` knob has nothing left to do.
+
+**Why the deprecation is not in 0.7, and this is the part to re-read under the cadence note above.** The
+two-step default would put a warn-only deprecation in a minor and the removal here. It cannot, yet: the
+overlay covers *derived* tables and `outranks` covers an *authored* cell, so until the overlay's semantics
+reach authored tables — which is this item — an author warned off `outranks` has nowhere to go, and
+Principle 3 says a deprecation belongs in a minor only where its audience can act on it. **The warning
+ships with the replacement, in whichever minor extends the overlay to authored tables; the removal is
+here.** That ordering is the item's own upgrade line under RM52.
 
 ### `module.version` — refusing a digitless version
 

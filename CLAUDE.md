@@ -28,8 +28,8 @@ gotcha book: it is loaded into every session and has a size ceiling.
 
 **`docs/` root holds only what is still live.** Five subfolders hold the rest, and nothing in them is
 edited as routine work: `docs/history/` (the closed record — the pre-0.6 halves of the three history
-files, plus the round-2 consumer thread), `docs/proposals/` (the five `PROPOSAL_*` design threads,
-all of them concluded), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
+files, plus the round-2 consumer thread), `docs/proposals/` (the `PROPOSAL_*` design threads — five
+concluded, plus `PROPOSAL_0_7` which is live and wins over the roadmap files until its items land), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
 references re-derived from the code on 2026-08-18 — **evidence, never contract**; the maintained
 reference is the one in `docs/` root), `docs/vendor/` (two upstream files kept for reference,
 PharmVar's OpenAPI document and its licence text).

@@ -45,6 +45,8 @@ because it is deferred.
 
 ## RM126 — nothing tells a consumer what a release changed about compiled *output*
 
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) on 2026-08-28 — BUILDS in 0.7, in full plus the S65 roster.** Record + `needs_recompile` in format, the sweep in the compiler, the gate in the bump→tag sequence; intervals compose as a union over `(a, b]`, which is what gives S65's convergence requirement for free.
+
 **Severity** medium-high · **Status** **queued for 0.7, moved here 2026-08-21 — to be built, not
 parked.** The charter now *requires* this channel: Principle 3 says a corrected derivation may ship in
 any release but never silently, and this is the declaration it mandates. Until it exists the charter
@@ -605,6 +607,8 @@ argument for leaving this at a warning.
 
 ## RM70 — `requires_callable` is `VariantRow`-only, so no PGx table can state CPIC's core assumption
 
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) on 2026-08-28 — BUILDS in 0.7.** `requires_callable` on `HaplotypeRow` and `PharmVariantRow`, not on `DiplotypeRow`; `callable_from` does not travel with them.
+
 **Severity** medium · **Status** deferred — additive and minor-legal, waiting on a decision about which
 table owns the claim · **Owner** format (schema) + compiler · **Found by** dogfooding on 2026-08-13,
 `reference_examples/cyp2c9_warfarin_grch37/`
@@ -676,6 +680,8 @@ only when a module needs to say where the proof lives. Additive and minor-legal 
 waits on a version.
 
 ## RM71 — the alleles a drafted `genotype` stub must be written from are in no file
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) on 2026-08-28 — BUILDS in 0.7, and no schema moves.** The answer to *where does an author do this work* is **in the command they already ran**: the worklist covers every stubbed row in the file rather than only this run's additions, and `draft-panel` gains the `--dry-run` that `draft` has. The bulk advisory command is rejected for putting the worklist in a third place.
 
 **Severity** medium · **Status** deferred — every place the information could legally go is also the
 wrong place, and that is the decision · **Owner** enricher (`clinvar_draft`) + compiler (`draft`) ·
@@ -1025,6 +1031,8 @@ by-product of building this.
 
 ## RM83 — a derived sidecar can only be refreshed by deleting it, which discards the overrides it exists to hold
 
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it) on 2026-08-28 — CLOSED, dissolved by RM124 rather than argued down, contingent on the overlay landing.** Both halves stop existing once derived tables are pure build products. The residue is `enrich --rederive` — a flag on the command that already derives, composing with RM128's transaction so a baseline exists for the diff — not the `--refresh` command with its three open questions. Move this entry to ROADMAP_HISTORY in the commit that lands the overlay, not before.
+
 **Severity** medium-high · **Status** open — one shape named, tier undecided · **Owner** enricher
 (probably; see below) · **Motivating case** every second pass; upstream-drift detection
 
@@ -1199,6 +1207,8 @@ recorded here because this entry is where a reader meets the publisher.
   published a manifest attesting parquets that were never uploaded.
 
 ## RM85 — the origin of a module predicts the shape of its second pass, and nothing records it
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it) on 2026-08-28 — BUILDS in 0.7** as the enricher check comparing `SourceRow.dataset` against the source's current release. Tri-state: unreachable is `unchecked`, never up-to-date.
 
 **Severity** low-medium · **Status** open — the fact is nearly recorded already; nothing acts on it ·
 **Owner** format (a column) or enricher (a report) — undecided, and that is the item · **Motivating
@@ -1447,6 +1457,8 @@ Principle 7 forbids. The reporter argued the same case against their own first c
 right.
 
 ## RM124 — an author's correction to a derived table has nowhere to live except inside it
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it) on 2026-08-28 — BUILDS in 0.7, and it is the round's keystone.** `overrides.csv`, keyed `(table, subject, member, field)`; operations `update`/`insert`/`suppress`, with the wildcard refused for `suppress` alone; applied at load and merge-not-clobber dropped for the six covered tables; P7 held by idempotency, so no `previous_value` column. Question 2 answered as a dated succession — see **RM135**.
 
 **Severity** medium-high · **Status** open — a shape proposed by a consumer who built the workaround,
 tier argued, four questions unsettled · **Owner** format + compiler · **Motivating case**

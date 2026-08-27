@@ -21,7 +21,8 @@ it as `0.7.0` across all three packages. Nothing in this document is gated on a 
 additive under Principles 3 and 8, and legality stopped nothing this round.
 
 **Scope.** Eleven items decided: six from ROADMAP_0_7.md and five that were sitting in ROADMAP.md as
-*a minor, release undecided*. Nine build, one closes into another, one is a documentation succession.
+*a minor, release undecided*. **Ten build and one closes into another** — RM83, whose premise stopped
+holding. The succession filed alongside them is RM135 and is not one of the eleven.
 Nine further items stay deferred on a gate that is not ours to open, restated per item in
 [Not taken](#not-taken-and-the-gate-in-each-case). One new item (RM135) was filed by the round itself, and
 RM134 arrived alongside it from an unrelated thread and is out of scope here.
@@ -244,6 +245,14 @@ require the overlay to record the value it replaced, so reverse could un-apply. 
 inside an authored table, and it rots the moment the source moves: precisely the staleness
 `licensing.withdraw_stale_dataset` had to be built for, and the reason RM71 refuses a comment column.
 Idempotency buys the round trip at no schema cost.
+
+**Idempotency proves value identity; the round trip is compared on bytes, and row order is load-bearing**
+— parquet bytes depend on it, and authored row order is preserved through compile → reverse → recompile.
+So `insert` owes a placement rule, and it is stated here rather than invented by the implementer: **an
+inserted row is appended at the end of its subject's group, in the order the overlay rows appear.** That
+makes placement a function of the overlay's own authored order, which the round trip already preserves,
+rather than of a sort over values that a corrected cell could move. `update` and `suppress` need no rule —
+one edits a row in place and the other removes one, and neither reorders what remains.
 
 The fact signatures and `resolution_signature` are over the derived tables **as they stand**, therefore
 post-overlay, which is right: a signature should describe what the module actually asserts. The overlay
@@ -932,7 +941,8 @@ Two items the decisions above created. Neither is 0.7 work.
   the derived value. A removal, hence major-only under P3. 0.7 documents the succession and emits no
   deprecation warning, because the replacement does not yet cover `outranks`'s own case and a warning
   nobody can clear is noise rather than notice. Numbered rather than left as a prose note, because an
-  unnumbered filing is one RM_TOC cannot index and nobody can find.
+  unnumbered filing is one RM_TOC cannot index and nobody can find. Written into ROADMAP.md's 1.0
+  cleanup tracker and indexed in RM_TOC in the same commit as this correction.
 - **Nothing else.** The suppressed-row record was considered as its own item and folded into RM131
   instead: `manifest.compilation.warnings` already ships and sits outside the digest, so the home exists
   and a second one would be one more thing to keep in step.
