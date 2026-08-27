@@ -21,6 +21,13 @@ the shortest path to a stale pointer. Dot-directories are skipped, which takes o
 under `.claude/` (whole second checkouts) along with the `create-module` skill, whose markdown carries
 no links at all; `data/` and `dist/` are build output.
 
+A target that climbs out of the repository is reported as its own finding, decided from the path and
+not from the filesystem. `ROADMAP.md` carried a consumer's `../../just-dna-lite/docs/…` link for three
+days of red CI while every local run stayed green, because this checkout has that repository as a
+sibling and the runner never will. Such a link is dead for a reader on GitHub too — relative targets
+resolve inside one repository's blob tree — so the message says *escapes* rather than *no such file*:
+locally the file is right there, and that is exactly the problem.
+
 Three limits worth knowing before reading a failure. A link inside a fenced code block is not a link —
 `CONSUMER_TRIAGE_LOOP.md` shows the reply idiom with an elided `#rm45--…` fragment inside a fence — so
 fences are blanked first, keeping their newlines so reported line numbers stay true. GitHub
@@ -186,6 +193,10 @@ def test_every_relative_doc_link_resolves() -> None:
             where = f"{path.relative_to(_ROOT)}:{line}"
             filename, _, fragment = target.partition("#")
             resolved = (path.parent / filename).resolve() if filename else path
+            # Asked before `exists()`, and answered from the path rather than from the filesystem.
+            if filename and not resolved.is_relative_to(_ROOT):
+                findings.append(f"{where} -> {target}: escapes the repository")
+                continue
             if filename and not resolved.exists():
                 findings.append(f"{where} -> {target}: no such file")
                 continue

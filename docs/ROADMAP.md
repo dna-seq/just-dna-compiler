@@ -1557,7 +1557,7 @@ New ideas enter here as freeform suggestions, then graduate through the design c
 revision/curation pass over all ten modules in `data/interim/v1_port/` driven entirely through the
 installed authoring surface (just-module-creator 0.18.0 against format / compiler / enricher
 **0.6.6**), and wrote up 26 findings in
-[`just-dna-lite/docs/MODULE_DOGFOODING.md`](../../just-dna-lite/docs/MODULE_DOGFOODING.md). Seven of
+`just-dna-lite/docs/MODULE_DOGFOODING.md`. Seven of
 them are the plugin's. The rest are compiler- or enricher-tier and are listed here so the plugin
 maintainers do not have to relay them. **All ten modules validate clean with zero errors** — every
 item below is about what a green run does and does not tell an author.
