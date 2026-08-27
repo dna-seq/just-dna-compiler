@@ -666,7 +666,7 @@ not do is restore a module:
   `status` to `resolved`. Recovering them means re-running the enricher.
 - **Lost on a non-GRCh38 module:** hand-authored resolution rows for the positional tables, because
   the positional fill is gated on GRCh38 (RM15) and there is nothing in the parquet to rebuild them
-  from. This is [RM69](ROADMAP_0_7.md#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped),
+  from. This is [RM69](ROADMAP_1_0.md#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped),
   and it is a documented limit of P7, not a breach: `resolution.csv` is not an authored value.
 
 The module in your repository is the source of truth. Reverse is for reading back somebody else's

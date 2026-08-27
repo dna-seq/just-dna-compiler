@@ -10,6 +10,13 @@ retyping** — the moves that break an existing reader or invalidate published d
 what a published identity *means*. "It moves a recompile's `artifact.digest`" is **not** a reason;
 Principle 4 already scopes byte-reproducibility to a fixed `compiler_version`.
 
+**A third class lives here too, added 2026-08-27: an item that is *gated on* a major without needing
+one.** RM69 is the case — its own repair is minor-legal, and every way of reaching it before RM15 lands
+was refused. An item is filed against **the release that decides it**, not the release its diff would be
+legal in, because filing by legality leaves it in the minor file waiting on a version that file promises
+nothing waits on. Such an entry names its gate in the status line and is listed under the gating item, so
+building the gate closes it rather than leaving it to be re-found.
+
 **Read the 1.0 cleanup tracker with this file.** It still lives in
 [ROADMAP.md § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker) and holds the unnumbered
 items (the `state` alias, the `pathogenic`/`benign` booleans, `StudyRow.p_value: str`, the
@@ -64,6 +71,114 @@ convention *for a second coordinate* settled (interbase-half-open vs inclusive).
 half closed in 0.5 — it is 1-based VCF POS and now says so, pinned by a test.
 
 Interacts with RM5 (structural alleles differ across assemblies) and the reserved `reference_db` axis.
+
+**What lands with it, so whoever builds RM15 knows what it closes** *(the list is the point — until
+2026-08-27 both of these named RM15 and RM15 named neither, which is how a gated item stops being
+findable from its gate)*:
+
+- **[RM69](#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped)
+  closes outright.** The `_resolve_positional_tables` skip on `genome_build != DEFAULT_GENOME_BUILD`
+  *is* the RM15 gate; un-gating the fill makes the injected rows reach the positional parquets, which is
+  the missing field Principle 7's own remedy clause points at. Nothing else reaches it.
+- **[RM68](ROADMAP_0_7.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid)
+  loses its premise but keeps its own exit.** Once a provider can write the coordinate under the build
+  it came from there is nothing left to refuse or strip. It stays filed in 0.7 because its other exit —
+  an author with a non-GRCh38 module saying which outcome they wanted — is reachable first and would
+  settle it without RM15; check its status before assuming this closes it too.
+
+---
+
+## RM69 — `resolution_signature` is not a round-trip invariant when the positional fill is skipped
+
+**Severity** low · **Status** **gated on [RM15](#rm15--build-agnostic-identity--multi-build-support),
+moved here from [ROADMAP_0_7.md](ROADMAP_0_7.md) on 2026-08-27** — the repair itself needs no major, but
+every route to it before RM15 lands is refused below, so 1.0 is the release that decides it. Until then
+it is a documented limit of Principle 7 on non-GRCh38 modules, not a breach · **Owner** compiler ·
+**Found by** dogfooding on 2026-08-13, the D6 corpus sweep
+
+### What was observed
+
+The D6 sweep round-tripped all sixteen reference examples and compared four signatures.
+`artifact.digest`, `content_signature` and `source_signature` are a fixed point everywhere.
+`resolution_signature` moves on four modules, in two distinct shapes, and only one of them is this item:
+
+- `None → value` on the three carrying no `resolution.csv` (`grch37_build`, `mt_heteroplasmy`,
+  `cyp2d6_structural`). Reverse materializes the table from the parquets, nothing is lost, and lap two
+  is stable. Not a defect.
+- `value → value` on exactly one, `cyp2c9_warfarin_grch37`: `c6fd3238…` → `a0558501…`.
+
+The mechanism is closed. `_resolve_positional_tables` skips the positional fill when
+`genome_build != DEFAULT_GENOME_BUILD`, because the identity minting behind those keys is GRCh38-only
+(RM15). So the module's injected coordinates never reach `pharm_variants.parquet`; and
+`_write_resolution_csv` rebuilds the table from `weights.parquet` plus the positional parquets, while a
+PGx module has no `weights.parquet` at all. The three `source=manual` rows — `rs12777823`, `rs2108622`,
+`rs9923231`, each carrying a `ref`/`alts` pair a curator supplied by hand — have nothing to be rebuilt
+from and are simply gone.
+
+**Say what is lost precisely:** those three rows are hand-curated, not machine-derived, so re-running
+`enrich` does not reproduce them. Recovering them after a round trip means re-authoring them. That is
+why the item exists at all; it is *low* severity because the module in the repository is the source of
+truth and no published workflow round-trips a module and then discards the original, not because the
+content is cheap.
+
+### Is this a Principle 7 violation?
+
+**No, on the letter, and the charter's own next sentence is the diagnosis.** Principle 7 says
+*"**Lossless round-trip.** `compile_module` → `reverse_module` → `compile_module` preserves every
+authored value."* `resolution.csv` is not an authored value: it is a machine-written, build-time derived
+sidecar, priced at half by the 0.6 charter amendment, whose only consumers are the compiler and the
+enricher's update run. Every authored value does survive — `content_signature` is `989e8298…` and
+`artifact.digest` is `d7a4f37e…` before and after.
+
+The clause that does apply is the one immediately after it: *"If a value cannot survive the round-trip,
+the artifact is missing a field, not the spec."* That is exactly right here, and it is the whole
+finding. The missing field is the coordinate on the positional parquet. RM43 added it in 0.6 for
+`pharm_variants` / `haplotypes` / `heteroplasmy`, and RM15 gates the fill on GRCh38. So Principle 7's
+own stated remedy points at a blocker Principle 7 cannot remove, and the honest statement is *a
+documented limit of P7 on non-GRCh38 modules*, not a breach.
+
+### Candidate repairs, and why each is wrong
+
+- **Join `resolution.csv` onto the positional tables regardless of build.** This is precisely what the
+  RM15 gate refuses. `resolve_from_table` filters on the `genome_build` column, and
+  `derive_variant_key`/`derive_vrs_allele_id` default to GRCh38 — so the join would place rows against
+  loci the compiler cannot re-derive a key for, and mint GRCh38 identities for GRCh37 coordinates. That
+  is the defect `reverse_module`'s hardcoded constant caused and `test_build_call_sites.py` now walks
+  the AST to prevent. The compiler would be manufacturing the identity it cannot check.
+- **Have `reverse` carry the injected table through verbatim.** It cannot: `reverse_module` is a
+  function of the *artifact*, and takes an artifact directory. The original `resolution.csv` is not one
+  of its inputs. Making it one would turn reverse into a function of the spec directory as well, which
+  is a different transform — and it would re-emit provenance reverse discards on purpose (`source`
+  becomes `reversed`, `status` becomes `resolved`, `fetched_at` empties).
+- **Write the injected coordinate into the positional parquet without joining.** The join spelled
+  differently. Writing the coordinate is what the gate forbids, and doing it without re-deriving the key
+  yields a parquet row whose coordinate and whose `variant_key` were computed on two different
+  assemblies.
+- **Add `resolution.parquet`.** RM43 refused it explicitly, and the charter amendment states the reason
+  in general (this is the first repair anyone proposes on finding a table with no coordinate). It also
+  does not fix anything here: it would stabilise the signature while the fill it exists to feed stayed
+  skipped, so the module would hash as though its resolution survived when the data remained unjoined.
+  A stable hash over unusable rows is worse than a moving one.
+- **Stop comparing `resolution_signature` across the round trip.** The delete-the-test repair, and the
+  D6 sweep is the argument against it: the sweep read `getattr(manifest, "resolution_signature", None)`
+  while the field lives on `manifest.compilation`, so it compared `None == None` for eleven examples for
+  the whole of 0.6. Un-comparing it now restores exactly the blindness just repaired. What this wants is
+  a named, single exception, not a dropped comparison.
+
+**What would unblock it:** RM15. Nothing smaller reaches it — a sixteen-module corpus produces exactly
+one instance, because it takes a non-GRCh38 module that also carries a positional table with an injected
+coordinate.
+
+### Why it was not simply closed instead, 2026-08-27
+
+Closing was the live alternative when the misfiling was found, and the case for it is real: severity
+low, no incident behind it, and a mechanism reproduced once in sixteen modules is normally grounds to
+close rather than to carry. **It stays open because the fix arrives on its own** — RM15 un-gates the
+fill and the signature becomes an invariant with no work filed against this entry, so closing it as a
+"documented divergence" the way [RM67](ROADMAP_0_7.md#rm67--polyploid-and-partially-phased-genotypes)
+was closed would say the wrong thing: RM67 is a limit nobody intends to lift, and this one is scheduled.
+The other half of the argument is the candidate-repair list above, which is the record of five refusals.
+Closing the entry retires that record just as the release most likely to re-propose all five arrives.
 
 ---
 

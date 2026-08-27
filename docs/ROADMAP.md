@@ -26,10 +26,14 @@ deferral is filed against the release that will decide it:
   at the time; PT2 re-asked which release each belonged to now that 0.6 is uncut, and took five back:
   RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
   probe overturned what the roadmap entry says.
-- **[ROADMAP_0_7.md](ROADMAP_0_7.md)** — RM16, RM23, RM28 and the deferred halves of RM55, RM56, RM65,
-  plus RM66 and RM67. RM10 closed there, folded into RM28. **Five of its entries are now records rather
-  than decisions** — see the line above.
-- **[ROADMAP_1_0.md](ROADMAP_1_0.md)** — RM15, RM52 and RM55's removal half, plus the upgrade ledger.
+- **[ROADMAP_0_7.md](ROADMAP_0_7.md)** — items legal in a minor, each waiting on a design question, a
+  corpus or a caller. RM10 closed there, folded into RM28. **Five of its entries are now records rather
+  than decisions** — see the line above. **Read the membership rule in its header, not a list here**:
+  these two bullets carried per-item enumerations until 2026-08-27 and both had gone stale, which is
+  what let RM69 sit in the 0.7 file gated on a 1.0 item without anyone noticing.
+  [RM_TOC.md](RM_TOC.md) is the complete list, and it is the only one.
+- **[ROADMAP_1_0.md](ROADMAP_1_0.md)** — items that need a major, the one that is release-blocking for
+  it, and (since 2026-08-27) items *gated on* a major without needing one. Plus the upgrade ledger.
   **The 1.0 cleanup tracker below did not move** and stays the home for the unnumbered major-only items.
 
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
@@ -248,7 +252,9 @@ blocker, in [ROADMAP_1_0.md](ROADMAP_1_0.md). Everything that was open on the
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
 the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the deferred
 halves of RM55, RM56, RM65, plus RM66 and RM67, and the dogfooding items RM68–RM72) and
-[ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half).
+[ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half). *That sentence records the
+2026-08-13 split and is not a current inventory — RM69 has since moved to the 1.0 file, and five of the
+0.7 entries shipped in the PT2 round. Follow [RM_TOC.md](RM_TOC.md) for where an item lives today.*
 
 **This section read "None in this file" for a day after the six were filed**, because they were appended
 below the *Not format scope* heading and nothing moved the boundary — so the roadmap's own summary line
