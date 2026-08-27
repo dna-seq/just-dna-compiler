@@ -20,9 +20,14 @@ this branch, whose `next-minor` markers resolve here. Everything below joins tha
 it as `0.7.0` across all three packages. Nothing in this document is gated on a version: every item is
 additive under Principles 3 and 8, and legality stopped nothing this round.
 
-**Scope.** Eleven items decided: six from ROADMAP_0_7.md and five that were sitting in ROADMAP.md as
-*a minor, release undecided*. **Ten build and one closes into another** — RM83, whose premise stopped
-holding. The succession filed alongside them is RM135 and is not one of the eleven.
+**Scope.** Twelve items decided: six from ROADMAP_0_7.md and six that were sitting in ROADMAP.md as
+*a minor, release undecided*. **Eleven build and one closes into another** — RM83, whose premise stopped
+holding. The succession filed alongside them is RM135 and is not one of the twelve.
+
+**RM134 was pulled in on 2026-08-28, after the other eleven were decided**, and it is the largest single
+piece of work here. It also reaches back into two of them: its concordance machinery supersedes RM130's
+record shape, and its new checks are what expose the warnings problem in RM126. Both are amended below
+rather than left to collide during implementation.
 Nine further items stay deferred on a gate that is not ours to open, restated per item in
 [Not taken](#not-taken-and-the-gate-in-each-case). One new item (RM135) was filed by the round itself, and
 RM134 arrived alongside it from an unrelated thread and is out of scope here.
@@ -129,6 +134,22 @@ Build the shape settled in the S62 thread, in full, plus the roster S65 asked fo
   now checkable, because `compilation.dropped_rows` shipped 2026-08-24.
 - **Scope v1 to compiler-derived outputs and say so.** Enricher-side outputs stay **unmeasured**,
   which is not the same claim as unchanged.
+- **`compilation.warnings` gets its own axis and is outside the set that drives recompile.** Found while
+  folding in RM134, and it would have swamped the instrument on its first release: `compilation.warnings`
+  is a published manifest field, RM131 restructures that channel, and RM134 adds checks — so the sweep
+  would report *a manifest field changed* on essentially every module in 0.7, and a registry acting on it
+  mints a PATCH across the whole catalogue for a message change. That is the false-positive class S65
+  made convergence a hard requirement over. `compilation.compiled_at` is already excluded as noise and
+  warnings cannot simply join it, because a **new** warning can be a real signal — hence a separate,
+  declared axis. **RM131's `carried` split is the discriminator that makes it decidable**: a finding the
+  author cannot clear moving is noise, one they can clear appearing is not. The two items are coupled and
+  the implementation order below reflects it.
+
+  **What this does not touch:** `SpecRow.needs_upgrade` is `self.upgraded() != self`, computed over
+  authored row content, and it is a hard filter in the marketplace — a `needs_upgrade` version is not
+  offered to a consumer at all. A warning never touches an authored row, so no warning change can flip
+  it. Verified rather than assumed, because the failure mode would have been modules silently vanishing
+  from a catalogue.
 
 ### Repairs rejected
 
@@ -426,6 +447,17 @@ overlay row is the answer.** An author reads the conflict table, decides, and wr
 row — which is also what makes the terminal state visible, since a conflict that stops being reported
 means the archive caught up with the author.
 
+**Amended 2026-08-28 when RM134 was pulled in: this table *is* RM134's concordance record, and it ships
+in that shape rather than in a ClinVar-shaped one.** The row carries `authority_concordance` and
+`authored_position`, and each authority's own call lives in a paired detail table keyed
+`(variant_key, genotype, authority)` — the shape argued in
+[§ RM134](#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check),
+which survives five authorities without a key change. **The version this section originally decided —
+one row carrying "the authored value, the source's value" — is superseded**, and the reason is worth
+keeping: `ClinSigConflict` names its authority in a *field* (`clinical.py:74`, `clinvar: str`), so
+shipping that shape and meeting a second authority one item later would have cost a key change or a
+retype, which P3 reserves for a major. Two items landing in one release is what caught it.
+
 **It promotes the mechanism that survives to 1.0.** The table's own documentation, and the warning that
 points at it, name `overrides.csv` as where an answer goes — never `outranks`. Steering authors onto the
 succession's winning side from the start is the cheapest form of a migration, and it costs a sentence.
@@ -446,8 +478,195 @@ archive differently.
 ### Charter check
 
 P2 — derived from an injected comparison, no fetch in the compile path. P3 — a new optional derived
-table, additive. P9 — **half cost**: machine-written, and under RM124 it is not human-overridable at
-all, since the answer goes in the overlay rather than into this file.
+table, additive. P5 — the concordance and authored axes are separated rather than overloaded, which is
+what keeps the vocabulary arity-free. P9 — **half cost**: machine-written, and under RM124 it is not
+human-overridable at all, since the answer goes in the overlay rather than into this file.
+
+---
+
+## RM134 — PubMind as a literature-derived annotation authority, and a ClinVar concordance check
+
+**Severity** low-medium for the snapshot, medium-high for the concordance machinery, which reaches
+RM130 · **Owner** enricher, with the concordance record shared with RM130 · **Entry**
+[ROADMAP.md § RM134](../ROADMAP.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check) ·
+**Assessment** [PUBMIND_ASSESSMENT.md](../PUBMIND_ASSESSMENT.md), which stays the evidence document ·
+**Motivating case** the PubMind paper (doi:10.1038/s41467-026-76834-4) and a maintainer direction
+2026-08-28
+
+### Why it is here, given this round's own sort rule
+
+The sort excludes an item waiting on a caller, and sections B and C have a precondition that looks
+exactly like one: the ANNOVAR-distributed table publishes no data terms and only CHOP can say what they
+are. Reconciled the same way RM83's closure was, by separating the question from what it actually gates.
+
+**The licensing answer governs what a module may do with the values, not whether the machinery exists.**
+Unknown terms **warn and never gate** (`@no-named-licence`), and the compile gate keys on `sources.csv`
+and nothing else — so a module carrying PubMind values records `None` on every term and behaves exactly
+as it does for every other source whose terms are unestablished. Nothing about building the snapshot,
+running the check, or drafting locally turns on the answer. What does turn on it is **publishing** a
+module carrying those bytes, and that is RM27's undesigned redistribution axis rather than this item.
+The ask-CHOP action stays in the entry as the thing that would turn `None` into an answer.
+
+`pubmind publish` is refused by design, on the PharmVar precedent (`@gated-source-caches`): a bulk file
+arriving under terms we cannot establish is not a file we may pass on. The command exists and refuses
+with its reason, because a missing command reads as an oversight somebody will helpfully add.
+
+### The assessment stands; eight things changed while deciding
+
+The assessment was written before this round and re-read against the eleven decisions. Its structure —
+four sections, the snapshot / the cross-check / drafting / the hint — is taken as written. Eight
+corrections, of which two were defects that would have shipped:
+
+1. **The concordance record is shared with RM130, and RM130's shape changes because of it** (below).
+   `ClinSigConflict` names its authority in a *field* (`clinical.py:74`: `clinvar: str`), so a second
+   authority would have forced a key change or a retype — major-only under P3, one item after shipping.
+2. **One normalizer, not two, and it needs two fixes first — measured, not inferred.** The assessment
+   proposes a second hand-written map citing `_CLIN_SIG_MAP` as *the precedent*. Two maps for one
+   vocabulary drift, and the check's entire output is a comparison of two normalizations, so a drift
+   makes it report `discordant` on its own mapping rather than on the authorities. But reusing
+   `_normalize_clin_sig` unchanged is also wrong today: its map keys are underscored and PubMind's tokens
+   are spaced, and **two of PubMind's six tokens fall through to `other`** —
+
+   | PubMind token | `_normalize_clin_sig` today | correct |
+   | --- | --- | --- |
+   | `Uncertain significance` | `other` | `uncertain_significance` |
+   | `Conflicting` | `other` | `conflicting` |
+
+   Both are concepts ClinVar normalizes correctly (`Uncertain_significance`,
+   `Conflicting_classifications_of_pathogenicity`), so the check would manufacture a disagreement between
+   two sources that agree — on **PubMind's largest disagreeing class**, since the corpus join reports
+   Uncertain as 32 of 51 disagreements. The fix is a whitespace→underscore pre-step in the tokenizer,
+   which is a no-op on ClinVar's already-underscored tokens, plus a bare `conflicting` key.
+   `_CLIN_SIG_SEVERITY`'s existing `assert set(...) == VALID_CLIN_SIG` guards the addition.
+3. **`pubmind_sig`/`pubmind_sig_raw` become `clin_sig`/`clin_sig_raw`.** The ClinVar snapshot already
+   uses the unprefixed names (`clinvar_build.py:74`): the source is the file, so naming a column after it
+   restates the filename. With one column vocabulary across every snapshot, an N-authority check needs no
+   per-source mapping at all — which is what makes the stress test below come out clean.
+4. **`derivation`'s P5 open question closes.** P3 makes a *published* name permanent because outside
+   consumers key on it. `pubmind publish` is refused, so that parquet never leaves the machine that built
+   it — not in an artifact, not attested in `artifact.files`, not a manifest field, not joinable by any
+   consumer. Renaming it costs a rebuild the same command performs. **The audit belongs on the names that
+   really are one-way doors**: `--min-confidence`, and the `DRAFT_PROJECTIONS` key `pubmind`, which is
+   matched against `SourceRow.source` and therefore written into `sources.csv`, an authored published
+   file.
+5. **The three-way check subsumes the two-way rather than running beside it.** With no snapshot PubMind's
+   side reads `unchecked`, which is what the tri-state is for, and the degenerate case is precisely
+   today's finding — so nothing is lost and no author sees one disagreement reported twice. The pinned
+   warning phrases are preserved deliberately, since `@warning-text-is-api`.
+6. **RM71 lands before section C.** Both touch `draft-panel` in this release: RM71 widens the worklist
+   past `if report.added:` and adds `--dry-run`, and `--source pubmind` must inherit the fixed worklist
+   rather than reproducing the once-only behaviour. `DRAFT_PROJECTIONS["pubmind"].identity` cannot copy
+   ClinVar's tuple, since most PubMind rows carry no rsID.
+7. **Rows withheld at draft time are named at draft time.** Build-time drop counts land in
+   `release.json`, but a draft that silently omits the `derivation=indel` rows is
+   `@unreachable-not-absent` — write no row, and say separately that you wrote none and why.
+8. **The new checks are inside RM131's audit, and they are what forced RM126's warnings axis.** Both
+   amended in their own sections above rather than recorded only here.
+
+### The concordance record, and the stress test that shaped it
+
+The maintainer's framing, and it is better than the authority-keyed record first proposed: **concordance
+and discordance drive a composite algebra, so the record is about the agreement state and not about one
+authority.** Keying on the authority gives N rows per variant and leaves the agreement state with
+nowhere to live.
+
+**The record.** Keyed `(variant_key, genotype)` — one row per contested subject, stable at any number of
+authorities. Each authority's own call sits in a **paired detail table keyed
+`(variant_key, genotype, authority)`**, carrying that authority's normalized `clin_sig`, its raw token,
+and its own confidence in its own units. Two flat CSVs rather than a nested cell: the arity objection was
+to the agreement *state* having no home, and on this split the state lives on the parent row while the
+per-authority facts are ordinary rows. Confidence is **not normalized across authorities** — ClinVar's
+`review_stars` and PubMind's 0–3 are different instruments, and folding them into one number is three
+axes in one field, the same objection the assessment itself makes against a single `pubmind_score`.
+
+**Two orthogonal fields, and the orthogonality is what makes them arity-free.**
+
+| Field | Members |
+| --- | --- |
+| `authority_concordance` | `concordant` / `discordant` / `single` / `none` / `unchecked` |
+| `authored_position` | `matches_all` / `matches_some` / `matches_none` / `absent` / `unchecked` |
+
+**The stress test, run at N=3 and N=5 on the maintainer's instruction, and the draft failed it.** The
+assessment's seven outcomes name the authority *inside the vocabulary member* — `pubmind_only`,
+`clinvar_only` — so a third source needs a third member and five sources need every subset. The root
+cause is that one field carried two axes: `concordant` was defined as *both authorities agree **and the
+authored row agrees with them***, with `authored_dissents` as a sibling member. That is the P5
+anti-pattern, and the combinatorial explosion is its symptom. Split, both vocabularies are five members
+at N=2 and five at N=5, and *which* authority spoke is data in the detail table where it belongs.
+
+**The case that decided `authored_position`'s definition.** At five sources with a declared order
+E>B>D>C>A, suppose E and A agree and B, C and D agree against them. Lexicographic resolution says E;
+majority says B/C/D; choosing between those rules is a judgement about how authority rank trades against
+agreement count, and it needs a weighting model. **This repo has refused to invent one three times** —
+`should_rebuild` in RM126 (*the same fact costs consumers differently, so the decision is theirs and only
+the fact is ours*), `@clinsig-never-escalates`, and RM16's PRS weights, parked because combining weights
+needs a model nobody has; `@weight-has-no-unit` is the same rule again. So **nothing resolves a split.**
+`authored_position` is therefore a relation to the *set* rather than to a resolved call, which is
+computable with no weights and true at any topology: the E+A case reads `discordant` + `matches_some`,
+and a consumer holding its own weighting model computes whatever it likes from the detail rows.
+
+**The declared authority precedence is recorded and computed with by nothing.** An ordered list beside
+`weighting:`/`authorship:` in `module_spec.yaml`, stating whose call the author weighted while curating —
+machine-readable so a consumer can see the stance, never an input our tier resolves with. **We record the
+stance, report the facts, and resolve nothing.** One optional `module_spec.yaml` field, **full cost under
+P9**, priced here rather than allowed to ride in unpriced: it is authored, a human writes it, and it
+earns that price by making a methodological stance readable to a consumer instead of leaving it inferable
+only by reading N contested rows. The per-variant exception is an `overrides.csv` row, so RM124 carries
+it and no parallel mechanism appears.
+
+Because nothing resolves, the retype risk raised against the precedence dissolves with it: a field
+nothing computes with has no arity to outgrow.
+
+### Severity, and what the check must never become
+
+**Warning-tier in both modes, never escalating under `strict`** (`@clinsig-never-escalates`), with more
+force here than for ClinVar alone: a disagreement with an LLM's aggregate over the literature is a
+statement about the extraction's limits at least as often as about the module, and 62 % agreement is not
+a number a gate is built on. `discordant` is **not a defect in the module** — it is a fact about the
+field — and reporting it as one would be wrong. `opposed` versus merely `different` reuses
+`_CLIN_SIG_CAMP` rather than inventing a second distinction, and it generalizes: at N authorities,
+opposed means two of them sit in opposite camps.
+
+Absence is not disagreement and is not one thing: a variant missing from PubMind means no paper in the
+corpus was kept by the triage stage, not that the literature is silent and certainly not that the variant
+is benign. `--offline` with no snapshot is the third state (`@unreachable-not-absent`), and a check that
+could not run reports no zero (`@tautology-zero`).
+
+### Repairs rejected
+
+- **An authored `pubmind_score` column.** Full price on the authored layer, and P5 rules on it before the
+  price matters: one number covering how many papers spoke, how confidently, and in which direction is
+  three axes in one field, made permanent by P3. The snapshot keeps them apart.
+- **Anything PubMind produces entering `resolution.csv`.** Its coordinates are PyEnsembl back-mappings of
+  extracted text, codon-enumerated and multi-PVID. "Authority" here means an authoritative *annotation*
+  source as ClinVar is one, never `resolution.csv`'s `authority` column (`@source-vs-authority`).
+  PubMind annotates loci something else resolved.
+- **Collapsing multi-PVID coordinates to one winner.** 68,744 coordinates carry several, worst case 35,
+  and their verdicts disagree. Choosing a winner means an ordering nobody defined — `mode()` over an
+  unsorted group, which the deterministic-ordering rule bans outright. The multiplicity is a finding.
+- **A `majority` or consensus field on the record.** The E+A case above is the argument: it is a
+  judgement needing weights, and precomputing it is `should_rebuild` wearing a different name. The detail
+  rows carry everything a consumer needs to compute their own.
+- **A separate `draft-pubmind` command.** It writes the same tables from the same gene argument, so it
+  would duplicate the genotype worklist, the placeholder guard, the dedup pass and the refusal summary —
+  the parts that are hard to get right. `draft-clinpgx` is separate because it writes *different* tables.
+- **Running the PubMind pipeline ourselves.** Barred rather than descoped: the Constitution's non-goals
+  forbid LLM SDKs in any tier, and AI-assisted authoring is `just-dna-pipelines`' job by name.
+
+### Charter check
+
+P1 — the snapshot is data and the check is a comparison; no predicate language, no code in a cell. P2 —
+all of it in the enricher, the only tier permitted to fetch, and the compile path imports none of it.
+P3/P8 — a new derived table, a new optional `module_spec.yaml` field and new commands: additive, nothing
+demoted, nothing retyped, no published module invalidated. P5 — the two-axis split is the principle
+applied directly, and it is what survives five authorities. P6 — both vocabularies are `frozenset[str]`
+plus a validator. P7 — nothing changes what `compile → reverse → compile` carries; a drafted row is an
+ordinary authored row and the snapshot is not part of the artifact. P9 — the snapshot is the free layer,
+the concordance tables are half, and the one authored field is priced above.
+
+**The non-goal settles the competition question rather than an argument doing it.** This workspace does
+no gene–disease inference; PubMind is an inference engine over the literature. The thing it does best is
+the thing we are constitutionally not in, which is what makes it a good source and a poor competitor.
 
 ---
 
@@ -592,7 +811,14 @@ the findings that exist are the warnings, and they are already persisted.
 
 **The audit is the shared groundwork and is done once.** Roughly 29 append sites and 16 returning
 helpers must each declare their side and their code; doing it twice is the actual cost being avoided by
-sequencing rather than splitting across releases.
+sequencing rather than splitting across releases. **RM134's new checks are part of that audit, not a
+follow-up to it** — they are emission sites like any other, and classifying them after the fact is the
+second pass this sequencing exists to avoid.
+
+**The `carried` split is load-bearing beyond readability, which was not visible when this item was
+decided alone.** RM126's sweep needs to tell a warning that moved because a message was reworded from one
+that moved because a finding appeared, and `carried` is that discriminator. So the classification has a
+second consumer, and getting it wrong costs more than an unreadable channel.
 
 **The suppression record rides this channel.** A row suppressed by `overrides.csv` is invisible in the
 build product — absent, with no trace of why — which is the one thing RM124's `suppress` operation costs.
@@ -947,11 +1173,12 @@ Two items the decisions above created. Neither is 0.7 work.
   instead: `manifest.compilation.warnings` already ships and sits outside the digest, so the home exists
   and a second one would be one more thing to keep in step.
 
-**RM134 arrived during this round and is deliberately not sorted here.** It was filed 2026-08-28 from a
-PubMind assessment written in parallel with these interviews, after the eleven-item scope was fixed, and
-it is *assessed and designed, no code written* with its own full design document. Sorting it would mean
-re-opening a scope the maintainer set; it belongs to the next round, and this line exists so that its
-absence reads as a boundary rather than an oversight.
+**RM134 was out of scope and then was not — superseded 2026-08-28.** This paragraph originally recorded
+it as belonging to the next round, on the reasoning that it was filed after the eleven-item scope was
+fixed. The maintainer pulled it in the same day. It is decided in
+[§ RM134](#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check)
+below, and the note is kept rather than deleted because the boundary it drew was real for part of a day
+and the decision to cross it was deliberate.
 
 ---
 
@@ -1001,10 +1228,19 @@ touch, and its release gate is the only piece that lands outside the packages.
 | G | RM71 — the widened worklist and `draft-panel --dry-run` | enricher, compiler |
 | H | RM85 — the dataset-currency check | enricher |
 | I | RM133 — the registry-owned key and the constant | format |
+| J | **RM134** — `pubmind build`/`publish`, the shared normalizer fix, the N-authority check, `--source pubmind`, the hint | enricher (+ format for the precedence field) |
 
 **B before B1 and B2**, by construction. **C before B1**, because `enrich --rederive` composes with the
 transaction rather than reimplementing staging. **D before the suppression finding lands**, which is
 inside D anyway.
+
+**J is the largest lane and it is sequenced by four dependencies, none of them optional.** **B2 before
+J**, because RM130 and RM134 ship one record and RM130 is the smaller half of it — build the two-axis
+table with ClinVar as its only authority, then add the second. **G before J's section C**, so
+`--source pubmind` inherits RM71's fixed worklist instead of reproducing the once-only behaviour. **J's
+new checks inside D's audit**, not after it, since they are emission sites like any other. **A before or
+with J**, because J's checks are what make RM126's warnings axis load-bearing; landing them first means
+retrofitting the release's declaration.
 
 ## Shared-file hazards
 
@@ -1014,7 +1250,15 @@ inside D anyway.
   happens once the overlay's own findings exist and E's new citation site is classified when it is added
   rather than afterwards.
 - **`enricher/src/just_dna_enricher/enrich.py`** is touched by **B** (writers and docstrings), **C** (the
-  transaction) and **H** (the new check). **B → C → H.**
+  transaction), **H** (the new check) and **J** (the concordance check). **B → C → H → J.**
+- **`enricher/src/just_dna_enricher/clinvar_build.py`** is touched by **J** alone, but the change is
+  shared property: `_normalize_clin_sig` stops being ClinVar's and becomes the workspace's one
+  significance normalizer. Move it where both builders call it rather than importing across snapshot
+  modules, and pin the two-token fix with a test that runs **both** sources' raw tokens through it — the
+  defect is invisible from either side alone.
+- **`enricher/src/just_dna_enricher/clinical.py`** is touched by **B2** and **J**, on the same
+  dataclass. One lane, sequentially: B2 takes the authority out of the field name, J adds the second
+  authority as a row.
 - **`schema/src/just_dna_format/normalize.py`** is **I** alone.
 - **`manifest.py`** is touched by **A** (nothing — the record table is its own module) and **D** (the new
   result fields). No conflict.
@@ -1026,7 +1270,11 @@ inside D anyway.
   (a committed run equals an uninterrupted run); the interval union for RM126 (moved-and-moved-back
   still reads as moved, and a version against itself is empty).
 - **Registry-iterating guards assert an equality over a walked set**, never a floor. The overlay's
-  covered-table set, the warning codes and the authority-key family are all registries.
+  covered-table set, the warning codes, the authority-key family and the significance map are all
+  registries.
+- **The concordance vocabularies get an arity test, not only a coverage test.** Construct a
+  three-authority and a five-authority case and assert the member set is *unchanged* — that is the
+  property the two-axis split exists to hold, and a coverage test at N=2 cannot see it.
 - **Every new warning phrase is pinned**, and the catalogue in COMPILER.md gains it in the same commit.
 - **No count is computed and discarded**, and no check that cannot fail reports a zero.
 - **Tri-state everywhere**: `unknown` for an uncovered interval, `unchecked` for an unreachable source,
@@ -1042,13 +1290,19 @@ inside D anyway.
 
 # Provenance
 
-Decided across four interview rounds with the maintainer on 2026-08-27/28, on the `0.7` branch, against
-the full text of [CONSTITUTION.md](../CONSTITUTION.md) and the complete roadmap entries for all eleven
-items.
+Decided across five interview rounds with the maintainer on 2026-08-27/28, on the `0.7` branch, against
+the full text of [CONSTITUTION.md](../CONSTITUTION.md) and the complete roadmap entries for all twelve
+items. The fifth round was RM134, pulled in after the other eleven were decided and reviewed **against
+them** rather than on its own terms — which is how the RM130 collision and the normalizer defect were
+found.
 
-Four things changed during the interview rather than being carried in from the entries, and each is
+Six things changed during the interview rather than being carried in from the entries, and each is
 recorded above where it applies: **RM83 dissolved** into RM124 once derived tables became pure build
 products; **RM128's central ask dissolved** the same way, into a transaction that keeps the promise
 instead of trading it; **the metainfo artifact was not filed**, because `manifest.compilation.warnings`
 already ships outside the digest; and **the `outranks` overlap became a dated succession** rather than
-either a merge or an unstated duplication.
+either a merge or an unstated duplication. Then RM134 added two more: **RM130's record shape was
+superseded before it was built**, because one release holding both items exposed an authority baked into
+a field name; and **a maintainer-set stress test at five authorities failed the drafted vocabulary**,
+which is what produced the two-axis split and, through it, the finding that nothing may resolve a split
+at all.

@@ -1,8 +1,13 @@
 # PubMind — what it competes with, what it complements, and how we would adopt it
 
-**Status** — assessment complete, adoption **not started**. The open item is
-[RM134](ROADMAP.md#rm134--pubmind-as-a-literature-derived-cross-check-source). Written 2026-08-28
-against the paper's accepted version and against the database's own bytes, both probed the same day.
+**Status** — assessment complete; **adoption decided 2026-08-28 in
+[PROPOSAL_0_7 § RM134](proposals/PROPOSAL_0_7.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check),
+which is authoritative where the two disagree.** This document stays the **evidence** — what was probed,
+measured and read — and is not rewritten to match the decisions; where a decision changed something
+below, an inline note says so and names it. Three such notes exist: the significance mapping, the
+`pubmind_sig` column names, and the concordance outcome table. Written 2026-08-28 against the paper's
+accepted version and against the database's own bytes, both probed the same day. The open item is
+[RM134](ROADMAP.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check).
 
 PubMind (Wang & Wang, *Nat Commun*, 20 August 2026, doi:10.1038/s41467-026-76834-4) runs a fine-tuned
 DistilBERT triage stage over 41.7 M PubMed abstracts and 5.4 M PMC full texts, hands the surviving
@@ -234,11 +239,20 @@ except that here *no* column is a resolver link, which is the point above made s
 | --- | --- | --- |
 | `chrom`, `start`, `ref`, `alt` | `Chr/Start/Ref/Alt` | the join key; VCF-style already, `start` is the 1-based POS (`@start-1based`) |
 | `pvid` | `PVID` | their record id, not a variant id — see the fan-out rule below |
-| `pubmind_sig` | mapped `pathogenicity_sum` | normalized into `VALID_CLIN_SIG` |
-| `pubmind_sig_raw` | `pathogenicity_sum` verbatim | so the mapping stays auditable and nothing is lost, exactly as `clin_sig_raw` does for CLNSIG |
+| `pubmind_sig` → **`clin_sig`** | mapped `pathogenicity_sum` | normalized into `VALID_CLIN_SIG`. **Renamed 2026-08-28**: the ClinVar snapshot already uses the unprefixed name, so the source is the file and a prefix restates it — and one column vocabulary across every snapshot is what lets an N-authority check read them all without per-source mapping |
+| `pubmind_sig_raw` → **`clin_sig_raw`** | `pathogenicity_sum` verbatim | so the mapping stays auditable and nothing is lost, exactly as `clin_sig_raw` does for CLNSIG |
 | `pathogenicity_score` | `paper_level_pathogenicity_score` | nullable, and null means *not computed*, never 0.0 |
 | `confidence` | `confidence` | 0–3, the `review_stars` analogue |
 | `derivation` | computed | `direct` for a `1/1` row, `codon` for a decomposed triplet, `indel` for a length-changing one |
+
+> **Superseded 2026-08-28 (PROPOSAL_0_7 § RM134): one normalizer, not a second map — and it needs two
+> fixes first.** Treating `_CLIN_SIG_MAP` as a *precedent to copy* gives two maps for one vocabulary, and
+> since the three-way check's whole output is a comparison of two normalizations, any drift makes it
+> report a disagreement between our own mappings. But reusing `_normalize_clin_sig` unchanged is wrong
+> today: its keys are underscored and PubMind's tokens are spaced, so **`Uncertain significance` → `other`
+> and `Conflicting` → `other`** — measured, both concepts ClinVar normalizes correctly, and Uncertain is
+> 32 of the 51 disagreements counted below. Fix: a whitespace→underscore pre-step (a no-op on ClinVar's
+> tokens) plus a bare `conflicting` key.
 
 `_CLIN_SIG_MAP` is the precedent for the mapping and its default: a token with no module axis becomes
 `other` rather than being dropped. The six PubMind values map cleanly — `Pathogenic` → `pathogenic`,
@@ -281,6 +295,18 @@ reason, rather than not existing — a missing command reads as an oversight som
 This runs beside the existing ClinVar `clin_sig` check rather than replacing it, and it answers a
 question that check cannot: *do two independent authorities agree about this variant, and where they
 do not, which one is our row standing with?*
+
+> **Superseded 2026-08-28 (PROPOSAL_0_7 § RM134): the outcome table below fails at three authorities.**
+> `pubmind_only` and `clinvar_only` name the authority *inside* the vocabulary member, so a third source
+> needs a third member and five need every subset. The cause is that one field carries two axes —
+> `concordant` is defined as *both agree **and** the authored row agrees with them*, with
+> `authored_dissents` as a sibling. Split into `authority_concordance`
+> (`concordant`/`discordant`/`single`/`none`/`unchecked`) and `authored_position`
+> (`matches_all`/`matches_some`/`matches_none`/`absent`/`unchecked`): five members each at any N, with
+> *which* authority spoke living in a paired detail table. And **nothing resolves a split** — five
+> sources ordered E>B>D>C>A with E+A against B/C/D cannot be resolved without a weighting model, which is
+> why `authored_position` relates to the *set* rather than to a resolved call. The table below is kept as
+> the reasoning that produced the outcomes, not as the shape that ships.
 
 **Per variant, the outcome is a triple, and unknown is withheld rather than negated.** Each of the
 three sides independently answers pathogenic-class / benign-class / uncertain / **absent** /
@@ -437,9 +463,12 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
   refresh design depends on it.
 - Is the PVID stable across releases? If it is not, then nothing about a PubMind reference is
   citable, and the pass should record coordinates rather than PVIDs.
-- Is `derivation` the right name, or is it already too narrow? Principle 5 asks that a new name be
-  audited against likely future additions, and a second literature-derived source arriving later would
-  want the same column with different members. The alternative is a source-scoped name now.
+- ~~Is `derivation` the right name?~~ **Closed 2026-08-28.** P3 makes a *published* name permanent
+  because outside consumers key on it, and `pubmind publish` is refused — so this column never leaves the
+  machine that built it, is not in an artifact, not attested in `artifact.files`, not a manifest field and
+  not joinable, and renaming it costs a rebuild the same command performs. The P5 audit belongs on the
+  names that really are one-way doors: `--min-confidence`, and the `DRAFT_PROJECTIONS` key `pubmind`,
+  which is matched against `SourceRow.source` and so reaches the authored, published `sources.csv`.
 - Should build-time concordance be computed over the whole table or only over rows a module could
   plausibly reach? The whole table reproduces their published claim; a reachable subset is the number
   an author actually cares about. They are different denominators and only one can be the headline.
