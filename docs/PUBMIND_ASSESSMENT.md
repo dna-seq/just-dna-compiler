@@ -44,8 +44,8 @@ re-fetch them with:
 
 | What | Where | Pinned at probe time |
 | --- | --- | --- |
-| Accepted manuscript | `https://www.nature.com/articles/s41467-026-76834-4_reference.pdf` | sha256 `1002f535…3e586a` |
-| Coordinate table | `https://www.openbioinformatics.org/annovar/download/hg38_pubmind_db.txt.gz` | sha256 `ca224ebf…4dc047`, ETag `"63275d-659cb3f35fd80"`, Last-Modified Mon 24 Aug 2026 13:48:54 GMT, 6,498,141 bytes |
+| Accepted manuscript | `https://www.nature.com/articles/s41467-026-76834-4_reference.pdf` | sha256 `1002f535468393ee57e18c81a41aff9ba4a37c690c7cb80816cdded8763e586a` |
+| Coordinate table | `https://www.openbioinformatics.org/annovar/download/hg38_pubmind_db.txt.gz` | sha256 `ca224ebf5ef3aa516d9f14b91ae96ce2371ea785670f4723fd5103e6f94dc047`, ETag `"63275d-659cb3f35fd80"`, Last-Modified Mon 24 Aug 2026 13:48:54 GMT, 6,498,141 bytes |
 | Summary API | `https://pubmind.wglab.org/api/summary`, `/api/pvid/<PVID>` | probed live |
 | Source + terms | `https://github.com/WGLab/PubMind` (`README.md`, `LICENSE.md`) | probed live |
 
@@ -156,9 +156,42 @@ clearly.
   (`@no-named-licence`): unknown commercial terms warn, they never gate, and we record `None` rather
   than guessing, because `licensing.py` defines null as *"the terms could not be established"*.
 
-Running the PubMind pipeline ourselves is a different adoption question and is out of scope here: it
-needs multiple H100/A100-class GPUs by the authors' own account, and it would make us a producer of
-literature-derived assertions rather than a consumer of them.
+Running the PubMind pipeline ourselves is not a scoping judgement, it is barred: the Constitution's
+non-goals forbid pulling LLM SDKs into **any** tier of this workspace, and AI-assisted authoring is
+`just-dna-pipelines`' job by name. The cost argument — multiple H100/A100-class GPUs, by the authors'
+own account — is true and beside the point.
+
+## What the charter decides
+
+Read in full before the plan below was written, because P3/P8 decide whether any of it is even legal.
+
+**Most of "do we compete" is settled by a non-goal rather than by an argument.** The Constitution
+says this workspace does **no gene–disease inference**: the format catalogs curated annotations that
+consumers *join* against variant data, and interpretation belongs to those consumers. PubMind is an
+inference engine over the literature — that is its entire contribution. So the two projects are not
+adjacent by accident; the thing PubMind does best is a thing we are constitutionally not in the
+business of doing, which is precisely what makes it a good source and a poor competitor.
+
+**Phase 1 is legal and it is a minor.** It adds no column, no table and no field, so Principles 3 and
+8 are not reached — there is nothing to promote, retype or remove, and no already-published module
+becomes invalid. It lives wholly in `just-dna-enricher`, the only tier permitted to fetch (Principle
+2), and it writes nothing into the artifact, so the compile path neither imports it nor depends on it.
+What makes it a minor rather than a patch is a new pass and a new warning phrase, both of which a
+consumer can grep for; a correction to an existing derivation would be the other case, and this is
+not one.
+
+**Phase 2 answers to Principle 5 before it answers to anything else.** A `pubmind_score` would be
+tempting to define as one number covering how many papers spoke, how confidently, and in which
+direction — three axes in one field, which is the anti-pattern Principle 5 exists to name, and which
+Principle 3 then makes permanent for the rest of the major. Principle 9 prices whichever shape
+survives: a parquet column is approximately free, a machine-written sidecar half, an authored column
+full — so a literature-derived score belongs on the derived side, never as a cell an author types.
+
+**Phase 3 is priced by Principle 9 and costs nothing**, because a drafting hint is not a schema layer
+at all — it changes what a tool shows an author, not what the DSL asks of them.
+
+**Nothing here touches Principle 7.** No phase changes what `compile → reverse → compile` carries,
+which is what keeps the whole assessment additive.
 
 ## The plan
 
