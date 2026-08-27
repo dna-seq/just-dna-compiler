@@ -174,9 +174,10 @@ coordinate.
 Closing was the live alternative when the misfiling was found, and the case for it is real: severity
 low, no incident behind it, and a mechanism reproduced once in sixteen modules is normally grounds to
 close rather than to carry. **It stays open because the fix arrives on its own** — RM15 un-gates the
-fill and the signature becomes an invariant with no work filed against this entry, so closing it as a
+fill and the signature becomes an invariant with no work filed against this entry, so filing it as a
 "documented divergence" the way [RM67](ROADMAP_0_7.md#rm67--polyploid-and-partially-phased-genotypes)
-was closed would say the wrong thing: RM67 is a limit nobody intends to lift, and this one is scheduled.
+is filed would say the wrong thing — RM67 is **not work**, a limit nobody intends to lift, and this one
+is scheduled. (Neither is *closed*: RM_TOC's ✖ section holds two items and neither of these is one.)
 The other half of the argument is the candidate-repair list above, which is the record of five refusals.
 Closing the entry retires that record just as the release most likely to re-propose all five arrives.
 
