@@ -338,6 +338,102 @@ the overlay does not soften it: an overlay row is the author's answer to a diffe
 tier's); and re-asking every subject on every run (dropping merge-not-clobber does not mean this, and
 reading it that way would put the full resolution time on every pass to buy drift detection nobody
 asked to run continuously).
+## RM132 — `pharm_variants.csv` made a clinical claim per row and could only cite per variant
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant) on 2026-08-28 — SHIPPED in 0.7.** `PharmVariantRow.pmid` plus both literature cross-check sites in the same release; `provenance_quote` did **not** follow, stated rather than implied.
+
+**Severity** medium · **Status** ✅ shipped in 0.7 · **Owner** format (schema) + compiler + enricher ·
+**Motivating case** S73 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
+
+### What was observed
+
+A ClinPGx-drafted module carried **1,482** drug-response rows and had nowhere to ground any of them:
+sixteen model fields, thirteen authored, none a PMID or DOI. The reporter asked which of three
+provenance models was intended, worked out that none of them held, and declined to build on any.
+
+**The tree had already answered it one release earlier.** RM47 decided this shape for a structurally
+identical table, and the rule underneath generalizes: **a row cites when its claim is finer-grained
+than `studies.csv`'s key.** `studies.csv` keys on `(variant_key, pmid)`, so a study row attaches to a
+*variant*; `pharm_variants.csv` keys on `(variant_key, drug, genotype, phenotype_category,
+annotation_id)`, so one study row would attach the paper to every drug, genotype and phenotype
+category recorded for that variant at once. `evidence_level` is not the provenance handle — it points
+at somebody else's *grading of* the evidence rather than at the evidence — and the licence row's
+`source`/`dataset` state redistribution terms rather than grounding a claim.
+
+### Why a full-cost authored column was taken rather than deferred
+
+This is the item the round's sort rule turns on, so the argument is kept rather than assumed.
+
+**What P9 prices is not the byte.** An authored column is full cost because a human must learn it and
+P3 keeps it working forever, so the risk being priced is *getting the shape wrong* — and that risk was
+spent a release ago. The column is a copy of two shipped fields under one grammar, so an author who
+has met either learns nothing new. Demand fixes an *unfixed* shape; there was none left here for
+demand to fix.
+
+**It is closer to a half-defect than to a new capability.** The table already made a clinical claim
+per genotype and structurally could not ground one. That is a hole in an existing concern rather than
+a new concern added to a table, which is the distinction the *one concern per table* gate turns on.
+
+### What was built
+
+`PharmVariantRow.pmid`, optional and free-form, validated by `spec.validate_pmid_cell` — the one
+grammar every citation pointer in the schema routes through, so the PMCID diagnosis and the
+`[PMID: N]` spelling come with it and cannot drift. No compiler change was needed for the column
+itself: the parquet materializer and the reverse writer both derive their column lists from the model.
+
+**Both cross-check sites learned the site in the same release**, which is the half that made this a
+piece of work rather than a column, and is RM47's recorded lesson in its own words — *shipping the
+column without both would be evidence the format never checks, which is worse than the gap.*
+`_cross_check_literature` (with `split_cited_literature` and `_check_quote_counter_is_current`
+beneath it) and the enricher's `enrich_literature` both read it. Since RM79 the orphan finding has
+teeth: blind to the new site, the compiler would not merely report a pharm-grounded citation as stale,
+it would **discard** the literature row the claim's evidence lives in.
+
+**The roster is derived, which is the part that generalizes.** Rather than a third hand-kept list,
+`_CITING_TABLE_KINDS` is every `_TABLE_KINDS` model declaring a `pmid`, and the new public
+`load_citing_rows` / `table_citations` walk it. The enricher reads through that pair — the RM40/RM41
+requirement, met structurally: a test walks the enricher's own source with `ast` and asserts no citing
+CSV name appears in a string constant there, so the next kind to declare the column is read by both
+tiers with no edit to either. `load_binning_rows` / `binning_citations` stay and stay narrow; a caller
+asking for the binning kinds is asking about thresholds, not about the citations a module makes.
+
+One warning text moved with it — `literature_row_uncited` now reads *"no study, bin or pharm row in
+this module cites"*. The code is the stable handle and did not change; the phrase is pinned by four
+tests, which is what makes each rewording a deliberate act.
+
+### The open question, answered
+
+**`provenance_quote` does not follow, and the release says so rather than leaving it implied.** The
+binning side drew the same line deliberately: the row cites, and `studies.csv`/`literature.csv`
+describe. That is what stops `StudyRow`'s whole provenance column set — population, `p_value_num`,
+`effect_size`, `provenance_quote`, `curator` — migrating onto a citing row one column at a time. A
+1,482-row body of clinical claims is exactly where somebody asks next, which is the reason to state
+the line rather than the reason to cross it. The consequence is carried in the code too: a pharm row
+cites and cannot quote, so it contributes a denominator of **zero** to the quote-counter check rather
+than being skipped, or a literature row reachable only from a pharm row would read as cited by
+nothing.
+
+### Repairs refused
+
+- **Widening `studies.csv`'s key.** The repair that looks obvious and the one RM47 already refused: it
+  would make a study row's subject depend on which table read it.
+- **Treating `evidence_level` as the provenance handle.** It grades evidence rather than pointing at
+  it, and the two now sit side by side in the model so the distinction stays visible (P5).
+- **A second table roster in the enricher.** The RM40/RM41 shape, and a list that goes stale the next
+  time a model declares the column.
+- **A grounding warning for an uncited pharm row.** `_check_binning_grounding` exists for the
+  interpretive-threshold case — where a boundary is a clinical judgement with nothing behind it — and
+  a drug-response table is not that case. Adding one would have fired on every ClinPGx draft.
+
+### Charter check
+
+P3 — a new optional column, additive; no published module is invalidated. P5 — citation and grading
+are separate axes on separate columns. P7 — the round trip is asserted on the `pharm_variants.parquet`
+bytes as well as on `content_signature` and `artifact.digest`. P8 — optional with respect to every
+published module, proved by running it: a spec with no `pmid` header hashes equal to the same spec
+carrying the header with every cell empty. P9 — full cost, taken with the argument above rather than
+by weighing file count.
+
 ## RM70 — `requires_callable` is `VariantRow`-only, so no PGx table can state CPIC's core assumption
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) on 2026-08-28 — BUILDS in 0.7.** `requires_callable` on `HaplotypeRow` and `PharmVariantRow`, not on `DiplotypeRow`; `callable_from` does not travel with them.

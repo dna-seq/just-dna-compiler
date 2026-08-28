@@ -889,8 +889,17 @@ P6 — the code vocabulary is `frozenset[str]` plus a validator. P9 — nothing 
 
 ## RM132 — `pharm_variants.csv` makes a clinical claim per row and cites per variant
 
+**✅ BUILT — shipped in 0.7 as decided, `provenance_quote` included: it does not follow, and both
+cross-check sites landed in the same release.** One thing this section left as an implementation
+detail turned out to be the durable part: rather than teaching the two sites about a third table, the
+citing kinds became a **derived** registry (`_CITING_TABLE_KINDS` is every `_TABLE_KINDS` model
+declaring a `pmid`) behind two new public symbols, `load_citing_rows`/`table_citations`. So the
+RM40/RM41 requirement is met structurally rather than by discipline — a fourth citation site is read
+by both tiers by declaring the column — and an `ast` walk over the enricher's own source pins that no
+roster is kept there. `load_binning_rows`/`binning_citations` stay and stay narrow.
+
 **Severity** medium · **Owner** format (schema) + compiler + enricher · **Entry**
-[ROADMAP.md § RM132](../ROADMAP.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant) ·
+[ROADMAP_HISTORY.md § RM132](../ROADMAP_HISTORY.md#rm132--pharm_variantscsv-made-a-clinical-claim-per-row-and-could-only-cite-per-variant) ·
 **Motivating case** S73 (just-module-creator)
 
 ### The problem

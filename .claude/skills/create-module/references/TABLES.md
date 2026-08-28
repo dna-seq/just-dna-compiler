@@ -67,6 +67,23 @@ means. Together they express compound heterozygosity and its cis counterpart as 
 diplotype + a drug → the optional drug columns on `diplotypes.csv`. A haplotype-keyed annotation (`*1`)
 belongs on `DiplotypeRow` even if the source published it beside single-variant rows.
 
+**Where a citation goes: a row cites when its claim is finer-grained than a study row's.** A
+`studies.csv` row is keyed `(variant_key, pmid)`, so it attaches to a **variant** — right for a
+`variants.csv` row, wrong wherever one variant carries several distinct claims. Those tables carry
+their own optional `pmid` instead:
+
+- a binning row (`repeat_alleles.csv`, `copynumbers.csv`, `activity_phenotype.csv`,
+  `heteroplasmy.csv`) — a threshold is the most interpretive number a module states, and a study row
+  cannot point at one, since the bins are keyed by gene rather than by variant;
+- a `pharm_variants.csv` row — keyed on drug, genotype and category as well as the variant, so one
+  study row would attach the paper to every drug and genotype recorded for that variant at once.
+
+The pointer is the whole of what moves. **The row cites; `studies.csv` and `literature.csv` describe**
+— population, effect size, p-value and `provenance_quote` stay on the study row and do not follow.
+Both spellings work everywhere a `pmid` is accepted (`9545397`, `[PMID: 9545397]`, a `;`-joined list),
+and every site is checked for existence by the same pass, so a citation written on a bin or a pharm
+row is verified exactly like one written on a study row.
+
 **A per-genotype or per-context axis belongs in the key, or the rows collide.** These were all learned
 from real corpora rejecting themselves:
 
@@ -88,6 +105,8 @@ Never fold these together; each pair is two independent facts.
 - `evidence_level` (PharmGKB/ClinPGx 1A–4: how well established) vs `recommendation_strength` (CPIC:
   how firmly to act). A well-evidenced association can carry an optional action. A provider fills only
   its own.
+- `evidence_level` (somebody else's **grading of** the evidence) vs `pmid` (a pointer **at** the
+  evidence). A row carrying `1A` still says nothing about which paper it rests on. Write both.
 - `requires_callable` (a negative must be *proven*) vs `callable_from` (where the proof lives) vs
   `quality_from` / `min_quality` (whether what was seen is good enough to act on). The first two ask
   whether the position was seen; the third asks whether the call is trustworthy. Because they are

@@ -1927,15 +1927,24 @@ citation exist (PubMed `esummary`), do the identifiers agree (DOI/PMCID arrive i
 and does the quoted passage appear in the article (Europe PMC fulltext, open-access subset only) — plus
 the article's own **licence**, which arrives in the same Europe PMC response.
 
-**There are two citation sites since 0.6, and this pass reads both (RM47).** `studies.csv`, and a
-`pmid` on a binning row, which grounds the *threshold* it sits on. A module whose only citations are
-bin pointers is enriched exactly like one with a `studies.csv`; a module with neither is refused, since
-the relaxation is about *where* a citation may live and not about whether one is needed. The bin
-pointers are read through `just_dna_compiler.load_binning_rows` / `binning_citations` — public for the
-RM41 reason, because the alternatives were importing a private symbol or hand-keeping a second list of
-the binning kinds here, and that list goes stale on the fifth kind. A bin-only citation contributes no
-quote and no authored DOI (a binning row has neither column), so it reads as *nothing to check* rather
-than as an unretrievable fulltext.
+**`studies.csv` is one citation site of several, and this pass reads every one (RM47, RM132).** A
+`pmid` on a binning row grounds the *threshold* it sits on; one on a `pharm_variants.csv` row grounds
+that row's own drug and genotype claim, which `studies.csv` structurally cannot, since a study row
+keys on `(variant_key, pmid)` and attaches to the whole variant. A module whose only citations come
+from those tables is enriched exactly like one with a `studies.csv`; a module with none at all is
+refused, since the relaxation is about *where* a citation may live and not about whether one is needed.
+
+Those pointers are read through `just_dna_compiler.load_citing_rows` / `table_citations` — public for
+the RM41 reason, because the alternatives were importing a private symbol or hand-keeping a second list
+of the kinds here, and that list goes stale the next time a model declares a `pmid`. The compiler's set
+is **derived** (`_CITING_TABLE_KINDS` is every table kind whose model declares the column), so this
+tier gains a new citation site by doing nothing, and a test walks this module's own source to assert no
+such roster is kept here. `load_binning_rows`/`binning_citations` still exist and still mean the
+binning kinds only — a caller asking for those is asking about thresholds.
+
+A citation reaching the pass only from such a row contributes no quote and no authored DOI (neither row
+has those columns — `provenance_quote` deliberately did not follow the `pmid` to either site), so it
+reads as *nothing to check* rather than as an unretrievable fulltext.
 
 **The article's licence is recorded per article, and there is no `pubmed` row in the licence table
 (RM46).** The pass writes `source="pubmed"` into every row it produces and `TERMS_BY_SOURCE` has no

@@ -53,7 +53,7 @@ concern, and a module includes **only** the CSVs it uses (RM2 — `variants.csv`
 SNP core is `variants.csv` + `studies.csv` (studies required *iff* variants present). Everything else
 is an optional table kind.
 
-**Where grounding evidence goes, and the line between the two citation sites (S19/RM47).**
+**Where grounding evidence goes, and the line between the citation sites (S19/RM47/RM132).**
 `studies.csv` identifies its subject the way a variant is identified — by `rsid`, or by
 `chrom`(+`start`) — so it grounds `variants.csv` row by row, and it grounds any table whose rows carry
 a variant identity: `pharm_variants.csv`, `haplotypes.csv`, and `heteroplasmy.csv` when its optional
@@ -65,6 +65,9 @@ What it could not do before 0.6 was name a *gene-keyed* row: a `repeat_alleles.c
 `(gene, repeat_unit)` and no study row could point at one, so a citation there grounded the module and
 never the boundary — which is the number a reader actually wants to check. **RM47 closed that with a
 second citation site and one rule for reading it: the bin row cites, the citation table describes.**
+0.7 reached the same rule for `pharm_variants.csv` (RM132), and the set of citing tables is now
+**derived from the models** — a kind is a citation site exactly when it declares a `pmid` — so the
+compiler and the enricher cannot come to read different halves of it.
 
 - **`MeasureBinRow.pmid` is a pointer on the row that states the threshold** — one optional column on
   the binning base, so it reaches all four kinds. Free-form like `StudyRow.pmid` and validated by the
@@ -501,19 +504,20 @@ them indiscriminately. That is why RM47 put `pmid` on the **bin row** rather tha
 |---|---|---|
 | `variants.csv` | `(variant_key, genotype)` | `studies.csv` — full provenance: `pmid`, `provenance_quote`, `curator`, population, effect size |
 | the four binning kinds | the bin's own key + `[measure_min, measure_max]` | `MeasureBinRow.pmid` on the row (RM47), with `literature.csv` describing the article |
-| `pharm_variants.csv` | `(variant_key, drug, genotype, phenotype_category, annotation_id)` | **nothing today — [RM132](ROADMAP.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant)** |
+| `pharm_variants.csv` | `(variant_key, drug, genotype, phenotype_category, annotation_id)` | `PharmVariantRow.pmid` on the row (RM132, 0.7), with `literature.csv` describing the article |
 
-So of the three readings a reporter can construct, the third is the intended one: a `pharm_variants`
-module **is** supposed to carry citations, and the column is missing rather than deliberately absent.
-Reading 1 — *the module cites ClinPGx as a whole through the licence row, and `evidence_level` is the
-provenance handle* — is not the design: `evidence_level` is a pointer at somebody else's **grading of**
-evidence, not at the evidence, and the licence row states redistribution terms rather than grounding a
-claim. Reading 2 — *use `studies.csv`* — fails on the keys exactly as it looks like it does, and is
-the reason RM47 exists rather than a gap RM47 left.
+`evidence_level` is **not** the provenance handle and never was: it points at somebody else's
+**grading of** evidence rather than at the evidence, and the licence row's `source`/`dataset` state
+redistribution terms rather than grounding a claim. Using `studies.csv` fails on the keys exactly as
+it looks like it does, which is the reason RM47 exists rather than a gap RM47 left — widening
+`studies.csv`'s key would make a study row's subject depend on which table read it.
 
-**What the enricher writes today is `literature.csv`, and that is the describing half, not the citing
-half.** A `pharm_variants` module can already carry article records; what it cannot do is say **which
-row** any of them grounds.
+**`provenance_quote` does not follow the pointer to either site, and the omission is deliberate rather
+than pending.** The row cites; `studies.csv` and `literature.csv` describe. That line is what stops
+`StudyRow`'s whole provenance column set — population, `p_value_num`, `effect_size`,
+`provenance_quote`, `curator` — migrating onto a citing row one column at a time. A body of clinical
+claims the size of a ClinPGx draft is exactly where the question gets asked next, which is why it is
+stated here rather than left implied.
 
 **What the sentinel rule actually enforces — one side of it.** The contract is that a missing
 measurement selects the `unresolved` row, so a table without one leaves a consumer with nothing to
@@ -630,7 +634,10 @@ structural allele — see *The allele grammar* above);
 `activity_value?`, CN/SV conveniences); `DiplotypeRow` (`gene`+`haplotype_a`/`haplotype_b` canonicalized
 `a ≤ b`, `conclusion`, PharmGKB `drug?`/`response?`/`evidence_level?`, CPIC `recommendation_strength?`
 and `clinical_context?`); `PharmVariantRow` (`drug`+
-`conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`, `annotation_id?`).
+`conclusion`, single-variant, `evidence_level?` 1A…4, `genotype?`, `phenotype_category?`,
+`annotation_id?`, and **`pmid?` — the claim citation added in 0.7 (RM132)**, free-form under the same
+grammar as `StudyRow.pmid`, a separate axis from `evidence_level` because one points at the evidence
+and the other grades it).
 `HaplotypeRow` and `PharmVariantRow` also carry a **compiler-filled `alts`** since 0.6 — parquet-only,
 never authored, outside the key; see *Stamped identity on the positional tables* above.
 

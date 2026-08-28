@@ -96,6 +96,19 @@ Import from `just_dna_compiler.compiler`.
   module whose declaration cannot be read (it writes facts back). Added for the two enricher checks that
   take rows rather than a `spec_dir` — `verify_acmg_sf` and `check_identifiers`, which now accept both.
 
+- **`load_citing_rows(spec_dir) -> dict[str, list]`** and **`table_citations(rows_by_csv) ->
+  list[str]`** — every table kind beside a spec whose rows **cite** (a model declaring a `pmid`:
+  the four binning kinds since RM47, `pharm_variants.csv` since RM132), and the digit-only PMIDs they
+  name, de-duplicated in first-occurrence order. Public for the RM40/RM41 reason: the enricher's
+  literature pass has to check these pointers alongside `studies.csv`, and its alternatives were a
+  private import or a second roster that goes stale the next time a model declares the column. The set
+  is derived from the models, so a new citing kind is read by both tiers with no edit to either. Row
+  errors **raise** — a pass reading citations out of a table it could not parse would silently
+  under-report; a caller wanting the per-row diagnosis has `validate_spec`.
+  **`load_binning_rows`/`binning_citations`** are the narrower pair, unchanged: they answer over the
+  binning kinds only, because a caller asking for those is asking about thresholds rather than about
+  the citations a module makes.
+
 `models.py`: **`ValidationResult`** (`valid`, `errors`, `warnings`, `info`, `stats`) — the `.stats` key
 contract is `variant_count`/`unique_rsids`/`gene_count`/`genes`/`categories`/`study_count`/
 `clinvar_count`/`pathogenic_count`/`benign_count`/`module_name`. **`CompilationResult`** (`success`,
@@ -153,7 +166,7 @@ detectable without any reference. This is where most real authoring bugs are cau
 | `p_value` string ↔ the mantissa/exponent pair | two encodings of one number | warning / error in `strict` |
 | MT/Y two-allele genotype | ploidy contradicts the contig | warning |
 | study / frequency / gene-metrics orphans | the sidecar describes something the module lacks | warning |
-| literature orphans | a citation no study and no bin makes — reported, and **left out of the artifact** (the row stays in `literature.csv`) | warning |
+| literature orphans | a citation no study and no citing table row makes — reported, and **left out of the artifact** (the row stays in `literature.csv`) | warning |
 | `sources.csv` orphans / undeclared sources | every source a fact table cites has terms recorded, and vice versa | warning |
 | star allele used but not defined | `allele_function`/`diplotypes` name it; `haplotypes` defines it | warning |
 | **phase-ambiguous diplotypes** (0.5) | two *different* haplotype pairs whose unphased genotype is identical while their conclusions differ | warning |
@@ -368,6 +381,16 @@ the enricher's literature pass, so a bin-grounded citation is checked for existe
 exactly like a study-grounded one. `reference_examples/htt_repeat_expansion` is deliberately left
 **uncited**: the example exists to show what the warning looks like.
 
+**0.7 added a third site the same way (RM132), and stopped listing them.** `PharmVariantRow.pmid`
+grounds one drug/genotype/category claim, which `studies.csv` cannot: a study row keys on
+`(variant_key, pmid)` and would attach to every claim recorded for that variant at once. The lesson
+above is now enforced structurally rather than remembered — `_CITING_TABLE_KINDS` is every
+`_TABLE_KINDS` model declaring a `pmid`, and `table_citations`/`load_citing_rows` walk it, so the next
+kind to declare the column is read by both tiers with no edit to either. `_check_binning_grounding` is
+untouched by this and stays about *bins*: there is deliberately no equivalent grounding warning for an
+uncited pharm row, because a drug-response table is not the interpretive-threshold case that check
+exists for.
+
 ### Three more schema limits, made legible the same way (0.6, the VCF 4.4 audit)
 
 Same class as the bin-boundary gap above — limits of the **schema**, not of the tier — and they are here
@@ -511,7 +534,8 @@ cannot see the table — right advice, false reason, and a green run on one of t
 agreement with an authority that never saw it. `REDUNDANCY_BEARING_TABLES` narrows the *explanation*
 for the columns whose checker reads fewer tables than carry them; an absent key means unscoped, which
 is the honest answer for `rsid`/`chrom`/`start`/`ref`/`alts` (resolution reaches the positional kinds,
-RM43) and for `pmid` (a bin is a second citation site, RM47). **It scopes nothing else**: the refusal a
+RM43) and for `pmid` (a bin and a pharm row are citation sites in their own right, RM47/RM132).
+**It scopes nothing else**: the refusal a
 drafting provider obeys stays keyed on the bare column, because whether a provider should start filling
 `clin_sig` on a binning row is a decision nobody has taken.
 
@@ -1338,8 +1362,8 @@ asymmetry below is intended: **rows are preserved, presentation is normalized.**
   path be retired without moving a digest.
 - **`_symbolic_findings`** sorts on `(table, reason, index, column)`, so the messages built from it are
   byte-stable. They reach `manifest.compilation.warnings`, which is artifact-visible.
-- **`binning_citations`** returns first-occurrence order rather than sorted order, because it feeds
-  emission order.
+- **`table_citations`** (and its narrower sibling `binning_citations`) returns first-occurrence order
+  rather than sorted order, because it feeds emission order.
 - **`Frequency.populations`** is in canonical order (`population_sort_key`, `global` first). Every
   *other* manifest facet list is sorted — this one is the exception, deliberately.
 - **`_write_resolution_csv`** emits weights first and never re-emits a key from the positional pass, so
@@ -1558,6 +1582,10 @@ the override rows.
 Both warn in **both** modes and both are aggregated into one sentence rather than one per row. The
 consequence a consumer should know is the one no message can carry: **a `suppress` with a typo'd
 subject does nothing, forever, and cannot warn** — check a suppression by reading the compiled table.
+
+The uncited-literature sentence names its sites, so it has been reworded twice as sites were added —
+`no study or bin` in 0.6, `no study, bin or pharm row` in 0.7. The **code** `literature_row_uncited` is
+the stable handle; the phrase is pinned by the suite, which is what makes each rewording deliberate.
 
 **Substrings the suite pins as contract**, so changing one is a deliberate act rather than a reword:
 `test_validate_agrees_with_compile.py` holds `"forbid sale"`, `"does not match the id recomputed"`,

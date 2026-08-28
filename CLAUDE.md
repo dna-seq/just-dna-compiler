@@ -210,7 +210,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 ### Binning, citations, literature
 
 - A binning table stating thresholds with no study rows warns in both modes. `@bin-grounding`
-- The bin row cites (`MeasureBinRow.pmid`); the citation table describes. `@rm47-bin-cites`
+- A row cites when its claim is finer-grained than `studies.csv`'s key; the citation table describes. `@rm47-bin-cites`
 - A shared endpoint belongs to the higher bin under continuous tiling; `measure_max` is always inclusive. `@dense-bin-boundary`
 - Tiling is its own axis: the bin rules read effective `measure_tiling`, and absent means the kind's default. `@measure-tiling`
 - The fractional inference fires only against a `quantised` default — only a stated grid can be contradicted. `@measure-tiling`

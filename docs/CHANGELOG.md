@@ -471,6 +471,58 @@ inside this same number. Each entry below names the packages it actually touched
   Technology Transfer in writing. Whether the indel rows are left-normalized is likewise unestablished,
   which is what `derivation=indel` exists to let a consumer act on.
 
+- **RM132 — `pharm_variants.csv` can cite the evidence for its own claim.** *(`just-dna-format` +
+  `just-dna-compiler` + `just-dna-enricher`; a new optional authored column, additive under Principles
+  3 and 8, and no published module is invalidated.)*
+
+  A ClinPGx-drafted module carried **1,482** drug-response rows and had nowhere to ground any of them:
+  sixteen model fields, thirteen authored, none a PMID or DOI. `studies.csv` cannot close it, and that
+  is structural rather than an oversight — a study row keys on `(variant_key, pmid)` and attaches to
+  the **variant**, while a `pharm_variants.csv` row keys on
+  `(variant_key, drug, genotype, phenotype_category, annotation_id)`, so one study row would attach
+  the paper to every drug, genotype and phenotype category recorded for that variant at once.
+  Widening `studies.csv`'s key was refused for the reason RM47 already refused it: it would make a
+  study row's subject depend on which table read it. `evidence_level` is not the handle either — it
+  points at somebody else's *grading of* the evidence rather than at the evidence — and the licence
+  row's `source`/`dataset` state redistribution terms rather than grounding a claim.
+
+  **`PharmVariantRow.pmid`**, optional and free-form under the one grammar `spec.validate_pmid_cell`
+  owns, so an author who has met `StudyRow.pmid` or `MeasureBinRow.pmid` learns nothing new. That is
+  why a full-cost authored column (P9) is taken here rather than deferred for demand: demand fixes an
+  *unfixed* shape, and RM47 fixed this one a release ago for a structurally identical table.
+
+  **`provenance_quote` does not follow, and the release says so rather than leaving it implied.** The
+  row cites; `studies.csv` and `literature.csv` describe. That is the line that stops `StudyRow`'s
+  whole provenance column set — population, `p_value_num`, `effect_size`, `provenance_quote`,
+  `curator` — migrating onto a citing row one column at a time, and a body of clinical claims this
+  size is exactly where the question gets asked next.
+
+  **Both literature cross-check sites learned the site in this release**, which is RM47's recorded
+  lesson in its own words: a column shipped without them would make every citation from it read as a
+  stale orphan in one direction and be invisible in the other. `_cross_check_literature` (with
+  `split_cited_literature` and `_check_quote_counter_is_current` beneath it) and the enricher's
+  `enrich_literature` both read it, so a pharm-grounded citation is checked for existence and
+  identifiers exactly like a study-grounded one — and a module whose only citations are pharm pointers
+  is now enriched rather than refused.
+
+  **The roster is derived, so there will not be a fourth round of this.** `_CITING_TABLE_KINDS` is
+  every `_TABLE_KINDS` model declaring a `pmid`, and the new public
+  `load_citing_rows` / `table_citations` walk it — the pair the enricher reads through, so a second
+  copy of the table roster in that tier (the RM40/RM41 shape) is not repeated, and a test walks the
+  enricher's own source with `ast` to assert none is kept. `load_binning_rows` / `binning_citations`
+  stay and stay narrow: a caller asking for the binning kinds is asking about thresholds, not about
+  the citations a module makes. The internal third parameter of `split_cited_literature` is renamed
+  `bin_rows` → `kind_rows` to match what it always held.
+
+  **One warning text moved, deliberately**: `literature_row_uncited` now reads *"no study, bin or
+  pharm row in this module cites"*. The **code** is the stable handle and is unchanged; the phrase is
+  pinned by the suite, which is what makes the rewording a deliberate act rather than a drift.
+
+  Optionality is proved by running it rather than by citing `exclude_none`: a spec carrying no `pmid`
+  header hashes to the same `content_signature` as the same spec carrying the header with every cell
+  empty, and a filled cell moves it. The round trip is asserted on the `pharm_variants.parquet` bytes
+  as well as on both identities.
+
 ## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
 **Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately

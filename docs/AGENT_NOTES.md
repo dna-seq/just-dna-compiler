@@ -918,9 +918,14 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   reason is that for a gene-keyed table the requirement would be **unsatisfiable** rather than merely
   unmet.
 
-- `@rm47-bin-cites` — **RM47 SHIPPED in 0.6 — the bin row cites, the citation table describes.** That sentence is the whole
+- `@rm47-bin-cites` — **RM47 SHIPPED in 0.6 — the row cites, the citation table describes.** That sentence is the whole
   design and it is what stops `StudyRow`'s column set (population, `p_value_num`, `effect_size`,
-  `provenance_quote`) migrating onto binning rows one column at a time. Two additive halves:
+  `provenance_quote`) migrating onto a citing row one column at a time. **RM132 reached the same rule
+  for `pharm_variants.csv` in 0.7** under the generalization worth stating once: *a row cites when its
+  claim is finer-grained than `studies.csv`'s key.* `provenance_quote` did not follow there either,
+  and the entry says so rather than leaving it implied — the consequence being that a citing row with
+  no quote column contributes a denominator of **zero** to the quote-counter check rather than being
+  skipped, or a literature row reachable only from such a row reads as cited by nothing. Two additive halves:
   `MeasureBinRow.pmid`, one optional column on the base reaching all four kinds; and `StudyRow`'s
   subject requirement **relaxed to nothing** (`REQUIRED_ANY_OF = ()`), so the paper behind a threshold
   is described without inventing a bare `chrom=4` for HTT — widening an either-or rule only makes
@@ -934,9 +939,15 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     `_cross_check_literature` reads bin pointers alongside `studies.csv` — blind to them, every
     threshold-grounding citation reads as a stale orphan — and so does `enrich_literature`. Shipping
     the column without both would be evidence the format never checks, which is worse than the gap.
-  - **The enricher reaches the bins through PUBLIC compiler symbols**, `load_binning_rows` /
-    `binning_citations`. Importing `_BINNING_TABLE_KINDS` or keeping a second list of the four kinds in
-    the enricher is the RM40/RM41 shape, and the copy goes stale on the fifth kind.
+  - **The enricher reaches the citing rows through PUBLIC compiler symbols.** Importing
+    `_BINNING_TABLE_KINDS` or keeping a second list of the kinds in the enricher is the RM40/RM41
+    shape, and the copy goes stale on the next kind. RM47 shipped this as
+    `load_binning_rows`/`binning_citations`; **RM132 generalized it in 0.7** to
+    `load_citing_rows`/`table_citations` over a **derived** `_CITING_TABLE_KINDS` — every `_TABLE_KINDS`
+    model declaring a `pmid` — which is what turns the discipline into a structure. The old pair stays
+    and stays narrow: a caller asking for the binning kinds is asking about thresholds. A test walks
+    `enricher/literature.py` with `ast` and asserts no citing CSV name appears in a string constant
+    there, which is how "no second roster" is enforced rather than remembered.
   - **Grounding is counted per ROW, off the row — and a variant identity is NOT one of the ways
     (D1-3, 0.6).** `_check_binning_grounding` subtracts bins carrying a `pmid`, full stop; the gate
     ("no study rows at all") is unchanged, so a module with a `studies.csv` is not newly nagged. It

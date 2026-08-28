@@ -192,9 +192,10 @@ REDUNDANCY_BEARING: dict[str, str] = {
 #: Six columns are deliberately **absent**, and each absence is a checked claim rather than a gap.
 #: `rsid`/`chrom`/`start`/`ref`/`alts` stay unscoped because resolution reaches the positional table
 #: kinds and the PGx tables since 0.6 (RM43), so a coordinate on `haplotypes.csv` or
-#: `heteroplasmy.csv` really is cross-examined. `pmid` stays unscoped because there are **two**
-#: citation sites since RM47 — `studies.csv` and a `pmid` on a binning row — and
-#: `enricher.literature` reads both through `binning_citations`.
+#: `heteroplasmy.csv` really is cross-examined. `pmid` stays unscoped because `studies.csv` is one
+#: citation site of several — a binning row's `pmid` since RM47, a `pharm_variants.csv` row's since
+#: RM132 — and `enricher.literature` reads every one of them through `table_citations`, over a kind
+#: set the compiler derives rather than lists.
 REDUNDANCY_BEARING_TABLES: dict[str, frozenset[str]] = {
     "clin_sig": frozenset({"variants.csv"}),
     "evidence_level": frozenset({"pharm_variants.csv"}),

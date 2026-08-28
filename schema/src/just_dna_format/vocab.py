@@ -1298,7 +1298,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "p_value_encodings_disagree",       # `p_value` and `p_value_num` are two readings of one number
         "study_effect_allele_not_at_locus", # a study's `effect_allele` is not among the resolved alleles
         "citation_not_in_pubmed",           # a `pmid` PubMed has no record of
-        "literature_row_uncited",           # a literature row no study or bin cites — kept in the CSV
+        "literature_row_uncited",           # a literature row nothing in the module cites — kept in the CSV
         "quote_counter_stale",              # `quotes_authored` disagrees with the quotes that cite it
         "quoted_article_license_restrictive",  # a quote from an article whose licence forbids sale
         # ── sources and licensing ──

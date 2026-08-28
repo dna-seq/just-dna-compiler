@@ -66,8 +66,9 @@ def test_a_scope_names_at_least_one_table_that_really_carries_the_column() -> No
 
 def test_the_unscoped_columns_are_the_ones_with_more_than_one_reader() -> None:
     """The six absences are claims too. `rsid`/`chrom`/`start`/`ref`/`alts` are cross-examined on the
-    positional kinds because resolution reaches them (RM43), and `pmid` on a binning row because
-    RM47 made a bin a second citation site — so scoping any of them would suppress a true advisory."""
+    positional kinds because resolution reaches them (RM43), and `pmid` because `studies.csv` is one
+    citation site of several — a binning row's since RM47, a `pharm_variants.csv` row's since RM132 —
+    so scoping any of them would suppress a true advisory."""
     assert set(REDUNDANCY_BEARING) - set(REDUNDANCY_BEARING_TABLES) == {
         "rsid", "chrom", "start", "ref", "alts", "pmid",
     }
@@ -111,12 +112,27 @@ def test_clin_sig_on_variants_keeps_the_original_reason() -> None:
 
 def test_a_binning_pmid_keeps_the_vacuous_reason_because_a_bin_really_is_a_citation() -> None:
     """RM47's second citation site: `enricher.literature` reads bin-row pmids through
-    `binning_citations`, so this advisory was always true and must stay unscoped."""
+    `table_citations`, so this advisory was always true and must stay unscoped."""
     message = _advisory(
         "repeat_alleles.csv", _head("htt_repeat_expansion", "repeat_alleles.csv"), "pmid"
     )
     assert message is not None
     assert _UNSCOPED_REASON in message
+
+
+def test_a_pharm_pmid_keeps_it_too_because_the_third_site_is_read_the_same_way() -> None:
+    """RM132's half of the same claim, on the table it lands on.
+
+    The way this breaks is somebody scoping `pmid` to `studies.csv` on the reasoning that a citation
+    lives there — which is exactly the reading RM47 and RM132 refuse. The literature pass reads this
+    site the way it reads a bin's, so the advisory here is true and the sentence must say so."""
+    text = _head("pgx_slco1b1_simvastatin", "pharm_variants.csv")
+    assert "pmid" not in text.splitlines()[0], "the advisory is about a column nobody filled"
+    message = _advisory("pharm_variants.csv", text, "pmid")
+    assert message is not None
+    assert _UNSCOPED_REASON in message
+    assert _SCOPED_REASON not in message
+    assert "enricher.literature" in message, "and it must still name the check that reads this site"
 
 
 def test_a_positional_kinds_coordinate_keeps_the_vacuous_reason() -> None:
