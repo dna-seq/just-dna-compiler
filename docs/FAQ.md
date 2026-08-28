@@ -57,6 +57,25 @@ only deleting the sidecar re-stamps. → S7. (The *name* is wrong and the rename
 `content_signature`, and `just-dna-compiler signature <spec>` computes it without compiling. Key a
 "these exact bytes" claim on `artifact.digest`. → S7.
 
+**Would recompiling my stored artifact produce different output than the one I am holding?**
+Ask `just_dna_format.release_records.needs_recompile(compiled_under, current)` — the interval-keyed
+record of what each release changed about compiled output. It answers per axis and tri-state, so an
+interval it does not cover reads `unknown` rather than *nothing changed*.
+→ [SCHEMAS § The release record](SCHEMAS.md#the-release-record-07-rm126--what-a-release-changed-about-compiled-output).
+
+**Then does it tell me whether to rebuild?**
+No, deliberately. The same fact costs a registry an immutable PATCH and a local cache a free rebuild,
+so the decision is yours and only the fact is ours — there is no `should_rebuild`. The declared
+correction-versus-addition flag is not that verdict: it says whether a value *we published* was wrong,
+which is upstream knowledge only this repo holds.
+→ [SCHEMAS § The release record](SCHEMAS.md#the-release-record-07-rm126--what-a-release-changed-about-compiled-output).
+
+**My stored `manifest.stats.genes` disagrees with what I recompute from the authored rows — is that a bug?**
+Not if `compilation.dropped_rows` is non-empty. `compile_module` re-derives `stats` over the survivors
+when the symbolic-allele drop removed something, so a recomputation from authored rows is the *pre-drop*
+side and the two disagree permanently under any compiler. That counter is the check.
+→ [SCHEMAS § The release record](SCHEMAS.md#the-release-record-07-rm126--what-a-release-changed-about-compiled-output).
+
 **Is `content_signature` build-independent?**
 No — reference-independent, not build-independent. Two modules with identical CSVs on different
 assemblies describe loci hundreds of bases apart, so a non-default `genome_build` feeds the hash.

@@ -30,6 +30,7 @@ is the maintained one, and where the two disagree this one is what a consumer ma
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
+| `release_records` | What each release changed about compiled output + `needs_recompile` + the recomputation roster (0.7, RM126) | `base`, `identity`, `vocab` |
 | `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |
 | `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `vocab`, `vrs` |
 | `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
@@ -267,6 +268,8 @@ is what makes it checkable. **When adding a field that answers a question, find 
 | `binning.DEFAULT_MEASURE_TILING["activity_score"]` | `None` = neither dense nor gap-checked |
 | `AuthoredModel._KEY_INCLUDES_ALTS` | `None` = stamps nothing, distinguishable from `False` = stamps without `alts` |
 | `Compilation.expanded_keys` / `.expanded_rows` / `.positional_rows` / `.positional_rows_placed` | `None` = this compiler did not say; `0` = it said zero. **Do not coalesce** — it is how the eras are told apart |
+| `ReleaseRecord.axes[axis]` / `RecompileAnswer.axes[axis]` | `None` = this interval was not measured on that axis. Never `False`, or a consumer stops recompiling on a silence |
+| `RecompileAnswer.output_differs` | Kleene OR over the recompile-driving axes; `None` = *cannot say*, which is not *nothing moved* |
 | `ClinicalAssertions.min_review_stars` / `.max_review_stars`, `ClinicalAssertionRow.review_stars` | `null` = no rated record; `0` = the real rating *"no assertion criteria provided"* |
 | `derive.pathogenic_from_clin_sig` / `benign_from_clin_sig` | returns `True` or `None` — never a fabricated `False` |
 | `weights.parquet.likely_pathogenic` / `.likely_benign` | **the exception, and it is a known wart (S43)**: hardcoded `False`, never `None` and never `True`. Read `clin_sig` instead |
@@ -1982,6 +1985,123 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   key rather than managing one.
 - **`aggregate.aggregate_logs` / `aggregate_provenance`** — the deduplicated union of logs/provenance
   across a set of version manifests ("v3 provenance = v1+v2+v3"), first-occurrence order.
+
+## The release record (0.7, RM126) — what a release changed about compiled output
+
+`just_dna_format.release_records`. Principle 3, as amended on 2026-08-21, lets a corrected derivation
+ship in any release but **never silently**: each release declares its corrections, readable offline and
+without recompiling. This module is that declaration. It is the one item of its round that is owed
+rather than offered — until it existed the charter named a surface that was not there.
+
+**The question it answers.** A consumer holding a stored artifact can already ask *is the stored input
+still legal?* (`validate_spec` says `ok`) and *was this compiled by a contract-incompatible compiler?*
+(compare versions; a patch is compatible). Neither is **would recompiling this artifact produce
+different output than the stored one?** — and the numbers say that is not hypothetical. All sixteen
+`reference_examples/` compiled under `0.6.1` and again under `0.6.6` from **one** spec root, across an
+interval that is entirely patch releases:
+
+| axis | modules moved |
+| --- | --- |
+| `parquet_schema` | 10 / 16 |
+| `parquet_bytes` | 10 / 16 |
+| `manifest_fields` | 9 / 16 |
+| `content_signature` | **0 / 16** |
+| `warnings` | 0 / 16 |
+
+Six of the sixteen moved a published, indexed manifest field with **both** hashes byte-identical —
+`apoe_epsilon` went `genes: []` → `["APOE"]` at the same `artifact.digest` and the same
+`content_signature`. That is exactly the shape a digest comparison, a signature comparison and a
+`revalidate` all correctly report as *no change*, which is why no existing surface could see it.
+Authored identity held throughout, which is the charter working as designed.
+
+**It is a fact channel and deliberately not a verdict.** There is no `should_rebuild`: the same fact
+costs a registry an immutable PATCH and a local cache a free rebuild, so the decision is the consumer's
+and only the fact is ours. `needs_recompile(compiled_under, current)` is named for the question and
+answers with the per-axis breakdown plus the declared split underneath it.
+
+### The two vocabularies
+
+`VALID_RELEASE_OUTPUT_AXES` (`vocab.py`) — `parquet_schema`, `parquet_bytes`, `content_signature`,
+`manifest_fields`, `warnings`. `VALID_RELEASE_CHANGE_KINDS` — `correction` or `addition`, and that
+split is the half **no diff can compute**: `stats.genes` was *wrong* and `curator` was merely *absent*,
+and only the person who fixed the bug knows which. Both are closed sets with a marker and a validator
+on `DeclaredChange`, so `describe`-style surfaces and the separator canonicalisation reach them like
+any other vocabulary.
+
+`warnings` is a member and is **outside** `RECOMPILE_DRIVING_AXES`, derived by subtraction from
+`NON_RECOMPILE_AXES`. `compilation.warnings` is a published manifest field, so folding it into
+`manifest_fields` would report *a manifest field changed* on essentially every module in a release
+that reworded a message — and a registry acting on that mints an immutable PATCH across a whole
+catalogue for prose. It cannot join `compilation.compiled_at` in `EXCLUDED_MANIFEST_FIELDS` either,
+because a **new** warning can be a real signal. RM131's `carried` split is the discriminator that will
+make the two decidable (a finding the author cannot clear moving is noise; one they can clear
+appearing is not); the seam is `sweep.compare_module`, which already keeps `warnings_added` and
+`warnings_removed` apart for it.
+
+### Intervals compose as a union over `(a, b]`
+
+A record is keyed on a release and carries `previous`, so an arbitrary interval is a walk down the
+chain and storage is linear rather than O(releases²). Three consequences, and the first is
+load-bearing rather than incidental:
+
+- **The interval from a version to itself is empty**, so an automated sweep cannot mint a fresh PATCH
+  every run, forever. A field-keyed or *latest known defect* shape would not have the property, which
+  is why the interval shape was chosen and why this sentence is here rather than in a commit message.
+- **Moved-and-moved-back still counts as moved.** A consumer asking whether their stored bytes match a
+  recompile is not asking whether the difference is interesting.
+- **A link reaching below the asked-about lower bound blunts `True` to `unknown` and keeps `False`.**
+  If nothing moved across the wider span then nothing moved inside it; something moving across the
+  wider span says nothing about *where*.
+
+### Unknown is a state, never an empty result
+
+`axes` is tri-state per axis on both the record and the answer, folded with **Kleene** semantics: a
+measured `True` beats any number of `None`s, and `False` survives only when every release in the
+interval was measured and none moved. An uncovered interval answers `None` on every axis it could not
+reach, and a **downgrade** — an artifact compiled under something newer than the installed release —
+answers `None` throughout, because the union is not symmetric. Without that, the surface would be worse
+than nothing: a consumer would stop recompiling on the strength of a silence.
+
+A record must answer **every** axis (the validator asserts an equality over the vocabulary, not a
+subset), and may answer `None` where a release could not measure one — which is how an axis added
+later stays honest about the intervals before it.
+
+### The roster — what a consumer can recompute instead of asking
+
+`AUTHORED_ROW_DERIVED_FIELDS` names which manifest fields are pure functions of the authored rows, so a
+consumer can compute the *current* answer from stored inputs with `spec_tables` (S53) and
+`module_stats` (S57) rather than consulting the table at all. This is the half that shrinks the item.
+
+**Its boundary is conditional and the condition ships with it**, on the entry rather than in prose
+somewhere else. `validate_spec` computes `stats` over the full row set while `compile_module`
+re-derives over the survivors **only when the symbolic-allele drop removed something**, so a
+recomputation from authored rows is the *pre-drop* side and `manifest.stats` legitimately disagrees
+with it — permanently, under any compiler — for a module that lost the sole row naming a gene. The
+condition is **checkable** rather than merely stated because `compilation.dropped_rows` shipped on
+2026-08-24: empty means the two must agree, non-empty means the manifest is the post-drop answer.
+`content_signature` and `stats.study_count` are unconditional; the seven `module_stats` facets are not.
+
+### Scope, said out loud because a silence reads as a claim
+
+v1 measures **compiler-derived** outputs — the manifest, the parquet schemas and the parquet bytes.
+Enricher-side outputs stay **unmeasured**, which is not the same claim as unchanged. The table covers
+the *published* releases only (`0.6.0`, `0.6.1`, `0.6.6` in the 0.6 line — the tags in between never
+reached PyPI, so no artifact can name one), and everything older is honestly absent.
+
+**It coexists with a consumer's own recomputation probes rather than replacing them**, at the
+reporter's request: we state what a release did, they check what a specific stored artifact says, and
+the two fail differently.
+
+The instrument that produces a record, and the gate that refuses an undeclared one, are in the compiler
+— see [COMPILER § The release-record sweep](COMPILER.md#the-release-record-sweep-rm126).
+
+**Why it is not in `reference._ALL_MODELS`.** Every member of that registry describes *module content*
+— a row someone authors or a compiler emits into a spec directory or an artifact. A release record
+describes the package, so admitting it would make `authoring_reference()` advertise a table nobody
+authors. The compensating controls are real and were chosen deliberately: both vocabularies live in
+`vocab.py`, where `test_vocab_separator.py` discovers them by inspection, and
+`schema/tests/test_release_records.py` walks the vocabulary, the shipped records, the roster and the
+excluded set asserting an **equality** over each. Do not re-file the exclusion as an oversight.
 
 ## Testing
 

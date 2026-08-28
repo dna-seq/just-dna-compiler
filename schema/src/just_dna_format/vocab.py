@@ -1154,3 +1154,39 @@ def validate_finite(value: float | None, field_name: str) -> float | None:
     if value is not None and not math.isfinite(value):
         raise ValueError(f"{field_name} must be a finite number, got: {value!r}")
     return value
+
+
+# ── What a release changed about compiled output (RM126) ────────────────────────────────────────
+# Principle 3, as amended 2026-08-21, lets a corrected derivation ship in any release but never
+# *silently*: each release declares its corrections, readable offline and without recompiling. These
+# two vocabularies are the machine keys of that declaration; `release_records.py` holds the table
+# and the pure function over it.
+#
+# The axes are the **kinds of movement** a recompile can produce, separated because a consumer acts
+# on each differently. `parquet_bytes` moving is a cache invalidation. `content_signature` moving is
+# a permanent global duplicate-content claim that only a purge frees, so it is an answer to fail
+# loudly on rather than merely to act on. `manifest_fields` moving is an index going stale with
+# *both* hashes byte-identical — the case no existing surface could see, and the whole reason the
+# record exists.
+#
+# `warnings` is a member and is deliberately OUTSIDE the set that drives a recompile
+# (`release_records.RECOMPILE_DRIVING_AXES`). `compilation.warnings` is a published manifest field,
+# so folding it into `manifest_fields` would report *a manifest field changed* on essentially every
+# module in a release that reworded a message, and a registry acting on that mints an immutable
+# PATCH across a whole catalogue for prose. It cannot simply join `compilation.compiled_at` in the
+# excluded set either, because a **new** warning can be a real signal — hence its own declared axis.
+VALID_RELEASE_OUTPUT_AXES: frozenset[str] = frozenset(
+    {
+        "parquet_schema",     # a parquet gained, lost or retyped a column
+        "parquet_bytes",      # the compiled bytes moved (`artifact.digest` / a per-file hash)
+        "content_signature",  # the authored-content identity moved — the loud one
+        "manifest_fields",    # a published manifest field moved, the excluded set aside
+        "warnings",           # `compilation.warnings` moved; NOT a recompile driver, see above
+    }
+)
+
+# Whether a value we published was **wrong** or merely **absent** — the half no diff can compute.
+# `stats.genes` was wrong (a star-allele module published `[]` while 1,332 of its rows named a gene);
+# `curator` was absent (RM120 added the column, and no earlier artifact could have carried it). The
+# two look identical to a differ, and only the person who fixed the bug knows which it was.
+VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"})
