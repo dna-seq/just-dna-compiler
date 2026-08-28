@@ -632,6 +632,32 @@ and `clinical_context?`); `PharmVariantRow` (`drug`+
 `HaplotypeRow` and `PharmVariantRow` also carry a **compiler-filled `alts`** since 0.6 — parquet-only,
 never authored, outside the key; see *Stamped identity on the positional tables* above.
 
+**`requires_callable?` on `HaplotypeRow` and `PharmVariantRow` (0.7, RM70)** — the tri-state bool
+`VariantRow` has carried since 0.4, on the two PGx tables that **name a locus**, so the claim is about
+a position the row itself states. It is what lets a star-allele module write down the assumption CPIC
+makes and states only in prose: *a position that was not called is reference*, which is literally
+`requires_callable=false` and is the whole basis of a `*1` call. It is sharpest on
+`pharm_variants.csv`, which is keyed on `genotype`: the row naming the reference homozygote is
+unmatchable from a variant-only callset, where absence of an ALT record is not evidence of that call.
+Optional, outside the key, and `None` is not `False` as everywhere else.
+
+Two omissions, both deliberate. **Not on `DiplotypeRow`**, which names a star-allele *pair* rather
+than a locus — the same column there could only mean "the variants defining these two haplotypes were
+callable", a fact about `haplotypes.csv` restated one table over where it drifts the moment a
+definition is edited. One concept, one home. And **`callable_from` does not travel with it**: the two
+are different axes, one saying a proof is required and the other saying where the proof lives, and a
+row may require one without knowing where the evidence sits. Declaring it once in `module_spec.yaml`
+was rejected for the reason RM36 and RM32 already paid for — the verdict is per locus, and CYP2D6
+holds a SNP-defined allele beside a structurally-defined one inside one gene.
+
+**The two tables may disagree at one locus, and nothing compares them — deliberately.** That is not
+the `DiplotypeRow` drift the paragraph above rules out, because the questions differ: a
+`HaplotypeRow` claim is about assigning the *reference haplotype* there, a `PharmVariantRow` claim is
+about matching *that row's genotype*. `reference_examples/cyp2c9_warfarin_grch37` holds exactly that
+shape — a haplotype defaulting to reference beside a reference-homozygote genotype that needs a
+proof — so a check asserting the two agree would refuse a correct module. Do not add one; a test
+compiles the disagreeing pair clean to keep it from being added.
+
 `PharmVariantRow.genotype` (0.5) carries the axis PharmGKB actually publishes on: a clinical
 annotation is stated **per genotype**, and the calls can be opposed (rs4149056/simvastatin reads
 "decreased" for CC and CT, "increased" for TT). It is therefore in the dedup key
@@ -681,12 +707,13 @@ pathogenic variant is absent, that fabrication runs in the dangerous direction: 
 between "screened negative" and "not screened".
 
 This is the tri-state rule the rest of the schema already obeys (`None` is never `False`), one level
-down and pointed at the consumer. Four columns exist so a module can say where it applies, and none
+down and pointed at the consumer. Five columns exist so a module can say where it applies, and none
 of them measures anything:
 
 | Column | Says |
 |---|---|
 | `VariantRow.requires_callable` | the *absence* of this variant is the informative call, so a consumer without callability data withholds the conclusion rather than asserting the reference one |
+| `HaplotypeRow.requires_callable` / `PharmVariantRow.requires_callable` (0.7) | the same claim on the two PGx tables that name a locus. `false` is the one CPIC's star-allele system makes — an uncalled position is read as reference, which is what a `*1` call rests on — and writing it down is the point: the assumption existed only in the upstream's prose. Blank is not `false`. Not on `DiplotypeRow`, which names a pair rather than a locus |
 | `VariantRow.callable_from` | which VCF field(s) the proof of callability lives in (`FORMAT/DP`, `FORMAT/GQ`, `FORMAT/FT`, `FORMAT/DP\|FORMAT/GQ`) — a pointer, never an expression |
 | `VariantRow.quality_from` + `min_quality` | the floor below which what *was* seen is not good enough to act on. A consumer that cannot read the field **withholds** — an unevaluable floor is unknown, never satisfied |
 | `MeasureBinRow.unresolved` | the no-call sentinel on every binning table: a missing measurement selects it and **never** the lowest or reference bin. Contractually expected, but only the authoring hints enforce its presence — see the binning note below |

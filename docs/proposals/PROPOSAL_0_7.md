@@ -943,8 +943,14 @@ full cost, taken with the argument above rather than by weighing file count.
 
 ## RM70 — `requires_callable` is `VariantRow`-only, so no PGx table can state CPIC's core assumption
 
-**Severity** medium · **Owner** format (schema) + compiler · **Entry**
-[ROADMAP_0_7.md § RM70](../ROADMAP_0_7.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) ·
+**✅ BUILT — shipped in 0.7 as decided, with no compiler change; `reference_examples/cyp2c9_warfarin_grch37`
+populates the column on both tables.** One thing this section did not anticipate: the two locus tables
+can name one place and legitimately disagree, because a haplotype row's claim is about assigning the
+reference *haplotype* and a pharm row's is about matching *that row's genotype*. So no cross-table
+equality check was added, and a test compiles the disagreeing pair clean to keep one from being added.
+
+**Severity** medium · **Owner** format (schema) · **Entry**
+[ROADMAP_HISTORY.md § RM70](../ROADMAP_HISTORY.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) ·
 **Found by** dogfooding 2026-08-13, `reference_examples/cyp2c9_warfarin_grch37/`
 
 ### The problem

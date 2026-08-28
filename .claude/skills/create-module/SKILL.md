@@ -458,7 +458,12 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
 - **Every binning table has an `unresolved` sentinel** a consumer selects when the measurement is
   absent. Never route a missing measurement to the lowest bin.
 - **Set `requires_callable=true` (with `callable_from`)** wherever the *absence* of a variant is the
-  informative call: a no-call is not a reference call.
+  informative call: a no-call is not a reference call. `variants.csv` takes both columns;
+  `haplotypes.csv` and `pharm_variants.csv` take `requires_callable` alone, and `diplotypes.csv` takes
+  neither — a diplotype names a star-allele pair rather than a locus, so the claim belongs on the
+  haplotype rows that define it. On a star-allele module `false` is a real answer worth writing: it
+  records the assumption the star-allele sources make, that a position which was not called is
+  reference. Write it because you checked, never to fill a blank.
 - **On licensing, unknown terms are undetermined, never permitted** — `share_alike` / `commercial_use`
   left blank do not mean allowed.
 - **`unchecked` / `unknown` in a report means the question was never put**, which is not the same as a

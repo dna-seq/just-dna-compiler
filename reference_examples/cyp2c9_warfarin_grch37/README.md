@@ -281,6 +281,35 @@ records is what partial looks like on a real pair of variants 1.76 Mb apart. **"
 wrong-build coordinates" is not a reading anyone should take** — offline, nothing fires at all, and
 online it fires for the rows whose ref happens to disagree.
 
+## What it also states: callability, since 0.7
+
+This module was the case that found RM70 — `requires_callable` was a `variants.csv` column, and this
+module has no `variants.csv`, so the assumption its whole star-allele half rests on was unstateable.
+The column now sits on `haplotypes.csv` and `pharm_variants.csv`, the two tables that name a locus,
+and both are populated here. `diplotypes.csv` deliberately does not carry it: a diplotype names a
+star-allele pair rather than a locus, so the claim would only be a copy of what `haplotypes.csv`
+already says, free to disagree with it later.
+
+**`haplotypes.csv` records CPIC's assumption, not ours.** Both defining SNPs carry
+`requires_callable=false`, which says a consumer may read an uncalled position as reference at that
+locus. That is exactly what CPIC's allele-definition system assumes and what a `*1` call rests on —
+the point of writing it down is that the assumption was previously invisible, inherited by every
+consumer of every star-allele module and stated nowhere in the artifact. A different curator may
+disagree with it; what they could not do before was see it.
+
+**`pharm_variants.csv` splits three ways, and the third state is the honest one.** This table is
+keyed on `genotype`, so the claim differs per row:
+
+| rows | value | why |
+|---|---|---|
+| `rs9923231` C/C, `rs2108622` C/C, `rs12777823` G/G | `true` | the reference homozygote. A variant-only callset emits no record for it, so absence is not evidence of the call — a consumer must show the position was callable before matching this row |
+| the same three loci's het and alt-hom rows | `false` | the call carries an alternate allele, so any variant-only VCF emits a record and no callability proof is needed |
+| all 12 rows for `rs7294`, `rs2359612`, `rs8050894`, `rs9934438` | *(blank)* | this module's `resolution.csv` names no reference allele for those loci, so which genotype is the reference homozygote is unknown. Blank is not `false`: it withholds rather than granting permission |
+
+The values were derived from the module's own `resolution.csv` rather than typed, which is why the
+last group is empty — the same table that could not be consulted for the coordinate fill (the RM15
+skip above) is the one that decides this column, and the honest answer where it is silent is nothing.
+
 ## The round trip, measured
 
 ```bash
@@ -291,8 +320,13 @@ just-dna-compiler compile out/d2_rev out/d2_again
 
 | | `artifact.digest` | `content_signature` | `resolution_signature` | `manifest.verification` |
 |---|---|---|---|---|
-| compile | `d7a4f37e…` | `989e8298…` | `c6fd3238…` | present |
-| recompile | `d7a4f37e…` | `989e8298…` | **`a0558501…`** | **absent** |
+| compile | `e0e14408…` | `81a03fe9…` | `c6fd3238…` | present |
+| recompile | `e0e14408…` | `81a03fe9…` | **`a0558501…`** | **absent** |
+
+(The first two moved at 0.7 when this module started populating `requires_callable` — see the section
+below. They were `d7a4f37e…` and `989e8298…` on the 0.6 reading that first measured this table, and the
+*shape* of the result is what the table records: the left two columns match across the two laps and the
+right two do not.)
 
 The authored identity is a fixed point. Two things are not, and both are consequences of the RM15
 skip rather than of reverse:

@@ -120,6 +120,25 @@ class HaplotypeRow(AuthoredModel):
         )
     )
     gene: str | None = Field(default=None, description="Gene symbol, e.g. CYP2D6")
+    # ── 0.7 (RM70): the callability claim, on the two PGx tables that name a locus. ──
+    # `VariantRow` has carried `requires_callable` since 0.4, and a star-allele module could not state
+    # it at all: CPIC's system assumes a position it did not call is reference, which is the whole
+    # basis of a `*1` call, and the assumption lived only in the upstream's prose. `callable_from`
+    # deliberately does **not** travel with it — the two are different axes ("a proof is required" vs
+    # "here is where the proof lives"), and a row may require one without knowing where the evidence
+    # sits. Optional, tri-state, outside the key.
+    requires_callable: bool | None = Field(
+        default=None,
+        description=(
+            "True when a consumer must prove this position was callable before reading the *absence* "
+            "of the defining allele as reference — i.e. before assigning the reference haplotype at "
+            "this locus. False records the opposite claim, which is the one CPIC's star-allele system "
+            "makes: an uncalled position is taken as reference. Empty says nothing either way, and is "
+            "not False. Per locus rather than per module: one gene can hold a common allele defined "
+            "by a single SNP beside one defined partly by a structural event, and the two do not have "
+            "the same callability requirement."
+        ),
+    )
     variant_key: str | None = stamped_identity_field(
         "Frozen machine identity (rsid, else chrom:start:ref), stamped at load from the columns the "
         "author supplied and never re-derived. `HaplotypeRow` had none at all before 0.6, so "
@@ -228,6 +247,14 @@ class DiplotypeRow(AuthoredModel):
     """Canonical fallback: a diplotype (haplotype pair) → phenotype. The pair is canonicalized
     (`haplotype_a <= haplotype_b`) so a lookup is order-independent; multiple rows per pair are
     allowed (a pleiotropic diplotype affecting several traits).
+
+    **No `requires_callable` here, and the absence is the decision (RM70, 0.7).** The column landed on
+    `HaplotypeRow` and `PharmVariantRow` because each of those rows *names a locus*, so a callability
+    claim on one is about a position the row states — exactly what the column means on `VariantRow`.
+    A diplotype names a star-allele **pair**, not a locus, so the same column here could only mean
+    "the variants defining these two haplotypes were callable", which is a fact about `haplotypes.csv`
+    rows restated one table over and free to drift the moment a definition is edited. One concept, one
+    home. `extra="forbid"` on `AuthoredModel` is what enforces it, and a test pins the refusal.
 
     Inherits `AuthoredModel` (reserved-namespace guard + shared `direction`/`clin_sig`/
     `evidence_level`/`trait_efo_id` validators)."""
@@ -388,6 +415,28 @@ class PharmVariantRow(AuthoredModel):
         "VCF row carries REF and ALT. Parquet-only: no CSV writer emits it."
     )
     gene: str | None = Field(default=None, description="Gene symbol, e.g. VKORC1")
+    # ── 0.7 (RM70): the same callability claim as on `HaplotypeRow`, for the same reason — this is
+    # the other PGx table that names a locus, so the claim is about a position the row states. It is
+    # sharper here than anywhere, because this table is keyed on `genotype`: the row naming the
+    # reference homozygote is unmatchable from a variant-only callset, where absence of an ALT record
+    # is not evidence of that call. `callable_from` does not travel here either.
+    #
+    # **The two tables may disagree at one locus, and no check compares them.** That is not the
+    # `DiplotypeRow` drift — the questions differ. A `HaplotypeRow` claim is about assigning the
+    # *reference haplotype* there; this one is about matching *this row's genotype*. The reference
+    # corpus holds exactly that shape (a haplotype default-to-reference beside a reference-homozygote
+    # genotype needing a proof), so a checker asserting the two agree would refuse a correct module.
+    # A test compiles the disagreeing pair clean, so the check is not added later. ──
+    requires_callable: bool | None = Field(
+        default=None,
+        description=(
+            "True when a consumer must prove this position was callable before concluding that the "
+            "sample carries this row's genotype — the reference-homozygote row is the case, since a "
+            "variant-only callset emits no record for it and absence is not the call. False records "
+            "that no such proof is needed, which is the ordinary case for a genotype carrying an "
+            "alternate allele. Empty says nothing either way, and is not False."
+        ),
+    )
     genotype: str | None = Field(
         default=None,
         description=(

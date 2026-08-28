@@ -521,8 +521,12 @@ more, and nothing is queued against it. Recorded as D3-2 in
 
 # The 0.6 dogfooding items deferred out of the fix round
 
-Five findings from [DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md) whose obvious repair is itself a
-design decision. The ledger classes each **surface** rather than **fix**, which is this repo's standing
+The findings from [DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md) whose obvious repair is itself a
+design decision — the round filed five, and two have since left: RM69 for
+[ROADMAP_1_0.md](ROADMAP_1_0.md) (see the header), and **RM70 shipped in 0.7**, its entry now in
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md). The three below are what remains. No fixed count is stated
+here on purpose: one goes wrong silently the next time an item leaves, and this section has already
+lost two. The ledger classes each **surface** rather than **fix**, which is this repo's standing
 split: a false claim, a misdiagnosis, an unaggregated wall or an unreached guard gets fixed in the round
 that finds it; anything whose repair has to be *chosen* gets filed with the candidates and the reason
 each one fails. The refutations are the point of these entries — an item that only names a gap is one
@@ -606,80 +610,6 @@ outcomes they wanted, or **RM15**, which dissolves the premise: once identity is
 provider can write the coordinate under the build it came from, and there is nothing left to refuse or
 strip. A behaviour fixed before RM15 lands is one RM15 would have to undo, which is the strongest single
 argument for leaving this at a warning.
-
-## RM70 — `requires_callable` is `VariantRow`-only, so no PGx table can state CPIC's core assumption
-
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) on 2026-08-28 — BUILDS in 0.7.** `requires_callable` on `HaplotypeRow` and `PharmVariantRow`, not on `DiplotypeRow`; `callable_from` does not travel with them.
-
-**Severity** medium · **Status** deferred — additive and minor-legal, waiting on a decision about which
-table owns the claim · **Owner** format (schema) + compiler · **Found by** dogfooding on 2026-08-13,
-`reference_examples/cyp2c9_warfarin_grch37/`
-
-### What was observed
-
-CPIC's star-allele system assumes that a position not called is reference — that is literally
-`requires_callable=false` — and `haplotypes.csv`, `pharm_variants.csv` and `diplotypes.csv` carry no such
-column. `requires_callable` and its companion `callable_from` are on `VariantRow` alone. So a
-star-allele module cannot record whether its call needed the defining positions to be callable, which is
-the single assumption a consumer most needs to know before trusting a `*1/*1` result.
-
-The corpus shows both sides of it. D6 confirmed RM57's inversion warning fires correctly on the row type
-it exists for: a `requires_callable=true` row with `quality_from=QUAL, min_quality=30` warns, cites VCF
-§1.6.1.6, and names GQ and MIN_DP as the fix. D2 could not exercise it at all, because a PGx module has
-no `variants.csv` — the check and the column are unreachable from the module kind whose upstream states
-the assumption in prose.
-
-### Cost, priced honestly
-
-`requires_callable` is an **authored** column, which is full cost under the 0.6 charter amendment — the
-most expensive kind of addition this format makes, on the layer the rare human writes. That is the
-reason the item is filed rather than done, and it is also why the scoping question below is not a
-detail: covering three tables and covering the two that name a position are different prices for the
-same capability, and the difference is a column on the table a human writes.
-
-### Candidate repairs, and why each is wrong
-
-- **Copy the column onto all three PGx tables.** Full cost, three times, and wrong on the third.
-  `haplotypes.csv` and `pharm_variants.csv` name loci — they are two of RM43's three positional tables —
-  so a callability claim on either is about a position the row states, which is exactly what the column
-  means on `VariantRow`. `diplotypes.csv` names a star-allele *pair*, not a locus, so the same column
-  there could only mean "the variants defining these two haplotypes were callable" — a fact about
-  `haplotypes.csv`'s rows, restated one table over where it drifts the moment a definition is edited.
-  One concept, one home (P5).
-- **Declare it once in `module_spec.yaml`.** The verdict is per locus, and this repo has twice paid for
-  assuming otherwise: RM36 rejected per-CSV build declaration because two files could disagree about one
-  fact, and RM32 rejected a gene-scoped PAR verdict because XG and SPRY3 straddle a boundary. CPIC's own
-  assumption is not uniform either — a gene whose common alleles are single SNPs and one defined partly
-  by a structural event do not have the same callability requirement, and CYP2D6 has both inside one
-  gene.
-- **Derive it from `callable_from`.** There is no `callable_from` on the PGx tables either, so this
-  starts by adding the more expensive of the two columns. It is also an axis overload: `callable_from`
-  says *where the proof lives*, `requires_callable` says *a proof is required*, and a row may
-  legitimately require one and not know where the evidence is. Deriving requiredness from the presence
-  of a pointer collapses two questions into one column.
-- **A stamped, compiler-managed parquet column.** Nearly free under the amendment, and it cannot work:
-  this is a curator's claim about what the annotation assumes, so there is nothing for the compiler to
-  compute. A stamped column carries only what the compiler derives.
-- **Author the defining positions a second time in `variants.csv`.** Two tables then name one locus, and
-  `variants.csv` alone carries `alts` as a resolution fact, so the shadow rows move `artifact.digest`
-  while asserting nothing new — and it re-opens *a star allele can be used without being defined* from
-  the other end, with two definitions instead of none.
-
-### Is it gated on the same thing as RM65/RM66?
-
-**No, and the difference is the useful part of this entry.** RM65 and RM66 wait on a real repeat-caller
-or CNV VCF because the open question there is what a *caller emits* — the shape of the data decides the
-schema. This question is about what a *curator asserts*, and the assertion already exists in prose: CPIC
-states it. A PGx caller VCF would say nothing about which of three tables should carry a curator's
-claim. The adjacency the ledger records is that both ask whether a non-`variants.csv` table should carry
-something `variants.csv` has, not that they share a blocker.
-
-**What would unblock it:** a decision on the home, plus a real module whose author wants to state it.
-The reading that survives the candidates above is *two* optional columns, on `HaplotypeRow` and
-`PharmVariantRow` — the PGx tables that name a position — and **not** on `DiplotypeRow`; whether the
-companion `callable_from` travels with them is a second question, and the cheaper answer is to add it
-only when a module needs to say where the proof lives. Additive and minor-legal under P3, so nothing
-waits on a version.
 
 ## RM71 — the alleles a drafted `genotype` stub must be written from are in no file
 

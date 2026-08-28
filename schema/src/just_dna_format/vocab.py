@@ -335,7 +335,11 @@ RESERVED_NAMES_0_4: frozenset[str] = frozenset(
 # NOTE: `requires_callable`, `acmg_sf`, `actionability` were reserved here and are now BUILT as
 # optional `VariantRow` columns — and `callable_from` joined them in 0.5 (RM6's second half: a
 # declarative pointer at the VCF field a consumer establishes callability from). A built column must
-# not also be reserved, or `reject_reserved` would refuse the very name the author is meant to write. PharmGKB `drug`/`response`/`evidence_level` are built on
+# not also be reserved, or `reject_reserved` would refuse the very name the author is meant to write.
+# `requires_callable` widened in 0.7 (RM70) to `HaplotypeRow` and `PharmVariantRow`, the two PGx
+# tables that name a locus; `callable_from` did **not** travel with it and stays `VariantRow`-only.
+# Neither name re-enters the reserved set on either model, for the reason in the sentence above.
+# PharmGKB `drug`/`response`/`evidence_level` are built on
 # `PharmVariantRow`/`DiplotypeRow`. And `caller`/`caller_version` were dropped from the reserved set
 # entirely (round-2 Q2 origin): they name which tool produced a *call* — a consumer-side measurement,
 # never module annotation — so there is no future module axis to reserve, and barring them by name

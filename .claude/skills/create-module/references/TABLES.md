@@ -90,7 +90,10 @@ Never fold these together; each pair is two independent facts.
   its own.
 - `requires_callable` (a negative must be *proven*) vs `callable_from` (where the proof lives) vs
   `quality_from` / `min_quality` (whether what was seen is good enough to act on). The first two ask
-  whether the position was seen; the third asks whether the call is trustworthy.
+  whether the position was seen; the third asks whether the call is trustworthy. Because they are
+  separate axes they travel separately: `requires_callable` is available on `variants.csv`,
+  `haplotypes.csv` and `pharm_variants.csv` — every table that names a locus — while `callable_from`
+  stays on `variants.csv`. A row may require a proof without knowing which VCF field holds it.
 - `FrequencyRow.population` (an **ancestry** group) vs `DiplotypeRow.clinical_context` (an indication,
   age band, prior treatment or dose). Two unrelated axes; do not reuse the name.
 - `acmg_sf` (gene-list membership) vs `actionability` (the gene–condition–intervention category). A
