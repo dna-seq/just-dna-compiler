@@ -327,6 +327,22 @@ neither, because it names a star-allele pair rather than a locus and the claim b
 haplotype rows that define the pair. `reference_examples/cyp2c9_warfarin_grch37` populates all three
 states across its two tables, and its README says why each row got the value it did.
 
+Since 0.7 (RM132) the table also takes **`pmid`** — the citation for *this row's* claim. It is the
+column `studies.csv` cannot supply: a study row keys on `(variant_key, pmid)` and attaches to the whole
+variant, while these rows key on drug, genotype and category as well, so one study row would ground
+every drug and genotype recorded for that variant at once. Write it per row, and only where the paper
+really is about that row — the toxicity evidence for a variant is usually not the efficacy evidence:
+```csv
+rsid,gene,genotype,drug,phenotype_category,evidence_level,conclusion,pmid
+rs4149056,SLCO1B1,C/C,simvastatin,Toxicity,1A,"higher myopathy risk",18650507
+rs4149056,SLCO1B1,C/C,simvastatin,Efficacy,3,"decreased response; conflicting evidence",
+```
+`evidence_level` and `pmid` are separate axes and both are worth writing: one is somebody else's
+grading of the evidence, the other points at it. **`provenance_quote` does not travel here** — the row
+cites, and `studies.csv`/`literature.csv` describe. The enricher's literature pass reads this site
+exactly as it reads `studies.csv`, so a citation written here is checked for existence and identifiers
+the same way, and a module whose only citations are pharm pointers is enriched rather than refused.
+
 ---
 
 ## 9b. HFE — a gene panel drafted from ClinVar, with the zygosity left to a curator

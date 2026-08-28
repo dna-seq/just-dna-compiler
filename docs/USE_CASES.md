@@ -146,6 +146,15 @@ module has **no empty `variants.csv`**. `evidence_level` is a *third* significan
 distinct from `stat_significance`/`clin_sig` (orthogonal-axes discipline, Principle 5). Materialization
 deferred with the rest of 0.4.
 
+**One gap in it closed in 0.7 (RM132): the table could make a clinical claim per row and cite only per
+variant.** A ClinPGx-drafted module carried 1,482 drug-response rows with nowhere to ground any of
+them, because `studies.csv` keys on `(variant_key, pmid)` while these rows key on drug, genotype and
+category too — so one study row would ground every claim recorded for that variant. `PharmVariantRow`
+now carries its own optional `pmid` under the rule RM47 settled for the bins: a row cites when its
+claim is finer-grained than a study row's, and the citation table describes. `evidence_level` was never
+the handle — it grades evidence rather than pointing at it — and `provenance_quote` deliberately did
+not follow.
+
 ---
 
 ### 2d. GWAS effect sizes as grounding for a curated panel (0.6)
