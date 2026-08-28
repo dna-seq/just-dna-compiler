@@ -419,7 +419,14 @@ class PharmVariantRow(AuthoredModel):
     # the other PGx table that names a locus, so the claim is about a position the row states. It is
     # sharper here than anywhere, because this table is keyed on `genotype`: the row naming the
     # reference homozygote is unmatchable from a variant-only callset, where absence of an ALT record
-    # is not evidence of that call. `callable_from` does not travel here either. ──
+    # is not evidence of that call. `callable_from` does not travel here either.
+    #
+    # **The two tables may disagree at one locus, and no check compares them.** That is not the
+    # `DiplotypeRow` drift — the questions differ. A `HaplotypeRow` claim is about assigning the
+    # *reference haplotype* there; this one is about matching *this row's genotype*. The reference
+    # corpus holds exactly that shape (a haplotype default-to-reference beside a reference-homozygote
+    # genotype needing a proof), so a checker asserting the two agree would refuse a correct module.
+    # A test compiles the disagreeing pair clean, so the check is not added later. ──
     requires_callable: bool | None = Field(
         default=None,
         description=(

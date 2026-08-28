@@ -644,6 +644,14 @@ row may require one without knowing where the evidence sits. Declaring it once i
 was rejected for the reason RM36 and RM32 already paid for — the verdict is per locus, and CYP2D6
 holds a SNP-defined allele beside a structurally-defined one inside one gene.
 
+**The two tables may disagree at one locus, and nothing compares them — deliberately.** That is not
+the `DiplotypeRow` drift the paragraph above rules out, because the questions differ: a
+`HaplotypeRow` claim is about assigning the *reference haplotype* there, a `PharmVariantRow` claim is
+about matching *that row's genotype*. `reference_examples/cyp2c9_warfarin_grch37` holds exactly that
+shape — a haplotype defaulting to reference beside a reference-homozygote genotype that needs a
+proof — so a check asserting the two agree would refuse a correct module. Do not add one; a test
+compiles the disagreeing pair clean to keep it from being added.
+
 `PharmVariantRow.genotype` (0.5) carries the axis PharmGKB actually publishes on: a clinical
 annotation is stated **per genotype**, and the calls can be opposed (rs4149056/simvastatin reads
 "decreased" for CC and CT, "increased" for TT). It is therefore in the dedup key

@@ -36,11 +36,16 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-08-28 (latest) — 0.7.0: the items PROPOSAL_0_7 decided
 
-**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR.** Every item in
-this batch is additive under Principles 3 and 8; the number is real because new optional columns are
-what size a release, not how much of the work was legibility.
+**A MINOR, being built; the number is decided and not yet cut.** Every item in this batch is additive
+under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
+because the proposal decided it per item, so unlike the 2026-08-24 batch below — which is also an
+uncut minor and deliberately names no number — there is a version to write down here. The three
+`pyproject.toml` files still read `0.6.6` until the release is cut, and the 2026-08-24 work ships
+inside this same number. Each entry below names the packages it actually touched.
 
-- **RM70 — a star-allele module can state CPIC's core assumption.** `requires_callable` was a
+- **RM70 — a star-allele module can state CPIC's core assumption.** *(`just-dna-format`; no compiler
+  change — the parquet schema and the reverse writer both derive their columns from the model.)*
+  `requires_callable` was a
   `VariantRow` column, so `haplotypes.csv`, `pharm_variants.csv` and `diplotypes.csv` had no way to
   record the one thing a consumer most needs before trusting a `*1/*1` result: CPIC assumes a position
   it did not call is reference — literally `requires_callable=false` — and the assumption lived only

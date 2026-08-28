@@ -23,6 +23,112 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
+# The 0.7 build round
+
+The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 and the 0.7 batch then
+built. Every one is additive under Principles 3 and 8; what is kept here is each entry's reasoning,
+including the repairs it refused, which is the half that would otherwise be re-derived.
+
+## RM70 — `requires_callable` is `VariantRow`-only, so no PGx table can state CPIC's core assumption
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) on 2026-08-28 — BUILDS in 0.7.** `requires_callable` on `HaplotypeRow` and `PharmVariantRow`, not on `DiplotypeRow`; `callable_from` does not travel with them.
+
+**Severity** medium · **Status** SHIPPED in 0.7 — optional `requires_callable` on `HaplotypeRow` and
+`PharmVariantRow`, not on `DiplotypeRow`, and `callable_from` did not travel · **Owner** format (schema)
+· **Found by** dogfooding on 2026-08-13, `reference_examples/cyp2c9_warfarin_grch37/`
+
+### What was observed
+
+CPIC's star-allele system assumes that a position not called is reference — that is literally
+`requires_callable=false` — and `haplotypes.csv`, `pharm_variants.csv` and `diplotypes.csv` carry no such
+column. `requires_callable` and its companion `callable_from` are on `VariantRow` alone. So a
+star-allele module cannot record whether its call needed the defining positions to be callable, which is
+the single assumption a consumer most needs to know before trusting a `*1/*1` result.
+
+The corpus shows both sides of it. D6 confirmed RM57's inversion warning fires correctly on the row type
+it exists for: a `requires_callable=true` row with `quality_from=QUAL, min_quality=30` warns, cites VCF
+§1.6.1.6, and names GQ and MIN_DP as the fix. D2 could not exercise it at all, because a PGx module has
+no `variants.csv` — the check and the column are unreachable from the module kind whose upstream states
+the assumption in prose.
+
+### What was built
+
+The two columns as decided, and nothing else. The parquet schema and the reverse writer both derive
+their column lists from the model, so no compiler change was needed — `_polars_type` maps `bool | None`
+to a nullable `pl.Boolean` and `_scalar_cell` already rendered `None` and `False` as `""` and `"false"`.
+That was proven rather than assumed: a temporary mutation collapsing an authored `False` into a blank
+cell was run against the round-trip test first, and it failed on both tables.
+
+`reference_examples/cyp2c9_warfarin_grch37`, the module the gap was found against, now populates the
+column and exercises all three states. `haplotypes.csv` records CPIC's assumption verbatim (`false` on
+both defining SNPs). `pharm_variants.csv` is keyed on genotype and so splits: the reference-homozygote
+rows carry `true`, because a variant-only callset emits no record for them and absence is not the call;
+the rows naming an alternate allele carry `false`; and the twelve rows whose reference allele the
+module's own `resolution.csv` never named are left **blank** rather than guessed. That answers the PGx
+half of the consumer ask for `requires_callable` *"populated somewhere real, to try the round trip
+against"*. The module was re-closed, so its attestation binds the edited bytes.
+
+**No cross-table equality check, and the reason is not cost.** `haplotypes.csv` and
+`pharm_variants.csv` can name one locus and legitimately disagree: a haplotype row's claim is about
+assigning the *reference haplotype* there, and a pharm row's is about matching *that row's genotype*.
+The fixture holds exactly this shape — a haplotype default-to-reference (`false`) beside a
+reference-homozygote genotype needing a proof (`true`) — so a checker asserting the two agree would
+refuse a correct module. Both field descriptions say what each claim is about, and a test compiles the
+disagreeing pair clean so the check is not added later.
+
+### Cost, priced honestly
+
+`requires_callable` is an **authored** column, which is full cost under the 0.6 charter amendment — the
+most expensive kind of addition this format makes, on the layer the rare human writes. That is the
+reason the item is filed rather than done, and it is also why the scoping question below is not a
+detail: covering three tables and covering the two that name a position are different prices for the
+same capability, and the difference is a column on the table a human writes.
+
+### Candidate repairs, and why each is wrong
+
+- **Copy the column onto all three PGx tables.** Full cost, three times, and wrong on the third.
+  `haplotypes.csv` and `pharm_variants.csv` name loci — they are two of RM43's three positional tables —
+  so a callability claim on either is about a position the row states, which is exactly what the column
+  means on `VariantRow`. `diplotypes.csv` names a star-allele *pair*, not a locus, so the same column
+  there could only mean "the variants defining these two haplotypes were callable" — a fact about
+  `haplotypes.csv`'s rows, restated one table over where it drifts the moment a definition is edited.
+  One concept, one home (P5).
+- **Declare it once in `module_spec.yaml`.** The verdict is per locus, and this repo has twice paid for
+  assuming otherwise: RM36 rejected per-CSV build declaration because two files could disagree about one
+  fact, and RM32 rejected a gene-scoped PAR verdict because XG and SPRY3 straddle a boundary. CPIC's own
+  assumption is not uniform either — a gene whose common alleles are single SNPs and one defined partly
+  by a structural event do not have the same callability requirement, and CYP2D6 has both inside one
+  gene.
+- **Derive it from `callable_from`.** There is no `callable_from` on the PGx tables either, so this
+  starts by adding the more expensive of the two columns. It is also an axis overload: `callable_from`
+  says *where the proof lives*, `requires_callable` says *a proof is required*, and a row may
+  legitimately require one and not know where the evidence is. Deriving requiredness from the presence
+  of a pointer collapses two questions into one column.
+- **A stamped, compiler-managed parquet column.** Nearly free under the amendment, and it cannot work:
+  this is a curator's claim about what the annotation assumes, so there is nothing for the compiler to
+  compute. A stamped column carries only what the compiler derives.
+- **Author the defining positions a second time in `variants.csv`.** Two tables then name one locus, and
+  `variants.csv` alone carries `alts` as a resolution fact, so the shadow rows move `artifact.digest`
+  while asserting nothing new — and it re-opens *a star allele can be used without being defined* from
+  the other end, with two definitions instead of none.
+
+### Is it gated on the same thing as RM65/RM66?
+
+**No, and the difference is the useful part of this entry.** RM65 and RM66 wait on a real repeat-caller
+or CNV VCF because the open question there is what a *caller emits* — the shape of the data decides the
+schema. This question is about what a *curator asserts*, and the assertion already exists in prose: CPIC
+states it. A PGx caller VCF would say nothing about which of three tables should carry a curator's
+claim. The adjacency the ledger records is that both ask whether a non-`variants.csv` table should carry
+something `variants.csv` has, not that they share a blocker.
+
+**What unblocked it:** the entry's own closing reading, put to the maintainer and taken as written —
+*two* optional columns, on `HaplotypeRow` and `PharmVariantRow`, the PGx tables that name a position,
+and **not** on `DiplotypeRow`. The second question the entry left open, whether `callable_from` travels
+with them, was answered the cheap way: it does not, and it is added when a module needs to say where the
+proof lives. What the entry got wrong is the other half of its unblocker — it also asked for *a real
+module whose author wants to state it*, and the module was already in the corpus. The one this was found
+against is the one that now states it.
+
 # The 2026-08-24 consumer round (S63–S74)
 
 Twelve items from two reporters, triaged in one pass. The per-item record is in

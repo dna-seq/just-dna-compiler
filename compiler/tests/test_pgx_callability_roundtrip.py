@@ -23,7 +23,12 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_compiler.compiler import compile_module, content_signature, reverse_module
+from just_dna_compiler.compiler import (
+    compile_module,
+    content_signature,
+    reverse_module,
+    validate_spec,
+)
 
 _EXAMPLE = (
     Path(__file__).resolve().parents[2] / "reference_examples" / "cyp2c9_warfarin_grch37"
@@ -46,6 +51,13 @@ def _authored(csv_name: str, key_columns: tuple[str, ...]) -> dict[tuple[str, ..
             tuple(row[c] for c in key_columns): _CELL_TO_STATE[row["requires_callable"]]
             for row in csv.DictReader(f)
         }
+
+
+def _row_count(csv_name: str, directory: Path | None = None) -> int:
+    """Rows in an authored CSV, header excluded — counted with the csv reader, since the conclusions
+    in this example carry commas inside quotes."""
+    with ((directory or _EXAMPLE) / csv_name).open(newline="", encoding="utf-8") as f:
+        return sum(1 for _ in csv.DictReader(f))
 
 
 def test_the_example_states_all_three_callability_states_across_its_two_locus_tables() -> None:
@@ -75,11 +87,16 @@ def test_a_pgx_callability_claim_reaches_parquet_as_a_nullable_boolean(
     df = pl.read_parquet(tmp_path / "out" / parquet)
     assert df.schema["requires_callable"] == pl.Boolean
 
+    authored = _authored(csv_name, key_columns)
     materialized = {
         tuple(str(row[c]) for c in key_columns): row["requires_callable"]
         for row in df.iter_rows(named=True)
     }
-    assert materialized == _authored(csv_name, key_columns)
+    # Both sides are keyed by identity, so a dropped or duplicated row would collapse identically on
+    # each and the mapping equality alone would not see it. The count is taken against the file's own
+    # row count — a quantity no dict deduplicates — rather than against `authored`, which does.
+    assert len(df) == _row_count(csv_name)
+    assert materialized == authored
 
 
 @pytest.mark.parametrize("csv_name,parquet,key_columns", _TABLES, ids=lambda v: str(v))
@@ -103,12 +120,63 @@ def test_a_pgx_callability_claim_survives_reverse_without_collapsing_blank_into_
             tuple(row[c] for c in key_columns): _CELL_TO_STATE[row["requires_callable"]]
             for row in csv.DictReader(f)
         }
+    assert _row_count(csv_name, tmp_path / "rev") == _row_count(csv_name)
     assert reversed_claims == _authored(csv_name, key_columns)
 
     second = compile_module(tmp_path / "rev", tmp_path / "a2")
     assert second.success, second.errors
     assert second.manifest.artifact.digest == first.manifest.artifact.digest
     assert second.manifest.content_signature == first.manifest.content_signature
+
+
+def test_the_two_locus_tables_may_disagree_about_one_locus_and_nothing_refuses_it(
+    tmp_path: Path,
+) -> None:
+    """The check nobody should add, pinned as the absence it is.
+
+    `haplotypes.csv` and `pharm_variants.csv` can name one locus and carry opposite values, and that
+    is not the drift `DiplotypeRow` was kept out for — the two rows answer different questions at the
+    same place. The haplotype row's claim is about assigning the *reference haplotype* there; the
+    pharm row's is about matching *that row's genotype*, and its reference-homozygote row genuinely
+    needs a callability proof the haplotype default does not. `rs1799853` below carries both shapes:
+    CYP2C9 `*2`'s defining SNP, defaulting to reference as CPIC does, beside the `C/C` drug-response
+    row that is unmatchable from a variant-only callset.
+
+    So a compiler check asserting the two agree would refuse a correct module — the
+    `jointly-satisfiable` trap. This test is what makes adding one fail rather than look tidy.
+    """
+    spec = tmp_path / "disagreeing"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(
+        "schema_version: '1.0'\n"
+        "module:\n"
+        "  name: one_locus_two_claims\n"
+        "  title: One locus, two claims\n"
+        "  description: A CYP2C9 locus named by both PGx locus tables\n"
+        "  report_title: One locus, two claims\n",
+        encoding="utf-8",
+    )
+    (spec / "haplotypes.csv").write_text(
+        "haplotype_name,rsid,allele,gene,requires_callable\n"
+        "*2,rs1799853,T,CYP2C9,false\n",
+        encoding="utf-8",
+    )
+    (spec / "pharm_variants.csv").write_text(
+        "rsid,gene,genotype,drug,conclusion,requires_callable\n"
+        "rs1799853,CYP2C9,C/C,warfarin,no *2 allele — usual clearance,true\n",
+        encoding="utf-8",
+    )
+
+    validation = validate_spec(spec, strict=True)
+    assert validation.valid, validation.errors
+    result = compile_module(spec, tmp_path / "out", strict=True)
+    assert result.success, result.errors
+
+    haplotypes = pl.read_parquet(tmp_path / "out" / "haplotypes.parquet")
+    pharm = pl.read_parquet(tmp_path / "out" / "pharm_variants.parquet")
+    assert haplotypes["variant_key"].to_list() == pharm["variant_key"].to_list()
+    assert haplotypes["requires_callable"].to_list() == [False]
+    assert pharm["requires_callable"].to_list() == [True]
 
 
 def test_a_module_that_never_writes_the_column_keeps_the_signature_it_already_had(
