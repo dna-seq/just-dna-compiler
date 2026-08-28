@@ -308,6 +308,25 @@ def test_an_unclassified_message_is_refused_rather_than_bucketed() -> None:
         restate("a bare message", "prefixed: a bare message")
 
 
+def test_a_result_supplying_one_derived_half_and_not_the_other_is_refused() -> None:
+    """Both halves come from one classification, so half-supplied would publish a disagreement.
+
+    `sum(warnings_summary.values()) == len(warnings)` is the claim *this summary is complete*. A caller
+    that filled `carried` and let the summary default would break it silently, and which half they
+    meant to own is not knowable from inside the validator — so it refuses rather than half-derives.
+    Both together is the legitimate case (a result rebuilt from a dump of itself) and stands.
+    """
+    from just_dna_compiler.models import ValidationResult  # noqa: PLC0415 — one call site
+
+    rebuilt = ValidationResult(
+        valid=True, warnings=["prose"], carried=[], warnings_summary={"module_not_closed": 1}
+    )
+    assert rebuilt.warnings == ["prose"]
+    for half in ({"carried": []}, {"warnings_summary": {"module_not_closed": 1}}):
+        with pytest.raises(ValueError, match="both derived halves or neither"):
+            ValidationResult(valid=True, warnings=["prose"], **half)
+
+
 def test_a_reformatted_message_keeps_the_code_the_check_gave_it() -> None:
     """Reformatting is the one operation that silently loses a code, so it goes through `restate`.
 

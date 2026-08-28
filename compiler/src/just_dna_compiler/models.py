@@ -48,8 +48,20 @@ class _Findings(BaseModel):
     def _derive_from_warnings(cls, data: Any) -> Any:
         if not isinstance(data, dict) or not data.get("warnings"):
             return data
-        if "carried" in data or "warnings_summary" in data:
-            return data
+        supplied = {"carried", "warnings_summary"} & set(data)
+        if supplied == {"carried", "warnings_summary"}:
+            return data  # rebuilt from a dump of itself; the two halves came together
+        if supplied:
+            # Half-supplied is the one shape that would publish a channel and a digest that
+            # disagree — `sum(warnings_summary.values()) == len(warnings)` is the claim *this summary
+            # is complete*, and a caller filling one field and leaving the other to default would
+            # break it silently. Refused rather than half-derived, since which half the caller meant
+            # to own is not knowable from here.
+            missing = sorted({"carried", "warnings_summary"} - supplied)
+            raise ValueError(
+                f"a result carrying `warnings` supplies both derived halves or neither; "
+                f"{missing[0]} is missing. They are derived together from the classified findings."
+            )
         carried, summary = classify(data["warnings"])
         return {**data, "carried": carried, "warnings_summary": summary}
 
