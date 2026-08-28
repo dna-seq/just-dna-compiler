@@ -18,6 +18,7 @@ from pathlib import Path
 import duckdb
 from just_dna_compiler.resolution import genotype_fits
 from just_dna_format.base import derive_variant_key
+from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom
 
@@ -176,16 +177,21 @@ def resolve_variants(
                 ]
                 for lo in loci:
                     if lo not in usable:
-                        warnings.append(
+                        # Coded with the same members its injected-table twin in
+                        # `just_dna_compiler.resolution` uses: the finding is the same and so is the
+                        # remedy, and `compile_module` puts both paths' warnings in one channel.
+                        warnings.append(CodedWarning(
+                            "locus_cannot_host_genotype",
                             f"{v.rsid} maps to {lo['chrom']}:{lo['start']} "
                             f"{lo.get('ref')}>{lo.get('alts')}, which cannot host the authored "
-                            f"genotype {v.genotype} — that locus is dropped from the expansion."
-                        )
+                            f"genotype {v.genotype} — that locus is dropped from the expansion.",
+                        ))
                 if not usable:
-                    warnings.append(
+                    warnings.append(CodedWarning(
+                        "rsid_no_hosting_locus",
                         f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
-                        f"{v.genotype}; position remains unset"
-                    )
+                        f"{v.genotype}; position remains unset",
+                    ))
                     patched.append(v)
                 elif len(usable) == 1:
                     patched.append(v.model_copy(update=usable[0]))
@@ -196,10 +202,11 @@ def resolve_variants(
                     # the accumulator here would duplicate it into a function that is going away, and
                     # the modules that reach it report `expanded_keys`/`expanded_rows` as `None`
                     # (not established) for the same reason.
-                    warnings.append(
+                    warnings.append(CodedWarning(
+                        "rsid_expanded_to_multiple_loci",
                         f"{v.rsid} maps to {len(usable)} loci in Ensembl; expanded to {len(usable)} "
-                        f"rows (one per locus, each keyed by its coordinate — a consumer can count them)."
-                    )
+                        f"rows (one per locus, each keyed by its coordinate — a consumer can count them).",
+                    ))
                     for index, locus in enumerate(usable):
                         # Redundant today (the function returns early above for any non-GRCh38 build),
                         # passed anyway — see the twin in `just_dna_compiler.resolution`.
@@ -227,7 +234,9 @@ def resolve_variants(
                 # Fill the rsid; the frozen variant_key stays the coordinate (no flip).
                 patched.append(v.model_copy(update={"rsid": pos_to_rsid[key]}))
             else:
-                warnings.append(f"Position {key}: no rsid found in Ensembl")
+                warnings.append(
+                    CodedWarning("rsid_without_resolution_label", f"Position {key}: no rsid found in Ensembl")
+                )
                 patched.append(v)
         else:
             patched.append(v)
@@ -426,7 +435,9 @@ def _lookup_positions_by_rsid(
             # live leg this function neither runs nor knows about, so at this point that answer is
             # genuinely unknown and the house rule is to withhold it rather than guess. The one
             # caller that reads these warnings states the consequence once, after both legs (S61).
-            warnings.append(f"{rsid}: not in the injected Ensembl snapshot")
+            warnings.append(
+                CodedWarning("rsid_unresolved", f"{rsid}: not in the injected Ensembl snapshot")
+            )
     return dict(result)
 
 
@@ -599,15 +610,16 @@ def _check_rsid_coord_consistency(
             r.rsid, r.chrom, r.start, r.ref, rsid_loci.get(r.rsid or "", [])
         )
         if disagreement is not None:
-            warnings.append(disagreement)
+            warnings.append(CodedWarning("rsid_coordinate_disagrees", disagreement))
             continue
         coordkey = derive_variant_key(None, r.chrom, r.start, r.ref)
         ids = coord_ids.get(coordkey)
         if ids and r.rsid not in ids:
-            warnings.append(
+            warnings.append(CodedWarning(
+                "rsid_coordinate_disagrees",
                 f"{coordkey} authored as {r.rsid}, but Ensembl reports {sorted(ids)} there "
-                f"(reference disagreement — may be a dbSNP merge/build difference)."
-            )
+                f"(reference disagreement — may be a dbSNP merge/build difference).",
+            ))
 
 
 def _lookup_rsid_sets_by_position(
@@ -677,8 +689,9 @@ def _lookup_rsids_by_position(
                 # A multi-allelic site: the ref-less key already resolved to a different id. The
                 # ORDER BY fixes which one wins, but the choice is genuinely ambiguous — surface it.
                 refless_warned.add(pos)
-                warnings.append(
+                warnings.append(CodedWarning(
+                    "rsid_ambiguous",
                     f"{chrom}:{start} (ref unspecified) matches multiple dbSNP ids; resolved to "
-                    f"{result[refless_key]} deterministically — specify ref to disambiguate."
-                )
+                    f"{result[refless_key]} deterministically — specify ref to disambiguate.",
+                ))
     return result

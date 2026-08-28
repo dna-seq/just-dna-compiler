@@ -4,16 +4,61 @@
 from pathlib import Path
 from typing import Any
 
+from just_dna_format.findings import classify
 from just_dna_format.manifest import ModuleManifest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
-class ValidationResult(BaseModel):
+class _Findings(BaseModel):
+    """The two derived halves of a warnings channel, filled from `warnings` at construction (RM131).
+
+    Every result type here carries `warnings: list[str]` and three of them are built at 30-odd call
+    sites between them, so the derivation lives in a `mode="before"` validator rather than at each
+    site: a caller cannot forget it, and there is no failure path where a result comes back with a
+    populated channel and an empty summary.
+
+    `mode="before"` is load-bearing and not a style choice. Pydantic coerces a `str` subclass to a
+    plain `str` on its way into a `list[str]` field, so a validator running any later would be looking
+    at messages that no longer know their own code. Before it, the raw `Finding` objects are still
+    there.
+
+    A caller passing `carried`/`warnings_summary` explicitly is left alone, which is what lets a
+    result be rebuilt from a dump of itself.
+    """
+
+    warnings: list[str] = Field(default_factory=list, description="Non-fatal findings, in full")
+    carried: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The subset of `warnings` no edit to the spec directory can clear — a limit of this tier "
+            "or a fact of a source. Subtract it from `warnings` for the findings still worth acting "
+            "on. Empty means every finding here is actionable, which is an answer rather than a gap."
+        ),
+    )
+    warnings_summary: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "`warnings` counted by kind — keys from VALID_WARNING_CODES, values summing to "
+            "`len(warnings)` so the digest accounts for the whole channel."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_from_warnings(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not data.get("warnings"):
+            return data
+        if "carried" in data or "warnings_summary" in data:
+            return data
+        carried, summary = classify(data["warnings"])
+        return {**data, "carried": carried, "warnings_summary": summary}
+
+
+class ValidationResult(_Findings):
     """Result of spec validation."""
 
     valid: bool = Field(description="Whether the spec is valid")
     errors: list[str] = Field(default_factory=list, description="Validation errors")
-    warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings")
     info: list[str] = Field(
         default_factory=list,
         description=(
@@ -41,7 +86,7 @@ class ValidationResult(BaseModel):
     )
 
 
-class ClosureResult(BaseModel):
+class ClosureResult(_Findings):
     """Result of closing a module's authoring phase (RM73).
 
     Closing is refused rather than reported-and-done when the spec does not validate: the phase
@@ -69,16 +114,14 @@ class ClosureResult(BaseModel):
         ),
     )
     errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
 
 
-class CompilationResult(BaseModel):
+class CompilationResult(_Findings):
     """Result of spec compilation, including the emitted manifest."""
 
     success: bool = Field(description="Whether compilation succeeded")
     output_dir: Path | None = Field(default=None, description="Directory with output parquets")
     errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
     stats: dict[str, Any] = Field(default_factory=dict)
     manifest: ModuleManifest | None = Field(
         default=None, description="The manifest written next to the parquets (None on failure)"

@@ -54,6 +54,7 @@ from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_va
 
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import AuthoredModel, vocabulary
+from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
@@ -469,8 +470,12 @@ def apply_overrides(
     and suppress-already-absent are *all three* true of a perfectly healthy module. Reporting any of
     them would make a module and its own round trip disagree on `manifest.compilation.warnings`, a
     published field. An `update` matching no row is the one mismatch an overlay operation cannot
-    manufacture for itself, because an update never creates a row — and that is the only thing warned
-    about here.
+    manufacture for itself, because an update never creates a row.
+
+    **Two warnings come out of here, and the second is a record rather than a mismatch.** A `suppress`
+    removes a row and leaves no trace of the removal anywhere in the build product, so RM131 has it
+    say so — counted over the *overlay's* rows and aggregated by reason, which is what keeps it from
+    being the lap-1-only line the paragraph above rules out. `_suppression_warnings` argues both.
 
     **That is not the same as being stable across both laps, and an earlier version of this docstring
     claimed it was.** The overlay is stable; the *derived table under it* is not, for the two tables
@@ -572,7 +577,7 @@ def apply_overrides(
             ]
             result.insert(tail[-1] + 1 if tail else len(result), built)
 
-    return result, errors, _unmatched_warnings(table, unmatched)
+    return result, errors, _unmatched_warnings(table, unmatched) + _suppression_warnings(table, mine)
 
 
 def _unmatched_warnings(table: str, unmatched: Sequence[tuple[str, str]]) -> list[str]:
@@ -594,11 +599,57 @@ def _unmatched_warnings(table: str, unmatched: Sequence[tuple[str, str]]) -> lis
         f"{subject}" + (f"[{member}]" if member else "") for subject, member in unmatched[:5]
     )
     more = "" if len(unmatched) <= 5 else f" (+{len(unmatched) - 5} more)"
-    return [
+    return [CodedWarning(
+        "overlay_update_unmatched",
         f"overrides.csv: {len(unmatched)} update override(s) name a row {table} does not carry: "
         f"{shown}{more}. Three readings and nothing here separates them — the subject/member may be "
         f"mistyped, the source may have stopped publishing the row the correction was about, or the "
         f"compiler dropped the row before the parquet so a reversed module cannot carry it. "
         f"Neither an insert nor a suppress reports this: an insert creates the row and a suppress "
         f"is satisfied by its absence."
+    )]
+
+
+#: The fragment a consumer keys on to find the suppression record, for the reason every named phrase
+#: in this workspace exists: a published `manifest.json` carries the prose, and matching a substring
+#: is what a reader without the compiler installed can do.
+SUPPRESSED_PHRASE: str = "suppress override(s) remove"
+
+
+def _suppression_warnings(table: str, overrides: Sequence[OverrideRow]) -> list[str]:
+    """One line per suppression REASON, with a count — the trace a suppressed row otherwise leaves.
+
+    A `suppress` is the one overlay operation whose effect is invisible in the build product: the row
+    is simply absent, with nothing anywhere saying it was removed or why. `update` leaves the changed
+    cell, `insert` leaves the new row, and both are readable from the artifact alone; a suppression is
+    readable only from `overrides.csv`, which a consumer holding the compiled bytes does not have.
+
+    **Counted over the overlay's own rows, never over the rows removed**, and that is the difference
+    between a stable published field and one a module disagrees with its own round trip about. After
+    `reverse_module` the derived table is already post-overlay, so on the second lap the same suppress
+    matches nothing and removes nothing — an effect-based count would say `12` on lap 1 and vanish on
+    lap 2, moving `manifest.compilation.warnings`. The overlay file round-trips unchanged, so a count
+    over it says the same number both times. A `suppress` names exactly one row, so on the first lap
+    the two counts agree anyway.
+
+    Aggregated by **reason** rather than one line per row, which is why `reason` is a required column:
+    a module suppressing forty rows for one cause produces one line saying forty. Insertion order is
+    the order the reasons were first met, so the report is deterministic; the count and every reason
+    survive, so this is an aggregation and not a cap.
+
+    **Actionable rather than carried**, deliberately: the author owns the overlay and deleting the row
+    clears the finding. It is a record of a decision, not a defect, and it stays in the actionable set
+    because it is the author's to revisit — nobody else can.
+    """
+    reasons: dict[str, int] = {}
+    for row in overrides:
+        if row.table == table and row.operation == "suppress":
+            reasons[row.reason] = reasons.get(row.reason, 0) + 1
+    return [
+        CodedWarning(
+            "overlay_rows_suppressed",
+            f"overrides.csv: {count} {SUPPRESSED_PHRASE} {table} row(s) from the compiled artifact, "
+            f"where nothing else records the removal: {reason}",
+        )
+        for reason, count in reasons.items()
     ]

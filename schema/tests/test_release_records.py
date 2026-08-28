@@ -392,6 +392,11 @@ def test_the_excluded_manifest_fields_each_carry_their_reason() -> None:
         "artifact.digest",
         "artifact.files",
         "compilation.warnings",
+        # RM131's two derived halves of the warnings channel. They move exactly when `warnings`
+        # moves, so a release that only reworded a message would otherwise fire `manifest_fields`
+        # three times over on every module in a catalogue.
+        "compilation.carried",
+        "compilation.warnings_summary",
     }
 
 
