@@ -245,9 +245,10 @@ def test_a_module_whose_only_citations_are_bin_pointers_is_enriched(tmp_path: Pa
     assert result.rows[0].exists is True
 
 
-def test_an_invalid_binning_table_is_diagnosed_not_tracebacked(tmp_path: Path) -> None:
-    """The sibling `studies.csv` path reports `LiteratureEnrichmentError`; a bad bin row must too, or
-    a single mistyped cell produces a traceback out of the CLI."""
+def test_an_invalid_citing_table_is_diagnosed_not_tracebacked(tmp_path: Path) -> None:
+    """The sibling `studies.csv` path reports `LiteratureEnrichmentError`; a bad row in any table the
+    pass reads citations from must too, or a single mistyped cell produces a traceback out of the
+    CLI."""
     spec = _spec(
         tmp_path / "s",
         studies=f"rsid,pmid\nrs334,{_REAL}\n",
@@ -256,7 +257,7 @@ def test_an_invalid_binning_table_is_diagnosed_not_tracebacked(tmp_path: Path) -
             "HTT,CAG,repeat_count,not-a-number,,fully penetrant,false,\n"
         ),
     )
-    with pytest.raises(LiteratureEnrichmentError, match="binning table is invalid"):
+    with pytest.raises(LiteratureEnrichmentError, match="citing table is invalid"):
         enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH))
 
 

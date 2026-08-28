@@ -134,9 +134,11 @@ def extract_pmids(raw: str) -> list[str]:
 def validate_pmid_cell(value: str | None, field: str, *, required: bool) -> str | None:
     """The shared grammar for a free-form citation pointer, kept verbatim on success.
 
-    Two models carry one, so the rule lives here rather than being copied: `StudyRow.pmid` (required —
-    grounding evidence is mandatory for a variant) and `MeasureBinRow.pmid` (optional — RM47's bin
-    pointer, which grounds a *boundary*). `required` is the only difference; the diagnosis is not.
+    **Every citation pointer in the schema routes through here**, so the rule cannot drift between
+    them as citation sites are added — and they are added: `StudyRow.pmid` (required, grounding a
+    variant), `MeasureBinRow.pmid` (optional, RM47's bin pointer grounding a *boundary*) and
+    `PharmVariantRow.pmid` (optional, RM132, grounding one drug/genotype claim). `required` is the
+    only thing that differs between them; the diagnosis is not.
 
     The PMCID branch is the whole point of separating this out (RM50). Before it, a cell reading
     `PMC 3110566` was accepted as PMID 3110566 and a cell reading `PMC3110566` was refused with a

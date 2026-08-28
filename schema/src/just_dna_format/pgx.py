@@ -24,6 +24,7 @@ from typing import ClassVar
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
+from just_dna_format.spec import validate_pmid_cell
 from just_dna_format.vocab import (
     VALID_PHENOTYPE_CATEGORIES,
     VALID_RECOMMENDATION_STRENGTH,
@@ -495,6 +496,33 @@ class PharmVariantRow(AuthoredModel):
     evidence_level: str | None = Field(
         default=None, description="PharmGKB clinical-annotation evidence level (1A..4)"
     )
+    # ── 0.7 (RM132): the third citation site, beside `StudyRow.pmid` and `MeasureBinRow.pmid`. ──
+    #
+    # **A row cites when its claim is finer-grained than `studies.csv`'s key** — the rule RM47 settled
+    # for the bins, reached here because this table has the same shape. `studies.csv` keys on
+    # `(variant_key, pmid)`, so a study row attaches to a *variant*; this table keys on
+    # `(variant_key, drug, genotype, phenotype_category, annotation_id)`, so one study row would
+    # attach to every drug, genotype and phenotype category recorded for that variant at once. A
+    # ClinPGx-drafted module carrying 1,482 drug-response rows had nowhere to ground any of them.
+    #
+    # **Not `evidence_level`, and the two sit side by side so the distinction stays visible** (P5):
+    # that column carries somebody else's *grading of* the evidence and this one points at the
+    # evidence. Nor the licence row's `source`/`dataset`, which state redistribution terms.
+    #
+    # **`provenance_quote` does not follow**, and the omission is deliberate rather than pending. The
+    # binning side drew the same line: the row cites, and `studies.csv`/`literature.csv` describe —
+    # which is what stops `StudyRow`'s whole provenance column set migrating here one column at a
+    # time. A body of clinical claims this size is exactly where the question gets asked next.
+    pmid: str | None = Field(
+        default=None,
+        description=(
+            "Optional PubMed id grounding THIS row's claim — the literature behind this drug/"
+            "genotype response, which `studies.csv` cannot express because a study row attaches to "
+            "the whole variant. Free-form like `StudyRow.pmid` (`9545397`, `[PMID: 9545397]`, a "
+            "`;`-joined list). The pharm row cites; studies.csv and literature.csv describe. "
+            "Separate from `evidence_level`, which grades evidence rather than pointing at it."
+        ),
+    )
     trait_efo_id: str | None = Field(
         default=None, description="Optional trait ontology id(s), for cross-module join"
     )
@@ -504,6 +532,16 @@ class PharmVariantRow(AuthoredModel):
     @classmethod
     def _validate_phenotype_category(cls, v: str | None) -> str | None:
         return validate_phenotype_categories(v)
+
+    @field_validator("pmid")
+    @classmethod
+    def _validate_pmid(cls, v: str | None) -> str | None:
+        # The one grammar every citation pointer in the schema goes through (`spec.validate_pmid_cell`)
+        # — optional here as on `MeasureBinRow`, required on `StudyRow`. Not lifted onto
+        # `AuthoredModel`: the base would then reach `StudyRow.pmid`, where the rule is `required=True`,
+        # and a shared validator that has to be overridden by the model it is loosest for is a
+        # requiredness change (P8) wearing a refactor's clothes.
+        return validate_pmid_cell(v, "pmid", required=False)
 
     @model_validator(mode="after")
     def _validate_identification(self) -> "PharmVariantRow":

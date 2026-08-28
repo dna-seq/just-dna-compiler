@@ -164,10 +164,10 @@ def test_a_bin_cited_paper_is_not_an_orphan_in_literature_csv() -> None:
         ]
     }
     blind = _cross_check_literature(rows, studies, {})
-    assert any(_PMID in w and "no study or bin in this module cites" in w for w in blind)
+    assert any(_PMID in w and "no study, bin or pharm row in this module cites" in w for w in blind)
 
     seeing = _cross_check_literature(rows, studies, bins)
-    assert not any("no study or bin in this module cites" in w for w in seeing)
+    assert not any("no study, bin or pharm row in this module cites" in w for w in seeing)
 
     # RM79 gave that finding teeth, so the stakes are now higher than a warning: blind to the bin,
     # the compiler would **discard** the very row the threshold's evidence lives in. The split reads

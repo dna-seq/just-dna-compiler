@@ -62,7 +62,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
-from just_dna_compiler.compiler import binning_citations, load_binning_rows, load_csv_rows
+from just_dna_compiler.compiler import load_citing_rows, load_csv_rows, table_citations
 from just_dna_format.base import merge_key
 from just_dna_format.layout import atomic_writer
 from just_dna_format.literature import LiteratureRow
@@ -684,24 +684,26 @@ def regex_matches(
 
 
 def _citations(
-    studies: list[StudyRow], bin_pmids: list[str] | None = None
+    studies: list[StudyRow], table_pmids: list[str] | None = None
 ) -> dict[str, list[StudyRow]]:
     """`pmid -> [study rows citing it]`, in first-occurrence order (deterministic emission, P7).
 
     One study row can carry several PMIDs (`pmid` is free-form and may hold a `;`-joined list), so this
     is a genuine fan-out rather than a re-keying.
 
-    **There are two citation sites since 0.6** (RM47): `studies.csv`, and a `pmid` on a binning row,
-    which grounds the *boundary* it sits on. A bin-only citation maps to an **empty** study list — it
-    is a real citation to check for existence and identifiers, and it carries no quote or authored DOI
-    because a bin row has neither column, so every per-study loop downstream simply finds nothing to
-    do. Studies go in first so a paper cited both ways keeps its study rows.
+    **`studies.csv` is one citation site of several** (RM47, RM132): a `pmid` on a binning row grounds
+    the *boundary* it sits on, and one on a `pharm_variants.csv` row grounds that row's own drug and
+    genotype claim. A citation reaching us only from such a row maps to an **empty** study list — it is
+    a real citation to check for existence and identifiers, and it carries no quote or authored DOI
+    because neither row has those columns (`provenance_quote` deliberately did not follow the `pmid`
+    to either site), so every per-study loop downstream simply finds nothing to do. Studies go in
+    first so a paper cited both ways keeps its study rows.
     """
     out: dict[str, list[StudyRow]] = {}
     for study in studies:
         for pmid in extract_pmids(study.pmid):
             out.setdefault(pmid, []).append(study)
-    for pmid in bin_pmids or []:
+    for pmid in table_pmids or []:
         out.setdefault(pmid, [])
     return out
 
@@ -721,10 +723,14 @@ def enrich_literature(
 ) -> LiteratureResult:
     """Fill `literature.csv` from the citations a module makes.
 
-    **Two citation sites since 0.6** (RM47): `studies.csv`, and `MeasureBinRow.pmid` on a binning
-    table, which grounds the threshold it sits on. A module whose only citations are bin pointers is
-    enriched exactly like one with a `studies.csv` — reading only the first would leave every
-    threshold-grounding citation unchecked, which is worse than the honest gap the column replaced.
+    **`studies.csv` is one citation site of several** (RM47, RM132): `MeasureBinRow.pmid` grounds the
+    threshold its row states, and `PharmVariantRow.pmid` grounds the drug/genotype claim its row
+    makes — a claim `studies.csv` cannot ground, because a study row attaches to the whole variant. A
+    module whose only citations come from those tables is enriched exactly like one with a
+    `studies.csv`; reading fewer than all the sites would leave the rest unchecked, which is worse
+    than the honest gap the columns replaced. The kinds come from the compiler's own derived registry
+    through `load_citing_rows`/`table_citations`, so a kind that gains the column is read here with no
+    edit to this tier.
 
     Existing rows are authoritative and merged, never clobbered — the same rule `enrich()` applies to
     `resolution.csv`, with the same consequence: to regenerate after a machinery change you must delete
@@ -755,20 +761,21 @@ def enrich_literature(
         studies, errors, _ = load_csv_rows(studies_path, StudyRow, "studies.csv")
         if errors:
             raise LiteratureEnrichmentError(f"studies.csv is invalid: {errors[0]}")
-    # The bin pointers, through the compiler's own loader: importing its private binning-kind tuple or
-    # keeping a second list of the four kinds here is the RM41 shape, and the copy goes stale on the
-    # fifth kind. Its `ValueError` is re-raised as this pass's own error so a bad binning row is
-    # diagnosed the way a bad `studies.csv` two lines above already is, rather than tracebacking out
-    # of the CLI.
+    # The table pointers, through the compiler's own loader: importing its private citing-kind tuple
+    # or keeping a second list of the kinds here is the RM41 shape, and the copy goes stale the next
+    # time a model declares a `pmid`. Its `ValueError` is re-raised as this pass's own error so a bad
+    # citing row is diagnosed the way a bad `studies.csv` two lines above already is, rather than
+    # tracebacking out of the CLI.
     try:
-        bin_rows = load_binning_rows(spec_dir)
+        citing_rows = load_citing_rows(spec_dir)
     except ValueError as exc:
-        raise LiteratureEnrichmentError(f"a binning table is invalid: {exc}") from exc
-    bin_pmids = binning_citations(bin_rows)
-    if not studies and not bin_pmids:
+        raise LiteratureEnrichmentError(f"a citing table is invalid: {exc}") from exc
+    table_pmids = table_citations(citing_rows)
+    if not studies and not table_pmids:
         raise LiteratureEnrichmentError(
             f"no citations in {spec_dir} — the literature pass checks the citations a module makes, "
-            f"and this one has neither studies.csv rows nor a `pmid` on any binning row."
+            f"and this one has neither studies.csv rows nor a `pmid` on any binning or "
+            f"pharm_variants row."
         )
 
     existing: dict[tuple, LiteratureRow] = {}
@@ -779,7 +786,7 @@ def enrich_literature(
         for row in rows:
             existing[merge_key(row)] = row
 
-    citations = _citations(studies, bin_pmids)
+    citations = _citations(studies, table_pmids)
     authored_total = sum(
         1 for rows in citations.values() for s in rows if s.provenance_quote or s.provenance_regex
     )

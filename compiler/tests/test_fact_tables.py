@@ -315,7 +315,7 @@ def test_an_uncited_citation_is_reported_and_left_out_of_the_artifact(tmp_path: 
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
 
     assert result.success                                   # a warning, not a refusal
-    warning = next(w for w in result.warnings if "no study or bin in this module cites" in w)
+    warning = next(w for w in result.warnings if "no study, bin or pharm row in this module cites" in w)
     assert "34567890" in warning
     # The warning reports an action taken, not a nag about a file the author should tidy.
     assert "left out of the artifact" in warning
@@ -1557,7 +1557,7 @@ def test_discarding_uncited_literature_converges_on_the_round_trip(tmp_path: Pat
     second = compile_module(tmp_path / "back", tmp_path / "two", resolve_with_ensembl=False)
     assert second.success
     # … lap two discards nothing, so the finding is gone rather than repeating …
-    assert not [w for w in second.warnings if "no study or bin in this module cites" in w]
+    assert not [w for w in second.warnings if "no study, bin or pharm row in this module cites" in w]
     # … and the literature identity is a fixed point across it.
     assert second.manifest.literature.signature == first.manifest.literature.signature
     assert second.manifest.literature.row_count == first.manifest.literature.row_count

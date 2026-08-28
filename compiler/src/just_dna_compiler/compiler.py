@@ -1508,6 +1508,24 @@ _BINNING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
     if isinstance(model, type) and issubclass(model, MeasureBinRow)
 )
 
+#: The table kinds that **cite**, derived the same way and for the sharper version of the same reason
+#: (RM132): a kind is a citation site exactly when its model declares a `pmid`, and the literature
+#: cross-check reads every one of them. Today that is the four binning kinds plus `pharm_variants.csv`.
+#:
+#: **Hand-listing this is the failure the check cannot survive.** A citation site the cross-check does
+#: not know about makes every citation from it read as a stale orphan in one direction and leaves it
+#: unchecked in the other — which is the whole of RM47's recorded lesson, and the reason RM132 shipped
+#: its two cross-check sites in the same release as the column rather than after it. Deriving the set
+#: means the *next* citing kind is covered by declaring the column, with nothing to remember.
+#:
+#: Scoped to `_TABLE_KINDS` on purpose. `StudyRow.pmid` is the citation site this set is *compared
+#: against* rather than a member of it, `LiteratureRow.pmid` is the subject being checked, and
+#: `GwasEffectRow.pmid` is a machine-written fact table's provenance column — none of the three is an
+#: authored annotation row grounding its own claim, which is what a member here is.
+_CITING_TABLE_KINDS: tuple[tuple[str, type[BaseModel]], ...] = tuple(
+    (csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS if "pmid" in model.model_fields
+)
+
 
 def _check_binning_grounding(
     rows_by_csv: dict[str, list[Any]], studies: list[StudyRow]
@@ -1912,22 +1930,22 @@ def _check_vcf_pointers(
     return warnings
 
 
-def load_binning_rows(spec_dir: Path) -> dict[str, list[MeasureBinRow]]:
-    """Every binning table present beside a spec, keyed by CSV name — the citations a module's
-    *thresholds* carry (`MeasureBinRow.pmid`, RM47).
+def _load_kind_rows(
+    spec_dir: Path, kinds: tuple[tuple[str, type[BaseModel]], ...]
+) -> dict[str, list[Any]]:
+    """The shared body behind `load_citing_rows` and `load_binning_rows` — load the named kinds that
+    are present beside a spec, keyed by CSV name.
 
-    Public because a second tier needs it: the enricher's literature pass has to check the bin
-    pointers alongside `studies.csv`, and its two alternatives were importing a private symbol or
-    hand-keeping a parallel list of the binning kinds — the RM40/RM41 shape exactly, and the list
-    would go stale on the fifth kind. Row errors are raised rather than returned: a caller wanting the
-    per-row diagnosis has `validate_spec`, and a pass reading citations out of a table it could not
-    parse would silently under-report.
+    One body rather than two, so the two public loaders cannot drift on where a table lives or on what
+    an unparseable one does. Row errors are raised rather than returned: a caller wanting the per-row
+    diagnosis has `validate_spec`, and a pass reading citations out of a table it could not parse would
+    silently under-report.
     """
     spec_dir = Path(spec_dir)
     config, _, _ = _load_yaml(spec_dir / "module_spec.yaml")
     declared_build = config.genome_build if config else DEFAULT_GENOME_BUILD
-    out: dict[str, list[MeasureBinRow]] = {}
-    for csv_name, model in _BINNING_TABLE_KINDS:
+    out: dict[str, list[Any]] = {}
+    for csv_name, model in kinds:
         # `spec_dir / csv_name`, never `_locate_sidecar`: that resolver is scoped to the
         # machine-written sidecars, and an authored table has exactly one legal name in exactly one
         # legal place (RM49/RM51). Both compile-side load loops read authored kinds this way, and a
@@ -1944,19 +1962,63 @@ def load_binning_rows(spec_dir: Path) -> dict[str, list[MeasureBinRow]]:
     return out
 
 
-def binning_citations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
-    """Digit-only PMIDs the binning tables cite (`MeasureBinRow.pmid`), de-duplicated.
+def load_citing_rows(spec_dir: Path) -> dict[str, list[Any]]:
+    """Every **citing** table present beside a spec, keyed by CSV name — the annotation rows that
+    ground their own claim with a `pmid` (`MeasureBinRow.pmid` RM47, `PharmVariantRow.pmid` RM132).
 
-    Takes the whole table-kind map a caller already holds and reads only the binning kinds out of it,
-    so a caller cannot accidentally hand over a `haplotypes.csv` (no `pmid` column) and get an
-    attribute error. The kind set is derived from the models, never hand-listed.
+    Public because a second tier needs it: the enricher's literature pass has to check these pointers
+    alongside `studies.csv`, and its two alternatives were importing a private symbol or hand-keeping a
+    parallel list of the citing kinds — the RM40/RM41 shape exactly, and the list would go stale on the
+    next kind that declares the column.
+
+    Supersedes `load_binning_rows`, which stays and still means what it always did: it reads the
+    binning kinds only, so a caller wanting *the citations a module makes* wants this one.
+    """
+    return _load_kind_rows(spec_dir, _CITING_TABLE_KINDS)
+
+
+def load_binning_rows(spec_dir: Path) -> dict[str, list[MeasureBinRow]]:
+    """Every **binning** table present beside a spec, keyed by CSV name (RM47).
+
+    Narrower than `load_citing_rows` since 0.7 and deliberately kept: a caller asking for the binning
+    kinds is asking about thresholds, not about citations, and quietly widening what it returns would
+    hand such a caller `PharmVariantRow`s where it expects `MeasureBinRow`s.
+    """
+    return _load_kind_rows(spec_dir, _BINNING_TABLE_KINDS)
+
+
+def table_citations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
+    """Digit-only PMIDs the module's annotation tables cite, de-duplicated — **every** citing kind
+    (`MeasureBinRow.pmid` RM47, `PharmVariantRow.pmid` RM132).
+
+    Takes the whole table-kind map a caller already holds and reads only the citing kinds out of it, so
+    a caller cannot accidentally hand over a `haplotypes.csv` (no `pmid` column) and get an attribute
+    error. The kind set is derived from the models, never hand-listed, so a kind that gains the column
+    is read here without an edit.
 
     First-occurrence order rather than sorted, because it feeds emission order downstream (P7), and
-    normalization goes through `extract_pmids` so the bin pointer and `studies.csv` cannot drift into
+    normalization goes through `extract_pmids` so a table pointer and `studies.csv` cannot drift into
     two spellings of one citation.
     """
+    return _citations_over(rows_by_csv, _CITING_TABLE_KINDS)
+
+
+def binning_citations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
+    """Digit-only PMIDs the **binning** tables cite (`MeasureBinRow.pmid`), de-duplicated.
+
+    Narrowed by `table_citations` since 0.7 the same way `load_binning_rows` is by `load_citing_rows`,
+    and kept for the same reason. Nothing inside the compiler calls it any more: the literature
+    cross-check must read every citation site, and this one answers a question about thresholds.
+    """
+    return _citations_over(rows_by_csv, _BINNING_TABLE_KINDS)
+
+
+def _citations_over(
+    rows_by_csv: dict[str, list[Any]], kinds: tuple[tuple[str, type[BaseModel]], ...]
+) -> list[str]:
+    """The shared body behind `table_citations` and `binning_citations`."""
     seen: dict[str, None] = {}
-    for csv_name, _model in _BINNING_TABLE_KINDS:
+    for csv_name, _model in kinds:
         for row in rows_by_csv.get(csv_name) or []:
             if row.pmid:
                 for pmid in extract_pmids(row.pmid):
@@ -6203,7 +6265,7 @@ def _cross_check_frequencies(
 def _cross_check_literature(
     rows: list[LiteratureRow],
     studies: list[StudyRow],
-    bin_rows: dict[str, list[MeasureBinRow]] | None = None,
+    kind_rows: dict[str, list[Any]] | None = None,
 ) -> list[str]:
     """Two orphan directions, one finding that is not an orphan at all, and one licensing notice.
 
@@ -6214,14 +6276,16 @@ def _cross_check_literature(
       the compiler can surface it offline because the enricher already recorded the verdict as a fact;
     * a **quote lifted from an article whose licence forbids commercial reuse** (RM46).
 
-    **There are two citation sites since 0.6, and both count** (RM47). `studies.csv` was the only one
-    until binning rows gained a `pmid`, and reading only the first would have made every
-    threshold-grounding citation look like an orphan — shipping evidence the compiler then reported as
-    stale, which is worse than the honest gap the column replaced.
+    **Every citation site counts, and the set of them is derived rather than listed** (RM47, RM132).
+    `studies.csv` was the only one until binning rows gained a `pmid`; `pharm_variants.csv` is the
+    third. Reading fewer than all of them makes every citation from the site left out look like an
+    orphan — shipping evidence the compiler then reports as stale, which is worse than the honest gap
+    the column replaced. `table_citations` walks `_CITING_TABLE_KINDS`, so the *next* citing kind is
+    read here by declaring the column and this docstring is the only thing that goes stale.
 
-    Matched on digit-only PMIDs, since both `StudyRow.pmid` and `MeasureBinRow.pmid` are free-form and
-    may carry several ids or a `[PMID: N]` wrapper — `extract_pmids` is the same normalizer the
-    enricher pass uses, so the sides cannot drift apart.
+    Matched on digit-only PMIDs, since every `pmid` in the schema is free-form and may carry several
+    ids or a `[PMID: N]` wrapper — `extract_pmids` is the same normalizer the enricher pass uses, so
+    the sides cannot drift apart.
 
     **The non-commercial notice warns in both modes and gates nothing.** It is the third such
     exception, after the ClinVar `clin_sig` cross-check and `_check_declared_license_agrees`, and for
@@ -6234,7 +6298,7 @@ def _cross_check_literature(
     if not rows:
         return []
     findings: list[str] = []
-    kept, dropped = split_cited_literature(rows, studies, bin_rows)
+    kept, dropped = split_cited_literature(rows, studies, kind_rows)
 
     missing = sorted({r.pmid for r in kept if r.exists is False})
     if missing:
@@ -6247,24 +6311,25 @@ def _cross_check_literature(
     if dropped:
         findings.append(CodedWarning(
             "literature_row_uncited",
-            f"literature.csv describes {len(dropped)} citation(s) no study or bin in this module "
-            f"cites: {sorted({r.pmid for r in dropped})} — left out of the artifact, and left in "
+            f"literature.csv describes {len(dropped)} citation(s) no study, bin or pharm row in "
+            f"this module cites: {sorted({r.pmid for r in dropped})} — left out of the artifact, "
+            f"and left in "
             f"the CSV, which is the pin that keeps a re-run cheap",
         ))
     findings.extend(_check_quoted_article_licenses(kept, studies))
-    findings.extend(_check_quote_counter_is_current(kept, studies, bin_rows))
+    findings.extend(_check_quote_counter_is_current(kept, studies, kind_rows))
     return findings
 
 
 def split_cited_literature(
     rows: list[LiteratureRow],
     studies: list[StudyRow],
-    bin_rows: dict[str, list[MeasureBinRow]] | None = None,
+    kind_rows: dict[str, list[Any]] | None = None,
 ) -> tuple[list[LiteratureRow], list[LiteratureRow]]:
     """`(kept, dropped)` — the literature rows this module actually cites, and the rest (RM79).
 
     **The compiler discards the rest; `literature.csv` keeps them.** A row describing a citation no
-    study and no bin names is dead weight in the artifact: nothing joins to it, and it is only there
+    study and no citing table row names is dead weight in the artifact: nothing joins to it, and it is only there
     because `literature.csv` is merge-not-clobber, so a citation the author has since deleted from
     `studies.csv` leaves its row behind. Keeping the row in the CSV is the point of that rule — it is
     the pin that makes a re-run cheap — and carrying it into the parquet and the manifest is a
@@ -6293,7 +6358,7 @@ def split_cited_literature(
     cited: set[str] = set()
     for study in studies:
         cited.update(extract_pmids(study.pmid))
-    cited.update(binning_citations(bin_rows or {}))
+    cited.update(table_citations(kind_rows or {}))
     if not cited:
         return list(rows), []
     kept = [r for r in rows if r.pmid in cited]
@@ -6303,7 +6368,7 @@ def split_cited_literature(
 def _check_quote_counter_is_current(
     rows: list[LiteratureRow],
     studies: list[StudyRow],
-    bin_rows: dict[str, list[MeasureBinRow]] | None = None,
+    kind_rows: dict[str, list[Any]] | None = None,
 ) -> list[str]:
     """`literature.csv`'s `quotes_authored` against the quotes `studies.csv` actually carries (S56).
 
@@ -6323,9 +6388,10 @@ def _check_quote_counter_is_current(
     leaves the author to work out which side to trust. Aggregated to one line, since a panel cites in
     the hundreds — the same rule the licence check above obeys.
 
-    Reads both citation sites and the same `extract_pmids` normalizer for the same reason
-    `_cross_check_literature` does: a threshold-grounding `pmid` on a binning row is a citation, and
-    counting only `studies.csv` would report a current sidecar as stale on any binning module.
+    Reads every citation site and the same `extract_pmids` normalizer for the same reason
+    `_cross_check_literature` does: a threshold-grounding `pmid` on a binning row and a claim-grounding
+    one on a pharm row are both citations, and counting only `studies.csv` would report a current
+    sidecar as stale on any module that grounds its rows where `studies.csv` cannot reach.
     """
     authored: dict[str, int] = {}
     for study in studies:
@@ -6333,11 +6399,12 @@ def _check_quote_counter_is_current(
             continue
         for pmid in extract_pmids(study.pmid):
             authored[pmid] = authored.get(pmid, 0) + 1
-    # A bin row cites but carries no quote, so it contributes a denominator of zero rather than being
-    # skipped: a literature row reachable only from a bin must not read as "cited by nothing".
-    # Through `binning_citations`, which knows which kinds actually carry a `pmid` — walking
-    # `bin_rows` directly reaches `DiplotypeRow`, which has no such column.
-    for pmid in binning_citations(bin_rows or {}):
+    # A bin or pharm row cites but carries no quote (`provenance_quote` deliberately did not follow
+    # the column to either site), so it contributes a denominator of zero rather than being skipped: a
+    # literature row reachable only from such a row must not read as "cited by nothing".
+    # Through `table_citations`, which knows which kinds actually carry a `pmid` — walking
+    # `kind_rows` directly reaches `DiplotypeRow`, which has no such column.
+    for pmid in table_citations(kind_rows or {}):
         authored.setdefault(pmid, 0)
 
     stale = sorted(
