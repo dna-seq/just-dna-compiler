@@ -320,6 +320,31 @@ def test_an_update_producing_a_row_the_target_model_refuses_is_an_error() -> Non
     assert after[0].alts == "A", "a refused correction leaves the derived row alone"
 
 
+def test_a_group_scoped_update_that_refuses_reports_once_per_reason_not_once_per_row() -> None:
+    """A `variant_key` can resolve to many loci, so a group-scoped update reaches many rows — and a
+    refusal that is the same refusal on every one of them is one finding, not N.
+
+    Deliberately built with **two** rows that refuse for the same reason and one that cannot, so the
+    assertion distinguishes "aggregated" from "only the first row was tried".
+    """
+    vrs = "ga4gh:VA.__fXj0w0NCSkOLYF79GvSLtpDji99L42"
+    rows = [
+        ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1, ref="G", alts="A",
+                      vrs_id=vrs),
+        ResolutionRow(variant_key="rs1", locus_index=1, chrom="6", start=2, ref="G", alts="A",
+                      vrs_id=vrs),
+        ResolutionRow(variant_key="rs2", locus_index=0, chrom="6", start=3, ref="G", alts="A",
+                      vrs_id=vrs),
+    ]
+    overlay = [
+        _row(table="resolution.csv", subject="rs1", field="alts", operation="update", value="A,T"),
+    ]
+    after, errors, _ = apply_overrides("resolution.csv", rows, overlay)
+    assert len(errors) == 1, errors
+    assert "on 2 of 2 row(s) it reaches" in errors[0]
+    assert [r.alts for r in after] == ["A", "A", "A"]
+
+
 def test_an_insert_missing_a_required_column_is_an_error_rather_than_a_dropped_row() -> None:
     overlay = [
         _row(table="frequencies.csv", subject="rs1", member="global", field="allele_count",

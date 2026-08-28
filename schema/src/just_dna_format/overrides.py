@@ -447,14 +447,21 @@ def apply_overrides(
                 unmatched.append(key)
                 continue
             changes = {row.field or "": (row.value or None) for row in group}
+            # Aggregated **by reason**, not per row, which matters exactly where it is easiest to
+            # miss: a group-scoped update over a `variant_key` that resolves to fifty loci would
+            # otherwise print one identical refusal fifty times. Insertion order is the order the
+            # reasons were first met, so the report is deterministic.
+            refusals: dict[str, int] = {}
             for index in matched:
                 try:
                     result[index] = _rebuild(result[index], changes)
                 except ValidationError as exc:
-                    errors.append(
-                        f"overrides.csv: update of {table} subject={subject!r} "
-                        f"member={member!r} produces a row the table refuses: {exc}"
-                    )
+                    refusals[str(exc)] = refusals.get(str(exc), 0) + 1
+            errors.extend(
+                f"overrides.csv: update of {table} subject={subject!r} member={member!r} produces "
+                f"a row the table refuses, on {count} of {len(matched)} row(s) it reaches: {reason}"
+                for reason, count in refusals.items()
+            )
         elif operation == "suppress":
             for index in reversed(matched):
                 del result[index]
