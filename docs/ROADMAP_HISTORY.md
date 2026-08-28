@@ -29,6 +29,87 @@ The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 
 built. Every one is additive under Principles 3 and 8; what is kept here is each entry's reasoning,
 including the repairs it refused, which is the half that would otherwise be re-derived.
 
+## RM131 — the warnings channel says what each finding is, and whether an author can clear it
+
+**Shipped in `just-dna-format` + `just-dna-compiler` on 2026-08-28**, with the deprecated DuckDB
+resolver in `just-dna-enricher` brought along because its warnings land in the same published channel.
+Both halves the proposal sequenced, in one release, because the audit is the cost and doing it twice is
+what the sequencing existed to avoid.
+
+**Severity** medium · **Status** ✅ shipped in 0.7 · **Owner** compiler ·
+**Motivating case** S68 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
+
+### What shipped
+
+`compilation.carried` and `compilation.warnings_summary` beside `compilation.warnings`, which is
+unchanged down to the byte — the same sentences in the same order, so nothing that greps a phrase
+broke. `carried` is the subset **no edit to the spec directory can clear**; a consumer subtracts it to
+get the actionable set. `warnings_summary` is `{code: count}` over `vocab.VALID_WARNING_CODES`, with the
+values summing to `len(warnings)` so a reader can tell the digest is complete. The same three fields
+are on `ValidationResult`, `CompilationResult` and `ClosureResult`, on every path including a failed
+compile.
+
+Sixty-eight codes, nine of them carried. `findings.CodedWarning` is a `str` subclass, so the transport
+stayed `list[str]` and every de-duplication, extend and phrase-grep went untouched.
+`sweep.compare_module` reports `carried_added` beside `actionable_added`, which is the discriminator
+RM126's own comment said would land here.
+
+### The three things worth not re-deriving
+
+**The container was free and the vocabulary was the release**, which was the whole of the original
+deferral and is answered rather than dismissed: the set was derived across every emission site in three
+tiers, and the derivation rule is *one code, one remediation* — two sentences cleared by the same edit
+share a member and the sentence says which cell, two cleared differently do not. So the weight-sign
+pair is one code across `state` and `direction` (two axes under P5, one edit) and the five orphan fact
+tables are one code, while a VCF pointer collision and an unselected element are two.
+
+**The emission surface was larger than the entry's "~29 append sites and 16 returning helpers"**, and
+the parts it missed are the parts that would have shipped unclassified: the `findings`/`messages`
+collectors a survey of `.append` cannot see, two `.extend` sites reaching into the schema tier's
+`measurement_shape_warnings`/`deprecation_warnings`, `validate_bins`, `overrides.apply_overrides`, and
+the deprecated resolver in the *enricher*, whose warnings reach `manifest.compilation.warnings` like
+everything else. Re-derive such a count; never trust the one in an entry.
+
+**A `carried` list beside `warnings` was the right shape and a field on each finding was not**, but the
+`str`-subclass transport that makes it cheap leaks the code at exactly two places, and both are
+load-bearing: a pydantic field flattens the subclass (so `compile_module`/`close_module` seed from an
+internal `_validate_spec` that returns the classified list beside the result), and any reformat returns
+plain prose (so three prefixing sites go through `findings.restate`, which refuses an uncoded input
+rather than inventing a code). Both are pinned by tests, and the second half of the guard is a run over
+the whole reference corpus — a static walk proves every *site* names a code, and only a run proves every
+*message that arrives* still carries one.
+
+### What it did not do
+
+**No cap, no truncation, no verbosity flag**, per the reporter and us: all three hide findings rather
+than organising them, and the author with the most warnings is the one who most needs the hidden ones.
+**No metainfo artifact** — the channel already ships and `artifact_digest` is a Merkle root over the
+parquet `FileEntry` list, so `manifest.json` sits outside it and neither new field moved a hash on any
+published module. **Codes were not derived from the pinned phrase catalogue** (partial by construction,
+and a digest that silently omits findings is worse than none because the reader believes it) **nor from
+the emission site** (a refactor then renames a published key — P3's rename arriving by the back door).
+
+**`axes["warnings"]` still fires on any movement of the set**, deliberately: narrowing it would make a
+published axis mean something other than what every record already written claims about it, and the axis
+drives no rebuild. A pre-0.7 manifest reports every addition as actionable, which is the safe direction —
+calling an unrecorded finding carried would tell a reader that something fixable is not.
+
+### The suppression record it carried in (RM124 × RM131)
+
+A row removed by a `suppress` was invisible in the build product: absent, with no trace of why, and a
+consumer holding the compiled bytes has no `overrides.csv` to read. It now reports one line per
+**reason** with a count — which is what `reason` being a required column buys — and the count is over
+the *overlay's* rows, never over the rows removed. That is not tidiness: after `reverse_module` the
+derived table is already post-overlay, so an effect-based count would say a number on lap 1 and vanish
+on lap 2, making a module disagree with its own round trip on a published field. Proved against the real
+compile → reverse → compile path. Classified **actionable** rather than carried, because the author owns
+the overlay and deleting the row clears it.
+
+The three candidate derivations are argued at length in
+[PROPOSAL_0_7 § RM131](proposals/PROPOSAL_0_7.md#rm131--warnings-is-a-flat-liststr-and-the-discriminator-that-would-make-it-readable-is-discarded),
+which is where the decision was taken; the entry this replaces lived in ROADMAP.md and not in
+ROADMAP_0_7, so there is no second copy to keep in step.
+
 ## RM124 — an author's correction to a derived table now has somewhere to live
 
 **Shipped in `just-dna-format` + `just-dna-compiler` + `just-dna-enricher` on 2026-08-28**, as
