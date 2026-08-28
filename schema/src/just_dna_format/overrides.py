@@ -446,7 +446,7 @@ def apply_overrides(
             if not matched:
                 unmatched.append(key)
                 continue
-            changes = {row.field or "": (row.value if row.value else None) for row in group}
+            changes = {row.field or "": (row.value or None) for row in group}
             for index in matched:
                 try:
                     result[index] = _rebuild(result[index], changes)
@@ -465,7 +465,7 @@ def apply_overrides(
             if target.member_field is not None:
                 data[target.member_field] = member
             for row in group:
-                data[row.field or ""] = row.value if row.value else None
+                data[row.field or ""] = row.value or None
             try:
                 built = target.model.model_validate(data)
             except ValidationError as exc:

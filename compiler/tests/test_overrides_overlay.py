@@ -23,8 +23,8 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import (
-    ARTIFACT_PARQUETS,
     _FACT_TABLES,
+    ARTIFACT_PARQUETS,
     compile_module,
     content_signature,
     reverse_module,

@@ -20,15 +20,15 @@ from just_dna_compiler.compiler import (
 )
 from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for
 from just_dna_compiler.scaffold import (
+    _RECOGNIZED_TABLES,
     COMPANION_KINDS,
     MODULE_SPEC,
-    _RECOGNIZED_TABLES,
     companions_for,
     module_spec_template,
     scaffold_module,
 )
 from just_dna_format.base import field_vocabularies
-from just_dna_format.layout import SOURCES_CSV, resolve_sidecar, sidecar_spellings
+from just_dna_format.layout import SOURCES_CSV, resolve_sidecar
 from just_dna_format.spec import ModuleSpecConfig
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 

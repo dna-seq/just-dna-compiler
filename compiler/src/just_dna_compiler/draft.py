@@ -60,9 +60,9 @@ from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler import (
-    OVERRIDES_CSV,
     _TABLE_DUPE_KEYS,
     _TABLE_KINDS,
+    OVERRIDES_CSV,
     _key_of,
     _list_cell,
     _list_fields,

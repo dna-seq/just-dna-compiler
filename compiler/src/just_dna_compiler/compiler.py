@@ -4436,9 +4436,13 @@ def compile_module(
     # The authored overlay (RM124), loaded before the first derived table it lies on. `validate_spec`
     # above already reported every finding it has — this pass re-loads its own copy, the way it
     # re-loads `variants.csv`, because the rows themselves are needed to build the artifact.
-    overrides, overlay_errors, _overlay_warnings = _load_overlay(spec_dir)
+    overrides, overlay_errors, overlay_warnings = _load_overlay(spec_dir)
     if overlay_errors:
         return CompilationResult(success=False, errors=overlay_errors, warnings=all_warnings)
+    # De-duplicated on the message like every other check that runs on both sides: the pre-flight
+    # already emitted these over the same bytes. Extended rather than discarded so a finding this
+    # loader gains later cannot go missing from a compile that never runs `validate` separately.
+    all_warnings.extend(w for w in overlay_warnings if w not in all_warnings)
     overlaid: set[str] = set()
 
     resolution_rows: list[ResolutionRow] = []
