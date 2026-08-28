@@ -10,9 +10,11 @@ of authority-owned keys it stamps; the format owns the pure, re-runnable strippe
 set. The validator itself stays strict — if a stripper is skipped or a key slips through,
 `extra="forbid"` still errors loudly, pointing at exactly where expectation broke.
 
-- `strip_authority_keys` — drop consumer/registry-owned identity keys from the `module:` block. The
-  reference impl of a marketplace's own `strip_registry_owned_keys()`. Nothing is applied by default;
-  a consumer opts in by passing `IDENTITY_AUTHORITY_KEYS` (or its own set).
+- `strip_authority_keys` — drop consumer/registry-owned keys from the `module:` block. The reference
+  impl of a marketplace's own `strip_registry_owned_keys()`. Nothing is applied by default; a consumer
+  opts in by passing `IDENTITY_AUTHORITY_KEYS`, `PRESENTATION_AUTHORITY_KEYS`, their union, or a set
+  of its own. The two constants stay separate because ownership and presentation are different reasons
+  for a key to be registry-owned, and one function strips both, so there is one path and not two.
 - `normalize_version` — coerce an informal version string to SemVer `MAJOR.MINOR.PATCH`. Built now,
   used **read-only** in 0.4.1 to *preview* what a future release will read; slated to become the
   enforced `version` validator in 0.5 (see docs/proposals/PROPOSAL_0_5.md).
@@ -44,6 +46,7 @@ from decimal import Decimal, InvalidOperation
 # for names expected to become future *module columns* — the opposite of these, which will never be
 # authored. And `version` is deliberately ABSENT: it is a genuine (advisory) authored field now, not
 # something to strip. See CONSTITUTION P2/P5 and docs/proposals/PROPOSAL_0_4_1.md.
+# `PRESENTATION_AUTHORITY_KEYS` below is the sibling family — registry-owned for a different reason.
 IDENTITY_AUTHORITY_KEYS: frozenset[str] = frozenset({"namespace", "owner", "canonical_id"})
 
 # Why each authority key is not author-set — a per-key note a consumer can surface when it strips one.
@@ -51,6 +54,59 @@ IDENTITY_AUTHORITY_REASONS: dict[str, str] = {
     "namespace": "the owning account/org slug — stamped by the publishing registry on publish",
     "owner": "the owning account — stamped by the publishing registry on publish",
     "canonical_id": "namespace/name@version — derived by the publishing registry, not authored",
+}
+
+# ── Registry/authority-owned PRESENTATION keys (inject-only) ────────────────────────────────────
+# A second, deliberately SEPARATE family beside `IDENTITY_AUTHORITY_KEYS`. Both are registry-owned and
+# both are stripped by `strip_authority_keys` — one function, one path — but they are registry-owned
+# for different reasons, and a consumer may want one without the other: identity says *which module
+# this is*, presentation says *how it is shown*. Keeping them apart is what leaves that choice with the
+# caller, which is the whole inject-only rule; a single merged set would have taken it away.
+#
+# `short_description` exists because the card subtitle had nowhere amendable to live (RM133). Measured
+# by the reporter: rewriting `module.description` from 44 words to 11 moves no `content_signature`, no
+# `artifact.digest` and no fact signature — and yet **drops the closure**, because `manifest.inputs`
+# covers the raw bytes of `module_spec.yaml` and the attestation binds them. `README.md`, by a wide
+# margin the longer prose, sits outside `inputs` and is freely amendable, so the shortest fixable prose
+# in the system was the one that could not be fixed. The binding is not where that gets repaired: an
+# attestation answers *is this the same document a named person signed off*, and a field-aware
+# partition drawn along `content_signature`'s line would make a closure transferable across a rename.
+# Holding the subtitle **beside** the module is the repair — the registry keeps it in its own record,
+# hands us a `module:` block carrying it, this module's stripper removes it before validation, the
+# stored bytes never move, and `manifest.inputs`, `verify_manifest` and the closure all still hold.
+# Deliberately NOT a field on `spec.ModuleInfo`: every key in `module_spec.yaml` is on the un-amendable
+# side of that binding, so a field there would reproduce the defect in a new place.
+#
+# It is an OVERRIDE, not a replacement, and that distinction is what keeps two surfaces from claiming
+# one role. `manifest.Display.description` is still the authored subtitle and still says so in its own
+# `Field(description=...)`; a module with no registry override shows it, unchanged, which is every
+# module published to date. This key is what a registry may hold *instead*, for the one case the
+# authored field cannot serve — amending it after the fact.
+PRESENTATION_AUTHORITY_KEYS: frozenset[str] = frozenset({"short_description"})
+
+# The card-subtitle ceiling, published here rather than guessed at downstream. A field that exists to
+# fit a fixed layout is *specified* by that layout, so the number belongs beside the key it bounds
+# rather than in each consumer's own head. Calibrated against the live catalog: 71 characters reads
+# comfortably in a card, 467 is the subtitle that prompted the item.
+#
+# **It refuses nothing.** No model in this package carries it as a `max_length`, and `Display.description`
+# in particular stays unbounded on purpose — a ceiling there would refuse a merely verbose spec, refuse
+# it after the prose was written, and retroactively invalidate published modules that met every
+# requirement that existed. This constant bounds a *new*, registry-held value, which is the one place
+# such a bound is legitimate; enforcing it is the storing authority's call, and absent the key
+# everything behaves exactly as it did before.
+SHORT_DESCRIPTION_MAX_CHARS: int = 120
+
+# Why each presentation key is not author-set — same shape and same purpose as the identity map above,
+# so a consumer stripping one can surface a reason without first working out which family it came from.
+PRESENTATION_AUTHORITY_REASONS: dict[str, str] = {
+    "short_description": (
+        f"a registry-held OVERRIDE of the subtitle a listing shows, at most "
+        f"~{SHORT_DESCRIPTION_MAX_CHARS} characters — the authored subtitle is still "
+        f"`module.description`, and a module with no override shows that, unchanged. This one is held "
+        f"by the publishing registry beside the module, so amending it leaves module_spec.yaml's "
+        f"bytes, and therefore manifest.inputs and any closure over them, untouched"
+    ),
 }
 
 # A version part is a run of digits; parts are separated by dots. Everything else (a leading `v`, a
@@ -79,8 +135,11 @@ def strip_authority_keys(
     result drops nothing.
 
     This is the format's reference implementation of a marketplace's `strip_registry_owned_keys()`.
-    It is inject-only: `authority_keys` is supplied by the caller (e.g. `IDENTITY_AUTHORITY_KEYS`),
-    never hardcoded here — the format does not bake in any one consumer's identity conventions."""
+    It is inject-only: `authority_keys` is supplied by the caller — `IDENTITY_AUTHORITY_KEYS`,
+    `PRESENTATION_AUTHORITY_KEYS`, `IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS`, or a set of
+    the caller's own — and never hardcoded here, so the format bakes in no one consumer's conventions.
+    One function takes both families rather than growing a stripper per family: they differ in *why* a
+    key is registry-owned, not in what removing one does."""
     keys = frozenset(authority_keys)
     dropped = sorted(k for k in block if k in keys)
     clean = {k: v for k, v in block.items() if k not in keys}
