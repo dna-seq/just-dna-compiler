@@ -1584,6 +1584,11 @@ The last is a **note, not a finding**, and does not fail the release: the refere
 modules and a real correction can land on a shape none of them has. It is still printed, so
 over-declaring is visible rather than invisible.
 
+**Under `--json`, stdout is the JSON document and nothing else** — the notes and the success line go
+to stderr there. The caller of that flag is a release script piping to `jq`, and a note printed after
+the blob breaks exactly the consumer the flag exists for. Without `--json` they read on stdout as
+usual.
+
 ### The warnings axis, and the seam RM131 fills
 
 `compilation.warnings` is a published manifest field, so the naive reading folds it into

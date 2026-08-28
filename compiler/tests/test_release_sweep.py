@@ -18,11 +18,13 @@ the condition checkable.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
+from just_dna_compiler.cli import app
 from just_dna_compiler.compiler import compile_module, module_stats, spec_tables
 from just_dna_compiler.sweep import (
     ModuleOutput,
@@ -48,6 +50,9 @@ from just_dna_format.release_records import (
     ReleaseRecord,
 )
 from just_dna_format.vocab import VALID_RELEASE_OUTPUT_AXES
+from typer.testing import CliRunner
+
+runner = CliRunner()
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
@@ -150,7 +155,7 @@ def test_a_real_published_field_does_count() -> None:
     assert changed_manifest_fields(before, after) == ("stats.gene_count", "stats.genes")
 
 
-def test_a_block_appearing_where_there_was_a_null_is_reported(tmp_path: Path) -> None:
+def test_a_block_appearing_where_there_was_a_null_is_reported() -> None:
     """A new manifest block is a change, and it must not vanish because one side has no such path."""
     assert changed_manifest_fields({"literature": None}, {"literature": {"quotes_unchecked": 0}}) == (
         "literature",
@@ -334,6 +339,75 @@ def test_the_gate_refuses_a_record_measured_against_a_different_release(tmp_path
     findings, _ = gate_findings(_measurement(tmp_path), "1.0.1", {"1.0.1": record})
 
     assert any(WRONG_PREVIOUS_PHRASE in f for f in findings)
+
+
+# ── the CLI, and the one stream discipline `--json` exists for ──────────────────────────────────
+
+
+def _restamped_pair(tmp_path: Path, before_release: str, after_release: str) -> tuple[Path, Path]:
+    """Two output trees holding the SAME real compiled module, stamped as two releases.
+
+    Real manifests and real parquets, with one cell moved — which is the only way to exercise the
+    gate's passing path offline: measuring a genuine interval needs the previous release installed,
+    and that is a release-sequence operation rather than a test.
+    """
+    spec = _first_example()
+    trees = []
+    for side, release in (("before", before_release), ("after", after_release)):
+        module_dir = tmp_path / side / spec.name
+        result = compile_module(spec, module_dir)
+        assert result.success, result.errors
+        manifest_path = module_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["compilation"]["compiler_version"] = f"just-dna-compiler {release}"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        trees.append(tmp_path / side)
+    return trees[0], trees[1]
+
+
+def test_the_json_output_is_the_whole_of_stdout_even_with_the_gate_running(tmp_path: Path) -> None:
+    """`--json`'s caller is a release script piping to `jq`, so nothing may join the document.
+
+    The gate has prose of its own — notes and a success line — and printing either after the blob
+    breaks exactly the consumer the flag exists for. Asserted by parsing stdout, not by reading the
+    code: a note appended to stdout would still *look* fine in a terminal.
+
+    The 0.6.1 → 0.6.6 record declares movements this pair did not make, so the run emits notes and
+    a success line and still exits 0 — the case that would corrupt the stream.
+    """
+    before, after = _restamped_pair(tmp_path, "0.6.1", "0.6.6")
+    result = runner.invoke(
+        app, ["sweep", str(before), str(after), "--json", "--release", "0.6.6"]
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["before"] == "0.6.1" and payload["after"] == "0.6.6"
+    assert payload["axes"] == {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    assert OVERDECLARED_NOTE_PHRASE in result.stderr
+    assert "covers the measurement" in result.stderr
+
+
+def test_without_json_the_gate_prose_reaches_the_terminal(tmp_path: Path) -> None:
+    """The converse, so the stream discipline above is not simply silencing the gate."""
+    before, after = _restamped_pair(tmp_path, "0.6.1", "0.6.6")
+    result = runner.invoke(app, ["sweep", str(before), str(after), "--release", "0.6.6"])
+
+    assert result.exit_code == 0, result.output
+    assert OVERDECLARED_NOTE_PHRASE in result.stdout
+    assert "covers the measurement" in result.stdout
+
+
+def test_the_gate_exits_one_for_a_release_the_table_has_no_record_of(tmp_path: Path) -> None:
+    """The mechanism the coordinator relies on at cut time: no record, no release."""
+    build_outputs(_EXAMPLES, tmp_path / "before")
+    build_outputs(_EXAMPLES, tmp_path / "after")
+    result = runner.invoke(
+        app, ["sweep", str(tmp_path / "before"), str(tmp_path / "after"), "--release", "0.7.0"]
+    )
+
+    assert result.exit_code == 1
+    assert NO_RECORD_PHRASE in result.stderr
 
 
 # ── the roster's conditional boundary ────────────────────────────────────────────────────────────

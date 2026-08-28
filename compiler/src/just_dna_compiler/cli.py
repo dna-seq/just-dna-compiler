@@ -672,11 +672,19 @@ def sweep(
             typer.echo(f"    manifest field moved: {field}")
     if release is None:
         return
+    # Under `--json` stdout is one JSON document and nothing else may join it: the caller of this
+    # flag is a release script piping to `jq`, and a note or a success line printed after the blob
+    # breaks the very consumer the flag exists for. The gate's own prose goes to stderr there.
+    gate_stream = bool(as_json)
     findings, notes = gate_findings(measurement, release)
     for note in notes:
-        typer.secho(f"  note: {note}", fg=typer.colors.BLUE)
+        typer.secho(f"  note: {note}", fg=typer.colors.BLUE, err=gate_stream)
     for finding in findings:
         typer.secho(f"  error: {finding}", fg=typer.colors.RED, err=True)
     if findings:
         raise typer.Exit(code=1)
-    typer.secho(f"release record for {release} covers the measurement", fg=typer.colors.GREEN)
+    typer.secho(
+        f"release record for {release} covers the measurement",
+        fg=typer.colors.GREEN,
+        err=gate_stream,
+    )

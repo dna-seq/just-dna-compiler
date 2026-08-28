@@ -44,7 +44,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import vocabulary
-from just_dna_format.identity import Version, parse_version
+from just_dna_format.identity import parse_version
 from just_dna_format.vocab import (
     VALID_RELEASE_CHANGE_KINDS,
     VALID_RELEASE_OUTPUT_AXES,
@@ -220,10 +220,6 @@ def release_version(stamp: str) -> str:
     token = stamp.strip().rsplit(" ", 1)[-1]
     parse_version(token)
     return token
-
-
-def _record_key(record: ReleaseRecord) -> Version:
-    return parse_version(record.version)
 
 
 @dataclass(frozen=True)
