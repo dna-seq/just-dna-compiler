@@ -34,7 +34,43 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
+## 2026-08-28 (latest) — 0.7.0: the items PROPOSAL_0_7 decided
+
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR.** Every item in
+this batch is additive under Principles 3 and 8; the number is real because new optional columns are
+what size a release, not how much of the work was legibility.
+
+- **RM70 — a star-allele module can state CPIC's core assumption.** `requires_callable` was a
+  `VariantRow` column, so `haplotypes.csv`, `pharm_variants.csv` and `diplotypes.csv` had no way to
+  record the one thing a consumer most needs before trusting a `*1/*1` result: CPIC assumes a position
+  it did not call is reference — literally `requires_callable=false` — and the assumption lived only
+  in the upstream's prose. The optional tri-state column now sits on **`HaplotypeRow` and
+  `PharmVariantRow`**, the two PGx tables that *name a locus*, so the claim is about a position the
+  row itself states.
+
+  **Not on `DiplotypeRow`, and `callable_from` did not travel.** A diplotype names a star-allele pair,
+  not a locus; the same column there could only mean "the variants defining these two haplotypes were
+  callable", which is a fact about `haplotypes.csv` restated one table over, free to drift the moment
+  a definition is edited. `callable_from` stays `VariantRow`-only because the two are different axes —
+  one says a proof is required, the other says where the proof lives — and a curator can state the
+  first from the source's prose with no basis for the second. Declaring it once in `module_spec.yaml`
+  was refused for the reason RM36 and RM32 already paid for: the verdict is per locus, and CYP2D6
+  holds a SNP-defined allele beside a structurally-defined one inside one gene.
+
+  `reference_examples/cyp2c9_warfarin_grch37` — the module the gap was found against — now populates
+  the column on both tables and exercises all three states. Its `haplotypes.csv` records CPIC's
+  assumption verbatim (`false` on both defining SNPs); its `pharm_variants.csv` is keyed on genotype
+  and so splits: the reference-homozygote rows require a callability proof, the rows naming an
+  alternate allele do not, and the rows whose reference allele the module never resolved are left
+  **blank** rather than guessed. That answers the consumer ask for `requires_callable` "populated
+  somewhere real, to try the round trip against" on its PGx half. The module was re-closed, so its
+  attestation binds the new bytes.
+
+  Optional with respect to every module published before it: `content_signature` normalizes with
+  `exclude_none`, so a spec that never writes the column hashes exactly as it did. `artifact.digest`
+  does move for any module carrying either table, which P3 says is not by itself a reason to defer.
+
+## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
 **Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately
 left uncut (2026-08-27).** The number is not decided, so nothing here names one: the replies'

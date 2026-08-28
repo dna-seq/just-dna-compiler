@@ -311,6 +311,22 @@ CYP2D6,*1,*4,,Intermediate Metabolizer,codeine,"reduced analgesia",1A,"*1/*4 —
 A PharmGKB module carries `pharm_variants.csv` (+ the diplotype tables if star-allele) and **no**
 `variants.csv`.
 
+Since 0.7 (RM70) both `pharm_variants.csv` and `haplotypes.csv` also take **`requires_callable`**,
+the tri-state flag `variants.csv` has carried since 0.4 — they are the PGx tables that name a locus,
+so the claim is about a position the row states. It is what lets a star-allele module write down the
+assumption its sources make and state only in prose, that a position which was not called is
+reference. On a genotype-keyed row it is sharper still: the reference-homozygote row is unmatchable
+from a variant-only callset, since absence of an ALT record is not evidence of that call.
+```csv
+rsid,gene,genotype,drug,evidence_level,conclusion,requires_callable
+rs9923231,VKORC1,C/C,warfarin,1B,"reference homozygote — usual dose",true
+rs9923231,VKORC1,C/T,warfarin,1B,"−1639 A — lower warfarin dose",false
+```
+`callable_from` does **not** travel with it and stays on `variants.csv`; `diplotypes.csv` takes
+neither, because it names a star-allele pair rather than a locus and the claim belongs on the
+haplotype rows that define the pair. `reference_examples/cyp2c9_warfarin_grch37` populates all three
+states across its two tables, and its README says why each row got the value it did.
+
 ---
 
 ## 9b. HFE — a gene panel drafted from ClinVar, with the zygosity left to a curator

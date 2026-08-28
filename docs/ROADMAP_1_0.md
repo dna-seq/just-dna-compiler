@@ -127,8 +127,10 @@ content is cheap.
 *"**Lossless round-trip.** `compile_module` → `reverse_module` → `compile_module` preserves every
 authored value."* `resolution.csv` is not an authored value: it is a machine-written, build-time derived
 sidecar, priced at half by the 0.6 charter amendment, whose only consumers are the compiler and the
-enricher's update run. Every authored value does survive — `content_signature` is `989e8298…` and
-`artifact.digest` is `d7a4f37e…` before and after.
+enricher's update run. Every authored value does survive — `content_signature` and `artifact.digest`
+are equal before and after (`81a03fe9…` and `e0e14408…` at 0.7; they read `989e8298…` and `d7a4f37e…`
+when this was first measured at 0.6, and moved when RM70 populated `requires_callable` on the module's
+two positional tables — the finding is the *equality across the two laps*, not the values).
 
 The clause that does apply is the one immediately after it: *"If a value cannot survive the round-trip,
 the artifact is missing a field, not the spec."* That is exactly right here, and it is the whole

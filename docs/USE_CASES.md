@@ -95,7 +95,10 @@ inside a `VariantRow.genotype` is not (see §3b) `→ RM5`.
 - **Callability three-state (covered-hom-ref vs no-call):** **CONSUMER-SIDE**, derivable from VCF
   `DP`/`GQ`/`FT` (or a gVCF ref-block). The format's part: `requires_callable` (reserved flag) marks
   rows where absence is informative; promoting it to a typed boolean column and reserving
-  `callable_from` (the DP,GQ,FT signal) are the format-side follow-ups `→ RM6`.
+  `callable_from` (the DP,GQ,FT signal) are the format-side follow-ups `→ RM6`. **Both shipped** —
+  `requires_callable` as a tri-state `VariantRow` column in 0.4, `callable_from` in 0.5 — and 0.7
+  widened the first to `haplotypes.csv` and `pharm_variants.csv`, the other two tables that name a
+  locus, so a star-allele module can state the assumption its sources make in prose `→ RM70`.
 - **Phasing-aware panels:** **ENABLED** — the `phased` flag + the phased genotype form `A|G` (0.3
   item 5b) already let a runner do cis/trans for compound-het and star-allele phasing (`*2x2/*4` vs
   `*2/*4x2`). No gap.
