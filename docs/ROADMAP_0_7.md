@@ -615,8 +615,9 @@ argument for leaving this at a warning.
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) on 2026-08-28 — BUILDS in 0.7, and no schema moves.** The answer to *where does an author do this work* is **in the command they already ran**: the worklist covers every stubbed row in the file rather than only this run's additions, and `draft-panel` gains the `--dry-run` that `draft` has. The bulk advisory command is rejected for putting the worklist in a third place.
 
-**Severity** medium · **Status** deferred — every place the information could legally go is also the
-wrong place, and that is the decision · **Owner** enricher (`clinvar_draft`) + compiler (`draft`) ·
+**Severity** medium · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the worklist now covers every
+stubbed row in the file, and the `--dry-run` the decision asked for turned out to have shipped in
+0.5.1 already, so what landed is the test that pins it · **Owner** enricher (`clinvar_draft`) ·
 **Found by** dogfooding on 2026-08-13, `reference_examples/hboc_palb2/`
 
 ### What was observed

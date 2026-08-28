@@ -667,7 +667,7 @@ RM47 already refused — it would make a study row's subject depend on which tab
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm133--a-card-subtitle-has-no-amendable-home) on 2026-08-28 — BUILDS in 0.7, on the authored layer at zero cost.** `short_description` joins the registry-owned family as a **separate** frozenset beside `IDENTITY_AUTHORITY_KEYS`, stripped by the same function, so the stored bytes are untouched and the closure stands; the ~120-character calibration ships as a constant rather than being guessed at downstream.
 
-**Severity** low-medium · **Status** open — **a minor, release undecided** — the binding question it
+**Severity** low-medium · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the binding question it
 arrived with is **answered and closed** · **Owner** format (+ registry, for the half that is theirs) ·
 **Motivating case** S64 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
 
@@ -727,7 +727,7 @@ requirement that existed.
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check) on 2026-08-28 — BUILDS in 0.7, pulled in after the other eleven were decided and reviewed against them.** Eight corrections, two of which were defects that would have shipped: **the concordance record is shared with RM130 and RM130's shape changes because of it** (`ClinSigConflict` names its authority in a *field*, so a second authority would have cost a key change or a retype — major-only); and **one normalizer, not two, after two fixes** — `_normalize_clin_sig`'s map keys are underscored while PubMind's tokens are spaced, so `Uncertain significance` and `Conflicting` both fall to `other` today and the check would manufacture a disagreement on PubMind's largest disagreeing class. **A maintainer stress test at five authorities failed the drafted vocabulary**: `pubmind_only`/`clinvar_only` name the authority inside the member, because one field carried two axes. Split into `authority_concordance` and `authored_position`, five members each at any N. **Nothing resolves a split** — E+A agreeing against B/C/D needs a weighting model this repo has refused to invent three times — so the precedence list is recorded as methodology and computed with by nothing. Licensing governs what a module may *do* with the values, not whether the machinery exists: unknown terms warn and never gate, and publishing such a module is RM27's axis.
 
-**Severity** low-medium · **Status** open — **assessed and designed 2026-08-28, no code written; the
+**Severity** low-medium · **Status** 🔨 **§ A SHIPPED in 0.7** (2026-08-28), §§ B–D in build; the
 batch is a minor, release undecided** · **Owner** enricher · **Motivating case** the PubMind paper
 (doi:10.1038/s41467-026-76834-4, 20 August 2026), and a user direction on 2026-08-28 to design both a
 ClinVar-shaped derived table and a ClinVar concordance check · **Full design**
