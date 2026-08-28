@@ -450,6 +450,70 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   for an existing `vrs_id`. To regenerate after a machinery change you MUST **delete the sidecar first**,
   or stale rows silently persist (this bit me while regenerating the reference example).
 
+  **Since 0.7 that delete is free, and the merge behaviour did not change** (RM124). The merge still
+  gap-fills — re-asking every subject on every run was explicitly rejected, since it would put the full
+  resolution time on every pass. What changed is what a recorded row can *contain*: a correction now
+  lives in `overrides.csv`, so a derived row carries no authored content and deleting the file loses
+  nothing. Read the two halves separately, because the old sentence conflated them: "a re-run does not
+  refresh what is recorded" is still true, and "deleting discards the curator's rows" is not.
+
+- `@overlay-not-inside` — **`overrides.csv` is applied, never merged into the table it corrects, and
+  four things about it are counter-intuitive enough to be worth the entry** (RM124, 0.7).
+
+  **It is a third category and is registered in neither table registry.** Not `_TABLE_KINDS` (those are
+  the module's own annotation tables: one of them satisfies the "at least one recognized table" check
+  and each is a `LEAD_PARQUETS` member the reference consumer probes on — a directory carrying only
+  corrections is not a module). Not `_FACT_TABLES` and therefore not `_DERIVED_FILES` (those are
+  machine-produced and fact-hashed). It *is* in `_INPUT_FILES`, `spec_tables` and `_KNOWN_SPEC_FILES`,
+  because a human writes every row.
+
+  **It carries a parquet anyway, and that is forced.** `reverse_module` rebuilds a spec from the
+  artifact and has nothing else to read the corrections back from, so without `overrides.parquet` the
+  round trip would silently discard every one of them and move `content_signature` — Principle 7. It
+  sits **last** in `ARTIFACT_PARQUETS`, the one slot where an already-published digest cannot move.
+
+  **No operation reports its own no-op, and the reason is the round trip rather than tidiness.**
+  Reverse emits the post-overlay table plus the overlay, so on a recompile update-already-equal,
+  insert-already-present and suppress-already-absent are all three true of a healthy module. A warning
+  on any of them would fire on every round-tripped module and make it disagree with itself on
+  `manifest.compilation.warnings`, a published field. **The price is real and is stated rather than
+  fixed**: a `suppress` with a typo'd subject does nothing, forever, and cannot warn. The one mismatch
+  stable on both laps is an `update` reaching no row, because an update never creates one.
+
+  **An override may not write the table's own subject or member column**, and this is the same rule
+  read from the model's side. An update that moved a key would apply once and then leave its own
+  overlay row matching nothing — a warning that appears on a module's round trip and not on the module.
+  Re-keying a derived row is a suppress plus an insert.
+
+  **A key cell is matched as the model STORES it, and getting this wrong broke the fixed point with a
+  capital letter.** The overlay carries raw author text; the derived rows carry canonical values. The
+  first implementation compared the two directly, so `FrequencyRow.population` — which
+  `normalize_population` lowercases — meant an overlay `member=AFR` matched no row of a table full of
+  `afr`. All three operations went wrong differently and the worst went wrong **silently**: the
+  `insert` believed its row was absent and appended a duplicate, so every `compile → reverse →
+  compile` lap appended another copy, and nothing caught it because `frequencies.csv` is in neither
+  `_TABLE_DUPE_KEYS` nor the frequency checks. The `suppress` removed nothing and the `update` warned
+  that a row plainly present "is not carried". `locus_index` is the same shape one type over (`"01"`
+  is `1`).
+
+  The repair canonicalizes through the **model** — write the cell onto a real row of the table and
+  read back what it kept (`_canonical_key_cell`) — rather than through a table of per-column rules,
+  which would be a second copy of every validator. And an `insert` places its row by the **built**
+  row's subject, not the overlay's spelling, or the row lands at the end of the table instead of the
+  end of its group. Found by review, not by the suite: the P7 test used `resolution.csv`, whose key
+  columns happen to normalize to themselves.
+
+  **A derived row whose member column is NULL cannot be suppressed at all**, because an empty `member`
+  already means the whole group — `gene_validity.csv` rows with no `assertion_id`, and
+  `clinical_assertions.csv`'s `not_found` rows. A sentinel for null was refused (a second key grammar
+  inside the one column that exists to have only one); the refusal names the case and points at the
+  group-scoped `update` or a re-derivation.
+
+  The covered set is **seven** — every merge-not-clobber derived sidecar but `licensing.csv`, which has
+  its own merge path and is the one derived table a human is told to write. The proposal's "six" was a
+  miscount that enumerated nothing; `test_overrides_overlay.py` asserts an equality against
+  `_FACT_TABLES` rather than a floor.
+
 - `@rm43-positional-fill` — **Resolution reaches the positional tables too, since 0.6 (RM43), and
   `authored_ident` is the column that makes it legal.** `_apply_positional_resolution` joins the
   injected `resolution.csv` onto every positional 0.4-family table, in `validate_spec` *and*

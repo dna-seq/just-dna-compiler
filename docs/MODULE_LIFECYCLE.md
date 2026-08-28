@@ -401,23 +401,37 @@ matrix is unreadable without them; the first two are not stated anywhere:
   which is what makes "fix a typo without spending a version" true end to end: the registry has three
   amend endpoints (changelog, logo, readme) that move no digest and no content claim.
 
-### 6.3 What must be deleted, and what deleting costs
+### 6.3 What must be deleted, and what deleting costs — **nothing, since 0.7**
 
 Every derived sidecar is **merge-not-clobber**: an existing row is authoritative and a re-run adds to
-it rather than replacing it. The rule exists because these tables are human-overridable by design.
-Its consequence is the single most important operational fact about a second pass:
+it rather than replacing it. The rule exists because these tables were human-overridable by design,
+and until 0.7 its consequence was the single most important operational fact about a second pass:
 
 > **A re-run does not refresh anything already recorded. To re-derive a sidecar you delete it first,
 > and deleting it discards every hand-curated row in it along with the stale ones.**
 
-| Sidecar | A re-run… | Delete to re-derive when | Deleting costs |
+**The second sentence stopped being true in 0.7 (RM124).** A correction now lives in `overrides.csv`
+beside the spec, the compiler applies it on every build, and the derived files became pure build
+products — `derived = f(source, overlay)`. So there is nothing inside a sidecar to preserve, `rm` plus
+a re-run costs nothing, and the last column of the table below is a record of what the arrangement
+used to cost rather than a warning about what it still does.
+
+**What the change is not.** Merge-not-clobber's *behaviour* is unchanged: a re-run still gap-fills —
+it fills subjects with no row and leaves recorded rows alone — because re-asking every subject on
+every pass would put the full resolution time on every run to buy drift detection nobody asked to run
+continuously. What changed is what leaving a recorded row alone *risks*, which is now nothing, because
+the row carries no authored content. The first sentence of the quote therefore still holds and the
+deletion it recommends is now free.
+
+| Sidecar | A re-run… | Delete to re-derive when | Deleting cost, before 0.7 |
 |---|---|---|---|
-| `resolution.csv` | skips every `variant_key` already covered | an identity column changed, or a locus was resolved wrongly | hand-authored `source=manual` rows — real, and not reproducible by re-running (`reference_examples/cyp2c9_warfarin_grch37` carries three) |
+| `resolution.csv` | skips every `variant_key` already covered | an identity column changed, or a locus was resolved wrongly | hand-authored `source=manual` rows — real, and not reproducible by re-running (`reference_examples/cyp2c9_warfarin_grch37` carries three). Now an `insert` in the overlay |
 | `frequencies.csv` | merges; existing rows win | the variant set changed, or you want a newer gnomAD | nothing hand-written normally |
 | `gene_metrics.csv` | merges | the gene set changed | curator overrides, if any |
-| `literature.csv` | refetches nothing; **will not back-fill** the 0.6 licence columns onto older rows | you need the licence columns, or a `doi_checked` verdict re-put | a curator's deliberate blank, which merge cannot distinguish from an absent value |
+| `literature.csv` | refetches nothing; **will not back-fill** the 0.6 licence columns onto older rows | you need the licence columns, or a `doi_checked` verdict re-put | a curator's deliberate blank, which merge cannot distinguish from an absent value. Now an `update` with an empty `value` |
 | `gene_validity.csv`, `clinical_assertions.csv` | merge, per the governing sidecar rule — ENRICHER.md does not restate it for these two 0.6 passes | the source published a newer release | curator overrides |
-| `licensing.csv` (`sources.csv`) | never clobbers a row — **except** that `withdraw_stale_dataset` blanks `dataset` when rows were actually added, and `draft_digest` is re-stamped explicitly | rarely; the two machine-owned columns maintain themselves | the curator's hand-written terms, which is exactly what never-clobber protects |
+| `gwas_effects.csv` | merges on `association_id` | the catalog published new associations | curator overrides |
+| `licensing.csv` (`sources.csv`) | never clobbers a row — **except** that `withdraw_stale_dataset` blanks `dataset` when rows were actually added, and `draft_digest` is re-stamped explicitly | rarely; the two machine-owned columns maintain themselves | the curator's hand-written terms, which is exactly what never-clobber protects. **Outside the overlay's covered set**, deliberately — it is the one derived table a human is told to write |
 | `verification.json` | replaces **per check**, and never erases a check this run did not put | never by hand | the record of every other check |
 
 Two more rules that only bite on a second pass:

@@ -34,7 +34,60 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
+## 0.7.0 — the authored overlay over the derived tables
+
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher`.** The 0.7 minor is the batch
+left uncut on 2026-08-27 plus the twelve items decided in
+[PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md). Everything in it is additive under Principles 3 and 8.
+
+- **RM124 — `overrides.csv`, an authored overlay over the seven derived tables.** A correction to a
+  derived row now lives beside the spec rather than inside the file, so `resolution.csv`,
+  `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`,
+  `literature.csv` and `gwas_effects.csv` become pure build products — `derived = f(source, overlay)`.
+  Columns are `table`, `subject`, `member`, `field`, `operation`, `value`, `reason`, `decided_by`,
+  `decided_at`, with **`reason` required**: that is what makes the table a record rather than a knob.
+  Operations are `update` / `insert` / `suppress`, keyed `(table, subject, member, field)` with **one
+  `member` column whose meaning the named table fixes** rather than a per-table key grammar. An empty
+  `member` on a grouped table is group-scoped for `update` and refused for the other two. An `insert`
+  is written as several rows sharing `(table, subject, member)`, one per field, and lands at the end
+  of its subject's group in overlay order, because parquet bytes depend on row order.
+
+  **What it costs an existing module: nothing.** The table is optional, an absent optional table
+  contributes nothing to `content_signature`, and `overrides.parquet` sits **last** in
+  `ARTIFACT_PARQUETS`, so no published module's identity moves on either axis. The overlay is authored
+  input, so when a module carries one it is inside `content_signature` and byte-hashed into
+  `manifest.inputs` — editing a correction un-closes a module, which is correct.
+
+  **What it costs a second pass: also nothing, and that is the point.** Merge-not-clobber's *behaviour*
+  is unchanged — a re-run still gap-fills rather than re-asking every subject — but a recorded row now
+  carries no authored content, so a full re-derivation (`rm` plus a re-run) is free. Every writer of a
+  covered table says so in its docstring. `licensing.csv` / `sources.csv` is deliberately outside the
+  covered set: it has its own merge path and is the one derived table a human is told to write.
+
+  `reverse_module` emits the post-overlay derived tables **plus** the overlay, so the overlay applies
+  twice and the fixed point is checked by test rather than assumed — it holds because all three
+  operations are idempotent set operations, which is why there is no `previous_value` column. One
+  consequence stated rather than hidden: **no operation reports its own no-op**, because after a
+  reverse all three no-ops are true of a healthy module, so a `suppress` with a typo'd subject does
+  nothing and cannot warn. Two warnings do exist and are pinned in
+  [COMPILER § warning texts](COMPILER.md#warning-texts-a-consumer-keys-on) — an `update` reaching no
+  row, and an overlay naming a table the module does not carry.
+
+  `ProvenanceItem.outranks` still stands and the duplication is stated in
+  [SCHEMAS](SCHEMAS.md#the-authored-overlay-07-rm124--overridescsv) rather than hidden; the unification
+  is **RM135** on the 1.0 tracker, and 0.7 emits no deprecation warning because an author warned off
+  `outranks` today has nowhere to go.
+
+  **Cross-repo:** `just-dna-registry` needs `overrides.csv` added to `SPEC_DATA_FILES` /
+  `RECOGNIZED_SPEC_FILES`, or the file is dropped on the next re-publish — the way `licensing.csv` was
+  lost before their 0.16.2. Recorded in [INTEGRATION_0_6.md](INTEGRATION_0_6.md).
+
+- **RM83 — closed, not shipped.** Dissolved by RM124 rather than argued down: with the corrections in
+  the overlay there is nothing inside a sidecar to preserve, so the `--refresh` command it asked for
+  has no problem left to solve and the drift detection it wanted falls out of an ordinary
+  re-derivation. See [ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold).
+
+## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
 **Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately
 left uncut (2026-08-27).** The number is not decided, so nothing here names one: the replies'

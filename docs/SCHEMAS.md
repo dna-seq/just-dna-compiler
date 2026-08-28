@@ -39,6 +39,7 @@ is the maintained one, and where the two disagree this one is what a consumer ma
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
+| `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the seven derived tables (RM124) | `base`, `normalize`, `vocab`, and the seven derived row models |
 | `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `reference` | Drift-proof authoring reference generated from live models | spec/binning/pgx/pgs/manifest/normalize/vocab |
@@ -86,7 +87,8 @@ why a bound is where it is. `resolution.csv` is compiler *input*, produced by th
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
 the six derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `gene_validity.csv` / `clinical_assertions.csv` / `sources.csv`, which are therefore absent from the
-table below.
+table below. Since 0.7 an author corrects any of them through `overrides.csv`, which *is* authored and
+therefore *is* in the table — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
 **`sources.csv` is the one of those six a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
@@ -114,6 +116,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 | `pharm_variants.csv` | `pgx.PharmVariantRow` | single-variant drug response (PharmGKB) |
 | `pgs.csv` | `pgs.PgsRow` | PGS-Catalog-ID manifest + ancestry-validity fields |
 | `gwas_effects.csv` | `gwas.GwasEffectRow` | injected GWAS Catalog effect sizes (0.6, RM90; enricher-produced) |
+| `overrides.csv` | `overrides.OverrideRow` | the authored overlay over the seven derived tables (0.7, RM124) |
 
 ## Conventions (the idioms every model obeys)
 
@@ -1466,6 +1469,160 @@ downstream.
   downloaded where a source ships one, and pins it with `license_sha256`. A source→licence map in the
   compiler would be an un-injected reference (Principle 2) and would go stale — both halves of one did,
   inside a single release.
+
+## The authored overlay (0.7, RM124) — `overrides.csv`
+
+Every derived sidecar above was **merge-not-clobber**: an existing row is authoritative and a re-run
+adds to it rather than replacing it. The rule existed because these tables are human-overridable by
+design, and its consequence was the single most important operational fact about a second pass — *to
+re-derive a sidecar you delete it first, and deleting it discards every hand-curated row along with
+the stale ones.* `reference_examples/cyp2c9_warfarin_grch37/` carries three hand-authored
+`source="manual"` rows in `resolution.csv` that no re-run reproduces; `literature.csv`'s loss includes
+a curator's deliberate blank, which a merge cannot tell from an absent value in the first place.
+
+The 2026-08-12 cost amendment (CONSTITUTION Principle 9) names this class in its own words — *a
+derived table that is both machine-written and human-overridable can be edited into a state that is
+not merely stale but a false claim, which wants a mechanism rather than a convention.* RM45 discharged
+it for exactly one table by making `verification.json` unwritable by hand. `overrides.csv` discharges
+it for the seven where overriding **is** the intended feature.
+
+**The overlay lies on top of a derived table and is never merged into it.** The derived files become
+pure build products — `derived = f(source, overlay)` — and four things follow. Nothing is hand-edited,
+so re-derivation is non-destructive by construction rather than by a wrapper being careful. A
+difference between a fresh row and a previous one means the source revised, full stop. The reason for
+a correction travels with the module. And the terminal state becomes detectable, because an overlay
+row that no longer changes anything means the source caught up.
+
+### The columns, and the key
+
+`table`, `subject`, `member`, `field`, `operation`, `value`, `reason`, `decided_by`, `decided_at`.
+**`reason` is required, and that is what makes this a record rather than a knob.** `decided_by` and
+`decided_at` are optional; `decided_at` is canonicalized to UTC on load like every other timestamp
+that reaches `artifact.digest`, and a bare date reads as midnight.
+
+**The key is `(table, subject, member, field)`**, where `subject` names the group a derived row
+belongs to and `member` discriminates within it. One `member` column serves every covered table — a
+key that differs by table is a rule every reader re-derives, differently, which is why a per-table key
+grammar was rejected. The meaning of both is the named table's own:
+
+| `table` | `subject` is | `member` is |
+|---|---|---|
+| `resolution.csv` | `variant_key` | `locus_index` |
+| `frequencies.csv` | `variant_key` | `population` |
+| `gene_metrics.csv` | `gene` | `dataset` |
+| `gene_validity.csv` | `gene` | `assertion_id` |
+| `clinical_assertions.csv` | `variant_key` | `variation_id` |
+| `literature.csv` | `pmid` | — |
+| `gwas_effects.csv` | `association_id` | — |
+
+`sources.csv` / `licensing.csv` is deliberately **outside** the set: it has its own merge path and it
+is the one derived table the schema tells a human to hand-write, so an overlay over it would put a
+second spelling of the licence position beside the first. The registry is
+`overrides.OVERRIDABLE_TABLES` and a test asserts it equals *every* derived sidecar but that one.
+
+`gene_validity.csv` is the table whose key has two levels (`assertion_id`, else the gene's grain). A
+row the source published no `assertion_id` for can only be reached **group-scoped, by `gene`**, and
+not more finely. That is a stated limit rather than an oversight — spelling the five-column grain into
+`subject` would be the per-table key grammar this design exists to avoid.
+
+### The three operations, and the asymmetry between them
+
+`update` corrects one field of a derived row. `insert` supplies a row the source has no answer for,
+written as several overlay rows sharing `(table, subject, member)`, one per field, so the table has
+one shape rather than two. `suppress` removes a derived row the author rejects.
+
+**An empty `member` on a grouped table is group-scoped for `update`, and refused for `insert` and
+`suppress`.** A group-scoped correction is a coherent thing to want — *every locus this key resolves
+to has the wrong `source`* — and it is recoverable if wrong. A group-scoped suppression silently drops
+every locus for one `variant_key` when one was almost certainly meant, and is not recoverable by
+reading the result. A group-scoped insert is worse than destructive: the row it would create carries
+no member value, so nothing could ever match it again. An author who wants a whole group gone writes
+one row per member, and the count is small by construction.
+
+**The dead end that asymmetry leaves, stated rather than papered over.** A derived row whose *member
+column is null* cannot be named by any override, because an empty `member` cell already means "the
+whole group". A `gene_validity.csv` row the source published no `assertion_id` for, and a
+`clinical_assertions.csv` `not_found` row — whose null `variation_id` that model's own description
+calls a **value**, the record that the archive was consulted and holds nothing — are both reachable by
+a group-scoped `update` and unreachable by a `suppress`. A sentinel spelling for null was not invented
+for it: that would be a second key grammar inside the one column whose whole purpose is that there is
+only one. The refusal message names the case, and the remedy an author has is to correct the row or
+re-derive the table.
+
+**Key cells are matched as the target model *stores* them, not as the author spelled them.** The
+overlay carries raw author text and the derived rows carry canonical values, so the comparison is
+canonicalized by writing the cell onto a row of the table being corrected and reading back what the
+model kept. `FrequencyRow.population` is why: `normalize_population` lowercases, so a member `AFR`
+matched nothing in a table of `afr` — and the `insert` that followed believed its row was absent and
+appended a duplicate, once per `compile → reverse → compile` lap. Nothing caught it, since
+`frequencies.csv` has no duplicate-key check. `locus_index` is the same shape one type over (`01` is
+`1`). Canonicalizing through the model rather than through a table of per-column rules is deliberate:
+a table of rules is a second copy of every validator, and `population` was only the first of them.
+
+Two more refusals, both structural:
+
+- **`field` may not name the table's own `subject` or `member` column.** Re-keying a derived row is a
+  suppress plus an insert, not a correction — and an update that moved a key would leave its own
+  overlay row matching nothing on the next lap, so the warning would appear on a module's round trip
+  and not on the module.
+- **`suppress` names a row, so it carries neither `field` nor `value`**, and one `(table, subject,
+  member)` group carries exactly one operation.
+
+An `insert` places its row **at the end of its subject's group, in the order the overlay rows appear**
+— at the end of the table when the subject has no group yet. Row order is load-bearing (parquet bytes
+depend on it), so placement is a function of the overlay's own authored order, which the round trip
+already preserves, rather than of a sort over values a corrected cell could move.
+
+### What is deliberately silent, and what is not
+
+**No operation reports its own no-op.** `reverse_module` emits the post-overlay derived table *plus*
+the overlay, so on a recompile update-already-equal, insert-already-present and suppress-already-absent
+are all three true of a perfectly healthy module. Reporting any of them would make a module and its own
+round trip disagree on `manifest.compilation.warnings`, which is a published field. The consequence to
+know about is that a **`suppress` with a typo'd subject does nothing, forever, and cannot warn** —
+check a suppression by reading the compiled table, not by waiting for a message.
+
+The one mismatch that *is* stable across both laps is an `update` reaching no row, because an update
+never creates one. It warns in both modes and names both readings — the subject may be mistyped, or
+the source may have stopped publishing the row — because nothing in the compiler can separate them.
+
+An overlay row naming a table the module does not carry warns too, in both modes: **the overlay lies
+on top of a derived table and never creates one.**
+
+### Identity, and why the round trip needs no `previous_value` column
+
+The overlay is authored input, so it is inside `content_signature` and byte-hashed into
+`manifest.inputs` (and therefore inside the verification binding — editing a correction un-closes a
+module, correctly). **No published module's `content_signature` moves**, because an absent optional
+table contributes nothing, exactly as an unset optional column does. It also carries an
+`overrides.parquet`, **last** in `ARTIFACT_PARQUETS`, which is forced rather than chosen: `reverse` has
+nothing else to read the corrections back from, and the end of that tuple is the one slot where no
+already-published digest moves.
+
+The fact signatures and `resolution_signature` are over the derived tables **as they stand**,
+therefore post-overlay — a signature should describe what the module actually asserts.
+
+Reverse emitting the post-overlay table means the overlay applies twice, and the fixed point is
+**checked by test rather than assumed** (`compiler/tests/test_overrides_overlay.py`). It holds because
+all three operations are idempotent set operations by construction. The alternative — reverse emitting
+the *pre*-overlay table so the apply happens exactly once — would need the overlay to record the value
+it replaced, which is a derived cell inside an authored table and rots the moment the source moves.
+
+### The `outranks` succession, stated rather than hidden
+
+`manifest.ProvenanceItem.outranks: dict[str, str]` — `{column: why}`, an authored cell outranking a
+source, with prose — is the same concept one table over. **Both mechanisms stand in 0.7**, the
+duplication is stated here rather than left to be discovered, and the unification is filed as **RM135**
+on the 1.0 cleanup tracker. The rule that survives is the simpler one: the existence of an override in
+an authored table auto-beats the derived value, with no separate declaration to write.
+
+**0.7 emits no deprecation warning, and that is a Principle 3 decision rather than caution.** A
+deprecation belongs in a minor only where its audience can *act* on it. `outranks` covers an authored
+cell beating a source; the overlay covers derived tables. Until the overlay's semantics reach authored
+tables — the 1.0 work — an author warned off `outranks` has nowhere to go, and a warning nobody can
+clear is noise rather than notice. Merging the two now was rejected: it is legal only if the old form
+survives as a working derived alias, which means shipping the unification *and* its compatibility shim
+in a release where the overlay has no users yet.
 
 ## The verification attestation (0.6) — `verification.json`
 

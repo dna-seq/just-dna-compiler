@@ -53,6 +53,7 @@ from just_dna_format.layout import (
     resolve_sidecar,
     sidecar_spellings,
 )
+from just_dna_format.overrides import OverrideRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -61,6 +62,7 @@ from pydantic import BaseModel
 from just_dna_compiler.compiler import (
     _TABLE_DUPE_KEYS,
     _TABLE_KINDS,
+    OVERRIDES_CSV,
     _key_of,
     _list_cell,
     _list_fields,
@@ -80,11 +82,18 @@ from just_dna_compiler.compiler import (
 #: Both spellings of the licence table are keys (RM51). The map is keyed on the *filename* a caller
 #: names, so leaving the new one out would make `blank_template("licensing.csv")` deny that a table the
 #: compiler reads is a table of this format — the same false claim excluding `sources.csv` used to make.
+#: `overrides.csv` (0.7, RM124) is here for the same reason `sources.csv` is, one step further along:
+#: it is the table an author writes *instead of* editing a derived one, so `describe`/`template`/
+#: `requirements`/`stub`/`hint` must answer for it. Leaving it out would have every one of those
+#: surfaces tell an author following the documented route that the file they were told to write "is
+#: not an authored table of this format" — the exact false claim excluding `sources.csv` used to make.
+#: It has **one** legal spelling and one legal place (the spec root), so no `sidecar_spellings` here.
 DRAFTABLE: dict[str, type[BaseModel]] = {
     "variants.csv": VariantRow,
     "studies.csv": StudyRow,
     **{csv_name: model for csv_name, _, model in _TABLE_KINDS},
     **dict.fromkeys(sidecar_spellings(SOURCES_CSV), SourceRow),
+    OVERRIDES_CSV: OverrideRow,
 }
 
 # The SNP core's natural keys, the two `_TABLE_DUPE_KEYS` does not carry because the compiler checks

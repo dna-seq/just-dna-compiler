@@ -169,7 +169,10 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The Ensembl snapshot pipe-joins `alt`; every other link uses commas. `@snapshot-pipe-alt`
 - Resolution reads the PGx tables too; subjects dedupe with `variants.csv` first. `@resolution-reads-pgx-tables`
 - Reverse dropping `rsid_alternates` is closed, not a bug — don't re-flag it. `@rsid-alternates-closed`
-- A sidecar is merged, never clobbered — delete it to regenerate after a machinery change. `@sidecar-authoritative`
+- A sidecar is merged, never clobbered — delete it to regenerate after a machinery change; since 0.7 that delete is free. `@sidecar-authoritative`
+- A correction to a derived table goes in `overrides.csv`, applied and never merged in; it is a third category in neither table registry. `@overlay-not-inside`
+- The overlay applies twice (reverse emits the post-overlay table plus the overlay), so no operation may report its own no-op. `@overlay-not-inside`
+- Match an overlay key as the model **stores** it, never as the author spelled it — a raw compare grew the table one row per lap. `@overlay-not-inside`
 - Resolution reaches the positional tables too since 0.6; `authored_ident` is what keeps the fill out of `content_signature`. `@rm43-positional-fill`
 - Unreachable is not absent: write no row, name it separately, warn in both modes. `@unreachable-not-absent`
 - **Nobody-asked is a third state** beside asked-and-failed and asked-and-absent; `--offline` is where it bites. `@unreachable-not-absent`

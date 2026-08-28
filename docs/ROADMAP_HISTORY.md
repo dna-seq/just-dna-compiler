@@ -23,6 +23,107 @@ through 0.5.0, and every `RMn` that shipped before 0.6. This file starts at the 
 
 
 
+# The 0.7 line
+
+Decided per item with the maintainer on 2026-08-27/28 in
+[PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md), which is authoritative for the reasoning; what is here is
+what each item did when it landed.
+
+## RM124 — an author's correction to a derived table now has somewhere to live
+
+**Shipped in `just-dna-format` + `just-dna-compiler` + `just-dna-enricher` on 2026-08-28**, as
+`overrides.csv` — a new optional authored table, additive under Principles 3 and 8, so no published
+module's `content_signature` or `artifact.digest` moves. It is the keystone of the 0.7 round: RM83
+closes into it, RM130 was blocked on one of its questions, and RM128's central ask thins because of it.
+
+**What it discharges.** The 2026-08-12 cost amendment names the class in its own words — *a derived
+table that is both machine-written and human-overridable can be edited into a state that is not merely
+stale but a false claim, which wants a mechanism rather than a convention.* RM45 discharged that for
+exactly one table by making `verification.json` unwritable by hand. Nothing discharged it for the seven
+where overriding **is** the intended feature, and their merge-not-clobber rule meant that re-deriving
+one required deleting it, which discarded every hand-curated row in it.
+
+**The covered set is seven, and the number is a correction.** The proposal says "the six covered
+derived tables" and never enumerates them; the roadmap entry it inherits the number from does not
+either. The maintainer settled it on 2026-08-28 as every merge-not-clobber derived sidecar —
+`resolution.csv`, `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`,
+`clinical_assertions.csv`, `literature.csv`, `gwas_effects.csv` — with `sources.csv` / `licensing.csv`
+outside it, because it has its own merge path and is the one derived table the schema tells a human to
+write. `overrides.OVERRIDABLE_TABLES` is the registry and a test asserts the equality against the
+compiler's own table tuples rather than a floor.
+
+**Three decisions worth not re-deriving**, all of them recorded in
+[SCHEMAS § the authored overlay](SCHEMAS.md#the-authored-overlay-07-rm124--overridescsv):
+
+- **One `member` column, whose meaning the named table fixes**, rather than a per-table key grammar —
+  which is a rule every consumer would re-derive, differently. An empty `member` on a grouped table is
+  group-scoped for `update` and refused for `suppress` (not recoverable by reading the result) and for
+  `insert` (the row it would create carries no member value, so nothing could match it again).
+- **No `previous_value` column.** `reverse_module` emits the post-overlay derived table plus the
+  overlay, so the overlay applies twice; all three operations are idempotent set operations, so the
+  second lap is a fixed point, checked by test rather than assumed. The alternative would put a derived
+  cell inside an authored table, which rots the moment the source moves.
+- **No operation reports its own no-op**, and that is forced rather than tidy: after a reverse, all
+  three no-ops are true of a healthy module, so reporting any of them would make a module and its own
+  round trip disagree on `manifest.compilation.warnings`. The price is stated rather than hidden — a
+  `suppress` with a typo'd subject does nothing, forever, and cannot warn.
+
+**Merge-not-clobber's behaviour is unchanged and its cost is gone.** A re-run still gap-fills rather
+than re-asking every subject — re-asking was explicitly rejected, since it would put the full
+resolution time on every pass. What changed is that a recorded row now carries no authored content, so
+leaving it alone risks nothing and a full re-derivation (`rm` plus a re-run) is free. The seven writers'
+docstrings say so where a reader outside this repo actually meets them, in the same commit as the
+behaviour.
+
+**The `outranks` overlap is a dated succession rather than a merge.** Both mechanisms stand in 0.7, the
+duplication is stated in SCHEMAS, and the unification is [RM135](ROADMAP.md#rm135--provenanceitemoutranks-is-superseded-by-the-overlay-and-one-of-them-has-to-go)
+on the 1.0 tracker. 0.7 emits no deprecation warning, which is P3 rather than caution: an author warned
+off `outranks` has nowhere to go until the overlay reaches authored tables.
+
+**Coordination.** `just-dna-registry` rebuilds a spec directory from `RECOGNIZED_SPEC_FILES`, a
+hand-kept mirror of our table constants, and a name missing there is a file dropped on re-publish —
+which is how `licensing.csv` was lost before their 0.16.2. `overrides.csv` needs one entry added there;
+it is recorded in [INTEGRATION_0_6.md](INTEGRATION_0_6.md) rather than left to be discovered.
+
+## RM83 — a derived sidecar can only be refreshed by deleting it, which discards the overrides it exists to hold
+
+**Closed, not shipped, on 2026-08-28**, in the commit that landed RM124 and not before — a closure
+recorded against an unlanded dependency is the kind of bookkeeping that makes a ledger untrustworthy.
+**Dissolved rather than argued down**: the premise stopped holding.
+
+The entry named a missing operation, a `--refresh` that re-asks the source about recorded rows and
+reports the difference, and it had two halves. **The refresh half stops existing** — its problem was
+that re-deriving a sidecar means deleting it and losing the curator's rows, and once the derived files
+are pure build products with the corrections in the overlay there is nothing inside a sidecar to
+preserve, so `rm` costs nothing and needs no command wrapped around it to be safe. **The drift half
+stops being unperformable** — merge-not-clobber meant a re-run never re-asked about a recorded row, so
+a source that silently *revised* an answer moved no `fetched_at`, no fact signature and no digest,
+making MODULE_LIFECYCLE § 5.1's canary an instrument that could not fire, because detecting drift *was*
+the delete-and-re-derive that discarded the overrides. With the discard harmless, a full re-derivation
+is an ordinary operation and the canary fires from it.
+
+**The blocking question is answered rather than deferred.** The entry named it: on most sidecars
+nothing records that a row was overridden, so "re-derive the machine rows and keep the overrides" was
+not implementable, because the tier could not tell a curator's edit from what the source said last
+time. Under the overlay the tier never has to — the edit is recorded by construction and the derived
+row carries no authored content at all.
+
+**Nothing named in the entry is built.** No `--refresh` command, no proposed table beside the current
+one, no diffs file. What remains is a residue and it is a flag rather than a command: `enrich
+--rederive`, which stages a fresh table beside the current one and commits by rename (composing with
+RM128's transaction), so both files exist at the commit boundary and the report of what moved is free.
+The honest limit is stated with it — `rm` followed by a re-run destroys the old values before the fresh
+ones arrive, so that path re-derives silently and correctly and no report is possible.
+
+**Repairs rejected**, kept because each looks obvious from the headline: a diffs file or table tracking
+what moved between passes (version control with no consumer, beside the version control the author
+already has, over a file now regenerable from source plus overlay); a pass that *applies* the newer
+value (rewriting a curator-set cell destroys the evidence of the upstream change — still the rule, and
+the overlay does not soften it: an overlay row is the author's answer to a difference, never the
+tier's); and re-asking every subject on every run (dropping merge-not-clobber does not mean this, and
+reading it that way would put the full resolution time on every pass to buy drift detection nobody
+asked to run continuously).
+
 # The 2026-08-24 consumer round (S63–S74)
 
 Twelve items from two reporters, triaged in one pass. The per-item record is in

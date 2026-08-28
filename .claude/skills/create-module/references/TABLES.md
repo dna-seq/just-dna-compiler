@@ -23,12 +23,20 @@ Run `just-dna-compiler describe <kind>` for the columns and vocabularies; this f
 | a published polygenic score | `pgs.csv` | `pgs.PgsRow` | `(pgs_id, trait)` |
 
 Enricher-produced sidecars you never hand-author: `resolution.csv`, `frequencies.csv`,
-`gene_metrics.csv`, `literature.csv`, `licensing.csv`. The one exception is `licensing.csv` when you
-copied rows out of a source by hand — no pass ran, so no pass will write the row, and the compile gate
-reads that file and nothing else. (`sources.csv` is the older name for it; still read, and the compile
-tells you to rename it. Never keep both — a module carrying two copies is refused.)
+`gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `gwas_effects.csv`,
+`literature.csv`, `licensing.csv`. The one exception is `licensing.csv` when you copied rows out of a
+source by hand — no pass ran, so no pass will write the row, and the compile gate reads that file and
+nothing else. (`sources.csv` is the older name for it; still read, and the compile tells you to rename
+it. Never keep both — a module carrying two copies is refused.)
 
-Any of those five may sit either beside `module_spec.yaml` or in a `derived/` subdirectory, which is
+**Correcting one of them is a table too, and it is `overrides.csv`.** Never edit a derived file: it is
+a build product, so a re-derivation reproduces it and your edit is a value nothing preserves. Write one
+overlay row per column you are changing — `table`, `subject`, `member`, `field`, `operation`
+(`update`/`insert`/`suppress`), `value`, and a **required** `reason` — and the compiler applies it on
+every build. It covers all seven tables above except `licensing.csv`, which you write by hand anyway.
+The full rules are in the main workflow under module structure.
+
+Any of the enricher-produced files may sit either beside `module_spec.yaml` or in a `derived/` subdirectory, which is
 a way to show at a glance which files a tool produced. Pick one and stay there: a pass writes back to
 wherever it found the file, and the same table in both places is refused. Your hand-authored tables
 above stay beside `module_spec.yaml` — they have one legal place.

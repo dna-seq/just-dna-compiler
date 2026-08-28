@@ -588,6 +588,42 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
   already there exactly as it is.
 - **Write CSVs with a CSV writer, not by splitting on commas.** Several `conclusion` values contain
   commas, and a column shift usually surfaces as a bizarre validation error three columns away.
+- **Never hand-edit a derived table. Correct it in `overrides.csv` instead.** The seven machine-written
+  tables — `resolution.csv`, `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`,
+  `clinical_assertions.csv`, `literature.csv`, `gwas_effects.csv` — are build products: delete one and
+  re-run its pass and you get it back, which is why an edit inside it is a value nothing preserves. An
+  overlay row is applied on every compile and carries the reason it was made. (`licensing.csv` is the
+  exception both ways: you *do* write it by hand, and the overlay does not cover it.)
+
+  One row per column you are changing, with these cells:
+
+  | column | what goes in it |
+  | --- | --- |
+  | `table` | the derived file you are correcting, e.g. `resolution.csv` |
+  | `subject` | that table's own subject: `variant_key` for resolution/frequencies/clinical\_assertions, `gene` for gene\_metrics/gene\_validity, `pmid` for literature, `association_id` for gwas\_effects |
+  | `member` | the row within that subject: `locus_index`, `population`, `dataset`, `assertion_id`, `variation_id`. Leave empty for literature and gwas\_effects |
+  | `field` | the column being written. Empty for `suppress` |
+  | `operation` | `update`, `insert` or `suppress` |
+  | `value` | what to write. Empty on an `update` clears the cell |
+  | `reason` | **required** — one sentence saying what you checked |
+  | `decided_by`, `decided_at` | optional; a name and an ISO date |
+
+  Four rules the tool enforces, each worth knowing before it refuses you:
+
+  - **An `insert` is several rows sharing `(table, subject, member)`, one per column** you are
+    supplying, and it must supply everything that table requires. It lands at the end of its subject's
+    group, in the order you wrote the rows.
+  - **`field` may not name the table's own subject or member column.** Moving a row's key is a
+    `suppress` plus an `insert`, not a correction.
+  - **An empty `member` on a table that has one means *every row under this subject*, and only
+    `update` accepts it.** A wildcard `suppress` would drop a whole group and you could not see that it
+    had; a wildcard `insert` would create a row nothing could ever match again.
+  - **A `suppress` that matches nothing is silent — forever.** Nothing can warn about it, because after
+    a correction has been applied once, "the row is already gone" is the healthy state. Check a
+    suppression by reading the compiled table, not by waiting for a message. An `update` that matches
+    nothing *does* warn, and the two readings are equally likely: you mistyped the subject, or the
+    source stopped publishing that row.
+
 - **`verification.json` is machine-written and yours to keep, not to edit.** It records which checks
   ran against which release, and your closure. Editing it by hand breaks the hash it carries, and the
   compile then publishes nothing from it — which is the correct reading of a record that no longer

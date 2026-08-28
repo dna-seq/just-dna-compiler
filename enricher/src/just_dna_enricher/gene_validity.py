@@ -577,7 +577,19 @@ def _sort_key(row: GeneValidityRow) -> tuple:
 
 
 def _write_gene_validity_csv(rows: list[GeneValidityRow], output_path: Path) -> None:
-    """Write the table with a fixed column order and canonical cells (byte-stable across runs)."""
+    """Write the table with a fixed column order and canonical cells (byte-stable across runs).
+
+    **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
+    nothing preserves such an edit — a correction to a derived row belongs in `overrides.csv` beside
+    the spec, where the compiler applies it on every build and it travels with the reason it was
+    made. That is what makes deleting this file and re-running cost nothing: the author's judgements
+    are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
+    every subject; what changed is that leaving a recorded row alone now risks nothing.
+
+    An overlay row reaches one assertion by its `assertion_id`, which this table's own merge key uses
+    when the source published one. A row keyed only on the gene's grain can be corrected
+    group-scoped, by `gene`, and not more finely than that.
+    """
     with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()

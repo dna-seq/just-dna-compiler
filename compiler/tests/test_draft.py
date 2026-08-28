@@ -12,6 +12,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import (
+    OVERRIDES_CSV,
     _load_csv_rows,
     compile_module,
     reverse_module,
@@ -487,6 +488,12 @@ def _fill(kind: str, text: str) -> str:
                 row[column] = values.get(column, "1")
         if row.get("unresolved") == "false" and not row.get("measure_min"):
             row["measure_min"] = "1"  # a resolved bin needs at least one bound
+        if kind == OVERRIDES_CSV:
+            # An overlay row is valid only as a WHOLE: `field` must be a column of whatever table
+            # `table` names, and whether `member` is required depends on that same table's key.
+            # Neither is derivable from a per-column fill, so one coherent row is stated instead —
+            # the same shape as the resolved-bin fixup above, and for the same reason.
+            row.update({"table": "literature.csv", "operation": "update", "field": "doi"})
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()

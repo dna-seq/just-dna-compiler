@@ -133,6 +133,12 @@ from just_dna_format.manifest import (
     write_manifest,
 )
 from just_dna_format.normalize import now_utc_iso, parse_p_value, strip_authority_keys
+from just_dna_format.overrides import (
+    OVERRIDABLE_TABLES,
+    OverrideRow,
+    apply_overrides,
+    overlay_coherence_errors,
+)
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import (
     AlleleFunctionRow,
@@ -271,14 +277,52 @@ def _key_of(row: Any) -> tuple:
 # fact-table loop in `validate_spec` now runs `_validate_table_kind` too, which is what gives the
 # entry below its effect; registering the model alone would have done nothing.
 _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
-    (HaplotypeRow, AlleleFunctionRow, DiplotypeRow, PgsRow, PharmVariantRow, SourceRow), _key_of
+    (
+        HaplotypeRow,
+        AlleleFunctionRow,
+        DiplotypeRow,
+        PgsRow,
+        PharmVariantRow,
+        SourceRow,
+        # `OverrideRow` keys on `(table, subject, member, field)` — the overlay's own key. Two rows
+        # under it are two answers to one question with no defined order between them, which is the
+        # `SourceRow` failure one table over: a pair free to carry opposite values in the file a
+        # later stage keys on.
+        OverrideRow,
+    ),
+    _key_of,
 )
+
+#: The authored overlay (RM124). A **third category**, registered nowhere else on purpose.
+#:
+#: Not a `_TABLE_KINDS` entry: those are the module's own annotation tables, so one of them satisfies
+#: the "a module must carry at least one recognized table" check and each is a `LEAD_PARQUETS` member
+#: the reference consumer's discovery probes on. A directory carrying only corrections is not a
+#: module, and an overlay states nothing about a genotype.
+#:
+#: Not a `_FACT_TABLES` entry either, and so **not** in `_DERIVED_FILES`: those are machine-produced,
+#: fact-hashed and byte-hashed into `manifest.derived`. Every row of this one is written by a human,
+#: which is what puts it in `_INPUT_FILES` (raw-byte hashed into `manifest.inputs`, and so inside the
+#: verification binding — editing a correction un-closes a module, correctly) and inside
+#: `content_signature`.
+#:
+#: It carries a parquet regardless, and that is forced rather than chosen: `reverse_module` rebuilds a
+#: spec from the artifact and has nothing else to read the overlay back from, so without one
+#: `compile → reverse → compile` would silently drop every correction and move `content_signature` —
+#: Principle 7. The entry sits **last** in `ARTIFACT_PARQUETS`, where a module that carries no overlay
+#: keeps the digest it already had.
+#: **PUBLIC**, both of them, for the reason `ARTIFACT_PARQUETS` is: a downstream repo rebuilding a
+#: spec directory keeps a hand-written mirror of these names, and a name missing from it is a file
+#: silently dropped on the next re-publish. `draft.DRAFTABLE` reads the CSV name from here too.
+OVERRIDES_CSV: str = "overrides.csv"
+OVERRIDES_PARQUET: str = "overrides.parquet"
 
 _INPUT_FILES: tuple[str, ...] = (
     "module_spec.yaml",
     "variants.csv",
     "studies.csv",
     *_TABLE_KIND_CSVS,
+    OVERRIDES_CSV,
 )
 # PUBLIC, and the reason is a defect this list caused while it was private (S35). Every parquet a
 # compiled artifact may carry, in `artifact.digest` order — so it is also exactly what
@@ -307,6 +351,15 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # every module carrying a later table for no reason.
     "gwas_effects.parquet",
     "sources.parquet",
+    # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
+    # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
+    # position in this tuple is invisible to the digest; what protects every already-published module
+    # is that they carry no `overrides.csv`, so the file is absent and contributes nothing. (The
+    # position rule two entries up is about `manifest.artifact.files` and the emission order a reader
+    # sees, which is a real thing and a different one.) Last is simply where a new member belongs.
+    # It is also the only member here that is not derived from a source — see `OVERRIDES_CSV` for why
+    # it needs a parquet at all.
+    OVERRIDES_PARQUET,
 )
 
 # The **lead** parquets: the ten that carry a module's own annotation rows, one per authored table
@@ -3336,6 +3389,11 @@ def _validate_table_kind(
 _KNOWN_SPEC_FILES: frozenset[str] = frozenset(
     {"module_spec.yaml", "variants.csv", "studies.csv", _PROVENANCE_FILE, VERIFICATION_JSON}
     | set(_TABLE_KIND_CSVS)
+    # The overlay joins by its ONE legal name and deliberately not through `sidecar_spellings`: it is
+    # authored, so it has one place (the spec root) like `variants.csv`, and being in the authored set
+    # is what makes a stray `derived/overrides.csv` reported as a misplaced table rather than
+    # tolerated — the rows in it would otherwise be read from nowhere.
+    | {OVERRIDES_CSV}
     # Every accepted spelling, not just the one the registries name — a sidecar the compiler happily
     # reads under an alias must not also be reported as a near-miss stray file in the same run (RM51).
     | {name for csv, _, _ in _FACT_TABLES for name in sidecar_spellings(csv)}
@@ -3444,6 +3502,54 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
                     f"are fine): nothing outside the known table set reaches artifact.digest."
                 )
     return warnings
+
+
+def _load_overlay(spec_dir: Path) -> tuple[list[OverrideRow], list[str], list[str]]:
+    """Read `overrides.csv` and answer with `(rows, errors, warnings)` (RM124).
+
+    One loader for both public entry points, because both have to read it and a second copy is where
+    `validate` and `compile` learn to disagree — the parity rule this module keeps re-learning
+    (`@validate-refuses-all`). Everything it reports is structural: the rows parse or they do not, the
+    key is duplicated or it is not, a key group carries one operation or several. Nothing here
+    consults a derived table, which is what keeps every finding identical on both laps of a round
+    trip.
+
+    A file that is present with no rows is an **error**, the same answer `_TABLE_KINDS` gives: an
+    empty authored table is a header somebody meant to fill.
+    """
+    path = spec_dir / OVERRIDES_CSV
+    if not path.is_file():
+        return [], [], []
+    rows, errors, warnings = load_csv_rows(path, OverrideRow, OVERRIDES_CSV)
+    if errors:
+        return [], errors, warnings
+    if not rows:
+        return [], [f"{OVERRIDES_CSV} is present but has no rows."], warnings
+    key_errors, key_warnings = _validate_table_kind(OVERRIDES_CSV, OverrideRow, rows)
+    errors.extend(key_errors)
+    warnings.extend(key_warnings)
+    errors.extend(overlay_coherence_errors(rows))
+    return rows, errors, warnings
+
+
+def _overlay_targets_missing(overrides: list[OverrideRow], applied: set[str]) -> list[str]:
+    """Warn about an overlay row naming a derived table this module does not carry.
+
+    **The overlay lies on a table the module carries; it never creates one.** That is the scoping
+    decision and not an omission: a table's rows come from the pass that derives them, and inventing a
+    whole sidecar out of corrections would make the compiler a producer of facts, which is the line
+    Principle 2 draws. Warning rather than refusing, in both modes, because the honest reading is
+    ambiguous — the pass that writes the table may simply not have been run yet.
+    """
+    named = {row.table for row in overrides}
+    missing = sorted(named - applied)
+    if not missing:
+        return []
+    return [
+        f"{OVERRIDES_CSV} corrects {', '.join(missing)}, which this module does not carry. An "
+        f"overlay lies on top of a derived table and never creates one, so those rows change "
+        f"nothing. Run the pass that writes the table, or drop the override rows."
+    ]
 
 
 def validate_spec(
@@ -3594,6 +3700,15 @@ def validate_spec(
     # narrower exemption than "a cross-check": `_verify_vrs_ids` compares a `resolution.csv` row against
     # its own content-addressed id and consults nothing else, so being a sidecar check never made it a
     # cross-check. Lumping the two together is how it stayed compile-only.
+    #
+    # **The overlay is applied inside this loop, before any check reads a row** (RM124). Every check
+    # below asks what the module *asserts*, and since 0.7 that is the derived table plus the author's
+    # recorded corrections — so a check reading the raw sidecar would report a finding the artifact
+    # does not carry, and `compile` would then disagree with its own pre-flight.
+    overrides, overlay_errors, overlay_warnings = _load_overlay(spec_dir)
+    all_errors.extend(overlay_errors)
+    all_warnings.extend(overlay_warnings)
+    overlaid: set[str] = set()
     for csv_name, model in (
         ("resolution.csv", ResolutionRow),
         *((name, model) for name, _parquet, model in _FACT_TABLES),
@@ -3608,6 +3723,13 @@ def validate_spec(
         )
         all_errors.extend(injected_errors)
         all_warnings.extend(injected_warnings)
+        if not injected_errors and csv_name in OVERRIDABLE_TABLES:
+            overlaid.add(csv_name)
+            injected_rows, apply_errors, apply_warnings = apply_overrides(
+                csv_name, injected_rows, overrides
+            )
+            all_errors.extend(apply_errors)
+            all_warnings.extend(apply_warnings)
         if injected_rows and not injected_errors:
             # Table-level coherence for the fact tables too (RM107) — same function, same message, so
             # a duplicate key reads identically wherever it is found. Named by the file actually read
@@ -3667,6 +3789,9 @@ def validate_spec(
             # `compile_module`. It is also the refusal most expensive to discover late: a module drafted
             # entirely from a no-sale source compiles right up to the gate.
             all_errors.extend(_check_license_gate(injected_rows))
+
+    # After the loop, because it needs to know which covered tables were actually present.
+    all_warnings.extend(_overlay_targets_missing(overrides, overlaid))
 
     # The `panel:` block lost its last reader in 0.6 (RM4) and is removed at 1.0. Warn-only, and the
     # block still compiles and still reaches `manifest.panel` exactly as before — the charter's
@@ -4138,6 +4263,10 @@ def spec_tables(spec_dir: Path) -> tuple[dict[str, list[Any]], str]:
         ("variants.csv", VariantRow),
         ("studies.csv", StudyRow),
         *((csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS),
+        # The overlay is authored input, so it is content (RM124). No published module's signature
+        # moves: `content_signature` skips a table this loop finds no file for, exactly as an unset
+        # optional column contributes nothing, and no module published to date carries one.
+        (OVERRIDES_CSV, OverrideRow),
     ]
     tables: dict[str, list[Any]] = {}
     for csv_name, model in kinds:
@@ -4308,6 +4437,18 @@ def compile_module(
     # present it is the *preferred* resolution path: the compiler consumes already-resolved facts and
     # owns no source convention (Ensembl/DuckDB/provisioning) — the strict inject-only end state
     # (Principle 2). An injected `ensembl_cache` (the DuckDB path) is the superseded fallback (P3).
+    # The authored overlay (RM124), loaded before the first derived table it lies on. `validate_spec`
+    # above already reported every finding it has — this pass re-loads its own copy, the way it
+    # re-loads `variants.csv`, because the rows themselves are needed to build the artifact.
+    overrides, overlay_errors, overlay_warnings = _load_overlay(spec_dir)
+    if overlay_errors:
+        return CompilationResult(success=False, errors=overlay_errors, warnings=all_warnings)
+    # De-duplicated on the message like every other check that runs on both sides: the pre-flight
+    # already emitted these over the same bytes. Extended rather than discarded so a finding this
+    # loader gains later cannot go missing from a compile that never runs `validate` separately.
+    all_warnings.extend(w for w in overlay_warnings if w not in all_warnings)
+    overlaid: set[str] = set()
+
     resolution_rows: list[ResolutionRow] = []
     resolution_table: dict[str, list[ResolutionRow]] = {}
     resolution_sources: list[str] = []
@@ -4327,6 +4468,16 @@ def compile_module(
         )
         if res_errors:
             return CompilationResult(success=False, errors=res_errors, warnings=all_warnings)
+        # The overlay first, so everything below — the membership table, the VRS pass, the coverage
+        # count and `resolution_signature` — reads what the module asserts rather than what the last
+        # enrichment happened to write (RM124).
+        overlaid.add("resolution.csv")
+        resolution_rows, apply_errors, apply_warnings = apply_overrides(
+            "resolution.csv", resolution_rows, overrides
+        )
+        if apply_errors:
+            return CompilationResult(success=False, errors=apply_errors, warnings=all_warnings)
+        all_warnings.extend(w for w in apply_warnings if w not in all_warnings)
         for row in resolution_rows:
             resolution_table.setdefault(row.variant_key, []).append(row)
         # Content-addressed identities are checkable against themselves — do it before anything is
@@ -4792,6 +4943,15 @@ def compile_module(
         rows, fact_errors, _ = _load_csv_rows(fact_path, model, fact_path.name)
         if fact_errors:
             return CompilationResult(success=False, errors=fact_errors, warnings=all_warnings)
+        # The overlay, before the table's own check runs (RM124) — the check reports on what the
+        # module asserts, and the parquet, the fact signature and the manifest block are all built
+        # from the same post-overlay rows.
+        if csv_name in OVERRIDABLE_TABLES:
+            overlaid.add(csv_name)
+            rows, apply_errors, apply_warnings = apply_overrides(csv_name, rows, overrides)
+            if apply_errors:
+                return CompilationResult(success=False, errors=apply_errors, warnings=all_warnings)
+            all_warnings.extend(w for w in apply_warnings if w not in all_warnings)
         check, build = _FACT_HANDLERS[model]
         # **The check sees every row; everything after it sees the kept ones** (RM79). A literature
         # row for a citation no study and no bin names joins to nothing, so carrying it into the
@@ -4808,6 +4968,20 @@ def compile_module(
         fact_df = build(rows)
         fact_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = fact_df.height
+
+    # De-duplicated on the message like every other check that runs on both sides: `validate_spec`
+    # ran this over the same overlay and `all_warnings` was seeded from its result.
+    all_warnings.extend(
+        w for w in _overlay_targets_missing(overrides, overlaid) if w not in all_warnings
+    )
+
+    # The overlay itself, materialized verbatim and in authored order — it is authored input, so it
+    # goes to parquet the way `variants.csv` does rather than being re-derived from what it changed.
+    # This is what `reverse_module` reads the corrections back out of (RM124).
+    if overrides:
+        overlay_df = _build_table(overrides, OverrideRow, module_name)
+        overlay_df.write_parquet(output_dir / OVERRIDES_PARQUET, compression=compression)
+        table_rows[OVERRIDES_PARQUET] = overlay_df.height
 
     frequency_rows: list[FrequencyRow] = fact_rows.get(FrequencyRow, [])
     gene_metrics_rows: list[GeneMetricsRow] = fact_rows.get(GeneMetricsRow, [])
@@ -6661,6 +6835,23 @@ def reverse_module(
         fact_path = parquet_dir / parquet_name
         if fact_path.is_file():
             _write_table_csv(pl.read_parquet(fact_path), model, sidecar_paths[csv_name])
+
+    # The authored overlay (RM124), at the spec **root** and under its one legal name — it is authored
+    # like `variants.csv`, not a machine-written sidecar, so it does not go through `sidecar_paths`.
+    #
+    # **This emits the post-overlay derived tables above AND the overlay, so the overlay applies
+    # twice, and that is the design rather than an oversight.** The alternative — emitting the
+    # *pre*-overlay tables so the apply happens exactly once — needs the overlay to record the value
+    # it replaced, which is a derived cell inside an authored table and rots the moment the source
+    # moves. All three operations are idempotent set operations instead (an update to a value already
+    # present, an insert of a row already keyed, a suppress of a row already absent are each a
+    # no-op), so the second lap is a fixed point and buys the round trip at no schema cost. It is
+    # checked by test, never assumed — Principle 7 requires that of every derivation.
+    overlay_parquet = parquet_dir / OVERRIDES_PARQUET
+    if overlay_parquet.is_file():
+        _write_table_csv(
+            pl.read_parquet(overlay_parquet), OverrideRow, output_dir / OVERRIDES_CSV
+        )
 
     return output_dir
 

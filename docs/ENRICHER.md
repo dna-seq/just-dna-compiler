@@ -2744,6 +2744,26 @@ one subject legitimately carries several rows.
 | `literature.csv` | `pmid` | equality | one article, one row |
 | `sources.csv` / `licensing.csv` | `(source, layer)` | equality | one source legitimately appears at two layers |
 
+### What a re-run does since 0.7, and what it no longer costs (RM124)
+
+Merge-not-clobber's *behaviour* is unchanged and deliberately so: a re-run **gap-fills** — it fills
+subjects with no row and leaves recorded rows alone. Re-asking every subject on every pass was
+rejected, because it would put the full resolution time on every run to buy drift detection nobody
+asked to run continuously.
+
+What changed is what leaving a recorded row alone risks, and the answer is now **nothing**. A
+curator's correction to any of the seven tables above except `licensing.csv` lives in `overrides.csv`
+beside the spec, not inside the sidecar; the compiler applies it on every build. So every derived file
+this tier writes is a pure build product, hand-editing one is not expected, and `rm` plus a re-run —
+the crude form of a full re-derivation — costs nothing. Each writer's docstring says so at the point a
+reader outside this repo actually meets it.
+
+Two consequences for a pass author. A row this tier writes carries **no authored content**, so a pass
+may reason about it as the source's answer and nothing else. And a difference between a fresh row and
+a recorded one now means the source revised, full stop — the ambiguity that made "re-derive the machine
+rows and keep the overrides" unimplementable is gone, because the tier never has to tell a curator's
+edit from what the source said last time.
+
 **Read `rule` as well as `columns`.** `resolution.csv` is the only `subject` table today, and treating
 its key as a uniqueness constraint would report a legal one-to-many file as a duplicate. **And read
 `fallback`** — `gene_validity.csv` is the only table with one, and a consumer ignoring it is right

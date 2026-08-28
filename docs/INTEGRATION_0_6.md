@@ -738,3 +738,35 @@ verdict from "unchecked" to "your table is broken".
 `gene_validity`'s conflation has been there since the pass existed. They are recorded against 0.6.1
 because that is when a consumer looked, and because § 7's RM97 row told you the client half was
 finished when it was not.
+
+## 9. The one 0.7 change a consumer must act on before the release lands
+
+`overrides.csv` (RM124) is a **new authored file in the spec directory**, and one repo has to be told
+its name.
+
+**`just-dna-registry` — one entry, and it is the same one-line change every new table kind needs.**
+The registry rebuilds a spec directory from `RECOGNIZED_SPEC_FILES`, built from `SPEC_DATA_FILES` — a
+hand-kept mirror of our table constants. **A name missing there is a file dropped on the next
+re-publish**, which is how `licensing.csv` was lost before their 0.16.2. Add `overrides.csv` to
+`SPEC_DATA_FILES`. The consequence of not doing it is worse than for an ordinary table: an overlay row
+is an author's recorded judgement that a derived value is wrong, and losing it silently restores the
+value they rejected while leaving the module compiling green.
+
+**Everyone else: nothing to do, and nothing breaks.** The table is optional and no module published to
+date carries one, so neither `content_signature` nor `artifact.digest` moves anywhere. When a module
+*does* carry one:
+
+- **The compiled artifact gains `overrides.parquet`**, last in `artifact.files` and therefore last in
+  the digest. A consumer iterating `artifact.files` sees one more entry; a consumer reading a fixed
+  list of parquets is unaffected, because nothing else moved.
+- **Read the derived parquets, not the derived CSVs, if you want what the module asserts.** The
+  overlay is applied at compile, so `frequencies.parquet` and its siblings are post-overlay while the
+  CSVs beside the spec stay exactly as the enricher wrote them. That asymmetry is the design: the CSV
+  is a build product and the overlay is the authored correction on top of it.
+- **`reverse` round-trips it**, so a registry that splits and rebuilds trees carries the corrections
+  through unchanged — provided the filename is recognised, which is the entry above.
+
+`ProvenanceItem.outranks` is unchanged and **not deprecated in 0.7**. If you read it, keep reading it;
+its succession by the overlay is filed as RM135 for 1.0 and will ship with a deprecation warning only
+once the overlay reaches authored tables, which is where an author warned off `outranks` would have
+somewhere to go.
