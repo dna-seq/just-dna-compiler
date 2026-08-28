@@ -25,6 +25,7 @@ from just_dna_format.integrity import IntegrityError, verify_manifest
 from just_dna_format.layout import SidecarCollision
 from just_dna_format.manifest import ModuleManifest, read_manifest, write_manifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
+from just_dna_format.release_records import release_version
 from just_dna_format.reference import authoring_reference, json_schemas
 from just_dna_format.signing import (
     generate_private_key_pem,
@@ -643,7 +644,10 @@ def sweep(
     release: str | None = typer.Option(
         None,
         "--release",
-        help="Run the release gate against the ReleaseRecord for this version. Exit 1 on a finding.",
+        help=(
+            "Run the release gate against the ReleaseRecord for this version (`0.7.0`, or the "
+            "stamped `just-dna-compiler 0.7.0`). Exit 1 on a finding."
+        ),
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit the measurement as JSON."),
 ) -> None:
@@ -676,7 +680,15 @@ def sweep(
     # flag is a release script piping to `jq`, and a note or a success line printed after the blob
     # breaks the very consumer the flag exists for. The gate's own prose goes to stderr there.
     gate_stream = bool(as_json)
-    findings, notes = gate_findings(measurement, release)
+    # `--release` accepts either spelling for the same reason `needs_recompile` does: a maintainer
+    # pasting the stamped `just-dna-compiler 0.7.0` out of a manifest must not be told the release
+    # has no record when it has one.
+    try:
+        gated = release_version(release)
+    except ValueError as exc:
+        typer.secho(f"  error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    findings, notes = gate_findings(measurement, gated)
     for note in notes:
         typer.secho(f"  note: {note}", fg=typer.colors.BLUE, err=gate_stream)
     for finding in findings:
@@ -684,7 +696,7 @@ def sweep(
     if findings:
         raise typer.Exit(code=1)
     typer.secho(
-        f"release record for {release} covers the measurement",
+        f"release record for {gated} covers the measurement",
         fg=typer.colors.GREEN,
         err=gate_stream,
     )

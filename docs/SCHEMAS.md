@@ -2066,6 +2066,12 @@ A record must answer **every** axis (the validator asserts an equality over the 
 subset), and may answer `None` where a release could not measure one — which is how an axis added
 later stays honest about the intervals before it.
 
+The blunting reaches the **detail**, not only the axes: an overshooting link's `manifest_fields` and
+`declared` land in `out_of_span_manifest_fields` / `out_of_span_declared` rather than in the main
+tuples. `corrections` is the field a registry spends an immutable PATCH on, so reporting one there
+while the axis beside it says *cannot say* would be one object contradicting itself. Withheld, not
+dropped — a caller who wants the wider-span evidence can read it knowing what it is.
+
 ### The roster — what a consumer can recompute instead of asking
 
 `AUTHORED_ROW_DERIVED_FIELDS` names which manifest fields are pure functions of the authored rows, so a

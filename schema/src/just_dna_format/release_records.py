@@ -235,13 +235,26 @@ class RecompileAnswer:
     current: str
     axes: dict[str, bool | None]
     manifest_fields: tuple[str, ...]
+    """Fields that moved **inside** the asked interval. An overshooting link's are withheld here."""
     declared: tuple[DeclaredChange, ...]
+    """Declarations attributable to the asked interval. An overshooting link's are withheld here."""
     covered: tuple[str, ...]
     """The releases whose records were folded in, newest first. Empty for a self-interval."""
     complete: bool
     """Whether the chain covered `(compiled_under, current]` exactly, with no gap and no overshoot."""
     span: tuple[str, str]
     """The interval the answer actually describes, which an overshooting link makes wider than asked."""
+    out_of_span_manifest_fields: tuple[str, ...] = ()
+    """Fields a link covering a WIDER span reports, which may have moved outside the asked one."""
+    out_of_span_declared: tuple[DeclaredChange, ...] = ()
+    """The same for declarations, and the reason both of these exist rather than being folded in.
+
+    `_blunt_to_unknown` already refuses to narrow a `True` axis, so an overshooting link answers
+    *cannot say* — and folding that link's `manifest_fields` and `declared` into the main tuples
+    anyway would contradict the axis in the same object. A registry acting on `corrections` burns an
+    immutable PATCH, and *this moved somewhere in a wider interval* is not a fact about the artifact
+    in front of them. Withheld here rather than dropped: they are still the best evidence available,
+    and a caller who wants them can read them knowing what they are."""
 
     @property
     def output_differs(self) -> bool | None:
@@ -350,7 +363,9 @@ def needs_recompile(
 
     axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
     fields: set[str] = set()
+    outside_fields: set[str] = set()
     declared: list[DeclaredChange] = []
+    outside_declared: list[DeclaredChange] = []
     covered: list[str] = []
     cursor = high
     complete = True
@@ -370,14 +385,22 @@ def needs_recompile(
                 f"release record {record.version} points at {record.previous}, which is not below "
                 "it — the chain would not terminate"
             )
-        contribution = record.axes if step >= low else _blunt_to_unknown(record.axes)
+        # A link reaching below the asked bound answers a wider question. Its axes are blunted, and
+        # its detail goes to the out-of-span tuples for the same reason — reporting a correction
+        # under `corrections` while the axis beside it says *cannot say* would be one object
+        # contradicting itself, and `corrections` is the field a registry spends a version number on.
+        overshoots = step < low
+        contribution = _blunt_to_unknown(record.axes) if overshoots else record.axes
         axes = {axis: _kleene_or(axes[axis], contribution.get(axis)) for axis in axes}
-        if contribution.get("manifest_fields") is not False:
-            fields.update(record.manifest_fields)
-        declared.extend(record.declared)
-        covered.append(record.version)
-        if step < low:
+        if overshoots:
+            outside_fields.update(record.manifest_fields)
+            outside_declared.extend(record.declared)
             complete = False
+        else:
+            if record.axes.get("manifest_fields") is not False:
+                fields.update(record.manifest_fields)
+            declared.extend(record.declared)
+        covered.append(record.version)
         reached = step
         cursor = step
 
@@ -390,6 +413,8 @@ def needs_recompile(
         covered=tuple(covered),
         complete=complete,
         span=(str(min(reached, low)), current),
+        out_of_span_manifest_fields=tuple(sorted(outside_fields)),
+        out_of_span_declared=tuple(outside_declared),
     )
 
 

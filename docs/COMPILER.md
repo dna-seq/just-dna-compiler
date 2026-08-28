@@ -1549,17 +1549,27 @@ release actually installed. A release whose sweep shows a changed axis or field 
 declares **fails**.
 
 ```bash
+# Fresh trees every time. `compile_module` only mkdir -p's its output, so reusing a fixed path
+# inherits the last cut's modules: a renamed one lingers as a stale directory the sweep still reads,
+# and a parquet a module no longer emits still gets globbed into its schema.
+BEFORE=$(mktemp -d) && AFTER=$(mktemp -d)
+
 # 1. the BEFORE side, under the previous published release, against THIS tree's specs
 for d in reference_examples/*/; do
   uv run --isolated --no-project \
     --with just-dna-compiler==<previous> --with just-dna-format==<previous> \
-    just-dna-compiler compile "$d" "/tmp/sweep-before/$(basename "$d")"
+    just-dna-compiler compile "$d" "$BEFORE/$(basename "$d")"
 done
 
-# 2. bump the versions, `uv sync`, then measure and gate
-uv run just-dna-compiler sweep /tmp/sweep-before /tmp/sweep-after \
-  --spec-root reference_examples/ --release <new>
+# 2. bump the versions, `uv sync`, THEN measure and gate — in that order, see below
+uv run just-dna-compiler sweep "$BEFORE" "$AFTER" --spec-root reference_examples/ --release <new>
 ```
+
+**`uv sync` before the sweep, not after.** `--spec-root` builds the AFTER tree with whatever compiler
+is installed, so running the sweep on a stale environment measures the previous release against
+itself: every axis reads `False` and the whole thing looks like a clean release that changed nothing.
+The gate refuses it — it checks the interval's **upper** end against `--release` and rejects a
+degenerate interval outright — but the fastest way not to meet that message is to sync first.
 
 Step 2 exits 1 until `release_records.RELEASE_RECORDS` gains an entry for `<new>` covering what moved.
 The measured half is what `SweepMeasurement.as_record(...)` produces — with an **empty** `declared`
@@ -1572,13 +1582,24 @@ mechanism.
 Named constants, for the same reason a warning's text is: a release script greps them.
 
 ```python
-NO_RECORD_PHRASE        = "has no release record"
-UNDECLARED_AXIS_PHRASE  = "moved and the release record does not record it moving"
-UNDECLARED_FIELD_PHRASE = "moved and the release record does not list it"
-UNDECLARED_KIND_PHRASE  = "moved and nothing declares it a correction or an addition"
-WRONG_PREVIOUS_PHRASE   = "was measured against a release the record does not name"
-OVERDECLARED_NOTE_PHRASE = "is declared and this sweep did not see it move"
+NO_RECORD_PHRASE           = "has no release record"
+UNDECLARED_AXIS_PHRASE     = "moved and the release record does not record it moving"
+UNDECLARED_FIELD_PHRASE    = "moved and the release record does not list it"
+UNDECLARED_KIND_PHRASE     = "moved and nothing declares it a correction or an addition"
+WRONG_PREVIOUS_PHRASE      = "was measured against a release the record does not name"
+WRONG_VERSION_PHRASE       = "did not measure the release being gated"
+DEGENERATE_INTERVAL_PHRASE = "measured one release against itself, so it measured nothing"
+UNMEASURED_MODULE_PHRASE   = "could not be measured on both sides, so the sweep says nothing about it"
+NO_MODULES_PHRASE          = "measured no module at all"
+OVERDECLARED_NOTE_PHRASE   = "is declared and this sweep did not see it move"
 ```
+
+The middle four are about the **sweep** rather than about the record, and they exist because a gate
+that only asked *is this movement declared?* passed every sweep that measured nothing. A stale
+environment, a module whose compile broke under the new release, and two trees sharing no module at
+all all produce an all-`False` measurement, and none of them is a release that changed nothing.
+`--release` accepts the stamped `just-dna-compiler X.Y.Z` spelling as well as the bare one, for the
+same reason `needs_recompile` does.
 
 The last is a **note, not a finding**, and does not fail the release: the reference corpus is sixteen
 modules and a real correction can land on a shape none of them has. It is still printed, so

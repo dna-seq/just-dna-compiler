@@ -50,6 +50,10 @@ UNDECLARED_AXIS_PHRASE = "moved and the release record does not record it moving
 UNDECLARED_FIELD_PHRASE = "moved and the release record does not list it"
 UNDECLARED_KIND_PHRASE = "moved and nothing declares it a correction or an addition"
 WRONG_PREVIOUS_PHRASE = "was measured against a release the record does not name"
+WRONG_VERSION_PHRASE = "did not measure the release being gated"
+DEGENERATE_INTERVAL_PHRASE = "measured one release against itself, so it measured nothing"
+UNMEASURED_MODULE_PHRASE = "could not be measured on both sides, so the sweep says nothing about it"
+NO_MODULES_PHRASE = "measured no module at all"
 OVERDECLARED_NOTE_PHRASE = "is declared and this sweep did not see it move"
 
 
@@ -129,7 +133,20 @@ class SweepMeasurement:
         Produces a record with an **empty** `declared` list on purpose: the gate then refuses it
         until somebody says whether each moved value was wrong or merely absent, which is the whole
         mechanism that keeps this from becoming a map somebody maintains by memory.
+
+        Refuses to stamp an interval this measurement did not take. A record whose `version` and
+        `previous` disagree with its own `evidence` sentence is the hand-kept map again, one field
+        smaller.
         """
+        if (
+            release_version(version) != self.after
+            or release_version(previous) != self.before
+            or self.before == self.after
+        ):
+            raise ValueError(
+                f"this sweep measured {self.before} -> {self.after}, so it cannot mint a record for "
+                f"{previous} -> {version}"
+            )
         return ReleaseRecord(
             version=version,
             previous=previous,
@@ -179,9 +196,17 @@ def build_outputs(spec_root: Path, out_root: Path) -> dict[str, ModuleOutput]:
     for spec in specs:
         result = compile_module(spec, out_root / spec.name)
         if not result.success:
+            # Not silently skipped: the module lands outside `built`, so it reaches `unmeasured` and
+            # the gate refuses the release. A sweep that quietly measured the modules that still work
+            # is the silence this whole surface exists to replace.
             logger.warning("sweep: %s did not compile: %s", spec.name, "; ".join(result.errors))
             continue
         built[spec.name] = read_output(out_root / spec.name)
+    if not built:
+        raise ValueError(
+            f"no spec under {spec_root} compiled — nothing to measure (this is a broken compiler, "
+            "not a release that changed nothing)"
+        )
     return built
 
 
@@ -318,27 +343,59 @@ def gate_findings(
 ) -> tuple[list[str], list[str]]:
     """`(findings, notes)` — the release gate. A non-empty `findings` fails the release.
 
-    A finding is a measured movement no declaration covers. A **note** is the other direction — a
-    declaration this sweep did not see move — and it is deliberately not a failure: the reference
-    corpus is sixteen modules and a real correction can land on a shape none of them has.
+    A finding is a measured movement no declaration covers, **or a sweep that did not measure what
+    the caller thinks it did**. The second half is not decoration: the likeliest operator error in
+    the documented sequence is running the sweep before `uv sync` has propagated the version bump,
+    which builds the AFTER tree with the *previous* release still installed. Both sides are then one
+    compiler, every axis reads `False`, and a gate checking only the lower end of the interval passes
+    a release it never measured — a false green in the one mechanism the whole item rests on. So the
+    interval's **upper** end is checked against the version being gated, a degenerate interval is
+    refused outright, and a module that compiled on one side only fails rather than vanishing into an
+    all-`False` result over its surviving neighbours.
+
+    A **note** is the other direction — a declaration this sweep did not see move — and it is
+    deliberately not a failure: the reference corpus is sixteen modules and a real correction can land
+    on a shape none of them has.
 
     The gate runs in the bump → `uv sync` → tag sequence rather than as an ordinary test, because it
     needs the previous release actually installed.
     """
     table = RELEASE_RECORDS if records is None else records
-    record = table.get(version)
-    if record is None:
-        return (
-            [
-                f"{version} {NO_RECORD_PHRASE}: a release that changed compiled output must declare "
-                "what it changed, and a release where nothing moved must record the measured zero "
-                "with its evidence"
-            ],
-            [],
-        )
-
+    version = release_version(version)
     findings: list[str] = []
     notes: list[str] = []
+
+    # The interval checks come first and are unconditional, because every one of them describes a
+    # sweep that did not measure what the caller thinks it measured — and a record cannot cover a
+    # measurement that was never taken.
+    if measurement.before == measurement.after:
+        findings.append(
+            f"the sweep {DEGENERATE_INTERVAL_PHRASE}: both trees are stamped {measurement.after}. "
+            "The likeliest cause is the documented sequence run before `uv sync` propagated the "
+            "version bump, so the AFTER tree was built by the previous release"
+        )
+    if measurement.after != version:
+        findings.append(
+            f"the sweep {WRONG_VERSION_PHRASE}: measured {measurement.before} → "
+            f"{measurement.after}, gating {version}"
+        )
+    if not measurement.modules:
+        findings.append(f"the sweep {NO_MODULES_PHRASE}: the two trees share no module")
+    for name in measurement.unmeasured:
+        findings.append(
+            f"{name} {UNMEASURED_MODULE_PHRASE} — it compiled on one side only, which under the "
+            "documented one-spec-root sequence means a compile failed"
+        )
+
+    record = table.get(version)
+    if record is None:
+        findings.append(
+            f"{version} {NO_RECORD_PHRASE}: a release that changed compiled output must declare "
+            "what it changed, and a release where nothing moved must record the measured zero "
+            "with its evidence"
+        )
+        return findings, notes
+
     if record.previous != measurement.before:
         findings.append(
             f"the sweep {WRONG_PREVIOUS_PHRASE}: measured {measurement.before} → "

@@ -27,8 +27,12 @@ import pytest
 from just_dna_compiler.cli import app
 from just_dna_compiler.compiler import compile_module, module_stats, spec_tables
 from just_dna_compiler.sweep import (
+    DEGENERATE_INTERVAL_PHRASE,
     ModuleOutput,
+    NO_MODULES_PHRASE,
     NO_RECORD_PHRASE,
+    UNMEASURED_MODULE_PHRASE,
+    WRONG_VERSION_PHRASE,
     OVERDECLARED_NOTE_PHRASE,
     UNDECLARED_AXIS_PHRASE,
     UNDECLARED_FIELD_PHRASE,
@@ -209,12 +213,10 @@ def test_the_sweep_over_the_real_corpus_reports_a_measured_zero_with_its_denomin
     assert measurement.moved_counts == {axis: 0 for axis in VALID_RELEASE_OUTPUT_AXES}
     assert f"{len(measurement.modules)} reference module(s)" in measurement.evidence
     assert f"content_signature 0/{len(measurement.modules)}" in measurement.evidence
-    # The record the sweep hands to the author is measured and *undeclared*, which is what makes the
-    # gate refuse it until somebody says whether each movement was a correction or an addition.
-    record = measurement.as_record(version="9.9.9", previous=measurement.before)
-    assert record.declared == []
-    assert record.evidence == measurement.evidence
     assert measurement_json(measurement)["axes"] == measurement.axes
+    # Both sides are this compiler, so the interval is degenerate and no record can come out of it.
+    with pytest.raises(ValueError, match="cannot mint a record"):
+        measurement.as_record(version=measurement.after, previous=measurement.before)
 
 
 def test_a_side_stamped_with_two_releases_is_refused(tmp_path: Path) -> None:
@@ -256,6 +258,93 @@ def test_the_gate_fails_a_release_with_no_record_at_all(tmp_path: Path) -> None:
     assert notes == []
     assert len(findings) == 1
     assert NO_RECORD_PHRASE in findings[0]
+
+
+def test_the_gate_refuses_a_sweep_that_did_not_measure_the_release_being_gated(
+    tmp_path: Path,
+) -> None:
+    """The likeliest operator error, and it used to gate green.
+
+    The documented sequence is bump → `uv sync` → measure. Run it before `uv sync` propagates the
+    bump and `--spec-root` builds the AFTER tree with the *previous* release still installed: both
+    sides are one compiler, every axis reads `False`, and a gate checking only the interval's lower
+    end finds nothing wrong with a release it never measured. That is a false green in the one
+    mechanism the whole item rests on, so the upper end is checked too — and a degenerate interval is
+    refused outright rather than being allowed to read as a measured zero.
+    """
+    stale = _measurement(tmp_path)
+    stale = replace(stale, before="0.6.6", after="0.6.6")
+    record = ReleaseRecord(
+        version="0.7.0",
+        previous="0.6.6",
+        axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+        evidence="a record whose lower end matches the stale sweep",
+    )
+    findings, _ = gate_findings(stale, "0.7.0", {"0.7.0": record})
+
+    assert any(DEGENERATE_INTERVAL_PHRASE in f for f in findings)
+    assert any(WRONG_VERSION_PHRASE in f for f in findings)
+
+
+def test_the_gate_refuses_a_release_whose_sweep_could_not_measure_every_module(
+    tmp_path: Path,
+) -> None:
+    """A module that compiled on one side only is a module the sweep says nothing about.
+
+    Under the one-spec-root sequence there is no innocent reading: both sides see the same specs, so
+    a module missing from one is a compile that failed. Rolling it into an all-`False` result over
+    its surviving neighbours is the silence this whole surface exists to replace, and
+    `SweepMeasurement`'s own docstring says so.
+    """
+    measurement = replace(_measurement(tmp_path), unmeasured=("cyp2c19_star_alleles",))
+    record = ReleaseRecord(
+        version="1.0.1",
+        previous="1.0.0",
+        axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+        evidence="claims a measured zero over what survived",
+    )
+    findings, _ = gate_findings(measurement, "1.0.1", {"1.0.1": record})
+
+    assert any(UNMEASURED_MODULE_PHRASE in f and "cyp2c19_star_alleles" in f for f in findings)
+
+
+def test_the_gate_refuses_a_sweep_with_no_module_in_common(tmp_path: Path) -> None:
+    """A 0/0 denominator is not a measured zero. `@tautology-zero`, one surface over."""
+    empty = replace(_measurement(tmp_path), modules=(), per_module=())
+    findings, _ = gate_findings(empty, "1.0.1", {})
+
+    assert any(NO_MODULES_PHRASE in f for f in findings)
+
+
+def test_the_gate_accepts_the_stamped_spelling_of_the_release_it_gates(tmp_path: Path) -> None:
+    """`release_version` exists so one convention does not become three; the gate uses it too."""
+    axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    record = ReleaseRecord(
+        version="1.0.1", previous="1.0.0", axes=axes, evidence="measured zero"
+    )
+    bare, _ = gate_findings(_measurement(tmp_path), "1.0.1", {"1.0.1": record})
+    stamped, _ = gate_findings(
+        _measurement(tmp_path), "just-dna-compiler 1.0.1", {"1.0.1": record}
+    )
+
+    assert bare == stamped == []
+
+
+def test_a_measurement_cannot_mint_a_record_for_an_interval_it_did_not_take(tmp_path: Path) -> None:
+    """`as_record`'s `evidence` names the interval it measured; the fields must not contradict it.
+
+    The record it *does* mint carries an empty `declared` list on purpose — the gate then refuses it
+    until somebody says whether each movement was a correction or an addition, which is the whole
+    mechanism that keeps this from being a map maintained by memory.
+    """
+    before, after = _restamped_pair(tmp_path, "0.6.1", "0.6.6")
+    measurement = compare_outputs(read_outputs(before), read_outputs(after))
+
+    minted = measurement.as_record(version="0.6.6", previous="0.6.1")
+    assert minted.declared == []
+    assert minted.evidence == measurement.evidence
+    with pytest.raises(ValueError, match="cannot mint a record"):
+        measurement.as_record(version="2.0.0", previous="0.6.1")
 
 
 def test_the_gate_fails_a_measured_move_no_record_declares(tmp_path: Path) -> None:

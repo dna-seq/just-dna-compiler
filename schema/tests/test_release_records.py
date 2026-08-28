@@ -153,6 +153,43 @@ def test_a_link_reaching_below_the_asked_bound_keeps_false_and_blunts_true() -> 
     assert answer.span == ("1.0.0", "1.0.3")
 
 
+def test_an_overshooting_links_detail_is_withheld_rather_than_reported_in_span() -> None:
+    """The blunting has to reach the detail too, or the answer contradicts itself in one object.
+
+    A registry acts on `corrections` and spends an immutable PATCH doing it, so a correction that may
+    have happened anywhere in a wider interval must not appear there while the axis beside it says
+    *cannot say*. Withheld, not dropped — the out-of-span tuples still carry it for a caller who
+    knows what they are reading.
+    """
+    record = ReleaseRecord(
+        version="1.0.3",
+        previous="1.0.0",
+        axes={**{axis: False for axis in VALID_RELEASE_OUTPUT_AXES}, "manifest_fields": True},
+        manifest_fields=["stats.genes"],
+        declared=[
+            DeclaredChange(
+                axis="manifest_fields", target="stats.genes", kind="correction", detail="was wrong"
+            )
+        ],
+        evidence="measured across the whole of 1.0.0 -> 1.0.3",
+    )
+    inside = needs_recompile("1.0.0", "1.0.3", {"1.0.3": record})
+    overshot = needs_recompile("1.0.2", "1.0.3", {"1.0.3": record})
+
+    # Asked about exactly what the record measured, everything is reported.
+    assert inside.manifest_fields == ("stats.genes",)
+    assert [c.target for c in inside.corrections] == ["stats.genes"]
+    assert inside.out_of_span_declared == ()
+
+    # Asked about a sub-interval, the axis withholds — and so does everything under it.
+    assert overshot.axes["manifest_fields"] is None
+    assert overshot.manifest_fields == ()
+    assert overshot.declared == ()
+    assert overshot.corrections == ()
+    assert overshot.out_of_span_manifest_fields == ("stats.genes",)
+    assert [c.target for c in overshot.out_of_span_declared] == ["stats.genes"]
+
+
 def test_a_chain_that_does_not_descend_is_refused_rather_than_looped() -> None:
     records = {"1.0.1": _record("1.0.1", "1.0.1")}
     with pytest.raises(ValueError, match="would not terminate"):
