@@ -34,7 +34,30 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
+## 0.7.0 (latest, in progress) — the twelve items PROPOSAL_0_7 decided
+
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher`.** Each item lands on its own,
+labelled with its `RMn`; the number is fixed because the batch carries additive schema work.
+
+- **RM71 — the drafted-genotype worklist is re-requestable from the command that produced it.**
+  `draft-panel` leaves `genotype` as the placeholder, correctly, and reports the alleles the author
+  must write it from in one uncapped line per open row. That report used to be scoped to the rows a
+  single run *added*, so a second run added nothing and therefore said nothing, and the alleles could
+  not be asked for again. The worklist now covers **every row in `variants.csv` whose `genotype` is
+  still the placeholder** — refused rows were never written and settled rows no longer carry the stub,
+  so the earlier narrowing survives on a better basis — and `draft-panel --dry-run` obtains it without
+  appending anything, meaning what it means on `draft`. The `state`-placeholder line moves with it,
+  because it reads as "these rows *also*". An open row this run holds no record for has its alleles
+  **withheld** and is named by gene in one aggregated line rather than guessed at or silently dropped
+  from the count; the line says only that nothing this run selected covers them, since the usual causes
+  (another gene, a tighter `--clin-sig`/`--min-review-stars`) are not ones the pass establishes. A
+  scaffolded template row — the placeholder in `rsid` as well as `genotype` — is not drafting work and
+  stays out of both lists. No schema, no cell filled,
+  no digest moved. The 0.7 proposal recorded `draft-panel` as *lacking* `--dry-run`; it has had one
+  since 0.5.1, so that half of the item was already true and is now pinned by a test over the whole
+  drafting family rather than asserted.
+
+## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
 **Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately
 left uncut (2026-08-27).** The number is not decided, so nothing here names one: the replies'

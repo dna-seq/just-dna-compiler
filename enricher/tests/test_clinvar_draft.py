@@ -9,12 +9,14 @@ import csv
 import io
 from pathlib import Path
 
+import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module
 from just_dna_compiler.draft import PartialRow, RowOutcome
 from just_dna_enricher.clinvar_draft import (
     _MATCH_ON,
     DEFAULT_CLIN_SIG,
+    ClinVarDraftResult,
     _identity_cells,
     _refusal_summary,
     _row_cells,
@@ -25,6 +27,7 @@ from just_dna_enricher.clinvar_draft import (
     multi_allelic_rsids,
     sole_expressible_genotype,
 )
+from just_dna_format.base import authored_field_names
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
@@ -348,20 +351,26 @@ def test_an_undecided_panel_drafts_every_row_and_explains_the_state_stub(tmp_pat
 
 
 @_needs_snapshot
-def test_the_genotype_worklist_covers_the_rows_added_and_no_others(tmp_path: Path) -> None:
-    """It used to be handed every candidate record, so a "3 row(s) carry a placeholder" header was
-    followed by a 27-line worklist naming rows that had been refused or were already present."""
+def test_the_genotype_worklist_covers_the_open_rows_and_no_others(tmp_path: Path) -> None:
+    """The same property on a real gene: one line per row that still needs a human, and no more.
+
+    It used to be handed every candidate record, so a "3 row(s) carry a placeholder" header was
+    followed by a 27-line worklist naming rows that had been refused or were already present. Since
+    RM71 the scope is the file's open stubs rather than a single run's additions — a re-run therefore
+    adds nothing and still reports the same worklist, which is the whole point of the widening.
+    """
     first = draft_gene_panel(tmp_path, ["XG"], snapshot=_SNAPSHOT,
                              clin_sig={"uncertain_significance"}, min_review_stars=1)
     worklist = [w for w in first.warnings if w.strip().startswith("genotype for ")]
     assert len(worklist) == first.added_for("variants.csv")
 
-    # A re-run adds nothing, so the worklist must be empty — the work is already on the author's desk.
     again = draft_gene_panel(tmp_path, ["XG"], snapshot=_SNAPSHOT,
                              clin_sig={"uncertain_significance"}, min_review_stars=1)
     assert again.added_for("variants.csv") == 0
-    assert not [w for w in again.warnings if w.strip().startswith("genotype for ")]
-    assert not [w for w in again.warnings if "`state` placeholder" in w]
+    assert [w for w in again.warnings if w.strip().startswith("genotype for ")] == worklist
+    assert [w for w in again.warnings if "`state` placeholder" in w] == [
+        w for w in first.warnings if "`state` placeholder" in w
+    ]
 
 
 @_needs_snapshot
@@ -806,4 +815,306 @@ def test_a_real_re_draft_reports_every_row_the_fix_supersedes(tmp_path: Path) ->
     assert len(notice) == 1, "one aggregated notice, never one line per row"
     assert f"{len(superseded)} row(s)" in notice[0], (
         "the count must be the number of superseded rows, not a sample"
+    )
+
+
+# ── RM71: the worklist is re-requestable from the command that produced it ───────────────────────
+#
+# The alleles a stubbed `genotype` must be written from live in the warning stream and nowhere else —
+# every place they could legally be *written* is the wrong place, which is the decision. So the one
+# obligation left is that the stream can be asked again: the worklist covers the file's current
+# placeholder rows rather than only this run's additions, and `--dry-run` obtains it without appending.
+#
+# Synthetic snapshot throughout: these are the tests CI has to run, and CI has neither a ClinVar cache
+# nor a network. The real-snapshot tests above still cover the same paths against 4.4M records.
+
+_PANEL_RECORD = {
+    "chrom": "16", "start": 23603601, "ref": "G", "alt": "T", "rsid": "rs118203998",
+    "variation_id": "126595", "allele_id": "1", "gene": "PALB2", "genes": "PALB2",
+    "clin_sig": "pathogenic", "clin_sig_raw": "Pathogenic",
+    "review_status": "criteria_provided,_multiple_submitters,_no_conflicts", "review_stars": 2,
+    "condition": "Hereditary breast ovarian cancer syndrome",
+    "molecular_consequence": None, "variant_type": None, "origin": None,
+}
+
+
+def _panel_record(**overrides) -> dict:
+    return {**_PANEL_RECORD, **overrides}
+
+
+#: Three PALB2 records, each a distinct locus and rsID, so every one is drafted rsid-only.
+_PALB2 = [
+    _panel_record(),
+    _panel_record(start=23619207, ref="C", alt="A", rsid="rs180177102", variation_id="126596"),
+    _panel_record(start=23635291, ref="A", alt="G", rsid="rs587776527", variation_id="126597"),
+]
+
+
+def _snapshot_of(tmp_path: Path, records: list[dict], *, name: str = "clinvar") -> Path:
+    """A ClinVar snapshot in the real on-disk layout, built from whatever records a test needs."""
+    root = tmp_path / name
+    (root / "data").mkdir(parents=True)
+    pl.DataFrame(records).write_parquet(root / "data" / "chr.parquet")
+    (root / "release.json").write_text(
+        f'{{"clinvar_file_date": "2026-06-27", "record_count": {len(records)}}}', encoding="utf-8"
+    )
+    return root
+
+
+def _spec_dir(tmp_path: Path, name: str = "spec") -> Path:
+    spec = tmp_path / name
+    spec.mkdir(parents=True, exist_ok=True)
+    return spec
+
+
+def _worklist(result: ClinVarDraftResult) -> list[str]:
+    return [w for w in result.warnings if w.strip().startswith("genotype for ")]
+
+
+def _named_in(lines: list[str]) -> set[str]:
+    """The row each worklist line is about, read back out of the line."""
+    return {line.split("genotype for ")[1].split(":")[0] for line in lines}
+
+
+def _tree(spec: Path) -> dict[str, bytes]:
+    """Every byte under a spec directory, so "wrote nothing" is measured rather than sampled."""
+    return {
+        str(p.relative_to(spec)): p.read_bytes() for p in sorted(spec.rglob("*")) if p.is_file()
+    }
+
+
+def test_a_second_run_reprints_the_worklist_because_the_stubs_are_still_open(tmp_path: Path) -> None:
+    """The once-only property RM71 removes.
+
+    The worklist used to be built inside `if report.added:` and scoped to the rows *this* run added,
+    so a re-run of the command that produced it added nothing and therefore said nothing — and there
+    was no other way to ask. It now covers the file's current placeholder rows.
+    """
+    snapshot = _snapshot_of(tmp_path, _PALB2)
+    spec = _spec_dir(tmp_path)
+
+    first = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot)
+    worklist = _worklist(first)
+    assert len(worklist) == first.added_for("variants.csv") == len(_PALB2)
+
+    again = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot)
+    assert again.added_for("variants.csv") == 0, "a re-draft appends nothing"
+    assert _worklist(again) == worklist, "…and still answers the question it answered once"
+    assert [w for w in again.warnings if "unreplaced genotype placeholder" in w], (
+        "the header the worklist hangs off has to be reprinted too"
+    )
+
+
+def test_the_state_stub_is_reported_off_the_file_too_or_its_denominator_dangles(
+    tmp_path: Path,
+) -> None:
+    """The two stub reports are one decision, not two.
+
+    The `state` line counts rows "of that list", so leaving it scoped to a run while the genotype
+    list is scoped to the file would put two different denominators in consecutive lines — and would
+    leave half the open work re-requestable and half of it not.
+    """
+    undecided = [
+        _panel_record(clin_sig="uncertain_significance", clin_sig_raw="Uncertain_significance"),
+        _panel_record(start=23619207, ref="C", alt="A", rsid="rs180177102",
+                      variation_id="126596", clin_sig="uncertain_significance",
+                      clin_sig_raw="Uncertain_significance"),
+    ]
+    snapshot = _snapshot_of(tmp_path, undecided)
+    spec = _spec_dir(tmp_path)
+    calls = frozenset({"uncertain_significance"})
+
+    first = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot, clin_sig=calls)
+    again = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot, clin_sig=calls)
+    assert again.added_for("variants.csv") == 0
+
+    lines = [w for w in again.warnings if "`state` placeholder" in w]
+    assert lines == [w for w in first.warnings if "`state` placeholder" in w]
+    assert len(lines) == 1, "one line per clinical call, never one per row"
+    assert f"{len(undecided)} row(s)" in lines[0]
+    assert "uncertain_significance" in lines[0]
+    assert "no member meaning 'undecided'" in lines[0]
+
+
+def test_a_settled_row_leaves_the_worklist_and_a_refused_row_never_enters_it(tmp_path: Path) -> None:
+    """The earlier repair's benefit, which the widening could easily have undone.
+
+    Scoping the worklist to `added_records` is what kept refused rows and rows already settled out of
+    it. Reading the file back keeps both out for a better reason — a refused row is not in the file,
+    and a settled one no longer carries the placeholder.
+    """
+    refused = _panel_record(
+        start=23640000, ref="T", alt="C", rsid="rs2000000001", variation_id="126598",
+        clin_sig="not_a_clinvar_call",
+    )
+    snapshot = _snapshot_of(tmp_path, [*_PALB2, refused])
+    spec = _spec_dir(tmp_path)
+    calls = frozenset({"pathogenic", "not_a_clinvar_call"})
+
+    first = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot, clin_sig=calls)
+    assert first.invalid == 1, "the model must actually refuse the bad call, or this proves nothing"
+    assert refused["rsid"] not in _named_in(_worklist(first))
+
+    # The human settles one row by hand; drafting never touches the other two.
+    settled = _PALB2[0]["rsid"]
+    rows = _rows(spec / "variants.csv")
+    header = (spec / "variants.csv").read_text(encoding="utf-8").splitlines()[0].split(",")
+    with open(spec / "variants.csv", "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=header)
+        writer.writeheader()
+        for row in rows:
+            if row["rsid"] == settled:
+                row["genotype"], row["state"] = "G/T", "risk"
+            writer.writerow(row)
+
+    again = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot, clin_sig=calls)
+    named = _named_in(_worklist(again))
+    assert settled not in named, "a settled row is not work"
+    assert refused["rsid"] not in named, "a refused row is not in the file"
+    assert named == {r["rsid"] for r in _PALB2[1:]}
+
+
+def test_a_dry_run_writes_nothing_and_still_yields_the_run_s_worklist(tmp_path: Path) -> None:
+    """`--dry-run` is how the worklist is obtained without appending, and it must not be a second
+    answer: the lines a dry run reports are the lines the real run reports."""
+    snapshot = _snapshot_of(tmp_path, _PALB2)
+    dry, wet = _spec_dir(tmp_path, "dry"), _spec_dir(tmp_path, "wet")
+
+    before = _tree(dry)
+    dry_result = draft_gene_panel(dry, ["PALB2"], snapshot=snapshot, dry_run=True)
+    assert _tree(dry) == before, "a dry run appends nothing — bytes, not file names"
+
+    wet_result = draft_gene_panel(wet, ["PALB2"], snapshot=snapshot)
+    assert set(_worklist(dry_result)) == set(_worklist(wet_result))
+
+    # …and once the rows are on disk, the dry run reads them back rather than re-adding them.
+    after = _tree(wet)
+    again = draft_gene_panel(wet, ["PALB2"], snapshot=snapshot, dry_run=True)
+    assert again.added_for("variants.csv") == 0
+    assert set(_worklist(again)) == set(_worklist(wet_result))
+    assert _tree(wet) == after
+
+
+def test_a_placeholder_row_this_run_cannot_describe_is_named_with_its_alleles_withheld(
+    tmp_path: Path,
+) -> None:
+    """Tri-state, on a file the run only partly covers.
+
+    Drafting gene by gene is the normal way a panel is built, so a run's records cover some of the
+    file's placeholder rows and not others. The alleles for the rest are genuinely unknown here —
+    withheld, never guessed — but the rows are still work, so they are counted and their genes named.
+    """
+    other = [
+        _panel_record(chrom="17", start=43045703, ref="C", alt="T", rsid="rs80357906",
+                      gene="BRCA1", genes="BRCA1", variation_id="17662"),
+    ]
+    snapshot = _snapshot_of(tmp_path, [*_PALB2, *other])
+    spec = _spec_dir(tmp_path)
+
+    draft_gene_panel(spec, ["BRCA1"], snapshot=snapshot)
+    result = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot)
+
+    assert _named_in(_worklist(result)) == {r["rsid"] for r in _PALB2}, (
+        "only the rows this run holds records for get an allele line"
+    )
+    uncovered = [w for w in result.warnings if "alleles this run cannot state" in w]
+    assert len(uncovered) == 1, "one aggregated line, never one per row"
+    assert f"{len(other)} row(s)" in uncovered[0]
+    assert "BRCA1" in uncovered[0] and "rs80357906" not in uncovered[0]
+    # …and the header counts them, because they will not compile either.
+    header = [w for w in result.warnings if "unreplaced genotype placeholder" in w]
+    assert f"{len(_PALB2) + len(other)} row(s)" in header[0]
+
+
+def test_a_haploid_row_is_written_whole_so_it_never_becomes_worklist(tmp_path: Path) -> None:
+    """`sole_expressible_genotype` decided that row, so naming it would be work that does not exist —
+    the defect the worklist was first narrowed to fix, which the widening must not reintroduce."""
+    mito = _panel_record(
+        chrom="MT", start=3243, ref="A", alt="G", rsid="rs199474657", gene="MT-TL1",
+        genes="MT-TL1", variation_id="9611",
+    )
+    snapshot = _snapshot_of(tmp_path, [*_PALB2, mito])
+    spec = _spec_dir(tmp_path)
+
+    draft_gene_panel(spec, ["PALB2", "MT-TL1"], snapshot=snapshot)
+    again = draft_gene_panel(spec, ["PALB2", "MT-TL1"], snapshot=snapshot)
+    mito_only = draft_gene_panel(spec, ["MT-TL1"], snapshot=snapshot)
+
+    rows = {r["rsid"]: r for r in _rows(spec / "variants.csv")}
+    assert rows[mito["rsid"]]["genotype"] == "G", "the one expressible genotype was written"
+    assert _named_in(_worklist(again)) == {r["rsid"] for r in _PALB2}
+
+    # Asked about MT-TL1 alone, the run has no open row of its own: the only placeholders left in the
+    # file are the PALB2 ones it cannot state alleles for, and the mitochondrial row is in neither list.
+    assert _worklist(mito_only) == [], "nothing this run covers is open"
+    header = [w for w in mito_only.warnings if "unreplaced genotype placeholder" in w]
+    assert f"{len(_PALB2)} row(s)" in header[0], "the haploid row is not counted as work"
+    uncovered = [w for w in mito_only.warnings if "alleles this run cannot state" in w]
+    assert "PALB2" in uncovered[0] and "MT-TL1" not in uncovered[0]
+
+
+def test_a_scaffolded_template_row_is_not_drafting_work(tmp_path: Path) -> None:
+    """A file-scoped report has to know what a row in the file *is*.
+
+    `scaffold`/`stub` writes a template row carrying the placeholder in `rsid` as well as in
+    `genotype` and `state`. It is open work — the compiler refuses it by name — but it is not
+    drafting work: it has no identity, so no run can ever hold its alleles, and counting it here
+    would put a row no draft produced into a worklist under the sentinel's own name.
+    """
+    snapshot = _snapshot_of(tmp_path, _PALB2)
+    spec = _spec_dir(tmp_path)
+    header = ",".join(authored_field_names(VariantRow))
+    template = dict.fromkeys(authored_field_names(VariantRow), "")
+    for column in ("rsid", "genotype", "state", "conclusion"):
+        template[column] = TEMPLATE_PLACEHOLDER
+    (spec / "variants.csv").write_text(
+        header + "\n" + ",".join(template[name] for name in authored_field_names(VariantRow)) + "\n",
+        encoding="utf-8",
+    )
+
+    result = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot)
+
+    rows = _rows(spec / "variants.csv")
+    assert sum(1 for r in rows if r["rsid"] == TEMPLATE_PLACEHOLDER) == 1, "still there, untouched"
+    counts = [w for w in result.warnings if "unreplaced genotype placeholder" in w]
+    assert f"{len(_PALB2)} row(s)" in counts[0], "the template row is not counted as drafted work"
+    assert not [w for w in result.warnings if "alleles this run cannot state" in w], (
+        "and it must not be reported as a row whose alleles some other run could state"
+    )
+    assert TEMPLATE_PLACEHOLDER not in "".join(
+        w for w in result.warnings if "`state` placeholder" in w
+    ), "the sentinel is never a row label"
+
+
+def test_both_stub_lists_name_a_row_the_same_way(tmp_path: Path) -> None:
+    """An rsID naming several alleles is written by coordinate, so the authored row carries no
+    `rsid` cell — and a report that read the label off the file would call that row
+    `16:23603601` in one line and `rs118203998` in the line above it. Same row, two names, and no
+    way to cross-reference the two lists."""
+    multi = [
+        _panel_record(clin_sig="uncertain_significance", clin_sig_raw="Uncertain_significance"),
+        _panel_record(ref="G", alt="C", variation_id="126599",
+                      clin_sig="uncertain_significance", clin_sig_raw="Uncertain_significance"),
+    ]
+    snapshot = _snapshot_of(tmp_path, multi)
+    spec = _spec_dir(tmp_path)
+    calls = frozenset({"uncertain_significance"})
+
+    first = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot, clin_sig=calls)
+    assert not [r["rsid"] for r in _rows(spec / "variants.csv") if r["rsid"]], (
+        "the fixture must actually force the coordinate identity, or this proves nothing"
+    )
+
+    again = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot, clin_sig=calls)
+    dry = draft_gene_panel(spec, ["PALB2"], snapshot=snapshot, clin_sig=calls, dry_run=True)
+
+    def _state_labels(result: ClinVarDraftResult) -> set[str]:
+        line = next(w for w in result.warnings if "`state` placeholder" in w)
+        return {label.strip() for label in line.split("Affected: ")[1].rstrip(".").split(",")}
+
+    assert _state_labels(again) == _named_in(_worklist(again)), (
+        "the two lists must name the same rows in the same words"
+    )
+    assert _state_labels(dry) == _state_labels(again) == _state_labels(first), (
+        "and a dry run is not a second answer"
     )

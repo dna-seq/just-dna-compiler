@@ -10,8 +10,10 @@ rather than working around it.
 **`unreplaced template placeholder '<<REPLACE>>' in VariantRow row: genotype`**
 A scaffolded stub or a drafted partial row still needs a human. This blocks **every** loader, including
 `enrich` — deliberately, since forward resolution is allele-aware and a placeholder genotype would skip
-that filter. Do not try to enrich first: the draft report already printed the allele pair for each
-stubbed row (`genotype for rs…: ClinVar publishes C>T — an allele pair from {C, T}`). Curate from that.
+that filter. Do not try to enrich first: the draft report prints the allele pair for each stubbed row
+(`genotype for rs…: ClinVar publishes C>T — an allele pair from {C, T}`). Curate from that, and if the
+report has scrolled away, ask again — `draft-panel spec/ --gene G --dry-run` reprints the pairs for
+every row still carrying the placeholder and appends nothing.
 
 **…`in VariantRow row: genotype, state`** — the same message naming **two** columns
 The row is an `uncertain_significance` (or otherwise undecided) ClinVar record, so `state` is stubbed as
