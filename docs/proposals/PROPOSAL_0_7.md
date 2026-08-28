@@ -1020,7 +1020,15 @@ stream. At the 16 rows PALB2 yields at ClinVar's 3-star floor this is a transcri
 **And it is emitted exactly once.** The worklist is built inside `if report.added:` and scoped to
 `added_records` — itself a correct earlier repair, since it used to name rows the model had refused and
 rows already in the file. The consequence is that re-running `draft-panel` after the first draft adds
-nothing and therefore prints **no worklist at all**, and `draft-panel` has no `--dry-run` (`draft` does).
+nothing and therefore prints **no worklist at all**.
+
+**Corrected 2026-08-28, during implementation: `draft-panel` *does* have `--dry-run`.** This paragraph
+said it did not, and the decision below was written to add one. It shipped in **0.5.1** (`e40e118`,
+2026-08-03) with help text identical to `draft`'s, threaded through both appends and gating the licence
+write, and the `/create-module` skill's command table already listed it. The claim was never checked
+against `--help` — the failure mode the command tables are known for, arriving this time in a proposal
+rather than in a table. What was actually missing is a **test**: nothing pinned the promise, which is
+why the flag could be believed absent by a reader of the code.
 The information cannot be re-requested from the command that produced it.
 
 ### The decision
@@ -1032,7 +1040,8 @@ schema:
   `if report.added:` guard and the `added_records` scope are what make a second run silent; widening the
   worklist to the file's current placeholder rows keeps the earlier repair's benefit — refused rows and
   settled rows stay out — while removing the once-only property.
-- **`draft-panel` gains the `--dry-run` that `draft` already has**, so the worklist is obtainable
+- ~~**`draft-panel` gains the `--dry-run` that `draft` already has**~~ — **already shipped in 0.5.1;
+  see the correction above. What lands instead is the test that pins it**, so the worklist is obtainable
   without appending anything. A flag that means the same thing in both commands, which is the standing
   rule.
 
