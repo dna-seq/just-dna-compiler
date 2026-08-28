@@ -1407,7 +1407,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 - **`variants.csv` coherence** — `weight_sign_disagrees_with_effect`, `genotype_allele_not_at_locus`,
   `effect_allele_not_at_locus`, `genotype_coverage_gap`, `quality_floor_inverted`,
   `missing_allele_marker_in_alts`, `vcf_pointer_key_collision`, `vcf_pointer_unselected_element`,
-  `composite_gene_cell`, `symbolic_allele_row_dropped`
+  `composite_gene_cell`, `symbolic_allele_unusable`
 - **binning tables** — `bin_tiling_inferred`, `bin_tiling_contradicted`, `bin_coverage_gap`,
   `bins_ungrounded`, `measure_field_fractional`, `measurement_spans_bins`, `deprecated_bin_modifier`
 - **PGx tables** — `star_allele_undefined`, `diplotype_definitions_identical`,

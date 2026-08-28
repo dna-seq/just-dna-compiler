@@ -1265,7 +1265,8 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "vcf_pointer_key_collision",        # a pointer key INFO and FORMAT both define
         "vcf_pointer_unselected_element",   # a pointer at a multi-valued field with no element rule
         "composite_gene_cell",              # a single-valued `gene` cell that looks like a list
-        "symbolic_allele_row_dropped",      # a row carrying an unusable symbolic allele, dropped
+        "symbolic_allele_unusable",         # a symbolic allele this format cannot apply; the
+                                            #   sentence says whether the row is dropped or fatal
         # ── binning tables ──
         "bin_tiling_inferred",              # the tiling was read off the data rather than declared
         "bin_tiling_contradicted",          # a declared `quantised` grid the data does not sit on

@@ -699,7 +699,7 @@ def test_the_channel_survives_a_table_whose_findings_two_tiers_both_report(tmp_p
     published = result.manifest.compilation
     dropped = [w for w in published.warnings if "DROPPED from the compiled artifact" in w]
     assert len(dropped) == 1, "the pre-flight and the compile emit one sentence, deduped to one line"
-    assert published.warnings_summary["symbolic_allele_row_dropped"] == 1
+    assert published.warnings_summary["symbolic_allele_unusable"] == 1
     assert sum(published.warnings_summary.values()) == len(published.warnings)
 
 

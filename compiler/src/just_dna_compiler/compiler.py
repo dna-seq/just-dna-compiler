@@ -2603,9 +2603,13 @@ def _symbolic_allele_messages(findings: list[_SymbolicFinding]) -> list[str]:
             )
         )
         # Coded even where the caller routes the line into `errors` — one builder, one sentence, and
-        # the code costs nothing on the error path, where nothing reads it.
+        # the code costs nothing on the error path, where nothing reads it. **That is also why the
+        # code names the unusable allele and not the drop**: `fate` says "dropped" for a droppable
+        # table and "fatal in both modes" for a composite one, so a code naming the consequence would
+        # be accurate on one path and a false claim on the other the day somebody routes the errors
+        # here too. A code names the finding; the sentence carries which of its two consequences fired.
         messages.append(CodedWarning(
-            "symbolic_allele_row_dropped",
+            "symbolic_allele_unusable",
             f"{table}: {affected} row(s) carry {_SYMBOLIC_REASONS[reason]}. {fate} "
             f"e.g. {shown}{rest}.",
         ))
