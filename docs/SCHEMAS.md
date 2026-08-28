@@ -1612,9 +1612,17 @@ round trip disagree on `manifest.compilation.warnings`, which is a published fie
 know about is that a **`suppress` with a typo'd subject does nothing, forever, and cannot warn** —
 check a suppression by reading the compiled table, not by waiting for a message.
 
-The one mismatch that *is* stable across both laps is an `update` reaching no row, because an update
-never creates one. It warns in both modes and names both readings — the subject may be mistyped, or
-the source may have stopped publishing the row — because nothing in the compiler can separate them.
+The one mismatch an overlay operation cannot manufacture for itself is an `update` reaching no row,
+because an update never creates one. It warns in both modes and names **three** readings — the subject
+may be mistyped, the source may have stopped publishing the row, or the compiler dropped the row before
+the parquet — because nothing in the compiler can separate them.
+
+**It is not stable across both laps, and this section said it was.** The overlay is stable; the derived
+table under it is not, for the two tables rebuilt from something narrower than the file the compiler
+read. `literature.csv` loses its uncited rows before the parquet and `reverse_module` rebuilds it from
+that parquet; `resolution.csv` has no parquet and is rebuilt from the SNP core. An `update` naming such
+a row matches on lap 1 and warns on lap 2. Applying the overlay after the drop is not the repair — the
+checks must see what the module asserts — so the third reading is named instead.
 
 An overlay row naming a table the module does not carry warns too, in both modes: **the overlay lies
 on top of a derived table and never creates one.**

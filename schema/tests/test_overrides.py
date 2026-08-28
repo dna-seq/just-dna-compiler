@@ -373,12 +373,16 @@ def test_an_insert_under_a_normalized_subject_lands_in_its_own_group() -> None:
     ]
 
 
-def test_an_update_that_reaches_no_row_warns_and_names_both_readings() -> None:
+def test_an_update_that_reaches_no_row_warns_and_names_every_reading() -> None:
     """The one mismatch that is stable across both laps, because an update never creates a row.
 
-    Both readings, because nothing here can separate them — a mistyped subject and a source that
-    stopped publishing the row look identical from inside the compiler, and the house algebra
-    withholds a verdict it cannot reach.
+    Every reading, because nothing here can separate them — a mistyped subject, a source that stopped
+    publishing the row, and a row the compiler dropped before the parquet all look identical from
+    inside the compiler, and the house algebra withholds a verdict it cannot reach.
+
+    It named two until the 0.7 audit. The third was found by running the round trip on a module with
+    an uncited `literature.csv` row under an overlay: the correction matched on lap 1 and warned on
+    lap 2, and the message told the author their subject was mistyped when it was not.
     """
     rows = [ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1)]
     overlay = [
@@ -389,7 +393,8 @@ def test_an_update_that_reaches_no_row_warns_and_names_both_readings() -> None:
     assert errors == []
     assert [r.variant_key for r in after] == ["rs1"]
     assert len(warnings) == 1
-    assert "may be mistyped, or the source may have stopped publishing" in warnings[0]
+    assert "Three readings and nothing here separates them" in warnings[0]
+    assert "dropped the row before the parquet" in warnings[0]
 
 
 def test_an_update_producing_a_row_the_target_model_refuses_is_an_error() -> None:
@@ -466,3 +471,98 @@ def test_a_decision_date_is_canonicalized_on_load() -> None:
         table="literature.csv", subject="8696333", field="doi", operation="update", value="10.1/a",
         decided_at="2026-08-28",
     ).decided_at == "2026-08-28T00:00:00Z"
+
+
+# ── the refusal texts, pinned ───────────────────────────────────────────────────────────────────
+#
+# Audit finding F8 on the 0.7 build: five refusals shipped with no test holding their wording, in a
+# module whose whole job is to refuse a wrong correction clearly. A refusal a caller greps is an API
+# the same way a warning is (`@warning-text-is-api`), and one of these — `needs a field naming the
+# column it writes` — was not exercised at all, so nothing proved the branch was reachable.
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "phrase"),
+    [
+        pytest.param(
+            {
+                "table": "frequencies.csv",
+                "subject": "rs1801133",
+                "operation": "suppress",
+                "member": "afr",
+                "field": "dataset",
+            },
+            "suppress names a ROW, not a cell, so field must be empty",
+            id="suppress-may-not-name-a-cell",
+        ),
+        pytest.param(
+            {
+                "table": "frequencies.csv",
+                "subject": "rs1801133",
+                "operation": "suppress",
+                "member": "afr",
+                "value": "gnomad_v4.1",
+            },
+            "suppress writes nothing, so value must be empty",
+            id="suppress-may-not-carry-a-value",
+        ),
+        pytest.param(
+            {
+                "table": "frequencies.csv",
+                "subject": "rs1801133",
+                "operation": "update",
+                "value": "gnomad_v4.1",
+            },
+            "needs a field naming the column it writes",
+            id="update-must-name-its-column",
+        ),
+        pytest.param(
+            {
+                "table": "frequencies.csv",
+                "subject": "   ",
+                "operation": "update",
+                "field": "dataset",
+                "value": "gnomad_v4.1",
+            },
+            "may not be blank",
+            id="a-whitespace-only-subject-is-blank",
+        ),
+    ],
+)
+def test_each_refusal_states_why_rather_than_only_that(
+    kwargs: dict[str, object], phrase: str
+) -> None:
+    """Each refusal fires, and says the thing a caller greps for.
+
+    A generic rejection is a dead end where a specific one is a fix (`@specific-rejection`), so the
+    assertion is on the sentence and not merely on `ValidationError` — which pydantic would raise for
+    a dozen unrelated reasons and which therefore proves nothing about this branch.
+    """
+    with pytest.raises(ValidationError) as caught:
+        _row(**kwargs)
+    assert phrase in str(caught.value), f"expected {phrase!r} in: {caught.value}"
+
+
+def test_the_three_readings_of_an_unmatched_update_are_all_named() -> None:
+    """The warning names every reading, because nothing in the compiler separates them.
+
+    It named two until the 0.7 audit: a mistyped subject, and a source that stopped publishing the
+    row. The third is that the compiler dropped the row before the parquet — `literature.csv` loses
+    its uncited rows and `resolution.csv` has no parquet at all — so on a recompile of a reversed
+    module the correction is fine and the *table* is short. Naming two made the message assert the
+    author was wrong in the one case where they are not.
+    """
+    rows = [FrequencyRow(variant_key="rs1801133", population="afr", dataset="gnomad_v4.1")]
+    override = _row(
+        table="frequencies.csv",
+        subject="rs9999999",
+        operation="update",
+        field="dataset",
+        value="gnomad_v4.2",
+    )
+    _, _, warnings = apply_overrides("frequencies.csv", rows, [override])
+
+    assert len(warnings) == 1, warnings
+    assert "Three readings and nothing here separates them" in warnings[0]
+    for reading in ("may be mistyped", "stopped publishing", "dropped the row before the parquet"):
+        assert reading in warnings[0], f"{reading!r} missing from: {warnings[0]}"

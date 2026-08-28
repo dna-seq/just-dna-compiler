@@ -449,8 +449,20 @@ def apply_overrides(
     derived table is post-overlay, so on the second lap update-already-equal, insert-already-present
     and suppress-already-absent are *all three* true of a perfectly healthy module. Reporting any of
     them would make a module and its own round trip disagree on `manifest.compilation.warnings`, a
-    published field. The one mismatch that is stable across both laps is an `update` matching no row,
-    because an update never creates one — and that is the only thing warned about here.
+    published field. An `update` matching no row is the one mismatch an overlay operation cannot
+    manufacture for itself, because an update never creates a row — and that is the only thing warned
+    about here.
+
+    **That is not the same as being stable across both laps, and an earlier version of this docstring
+    claimed it was.** The overlay is stable; the *derived table under it* is not, for the two tables
+    the compiler rebuilds from something narrower than the file it read. `literature.csv` loses its
+    uncited rows before the parquet (so `reverse_module`, which rebuilds it *from* that parquet,
+    cannot carry them), and `resolution.csv` has no parquet at all and is rebuilt from the SNP core.
+    An `update` naming such a row therefore matches on lap 1 and reports on lap 2 — the disagreement
+    this function exists to avoid, arriving through the derivation rather than through the overlay.
+    Not repaired here: applying the overlay after the drop would hide it from the checks that must
+    see what the module asserts, and reverse has no source for rows the artifact does not hold. The
+    warning below names it as the third reading instead of pretending to two.
     """
     target = OVERRIDABLE_TABLES[table]
     mine = [row for row in overrides if row.table == table]
@@ -545,12 +557,17 @@ def apply_overrides(
 
 
 def _unmatched_warnings(table: str, unmatched: Sequence[tuple[str, str]]) -> list[str]:
-    """One aggregated line for the updates that reached no row, naming both readings of it.
+    """One aggregated line for the updates that reached no row, naming all three readings of it.
 
     Aggregated by **reason** rather than per row, the way every repeated finding in this workspace
-    is, and it names both readings because nothing here can separate them: the subject may be
-    mistyped, or the source may have stopped publishing the row the correction was about. Withholding
-    the verdict is the house algebra — an unknown answer is neither reported as a fault nor negated.
+    is, and it names every reading because nothing here can separate them: the subject may be
+    mistyped, the source may have stopped publishing the row the correction was about, or — on a
+    recompile of a reversed module — the compiler may have dropped the row before the parquet, so
+    reverse could not rebuild it and the correction had no target to reach. Withholding the verdict
+    is the house algebra: an unknown answer is neither reported as a fault nor negated.
+
+    The third reading was missing while only two were named, which made the message assert that a
+    correction was wrong in the one case where the correction is fine and the *table* is short.
     """
     if not unmatched:
         return []
@@ -560,8 +577,9 @@ def _unmatched_warnings(table: str, unmatched: Sequence[tuple[str, str]]) -> lis
     more = "" if len(unmatched) <= 5 else f" (+{len(unmatched) - 5} more)"
     return [
         f"overrides.csv: {len(unmatched)} update override(s) name a row {table} does not carry: "
-        f"{shown}{more}. Two readings and nothing here separates them — the subject/member may be "
-        f"mistyped, or the source may have stopped publishing the row the correction was about. "
+        f"{shown}{more}. Three readings and nothing here separates them — the subject/member may be "
+        f"mistyped, the source may have stopped publishing the row the correction was about, or the "
+        f"compiler dropped the row before the parquet so a reversed module cannot carry it. "
         f"Neither an insert nor a suppress reports this: an insert creates the row and a suppress "
         f"is satisfied by its absence."
     ]

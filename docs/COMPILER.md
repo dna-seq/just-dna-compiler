@@ -1420,13 +1420,18 @@ applies before any check reads a derived row, so what a check reports is what th
 operation reports its own no-op — `reverse_module` emits the post-overlay table plus the overlay, so
 on a recompile update-already-equal, insert-already-present and suppress-already-absent are all three
 true of a healthy module, and reporting any of them would make a module and its own round trip
-disagree on `manifest.compilation.warnings`. What is left is the pair that is stable on both laps:
+disagree on `manifest.compilation.warnings`. What is left is the pair an overlay operation cannot
+manufacture for itself. Note the third reading in the first message: on a recompile of a *reversed*
+module the row may be missing because the compiler dropped it before the parquet — `literature.csv`
+loses its uncited rows and `resolution.csv` has no parquet at all — so the correction is fine and the
+table is short. That case reports on lap 2 and not on lap 1.
 
 ```
-overrides.csv: {n} update override(s) name a row {table} does not carry: {subjects}. Two readings and
-nothing here separates them — the subject/member may be mistyped, or the source may have stopped
-publishing the row the correction was about. Neither an insert nor a suppress reports this: an insert
-creates the row and a suppress is satisfied by its absence.
+overrides.csv: {n} update override(s) name a row {table} does not carry: {subjects}. Three readings and
+nothing here separates them — the subject/member may be mistyped, the source may have stopped
+publishing the row the correction was about, or the compiler dropped the row before the parquet so a
+reversed module cannot carry it. Neither an insert nor a suppress reports this: an insert creates the
+row and a suppress is satisfied by its absence.
 
 overrides.csv corrects {tables}, which this module does not carry. An overlay lies on top of a derived
 table and never creates one, so those rows change nothing. Run the pass that writes the table, or drop
