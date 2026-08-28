@@ -503,60 +503,6 @@ auto-correction. A conflict is a question and half the time the archive is the s
 the ClinVar cross-check does not escalate under `strict` (`@clinsig-never-escalates`) and why the
 warning that shipped says so in its own text.
 
-## RM131 — `warnings` is a flat `list[str]`, and the discriminator that would make it readable is computed and discarded
-
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm131--warnings-is-a-flat-liststr-and-the-discriminator-that-would-make-it-readable-is-discarded) on 2026-08-28 — BUILDS in 0.7, both halves, sequenced.** Two facts shrank it: `manifest.compilation.warnings` already ships, and `artifact_digest` is over the parquet `FileEntry` list, so the manifest sits outside the digest and a richer channel costs no hash — **there is no metainfo artifact to build.** Actionability first (a `carried` list beside an unchanged `warnings`), then codes named by each check; the ~29-site audit is done once for both. RM124's suppressed rows report here, aggregated by reason.
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler ·
-**Motivating case** S68 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
-
-`ValidationResult`, `ClosureResult` and `CompilationResult` all carry `warnings: list[str]` with no
-code, no count and no way to tell a finding an author can clear from one they cannot. A compile of a
-190-row module returned roughly **14 kB** of warnings. `strict=false` does not help — it changes what
-counts as an *error*, not how much prose the channel carries — and every document on both sides of
-this seam tells an author that warnings on a green run are the real output, which is followable only
-if the output can be read.
-
-**The reporter's sharpest observation is that we already compute the answer and spend it on severity
-alone.** `_BLAME_TIER`/`_BLAME_ROW` is literally *whose limit this is*, and its own comment says
-*"blame decides severity and nothing else"*; `_closure_warning` reaches the same distinction from the
-other end (*"a finding the author can clear, but whose severity is not the mode's business"*). So the
-actionability of each finding exists at the point it is built and is dropped on the way out. S67 is
-the same shape one level down and was fixed there.
-
-**Why the minimal version the reporter offered is not the free win it looks like.** They proposed
-`warnings_summary: dict[str, int]` — code to count — beside an untouched list, and said they would
-take it and stop asking. The field is additive and harmless; **the `code` is not.** A published
-vocabulary is permanent within a major under P3 and P6, so the first code set we ship is the one every
-consumer keys on forever, and it has to be derived across roughly 29 append sites and 16 returning
-helpers that were never written to be classified. Shipping a plausible set unattended is exactly the
-*leaf shipped against a hypothesis* that P3 then keeps working forever. That is the whole of the
-deferral: the container is free and the vocabulary is the release.
-
-**Three candidate derivations, and none is obviously right.**
-
-- **From the pinned catalogue.** COMPILER.md already lists the substrings the suite pins as contract,
-  and `@warning-text-is-api` says a phrase a tool greps *is* an API. Codes derived from those would be
-  honest and would cover exactly the findings consumers already match on — but it is a partial set by
-  construction, and a `warnings_summary` that silently omits unpinned findings is worse than none,
-  because a consumer reading a digest believes it complete.
-- **From the emission site.** Mechanical and complete, but it keys on where the code lives rather than
-  on what the finding *is*, so a refactor renames a published key. That is the rename P3 forbids
-  arriving through the back door.
-- **From the check, as a first-class argument.** Each check names its own code where it is built, the
-  way `VALID_VERIFICATION_CHECKS` already does for the attestation. Most work, most stable, and it has
-  a precedent in this repo that is already a closed vocabulary a consumer keys on.
-
-**The actionability half should probably land first and separately**, because it needs no vocabulary
-at all: `blame` and the closure branch already classify two of the families, and the reporter's own
-fallback shape — a `carried`/`notes` list beside `warnings` rather than a field on each — is additive,
-invents nothing, and answers the question they actually asked (*can I do anything about this?*). What
-it needs is for every emission site to say which side it is on, which is the same audit the code
-vocabulary needs and is worth doing once.
-
-**Not in scope, on the reporter's own scoping and ours**: no cap, no truncation, no verbosity flag.
-All three hide findings rather than organising them, and the author with the most warnings is the one
-who most needs the hidden ones.
 
 ## RM132 — `pharm_variants.csv` makes a clinical claim per row and cites per variant
 
@@ -811,8 +757,69 @@ the dropped rows* — there is no source of truth for them; they are not in the 
 its worst case, and it would hide a genuine typo on the tables most likely to carry one.
 
 The honest framing is that this is the round trip being lossy about **warnings** rather than about
-content, on a channel RM126 has now made load-bearing. Worth deciding against RM131's `carried` split,
-which is the discriminator that could classify it.
+content, on a channel RM126 has now made load-bearing.
+
+**RM131's `carried` split shipped in 0.7, so the discriminator now exists and this item can be decided
+against it rather than waiting on it.** Two things it settles. `overlay_update_unmatched` is classified
+**actionable**, which is the right answer for the reading the entry is about — a mistyped subject is the
+author's to fix — and it is therefore *not* excused by carried-ness; a sweep will report it as work
+arriving. And RM124's `suppress` record, added in the same release, shows the shape of the repair
+available here: **it counts the overlay's own rows rather than the rows it reached**, so it says the same
+thing on both laps. An `update` cannot borrow that directly — its finding is precisely *this correction
+reached nothing*, which is a fact about the reached set — but the question the repair has to answer is
+now narrow: is a warning that fires only on the second lap better reported over the **overlay** (stable,
+and silent about the one case the author cares about) or left as-is (truthful per lap, and moving a
+published field between a module and its own round trip).
+
+## RM138 — `carried` duplicates the message text, so the channel RM131 shrank nearly doubled
+
+**Severity** low · **Status** open — **a minor, release undecided; filed 2026-08-28 by the RM131
+review, measured over the whole reference corpus** · **Owner** format (schema) + compiler ·
+**Found by** reviewing RM131 against its own motivation
+
+**Not a defect, and the entry says so first.** The shape was decided per item with the maintainer:
+*a `carried` list beside `warnings`, holding the subset the author cannot clear*, chosen over a field
+on each finding because it invents no permanent names and because *a consumer subtracts to get the
+actionable set*. Both properties hold. What the decision did not have in front of it is the size, and
+the size is the thing RM131 exists about.
+
+**Measured, not estimated** — every reference example that emits a warning, byte lengths of
+`compilation.warnings` against the `compilation.carried` added beside it:
+
+| module | warnings | carried | warnings (B) | + carried (B) | growth |
+|---|---|---|---|---|---|
+| `pathogenic_clinvar` | 113 | 109 | 28,059 | 26,991 | 1.96× |
+| `hboc_palb2` | 12 | 12 | 2,977 | 2,977 | 2.00× |
+| `htt_repeat_expansion` | 3 | 1 | 2,200 | 729 | 1.33× |
+| `cyp2d6_structural` | 2 | 1 | 1,787 | 723 | 1.40× |
+| `apoe_epsilon`, `shox_par1` | 2 | 2 | 224 / 478 | 224 / 478 | 2.00× |
+| **corpus** | | | **41,272** | **+34,744** | **1.84×** |
+
+So the reported 14 kB module becomes a 55 kB one on the worst case here, and a module every one of
+whose findings is carried pays exactly double. The channel is still *readable* — that was never about
+byte count — but a reader who came to this item because the output was too long to follow deserves the
+number stated rather than discovered.
+
+**Why the obvious encodings are each wrong, so nobody re-proposes one.**
+
+- **`carried: list[int]`, indices into `warnings`.** Roughly a hundredth of the bytes and it breaks the
+  one property the field was chosen for: the subtraction becomes a zip, and an index means nothing to a
+  consumer that filtered or re-ordered the channel it came from. It also makes two published fields
+  positionally coupled, which is the shape `manifest.compilation.warnings` has always avoided.
+- **`carried: list[str]` of codes.** Cannot say *which messages*, so it answers a different question —
+  and it is already answerable, because carried-ness is a property of the code alone:
+  `warnings_summary` plus `CARRIED_WARNING_CODES` already gives the count. A consumer wanting the
+  count does not need this field at all.
+- **Drop `carried` and publish a per-message `codes: list[str]` parallel to `warnings`.** The genuinely
+  minimal encoding — about 20 bytes a message instead of 250 — and both `carried` and
+  `warnings_summary` derive from it. It is also a **third** shape rather than the one that was decided,
+  it re-introduces the positional coupling above, and it hands every consumer a derivation to perform
+  where they currently read an answer.
+
+**The honest framing** is that the duplication buys a self-describing field, and the question is
+whether a published manifest should pay ~1.8× on this channel for it. Worth deciding once, with the
+table above, rather than drifting: a fourth encoding after 1.0 is a removal, and removals are
+major-only under Principle 3.
 
 # Not format scope
 

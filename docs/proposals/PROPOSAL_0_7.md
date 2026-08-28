@@ -785,7 +785,21 @@ produces the table an uninterrupted run produces, which the resume path owes a t
 
 ## RM131 — `warnings` is a flat `list[str]`, and the discriminator that would make it readable is discarded
 
-**Severity** medium · **Owner** compiler · **Entry** [ROADMAP.md § RM131](../ROADMAP.md#rm131--warnings-is-a-flat-liststr-and-the-discriminator-that-would-make-it-readable-is-computed-and-discarded) ·
+**✅ BUILT — shipped in 0.7, both halves in one release as this section sequenced them.** Sixty-eight
+codes, nine carried, and three things this section did not anticipate. **The emission surface is larger
+than "roughly 29 append sites and 16 returning helpers"**: the count misses the `findings`/`messages`
+collectors, the two `.extend` sites reaching into the schema tier, and the deprecated DuckDB resolver in
+the *enricher*, whose warnings land in `manifest.compilation.warnings` like everything else — so the
+audit reached three tiers rather than one. **The `carried` list beside `warnings` is right, and the `str`
+subclass that makes it cheap leaks the code at exactly two places** — a pydantic field flattens it, and
+any reformat returns plain prose — so `compile_module`/`close_module` read a classified list beside the
+result and three prefixing sites go through `findings.restate`; both are pinned by tests rather than
+left to a comment. **And the suppression record has to be counted over the overlay, never over the rows
+it removed**, or it says a number on lap 1 and vanishes on lap 2, which is the published-field
+disagreement the overlay's own no-op rule exists to prevent.
+
+**Severity** medium · **Owner** compiler · **Entry**
+[ROADMAP_HISTORY.md § RM131](../ROADMAP_HISTORY.md#rm131--the-warnings-channel-says-what-each-finding-is-and-whether-an-author-can-clear-it) ·
 **Motivating case** S68 (just-module-creator)
 
 ### The problem

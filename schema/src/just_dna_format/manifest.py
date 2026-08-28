@@ -30,6 +30,7 @@ from just_dna_format.vocab import (
     VALID_AUTHOR_ROLES,
     VALID_VERIFICATION_CHECKS,
     VALID_VERIFICATION_SKIPS,
+    VALID_WARNING_CODES,
     check_vocab,
 )
 
@@ -215,6 +216,32 @@ class Compilation(BaseModel):
     )
     compiled_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp")
     warnings: list[str] = Field(default_factory=list)
+    # ── RM131: the same channel, readable. Both fields are DERIVED from `warnings` and neither
+    # replaces it — `warnings` stays the complete list, with its exact text, so nothing that greps a
+    # phrase breaks. `artifact.digest` is a Merkle root over the parquet `FileEntry` list, so the
+    # manifest sits outside it and these two moved no hash.
+    carried: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The subset of `warnings` no edit to the spec directory can clear — a limit of this tier "
+            "(no reference sequence is ever fetched, VRS identity is GRCh38-only) or a fact of a "
+            "source (dbSNP maps this rsID onto four loci). Subtract it from `warnings` to get the "
+            "findings an author still owes work on. Empty is a real answer: it means every finding "
+            "here is actionable, not that nothing was classified."
+        ),
+    )
+    warnings_summary: dict[str, int] = Field(
+        default_factory=dict,
+        json_schema_extra=vocabulary("warning_code", VALID_WARNING_CODES),
+        description=(
+            "`warnings` counted by kind — keys are members of VALID_WARNING_CODES. Either it is "
+            "**empty**, meaning this compile did not classify the channel, or its values sum to "
+            "`len(warnings)` and it accounts for the whole of it; it is never complete-looking and "
+            "short, because a partial digest is one a reader would trust and be wrong about. Codes "
+            "name the finding, never the function that built it, so a refactor cannot rename a "
+            "published key."
+        ),
+    )
     dropped_rows: dict[str, int] = Field(
         default_factory=dict,
         description=(
@@ -371,6 +398,27 @@ class Compilation(BaseModel):
         default=None,
         description="Of those, how many carry chrom+start, hence join to a VCF by position",
     )
+
+    @field_validator("warnings_summary")
+    @classmethod
+    def _check_warning_codes(cls, v: dict[str, int]) -> dict[str, int]:
+        """Every key is a published code, and the value it carries is a count.
+
+        The vocabulary's three parts on a dict field: the `frozenset` lives in `vocab`, the marker
+        sits in `json_schema_extra` on the field above, and this RETURNS `check_vocab` per key so a
+        `-`-for-`_` slip resolves to the declared spelling rather than surviving as a second one.
+        Rebuilt rather than mutated in place, since a canonicalized key may collide with one already
+        present — two spellings of one code are one count, not two entries.
+        """
+        rebuilt: dict[str, int] = {}
+        for code, count in v.items():
+            checked = check_vocab(code, VALID_WARNING_CODES, "warnings_summary key")
+            if checked is None:
+                raise ValueError("a warnings_summary key is required")
+            if count < 0:
+                raise ValueError(f"warnings_summary[{checked}] is a count and may not be negative")
+            rebuilt[checked] = rebuilt.get(checked, 0) + count
+        return {code: rebuilt[code] for code in sorted(rebuilt)}
 
 
 class Frequency(BaseModel):

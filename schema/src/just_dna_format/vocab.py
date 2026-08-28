@@ -1194,3 +1194,167 @@ VALID_RELEASE_OUTPUT_AXES: frozenset[str] = frozenset(
 # `curator` was absent (RM120 added the column, and no earlier artifact could have carried it). The
 # two look identical to a differ, and only the person who fixed the bug knows which it was.
 VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"})
+
+
+# ── What a warning IS, and whether an author can clear it (RM131) ────────────────────────────────
+# `warnings` on a `ValidationResult`/`CompilationResult`/`ClosureResult` — and the published
+# `manifest.compilation.warnings` — is a flat list of sentences. A 190-row module returned roughly
+# 14 kB of them, and every document on both sides of this seam tells an author that warnings on a
+# green run are the real output, which is only followable if the output can be read.
+#
+# Two axes, and they are separate (Principle 5) because they answer different questions:
+#
+#   * `VALID_WARNING_CODES` — *what is this finding?* One member per finding kind, so
+#     `warnings_summary` can say `{"rsid_expanded_to_multiple_loci": 9, "module_not_closed": 1}`
+#     without a consumer parsing prose. A member is named for the finding, never for the function
+#     that builds it: a code derived from an emission site would be renamed by a refactor, and a
+#     published key is permanent within a major under Principles 3 and 6.
+#   * `CARRIED_WARNING_CODES` — *can the author do anything about it?* The subset naming a limit of
+#     this tier or of a source, which no edit to the spec directory can remove. That includes
+#     re-running the enricher: a derived sidecar is part of the spec, so "run `enrich`" clears a
+#     finding and keeps it out of this set. `_carried_vrs_warnings` in the compiler is the shape this
+#     generalises — its own docstring says of those lines that "none of them is fixable by an
+#     authored edit at all".
+#
+# One code carries one remediation. Where two sentences are cleared by the same edit they share a
+# code and the sentence says which cell (the weight-sign pair, the five orphan fact tables); where
+# the edit differs they do not (a VCF pointer collision is qualified, an unselected element is given
+# a rule).
+#
+# This set is a one-way door. Adding a member is additive and minor-legal; removing or re-spelling one
+# is not, so a new emission site takes an existing code where the finding is the same and earns a new
+# one only where it is genuinely a new kind.
+#
+# **"Minor-legal" is a claim about the WRITER, and the qualifier matters.** The vocabulary is closed
+# and `Compilation.warnings_summary` validates its keys, so a consumer pinned to an older
+# `just-dna-format` will REFUSE a manifest carrying a code added after their pin — `read_manifest`
+# raises rather than ignoring the key. That is the standing consequence of every closed vocabulary on
+# a published field in this package (`VerificationRecord.check` and `VALID_VERIFICATION_CHECKS` are the
+# shipped precedent, same shape, same cost), and Principle 6 chooses it over an open set on purpose:
+# an inspectable vocabulary is what makes a value comparable at all. Stated here rather than left for
+# somebody to discover, because "additive" reads as "nobody has to do anything" and it does not — a
+# consumer reading manifests from newer compilers upgrades the schema package with them.
+#
+# Every emission site must name a member: `findings.classify` refuses a part-classified channel rather
+# than bucketing the remainder, because a summary that silently omits findings is worse than no summary
+# at all. It withholds — an empty pair — for a caller holding plain prose, which is what keeps the
+# public result models accepting `warnings=["..."]` as they did in 0.6.
+VALID_WARNING_CODES: frozenset[str] = frozenset(
+    {
+        # ── spec directory and module_spec.yaml ──
+        "table_file_misplaced",             # an authored table sitting in `derived/`, read from nowhere
+        "table_file_near_miss",             # a stray file one edit from a table name — probably a typo
+        "sidecar_spelling_deprecated",      # a machine-written sidecar under a superseded filename
+        "module_version_coerced",           # `module.version` was read as SemVer from another spelling
+        "panel_block_deprecated",           # `panel:` is deprecated in 0.6 and removed at 1.0
+        # ── coordinates and the genome build ──
+        "non_grch38_variant_keys",          # VRS identity is GRCh38-only, so rows are coordinate-keyed
+        "contig_ploidy_undecidable",        # chrom=Y on a build with no pseudoautosomal table here
+        "contig_ploidy_mismatch",           # a two-allele genotype on a contig that is not diploid
+        # ── resolution ──
+        "resolution_disabled",              # `--no-resolve` switched off an injected table that exists
+        "resolution_not_injected",          # nothing was injected, so unpositioned rows stay unresolved
+        "resolution_skipped_cross_build",   # resolution is GRCh38-bound and this module is not (RM15)
+        "positional_identity_contradicted", # a positional row's authored identity the table disagrees with
+        "positional_rows_unjoinable",       # positional rows with no chrom+start, so they join by rsID only
+        "rsid_unresolved",                  # an rsID the resolution table does not place
+        "rsid_without_resolution_label",    # coordinate-authored rows the table knows no rsID for
+        "rsid_expanded_to_multiple_loci",   # one authored row became several, because the source says so
+        "rsid_ambiguous",                   # the table marks the rsID ambiguous; the pick is a pick
+        "rsid_coordinate_disagrees",        # an authored rsID+coordinate pair the table contradicts
+        "locus_hosting_undecidable",        # whether a locus can host the genotype could not be decided
+        "locus_cannot_host_genotype",       # a locus contradicts the authored genotype and was dropped
+        "rsid_no_hosting_locus",            # every candidate locus contradicts the authored genotype
+        # ── VRS ──
+        "vrs_id_unverifiable",              # a recorded `ga4gh:VA.` this tier cannot recompute
+        "vrs_coverage_incomplete",          # alleles in resolution.csv that carry no VA at all
+        # ── variants.csv coherence ──
+        "weight_sign_disagrees_with_effect",  # `weight`'s sign contradicts `state` or `direction`
+        "genotype_allele_not_at_locus",     # a genotype names an allele the locus does not carry
+        "effect_allele_not_at_locus",       # `effect_allele` is not among the locus's alleles
+        "genotype_coverage_gap",            # a site states two or more genotypes and misses one
+        "quality_floor_inverted",           # a QUAL floor read against the reference record
+        "missing_allele_marker_in_alts",    # `.` in `alts` — VCF's no-alternate marker, not an allele
+        "vcf_pointer_key_collision",        # a pointer key INFO and FORMAT both define
+        "vcf_pointer_unselected_element",   # a pointer at a multi-valued field with no element rule
+        "composite_gene_cell",              # a single-valued `gene` cell that looks like a list
+        "symbolic_allele_unusable",         # a symbolic allele this format cannot apply; the
+                                            #   sentence says whether the row is dropped or fatal
+        # ── binning tables ──
+        "bin_tiling_inferred",              # the tiling was read off the data rather than declared
+        "bin_tiling_contradicted",          # a declared `quantised` grid the data does not sit on
+        "bin_coverage_gap",                 # no bin covers an interior stretch of the measure axis
+        "bins_ungrounded",                  # a threshold with no studies.csv row and no bin `pmid`
+        "measure_field_fractional",         # whole-number bins over a field that carries fractions
+        "measurement_spans_bins",           # a measurement whose interval straddles a boundary (RM56)
+        "deprecated_bin_modifier",          # a bin column deprecated in 0.6 and removed at 1.0
+        # ── PGx tables ──
+        "star_allele_undefined",            # a star allele used but never defined in haplotypes.csv
+        "diplotype_definitions_identical",  # diplotype rows naming haplotypes defined identically
+        "diplotype_phase_ambiguous",        # diplotype rows indistinguishable without phase
+        # ── studies and literature ──
+        "study_variant_orphan",             # a studies.csv row naming a variant the module does not carry
+        "duplicate_study_citation",         # two study rows on one (variant, pmid)
+        "p_value_encodings_disagree",       # `p_value` and `p_value_num` are two readings of one number
+        "study_effect_allele_not_at_locus", # a study's `effect_allele` is not among the resolved alleles
+        "citation_not_in_pubmed",           # a `pmid` PubMed has no record of
+        "literature_row_uncited",           # a literature row no study or bin cites — kept in the CSV
+        "quote_counter_stale",              # `quotes_authored` disagrees with the quotes that cite it
+        "quoted_article_license_restrictive",  # a quote from an article whose licence forbids sale
+        # ── sources and licensing ──
+        "source_row_unused",                # a sources.csv row no table in this module uses
+        "source_terms_unrecorded",          # a source the fact tables cite with no sources.csv row
+        "declared_license_disagrees",       # the module's licence and its sources report differently
+        # ── the injected fact tables ──
+        "derived_row_orphan",               # a fact row about something no variant in the module names
+        "faf95_exceeds_frequency",          # a 95% CI lower bound above its own point estimate
+        "oe_lof_outside_interval",          # a point estimate outside the interval published beside it
+        "oe_lof_disagrees_with_counts",     # obs/exp and `oe_lof` are one quantity and they differ
+        "clin_sig_contradicts_frequency",   # a pathogenic call above the BA1 frequency threshold
+        # ── the overlay (overrides.csv) ──
+        "overlay_update_unmatched",         # an `update` naming a row the target table does not carry
+        "overlay_targets_missing_table",    # an overlay correcting a table this module does not carry
+        "overlay_rows_suppressed",          # rows removed by a `suppress`, invisible in the build product
+        # ── verification and closure ──
+        "verification_two_copies",          # an attestation under two legal spellings; neither is preferred
+        "verification_unreadable",          # a `verification.json` that could not be read
+        "verification_stale",               # an attestation that no longer describes these bytes
+        "verification_findings_recorded",   # a check recorded a disagreement with a source
+        "module_not_closed",                # nothing in the module says authoring is finished
+        "closure_discarded_unreadable_record",  # `close` replaced a record it could not read
+    }
+)
+
+# The subset an author cannot clear. Membership is a claim about REMEDIATION, not about severity:
+# every member here is a warning in both modes, and so are most of the codes that are not here.
+#
+# The rule, stated once so a new member is decided rather than guessed: a code is carried when the
+# finding names a limit of this tier (the compiler will never fetch a reference sequence, VRS
+# identity is GRCh38-only, the format has no reading for a measurement that spans a boundary) or a
+# fact of a source (dbSNP maps this rsID onto four loci), so the only thing an author can do with it
+# is read it. Everything else — including every "re-run the enricher" finding, because a derived
+# sidecar is part of the spec directory — is actionable, and a consumer gets that set by subtracting
+# this one from `warnings`.
+#
+# `verification_findings_recorded` is the member most worth arguing, and it is carried on purpose: a
+# recorded finding is a disagreement between the module and an archive, the archive is the stale side
+# often enough that this never fails a build, and no edit to the spec clears the number sitting in
+# `verification.json`. It is a question put to a human, not work owed.
+CARRIED_WARNING_CODES: frozenset[str] = frozenset(
+    {
+        "non_grch38_variant_keys",
+        "resolution_skipped_cross_build",
+        "contig_ploidy_undecidable",
+        "rsid_expanded_to_multiple_loci",
+        "locus_hosting_undecidable",
+        "vrs_id_unverifiable",
+        "vrs_coverage_incomplete",
+        "measurement_spans_bins",
+        "verification_findings_recorded",
+    }
+)
+
+#: Derived by subtraction rather than restated, so a code added to `VALID_WARNING_CODES` without a
+#: deliberate carried decision lands here — the safe default, since claiming a finding is unclearable
+#: when it is not tells an author to stop looking at the one they could have fixed.
+ACTIONABLE_WARNING_CODES: frozenset[str] = VALID_WARNING_CODES - CARRIED_WARNING_CODES

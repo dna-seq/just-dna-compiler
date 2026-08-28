@@ -195,6 +195,9 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - "Keyed kind ⇒ dupe-checked" is not the line — which loop calls the checker is. `@which-loop-calls-the-checker`
 - An analogy in a `Field(description=…)` is a claim, and it does not travel with the field. `@field-description-is-a-claim`
 - A warning's text is an API: pin the phrase, and publish the denominator behind any flag. `@warning-text-is-api`
+- A warning code is a permanent key: name the **finding**, one code per remediation, never the emission site. `@warning-code-names-the-finding`
+- A `Finding` loses its code at a pydantic field and at any reformat — seed from the classified list, reformat through `restate`. `@finding-loses-its-code-at-a-boundary`
+- Count a correction's record over the **overlay**, never over what it removed, or lap 2 disagrees with lap 1. `@suppression-counts-the-overlay-not-the-effect`
 - The compiler discards an uncited literature row; `literature.csv` keeps it. `@uncited-literature-dropped`
 - One normalizer for a vocabulary two sources spell differently; test **both** sides' raw tokens. `@one-normalizer-two-spellings`
 

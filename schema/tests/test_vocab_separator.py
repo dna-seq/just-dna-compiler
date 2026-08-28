@@ -187,13 +187,27 @@ def test_a_vocabulary_bound_validator_returns_the_declared_member(
     """
     # The registry hands back a *bound* classmethod, so `cls` is already applied — and applied to the
     # subclass, which is what makes the `_EXPECTED_KIND` half of `MeasureBinRow` readable from here.
-    is_list = get_origin(model.model_fields[field].annotation) in (list, list | None)
+    origin = get_origin(model.model_fields[field].annotation)
+    is_list = origin in (list, list | None)
+    # A vocabulary can also bind a mapping's KEYS (`Compilation.warnings_summary` counts findings by
+    # code), and the contract is the same one: the declared spelling is what gets stored. Driving such
+    # a validator with a bare string would hand a `dict` method a `str`, so the candidate is wrapped
+    # the way the field holds it — the shape differs, the property under test does not.
+    is_dict = origin is dict
     takes_info = len(inspect.signature(func).parameters) > 1
 
     def run(candidate: str) -> str | None:
-        value = [candidate] if is_list else candidate
+        value: object = candidate
+        if is_list:
+            value = [candidate]
+        elif is_dict:
+            value = {candidate: 1}
         stored = func(value, _FieldInfo(field)) if takes_info else func(value)
-        return stored[0] if isinstance(stored, list) else stored
+        if isinstance(stored, list):
+            return stored[0]
+        if isinstance(stored, dict):
+            return next(iter(stored))
+        return stored
 
     for member in sorted(members):
         swapped = member.replace("_", "-") if "_" in member else member.replace("-", "_")

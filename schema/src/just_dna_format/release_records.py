@@ -71,6 +71,12 @@ EXCLUDED_MANIFEST_FIELDS: dict[str, str] = {
     "compilation.compiled_by": "who ran the compile — an environment fact, not an output fact",
     "compilation.compiler_version": "moves on every release by construction; it IS the interval key",
     "compilation.warnings": "routed to the `warnings` axis, which is outside the recompile drivers",
+    # RM131 published two fields DERIVED from `compilation.warnings`, so they move exactly when it
+    # does. Left in, they would report *a manifest field changed* on every module in a catalogue for
+    # a release that reworded one message — the same false positive the line above exists to prevent,
+    # arriving three times over instead of once.
+    "compilation.carried": "derived from `compilation.warnings`; routed to the `warnings` axis",
+    "compilation.warnings_summary": "derived from `compilation.warnings`; routed to the `warnings` axis",
     "content_signature": "routed to the `content_signature` axis",
     "artifact.digest": "routed to the `parquet_bytes` axis",
     "artifact.files": "routed to the `parquet_bytes` axis (per-file hashes and sizes)",

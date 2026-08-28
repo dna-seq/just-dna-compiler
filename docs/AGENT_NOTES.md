@@ -755,6 +755,77 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   *display* facets), but **before adding a computed field, check whether another block already carries
   the number, and if it does, say in the code why the new home is the right one.**
 
+- `@warning-code-names-the-finding` — **A warning code is a permanent published key, so it names the
+  FINDING and never the site that builds it (RM131).** The channel was a flat `list[str]`: 14 kB of
+  prose on a 190-row module, no count, and no way to tell a finding an author *can* clear from one they
+  cannot — while `_BLAME_TIER`/`_BLAME_ROW` had been computing exactly that distinction all along and
+  spending it on severity, as its own comment admitted ("blame decides severity and nothing else").
+  `carried` and `warnings_summary` now ship beside `warnings`, which is unchanged down to the byte.
+  Four things worth carrying forward:
+  - **The vocabulary is the expensive half, not the container.** `warnings_summary` costs nothing;
+    `VALID_WARNING_CODES` is permanent within the major under P3/P6, which is why the original entry
+    deferred the whole item rather than shipping a plausible set. Three tempting derivations were all
+    refused: from the pinned phrase catalogue (partial by construction, and a digest that silently
+    omits findings is worse than none, because the reader believes it), from the emission site (a
+    refactor renames a published key), and a cap or a verbosity flag (hides findings, and the author
+    with the most warnings most needs the hidden ones).
+  - **One code, one remediation.** That is the rule that decides whether two sentences share a member.
+    The weight-sign pair reaches the finding through `state` and through `direction` — two axes under
+    P5, one edit — so one code; the five orphan fact tables likewise. A VCF pointer collision and an
+    unselected element are cleared differently, so they do not.
+  - **`carried` = no edit to the SPEC DIRECTORY clears it**, which deliberately makes every "re-run the
+    enricher" finding *actionable*: a derived sidecar is part of the spec. Nine members, and the one to
+    argue about is `verification_findings_recorded` — a disagreement with an archive that is the stale
+    side often enough that nothing is owed. `_carried_vrs_warnings` is the shape this generalises; its
+    docstring already said of those lines that "none of them is fixable by an authored edit at all".
+  - **A registry of emission sites is the most floor-prone guard shape there is.** `test_warning_codes.py`
+    asserts an **equality** in both directions — a declared code nobody emits is a key a consumer waits
+    for forever, an emitted code nobody declared fails at a source walk rather than at whichever compile
+    first reaches that branch — and the walked set is derived twice over: participating modules are the
+    ones importing `CodedWarning`, and a return-literal builder is in scope when a two-pass closure
+    shows its result reaching a channel-named local. That closure is what exempts `_check_license_gate`
+    and `_check_build_coordinates` *by shape* instead of by a hand-kept list; both only ever reach
+    `all_errors`, and a refusal is a different channel. Proved by removing one wrapper and watching
+    both guards name the exact site.
+
+- `@finding-loses-its-code-at-a-boundary` — **A `str` subclass keeps 80-odd call sites working and
+  loses its tag at exactly two places (RM131).** `findings.CodedWarning` is a `str`, deliberately: the
+  transport stays `list[str]`, so every `.extend`, every `if w not in all_warnings` de-duplication —
+  the mechanism that lets one check run in both `validate_spec` and `compile_module` and publish one
+  line — every `"; ".join` and every consumer already grepping a phrase went untouched. The two leaks
+  are the whole cost of that choice, and both are load-bearing:
+  - **A pydantic field coerces a `str` subclass to plain `str`.** Right for the published surface
+    (`manifest.json` holds JSON strings, and a stored manifest must never be re-classified on read —
+    which is why the derivation sits on the *write* side and not in a `Compilation` validator) and
+    fatal for a caller that keeps building: `compile_module` seeds `all_warnings` from the pre-flight.
+    So `validate_spec` is a thin wrapper over an internal `_validate_spec` that returns
+    `(result, findings)`, and `compile_module`/`close_module` take the second. A test pins the trap
+    from the other side — reading `result.warnings` back and watching `classify` refuse it — so the
+    next reader meets it in a test rather than in a traceback.
+  - **Any reformat returns plain prose.** Three sites prefix a table name onto a message another tier
+    built (`_check_measure_shape`, `_check_binning_deprecations`, `validate_bins`'s wrapper), and an
+    f-string there silently drops the code. `findings.restate` is the one route that carries it, and it
+    **refuses** a plain string rather than inventing a code — the same reason `classify` refuses one:
+    a catch-all bucket reproduces the silently-partial summary the item exists to remove.
+
+  The corpus half of the guard exists because of these two: a static walk proves every *site* names a
+  code, and only a run over every reference example proves every *message that arrives* still carries
+  one.
+
+- `@suppression-counts-the-overlay-not-the-effect` — **A record of a correction must be counted over
+  the correction, never over what it removed (RM124 × RM131).** `suppress` was the one overlay
+  operation whose effect left no trace in the build product: the row is simply absent, and a consumer
+  holding the compiled bytes has no `overrides.csv` to read. The obvious record — *N rows removed* —
+  breaks the rule one paragraph of `apply_overrides` already states: after `reverse_module` the derived
+  table is post-overlay, so on the second lap the suppress matches nothing, and the line would say a
+  number on lap 1 and vanish on lap 2 — a module disagreeing with its own round trip on
+  `manifest.compilation.warnings`, a published field. Counting the *overlay's* rows says the same thing
+  on both laps. Aggregated by **reason** rather than per row, which is what `reason` being a required
+  column buys, and classified **actionable** rather than carried: the author owns the overlay and
+  deleting the row clears it. The existing no-op test was widened from "the second lap reports nothing"
+  to "the second lap reports what the first did" — emptiness was standing in for stability, and only
+  the latter is the property the published field needs.
+
 - `@uncited-literature-dropped` — **The compiler DISCARDS a literature row no study and no bin cites; `literature.csv` keeps it
   (RM79).** Two honest counters disagreed —`manifest.literature.missing_count` over the whole table,
   the `citation_existence` record over current citations — and merge-not-clobber makes that gap normal.

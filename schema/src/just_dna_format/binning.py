@@ -148,6 +148,7 @@ from typing import ClassVar, NamedTuple
 from pydantic import Field, field_validator, model_validator
 
 from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
+from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import validate_pmid_cell
 from just_dna_format.vocab import check_vocab, validate_finite
 
@@ -890,7 +891,8 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
             key: grp for key, grp in groups.items() if any(r.measure_kind == kind for r in grp)
         }
         if any(resolve_tiling(grp).value == "quantised" for grp in of_kind.values()):
-            warnings.append(
+            warnings.append(CodedWarning(
+                "measure_field_fractional",
                 f"{kind} bins here are tiled as whole numbers, but the field a consumer reads the "
                 f"measurement from ({value_field}) {FRACTIONAL_MEASURE_PHRASE}: {spec_note}. A "
                 f"fractional measurement falling between two adjacent bins matches neither — "
@@ -903,10 +905,11 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
                 f"group carrying a fractional bound is read as continuous without being asked. Left "
                 f"as a grid, expect an answer only from a caller that rounds, and none from a "
                 f"segment mean."
-            )
+            ))
         widest = max(len(grp) for grp in of_kind.values())
         if widest >= 2:
-            warnings.append(
+            warnings.append(CodedWarning(
+                "measurement_spans_bins",
                 f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what to "
                 f"do with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
                 f"bound means *unbounded*, so the measurement is an interval — and the widest group "
@@ -916,7 +919,7 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
                 f"vocabulary lands, a conforming consumer **withholds** — it does not pick among the "
                 f"bins the interval touches, and it does not fall back to the `unresolved` row, which "
                 f"means no measurement was available and is a different claim."
-            )
+            ))
     return warnings
 
 
@@ -939,12 +942,13 @@ def deprecation_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
     column held, and an author can move the value the day they read this.
     """
     if any(isinstance(r, CopyNumberRow) and r.modifier_cn is not None for r in rows):
-        return [
+        return [CodedWarning(
+            "deprecated_bin_modifier",
             f"{DEPRECATED_MODIFIER_PHRASE} and is removed at 1.0: write the dosage in "
             f"`modifier_copy_number` instead, which is a float and can hold the non-integer copy "
             f"numbers VCF 4.4 §7.2 allows. It still reads and behaves exactly as before until then, "
             f"a whole number stays a whole number, and setting both columns is an error."
-        ]
+        )]
     return []
 
 
@@ -1011,20 +1015,22 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
         dense = tiling.value == "continuous"
         if tiling.inferred:
             column, value = tiling.fractional
-            warnings.append(
+            warnings.append(CodedWarning(
+                "bin_tiling_inferred",
                 f"tiling inferred for key {shown_key}: {column} is {value}, which no quantised "
                 f"reading can hold, so this group was read as continuous — adjacent bins may share "
                 f"an endpoint (the higher one owns it) and any positive hole is reported. Declare "
                 f"`measure_tiling` on these rows to state it rather than have it read off the data."
-            )
+            ))
         elif tiling.contradicted:
             column, value = tiling.fractional
-            warnings.append(
+            warnings.append(CodedWarning(
+                "bin_tiling_contradicted",
                 f"measure_tiling for key {shown_key} is declared 'quantised' and the data "
                 f"contradicts it: {column} is {value}, which is not a grid point. The declaration "
                 f"stands — nothing here overrides it either way — so these bins are still read "
                 f"under the quantised rules and that value sits between two of them."
-            )
+            ))
         for i in range(1, len(spans)):
             prev_lo, prev_hi = spans[i - 1]
             lo, hi = spans[i]
@@ -1067,7 +1073,8 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
             else:
                 is_gap = False
             if is_gap:
-                warnings.append(
-                    f"coverage gap for key {shown_key}: no bin covers ({prev_hi}, {lo})"
-                )
+                warnings.append(CodedWarning(
+                    "bin_coverage_gap",
+                    f"coverage gap for key {shown_key}: no bin covers ({prev_hi}, {lo})",
+                ))
     return warnings

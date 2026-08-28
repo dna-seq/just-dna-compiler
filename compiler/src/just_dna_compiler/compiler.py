@@ -57,6 +57,7 @@ from just_dna_format.binning import (
     measurement_shape_warnings,
     validate_bins,
 )
+from just_dna_format.findings import CodedWarning, classify, restate
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
@@ -467,7 +468,7 @@ def _locate_sidecar(spec_dir: Path, csv_name: str) -> tuple[Path | None, list[st
     if path is None:
         return None, [], []
     notice = deprecation_notice(path, csv_name, shown_as=str(path.relative_to(spec_dir)))
-    return path, ([notice] if notice else []), []
+    return path, ([CodedWarning("sidecar_spelling_deprecated", notice)] if notice else []), []
 
 
 # ── Generic model-driven materializer (RM1) ────────────────────────────────────────────────────
@@ -984,22 +985,29 @@ def _cross_validate_variants(variants: list[VariantRow]) -> tuple[list[str], lis
     for row in variants:
         # `state`/`weight` sign consistency (legacy), plus the same check on the new `direction`.
         if row.weight is not None:
+            # One code across all four, because one edit clears any of them and the sentence already
+            # says which cell disagrees. `state` and `direction` are separate AXES (P5) and stay
+            # separate columns; they are not separate *remediations*, which is what a code names.
             if row.state == "risk" and row.weight > 0:
-                warnings.append(
-                    f"{row.variant_key} genotype {row.genotype}: state='risk' but weight={row.weight} > 0"
-                )
+                warnings.append(CodedWarning(
+                    "weight_sign_disagrees_with_effect",
+                    f"{row.variant_key} genotype {row.genotype}: state='risk' but weight={row.weight} > 0",
+                ))
             if row.state == "protective" and row.weight < 0:
-                warnings.append(
-                    f"{row.variant_key} genotype {row.genotype}: state='protective' but weight={row.weight} < 0"
-                )
+                warnings.append(CodedWarning(
+                    "weight_sign_disagrees_with_effect",
+                    f"{row.variant_key} genotype {row.genotype}: state='protective' but weight={row.weight} < 0",
+                ))
             if row.direction == "risk" and row.weight > 0:
-                warnings.append(
-                    f"{row.variant_key} genotype {row.genotype}: direction='risk' but weight={row.weight} > 0"
-                )
+                warnings.append(CodedWarning(
+                    "weight_sign_disagrees_with_effect",
+                    f"{row.variant_key} genotype {row.genotype}: direction='risk' but weight={row.weight} > 0",
+                ))
             if row.direction == "protective" and row.weight < 0:
-                warnings.append(
-                    f"{row.variant_key} genotype {row.genotype}: direction='protective' but weight={row.weight} < 0"
-                )
+                warnings.append(CodedWarning(
+                    "weight_sign_disagrees_with_effect",
+                    f"{row.variant_key} genotype {row.genotype}: direction='protective' but weight={row.weight} < 0",
+                ))
     return errors, warnings
 
 
@@ -1037,13 +1045,14 @@ def _restamp_for_build(variants: list[VariantRow], genome_build: str) -> list[st
             restamped += 1
     if not restamped:
         return []
-    return [
+    return [CodedWarning(
+        "non_grch38_variant_keys",
         f"genome_build is {genome_build!r}: GA4GH VRS allele identity is GRCh38-only (RM15), so "
         f"{restamped} variant(s) are keyed by coordinate instead. A coordinate key is "
         f"**build-relative** — it will not join against GRCh38-keyed data, and the same key means a "
         f"different locus on another build. Publish GRCh38 coordinates if the module is meant to "
-        f"join against gnomAD, ClinVar or ClinGen."
-    ]
+        f"join against gnomAD, ClinVar or ClinGen.",
+    )]
 
 
 def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38") -> list[str]:
@@ -1089,17 +1098,19 @@ def _check_contig_ploidy(variants: list[VariantRow], genome_build: str = "GRCh38
             # `chrom` at all and never reaches here. The message therefore names the *build* rather
             # than inventing a missing coordinate, and asserts neither reading — the same shape the
             # `absent` rsID message uses.
-            warnings.append(
+            warnings.append(CodedWarning(
+                "contig_ploidy_undecidable",
                 f"{row.variant_key} genotype {row.genotype}: chrom=Y with two alleles on build "
                 f"{genome_build!r}, which has no pseudoautosomal table here — so whether this locus "
                 f"is diploid could not be decided. Outside PAR1/PAR2 Y is hemizygous and this should "
-                f"be a single allele (e.g. 'G'); inside them the genotype is right."
-            )
+                f"be a single allele (e.g. 'G'); inside them the genotype is right.",
+            ))
             continue
-        warnings.append(
+        warnings.append(CodedWarning(
+            "contig_ploidy_mismatch",
             f"{row.variant_key} genotype {row.genotype}: chrom={row.chrom} is not diploid here — use "
-            f"a single-allele genotype (e.g. 'G') for a homoplasmic/hemizygous call"
-        )
+            f"a single-allele genotype (e.g. 'G') for a homoplasmic/hemizygous call",
+        ))
     return warnings
 
 
@@ -1304,23 +1315,25 @@ def _apply_positional_resolution(
     if not resolve or not resolution_table or not any(rows for _csv, rows in positional):
         return [], False
     if genome_build != DEFAULT_GENOME_BUILD:
-        return [
+        return [CodedWarning(
+            "resolution_skipped_cross_build",
             f"Positional-table fill skipped: the compiler is GRCh38-bound and this module's "
             f"genome_build is {genome_build!r}, so the injected resolution table is not joined onto "
             f"{', '.join(name for name, rows in positional if rows)} (RM15). Those rows keep the "
-            f"coordinates their author typed."
-        ], False
+            f"coordinates their author typed.",
+        )], False
     warnings: list[str] = []
     for csv_name, rows in positional:
         if not rows:
             continue
         report = resolve_positional_rows(rows, resolution_table, genome_build)
         if report.contradicted:
-            warnings.append(
+            warnings.append(CodedWarning(
+                "positional_identity_contradicted",
                 f"{csv_name}: {len(report.contradicted)} row(s) authored an identity the resolution "
                 f"table disagrees with, and are left exactly as authored — "
-                f"{_examples(report.contradicted)}"
-            )
+                f"{_examples(report.contradicted)}",
+            ))
     return warnings, True
 
 
@@ -1456,11 +1469,12 @@ def _check_positional_joinability(
             if partial
             else ""
         )
-        warnings.append(
+        warnings.append(CodedWarning(
+            "positional_rows_unjoinable",
             f"{csv_name}: {len(unplaced)} of {len(rows)} row(s) {UNJOINABLE_PHRASE}, so this table "
             f"joins by rsID only — a VCF whose ID column is empty matches none of them. {detail}."
-            f"{partial_note}"
-        )
+            f"{partial_note}",
+        ))
     return warnings
 
 
@@ -1580,10 +1594,11 @@ def _check_binning_grounding(
                 f"name a variant as its subject and never a bin, so it grounds the module while the "
                 f"bin pointer grounds this threshold"
             )
-        warnings.append(
+        warnings.append(CodedWarning(
+            "bins_ungrounded",
             f"{csv_name}: {len(ungrounded)} of {len(rows)} bin(s) state a threshold and the module "
-            f"records no grounding evidence at all (no studies.csv rows, no bin pmid). {remedy}."
-        )
+            f"records no grounding evidence at all (no studies.csv rows, no bin pmid). {remedy}.",
+        ))
     return warnings
 
 
@@ -1600,7 +1615,9 @@ def _check_measure_shape(rows_by_csv: dict[str, list[Any]]) -> list[str]:
     warnings: list[str] = []
     for csv_name, _model in _BINNING_TABLE_KINDS:
         rows = rows_by_csv.get(csv_name) or []
-        warnings.extend(f"{csv_name}: {w}" for w in measurement_shape_warnings(rows))
+        # `restate` and not an f-string: a reformatted message is a plain `str` and would arrive at
+        # `classify` with no code, so the prefix is applied through the one operation that carries it.
+        warnings.extend(restate(w, f"{csv_name}: {w}") for w in measurement_shape_warnings(rows))
     return warnings
 
 
@@ -1617,7 +1634,7 @@ def _check_binning_deprecations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
     warnings: list[str] = []
     for csv_name, _model in _BINNING_TABLE_KINDS:
         rows = rows_by_csv.get(csv_name) or []
-        warnings.extend(f"{csv_name}: {w}" for w in deprecation_warnings(rows))
+        warnings.extend(restate(w, f"{csv_name}: {w}") for w in deprecation_warnings(rows))
     return warnings
 
 
@@ -1676,15 +1693,16 @@ def _check_quality_inversion(variants: list[VariantRow]) -> list[str]:
         return []
     shown = ", ".join(str(v.variant_key) for v in offenders[:3])
     rest = f" (+{len(offenders) - 3} more)" if len(offenders) > 3 else ""
-    return [
+    return [CodedWarning(
+        "quality_floor_inverted",
         f"variants.csv: {len(offenders)} row(s) set requires_callable=true and state their min_quality "
         f"floor against QUAL. {QUAL_INVERSION_PHRASE}: VCF §1.6.1.6 makes QUAL -10log10 prob(no "
         f"variant) on a variant record but -10log10 prob(variant) where ALT is '.', so on the reference "
         f"record a consumer must read to prove this absence, a HIGH QUAL says the position is probably "
         f"variant — and the higher the floor, the more confidently wrong the result. State the floor "
         f"against a per-sample confidence field instead (GQ), or against the reference block's MIN_DP. "
-        f"e.g. {shown}{rest}."
-    ]
+        f"e.g. {shown}{rest}.",
+    )]
 
 
 #: The fragment of the RM58 warning that names the finding. Same reason as the phrases above.
@@ -1773,11 +1791,12 @@ def _check_missing_allele_marker(
                 "gene-keyed row names no variant at all — so the cell is simply claiming an allele "
                 "that does not exist"
             )
-        warnings.append(
+        warnings.append(CodedWarning(
+            "missing_allele_marker_in_alts",
             f"{csv_name}: {len(offenders)} row(s) write '.' in alts, which {MISSING_ALLELE_PHRASE} — "
             f"it states that the record has no alternate allele (VCF §1.6.1.5), so it is not the same "
-            f"kind of thing as a symbolic allele like <DEL>. {detail}. Leave the cell empty instead."
-        )
+            f"kind of thing as a symbolic allele like <DEL>. {detail}. Leave the cell empty instead.",
+        ))
     return warnings
 
 
@@ -1868,26 +1887,28 @@ def _check_vcf_pointers(
         )
         keys = sorted({key for _csv, _field, key in collisions})
         reasons = " ".join(f"{key}: {VCF_COLLISION_REASONS[key]}." for key in keys)
-        warnings.append(
+        warnings.append(CodedWarning(
+            "vcf_pointer_key_collision",
             f"{sum(collisions.values())} VCF pointer cell(s) name a key that INFO and FORMAT both "
             f"define, so the pointer does not say which field it means: {where}. {reasons} Qualify "
             f"the pointer — INFO/{keys[0]} or FORMAT/{keys[0]} — a bare key stays legal and keeps "
-            f"meaning unqualified, which is why this is a warning and not a refusal."
-        )
+            f"meaning unqualified, which is why this is a warning and not a refusal.",
+        ))
     if unselected:
         where = "; ".join(
             f"{csv_name} {VCF_POINTER_COMPANIONS[element_field]}={atom} (Number={number}, "
             f"{VCF_NUMBER_MEANINGS.get(number, 'a value list')}; {n} row(s), {element_field} empty)"
             for (csv_name, element_field, atom, number), n in sorted(unselected.items())
         )
-        warnings.append(
+        warnings.append(CodedWarning(
+            "vcf_pointer_unselected_element",
             f"{sum(unselected.values())} VCF pointer cell(s) point at a field the spec defines as "
             f"multi-valued and state no element rule, so the pointer names a list rather than a "
             f"number: {where}. Set the companion column to one of "
             f"{sorted(VALID_ELEMENT_RULES)} — on a Number=R field the reference is element zero, "
             f"which is why each ranging rule comes in a pair (largest counts it, largest_alt does "
-            f"not)."
-        )
+            f"not).",
+        ))
     return warnings
 
 
@@ -2196,21 +2217,23 @@ def _check_allele_membership(
             - allowed
         )
         if _allele_verdict(variant.genotype, variant, resolution_table) is False:
-            findings.append(
+            findings.append(CodedWarning(
+                "genotype_allele_not_at_locus",
                 f"{variant.variant_key} genotype {variant.genotype}: allele(s) "
                 f"{', '.join(missing)} are not among the {provenance} alleles at this locus "
-                f"({shown}) — {because}"
-            )
+                f"({shown}) — {because}",
+            ))
         if (
             variant.effect_allele
             and _allele_verdict(variant.effect_allele, variant, resolution_table) is False
         ):
-            findings.append(
+            findings.append(CodedWarning(
+                "effect_allele_not_at_locus",
                 f"{variant.variant_key} genotype {variant.genotype}: effect_allele "
                 f"{variant.effect_allele!r} is not among the {provenance} alleles at this locus "
                 f"({shown}) — direction/weight/effect_size are all stated relative to it, so a wrong "
-                f"effect allele inverts the conclusion rather than breaking it; {because}"
-            )
+                f"effect allele inverts the conclusion rather than breaking it; {because}",
+            ))
         if not findings:
             continue
         (errors if strict else warnings_out).extend(findings)
@@ -2258,11 +2281,12 @@ def _check_study_effect_alleles(
             resolved.add(row.ref.upper())
             resolved.update(a.strip().upper() for a in row.alts.split(",") if a.strip())
         shown = "/".join(sorted(resolved))
-        finding = (
+        finding = CodedWarning(
+            "study_effect_allele_not_at_locus",
             f"{key} (PMID {study.pmid}): effect_allele {study.effect_allele!r} is not among the "
             f"resolved alleles at this locus ({shown}) — effect_size is stated relative to it, so a "
             f"wrong effect allele inverts the study's finding rather than breaking it; the resolving "
-            f"source's allele list may also be incomplete, so check which before editing"
+            f"source's allele list may also be incomplete, so check which before editing",
         )
         (errors if strict else warnings_out).append(finding)
     return errors, warnings_out
@@ -2413,12 +2437,13 @@ def _check_genotype_coverage(
         # locus, which "2 sites" would have misreported. Same rule as every other counted warning here
         # — say what the denominator is rather than leaving a bare number to be read as either.
         sites_missing = len({site_key for site_key, _spelled in found})
-        findings.append(
+        findings.append(CodedWarning(
+            "genotype_coverage_gap",
             f"{len(found)} genotype(s) at {sites_missing} site(s) have no row: {reason}. The module "
             f"states two or more genotypes at each of those sites, so this is a gap in a set the "
             f"author started rather than a rule that fires once — "
-            f"{_examples([f'{site_key} {spelled}' for site_key, spelled in found])}"
-        )
+            f"{_examples([f'{site_key} {spelled}' for site_key, spelled in found])}",
+        ))
     return findings
 
 
@@ -2577,10 +2602,17 @@ def _symbolic_allele_messages(findings: list[_SymbolicFinding]) -> list[str]:
                 f"quietly different one."
             )
         )
-        messages.append(
+        # Coded even where the caller routes the line into `errors` — one builder, one sentence, and
+        # the code costs nothing on the error path, where nothing reads it. **That is also why the
+        # code names the unusable allele and not the drop**: `fate` says "dropped" for a droppable
+        # table and "fatal in both modes" for a composite one, so a code naming the consequence would
+        # be accurate on one path and a false claim on the other the day somebody routes the errors
+        # here too. A code names the finding; the sentence carries which of its two consequences fired.
+        messages.append(CodedWarning(
+            "symbolic_allele_unusable",
             f"{table}: {affected} row(s) carry {_SYMBOLIC_REASONS[reason]}. {fate} "
-            f"e.g. {shown}{rest}."
-        )
+            f"e.g. {shown}{rest}.",
+        ))
     return messages
 
 
@@ -2680,12 +2712,13 @@ def _check_p_value_num(
         parsed = parse_p_value(row.p_value)
         if parsed is None or math.isclose(parsed, row.p_value_num, rel_tol=0.01):
             continue
-        (errors if strict else warnings_out).append(
+        (errors if strict else warnings_out).append(CodedWarning(
+            "p_value_encodings_disagree",
             f"{row.variant_key} pmid {row.pmid}: p_value {row.p_value!r} reads as {parsed:g}, but "
             f"p_value_num says {row.p_value_num:g} — two encodings of one number disagree, so one of "
             f"them is a transcription slip (the string is the record; the number is what a consumer "
-            f"filters on)."
-        )
+            f"filters on).",
+        ))
     return errors, warnings_out
 
 
@@ -2808,10 +2841,11 @@ def _carried_vrs_warnings(carried: dict[str, list[str]]) -> list[str]:
             if len(wheres) > _VRS_CARRIED_EXAMPLES
             else ""
         )
-        lines.append(
+        lines.append(CodedWarning(
+            "vrs_id_unverifiable",
             f"{len(wheres)} allele(s): vrs_id could not be verified — {reason}; carried unverified "
-            f"({named}{more})."
-        )
+            f"({named}{more}).",
+        ))
     return lines
 
 
@@ -2945,13 +2979,17 @@ def _vrs_coverage_warnings(resolution_rows: list[ResolutionRow]) -> list[str]:
     alleles, identified, gaps = _vrs_coverage(resolution_rows)
     if not alleles or identified == alleles:
         return []
-    findings = [
+    findings = [CodedWarning(
+        "vrs_coverage_incomplete",
         f"VRS allele identity covers {identified}/{alleles} allele(s) in resolution.csv "
         f"({identified / alleles:.0%}) — {alleles - identified} carry no ga4gh:VA. id. Anything "
-        f"keying on the VA sees only the covered fraction."
-    ]
+        f"keying on the VA sees only the covered fraction.",
+    )]
     findings.extend(
-        f"  {count} allele(s): {reason}"
+        # The per-reason breakdown is the same finding continued, so it takes the same code: a
+        # summary counting the headline and its own detail under two keys would double-count one
+        # coverage gap.
+        CodedWarning("vrs_coverage_incomplete", f"  {count} allele(s): {reason}")
         for reason, count in sorted(gaps.items(), key=lambda kv: (-kv[1], kv[0]))
     )
     return findings
@@ -3118,10 +3156,11 @@ def _cross_validate_haplotype_definitions(
     )
     if not undefined:
         return []
-    return [
+    return [CodedWarning(
+        "star_allele_undefined",
         f"Star allele(s) used but not defined in haplotypes.csv: {undefined}. A consumer's caller "
-        f"cannot emit an allele nothing defines, so rows about it can never match."
-    ]
+        f"cannot emit an allele nothing defines, so rows about it can never match.",
+    )]
 
 
 #: An allele a haplotype does not mention — or mentions as its own reference base. The letter never
@@ -3260,19 +3299,21 @@ def _cross_validate_phase_ambiguity(haplotypes: list[Any], diplotypes: list[Any]
     # order (first-occurrence per gene, P7), and the count is always stated so nothing is silently
     # capped.
     for gene, groups in undistinguished.items():
-        warnings.append(
+        warnings.append(CodedWarning(
+            "diplotype_definitions_identical",
             f"{gene}: {len(groups)} group(s) of diplotype rows name haplotypes this module defines "
             f"identically, so nothing in it can tell them apart — phase does not help. A consumer's "
             f"caller may still emit each name and the rows disagree, so at most one can be right: "
             f"either the defining variants are incomplete or the rows describe one allele under "
-            f"several names. {_examples(groups)}"
-        )
+            f"several names. {_examples(groups)}",
+        ))
     for gene, groups in unphased.items():
-        warnings.append(
+        warnings.append(CodedWarning(
+            "diplotype_phase_ambiguous",
             f"{gene}: {len(groups)} group(s) of diplotype rows are indistinguishable without phase — "
             f"same unphased genotype, different conclusions. A consumer with unphased calls must "
-            f"withhold rather than pick one; a phased consumer resolves it. {_examples(groups)}"
-        )
+            f"withhold rather than pick one; a phased consumer resolves it. {_examples(groups)}",
+        ))
     return warnings
 
 
@@ -3315,14 +3356,18 @@ def _cross_validate_studies(
         if not by_rsid and not by_coord:
             orphans.append(row.variant_key)
     if orphans:
-        warnings.append(
-            f"Studies reference variants not in variants.csv: {sorted(set(orphans))}"
-        )
+        warnings.append(CodedWarning(
+            "study_variant_orphan",
+            f"Studies reference variants not in variants.csv: {sorted(set(orphans))}",
+        ))
     seen: set[tuple[str | None, str]] = set()
     for row in studies:
         key = (row.variant_key, row.pmid)
         if key in seen:
-            warnings.append(f"Duplicate (variant, pmid): ({row.variant_key}, {row.pmid})")
+            warnings.append(CodedWarning(
+                "duplicate_study_citation",
+                f"Duplicate (variant, pmid): ({row.variant_key}, {row.pmid})",
+            ))
         seen.add(key)
     return [], warnings
 
@@ -3350,11 +3395,19 @@ def _validate_table_kind(
     warnings: list[str] = []
 
     if issubclass(model, MeasureBinRow):
+        # The `try` covers the CALL and nothing else. `validate_bins` raises `ValueError` for an
+        # overlapping resolved bin, and so does `restate` for a finding that arrived with no code —
+        # so a wider block would file a missing warning code as a bin-overlap refusal on the table,
+        # which is both a false diagnosis and a silencing of the one failure the codes exist to make
+        # loud. Two `ValueError`s, one meaning each, kept apart by scope rather than by inspection.
         try:
-            for w in validate_bins(rows):
-                warnings.append(f"{csv_name}: {w}")
+            bin_findings = validate_bins(rows)
         except ValueError as exc:
             errors.append(f"{csv_name}: {exc}")
+            bin_findings = []
+        # `restate`, not an f-string: the prefix would otherwise strip the code `validate_bins` named
+        # — the three tiling/coverage findings are not one kind.
+        warnings.extend(restate(w, f"{csv_name}: {w}") for w in bin_findings)
         sentinels: dict[tuple, int] = defaultdict(int)
         for r in rows:
             if r.unresolved:
@@ -3485,22 +3538,24 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
                 continue
             shown = path.relative_to(spec_dir)
             if path.name in authored_names:
-                warnings.append(
+                warnings.append(CodedWarning(
+                    "table_file_misplaced",
                     f"{shown} is an authored table sitting in {DERIVED_SUBDIR}/, which holds only the "
                     f"machine-written sidecars — every row in it is being silently ignored. Move it to "
-                    f"the spec root. Only resolution.csv and the fact tables have a second legal home."
-                )
+                    f"the spec root. Only resolution.csv and the fact tables have a second legal home.",
+                ))
                 continue
             close = difflib.get_close_matches(
                 path.name, sorted(_KNOWN_SPEC_FILES), n=1, cutoff=0.8
             )
             if close:
-                warnings.append(
+                warnings.append(CodedWarning(
+                    "table_file_near_miss",
                     f"{shown} is not a table this compiler reads, and it is one small edit from "
                     f"{close[0]!r} — if that is a typo, every row in it is being silently ignored. "
                     f"Unknown files are otherwise tolerated (curation notes or a publisher's receipt "
-                    f"are fine): nothing outside the known table set reaches artifact.digest."
-                )
+                    f"are fine): nothing outside the known table set reaches artifact.digest.",
+                ))
     return warnings
 
 
@@ -3545,11 +3600,12 @@ def _overlay_targets_missing(overrides: list[OverrideRow], applied: set[str]) ->
     missing = sorted(named - applied)
     if not missing:
         return []
-    return [
+    return [CodedWarning(
+        "overlay_targets_missing_table",
         f"{OVERRIDES_CSV} corrects {', '.join(missing)}, which this module does not carry. An "
         f"overlay lies on top of a derived table and never creates one, so those rows change "
-        f"nothing. Run the pass that writes the table, or drop the override rows."
-    ]
+        f"nothing. Run the pass that writes the table, or drop the override rows.",
+    )]
 
 
 def validate_spec(
@@ -3584,6 +3640,55 @@ def validate_spec(
     `gene_count`, `study_count`, and the ClinVar quality counts
     (`clinvar_count`/`pathogenic_count`/`benign_count`) — the fields the manifest needs. See
     `ValidationResult.stats` for the full key contract.
+
+    `warnings` is the complete list, unchanged; `carried` names the subset an author cannot clear and
+    `warnings_summary` counts them by code (RM131). A caller that wants to keep *building* on this
+    run's findings — as `compile_module` and `close_module` do — calls `_validate_spec` instead, for
+    the reason given there.
+    """
+    return _validate_spec(
+        spec_dir, authority_keys, strict=strict, resolve_with_ensembl=resolve_with_ensembl
+    )[0]
+
+
+def _validate_spec(
+    spec_dir: Path,
+    authority_keys: Iterable[str] | None = None,
+    *,
+    strict: bool = False,
+    resolve_with_ensembl: bool = True,
+) -> tuple[ValidationResult, list[str]]:
+    """`validate_spec`'s body, plus the findings list the result cannot carry back out.
+
+    Pydantic coerces a `CodedWarning` to a plain `str` on its way into `ValidationResult.warnings`, which
+    is right for the published surface and fatal for a caller that seeds its own channel from this
+    one: `compile_module` starts from the pre-flight's warnings and keeps appending, and a seed that
+    had lost its codes would arrive at `classify` unclassified. So the classified list comes back
+    beside the result, and the two public entry points that continue a run take it.
+
+    `authority_keys` (inject-only) is the set of consumer/registry-owned identity keys to strip from
+    the authored `module:` block before validation — pass `just_dna_format.normalize.
+    IDENTITY_AUTHORITY_KEYS` (or your own set) so a legacy spec carrying `namespace:`/`owner:`/
+    `canonical_id:` validates; the format applies none by default. Stripped keys are surfaced on
+    `.info`. Everything else still trips `extra="forbid"`.
+
+    `strict` mirrors `compile_module`'s flag and exists for one reason: several checks are a **mode
+    ladder** (warning in `best_effort`, error in `strict`), so without a mode here the pre-flight
+    could not answer the question the author actually asked — the documented order is `validate` then
+    `compile --strict`, and a modeless `validate` is a pre-flight for the *other* compile. It changes
+    severity only; it never adds or removes a finding, which is what keeps the two commands one
+    contract rather than two.
+
+    `resolve_with_ensembl` mirrors it for the same reason and is passed through by `compile_module`.
+    The pre-flight applies the injected table to the positional 0.4 tables (RM43), and that decides
+    whether their rows are reported as unjoinable — so a `validate` that ignored the master resolution
+    switch would be *more optimistic* than the compile it precedes, which is the disagreement
+    direction the parity rule exists to prevent.
+
+    Stats include `genes`/`categories` as lists (filtering None) plus `variant_count`,
+    `gene_count`, `study_count`, and the ClinVar quality counts
+    (`clinvar_count`/`pathogenic_count`/`benign_count`) — the fields the manifest needs. See
+    `ValidationResult.stats` for the full key contract.
     """
     spec_dir = Path(spec_dir)
     all_errors: list[str] = []
@@ -3591,7 +3696,10 @@ def validate_spec(
     all_info: list[str] = []
 
     if not spec_dir.is_dir():
-        return ValidationResult(valid=False, errors=[f"Spec directory does not exist: {spec_dir}"])
+        return (
+            ValidationResult(valid=False, errors=[f"Spec directory does not exist: {spec_dir}"]),
+            [],
+        )
 
     all_warnings.extend(_check_misspelled_tables(spec_dir))
 
@@ -3609,11 +3717,12 @@ def validate_spec(
     # the model already did it, and `version_coerced_from` is how it says so. A clean
     # MAJOR.MINOR.PATCH coerces to itself and stays silent.
     if config is not None and config.module.version_coerced_from:
-        all_warnings.append(
+        all_warnings.append(CodedWarning(
+            "module_version_coerced",
             f"module.version {config.module.version_coerced_from!r} was read as SemVer "
             f"{config.module.version!r}. It is advisory either way — the registry stamps the "
-            f"canonical version on publish — but the module now compiles under the coerced value."
-        )
+            f"canonical version on publish — but the module now compiles under the coerced value.",
+        ))
 
     # The build every authored row below is loaded as being on. `config` is None when the yaml itself
     # failed to load, and the format's own default is the honest answer there — `validate` reports every
@@ -3829,23 +3938,25 @@ def validate_spec(
             "block until 1.0 if you need them recorded."
         )
         if replaced:
-            all_warnings.append(
+            all_warnings.append(CodedWarning(
+                "panel_block_deprecated",
                 "module_spec.yaml declares a `panel:` block. It is deprecated in 0.6 and removed at "
                 "1.0: the compiler never materialized rows from it, and the one thing that did read "
                 "it — the enricher's ClinVar clin_sig cross-check, deciding whether a drafted module "
                 "is being compared against its own source — now reads the `dataset` column of the "
                 "module's licence row, which `just-dna-enricher draft-panel` writes itself. The rows "
-                f"it describes are the authored variants.csv rows. {unreplaced}"
-            )
+                f"it describes are the authored variants.csv rows. {unreplaced}",
+            ))
         else:
-            all_warnings.append(
+            all_warnings.append(CodedWarning(
+                "panel_block_deprecated",
                 "module_spec.yaml declares a `panel:` block, which is deprecated in 0.6 and removed "
                 "at 1.0 — but this module has no clinvar/annotation licence row carrying a "
                 "`dataset`, which is what replaced the block's one reader. Do NOT delete the block "
                 "yet: it is currently the only record of which snapshot this module was drafted "
                 "from. Fill the licence row's `dataset` first (re-drafting will not backfill it — "
-                f"the merge is never-clobber), then delete. {unreplaced}"
-            )
+                f"the merge is never-clobber), then delete. {unreplaced}",
+            ))
 
     # The verification attestation (RM45). Read here as well as in `compile_module` under the standing
     # rule — pure computation over injected bytes with no `output_dir` belongs in the pre-flight too —
@@ -4085,12 +4196,15 @@ def validate_spec(
         stats.update(module_stats(variants, gene_bearing))
     all_warnings.extend(_check_composite_gene_cells(variants, gene_bearing))
 
-    return ValidationResult(
-        valid=len(all_errors) == 0,
-        errors=all_errors,
-        warnings=all_warnings,
-        info=all_info,
-        stats=stats,
+    return (
+        ValidationResult(
+            valid=len(all_errors) == 0,
+            errors=all_errors,
+            warnings=all_warnings,
+            info=all_info,
+            stats=stats,
+        ),
+        all_warnings,
     )
 
 
@@ -4127,13 +4241,14 @@ def _check_composite_gene_cells(
     if not seen:
         return []
     named = ", ".join(f"{cell!r} ({count} row(s))" for cell, count in sorted(seen.items()))
-    return [
+    return [CodedWarning(
+        "composite_gene_cell",
         f"{len(seen)} gene cell(s) contain a list separator and are published as single gene names: "
         f"{named}. `stats.genes` is what a registry's gene index reads, so a composite value becomes "
         f"a gene nobody will search for, beside its parts. Nothing is split here — a composite may "
         f"legitimately name the locus — so either give the row one symbol, or leave it and know the "
-        f"index will not find the module by either part."
-    ]
+        f"index will not find the module by either part.",
+    )]
 
 
 def variant_stats(variants: list[VariantRow]) -> dict[str, Any]:
@@ -4376,10 +4491,14 @@ def compile_module(
     # mode, which is why every mode-ladder check re-runs below); `resolve_with_ensembl` is, because it
     # is not a severity — it decides whether the injected table is consulted at all, and a pre-flight
     # answering that differently would seed `all_warnings` with a finding this compile contradicts.
-    validation = validate_spec(spec_dir, authority_keys, resolve_with_ensembl=resolve_with_ensembl)
+    validation, validation_findings = _validate_spec(
+        spec_dir, authority_keys, resolve_with_ensembl=resolve_with_ensembl
+    )
     if not validation.valid:
+        # The classified list, not `validation.warnings` — a failed compile publishes the same
+        # readable channel a successful one does, and the model's copy has lost its codes.
         return CompilationResult(
-            success=False, errors=validation.errors, warnings=validation.warnings
+            success=False, errors=validation.errors, warnings=validation_findings
         )
 
     config, _, _ = _load_yaml(spec_dir / "module_spec.yaml", authority_keys)
@@ -4412,7 +4531,10 @@ def compile_module(
                 spec_dir / csv_name, model, csv_name, genome_build=config.genome_build
             )
 
-    all_warnings = list(validation.warnings)
+    # Seeded from the classified list rather than from `validation.warnings`, whose members pydantic
+    # has already flattened to plain strings. The two lists carry identical text, so every `if w not
+    # in all_warnings` de-duplication below still compares exactly what it compared before.
+    all_warnings = list(validation_findings)
 
     # Symbolic/structural alleles the module cannot apply (RM5). Runs before anything is written, and
     # before resolution, because it decides which rows exist: under `best_effort` a row stating an
@@ -4596,14 +4718,15 @@ def compile_module(
         # publish the size of what it skipped — the same reason `vrs_alleles` ships beside
         # `vrs_alleles_identified`. Rows, not keys: a one-to-many rsid contributes several.
         unread = sum(len(rows) for rows in resolution_table.values())
-        all_warnings.append(
+        all_warnings.append(CodedWarning(
+            "resolution_disabled",
             f"--no-resolve (resolve_with_ensembl=False) switches off resolution entirely, including "
             f"the injected resolution.csv beside this spec ({unread} row(s), covering "
             f"{len(resolution_table)} variant key(s)), which was not read — every variant will compile "
             f"with no chrom/start and match no VCF. The flag names Ensembl but is the master switch; "
             f"drop it to use the injected table. There is no flag for 'do not reach the network' "
-            f"because the compiler never does (CONSTITUTION P2) — omitting this one is that request."
-        )
+            f"because the compiler never does (CONSTITUTION P2) — omitting this one is that request.",
+        ))
     if resolve_with_ensembl and variants:
         resolution_mode = "strict" if strict else "best_effort"
         resolve_warnings: list[str] = []
@@ -4665,10 +4788,11 @@ def compile_module(
         elif any(v.chrom is None or v.start is None for v in variants):
             # Nothing injected: the compiler no longer auto-discovers or fetches a reference (P2,
             # tightened in 0.5). Variants lacking a position are left unresolved with a pointer.
-            resolve_warnings = [
+            resolve_warnings = [CodedWarning(
+                "resolution_not_injected",
                 "No resolution.csv and no ensembl_cache injected; variants lacking a genomic position "
-                "are left unresolved. Produce a resolution.csv with just-dna-enricher."
-            ]
+                "are left unresolved. Produce a resolution.csv with just-dna-enricher.",
+            )]
         all_warnings.extend(resolve_warnings)
         # The round-trip contract. `strict` promises a *reproducible* artifact, and these are the
         # conditions under which `compile → reverse → compile` cannot reproduce the resolution table
@@ -5113,7 +5237,7 @@ def close_module(
     tool instead of by an edit.
     """
     spec_dir = Path(spec_dir)
-    validation = validate_spec(spec_dir)
+    validation, validation_findings = _validate_spec(spec_dir)
     if not validation.valid:
         return ClosureResult(
             closed=False,
@@ -5127,7 +5251,7 @@ def close_module(
             # pre-flight is right to say it and this caller is the one context where it is answered
             # by definition. Filtered on the phrase rather than by re-deciding, so the two cannot
             # drift apart.
-            warnings=[w for w in validation.warnings if UNCLOSED_PHRASE not in w],
+            warnings=[w for w in validation_findings if UNCLOSED_PHRASE not in w],
         )
 
     try:
@@ -5144,10 +5268,11 @@ def close_module(
         try:
             previous = read_verification(path)
         except (OSError, ValueError) as exc:
-            warnings.append(
+            warnings.append(CodedWarning(
+                "closure_discarded_unreadable_record",
                 f"The existing {path.name} could not be read ({exc}); this closure replaces it, so "
-                f"any checks it recorded are gone. Re-run the checks (just-dna-enricher)."
-            )
+                f"any checks it recorded are gone. Re-run the checks (just-dna-enricher).",
+            ))
 
     held = previous is not None and attestation_failure(previous, binding) is None
     if held:
@@ -5389,15 +5514,17 @@ def _source_checks(rows: list[SourceRow], used_sources: set[str]) -> list[str]:
     corroborable = {r.source for r in rows if r.layer not in _UNCORROBORABLE_LAYERS}
     orphans = sorted(corroborable - used_sources)
     if orphans:
-        warnings.append(
-            f"sources.csv declares {len(orphans)} source(s) no table in this module uses: {orphans}"
-        )
+        warnings.append(CodedWarning(
+            "source_row_unused",
+            f"sources.csv declares {len(orphans)} source(s) no table in this module uses: {orphans}",
+        ))
     undeclared = sorted(used_sources - declared)
     if undeclared:
-        warnings.append(
+        warnings.append(CodedWarning(
+            "source_terms_unrecorded",
             f"sources.csv has no row for {len(undeclared)} source(s) the module's fact tables cite: "
-            f"{undeclared} — their terms are unrecorded."
-        )
+            f"{undeclared} — their terms are unrecorded.",
+        ))
     return warnings
 
 
@@ -5423,11 +5550,12 @@ def _check_declared_license_agrees(
     )
     if not conflicting:
         return []
-    return [
+    return [CodedWarning(
+        "declared_license_disagrees",
         f"module declares license {declared_license!r} but annotation-layer sources report "
         f"{conflicting}. Not adjudicated here — a compatible pair is legitimate, an incompatible "
-        f"one is a real problem, and only a human can tell which."
-    ]
+        f"one is a real problem, and only a human can tell which.",
+    )]
 
 
 def _sources_block(rows: list[SourceRow]) -> Sources | None:
@@ -5511,13 +5639,16 @@ def _findings_warning(block: Verification | None) -> list[str]:
         f"{r.check} ({r.findings} of {r.subjects})"
         for r in sorted(found, key=lambda r: (-r.findings, r.check))
     )
-    return [
+    # `carried`, and the docstring above is the argument: the archive is the stale side often enough
+    # that no authored edit is owed, and nothing an author writes moves the number in the record.
+    return [CodedWarning(
+        "verification_findings_recorded",
         f"verification.json records {sum(r.findings for r in found)} finding(s) across "
         f"{len(found)} check(s): {named}. A finding is a disagreement between this module and a "
         f"source, not a defect — the archive is the stale side often enough that this never fails a "
         f"build. Read the record's `detail` for which rows, and record why the module is right in "
-        f"`provenance.json`'s `outranks` where it is."
-    ]
+        f"`provenance.json`'s `outranks` where it is.",
+    )]
 
 
 def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[str]]:
@@ -5550,7 +5681,13 @@ def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[
     # here where the same collision on a fact table is an error, because the outcome is already the
     # weaker one: two attestations are two claims, neither may be preferred, so nothing is published.
     if spelling_errors:
-        return None, spelling_errors + spelling_warnings
+        # A collision message is built by `layout` as a refusal and lands here as a warning, so it
+        # arrives with no code of its own — coded at the point where it becomes a warning, which is
+        # the only place that knows it is one.
+        return None, [
+            *(CodedWarning("verification_two_copies", e) for e in spelling_errors),
+            *spelling_warnings,
+        ]
     if path is None:
         return None, list(spelling_warnings)
     shown = path.relative_to(spec_dir)
@@ -5559,8 +5696,11 @@ def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[
     except (OSError, ValueError) as exc:
         return None, [
             *spelling_warnings,
-            f"{shown} could not be read as a verification attestation ({exc}); this compile records "
-            f"no verification. Re-run the checks (just-dna-enricher) to rewrite it.",
+            CodedWarning(
+                "verification_unreadable",
+                f"{shown} could not be read as a verification attestation ({exc}); this compile "
+                f"records no verification. Re-run the checks (just-dna-enricher) to rewrite it.",
+            ),
         ]
     failure = attestation_failure(doc, _module_binding(spec_dir))
     if failure is not None:
@@ -5574,8 +5714,11 @@ def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[
         )
         return None, [
             *spelling_warnings,
-            f"{shown} is stale: {failure}. The manifest records no verification for this compile, "
-            f"which says nothing rather than claiming a pass. {remedy}",
+            CodedWarning(
+                "verification_stale",
+                f"{shown} is stale: {failure}. The manifest records no verification for this "
+                f"compile, which says nothing rather than claiming a pass. {remedy}",
+            ),
         ]
     return verification_block(doc), list(spelling_warnings)
 
@@ -5603,14 +5746,17 @@ def _closure_warning(block: Verification | None) -> list[str]:
     """
     if block is not None and block.closure is not None:
         return []
-    return [
+    # Actionable, and the paragraph above already says why in so many words: a finding the author can
+    # clear. `close` is the edit that clears it.
+    return [CodedWarning(
+        "module_not_closed",
         f"This module {UNCLOSED_PHRASE}: nothing in it states that authoring is finished, so a "
         f"consumer cannot tell a spec still being edited from one its author considers done. Run "
         f"`just-dna-compiler close <spec-dir>` when the module is complete — closing is a deliberate "
         f"act, it is never stamped by a passing check, and editing any authored file afterwards drops "
         f"the closure again. Compiling without one is a warning today; requiring it is filed for 1.0 "
-        f"(RM73)."
-    ]
+        f"(RM73).",
+    )]
 
 
 def _module_binding(spec_dir: Path) -> str:
@@ -5695,6 +5841,7 @@ def _build_manifest(
     authored_version = (
         module.version if module.version and is_valid_version(module.version) else None
     )
+    _carried, _summary = classify(warnings)
     return ModuleManifest(
         identity=Identity(name=module.name, version=authored_version),
         display=Display(
@@ -5726,6 +5873,12 @@ def _build_manifest(
             ensembl_reference=ensembl_reference,
             compiled_at=_now_iso(),
             warnings=warnings,
+            # RM131: derived here rather than in a `Compilation` validator, because that model is
+            # also how a *published* manifest is read back — and a stored manifest's warnings are
+            # plain JSON strings that classify into nothing. Deriving on read would rewrite what a
+            # consumer holds; deriving on write says what this compile actually found.
+            carried=_carried,
+            warnings_summary=_summary,
             dropped_rows=dropped_rows or {},
             resolution_mode=resolution_mode,
             fully_resolved=fully_resolved,
@@ -5971,11 +6124,12 @@ def _check_frequency_arithmetic(rows: list[FrequencyRow]) -> tuple[list[str], li
             # Separate layer on purpose: the outer asks whether it is above, this asks whether it is
             # above by more than float tolerance.
             if not _close(row.faf95, frequency):
-                warnings_out.append(
+                warnings_out.append(CodedWarning(
+                    "faf95_exceeds_frequency",
                     f"{where}: faf95 {row.faf95} exceeds the group's own allele frequency "
                     f"{frequency:.6g} — a 95% CI *lower bound* should sit at or below the point "
-                    f"estimate, so these two numbers may not describe the same denominator"
-                )
+                    f"estimate, so these two numbers may not describe the same denominator",
+                ))
     return errors, warnings_out
 
 
@@ -5993,17 +6147,19 @@ def _check_gene_metrics_arithmetic(rows: list[GeneMetricsRow]) -> list[str]:
         where = f"gene_metrics.csv [{row.gene}]"
         lower, point, upper = row.oe_lof_lower, row.oe_lof, row.loeuf
         if None not in (lower, point, upper) and not lower <= point <= upper:
-            warnings_out.append(
+            warnings_out.append(CodedWarning(
+                "oe_lof_outside_interval",
                 f"{where}: oe_lof {point} lies outside its own interval [{lower}, {upper}] — the "
-                f"point estimate and the bounds may have come from different releases or columns"
-            )
+                f"point estimate and the bounds may have come from different releases or columns",
+            ))
         if row.obs_lof is not None and row.exp_lof and point is not None:
             derived = row.obs_lof / row.exp_lof
             if not _close(derived, point, 1e-4):
-                warnings_out.append(
+                warnings_out.append(CodedWarning(
+                    "oe_lof_disagrees_with_counts",
                     f"{where}: obs_lof/exp_lof is {derived:.6g} but oe_lof is {point} — these are the "
-                    f"same quantity, so a disagreement means one of the three columns is mismapped"
-                )
+                    f"same quantity, so a disagreement means one of the three columns is mismapped",
+                ))
     return warnings_out
 
 
@@ -6034,10 +6190,14 @@ def _cross_check_frequencies(
     )
     if not orphans:
         return []
-    return [
+    # One code across all five orphan checks. They are one finding — a fact row describing something
+    # no variant in the module names — reached through five tables, and the fix is the same edit in
+    # every one of them, so the sentence names the table and the code names the kind.
+    return [CodedWarning(
+        "derived_row_orphan",
         f"frequencies.csv describes {len(orphans)} coordinate(s) no variant in this module sits at: "
-        f"{orphans}"
-    ]
+        f"{orphans}",
+    )]
 
 
 def _cross_check_literature(
@@ -6078,17 +6238,19 @@ def _cross_check_literature(
 
     missing = sorted({r.pmid for r in kept if r.exists is False})
     if missing:
-        findings.append(
+        findings.append(CodedWarning(
+            "citation_not_in_pubmed",
             f"literature.csv records {len(missing)} citation(s) PubMed has no record of: "
             f"{missing} — either the id is a typo or the article was retracted from the index; "
-            f"the annotation resting on it should be re-examined either way"
-        )
+            f"the annotation resting on it should be re-examined either way",
+        ))
     if dropped:
-        findings.append(
+        findings.append(CodedWarning(
+            "literature_row_uncited",
             f"literature.csv describes {len(dropped)} citation(s) no study or bin in this module "
             f"cites: {sorted({r.pmid for r in dropped})} — left out of the artifact, and left in "
-            f"the CSV, which is the pin that keeps a re-run cheap"
-        )
+            f"the CSV, which is the pin that keeps a re-run cheap",
+        ))
     findings.extend(_check_quoted_article_licenses(kept, studies))
     findings.extend(_check_quote_counter_is_current(kept, studies, bin_rows))
     return findings
@@ -6185,13 +6347,14 @@ def _check_quote_counter_is_current(
     )
     if not stale:
         return []
-    return [
+    return [CodedWarning(
+        "quote_counter_stale",
         f"literature.csv's quotes_authored disagrees with studies.csv for {len(stale)} citation(s): "
         + ", ".join(f"pmid {pmid} records {recorded} but {counted} quote(s) cite it" for
                     pmid, recorded, counted in stale)
         + " — the sidecar predates the quotes (it is merge-not-clobber, so a re-run keeps the old "
-        "row); re-run the literature pass to bring the counters and quotes_found up to date"
-    ]
+        "row); re-run the literature pass to bring the counters and quotes_found up to date",
+    )]
 
 
 def _check_quoted_article_licenses(
@@ -6222,10 +6385,14 @@ def _check_quoted_article_licenses(
                 row.pmid
             )
     return [
-        f"{len(pmids)} study quote(s) come from article(s) licensed {license_name!r}, which forbids "
-        f"commercial reuse: {sorted(pmids)}. Not adjudicated here — quoting for comment or research "
-        f"is often fine and the format is not the tier that decides — but the passage is publisher "
-        f"text in this module's annotation layer, so a commercial distribution has to answer for it"
+        CodedWarning(
+            "quoted_article_license_restrictive",
+            f"{len(pmids)} study quote(s) come from article(s) licensed {license_name!r}, which "
+            f"forbids commercial reuse: {sorted(pmids)}. Not adjudicated here — quoting for comment "
+            f"or research is often fine and the format is not the tier that decides — but the "
+            f"passage is publisher text in this module's annotation layer, so a commercial "
+            f"distribution has to answer for it",
+        )
         for license_name, pmids in sorted(by_license.items())
     ]
 
@@ -6292,14 +6459,15 @@ def _check_ba1_lint(
         if value <= threshold:
             continue
         for variant in pathogenic_at[key]:
-            findings.append(
+            findings.append(CodedWarning(
+                "clin_sig_contradicts_frequency",
                 f"{variant.variant_key} genotype {variant.genotype}: clin_sig "
                 f"{variant.effective_clin_sig!r} but the {measure} of ALT {alt!r} in "
                 f"{population!r} is {value:.4g}, above the ACMG BA1 threshold of {threshold:.4g} — "
                 f"BA1 treats that as stand-alone evidence of benign impact. The threshold is "
                 f"disease-specific (a common recessive carrier allele sits above it legitimately), so "
-                f"this is a prompt to check, not a verdict."
-            )
+                f"this is a prompt to check, not a verdict.",
+            ))
     return findings
 
 
@@ -6315,9 +6483,10 @@ def _cross_check_gene_metrics(
     orphans = sorted({r.gene for r in rows if r.gene not in genes})
     if not orphans:
         return []
-    return [
-        f"gene_metrics.csv names {len(orphans)} gene(s) this module never mentions: {orphans}"
-    ]
+    return [CodedWarning(
+        "derived_row_orphan",
+        f"gene_metrics.csv names {len(orphans)} gene(s) this module never mentions: {orphans}",
+    )]
 
 
 def _cross_check_gene_validity(
@@ -6338,9 +6507,10 @@ def _cross_check_gene_validity(
     orphans = sorted({r.gene for r in rows if r.gene not in genes})
     if not orphans:
         return []
-    return [
-        f"gene_validity.csv names {len(orphans)} gene(s) this module never mentions: {orphans}"
-    ]
+    return [CodedWarning(
+        "derived_row_orphan",
+        f"gene_validity.csv names {len(orphans)} gene(s) this module never mentions: {orphans}",
+    )]
 
 
 def _cross_check_clinical_assertions(
@@ -6376,10 +6546,11 @@ def _cross_check_clinical_assertions(
     )
     if not orphans:
         return []
-    return [
+    return [CodedWarning(
+        "derived_row_orphan",
         f"clinical_assertions.csv describes {len(orphans)} coordinate(s) no variant in this module "
-        f"sits at: {orphans}"
-    ]
+        f"sits at: {orphans}",
+    )]
 
 
 def _cross_check_gwas_effects(rows: list[GwasEffectRow], variants: list[VariantRow]) -> list[str]:
@@ -6404,10 +6575,11 @@ def _cross_check_gwas_effects(rows: list[GwasEffectRow], variants: list[VariantR
     orphans = sorted({r.variant_key for r in rows if r.variant_key not in known and r.rsid not in known})
     if not orphans:
         return []
-    return [
+    return [CodedWarning(
+        "derived_row_orphan",
         f"gwas_effects.csv carries associations for {len(orphans)} identity(ies) no variant in this "
-        f"module carries: {orphans}"
-    ]
+        f"module carries: {orphans}",
+    )]
 
 
 def _build_annotations(variants: list[VariantRow], module_name: str) -> pl.DataFrame:

@@ -5312,10 +5312,20 @@ truthful while making the other 5 warnings visible.
 
 ## S68 — `warnings` is a flat `list[str]` with no code, no count and no way to tell a finding an author can clear from one they cannot
 
-**Status — accepted as real and filed as
-[RM131](ROADMAP.md#rm131--warnings-is-a-flat-liststr-and-the-discriminator-that-would-make-it-readable-is-computed-and-discarded),
-open, a minor, release undecided. We did not take the minimal version, and you are owed the reason
-because you explicitly offered to stop asking for it.**
+**Status — accepted as real, filed as
+[RM131](ROADMAP_HISTORY.md#rm131--the-warnings-channel-says-what-each-finding-is-and-whether-an-author-can-clear-it),
+and ✅ SHIPPED in 0.7 on 2026-08-28 — both halves, not just the actionability one. We did not take the
+minimal version, and you are owed the reason because you explicitly offered to stop asking for it; the
+answer turned out to be that the reason was worth spending a release on rather than a deferral.**
+
+**What you get:** `compilation.carried` beside an unchanged `compilation.warnings` — the subset no edit
+to your spec directory can clear, so subtracting it gives you the actionable set — and
+`compilation.warnings_summary` as `{code: count}` over `vocab.VALID_WARNING_CODES`, whose values sum to
+`len(warnings)` so you can tell the digest is complete rather than hoping. All three on
+`ValidationResult`/`CompilationResult`/`ClosureResult` too, filled on every path including a failed
+compile. `warnings` itself is byte-identical, so anything you grep today keeps working.
+[COMPILER.md § Warning texts a consumer keys on](COMPILER.md) lists all 68 codes and marks the 9
+carried ones.
 
 **The diagnosis is right and the best line in it is yours:** *you already compute the discriminator
 and spend it on severity only.* `_BLAME_TIER`/`_BLAME_ROW`'s own comment says *"blame decides severity

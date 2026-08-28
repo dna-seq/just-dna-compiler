@@ -80,6 +80,13 @@ class ModuleDelta:
     manifest_fields: tuple[str, ...]
     warnings_added: tuple[str, ...]
     warnings_removed: tuple[str, ...]
+    #: Of `warnings_added`, the ones the *after* manifest calls `carried` — findings no edit to the
+    #: spec can clear (RM131). Kept apart because the two read differently to a person deciding what a
+    #: release did: a carried finding appearing is usually this repository saying more about a limit
+    #: it always had, while an actionable one appearing is work arriving at somebody's door. Empty on
+    #: a manifest compiled before the split, which reads correctly as *not recorded*.
+    carried_added: tuple[str, ...] = ()
+    actionable_added: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -257,6 +264,18 @@ def _warning_lists(manifest: dict[str, Any]) -> list[str]:
     return list(compilation.get("warnings", [])) if isinstance(compilation, dict) else []
 
 
+def _carried_list(manifest: dict[str, Any]) -> set[str]:
+    """`compilation.carried`, read off the stored manifest rather than re-derived (RM131).
+
+    Re-deriving would mean re-classifying prose, which is precisely the thing the codes exist to make
+    unnecessary. A manifest compiled before the field existed returns an empty set, and the caller
+    reads that as *this side said nothing about actionability* rather than as *nothing is carried* —
+    which is why the split is reported beside `warnings_added` and never instead of it.
+    """
+    compilation = manifest.get("compilation")
+    return set(compilation.get("carried", [])) if isinstance(compilation, dict) else set()
+
+
 def compare_module(before: ModuleOutput, after: ModuleOutput) -> ModuleDelta:
     """The per-axis movement for one module.
 
@@ -265,14 +284,18 @@ def compare_module(before: ModuleOutput, after: ModuleOutput) -> ModuleDelta:
     channel would otherwise report *a manifest field changed* on every module in a catalogue, and a
     registry acting on that mints an immutable PATCH for a message change.
 
-    Today the axis fires on any change to the set. **When RM131's `carried` split lands it becomes
-    the discriminator this needs**: a finding the author cannot clear moving is noise, and one they
-    can clear appearing is not. The seam is here — `warnings_added` and `warnings_removed` are kept
-    separately for exactly that, so classifying them is a change to this function and to nothing
-    else.
+    **RM131's `carried` split is now that discriminator**, and it is reported rather than acted on.
+    `axes["warnings"]` still fires on any change to the set — narrowing it here would make a
+    published axis mean something different from what every record already written claims about it,
+    and the axis is outside `RECOMPILE_DRIVING_AXES` anyway, so nothing keys a rebuild on it. What the
+    split buys is the reading: `carried_added` is a finding no author can clear appearing, usually
+    this repository saying more about a limit it always had; `actionable_added` is work arriving at
+    somebody's door. A manifest with no `carried` field reports every addition as actionable, which
+    is the safe direction — it never tells a reader that a finding they could fix is unfixable.
     """
     before_warnings = set(_warning_lists(before.manifest))
     after_warnings = set(_warning_lists(after.manifest))
+    carried_after = _carried_list(after.manifest)
     fields = changed_manifest_fields(before.manifest, after.manifest)
     axes = {
         "parquet_schema": before.parquet_schemas != after.parquet_schemas,
@@ -286,12 +309,15 @@ def compare_module(before: ModuleOutput, after: ModuleOutput) -> ModuleDelta:
         "manifest_fields": bool(fields),
         "warnings": before_warnings != after_warnings,
     }
+    added = tuple(sorted(after_warnings - before_warnings))
     return ModuleDelta(
         name=after.name,
         axes=axes,
         manifest_fields=fields,
-        warnings_added=tuple(sorted(after_warnings - before_warnings)),
+        warnings_added=added,
         warnings_removed=tuple(sorted(before_warnings - after_warnings)),
+        carried_added=tuple(w for w in added if w in carried_after),
+        actionable_added=tuple(w for w in added if w not in carried_after),
     )
 
 
@@ -437,6 +463,8 @@ def measurement_json(measurement: SweepMeasurement) -> dict[str, Any]:
                 "manifest_fields": list(delta.manifest_fields),
                 "warnings_added": list(delta.warnings_added),
                 "warnings_removed": list(delta.warnings_removed),
+                "carried_added": list(delta.carried_added),
+                "actionable_added": list(delta.actionable_added),
             }
             for delta in measurement.per_module
         ],

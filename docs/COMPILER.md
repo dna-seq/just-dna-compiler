@@ -1355,6 +1355,115 @@ the concrete form of the standing rule: never derive an emitted row or a manifes
 
 ## Warning texts a consumer keys on
 
+### Since 0.7 the channel also carries codes and an actionability split (RM131)
+
+`manifest.compilation.warnings` still carries every finding, with its exact text — nothing that greps
+a phrase broke, and nothing here supersedes the fragments below. Two derived fields ship **beside** it:
+
+| Field | What it is |
+|---|---|
+| `compilation.warnings` | the complete list, unchanged; the same sentences in the same order |
+| `compilation.carried` | the subset **no edit to the spec directory can clear** — a limit of this tier or a fact of a source. Subtract it from `warnings` for the set an author still owes work on |
+| `compilation.warnings_summary` | `{code: count}`, keys from `vocab.VALID_WARNING_CODES`, values summing to `len(warnings)` so the digest accounts for the whole channel |
+
+The same three fields are on `ValidationResult`, `CompilationResult` and `ClosureResult`, filled on
+every path including a failed compile. `manifest.json` sits outside `artifact.digest` (a Merkle root
+over the parquet `FileEntry` list), so adding them moved no hash — and both are listed in
+`release_records.EXCLUDED_MANIFEST_FIELDS`, routed to the `warnings` axis, because they move exactly
+when `warnings` moves.
+
+A code names **the finding**, never the function that builds it, and one code carries one remediation:
+two sentences cleared by the same edit share a code and say which cell (the weight-sign pair, the five
+orphan fact tables), two cleared differently do not. The set is published, so it is permanent within
+the major — additions are minor-legal, re-spellings are not.
+
+**Carried findings** — the nine an author cannot clear, and the reason each is on this side:
+
+| Code | Why no authored edit clears it |
+|---|---|
+| `non_grch38_variant_keys` | VRS allele identity is GRCh38-only, so a non-GRCh38 module is coordinate-keyed |
+| `resolution_skipped_cross_build` | resolution and the positional fill are GRCh38-bound (RM15) |
+| `contig_ploidy_undecidable` | the build carries no pseudoautosomal table here, so ploidy cannot be decided |
+| `rsid_expanded_to_multiple_loci` | the source maps one rsID onto several loci; that is a fact about dbSNP |
+| `locus_hosting_undecidable` | deciding needs the reference sequence, which this tier never fetches (P2) |
+| `vrs_id_unverifiable` | the recomputation is beyond this tier — `_carried_vrs_warnings` is the shape the split generalises |
+| `vrs_coverage_incomplete` | the alleles a VA does not reach; minting more is not an authored edit |
+| `measurement_spans_bins` | the format has no reading for an interval that straddles a boundary (RM56) |
+| `verification_findings_recorded` | a disagreement with an archive, where the archive is the stale side often enough that nothing is owed |
+
+**Every published code**, by the surface it comes from. Everything not in the table above is
+actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
+
+- **spec directory / `module_spec.yaml`** — `table_file_misplaced`, `table_file_near_miss`,
+  `sidecar_spelling_deprecated`, `module_version_coerced`, `panel_block_deprecated`
+- **coordinates and the build** — `non_grch38_variant_keys`, `contig_ploidy_undecidable`,
+  `contig_ploidy_mismatch`
+- **resolution** — `resolution_disabled`, `resolution_not_injected`, `resolution_skipped_cross_build`,
+  `positional_identity_contradicted`, `positional_rows_unjoinable`, `rsid_unresolved`,
+  `rsid_without_resolution_label`, `rsid_expanded_to_multiple_loci`, `rsid_ambiguous`,
+  `rsid_coordinate_disagrees`, `locus_hosting_undecidable`, `locus_cannot_host_genotype`,
+  `rsid_no_hosting_locus`
+- **VRS** — `vrs_id_unverifiable`, `vrs_coverage_incomplete`
+- **`variants.csv` coherence** — `weight_sign_disagrees_with_effect`, `genotype_allele_not_at_locus`,
+  `effect_allele_not_at_locus`, `genotype_coverage_gap`, `quality_floor_inverted`,
+  `missing_allele_marker_in_alts`, `vcf_pointer_key_collision`, `vcf_pointer_unselected_element`,
+  `composite_gene_cell`, `symbolic_allele_unusable`
+- **binning tables** — `bin_tiling_inferred`, `bin_tiling_contradicted`, `bin_coverage_gap`,
+  `bins_ungrounded`, `measure_field_fractional`, `measurement_spans_bins`, `deprecated_bin_modifier`
+- **PGx tables** — `star_allele_undefined`, `diplotype_definitions_identical`,
+  `diplotype_phase_ambiguous`
+- **studies and literature** — `study_variant_orphan`, `duplicate_study_citation`,
+  `p_value_encodings_disagree`, `study_effect_allele_not_at_locus`, `citation_not_in_pubmed`,
+  `literature_row_uncited`, `quote_counter_stale`, `quoted_article_license_restrictive`
+- **sources and licensing** — `source_row_unused`, `source_terms_unrecorded`,
+  `declared_license_disagrees`
+- **the injected fact tables** — `derived_row_orphan`, `faf95_exceeds_frequency`,
+  `oe_lof_outside_interval`, `oe_lof_disagrees_with_counts`, `clin_sig_contradicts_frequency`
+- **the overlay** — `overlay_update_unmatched`, `overlay_targets_missing_table`,
+  `overlay_rows_suppressed`
+- **verification and closure** — `verification_two_copies`, `verification_unreadable`,
+  `verification_stale`, `verification_findings_recorded`, `module_not_closed`,
+  `closure_discarded_unreadable_record`
+
+`overlay_rows_suppressed` is new in 0.7 and is the one finding here that reports a *decision* rather
+than a defect: a `suppress` removes a row and leaves no trace of the removal in the build product, so
+the overlay says so — one line per **reason**, with a count, and counted over the overlay's own rows
+rather than over the rows removed. That is what keeps it stable across `compile → reverse → compile`,
+where by the second lap the derived table is already post-overlay and the suppress matches nothing.
+
+```
+overrides.csv: {count} suppress override(s) remove {table} row(s) from the compiled artifact,
+where nothing else records the removal: {reason}
+```
+
+`test_warning_codes.py` walks the emission sites and asserts an equality against the vocabulary in
+both directions, so a code with no emitter and an emitter with no code both fail; it also asserts this
+document lists every member, because a catalogue missing one sends a reader hunting for it.
+
+**Two consequences worth knowing before you build against this**, both recorded rather than left to be
+discovered:
+
+- **A summary is either empty or complete, never partial.** `classify` **withholds** — an empty
+  `carried` and an empty `warnings_summary` — when a channel carries no classified findings at all,
+  which is what a caller passing plain prose into `CompilationResult(warnings=[...])` gets; that call
+  has been legal since 0.6 and Principle 3 keeps it legal. It refuses only a *part*-classified channel,
+  which no legitimate caller can produce. So read an empty summary as *this compile did not classify
+  the channel*, never as *there is nothing to report*, and read a non-empty one as accounting for the
+  whole of `warnings`.
+- **The code vocabulary is closed, so an older reader refuses a newer manifest.** `warnings_summary`
+  validates its keys, and `read_manifest` raises on a code added after the `just-dna-format` you have
+  pinned. That is the standing cost of every closed vocabulary on a published field here
+  (`VerificationRecord.check` is the shipped precedent) and Principle 6 takes it deliberately, but
+  "additive" describes the *writer*: a consumer reading manifests from newer compilers upgrades the
+  schema package alongside them.
+
+**`carried` holds full message text, which nearly doubles the channel** — measured at 1.84× across the
+reference corpus, 1.96× on `pathogenic_clinvar`. That is the shape the item decided (a list beside,
+so a consumer subtracts) rather than an oversight, and the cheaper encodings are weighed in
+[ROADMAP.md § RM138](ROADMAP.md).
+
+### The phrases
+
 **A warning's text is an API.** The manifest carries the prose and, for anything published before the
 structured field existed, no other handle — so a downstream consumer greps it. Four fragments are named
 constants for exactly that reason:
@@ -1664,10 +1773,21 @@ changed* on essentially every module in 0.7, and a registry acting on that mints
 across a whole catalogue for a reworded message. It cannot simply join `compiled_at` in the excluded
 set either, because a **new** warning can be a real signal.
 
-So it is its own declared axis, outside `RECOMPILE_DRIVING_AXES`. **RM131's `carried` split is the
-discriminator that will make the two decidable** — a finding the author cannot clear moving is noise,
-one they can clear appearing is not — and `compare_module` already keeps `warnings_added` and
-`warnings_removed` apart so that classifying them is a change to that one function.
+So it is its own declared axis, outside `RECOMPILE_DRIVING_AXES`. **RM131's `carried` split landed in
+0.7 and is that discriminator**: `compare_module` now reports `carried_added` beside
+`actionable_added`, read off the *after* manifest's `compilation.carried` rather than re-derived from
+prose. A carried finding appearing is usually this repository saying more about a limit it always had;
+an actionable one appearing is work arriving at somebody's door.
+
+`axes["warnings"]` deliberately still fires on any movement of the set. Narrowing it would make a
+published axis mean something different from what every record already written claims about it, and
+the axis drives no rebuild anyway — the split buys the *reading*, not a new gate. A manifest with no
+`carried` field (anything compiled before 0.7) reports every addition as actionable, which is the safe
+direction: it never tells a reader that a finding they could fix is unfixable.
+
+`compilation.carried` and `compilation.warnings_summary` both join `compilation.warnings` in
+`EXCLUDED_MANIFEST_FIELDS`, for the same reason and with the same consequence — they are derived from
+it, so they move exactly when it does.
 
 **What this does not touch:** `SpecRow.needs_upgrade` is `self.upgraded() != self`, computed over
 authored row content and a hard filter in the marketplace. A warning never touches an authored row, so

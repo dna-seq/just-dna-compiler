@@ -43,6 +43,105 @@ uncut minor and deliberately names no number — there is a version to write dow
 `pyproject.toml` files still read `0.6.6` until the release is cut, and the 2026-08-24 work ships
 inside this same number. Each entry below names the packages it actually touched.
 
+- **RM131 — the warnings channel says what each finding is, and whether an author can clear it.**
+  *(`just-dna-format` + `just-dna-compiler`, plus the deprecated resolver in `just-dna-enricher`; a
+  structure change to a surface that already ships.)* `ValidationResult`, `ClosureResult` and
+  `CompilationResult` all carried `warnings: list[str]` with no code, no count and no way to tell a
+  finding an author *can* clear from one they cannot. A compile of a 190-row module returned roughly
+  **14 kB** of prose, and `strict=false` does not help — it changes what counts as an *error*, not how
+  much the channel carries — while every document on both sides of this seam tells an author that
+  warnings on a green run are the real output.
+
+  **The answer was already being computed and spent on severity alone.** `_BLAME_TIER`/`_BLAME_ROW` is
+  literally *whose limit this is*, and its own comment says "blame decides severity and nothing else";
+  `_closure_warning` reaches the same distinction from the other end and says so in prose.
+
+  **Two derived fields beside `warnings`, which is unchanged down to the byte.**
+  `compilation.carried` is the subset **no edit to the spec directory can clear** — a limit of this
+  tier or a fact of a source — so a consumer subtracts it to get the actionable set;
+  `compilation.warnings_summary` is `{code: count}` over `vocab.VALID_WARNING_CODES`, with the values
+  summing to `len(warnings)` so the digest accounts for the whole channel rather than the part somebody
+  remembered to key. Both ship on all three result types too, on every path including a failed compile.
+  `manifest.json` sits outside `artifact.digest` (a Merkle root over the parquet `FileEntry` list, and
+  that is the mechanism — not a slot in `ARTIFACT_PARQUETS`, which name-sorts), so neither moved a hash
+  on any published module.
+
+  **A code names the finding, never the emission site**, because a code derived from where the function
+  lives is renamed by a refactor and a published key is permanent within a major (P3/P6). One code
+  carries one remediation: two sentences cleared by the same edit share a code and the sentence says
+  which cell (the weight-sign pair, the five orphan fact tables), two cleared differently do not.
+  Sixty-eight members, nine of them carried.
+
+  **The audit was the real cost and was done once.** Every emission site across three tiers now names
+  a code — the ~29 named-list appends in `compiler.py`, the `findings`/`messages` collectors a survey
+  of `.append` cannot see, the two `.extend` sites that reach into `binning.measurement_shape_warnings`
+  and `deprecation_warnings`, `validate_bins`, `overrides.apply_overrides`, `compiler/resolution.py`,
+  and the deprecated DuckDB resolver in `enricher/resolver.py`, whose warnings land in the same
+  `manifest.compilation.warnings` as everything else. The three sites that *reformat* a message from
+  another tier go through `findings.restate`, which is the one operation that carries a code across a
+  rewrite; every other string operation on a finding returns plain prose by construction.
+
+  **`classify` has three answers and no flag: derive, withhold, refuse.** A `warnings_summary` with a
+  catch-all key is the rejected repair wearing a different hat — it silently omits what nobody
+  classified, and the reader takes the digest as complete. But refusing outright was wrong in the other
+  direction: `CompilationResult(warnings=["prose"])` has been legal since 0.6, so an unclassified
+  channel now **withholds** (an empty pair, which reads as *not classified* rather than as
+  *complete and short*), and only a *part*-classified channel — which no legitimate caller can produce
+  — raises. That also keeps a raise out of `_build_manifest`, which runs after every parquet is on
+  disk, where it would have left an output directory with no `manifest.json` beside them. The published
+  contract is therefore *either empty or accounting for the whole channel*, stated in both field
+  descriptions; a supplied pair is checked against the channel, since a wrong claim is worse than a
+  withheld one.
+
+  **The guards are equalities over walked sets, and one of them was a hole until a mutation found it.**
+  `test_warning_codes.py` asserts the emission sites against the vocabulary in both directions (a code
+  with no emitter and an emitter with no code both fail), and the corpus half runs every reference
+  example through both entry points, which is what catches a message that lost its code on the way
+  rather than at its site. The receiver names are themselves a registry now: a hand-typed list omitted
+  `lines`, which `_carried_vrs_warnings` collects into, and stripping that site's wrapper passed the
+  guard — so the declared set is checked for equality against the receivers actually derived from the
+  source, with the channel/refusal split declared beside it because one builder feeds both.
+
+  **The transport stays `list[str]`.** `findings.CodedWarning` is a `str` subclass, so every `.extend`,
+  every `if w not in all_warnings` de-duplication and every consumer already grepping a phrase keeps
+  working untouched — including the de-dup-by-message that lets a check run in both `validate_spec` and
+  `compile_module` and publish one line. Pydantic flattens the subclass at a model boundary, which is
+  right for the published surface and fatal for a caller that keeps building on it, so `compile_module`
+  and `close_module` seed from an internal `_validate_spec` that hands the classified list back beside
+  the result. That trap is pinned by a test rather than left in a comment.
+
+  **The suppression record rides the same channel (RM124 × RM131).** A row removed by a `suppress` was
+  invisible in the build product — absent, with no trace of why — so the overlay now says so, one line
+  per **reason** with a count, which is what `reason` being a required column buys. Counted over the
+  *overlay's* rows and never over the rows removed: after `reverse_module` the derived table is already
+  post-overlay, so an effect-based count would say a number on lap 1 and vanish on lap 2, moving a
+  published field between a module and its own round trip. Proved against the real
+  compile → reverse → compile path, not argued.
+
+  **RM126's sweep gets the discriminator its own comment promised.** `sweep.compare_module` reports
+  `carried_added` beside `actionable_added`, read off the after-manifest's `carried` rather than
+  re-derived from prose. `axes["warnings"]` deliberately still fires on any movement — narrowing it
+  would make a published axis mean something other than what every record already written claims — and
+  a pre-0.7 manifest reports every addition as actionable, the safe direction, since calling an
+  unrecorded finding carried would tell a reader that something fixable is not. Both new fields join
+  `compilation.warnings` in `EXCLUDED_MANIFEST_FIELDS`, because they are derived from it and move
+  exactly when it does.
+
+  **Repairs rejected, recorded so they are not re-proposed:** a plausible code set shipped unattended
+  (the container is free, the vocabulary is a one-way door); codes derived from the pinned phrase
+  catalogue (partial by construction); codes derived from the emission site (a refactor renames a
+  published key); a cap, a truncation or a verbosity flag (all three hide findings, and the author with
+  the most warnings most needs the hidden ones); a new metainfo artifact (the channel already ships and
+  is outside the digest).
+
+  **Two consequences recorded rather than left to be discovered**, both in COMPILER.md beside the
+  catalogue: the code vocabulary is closed, so a consumer pinned to an older `just-dna-format` refuses
+  a manifest carrying a code added later — the standing cost of every closed vocabulary on a published
+  field here, and "additive" describes the writer; and `carried` holds full message text, which grows
+  the channel **1.84× across the reference corpus** (1.96× on `pathogenic_clinvar`). The second is the
+  shape the item decided rather than an oversight, and the three cheaper encodings are weighed as
+  **RM138** instead of being taken unilaterally. → [COMPILER.md § Warning texts a consumer keys on](COMPILER.md)
+
 - **RM124 — `overrides.csv`, an authored overlay over the seven derived tables.** A correction to a
   derived row now lives beside the spec rather than inside the file, so `resolution.csv`,
   `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`,

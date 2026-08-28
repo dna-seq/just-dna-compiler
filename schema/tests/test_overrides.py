@@ -18,6 +18,7 @@ from just_dna_format.base import field_category
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.overrides import (
     OVERRIDABLE_TABLES,
+    SUPPRESSED_PHRASE,
     VALID_OVERRIDE_OPERATIONS,
     OverrideRow,
     apply_overrides,
@@ -250,12 +251,16 @@ def test_all_three_operations_are_fixed_points_when_applied_to_their_own_result(
              value="6"),
         _row(table="resolution.csv", subject="rs2", member="0", operation="suppress"),
     ]
-    once, errors, _ = apply_overrides("resolution.csv", rows, overlay)
+    once, errors, warnings_once = apply_overrides("resolution.csv", rows, overlay)
     assert errors == []
     twice, errors_again, warnings_again = apply_overrides("resolution.csv", once, overlay)
     assert errors_again == []
     assert [r.model_dump() for r in once] == [r.model_dump() for r in twice]
-    assert warnings_again == [], "a second application must report nothing a first one did not"
+    # **Equality, not emptiness**, since RM131 gave the suppression its record: the second lap must
+    # report exactly what the first did, which is the property `manifest.compilation.warnings` needs
+    # and the one emptiness was standing in for. A finding counted off the *overlay* satisfies it; one
+    # counted off the rows removed would not, because by the second lap there are none.
+    assert list(warnings_again) == list(warnings_once), "a lap must report what the previous lap did"
 
 
 def test_no_operation_reports_its_own_no_op() -> None:
@@ -265,6 +270,12 @@ def test_no_operation_reports_its_own_no_op() -> None:
     insert-already-present and suppress-already-absent are all three true of a perfectly healthy
     module. Any of them reported would make a module and its own round trip disagree on
     `manifest.compilation.warnings`, which is a published field.
+
+    **The `suppress` case is where the rule is easiest to break and is checked one step further.**
+    RM131 gave a suppression a record — a row removed from the build product leaves no other trace of
+    why — and that record is deliberately counted over the *overlay's* rows rather than over the rows
+    it removed. So it says the same thing whether or not the target is still there, which is what the
+    paragraph above demands; the sentence names no row and no count of rows.
     """
     rows = [ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1, source="manual")]
     overlay = [
@@ -275,10 +286,21 @@ def test_no_operation_reports_its_own_no_op() -> None:
         _row(table="resolution.csv", subject="rs4", member="0", operation="suppress"),
     ]
     # Split, because one key group carries one operation: the update and the insert share a key.
-    for single in ([overlay[0]], [overlay[1]], [overlay[2]]):
+    for single in ([overlay[0]], [overlay[1]]):
         after, errors, warnings = apply_overrides("resolution.csv", rows, single)
         assert errors == [], single[0].operation
         assert warnings == [], f"{single[0].operation} reported its own no-op"
+
+    # The suppress names a row this table does not carry, so it removes nothing — and still reports
+    # exactly what it reports when it does remove something, because the record is about the
+    # correction rather than about its effect.
+    reaching_nothing, errors, absent = apply_overrides("resolution.csv", rows, [overlay[2]])
+    assert (errors, [r.variant_key for r in reaching_nothing]) == ([], ["rs1"])
+    hit = [_row(table="resolution.csv", subject="rs1", member="0", operation="suppress")]
+    emptied, errors, removing = apply_overrides("resolution.csv", rows, hit)
+    assert (errors, emptied) == ([], [])
+    assert list(absent) == list(removing)
+    assert len(removing) == 1 and SUPPRESSED_PHRASE in removing[0]
 
 
 def test_a_key_cell_is_matched_as_the_model_stores_it_not_as_the_author_spelled_it() -> None:

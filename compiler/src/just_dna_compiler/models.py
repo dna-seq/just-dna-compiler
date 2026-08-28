@@ -4,16 +4,103 @@
 from pathlib import Path
 from typing import Any
 
+from just_dna_format.findings import classify
 from just_dna_format.manifest import ModuleManifest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
-class ValidationResult(BaseModel):
+class _Findings(BaseModel):
+    """The two derived halves of a warnings channel, filled from `warnings` at construction (RM131).
+
+    Every result type here carries `warnings: list[str]` and three of them are built at 30-odd call
+    sites between them, so the derivation lives in a `mode="before"` validator rather than at each
+    site: a caller cannot forget it, and there is no failure path where a result comes back with a
+    populated channel and an empty summary.
+
+    `mode="before"` is load-bearing and not a style choice. Pydantic coerces a `str` subclass to a
+    plain `str` on its way into a `list[str]` field, so a validator running any later would be looking
+    at messages that no longer know their own code. Before it, the raw `Finding` objects are still
+    there.
+
+    A caller passing `carried`/`warnings_summary` explicitly is left alone, which is what lets a
+    result be rebuilt from a dump of itself — but the pair is then checked, because a caller claiming
+    to have derived them and getting it wrong is worse than one that withheld.
+
+    **Plain strings are accepted and withheld on, never refused.** These are public result types and
+    `warnings=["..."]` has been legal since 0.6, so Principle 3 keeps it legal; `findings.classify`
+    owns that decision and returns an empty pair rather than raising.
+    """
+
+    warnings: list[str] = Field(default_factory=list, description="Non-fatal findings, in full")
+    carried: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The subset of `warnings` no edit to the spec directory can clear — a limit of this tier "
+            "or a fact of a source. Subtract it from `warnings` for the findings still worth acting "
+            "on. Empty means every finding here is actionable, which is an answer rather than a gap."
+        ),
+    )
+    warnings_summary: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "`warnings` counted by kind — keys from VALID_WARNING_CODES. Either empty (the channel "
+            "was not classified, which a caller passing plain prose gets) or summing to "
+            "`len(warnings)` and accounting for the whole of it. Never partial."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_from_warnings(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not data.get("warnings"):
+            return data
+        supplied = {"carried", "warnings_summary"} & set(data)
+        if supplied == {"carried", "warnings_summary"}:
+            return data  # rebuilt from a dump of itself; the two halves came together
+        if supplied:
+            # Half-supplied is the one shape that would publish a channel and a digest that
+            # disagree — `sum(warnings_summary.values()) == len(warnings)` is the claim *this summary
+            # is complete*, and a caller filling one field and leaving the other to default would
+            # break it silently. Refused rather than half-derived, since which half the caller meant
+            # to own is not knowable from here.
+            missing = sorted({"carried", "warnings_summary"} - supplied)
+            raise ValueError(
+                f"a result carrying `warnings` supplies both derived halves or neither; "
+                f"{missing[0]} is missing. They are derived together from the classified findings."
+            )
+        carried, summary = classify(data["warnings"])
+        return {**data, "carried": carried, "warnings_summary": summary}
+
+    @model_validator(mode="after")
+    def _the_derived_halves_agree_with_the_channel(self) -> "_Findings":
+        """A supplied pair is a claim, and an inconsistent claim is worse than a withheld one.
+
+        Both halves default to empty, which is the honest *withheld* answer, so the only thing to
+        check is a pair that says something: `carried` must name messages the channel actually holds,
+        and a non-empty summary must account for the whole channel rather than part of it. Runs after
+        coercion, over plain strings, so it holds for a result rebuilt from a dump of itself too.
+        """
+        stray = [w for w in self.carried if w not in self.warnings]
+        if stray:
+            raise ValueError(
+                f"carried names {len(stray)} message(s) that are not in warnings: {stray[0][:120]!r}."
+                f" It is a SUBSET of the channel, so a consumer can subtract it."
+            )
+        counted = sum(self.warnings_summary.values())
+        if self.warnings_summary and counted != len(self.warnings):
+            raise ValueError(
+                f"warnings_summary counts {counted} finding(s) and warnings holds "
+                f"{len(self.warnings)}. A non-empty summary accounts for the whole channel; leave it "
+                f"empty to say the channel was not classified."
+            )
+        return self
+
+
+class ValidationResult(_Findings):
     """Result of spec validation."""
 
     valid: bool = Field(description="Whether the spec is valid")
     errors: list[str] = Field(default_factory=list, description="Validation errors")
-    warnings: list[str] = Field(default_factory=list, description="Non-fatal warnings")
     info: list[str] = Field(
         default_factory=list,
         description=(
@@ -41,7 +128,7 @@ class ValidationResult(BaseModel):
     )
 
 
-class ClosureResult(BaseModel):
+class ClosureResult(_Findings):
     """Result of closing a module's authoring phase (RM73).
 
     Closing is refused rather than reported-and-done when the spec does not validate: the phase
@@ -69,16 +156,14 @@ class ClosureResult(BaseModel):
         ),
     )
     errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
 
 
-class CompilationResult(BaseModel):
+class CompilationResult(_Findings):
     """Result of spec compilation, including the emitted manifest."""
 
     success: bool = Field(description="Whether compilation succeeded")
     output_dir: Path | None = Field(default=None, description="Directory with output parquets")
     errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
     stats: dict[str, Any] = Field(default_factory=dict)
     manifest: ModuleManifest | None = Field(
         default=None, description="The manifest written next to the parquets (None on failure)"
