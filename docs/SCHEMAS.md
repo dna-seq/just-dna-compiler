@@ -1980,7 +1980,18 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   `spec.ModuleInfo` is the natural-looking route and is deliberately **not** taken: every key in
   `module_spec.yaml` is on the un-amendable side of that binding, so it would reproduce the defect in
   a new place. An authored `short_description:` is still refused by `extra="forbid"` — the validator
-  validates, it does not fix.
+  validates, it does not fix. That refusal is currently the **generic** one:
+  `normalize.reject_authority_keys` names the identity family and does not yet reach this one, so an
+  author who pastes a registry-served block gets a dead end where `namespace:` gets a fix. Tracked, not
+  shipped — the compiler test pins the current shape so it cannot pass silently once that changes.
+
+  **It is an override, not a replacement, and the two surfaces do not both claim the role.**
+  `Display.description` is still the authored subtitle and still says so in its own field description;
+  a module with no registry-held override shows it, unchanged, which is every module published to
+  date. `short_description` is what a registry may hold *instead*, for the one case the authored field
+  cannot serve — amending it after the fact. Note that `authoring_reference()`'s
+  `registry_stamped_keys` still enumerates the identity family only, so a surface built from it will
+  not mention `short_description` yet.
 
   **`SHORT_DESCRIPTION_MAX_CHARS = 120` ships as a constant and refuses nothing.** A field that exists
   to fit a fixed layout is *specified* by that layout, so the calibration belongs beside the key rather

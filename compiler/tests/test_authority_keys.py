@@ -273,9 +273,17 @@ def test_an_authored_short_description_is_refused_and_an_injected_one_is_strippe
 ) -> None:
     """The validator validates, it does not fix — the same contract the identity family carries.
 
-    With nothing injected an authored `short_description:` trips `extra="forbid"` loudly, because it is
+    With nothing injected an authored `short_description:` trips `extra="forbid"`, because it is
     registry-owned and a spec is not where it lives. With the key injected the spec validates and the
     value is reported as dropped, so a caller can see what it took off rather than guessing.
+
+    **The refusal is the generic one, and this test says so rather than papering over it.** Asserting
+    only that the key appears in the message would pass either way — pydantic embeds the field
+    location in `extra inputs are not permitted` — which is exactly the false comfort that would hide
+    the gap. `reject_authority_keys` diagnoses the identity family by name and does not yet reach this
+    one, so an author who pastes a registry-served block gets a dead end where the identity keys get a
+    fix. Pinning the current shape here is what makes that visible and makes this test fail loudly the
+    day a specific diagnosis is added, instead of silently continuing to pass.
     """
     spec = _write_spec(
         tmp_path / "spec", _module_yaml(extra_lines=f"  short_description: {_SUBTITLE}\n")
@@ -283,6 +291,13 @@ def test_an_authored_short_description_is_refused_and_an_injected_one_is_strippe
     refused = validate_spec(spec)
     assert not refused.valid
     assert any("short_description" in e for e in refused.errors)
+    identity = validate_spec(_write_spec(tmp_path / "id", _module_yaml(extra_lines=_LEGACY_IDENTITY)))
+    assert not identity.valid
+    # The identity family earns a named reason and a way out; this one does not, yet.
+    assert any("strip_authority_keys" in e for e in identity.errors)
+    assert not any("strip_authority_keys" in e for e in refused.errors), (
+        "if this now fails, a specific diagnosis was added — assert its reason text here instead"
+    )
 
     accepted = validate_spec(spec, authority_keys=PRESENTATION_AUTHORITY_KEYS)
     assert accepted.valid, accepted.errors

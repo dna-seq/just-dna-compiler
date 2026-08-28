@@ -36,6 +36,12 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 0.7.0 (latest) — RM133: the card subtitle gets a home a registry can amend
 
+**0.7.0 is not cut, and this heading does not claim the release for one item.** All three packages
+still read `0.6.6`; the number names the release these changes will ship in, which is what a version
+heading here is for. The uncut minor dated 2026-08-24 below (S63–S74) ships in the same 0.7.0, as does
+the rest of the twelve-item batch `PROPOSAL_0_7.md` decides — the entries are being written per item
+as each lands, so read this section as one of them rather than as the whole release.
+
 **Package: `just-dna-format`.** Additive under Principle 3 — two new constants and one new number, no
 authored field, no schema change, no parquet column, nothing invalidated. Principle 4 is deliberately
 untouched: the closure binding is exactly what it was.

@@ -76,6 +76,12 @@ IDENTITY_AUTHORITY_REASONS: dict[str, str] = {
 # stored bytes never move, and `manifest.inputs`, `verify_manifest` and the closure all still hold.
 # Deliberately NOT a field on `spec.ModuleInfo`: every key in `module_spec.yaml` is on the un-amendable
 # side of that binding, so a field there would reproduce the defect in a new place.
+#
+# It is an OVERRIDE, not a replacement, and that distinction is what keeps two surfaces from claiming
+# one role. `manifest.Display.description` is still the authored subtitle and still says so in its own
+# `Field(description=...)`; a module with no registry override shows it, unchanged, which is every
+# module published to date. This key is what a registry may hold *instead*, for the one case the
+# authored field cannot serve — amending it after the fact.
 PRESENTATION_AUTHORITY_KEYS: frozenset[str] = frozenset({"short_description"})
 
 # The card-subtitle ceiling, published here rather than guessed at downstream. A field that exists to
@@ -95,9 +101,11 @@ SHORT_DESCRIPTION_MAX_CHARS: int = 120
 # so a consumer stripping one can surface a reason without first working out which family it came from.
 PRESENTATION_AUTHORITY_REASONS: dict[str, str] = {
     "short_description": (
-        f"the card subtitle shown beside the title in a listing, at most ~{SHORT_DESCRIPTION_MAX_CHARS} "
-        f"characters — held by the publishing registry beside the module, so amending it leaves "
-        f"module_spec.yaml's bytes, and therefore manifest.inputs and any closure over them, untouched"
+        f"a registry-held OVERRIDE of the subtitle a listing shows, at most "
+        f"~{SHORT_DESCRIPTION_MAX_CHARS} characters — the authored subtitle is still "
+        f"`module.description`, and a module with no override shows that, unchanged. This one is held "
+        f"by the publishing registry beside the module, so amending it leaves module_spec.yaml's "
+        f"bytes, and therefore manifest.inputs and any closure over them, untouched"
     ),
 }
 
