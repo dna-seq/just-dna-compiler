@@ -34,6 +34,79 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 0.7.0 — the release record, so a corrected derivation is never silent (RM126)
+
+**Packages: `just-dna-format`, `just-dna-compiler`.** Additive under Principles 3 and 8: a new module,
+two new closed vocabularies, one new CLI command. Nothing authored changes and neither identity hash
+moves.
+
+- **RM126 — a release now declares what it changed about compiled output.** Principle 3, as amended
+  on 2026-08-21, lets a corrected derivation ship in any release but never *silently*: each release
+  declares its corrections, readable offline and without recompiling. No such channel existed, so the
+  charter named a surface that was not there. This is the one item of the 0.7 round that was owed
+  rather than offered.
+
+  **`just_dna_format.release_records`** carries a static table of per-release records and a pure
+  `needs_recompile(compiled_under, current)` over it — pydantic-only work in the tier every consumer
+  already has. Five axes per record (`parquet_schema`, `parquet_bytes`, `content_signature`,
+  `manifest_fields`, `warnings`), each tri-state, **plus the declared correction-versus-addition
+  split** — the half no diff can compute, since only the person who fixed the bug knows whether the
+  stored value was *wrong* (`stats.genes`) or merely *absent* (`curator`).
+
+  **Deliberately not a `should_rebuild` verdict.** The same fact costs a registry an immutable PATCH
+  and a local cache a free rebuild, so the decision is the consumer's and only the fact is ours. The
+  per-axis breakdown stays exposed underneath the declared flag.
+
+  **Intervals compose as a union over `(a, b]`**, walked down each record's `previous` link — linear
+  storage rather than O(releases²), *moved-and-moved-back still reads as moved*, and, load-bearing
+  rather than incidental, **the interval from a version to itself is empty**. That last property is
+  what stops an unattended sweep minting a fresh PATCH every run forever, and a field-keyed or
+  latest-known-defect shape would not have it.
+
+  **Unknown is a state, never an empty result.** An interval the installed table does not cover
+  answers `None` per axis under Kleene semantics, and so does a downgrade. Without it the surface
+  would be worse than nothing, because a consumer would stop recompiling on the strength of a silence.
+
+  **`compilation.warnings` gets its own axis, outside the set that drives a recompile.** It is a
+  published manifest field and RM131/RM134 both move that channel in 0.7, so folding it into
+  `manifest_fields` would report *a manifest field changed* on essentially every module in a catalogue
+  for a reworded message. It cannot join `compiled_at` in the excluded set either, because a **new**
+  warning can be a real signal. RM131's `carried` split is the discriminator that will make the two
+  decidable; the seam is `sweep.compare_module`, which keeps added and removed warnings apart for it.
+  `SpecRow.needs_upgrade` is computed over authored row content and a warning never touches one, so no
+  warning change can flip it — verified, not assumed.
+
+  **The roster ships beside the table** (`AUTHORED_ROW_DERIVED_FIELDS`): which manifest fields are pure
+  functions of the authored rows, so a consumer can recompute the current answer from stored inputs
+  with `spec_tables` and `module_stats` instead of consulting the table at all. **Its boundary is
+  conditional and the condition rides on the entry**: `compile_module` re-derives `stats` over the
+  survivors only when the symbolic-allele drop removed something, so a module that lost the sole row
+  naming a gene legitimately disagrees with a recomputation, permanently. `compilation.dropped_rows`
+  (2026-08-24) is what makes that checkable rather than merely stated.
+
+  **`just-dna-compiler sweep`** is the instrument, and it exists so this never becomes the hand-kept
+  per-release map everyone agrees it must not be — the defect wearing a public name. It compares two
+  trees of compiled output built from **one** spec root, and with `--release` it runs the gate: a
+  measured movement that no record declares **fails**, so the measurement forces the declaration. The
+  gate belongs to the bump → `uv sync` → tag sequence rather than to the test suite, because it needs
+  the previous release installed.
+
+  **Backfilled by measurement, not by memory.** Both shipped records were produced on 2026-08-28 by
+  compiling all sixteen `reference_examples/` from one spec root under each *published* 0.6 release.
+  `0.6.0 → 0.6.1` moved nothing — recorded as a **measured zero with its denominator**, never silence.
+  `0.6.1 → 0.6.6` moved the parquet schema and bytes on 10 of 16 (RM120's `curator` column growing
+  `studies.parquet`), a published manifest field on 9 (`stats.genes`/`stats.gene_count` on seven,
+  RM121; `literature.quotes_unchecked` on three, RM119) and `content_signature` on **none**. Six moved
+  a published, indexed manifest field with *both* hashes byte-identical, which is precisely the case a
+  digest comparison, a signature comparison and a `revalidate` all correctly call *no change*. Only
+  `0.6.0`, `0.6.1` and `0.6.6` reached PyPI in that line, so those are the only intervals a stored
+  artifact can name; everything older stays honestly `unknown`.
+
+  **Scope v1 is compiler-derived outputs, said out loud.** Enricher-side outputs are **unmeasured**,
+  which is not the same claim as unchanged. And this coexists with a consumer's own recomputation
+  probes rather than replacing them: we state what a release did, they check what a specific stored
+  artifact says, and the two fail differently.
+
 ## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
 
 **Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately

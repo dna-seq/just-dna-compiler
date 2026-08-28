@@ -45,6 +45,8 @@ because it is deferred.
 
 ## RM126 — nothing tells a consumer what a release changed about compiled *output*
 
+**SHIPPED in 0.7 on 2026-08-28 — `just_dna_format.release_records` (record, `needs_recompile`, roster), `just_dna_compiler.sweep` + `just-dna-compiler sweep` (instrument and gate), and `0.6.1`/`0.6.6` backfilled by measurement. See [SCHEMAS § The release record](SCHEMAS.md#the-release-record-07-rm126--what-a-release-changed-about-compiled-output) and [COMPILER § The release-record sweep](COMPILER.md#the-release-record-sweep-rm126); this entry stays here until the round moves to ROADMAP_HISTORY.**
+
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) on 2026-08-28 — BUILDS in 0.7, in full plus the S65 roster.** Record + `needs_recompile` in format, the sweep in the compiler, the gate in the bump→tag sequence; intervals compose as a union over `(a, b]`, which is what gives S65's convergence requirement for free.
 
 **Severity** medium-high · **Status** **queued for 0.7, moved here 2026-08-21 — to be built, not
