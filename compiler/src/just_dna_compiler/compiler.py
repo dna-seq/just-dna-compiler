@@ -351,10 +351,14 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # every module carrying a later table for no reason.
     "gwas_effects.parquet",
     "sources.parquet",
-    # RM124 (0.7), and **last** for the position rule stated two entries up: this tuple is
-    # `artifact.digest` order, an absent file contributes nothing, so appending at the end is the one
-    # slot where no already-published module's digest moves. It is also the only member here that is
-    # not derived from a source — see `OVERRIDES_CSV` for why it needs a parquet at all.
+    # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
+    # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
+    # position in this tuple is invisible to the digest; what protects every already-published module
+    # is that they carry no `overrides.csv`, so the file is absent and contributes nothing. (The
+    # position rule two entries up is about `manifest.artifact.files` and the emission order a reader
+    # sees, which is a real thing and a different one.) Last is simply where a new member belongs.
+    # It is also the only member here that is not derived from a source — see `OVERRIDES_CSV` for why
+    # it needs a parquet at all.
     OVERRIDES_PARQUET,
 )
 

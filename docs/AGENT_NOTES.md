@@ -485,6 +485,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   overlay row matching nothing — a warning that appears on a module's round trip and not on the module.
   Re-keying a derived row is a suppress plus an insert.
 
+  **A key cell is matched as the model STORES it, and getting this wrong broke the fixed point with a
+  capital letter.** The overlay carries raw author text; the derived rows carry canonical values. The
+  first implementation compared the two directly, so `FrequencyRow.population` — which
+  `normalize_population` lowercases — meant an overlay `member=AFR` matched no row of a table full of
+  `afr`. All three operations went wrong differently and the worst went wrong **silently**: the
+  `insert` believed its row was absent and appended a duplicate, so every `compile → reverse →
+  compile` lap appended another copy, and nothing caught it because `frequencies.csv` is in neither
+  `_TABLE_DUPE_KEYS` nor the frequency checks. The `suppress` removed nothing and the `update` warned
+  that a row plainly present "is not carried". `locus_index` is the same shape one type over (`"01"`
+  is `1`).
+
+  The repair canonicalizes through the **model** — write the cell onto a real row of the table and
+  read back what it kept (`_canonical_key_cell`) — rather than through a table of per-column rules,
+  which would be a second copy of every validator. And an `insert` places its row by the **built**
+  row's subject, not the overlay's spelling, or the row lands at the end of the table instead of the
+  end of its group. Found by review, not by the suite: the P7 test used `resolution.csv`, whose key
+  columns happen to normalize to themselves.
+
+  **A derived row whose member column is NULL cannot be suppressed at all**, because an empty `member`
+  already means the whole group — `gene_validity.csv` rows with no `assertion_id`, and
+  `clinical_assertions.csv`'s `not_found` rows. A sentinel for null was refused (a second key grammar
+  inside the one column that exists to have only one); the refusal names the case and points at the
+  group-scoped `update` or a re-derivation.
+
   The covered set is **seven** — every merge-not-clobber derived sidecar but `licensing.csv`, which has
   its own merge path and is the one derived table a human is told to write. The proposal's "six" was a
   miscount that enumerated nothing; `test_overrides_overlay.py` asserts an equality against

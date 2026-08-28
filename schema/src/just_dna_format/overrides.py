@@ -33,6 +33,16 @@ incoherent: the row it would create has no member value to carry, so nothing cou
 again. The destructive and the incoherent operations refuse the wildcard; an author who genuinely
 wants a whole group gone writes one row per member, and the count is small by construction.
 
+**The dead end that asymmetry leaves, stated rather than papered over.** A derived row whose member
+column is *null* cannot be named by any override, because an empty `member` cell already means "the
+whole group". A `gene_validity.csv` row the source published no `assertion_id` for, and a
+`clinical_assertions.csv` `not_found` row — whose null `variation_id` that model's own docstring calls
+a **value**, the record that the archive was consulted and holds nothing — are both reachable by a
+group-scoped `update` and unreachable by a `suppress`. A sentinel spelling for null was not invented
+for it: that is a second key grammar in the column whose whole purpose is that there is only one, and
+the remedy an author actually has (correct the row, or re-derive the table) costs them nothing. The
+refusal message names the case rather than advising the impossible.
+
 Dependency-light like every other module here: pydantic plus the leaf vocabularies, no polars.
 """
 
@@ -296,7 +306,9 @@ class OverrideRow(AuthoredModel):
                 f"group-scoped. A group-scoped suppress drops every row under {self.subject!r} when "
                 f"one was almost certainly meant, and is not recoverable by reading the result; a "
                 f"group-scoped insert would create a row with no member value to match on. Write "
-                f"one row per member instead."
+                f"one row per member instead — unless the row you mean carries NO "
+                f"{target.member_field!r} at all, which no override can name: correct it with a "
+                f"group-scoped `update`, or re-derive the table."
             )
 
         if self.operation == "suppress":
@@ -353,6 +365,36 @@ def _rebuild(row: BaseModel, changes: dict[str, str | None]) -> BaseModel:
     data: dict[str, Any] = {name: getattr(row, name) for name in model.model_fields}
     data.update(changes)
     return model.model_validate(data)
+
+
+def _canonical_key_cell(sample: BaseModel | None, field_name: str | None, value: str) -> str:
+    """`value` as the target model would actually *store* it in `field_name`.
+
+    **The overlay's key cells are raw author text and the derived rows are canonical**, so comparing
+    the two directly is comparing a spelling against a value. `FrequencyRow.population` is the case
+    that proves it: `normalize_population` lowercases, so an overlay `member=AFR` matched no row of a
+    table full of `afr`. Every operation went wrong differently, and the worst went wrong silently —
+    an `insert` believed the row was absent and appended a duplicate, so **each `compile → reverse →
+    compile` lap appended another copy** and the Principle 7 fixed point this whole design rests on
+    was broken by a capital letter. Nothing caught it: `FrequencyRow` is in neither `_TABLE_DUPE_KEYS`
+    nor the frequency checks. A `suppress` silently removed nothing, and an `update` warned that a row
+    plainly present "is not carried".
+
+    The canonicalization runs through the model itself rather than through a table of per-column
+    rules, because a table of rules is a second copy of every validator — and `population` was only
+    the first: `locus_index` is an `int`, so `"01"` has the same shape. Writing the cell onto a real
+    row of the table is what makes it the model's own answer.
+
+    Falls back to the raw value when there is no row to write onto (an empty table matches nothing
+    anyway) or when the model refuses it (an unholdable value matches nothing either, and an `update`
+    then reports that honestly).
+    """
+    if sample is None or field_name is None or not value:
+        return value
+    try:
+        return _cell(_rebuild(sample, {field_name: value}), field_name)
+    except ValidationError:
+        return value
 
 
 def overlay_coherence_errors(overrides: Sequence[OverrideRow]) -> list[str]:
@@ -431,14 +473,19 @@ def apply_overrides(
         subject, member = key
         group = groups[key]
         operation = group[0].operation
+        # Canonicalized against a row of the table being corrected, and re-read **per group** rather
+        # than once: an `insert` earlier in this loop may be the only row there is to ask.
+        sample = result[0] if result else None
+        subject_key = _canonical_key_cell(sample, target.subject_field, subject)
+        member_key = _canonical_key_cell(sample, target.member_field, member)
         matched = [
             index
             for index, row in enumerate(result)
-            if _cell(row, target.subject_field) == subject
+            if _cell(row, target.subject_field) == subject_key
             and (
                 target.member_field is None
                 or not member
-                or _cell(row, target.member_field) == member
+                or _cell(row, target.member_field) == member_key
             )
         ]
 
@@ -482,10 +529,15 @@ def apply_overrides(
                     f"requires, one overlay row per field."
                 )
                 continue
+            # Off the BUILT row, not off the overlay's raw `subject`: the model has just canonicalized
+            # it, so this is the one place the answer needs no re-derivation. Placing an insert by a
+            # spelling the table does not use would put it at the end of the table instead of at the
+            # end of its group — a row-order difference, and parquet bytes follow row order.
+            built_subject = _cell(built, target.subject_field)
             tail = [
                 index
                 for index, row in enumerate(result)
-                if _cell(row, target.subject_field) == subject
+                if _cell(row, target.subject_field) == built_subject
             ]
             result.insert(tail[-1] + 1 if tail else len(result), built)
 

@@ -30,6 +30,8 @@ from just_dna_compiler.compiler import (
     reverse_module,
     validate_spec,
 )
+from just_dna_format.integrity import artifact_digest
+from just_dna_format.manifest import FileEntry
 from just_dna_format.overrides import OVERRIDABLE_TABLES
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
@@ -242,11 +244,24 @@ def test_the_covered_set_is_every_merge_not_clobber_sidecar_but_the_licence_tabl
     assert len(OVERRIDABLE_TABLES) == 7
 
 
-def test_the_overlay_parquet_is_last_so_no_published_digest_moves() -> None:
-    """`ARTIFACT_PARQUETS` **is** `artifact.digest` order and an absent file contributes nothing, so
-    the end of the tuple is the one slot a new parquet can take without moving the digest of every
-    module that carries a later table."""
+def test_the_overlay_parquet_is_registered_last_and_it_is_absence_that_protects_the_digest() -> None:
+    """Two claims that read as one, and only the second is why no published module's digest moved.
+
+    `integrity.artifact_digest` **sorts the listing by name** before hashing, so a member's position
+    in `ARTIFACT_PARQUETS` is invisible to the digest — an easy thing to believe otherwise, and the
+    comment beside the tuple asserted it until this test was written. What actually protects an
+    existing module is that it carries no overlay, so the file is absent and contributes no entry.
+    Shown by construction rather than by reading the hasher: one file set in two orders hashes equal,
+    and dropping an entry is what moves it.
+    """
     assert ARTIFACT_PARQUETS[-1] == "overrides.parquet"
+
+    entries = [
+        FileEntry(name="weights.parquet", sha256=f"sha256:{'a' * 64}", size=1),
+        FileEntry(name="overrides.parquet", sha256=f"sha256:{'b' * 64}", size=2),
+    ]
+    assert artifact_digest(entries) == artifact_digest(list(reversed(entries)))
+    assert artifact_digest(entries[:1]) != artifact_digest(entries)
 
 
 @pytest.mark.parametrize(

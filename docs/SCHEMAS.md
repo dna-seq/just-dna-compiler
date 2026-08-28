@@ -1539,6 +1539,26 @@ reading the result. A group-scoped insert is worse than destructive: the row it 
 no member value, so nothing could ever match it again. An author who wants a whole group gone writes
 one row per member, and the count is small by construction.
 
+**The dead end that asymmetry leaves, stated rather than papered over.** A derived row whose *member
+column is null* cannot be named by any override, because an empty `member` cell already means "the
+whole group". A `gene_validity.csv` row the source published no `assertion_id` for, and a
+`clinical_assertions.csv` `not_found` row — whose null `variation_id` that model's own description
+calls a **value**, the record that the archive was consulted and holds nothing — are both reachable by
+a group-scoped `update` and unreachable by a `suppress`. A sentinel spelling for null was not invented
+for it: that would be a second key grammar inside the one column whose whole purpose is that there is
+only one. The refusal message names the case, and the remedy an author has is to correct the row or
+re-derive the table.
+
+**Key cells are matched as the target model *stores* them, not as the author spelled them.** The
+overlay carries raw author text and the derived rows carry canonical values, so the comparison is
+canonicalized by writing the cell onto a row of the table being corrected and reading back what the
+model kept. `FrequencyRow.population` is why: `normalize_population` lowercases, so a member `AFR`
+matched nothing in a table of `afr` — and the `insert` that followed believed its row was absent and
+appended a duplicate, once per `compile → reverse → compile` lap. Nothing caught it, since
+`frequencies.csv` has no duplicate-key check. `locus_index` is the same shape one type over (`01` is
+`1`). Canonicalizing through the model rather than through a table of per-column rules is deliberate:
+a table of rules is a second copy of every validator, and `population` was only the first of them.
+
 Two more refusals, both structural:
 
 - **`field` may not name the table's own `subject` or `member` column.** Re-keying a derived row is a

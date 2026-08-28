@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 from just_dna_format.base import field_category
+from just_dna_format.frequency import FrequencyRow
 from just_dna_format.overrides import (
     OVERRIDABLE_TABLES,
     VALID_OVERRIDE_OPERATIONS,
@@ -278,6 +279,98 @@ def test_no_operation_reports_its_own_no_op() -> None:
         after, errors, warnings = apply_overrides("resolution.csv", rows, single)
         assert errors == [], single[0].operation
         assert warnings == [], f"{single[0].operation} reported its own no-op"
+
+
+def test_a_key_cell_is_matched_as_the_model_stores_it_not_as_the_author_spelled_it() -> None:
+    """The overlay's key cells are raw author text; the derived rows are canonical. Comparing the two
+    directly compares a spelling against a value, and `FrequencyRow.population` is where that shows:
+    `normalize_population` lowercases, so an overlay `member=AFR` matched nothing in a table of `afr`.
+
+    All three operations went wrong, differently, and the **insert** went wrong silently: it believed
+    the row was absent and appended a duplicate, so each `compile → reverse → compile` lap appended
+    another copy. `FrequencyRow` is in neither `_TABLE_DUPE_KEYS` nor the frequency checks, so the
+    duplicate reached the parquet and `frequency_signature` with no error and no warning — the
+    Principle 7 fixed point the whole design rests on, broken by a capital letter.
+    """
+    rows = [FrequencyRow(variant_key="rs1", population="afr", dataset="gnomad_v4.1")]
+
+    inserted, errors, warnings = apply_overrides(
+        "frequencies.csv",
+        rows,
+        [_row(table="frequencies.csv", subject="rs1", member="AFR", field="dataset",
+              operation="insert", value="gnomad_v4.1")],
+    )
+    assert (errors, warnings) == ([], [])
+    assert len(inserted) == 1, "an insert of a row already present is a no-op whatever its spelling"
+
+    updated, errors, warnings = apply_overrides(
+        "frequencies.csv",
+        rows,
+        [_row(table="frequencies.csv", subject="rs1", member="AFR", field="dataset",
+              operation="update", value="gnomad_v4.2")],
+    )
+    assert (errors, warnings) == ([], []), "the row is plainly there; nothing should warn"
+    assert [r.dataset for r in updated] == ["gnomad_v4.2"]
+
+    suppressed, errors, _ = apply_overrides(
+        "frequencies.csv",
+        rows,
+        [_row(table="frequencies.csv", subject="rs1", member="AFR", operation="suppress")],
+    )
+    assert errors == []
+    assert suppressed == [], "a suppress that silently removes nothing is the worst of the three"
+
+
+def test_the_insert_no_op_holds_across_laps_for_a_normalized_member() -> None:
+    """The lap-over-lap form of the bug above, which is how a reader would meet it: `reverse_module`
+    emits the post-overlay table, so the overlay is re-applied to its own output every recompile. A
+    match that fails on a canonical value grows the table by one row per lap, forever."""
+    rows = [FrequencyRow(variant_key="rs1", population="afr", dataset="gnomad_v4.1")]
+    overlay = [
+        _row(table="frequencies.csv", subject="rs1", member="AFR", field="dataset",
+             operation="insert", value="gnomad_v4.1")
+    ]
+    lap = rows
+    for _ in range(3):
+        lap, errors, _ = apply_overrides("frequencies.csv", lap, overlay)
+        assert errors == []
+        assert [r.model_dump() for r in lap] == [r.model_dump() for r in rows]
+
+
+def test_an_int_member_matches_whatever_way_the_author_spelled_the_number() -> None:
+    """`locus_index` is the one integer a `member` carries, so the same canonicalization covers a
+    leading zero — narrower than the `population` case in practice, identical in shape."""
+    rows = [ResolutionRow(variant_key="rs1", locus_index=1, chrom="6", start=1, source="cache")]
+    after, errors, warnings = apply_overrides(
+        "resolution.csv",
+        rows,
+        [_row(table="resolution.csv", subject="rs1", member="01", field="source",
+              operation="update", value="manual")],
+    )
+    assert (errors, warnings) == ([], [])
+    assert [r.source for r in after] == ["manual"]
+
+
+def test_an_insert_under_a_normalized_subject_lands_in_its_own_group() -> None:
+    """Placement reads the BUILT row's subject, not the overlay's spelling. Reading the raw one would
+    put the row at the end of the table rather than at the end of its group — a row-order difference,
+    and parquet bytes follow row order."""
+    rows = [
+        FrequencyRow(variant_key="rs1", population="afr", dataset="d"),
+        FrequencyRow(variant_key="rs2", population="afr", dataset="d"),
+    ]
+    after, errors, _ = apply_overrides(
+        "frequencies.csv",
+        rows,
+        [_row(table="frequencies.csv", subject="rs1", member="NFE", field="dataset",
+              operation="insert", value="d")],
+    )
+    assert errors == []
+    assert [(r.variant_key, r.population) for r in after] == [
+        ("rs1", "afr"),
+        ("rs1", "nfe"),
+        ("rs2", "afr"),
+    ]
 
 
 def test_an_update_that_reaches_no_row_warns_and_names_both_readings() -> None:
