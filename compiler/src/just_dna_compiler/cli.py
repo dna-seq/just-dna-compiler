@@ -14,6 +14,7 @@ Exit codes are CI/registry-gateable: `0` success, `1` failure (invalid spec / fa
     just-dna-compiler keygen --out key.pem          # the key `sign` needs, and its public half
     just-dna-compiler sign out/ --private-key key.pem
     just-dna-compiler reference --json              # the live authoring reference / JSON Schemas
+    just-dna-compiler sweep prev/ new/ --spec-root reference_examples/ --release 0.7.0
 """
 
 import json
@@ -24,6 +25,7 @@ from just_dna_format.integrity import IntegrityError, verify_manifest
 from just_dna_format.layout import SidecarCollision
 from just_dna_format.manifest import ModuleManifest, read_manifest, write_manifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
+from just_dna_format.release_records import release_version
 from just_dna_format.reference import authoring_reference, json_schemas
 from just_dna_format.signing import (
     generate_private_key_pem,
@@ -48,6 +50,13 @@ from just_dna_compiler.draft import (
 )
 from just_dna_compiler.hints import describe_table, inspect_rows
 from just_dna_compiler.scaffold import scaffold_module
+from just_dna_compiler.sweep import (
+    build_outputs,
+    compare_outputs,
+    gate_findings,
+    measurement_json,
+    read_outputs,
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -615,3 +624,79 @@ def hint(
         column = f"[{finding.column}] " if finding.column else ""
         typer.secho(f"  {finding.level}: {where}{column}{finding.message}", fg=colours[finding.level], err=True)
     typer.secho(str(report), fg=typer.colors.GREEN, err=True)
+
+
+@app.command()
+def sweep(
+    before: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Compiled output tree from the PREVIOUS release"
+    ),
+    after: Path = typer.Argument(
+        ..., file_okay=False, help="Compiled output tree for THIS release (built when --spec-root)"
+    ),
+    spec_root: Path | None = typer.Option(
+        None,
+        "--spec-root",
+        exists=True,
+        file_okay=False,
+        help="Compile every module spec under this directory into AFTER with the installed compiler.",
+    ),
+    release: str | None = typer.Option(
+        None,
+        "--release",
+        help=(
+            "Run the release gate against the ReleaseRecord for this version (`0.7.0`, or the "
+            "stamped `just-dna-compiler 0.7.0`). Exit 1 on a finding."
+        ),
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit the measurement as JSON."),
+) -> None:
+    """Measure what this release changed about compiled output, against a previous release's (RM126).
+
+    BEFORE must have been produced by the previous release — one `compile` per module spec, from the
+    SAME spec root this run uses, so the compiler is the only variable. With `--release` the release
+    gate runs and a measured movement that no `ReleaseRecord` declares exits 1.
+
+    This is a release-sequence command, not an ordinary test: it needs the previous release actually
+    installed. COMPILER.md carries the full sequence.
+    """
+    before_outputs = read_outputs(before)
+    after_outputs = build_outputs(spec_root, after) if spec_root is not None else read_outputs(after)
+    measurement = compare_outputs(before_outputs, after_outputs)
+    if as_json:
+        typer.echo(json.dumps(measurement_json(measurement), indent=2))
+    else:
+        typer.echo(f"{measurement.before} -> {measurement.after}: {measurement.evidence}")
+        for axis, moved in sorted(measurement.axes.items()):
+            typer.secho(
+                f"  {axis}: {'moved' if moved else 'did not move'}",
+                fg=typer.colors.YELLOW if moved else typer.colors.GREEN,
+            )
+        for field in measurement.manifest_fields:
+            typer.echo(f"    manifest field moved: {field}")
+    if release is None:
+        return
+    # Under `--json` stdout is one JSON document and nothing else may join it: the caller of this
+    # flag is a release script piping to `jq`, and a note or a success line printed after the blob
+    # breaks the very consumer the flag exists for. The gate's own prose goes to stderr there.
+    gate_stream = bool(as_json)
+    # `--release` accepts either spelling for the same reason `needs_recompile` does: a maintainer
+    # pasting the stamped `just-dna-compiler 0.7.0` out of a manifest must not be told the release
+    # has no record when it has one.
+    try:
+        gated = release_version(release)
+    except ValueError as exc:
+        typer.secho(f"  error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    findings, notes = gate_findings(measurement, gated)
+    for note in notes:
+        typer.secho(f"  note: {note}", fg=typer.colors.BLUE, err=gate_stream)
+    for finding in findings:
+        typer.secho(f"  error: {finding}", fg=typer.colors.RED, err=True)
+    if findings:
+        raise typer.Exit(code=1)
+    typer.secho(
+        f"release record for {gated} covers the measurement",
+        fg=typer.colors.GREEN,
+        err=gate_stream,
+    )

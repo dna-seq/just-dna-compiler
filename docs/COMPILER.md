@@ -1464,6 +1464,7 @@ positions"`; `test_roundtrip_regressions.py` holds `"pointer, not an expression"
 | `scaffold <spec>` | `scaffold.scaffold_module` | `--kind`, `--rows`, `--dry-run` |
 | `describe <kind>` | `hints.describe_table` | one table's columns + pick-lists, each column's `category` and its vocabulary's per-member `notes` |
 | `hint <kind>` | `hints.inspect_rows` | `--rows-file`/`--row`, `--json` |
+| `sweep <before> <after>` | `sweep.compare_outputs` + `gate_findings` | `--spec-root` (compile AFTER with the installed compiler), `--release` (run the release gate; exit 1 on a finding), `--json`. A **release-sequence** command, not an ordinary test — it needs the previous release installed |
 
 **`--no-resolve` is the master switch, not an Ensembl switch** (S14). With an injected `resolution.csv`
 beside the spec it used to compile *successfully* with `chrom=None` on every weight row — a silent
@@ -1517,6 +1518,148 @@ and `required` is insufficient rather than wrong).
 mirror exists so a PGx author working through the enricher does not have to switch binaries for a
 header. Adding the other four would duplicate a surface that has an owner, and removing the mirror
 would break scripts for no gain.
+
+## The release-record sweep (RM126)
+
+`just_dna_compiler.sweep`. The instrument that measures what a release changed about compiled output,
+and the gate that refuses a release whose measurement carries no declaration. The record it feeds and
+the pure `needs_recompile` a consumer reads live in the format tier — see
+[SCHEMAS § The release record](SCHEMAS.md#the-release-record-07-rm126--what-a-release-changed-about-compiled-output)
+for the shape, the vocabularies and the interval algebra. This section is the operation.
+
+**Why a measurement and not a map.** A hand-kept per-release map was the first repair anyone proposed
+and it is the defect wearing a public name (`@registry-completeness`): five of the six RM104–RM111
+fixes were a derived value restated by hand. So the sweep measures, and the gate makes the measurement
+**force** the declaration rather than leaving the author to remember writing one.
+
+### What it compares, and the one discipline that makes it mean anything
+
+Two trees of compiled output — one produced by the previous release, one by this one — **from the same
+spec root**. Feeding each side its own tree's `reference_examples/` measures spec drift as compiler
+drift: between `v0.6.1` and `v0.6.6` one example's README moved, which is enough to shift
+`manifest.readme` and `inputs`. One spec root, two compilers.
+
+Five axes, and each is computed apart because a consumer acts on each differently:
+
+| axis | how it is measured |
+| --- | --- |
+| `parquet_schema` | every parquet's `{column: dtype}`, read with `scan_parquet(...).collect_schema()` |
+| `parquet_bytes` | `artifact.digest` |
+| `content_signature` | the manifest field |
+| `manifest_fields` | every dotted path in the manifest, minus `EXCLUDED_MANIFEST_FIELDS` |
+| `warnings` | the `compilation.warnings` set, reported apart and never folded into the above |
+
+**`EXCLUDED_MANIFEST_FIELDS` is a published registry with a reason per member**, and
+`compilation.compiler_version` is the one that matters: it moves on **every** release by construction,
+so counting it would make every record fire on every module in every release and rebuild, inside the
+instrument, exactly the false-positive class the interval shape exists to avoid.
+`compilation.compiled_at` and `compiled_by` are environment; `content_signature`, `artifact.digest` and
+`artifact.files` are routed to their own axes rather than dropped.
+
+**A list is a leaf.** Indexing into one would make an inserted element rename every path after it, and
+`stats.genes` is what a consumer keys on anyway. A missing key and a present `null` are distinguished
+by a sentinel, not by `dict.get` — otherwise `literature: null` growing the RM119 counters reads as
+unchanged on the `literature` path itself.
+
+### Backfilled, and what the numbers say
+
+The two records shipped in 0.7 were measured on 2026-08-28 over all sixteen `reference_examples/`,
+compiled from one spec root under each **published** release in turn with `just-dna-compiler` and
+`just-dna-format` pinned together (the workspace cuts all three packages at one number). `0.6.0 →
+0.6.1` moved nothing — a **measured zero with its denominator in the record's `evidence`**, never
+silence. `0.6.1 → 0.6.6` moved `parquet_schema` and `parquet_bytes` on 10 of 16 (RM120's authored
+`curator` column growing `studies.parquet`), `manifest_fields` on 9 (`stats.genes`/`stats.gene_count`
+on seven, RM121; `literature.quotes_unchecked` on three, RM119) and `content_signature` on **none**.
+
+The 0.6 line published three compiler releases — `0.6.0`, `0.6.1`, `0.6.6`. The tags in between never
+reached PyPI, so no stored artifact's `compiler_version` can name one, and the chain is complete over
+what a consumer can actually be holding. Older intervals stay honestly `unknown`.
+
+### Where the gate runs, and what fails
+
+**In the bump → `uv sync` → tag sequence, not as an ordinary test**, because it needs the previous
+release actually installed. A release whose sweep shows a changed axis or field that no `ReleaseRecord`
+declares **fails**.
+
+```bash
+# Fresh trees every time. `compile_module` only mkdir -p's its output, so reusing a fixed path
+# inherits the last cut's modules: a renamed one lingers as a stale directory the sweep still reads,
+# and a parquet a module no longer emits still gets globbed into its schema.
+BEFORE=$(mktemp -d) && AFTER=$(mktemp -d)
+
+# 1. the BEFORE side, under the previous published release, against THIS tree's specs
+for d in reference_examples/*/; do
+  uv run --isolated --no-project \
+    --with just-dna-compiler==<previous> --with just-dna-format==<previous> \
+    just-dna-compiler compile "$d" "$BEFORE/$(basename "$d")"
+done
+
+# 2. bump the versions, `uv sync`, THEN measure and gate — in that order, see below
+uv run just-dna-compiler sweep "$BEFORE" "$AFTER" --spec-root reference_examples/ --release <new>
+```
+
+**`uv sync` before the sweep, not after.** `--spec-root` builds the AFTER tree with whatever compiler
+is installed, so running the sweep on a stale environment measures the previous release against
+itself: every axis reads `False` and the whole thing looks like a clean release that changed nothing.
+The gate refuses it — it checks the interval's **upper** end against `--release` and rejects a
+degenerate interval outright — but the fastest way not to meet that message is to sync first.
+
+Step 2 exits 1 until `release_records.RELEASE_RECORDS` gains an entry for `<new>` covering what moved.
+The measured half is what `SweepMeasurement.as_record(...)` produces — with an **empty** `declared`
+list on purpose, so the gate keeps refusing until somebody says whether each movement was a
+`correction` (the value we published was wrong) or an `addition` (it was absent). That is the whole
+mechanism.
+
+### The gate's finding phrases
+
+Named constants, for the same reason a warning's text is: a release script greps them.
+
+```python
+NO_RECORD_PHRASE           = "has no release record"
+UNDECLARED_AXIS_PHRASE     = "moved and the release record does not record it moving"
+UNDECLARED_FIELD_PHRASE    = "moved and the release record does not list it"
+UNDECLARED_KIND_PHRASE     = "moved and nothing declares it a correction or an addition"
+WRONG_PREVIOUS_PHRASE      = "was measured against a release the record does not name"
+WRONG_VERSION_PHRASE       = "did not measure the release being gated"
+DEGENERATE_INTERVAL_PHRASE = "measured one release against itself, so it measured nothing"
+UNMEASURED_MODULE_PHRASE   = "could not be measured on both sides, so the sweep says nothing about it"
+NO_MODULES_PHRASE          = "measured no module at all"
+OVERDECLARED_NOTE_PHRASE   = "is declared and this sweep did not see it move"
+```
+
+The middle four are about the **sweep** rather than about the record, and they exist because a gate
+that only asked *is this movement declared?* passed every sweep that measured nothing. A stale
+environment, a module whose compile broke under the new release, and two trees sharing no module at
+all all produce an all-`False` measurement, and none of them is a release that changed nothing.
+`--release` accepts the stamped `just-dna-compiler X.Y.Z` spelling as well as the bare one, for the
+same reason `needs_recompile` does.
+
+The last is a **note, not a finding**, and does not fail the release: the reference corpus is sixteen
+modules and a real correction can land on a shape none of them has. It is still printed, so
+over-declaring is visible rather than invisible.
+
+**Under `--json`, stdout is the JSON document and nothing else** — the notes and the success line go
+to stderr there. The caller of that flag is a release script piping to `jq`, and a note printed after
+the blob breaks exactly the consumer the flag exists for. Without `--json` they read on stdout as
+usual.
+
+### The warnings axis, and the seam RM131 fills
+
+`compilation.warnings` is a published manifest field, so the naive reading folds it into
+`manifest_fields` — and then RM131's restructuring and RM134's new checks report *a manifest field
+changed* on essentially every module in 0.7, and a registry acting on that mints an immutable PATCH
+across a whole catalogue for a reworded message. It cannot simply join `compiled_at` in the excluded
+set either, because a **new** warning can be a real signal.
+
+So it is its own declared axis, outside `RECOMPILE_DRIVING_AXES`. **RM131's `carried` split is the
+discriminator that will make the two decidable** — a finding the author cannot clear moving is noise,
+one they can clear appearing is not — and `compare_module` already keeps `warnings_added` and
+`warnings_removed` apart so that classifying them is a change to that one function.
+
+**What this does not touch:** `SpecRow.needs_upgrade` is `self.upgraded() != self`, computed over
+authored row content and a hard filter in the marketplace. A warning never touches an authored row, so
+no warning change can flip it. Verified rather than assumed, because the failure mode would have been
+modules silently vanishing from a catalogue.
 
 ## Coverage table (0.3 / 0.4 features)
 
