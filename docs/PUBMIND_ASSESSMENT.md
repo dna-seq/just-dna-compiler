@@ -262,6 +262,23 @@ composite tokens are the ones worth arguing about, since collapsing `P/LP` to `p
 distinction our own vocabulary can carry. Keep both: `pubmind_sig_raw` holds the composite and
 `pubmind_sig` holds the mapped call, and no consumer has to re-parse a slash.
 
+> **Superseded 2026-08-28 by [PROPOSAL_0_7 § RM134](proposals/PROPOSAL_0_7.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check),
+> in three places. Kept because the reasoning above is why the decision went the other way.**
+>
+> 1. **One normalizer, not a second map.** The paragraph proposes a hand-written PubMind map citing
+>    `_CLIN_SIG_MAP` as precedent. Two maps for one vocabulary drift, and since the check's entire
+>    output is a comparison of two normalizations, a drift would make it report `discordant` on its own
+>    mapping rather than on the authorities. The shipped form is one shared `clin_sig` normalizer both
+>    sources call.
+> 2. **`Benign/Likely benign` → `likely_benign`, not `benign`.** Under the shared normalizer a composite
+>    splits on `/` and the **severity order** picks the answer, so B/LB reaches `likely_benign` — the
+>    same answer ClinVar's `Benign/Likely_benign` already gets, which is the point of sharing. `P/LP` is
+>    unaffected and still reaches `pathogenic`. **This is a deliberate result, not an unimplemented
+>    line: do not "restore" `benign`.**
+> 3. **The columns are `clin_sig`/`clin_sig_raw`**, not `pubmind_sig`/`pubmind_sig_raw`. The source is
+>    the file, so naming a column after it restates the filename — and one column vocabulary across
+>    every snapshot is what lets an N-authority check work with no per-source mapping at all.
+
 **Normalization is where the measured defects get handled, and every drop is counted.** Silent
 truncation reads as full coverage, so each of these lands as a number in `release.json`
 (`@dont-discard-computed`):
