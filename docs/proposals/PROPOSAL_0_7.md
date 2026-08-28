@@ -198,8 +198,8 @@ blank, which a merge cannot distinguish from an absent value in the first place.
 The 2026-08-12 cost amendment names this class in its own words — *a derived table that is both
 machine-written and human-overridable can be edited into a state that is not merely stale but a false
 claim, which wants a mechanism rather than a convention.* RM45 discharged it for exactly one table by
-making `verification.json` unwritable by hand. Nothing discharges it for the six where overriding **is**
-the intended feature.
+making `verification.json` unwritable by hand. Nothing discharges it for the **seven** where overriding
+**is** the intended feature.
 
 A consumer built the conservative exit — a non-destructive capture / verify / delete / re-derive /
 classify / reapply wrapper — and it stops precisely where the problem predicted: a subject present in
@@ -282,8 +282,30 @@ moves**, because an absent optional table contributes nothing, exactly as an uns
 
 ### Whether merge-not-clobber survives: it does not, and what replaces it
 
-**Dropped for the six covered derived tables.** That is the prize, and it is what makes this 0.7 rather
-than a smaller thing: it changes what a re-run does to every module already published.
+**Dropped for the seven covered derived tables.** That is the prize, and it is what makes this 0.7
+rather than a smaller thing: it changes what a re-run does to every module already published.
+
+**The covered set, enumerated — and the count was wrong until 2026-08-28.** This section and the entry
+it inherits from both said *six* and neither ever listed them, which is the shape of defect this repo
+has a tag for: a number restated by hand beside the thing that could have produced it. Code has
+**seven** merge-not-clobber derived sidecars, and a build against the uncounted number would have left
+merge-not-clobber alive in exactly one table — silently, since nothing computes the set.
+
+| table | writer |
+| --- | --- |
+| `resolution.csv` | `enrich._write_resolution_csv` |
+| `frequencies.csv` | `frequencies._write_frequencies_csv` |
+| `gene_metrics.csv` | `gene_metrics._write_gene_metrics_csv` (two passes share it — `enrich_gene_metrics` and `clingen.enrich_dosage_sensitivity`) |
+| `gene_validity.csv` | `gene_validity._write_gene_validity_csv` |
+| `clinical_assertions.csv` | `assertions._write_assertions_csv` |
+| `literature.csv` | `literature._write_literature_csv` |
+| `gwas_effects.csv` | `gwas._write_gwas_csv` |
+
+`sources.csv`/`licensing.csv` is **out**: it has its own merge path (`licensing.merge_sources_file`) and
+is not a table where overriding is the intended feature. `gwas_effects.csv` is the one the miscount
+most likely dropped — it is the newest pass (RM90) and its ENRICHER.md section was appended last — which
+is exactly why the set is enumerated here rather than counted again. **Derive the covered set from the
+writers, never from this table.**
 
 What replaces it is narrower than "every run re-asks", which would cost the full resolution time on
 every pass and is not what dropping the rule means:

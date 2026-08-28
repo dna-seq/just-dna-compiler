@@ -1507,7 +1507,9 @@ cost amendment it is the **full-cost** layer, a human writes it; but that same a
 this class in the first place — *a derived table that is both machine-written and human-overridable can
 be edited into a state that is not merely stale but is a false claim, and that wants a mechanism rather
 than a convention.* RM45 discharged that for exactly one table by making `verification.json` unwritable
-by hand. Nothing discharges it for the six where overriding **is** the intended feature.
+by hand. Nothing discharges it for the **seven** where overriding **is** the intended feature —
+enumerated in [PROPOSAL_0_7 § RM124](proposals/PROPOSAL_0_7.md#whether-merge-not-clobber-survives-it-does-not-and-what-replaces-it),
+which corrected this count on 2026-08-28. It said *six* here and there, and listed them in neither.
 
 ### Four questions, and none of them is the tier
 
