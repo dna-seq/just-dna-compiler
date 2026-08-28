@@ -566,3 +566,35 @@ def test_the_three_readings_of_an_unmatched_update_are_all_named() -> None:
     assert "Three readings and nothing here separates them" in warnings[0]
     for reading in ("may be mistyped", "stopped publishing", "dropped the row before the parquet"):
         assert reading in warnings[0], f"{reading!r} missing from: {warnings[0]}"
+
+
+def test_a_key_column_is_stored_the_way_it_is_compared() -> None:
+    """`member` and `field` are stripped on the model, because that is where they are keyed.
+
+    `subject` and `reason` were stripped and these two were not, while `apply_overrides` groups on
+    `(row.member or "").strip()` and the duplicate check keys on the raw value. Two rows differing
+    only by a trailing space were therefore two keys to the duplicate check and one group to the
+    apply, where the second silently won: no error, no warning, and the losing correction simply
+    absent from the build product.
+
+    `load_csv_rows` strips every cell, so an authored file never reached it — but that is a property
+    of one caller, and `OverrideRow` is public. Wave-1 audit F9.
+    """
+    padded = _row(
+        table="frequencies.csv",
+        subject="rs1801133",
+        member=" afr ",
+        field=" dataset ",
+        operation="update",
+        value="gnomad_v4.1",
+    )
+    assert padded.member == "afr"
+    assert padded.field == "dataset"
+
+    # And a member that is only whitespace is the empty member, not a distinct one — otherwise it
+    # would read as naming a group member spelled "   ".
+    blank = _row(
+        table="literature.csv", subject="12345678", member="   ",
+        field="doi", operation="update", value="10.1000/x",
+    )
+    assert blank.member is None

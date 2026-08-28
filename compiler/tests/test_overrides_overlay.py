@@ -361,3 +361,34 @@ def test_a_misplaced_overlay_under_derived_is_reported_rather_than_tolerated(
     assert any(
         "overrides.csv is an authored table sitting in derived/" in w for w in result.warnings
     )
+
+
+def test_a_table_that_fails_to_load_is_still_a_table_the_module_carries(tmp_path: Path) -> None:
+    """A malformed covered table gets its load errors, never "this module does not carry it".
+
+    `overlaid` feeds `_overlay_targets_missing`, whose sentence is about whether the module carries
+    the table at all — so presence is what belongs in that set. It was gated on a *clean load*, which
+    made a broken `gwas_effects.csv` report both its parse errors and a claim it is not there,
+    about a file sitting in the spec directory. Two findings, one of them false, and the false one
+    points the author at the wrong repair: they would go run the pass that writes the table instead of
+    fixing the row.
+
+    Wave-1 audit F10.
+    """
+    spec = _example(tmp_path)
+    target = spec / "gwas_effects.csv"
+    header = target.read_text(encoding="utf-8").splitlines()[0]
+    # A row with the right column count and an unparseable cell: it reaches the model and is refused,
+    # which is the state that used to drop the table out of `overlaid`.
+    target.write_text(f"{header}\n" + ",".join(["not-a-number"] * len(header.split(","))) + "\n")
+    _write_overlay(
+        spec,
+        [["gwas_effects.csv", "GCST000001", "", "effect_measure", "update", "beta",
+          *_why("re-checked by hand")]],
+    )
+
+    result = validate_spec(spec)
+
+    missing = [w for w in result.warnings if "which this module does not carry" in w]
+    assert missing == [], f"gwas_effects.csv is present; it just did not parse: {missing}"
+    assert not result.valid, "a malformed covered table is still an error"

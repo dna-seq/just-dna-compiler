@@ -3723,13 +3723,20 @@ def validate_spec(
         )
         all_errors.extend(injected_errors)
         all_warnings.extend(injected_warnings)
-        if not injected_errors and csv_name in OVERRIDABLE_TABLES:
+        if csv_name in OVERRIDABLE_TABLES:
+            # `overlaid` answers "does the module carry this table", which is what
+            # `_overlay_targets_missing` reports on — so it is the file's PRESENCE that puts a name in
+            # here, never whether it parsed. Gating it on a clean load made a malformed
+            # `frequencies.csv` produce its load errors *and* "overrides.csv corrects frequencies.csv,
+            # which this module does not carry", about a file sitting right there. The apply still
+            # needs rows that parsed, so only that half stays behind the guard.
             overlaid.add(csv_name)
-            injected_rows, apply_errors, apply_warnings = apply_overrides(
-                csv_name, injected_rows, overrides
-            )
-            all_errors.extend(apply_errors)
-            all_warnings.extend(apply_warnings)
+            if not injected_errors:
+                injected_rows, apply_errors, apply_warnings = apply_overrides(
+                    csv_name, injected_rows, overrides
+                )
+                all_errors.extend(apply_errors)
+                all_warnings.extend(apply_warnings)
         if injected_rows and not injected_errors:
             # Table-level coherence for the fact tables too (RM107) — same function, same message, so
             # a duplicate key reads identically wherever it is found. Named by the file actually read

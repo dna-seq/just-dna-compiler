@@ -269,6 +269,25 @@ class OverrideRow(AuthoredModel):
             raise ValueError(f"{info.field_name} may not be blank")
         return text
 
+    @field_validator("member", "field")
+    @classmethod
+    def _strip_key_columns(cls, v: str | None) -> str | None:
+        """`member` and `field` are key columns, so they are stored the way they are compared.
+
+        `subject` was stripped and these two were not, while `apply_overrides` groups on
+        `(row.member or "").strip()` and `_TABLE_DUPE_KEYS` keys on the raw value. Two rows differing
+        only by a trailing space in `member` were therefore distinct to the duplicate check and one
+        group to the apply, where the second silently won — no error, no warning, and the losing
+        correction simply absent from the build product.
+
+        Not reachable from an authored file today, because `load_csv_rows` strips every cell before
+        the model sees it. That is a property of one caller and not of the model, and this class is
+        public: a consumer building an `OverrideRow` in memory meets the raw value.
+        """
+        if v is None:
+            return None
+        return v.strip() or None
+
     @field_validator("decided_at", mode="before")
     @classmethod
     def _canonical_decided_at(cls, v: object) -> str | None:
