@@ -23,7 +23,12 @@ class _Findings(BaseModel):
     there.
 
     A caller passing `carried`/`warnings_summary` explicitly is left alone, which is what lets a
-    result be rebuilt from a dump of itself.
+    result be rebuilt from a dump of itself — but the pair is then checked, because a caller claiming
+    to have derived them and getting it wrong is worse than one that withheld.
+
+    **Plain strings are accepted and withheld on, never refused.** These are public result types and
+    `warnings=["..."]` has been legal since 0.6, so Principle 3 keeps it legal; `findings.classify`
+    owns that decision and returns an empty pair rather than raising.
     """
 
     warnings: list[str] = Field(default_factory=list, description="Non-fatal findings, in full")
@@ -38,8 +43,9 @@ class _Findings(BaseModel):
     warnings_summary: dict[str, int] = Field(
         default_factory=dict,
         description=(
-            "`warnings` counted by kind — keys from VALID_WARNING_CODES, values summing to "
-            "`len(warnings)` so the digest accounts for the whole channel."
+            "`warnings` counted by kind — keys from VALID_WARNING_CODES. Either empty (the channel "
+            "was not classified, which a caller passing plain prose gets) or summing to "
+            "`len(warnings)` and accounting for the whole of it. Never partial."
         ),
     )
 
@@ -64,6 +70,30 @@ class _Findings(BaseModel):
             )
         carried, summary = classify(data["warnings"])
         return {**data, "carried": carried, "warnings_summary": summary}
+
+    @model_validator(mode="after")
+    def _the_derived_halves_agree_with_the_channel(self) -> "_Findings":
+        """A supplied pair is a claim, and an inconsistent claim is worse than a withheld one.
+
+        Both halves default to empty, which is the honest *withheld* answer, so the only thing to
+        check is a pair that says something: `carried` must name messages the channel actually holds,
+        and a non-empty summary must account for the whole channel rather than part of it. Runs after
+        coercion, over plain strings, so it holds for a result rebuilt from a dump of itself too.
+        """
+        stray = [w for w in self.carried if w not in self.warnings]
+        if stray:
+            raise ValueError(
+                f"carried names {len(stray)} message(s) that are not in warnings: {stray[0][:120]!r}."
+                f" It is a SUBSET of the channel, so a consumer can subtract it."
+            )
+        counted = sum(self.warnings_summary.values())
+        if self.warnings_summary and counted != len(self.warnings):
+            raise ValueError(
+                f"warnings_summary counts {counted} finding(s) and warnings holds "
+                f"{len(self.warnings)}. A non-empty summary accounts for the whole channel; leave it "
+                f"empty to say the channel was not classified."
+            )
+        return self
 
 
 class ValidationResult(_Findings):

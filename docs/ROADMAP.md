@@ -829,6 +829,56 @@ now narrow: is a warning that fires only on the second lap better reported over 
 and silent about the one case the author cares about) or left as-is (truthful per lap, and moving a
 published field between a module and its own round trip).
 
+## RM138 — `carried` duplicates the message text, so the channel RM131 shrank nearly doubled
+
+**Severity** low · **Status** open — **a minor, release undecided; filed 2026-08-28 by the RM131
+review, measured over the whole reference corpus** · **Owner** format (schema) + compiler ·
+**Found by** reviewing RM131 against its own motivation
+
+**Not a defect, and the entry says so first.** The shape was decided per item with the maintainer:
+*a `carried` list beside `warnings`, holding the subset the author cannot clear*, chosen over a field
+on each finding because it invents no permanent names and because *a consumer subtracts to get the
+actionable set*. Both properties hold. What the decision did not have in front of it is the size, and
+the size is the thing RM131 exists about.
+
+**Measured, not estimated** — every reference example that emits a warning, byte lengths of
+`compilation.warnings` against the `compilation.carried` added beside it:
+
+| module | warnings | carried | warnings (B) | + carried (B) | growth |
+|---|---|---|---|---|---|
+| `pathogenic_clinvar` | 113 | 109 | 28,059 | 26,991 | 1.96× |
+| `hboc_palb2` | 12 | 12 | 2,977 | 2,977 | 2.00× |
+| `htt_repeat_expansion` | 3 | 1 | 2,200 | 729 | 1.33× |
+| `cyp2d6_structural` | 2 | 1 | 1,787 | 723 | 1.40× |
+| `apoe_epsilon`, `shox_par1` | 2 | 2 | 224 / 478 | 224 / 478 | 2.00× |
+| **corpus** | | | **41,272** | **+34,744** | **1.84×** |
+
+So the reported 14 kB module becomes a 55 kB one on the worst case here, and a module every one of
+whose findings is carried pays exactly double. The channel is still *readable* — that was never about
+byte count — but a reader who came to this item because the output was too long to follow deserves the
+number stated rather than discovered.
+
+**Why the obvious encodings are each wrong, so nobody re-proposes one.**
+
+- **`carried: list[int]`, indices into `warnings`.** Roughly a hundredth of the bytes and it breaks the
+  one property the field was chosen for: the subtraction becomes a zip, and an index means nothing to a
+  consumer that filtered or re-ordered the channel it came from. It also makes two published fields
+  positionally coupled, which is the shape `manifest.compilation.warnings` has always avoided.
+- **`carried: list[str]` of codes.** Cannot say *which messages*, so it answers a different question —
+  and it is already answerable, because carried-ness is a property of the code alone:
+  `warnings_summary` plus `CARRIED_WARNING_CODES` already gives the count. A consumer wanting the
+  count does not need this field at all.
+- **Drop `carried` and publish a per-message `codes: list[str]` parallel to `warnings`.** The genuinely
+  minimal encoding — about 20 bytes a message instead of 250 — and both `carried` and
+  `warnings_summary` derive from it. It is also a **third** shape rather than the one that was decided,
+  it re-introduces the positional coupling above, and it hands every consumer a derivation to perform
+  where they currently read an answer.
+
+**The honest framing** is that the duplication buys a self-describing field, and the question is
+whether a published manifest should pay ~1.8× on this channel for it. Worth deciding once, with the
+table above, rather than drifting: a fourth encoding after 1.0 is a removal, and removals are
+major-only under Principle 3.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

@@ -78,12 +78,71 @@ def _coded_calls() -> dict[Path, list[tuple[int, str | None]]]:
     return found
 
 
-#: The local names this workspace gives a list of warnings. A name is a *channel* name only if it
-#: says "warning" or is one of the two collectors a check builds its findings into before the caller
-#: routes them by mode — `findings` and `messages`, both of which reach `warnings` under
-#: `best_effort`. `errors` is deliberately absent: a refusal is a different channel, which is what
-#: exempts `_check_license_gate` and `_check_build_coordinates` by shape rather than by a list.
-_CHANNEL_LOCALS = frozenset({"warnings", "all_warnings", "warnings_out", "warns", "findings", "messages"})
+#: The local names this workspace gives a warning list. DECLARED, and guarded by an equality against
+#: the names a `CodedWarning` is actually appended to (`test_the_channel_receivers_are_exactly_the_ones
+#: _declared`), which is what makes a declared list safe here rather than the stale thing it would
+#: otherwise be. A typed list on its own WAS stale: it omitted `lines` — `_carried_vrs_warnings`
+#: collects into one — and a mutation proved the guard then passed on an uncoded site.
+#:
+#: The equality catches both directions of drift. A new receiver name that carries a coded finding
+#: fails it until it is declared here; and stripping the last wrapper from a declared receiver also
+#: fails it, because the name then appears in no coded append. Neither is circular, which the
+#: alternative derivations were.
+#:
+#: `errors` is deliberately absent, and that absence is what exempts `_check_license_gate` and
+#: `_check_build_coordinates` by shape rather than by a list: a refusal is a different channel. It is
+#: also why the return SHAPE cannot be the derivation — `tuple[list[str], list[str]]` hands back
+#: errors and warnings together, and nothing in the annotation says which is which.
+_CHANNEL_LOCALS = frozenset(
+    {"warnings", "all_warnings", "warnings_out", "warns", "findings", "messages", "lines"}
+)
+
+#: The other half of the same classification: locals that collect REFUSALS. Declared beside the
+#: channel names rather than assumed absent, because one builder can serve both —
+#: `errors.extend(_symbolic_allele_messages(droppable))` is real, so a derivation over what a producer
+#: feeds finds `errors` too and no shape tells the two apart. Their union is what the equality below
+#: checks, which is what forces a new receiver name to be classified instead of silently landing on
+#: whichever side the guard happened to assume.
+_ERROR_LOCALS = frozenset({"errors"})
+
+
+def _channel_receivers() -> set[str]:
+    """Every local name that holds a warning list, by the two shapes a receiver can take.
+
+    Both are derived, because either alone leaves a name out and the omission is a blind spot rather
+    than an inconvenience:
+
+    * a name a **`CodedWarning` is appended to** — the ordinary emitter;
+    * a name a **producer's result is `.extend`-ed or `.append`-ed into** — `warns` is only ever this
+      shape, collecting `_cross_check_frequencies` and friends, so a coded-append derivation cannot
+      see it, and leaving it undeclared would blind the uncoded-site check to `warns.append("...")`.
+
+    Not derived from the return annotation, which was tried and is wrong: `tuple[list[str], list[str]]`
+    hands back errors and warnings together and nothing in the annotation says which is which, so every
+    `errors` local came back as a channel.
+    """
+    found: set[str] = set()
+    for path in _participating_modules():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        producers = _warning_producers(tree)
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"append", "extend"}
+                and isinstance(node.func.value, ast.Name)
+                and node.args
+            ):
+                continue
+            payload = ast.unparse(node.args[0])
+            calls = {
+                n.func.id
+                for n in ast.walk(node.args[0])
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            }
+            if "CodedWarning" in payload or calls & producers:
+                found.add(node.func.value.id)
+    return found
 
 
 def _participating_modules() -> list[Path]:
@@ -147,7 +206,9 @@ def _warning_producers(tree: ast.Module) -> set[str]:
                 for n in ast.walk(target)
                 if isinstance(n, ast.Name)
             }
-            if names & _CHANNEL_LOCALS or any("warn" in n for n in names):
+            if names & _CHANNEL_LOCALS or any(
+                "warn" in n or "finding" in n for n in names
+            ):
                 into_channel, payload = True, node.value
         if into_channel and payload is not None:
             seeds |= callees(payload)
@@ -219,6 +280,28 @@ def test_the_walk_finds_the_emission_surface_it_claims_to() -> None:
     compiler_producers = next(v for k, v in by_module.items() if k.name == "compiler.py")
     assert {"_closure_warning", "_findings_warning"} <= compiler_producers
     assert "_check_license_gate" not in compiler_producers, "a refusal is a different channel"
+
+
+def test_the_channel_receivers_are_exactly_the_ones_declared() -> None:
+    """An EQUALITY over the walked set, and the guard that makes a declared name list safe.
+
+    `_CHANNEL_LOCALS` is what the uncoded-site check below looks for, so a receiver missing from it is
+    a blind spot rather than an inconvenience — that is not hypothetical: the list omitted `lines`,
+    which `_carried_vrs_warnings` collects into, and removing that site's wrapper passed the guard.
+
+    Both directions of drift fail here. A coded finding appended to a name nobody declared shows up on
+    the left; and stripping the last wrapper from a declared receiver removes it from the left too, so
+    the receiver cannot quietly stop being a channel while the check still trusts the declaration. A
+    subset check either way round would pass on one of those.
+
+    The two receiver shapes are both derived — see `_channel_receivers` — because `warns` is only ever
+    `.extend`-ed with a producer's result and a coded-append derivation cannot see it. What the walk
+    cannot decide is which side a receiver is ON, since one builder feeds both
+    (`errors.extend(_symbolic_allele_messages(droppable))`), so the equality is against the UNION of
+    the two declarations and the split stays a human judgement the guard forces somebody to make.
+    """
+    assert _CHANNEL_LOCALS.isdisjoint(_ERROR_LOCALS)
+    assert _channel_receivers() == _CHANNEL_LOCALS | _ERROR_LOCALS
 
 
 def test_every_warning_code_declared_is_a_code_some_check_actually_builds() -> None:
@@ -327,6 +410,76 @@ def test_a_result_supplying_one_derived_half_and_not_the_other_is_refused() -> N
             ValidationResult(valid=True, warnings=["prose"], **half)
 
 
+def test_a_consumer_passing_plain_prose_still_gets_a_result_it_can_build() -> None:
+    """Principle 3: these are public result types and `warnings=["..."]` was legal in 0.6.
+
+    A consumer wrapping our results, or constructing one in their own tests, passes prose. Refusing it
+    would be a breaking change inside a minor — and it *was* refused, until `classify` learned to
+    withhold. The withheld answer is an empty pair, which reads as *not classified* rather than as a
+    complete-and-short digest.
+    """
+    from just_dna_compiler.models import (  # noqa: PLC0415 — one call site
+        ClosureResult,
+        CompilationResult,
+        ValidationResult,
+    )
+
+    prose = ["a plain sentence", "another"]
+    for built in (
+        ValidationResult(valid=True, warnings=prose),
+        CompilationResult(success=True, warnings=prose),
+        ClosureResult(closed=True, warnings=prose),
+    ):
+        assert list(built.warnings) == prose, "the channel is kept verbatim"
+        assert (built.carried, built.warnings_summary) == ([], {}), "withheld, not guessed"
+
+
+def test_a_supplied_pair_that_disagrees_with_the_channel_is_refused() -> None:
+    """A caller claiming to have derived the halves and getting it wrong is worse than withholding.
+
+    Two ways to disagree, and both are checked over the coerced strings so a result rebuilt from a
+    dump of itself is held to the same rule: `carried` naming a message the channel does not hold
+    (the subtraction a consumer performs would then leave a phantom), and a non-empty summary counting
+    a different number of findings than the channel carries (the digest would look complete and be
+    short). An empty pair stays legal throughout — that is the withheld answer.
+    """
+    from just_dna_compiler.models import ValidationResult  # noqa: PLC0415 — one call site
+
+    with pytest.raises(ValueError, match="not in warnings"):
+        ValidationResult(valid=True, warnings=["a"], carried=["b"], warnings_summary={})
+    with pytest.raises(ValueError, match="accounts for the whole channel"):
+        ValidationResult(
+            valid=True,
+            warnings=["a", "b"],
+            carried=[],
+            warnings_summary={"module_not_closed": 1},
+        )
+    consistent = ValidationResult(
+        valid=True, warnings=["a", "b"], carried=["a"], warnings_summary={"module_not_closed": 2}
+    )
+    assert consistent.carried == ["a"]
+
+
+def test_a_compile_never_leaves_parquets_without_a_manifest_beside_them(tmp_path: Path) -> None:
+    """The ordering finding: classification happens where a raise would strand a half-written build.
+
+    `_build_manifest` runs after every parquet is on disk, so anything that can refuse there breaks
+    the discipline stated at `compile_module`'s own `output_dir.mkdir()` — a refusal must leave nothing
+    written. Since `classify` withholds on prose and only refuses a part-classified channel, which the
+    registry guard makes unreachable, the manifest is always written. Asserted over the whole corpus
+    rather than argued, and by the observable property rather than by the call order.
+    """
+    for spec in _every_example():
+        out = tmp_path / spec.name
+        result = compile_module(spec, out)
+        assert result.success, (spec.name, result.errors)
+        parquets = sorted(p.name for p in out.glob("*.parquet"))
+        assert parquets, spec.name
+        assert (out / "manifest.json").is_file(), (
+            f"{spec.name}: {len(parquets)} parquet(s) written and no manifest beside them"
+        )
+
+
 def test_a_reformatted_message_keeps_the_code_the_check_gave_it() -> None:
     """Reformatting is the one operation that silently loses a code, so it goes through `restate`.
 
@@ -355,6 +508,52 @@ def test_a_coded_warning_is_a_string_everywhere_the_compiler_already_treats_it_a
     assert channel == ["the same sentence"]
     assert left == "the same sentence" and hash(left) == hash("the same sentence")
     assert "same" in left and left.startswith("the")
+
+
+def test_a_finding_survives_being_copied_and_pickled() -> None:
+    """`str.__getnewargs__` hands back only the text, so the two-argument `__new__` raised.
+
+    Not hypothetical: `_validate_spec` hands its classified list to a caller and tells it to keep
+    building, so the list outlives the function and a caller is entitled to `copy.deepcopy` it. Both
+    routes reconstruct through `__new__`, and both raised `TypeError` until `__getnewargs__` existed.
+    """
+    import copy  # noqa: PLC0415 — test-local
+    import pickle  # noqa: PLC0415 — test-local
+
+    built = CodedWarning("vrs_id_unverifiable", "a carried finding")
+    for made in (copy.deepcopy(built), pickle.loads(pickle.dumps(built))):
+        assert isinstance(made, CodedWarning)
+        assert (made, made.code, made.carried) == (built, built.code, True)
+
+
+def test_an_uncoded_bin_finding_is_not_filed_as_a_bin_overlap_refusal() -> None:
+    """Two `ValueError`s meaning different things met in one `try`, and the wrong one won.
+
+    `validate_bins` raises for an overlapping resolved bin; `restate` raises for a finding that
+    arrived with no code. A `try` around the whole loop turned the second into
+    `f"{csv_name}: {exc}"` on the errors list — a false diagnosis, and a silencing of the one failure
+    the codes exist to make loud. The scopes are separate now, and this drives the checker directly
+    because reaching it through a spec would need a deliberately broken emitter.
+    """
+    from just_dna_compiler.compiler import _validate_table_kind  # noqa: PLC0415 — one call site
+    from just_dna_format.binning import RepeatAlleleRow  # noqa: PLC0415 — one call site
+
+    overlapping = [
+        RepeatAlleleRow(
+            gene="HTT", repeat_unit="CAG", measure_kind="repeat_count",
+            measure_min=6, measure_max=30, phenotype="normal", conclusion="no expansion",
+        ),
+        RepeatAlleleRow(
+            gene="HTT", repeat_unit="CAG", measure_kind="repeat_count",
+            measure_min=20, measure_max=40, phenotype="full", conclusion="penetrant",
+        ),
+    ]
+    errors, warnings = _validate_table_kind("repeat_alleles.csv", RepeatAlleleRow, overlapping)
+    assert errors and all(e.startswith("repeat_alleles.csv: ") for e in errors)
+    # The refusal is the bin overlap, and nothing about a warning code leaked into it.
+    assert not any("VALID_WARNING_CODES" in e or "restate" in e for e in errors)
+    # And whatever warnings a bin table does produce still arrive coded.
+    assert all(isinstance(w, CodedWarning) for w in warnings)
 
 
 def test_a_code_that_is_not_published_cannot_be_built() -> None:
@@ -752,9 +951,14 @@ def test_a_warning_list_read_off_a_result_model_is_plain_prose(tmp_path: Path) -
     """Stated as a test because it is the trap the whole handoff exists around.
 
     Pydantic flattens the subclass into `list[str]`, which is right for the published surface and
-    fatal for a caller that keeps building on it. Anyone reaching for `result.warnings` as a seed gets
-    a failing `classify`, and this pins the behaviour so the next reader meets it here rather than in
-    a traceback.
+    fatal for a caller that keeps building on it: re-classifying a model's own warnings **withholds**
+    — an empty pair, because prose gives nothing to classify — so a caller that seeded from there
+    would publish an unclassified channel and no error would say so. That is the whole reason
+    `compile_module` and `close_module` take the list beside the result instead, and why this is
+    pinned rather than left as a comment.
+
+    Withholding rather than raising is deliberate and is the same decision that keeps
+    `CompilationResult(warnings=["..."])` legal for a 0.6 consumer under Principle 3.
     """
     spec = tmp_path / "spec"
     spec.mkdir()
@@ -764,10 +968,14 @@ def test_a_warning_list_read_off_a_result_model_is_plain_prose(tmp_path: Path) -
     result = validate_spec(spec)
     assert result.warnings, "the fixture must produce at least one finding"
     assert all(type(w) is str for w in result.warnings)
-    with pytest.raises(ValueError, match="carry no code"):
-        classify(result.warnings)
-    # …and the derived halves are on the model precisely so nobody has to.
+    assert classify(result.warnings) == ([], {}), "prose classifies to nothing, and says so"
+    # …and the derived halves are on the model precisely so nobody has to re-derive them.
     assert sum(result.warnings_summary.values()) == len(result.warnings)
+
+    # The one case that cannot come from a legitimate caller: a channel part classified. Nothing in
+    # the repository produces it, so it raises rather than withholding.
+    with pytest.raises(ValueError, match="part classified"):
+        classify([CodedWarning("module_not_closed", "coded"), "bare"])
 
 
 def test_a_csv_round_trip_of_the_summary_keeps_it_readable_by_a_consumer(tmp_path: Path) -> None:

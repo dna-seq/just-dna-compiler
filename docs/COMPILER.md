@@ -1440,6 +1440,28 @@ where nothing else records the removal: {reason}
 both directions, so a code with no emitter and an emitter with no code both fail; it also asserts this
 document lists every member, because a catalogue missing one sends a reader hunting for it.
 
+**Two consequences worth knowing before you build against this**, both recorded rather than left to be
+discovered:
+
+- **A summary is either empty or complete, never partial.** `classify` **withholds** — an empty
+  `carried` and an empty `warnings_summary` — when a channel carries no classified findings at all,
+  which is what a caller passing plain prose into `CompilationResult(warnings=[...])` gets; that call
+  has been legal since 0.6 and Principle 3 keeps it legal. It refuses only a *part*-classified channel,
+  which no legitimate caller can produce. So read an empty summary as *this compile did not classify
+  the channel*, never as *there is nothing to report*, and read a non-empty one as accounting for the
+  whole of `warnings`.
+- **The code vocabulary is closed, so an older reader refuses a newer manifest.** `warnings_summary`
+  validates its keys, and `read_manifest` raises on a code added after the `just-dna-format` you have
+  pinned. That is the standing cost of every closed vocabulary on a published field here
+  (`VerificationRecord.check` is the shipped precedent) and Principle 6 takes it deliberately, but
+  "additive" describes the *writer*: a consumer reading manifests from newer compilers upgrades the
+  schema package alongside them.
+
+**`carried` holds full message text, which nearly doubles the channel** — measured at 1.84× across the
+reference corpus, 1.96× on `pathogenic_clinvar`. That is the shape the item decided (a list beside,
+so a consumer subtracts) rather than an oversight, and the cheaper encodings are weighed in
+[ROADMAP.md § RM138](ROADMAP.md).
+
 ### The phrases
 
 **A warning's text is an API.** The manifest carries the prose and, for anything published before the

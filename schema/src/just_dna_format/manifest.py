@@ -234,10 +234,12 @@ class Compilation(BaseModel):
         default_factory=dict,
         json_schema_extra=vocabulary("warning_code", VALID_WARNING_CODES),
         description=(
-            "`warnings` counted by kind — keys are members of VALID_WARNING_CODES, and the values "
-            "sum to `len(warnings)`, so the digest accounts for the whole channel rather than the "
-            "part somebody remembered to key. Codes name the finding, never the function that built "
-            "it, so a refactor cannot rename a published key."
+            "`warnings` counted by kind — keys are members of VALID_WARNING_CODES. Either it is "
+            "**empty**, meaning this compile did not classify the channel, or its values sum to "
+            "`len(warnings)` and it accounts for the whole of it; it is never complete-looking and "
+            "short, because a partial digest is one a reader would trust and be wrong about. Codes "
+            "name the finding, never the function that built it, so a refactor cannot rename a "
+            "published key."
         ),
     )
     dropped_rows: dict[str, int] = Field(

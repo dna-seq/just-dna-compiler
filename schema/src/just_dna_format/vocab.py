@@ -1221,11 +1221,24 @@ VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"
 # the edit differs they do not (a VCF pointer collision is qualified, an unselected element is given
 # a rule).
 #
-# This set is a one-way door. Adding a member later is additive and minor-legal; removing or
-# re-spelling one is not, so a new emission site takes an existing code where the finding is the same
-# and earns a new one only where it is genuinely a new kind. Every emission site must name one:
-# `findings.classify` refuses an unclassified message rather than bucketing it, because a summary
-# that silently omits findings is worse than no summary at all.
+# This set is a one-way door. Adding a member is additive and minor-legal; removing or re-spelling one
+# is not, so a new emission site takes an existing code where the finding is the same and earns a new
+# one only where it is genuinely a new kind.
+#
+# **"Minor-legal" is a claim about the WRITER, and the qualifier matters.** The vocabulary is closed
+# and `Compilation.warnings_summary` validates its keys, so a consumer pinned to an older
+# `just-dna-format` will REFUSE a manifest carrying a code added after their pin — `read_manifest`
+# raises rather than ignoring the key. That is the standing consequence of every closed vocabulary on
+# a published field in this package (`VerificationRecord.check` and `VALID_VERIFICATION_CHECKS` are the
+# shipped precedent, same shape, same cost), and Principle 6 chooses it over an open set on purpose:
+# an inspectable vocabulary is what makes a value comparable at all. Stated here rather than left for
+# somebody to discover, because "additive" reads as "nobody has to do anything" and it does not — a
+# consumer reading manifests from newer compilers upgrades the schema package with them.
+#
+# Every emission site must name a member: `findings.classify` refuses a part-classified channel rather
+# than bucketing the remainder, because a summary that silently omits findings is worse than no summary
+# at all. It withholds — an empty pair — for a caller holding plain prose, which is what keeps the
+# public result models accepting `warnings=["..."]` as they did in 0.6.
 VALID_WARNING_CODES: frozenset[str] = frozenset(
     {
         # ── spec directory and module_spec.yaml ──

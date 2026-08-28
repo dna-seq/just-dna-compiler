@@ -2476,7 +2476,7 @@ class _SymbolicFinding:
 
     **Located by the row's own identity, not by its position in the file.** A row index looks more
     precise and is not: `load_csv_rows` prints a *header-inclusive line number*, so a bare "row 2"
-    would be a third coordinate convention beside that and `hints.CodedWarning.row` (0-based); and it is
+    would be a third coordinate convention beside that and `hints.Finding.row` (0-based); and it is
     computed over the rows that survived model validation, so any earlier load error silently shifts
     it. Every other row-level finding in this module names `variant_key`, and so does this one.
     """
@@ -3395,13 +3395,19 @@ def _validate_table_kind(
     warnings: list[str] = []
 
     if issubclass(model, MeasureBinRow):
+        # The `try` covers the CALL and nothing else. `validate_bins` raises `ValueError` for an
+        # overlapping resolved bin, and so does `restate` for a finding that arrived with no code —
+        # so a wider block would file a missing warning code as a bin-overlap refusal on the table,
+        # which is both a false diagnosis and a silencing of the one failure the codes exist to make
+        # loud. Two `ValueError`s, one meaning each, kept apart by scope rather than by inspection.
         try:
-            for w in validate_bins(rows):
-                # `restate`, not an f-string: the prefix would otherwise strip the code `validate_bins`
-                # named — the three tiling/coverage findings are not one kind.
-                warnings.append(restate(w, f"{csv_name}: {w}"))
+            bin_findings = validate_bins(rows)
         except ValueError as exc:
             errors.append(f"{csv_name}: {exc}")
+            bin_findings = []
+        # `restate`, not an f-string: the prefix would otherwise strip the code `validate_bins` named
+        # — the three tiling/coverage findings are not one kind.
+        warnings.extend(restate(w, f"{csv_name}: {w}") for w in bin_findings)
         sentinels: dict[tuple, int] = defaultdict(int)
         for r in rows:
             if r.unresolved:

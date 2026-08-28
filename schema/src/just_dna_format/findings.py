@@ -16,6 +16,11 @@ from which `carried` follows — and `classify` reads both back off a finished l
 manifest holds plain JSON strings) and a trap for anything that reads warnings back off a result
 model and keeps building. So the rule is: classify *before* constructing the model, and hand the
 classified list — not the model's `warnings` — to whatever compiles next.
+
+**A caller holding plain prose is not an error**, and this is where that is decided rather than at
+each result model: the public result types have accepted `warnings=["..."]` since 0.6 and Principle 3
+keeps them accepting it, so `classify` withholds for such a caller and refuses only the part-classified
+channel no legitimate caller can produce.
 """
 
 from collections.abc import Sequence
@@ -47,6 +52,16 @@ class CodedWarning(str):
         finding = super().__new__(cls, message)
         object.__setattr__(finding, "code", code)
         return finding
+
+    def __getnewargs__(self) -> tuple[str, str]:
+        """Keep the code through `copy`/`pickle`, which reconstruct via `__new__`.
+
+        `str.__getnewargs__` hands back just the text, so the two-argument `__new__` above was called
+        with one argument and raised `TypeError` — on `copy.deepcopy` and on any pickle. That is not
+        hypothetical here: `_validate_spec` hands its classified list to a caller and tells it to keep
+        building, so the list outlives the function and a caller is entitled to copy it.
+        """
+        return self.code, str(self)
 
     @property
     def carried(self) -> bool:
@@ -80,33 +95,47 @@ def restate(finding: str, message: str) -> CodedWarning:
 
 
 def classify(warnings: Sequence[str]) -> tuple[list[str], dict[str, int]]:
-    """`(carried, warnings_summary)` for a finished warning list.
+    """`(carried, warnings_summary)` for a finished warning list — three cases, no flag.
 
     `carried` is the subset of `warnings` no edit to the spec directory can remove, in the order the
     findings appear, so a consumer subtracting it from `warnings` gets the actionable set and both
-    lists read in the same order as the channel they came from. `warnings_summary` counts every
-    finding by code, so `sum(summary.values()) == len(warnings)` always — a summary that does not
-    account for the whole channel is one a reader would take as complete and be wrong about.
+    lists read in the same order as the channel they came from.
 
-    **Refuses an unclassified member rather than bucketing it.** A `warnings_summary` with a
-    catch-all key is the rejected repair wearing a different hat: it silently omits the findings
-    nobody classified, and the reader believes the digest. An emission site with no code is a defect
-    in this repository, caught by the registry guard over the emission sites before it can ship.
+    * **Every member classified** — the compiler's own channel — and the answer is the full one:
+      `sum(summary.values()) == len(warnings)`, which is the claim *this summary is complete*.
+    * **No member classified** — a caller holding plain prose, which the public result models have
+      accepted since 0.6 and must keep accepting (Principle 3) — and the answer is **withheld**:
+      `([], {})`. Nothing here can tell what those messages are, and the house rule is to withhold an
+      unknown rather than report or negate it. An empty summary beside a non-empty channel reads as
+      *not classified*, which is a different statement from *complete and short*.
+    * **Mixed** — some coded, some not — is the one case that cannot arise from a legitimate caller,
+      because every emission site in this repository names a code. So it **raises**, loudly, at the
+      first compile that reaches the branch.
+
+    **No catch-all key, in any of the three.** A `warnings_summary` with a bucket for the unclassified
+    is the rejected repair wearing a different hat: it silently omits findings nobody classified while
+    looking complete, and the reader believes the digest. Withholding says less; it does not lie.
+
+    The residual gap the three cases leave — a module whose *only* warning lost its code, so the list
+    is uniformly unclassified rather than mixed — is what the static registry guard over the emission
+    sites covers, and it is why that guard is an equality rather than a floor.
     """
-    unclassified = [w for w in warnings if not isinstance(w, CodedWarning)]
-    if unclassified:
+    coded = [w for w in warnings if isinstance(w, CodedWarning)]
+    if not coded:
+        return [], {}
+    if len(coded) != len(warnings):
+        unclassified = [w for w in warnings if not isinstance(w, CodedWarning)]
         raise ValueError(
-            f"{len(unclassified)} warning(s) carry no code and cannot be summarised: "
-            f"{unclassified[0][:120]!r}"
+            f"{len(unclassified)} of {len(warnings)} warning(s) carry no code, so this channel is "
+            f"part classified and cannot be summarised honestly: {unclassified[0][:120]!r}"
             + (f" (+{len(unclassified) - 1} more)" if len(unclassified) > 1 else "")
             + ". Every emission site names a member of VALID_WARNING_CODES; a message that was "
             "reformatted after being built goes through `findings.restate`."
         )
     summary: dict[str, int] = {}
-    for warning in warnings:
-        code = warning.code  # type: ignore[union-attr]
-        summary[code] = summary.get(code, 0) + 1
+    for warning in coded:
+        summary[warning.code] = summary.get(warning.code, 0) + 1
     return (
-        [w for w in warnings if w.carried],  # type: ignore[union-attr]
+        [w for w in coded if w.carried],
         {code: summary[code] for code in sorted(summary)},
     )

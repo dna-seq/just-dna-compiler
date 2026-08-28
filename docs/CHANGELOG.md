@@ -81,12 +81,26 @@ inside this same number. Each entry below names the packages it actually touched
   another tier go through `findings.restate`, which is the one operation that carries a code across a
   rewrite; every other string operation on a finding returns plain prose by construction.
 
-  **`classify` refuses an unclassified message rather than bucketing it.** A `warnings_summary` with a
+  **`classify` has three answers and no flag: derive, withhold, refuse.** A `warnings_summary` with a
   catch-all key is the rejected repair wearing a different hat — it silently omits what nobody
-  classified, and the reader takes the digest as complete. `test_warning_codes.py` walks the emission
-  sites and asserts an **equality** against the vocabulary in both directions (a code with no emitter
-  and an emitter with no code both fail), and the corpus half runs every reference example through both
-  entry points, which is what catches a message that lost its code on the way rather than at its site.
+  classified, and the reader takes the digest as complete. But refusing outright was wrong in the other
+  direction: `CompilationResult(warnings=["prose"])` has been legal since 0.6, so an unclassified
+  channel now **withholds** (an empty pair, which reads as *not classified* rather than as
+  *complete and short*), and only a *part*-classified channel — which no legitimate caller can produce
+  — raises. That also keeps a raise out of `_build_manifest`, which runs after every parquet is on
+  disk, where it would have left an output directory with no `manifest.json` beside them. The published
+  contract is therefore *either empty or accounting for the whole channel*, stated in both field
+  descriptions; a supplied pair is checked against the channel, since a wrong claim is worse than a
+  withheld one.
+
+  **The guards are equalities over walked sets, and one of them was a hole until a mutation found it.**
+  `test_warning_codes.py` asserts the emission sites against the vocabulary in both directions (a code
+  with no emitter and an emitter with no code both fail), and the corpus half runs every reference
+  example through both entry points, which is what catches a message that lost its code on the way
+  rather than at its site. The receiver names are themselves a registry now: a hand-typed list omitted
+  `lines`, which `_carried_vrs_warnings` collects into, and stripping that site's wrapper passed the
+  guard — so the declared set is checked for equality against the receivers actually derived from the
+  source, with the channel/refusal split declared beside it because one builder feeds both.
 
   **The transport stays `list[str]`.** `findings.CodedWarning` is a `str` subclass, so every `.extend`,
   every `if w not in all_warnings` de-duplication and every consumer already grepping a phrase keeps
@@ -118,7 +132,15 @@ inside this same number. Each entry below names the packages it actually touched
   catalogue (partial by construction); codes derived from the emission site (a refactor renames a
   published key); a cap, a truncation or a verbosity flag (all three hide findings, and the author with
   the most warnings most needs the hidden ones); a new metainfo artifact (the channel already ships and
-  is outside the digest). → [COMPILER.md § Warning texts a consumer keys on](COMPILER.md)
+  is outside the digest).
+
+  **Two consequences recorded rather than left to be discovered**, both in COMPILER.md beside the
+  catalogue: the code vocabulary is closed, so a consumer pinned to an older `just-dna-format` refuses
+  a manifest carrying a code added later — the standing cost of every closed vocabulary on a published
+  field here, and "additive" describes the writer; and `carried` holds full message text, which grows
+  the channel **1.84× across the reference corpus** (1.96× on `pathogenic_clinvar`). The second is the
+  shape the item decided rather than an oversight, and the three cheaper encodings are weighed as
+  **RM138** instead of being taken unilaterally. → [COMPILER.md § Warning texts a consumer keys on](COMPILER.md)
 
 - **RM124 — `overrides.csv`, an authored overlay over the seven derived tables.** A correction to a
   derived row now lives beside the spec rather than inside the file, so `resolution.csv`,
