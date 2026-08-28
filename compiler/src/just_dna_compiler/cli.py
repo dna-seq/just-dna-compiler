@@ -25,8 +25,8 @@ from just_dna_format.integrity import IntegrityError, verify_manifest
 from just_dna_format.layout import SidecarCollision
 from just_dna_format.manifest import ModuleManifest, read_manifest, write_manifest
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS
-from just_dna_format.release_records import release_version
 from just_dna_format.reference import authoring_reference, json_schemas
+from just_dna_format.release_records import release_version
 from just_dna_format.signing import (
     generate_private_key_pem,
     public_key_b64_from_pem,

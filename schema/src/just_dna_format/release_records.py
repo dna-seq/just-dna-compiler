@@ -279,7 +279,7 @@ class RecompileAnswer:
 
 
 def _unknown_axes() -> dict[str, bool | None]:
-    return {axis: None for axis in VALID_RELEASE_OUTPUT_AXES}
+    return dict.fromkeys(VALID_RELEASE_OUTPUT_AXES)
 
 
 def _kleene_or(left: bool | None, right: bool | None) -> bool | None:
@@ -342,7 +342,7 @@ def needs_recompile(
         return RecompileAnswer(
             compiled_under=compiled_under,
             current=current,
-            axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+            axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
             manifest_fields=(),
             declared=(),
             covered=(),
@@ -361,7 +361,7 @@ def needs_recompile(
             span=(current, compiled_under),
         )
 
-    axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    axes: dict[str, bool | None] = dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
     fields: set[str] = set()
     outside_fields: set[str] = set()
     declared: list[DeclaredChange] = []
@@ -523,7 +523,7 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
         # A measured zero, with its denominator in `evidence`. This record exists precisely so that
         # "0.6.0 → 0.6.1 changed nothing" is an answer a consumer can read rather than a silence they
         # have to interpret.
-        axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
         manifest_fields=[],
         declared=[],
         evidence=(

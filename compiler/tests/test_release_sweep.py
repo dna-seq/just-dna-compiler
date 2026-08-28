@@ -28,16 +28,16 @@ from just_dna_compiler.cli import app
 from just_dna_compiler.compiler import compile_module, module_stats, spec_tables
 from just_dna_compiler.sweep import (
     DEGENERATE_INTERVAL_PHRASE,
-    ModuleOutput,
     NO_MODULES_PHRASE,
     NO_RECORD_PHRASE,
-    UNMEASURED_MODULE_PHRASE,
-    WRONG_VERSION_PHRASE,
     OVERDECLARED_NOTE_PHRASE,
     UNDECLARED_AXIS_PHRASE,
     UNDECLARED_FIELD_PHRASE,
     UNDECLARED_KIND_PHRASE,
+    UNMEASURED_MODULE_PHRASE,
     WRONG_PREVIOUS_PHRASE,
+    WRONG_VERSION_PHRASE,
+    ModuleOutput,
     build_outputs,
     changed_manifest_fields,
     compare_module,
@@ -210,7 +210,7 @@ def test_the_sweep_over_the_real_corpus_reports_a_measured_zero_with_its_denomin
     assert measurement.modules == tuple(sorted(before))
     assert measurement.unmeasured == ()
     assert set(measurement.axes.values()) == {False}
-    assert measurement.moved_counts == {axis: 0 for axis in VALID_RELEASE_OUTPUT_AXES}
+    assert measurement.moved_counts == dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, 0)
     assert f"{len(measurement.modules)} reference module(s)" in measurement.evidence
     assert f"content_signature 0/{len(measurement.modules)}" in measurement.evidence
     assert measurement_json(measurement)["axes"] == measurement.axes
@@ -222,7 +222,7 @@ def test_the_sweep_over_the_real_corpus_reports_a_measured_zero_with_its_denomin
 def test_a_side_stamped_with_two_releases_is_refused(tmp_path: Path) -> None:
     """A tree compiled by two compilers is not a side of an interval."""
     outputs = build_outputs(_EXAMPLES, tmp_path / "mixed")
-    name = sorted(outputs)[0]
+    name = min(outputs)
     outputs[name].manifest["compilation"]["compiler_version"] = "just-dna-compiler 0.0.1"
 
     with pytest.raises(ValueError, match="must be one release"):
@@ -277,7 +277,7 @@ def test_the_gate_refuses_a_sweep_that_did_not_measure_the_release_being_gated(
     record = ReleaseRecord(
         version="0.7.0",
         previous="0.6.6",
-        axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
         evidence="a record whose lower end matches the stale sweep",
     )
     findings, _ = gate_findings(stale, "0.7.0", {"0.7.0": record})
@@ -300,7 +300,7 @@ def test_the_gate_refuses_a_release_whose_sweep_could_not_measure_every_module(
     record = ReleaseRecord(
         version="1.0.1",
         previous="1.0.0",
-        axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
         evidence="claims a measured zero over what survived",
     )
     findings, _ = gate_findings(measurement, "1.0.1", {"1.0.1": record})
@@ -318,7 +318,7 @@ def test_the_gate_refuses_a_sweep_with_no_module_in_common(tmp_path: Path) -> No
 
 def test_the_gate_accepts_the_stamped_spelling_of_the_release_it_gates(tmp_path: Path) -> None:
     """`release_version` exists so one convention does not become three; the gate uses it too."""
-    axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    axes: dict[str, bool | None] = dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
     record = ReleaseRecord(
         version="1.0.1", previous="1.0.0", axes=axes, evidence="measured zero"
     )
@@ -356,7 +356,7 @@ def test_the_gate_fails_a_measured_move_no_record_declares(tmp_path: Path) -> No
     record = ReleaseRecord(
         version="1.0.1",
         previous="1.0.0",
-        axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
         evidence="claims nothing moved",
     )
     findings, notes = gate_findings(
@@ -370,7 +370,7 @@ def test_the_gate_fails_a_measured_move_no_record_declares(tmp_path: Path) -> No
 
 
 def test_the_gate_passes_a_release_whose_record_covers_the_measurement(tmp_path: Path) -> None:
-    axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    axes: dict[str, bool | None] = dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
     axes["manifest_fields"] = True
     record = ReleaseRecord(
         version="1.0.1",
@@ -398,7 +398,7 @@ def test_the_gate_passes_a_release_whose_record_covers_the_measurement(tmp_path:
 def test_a_declaration_the_sweep_did_not_see_is_a_note_and_not_a_failure(tmp_path: Path) -> None:
     """The reference corpus is sixteen modules; a real correction can land on a shape none of them
     has, so over-declaring must not block a release. It is still reported, so it is not invisible."""
-    axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    axes: dict[str, bool | None] = dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
     axes["parquet_schema"] = True
     record = ReleaseRecord(
         version="1.0.1",
@@ -422,7 +422,7 @@ def test_the_gate_refuses_a_record_measured_against_a_different_release(tmp_path
     record = ReleaseRecord(
         version="1.0.1",
         previous="0.9.0",
-        axes={axis: False for axis in VALID_RELEASE_OUTPUT_AXES},
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
         evidence="measured against the wrong side",
     )
     findings, _ = gate_findings(_measurement(tmp_path), "1.0.1", {"1.0.1": record})
@@ -472,7 +472,7 @@ def test_the_json_output_is_the_whole_of_stdout_even_with_the_gate_running(tmp_p
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
     assert payload["before"] == "0.6.1" and payload["after"] == "0.6.6"
-    assert payload["axes"] == {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    assert payload["axes"] == dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
     assert OVERDECLARED_NOTE_PHRASE in result.stderr
     assert "covers the measurement" in result.stderr
 

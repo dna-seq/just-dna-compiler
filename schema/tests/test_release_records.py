@@ -37,7 +37,7 @@ from pydantic import ValidationError
 
 def _record(version: str, previous: str, **moved: bool | None) -> ReleaseRecord:
     """A synthetic record: every axis `False` unless this call says otherwise."""
-    axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    axes: dict[str, bool | None] = dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
     axes.update(moved)
     return ReleaseRecord(
         version=version,
@@ -132,7 +132,7 @@ def test_a_downgrade_interval_withholds_rather_than_answering_backwards() -> Non
     """
     answer = needs_recompile("0.6.6", "0.6.1")
 
-    assert {moved for moved in answer.axes.values()} == {None}
+    assert set(answer.axes.values()) == {None}
     assert answer.output_differs is None
     assert answer.complete is False
     assert answer.span == ("0.6.1", "0.6.6")
@@ -164,7 +164,7 @@ def test_an_overshooting_links_detail_is_withheld_rather_than_reported_in_span()
     record = ReleaseRecord(
         version="1.0.3",
         previous="1.0.0",
-        axes={**{axis: False for axis in VALID_RELEASE_OUTPUT_AXES}, "manifest_fields": True},
+        axes={**dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False), "manifest_fields": True},
         manifest_fields=["stats.genes"],
         declared=[
             DeclaredChange(
@@ -261,7 +261,7 @@ def test_the_recompile_drivers_are_the_axes_minus_the_declared_exclusions() -> N
     rather than go silent.
     """
     assert RECOMPILE_DRIVING_AXES == VALID_RELEASE_OUTPUT_AXES - NON_RECOMPILE_AXES
-    assert NON_RECOMPILE_AXES == {"warnings"}
+    assert {"warnings"} == NON_RECOMPILE_AXES
     assert NON_RECOMPILE_AXES < VALID_RELEASE_OUTPUT_AXES
 
 
@@ -399,7 +399,7 @@ def test_a_record_that_leaves_an_axis_unanswered_is_refused() -> None:
 
 def test_a_record_may_answer_an_axis_unknown_without_answering_it_false() -> None:
     """A release that adds an axis cannot retroactively measure the ones before it."""
-    axes: dict[str, bool | None] = {axis: False for axis in VALID_RELEASE_OUTPUT_AXES}
+    axes: dict[str, bool | None] = dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
     axes["parquet_schema"] = None
     record = ReleaseRecord(version="1.0.1", previous="1.0.0", axes=axes, evidence="partial")
     answer = needs_recompile("1.0.0", "1.0.1", {"1.0.1": record})
