@@ -184,11 +184,21 @@ def test_every_resolver_and_default_dir_takes_the_off_switch() -> None:
 
     Both families are walked: a resolver that forgot the parameter, or a `default_*_cache_dir` that
     cannot be told, puts the leak straight back for that one snapshot.
+
+    **The premise is an equality over the two walked sets, not a count.** It was
+    `len(named) == 12` with "expected six resolvers and six default dirs" in the message, and the
+    seventh snapshot (PubMind, RM134) failed it for no reason but arithmetic — a counted prose
+    assertion that has to be edited every time the thing it guards grows correctly. Pairing the
+    families by snapshot name says something the count never did: that no resolver is missing its
+    default directory and no default directory is orphaned.
     """
-    named = _resolver_names() + sorted(
+    defaults = sorted(
         n for n in dir(locations) if n.startswith("default_") and n.endswith("_cache_dir")
     )
-    assert len(named) == 12, f"expected six resolvers and six default dirs, walked {named}"
+    named = _resolver_names() + defaults
+    assert {n.removeprefix("resolve_").removesuffix("_reference") for n in _resolver_names()} == {
+        n.removeprefix("default_").removesuffix("_cache_dir") for n in defaults
+    }, f"a resolver and its default cache directory do not pair up: {named}"
     without = [
         n for n in named
         if "load_dotenv_file" not in inspect.signature(getattr(locations, n)).parameters

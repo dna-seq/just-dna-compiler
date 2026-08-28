@@ -193,6 +193,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - An analogy in a `Field(description=…)` is a claim, and it does not travel with the field. `@field-description-is-a-claim`
 - A warning's text is an API: pin the phrase, and publish the denominator behind any flag. `@warning-text-is-api`
 - The compiler discards an uncited literature row; `literature.csv` keeps it. `@uncited-literature-dropped`
+- One normalizer for a vocabulary two sources spell differently; test **both** sides' raw tokens. `@one-normalizer-two-spellings`
 
 ### PAR loci and contig ploidy
 
@@ -308,6 +309,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The run with nothing to do is a path: re-run a merge pass over a table it already filled. `@empty-work-is-a-path`
 - Probe a source's real file before modelling it; the docs lie by omission. `@probe-the-real-file`
 - A sidecar writer is atomic or it leaves a valid short file a merge believes. `@atomic-sidecar-write`
+- A source's record-id fan-out is a finding: keep every row, count the contested keys, never `mode()` a winner. `@multiplicity-is-a-finding`
 
 ## The design cycle (the order of things)
 

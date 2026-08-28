@@ -367,6 +367,48 @@ GWAS_CATALOG_TERMS = SourceTerms(
 )
 
 
+# PubMind, read on 2026-08-28. **The one entry in this file whose every axis is `None`, and that is
+# the finding rather than a gap.** Two different things are licensed here and only one of them
+# clearly. `LICENSE.md` covers the *software*: academic, non-commercial research use only, commercial
+# use prohibited without a separate agreement from CHOP's Office of Technology Transfer. The paper is
+# CC BY-NC-ND 4.0, which expressly forbids sharing adapted material. And the coordinate table ANNOVAR
+# redistributes — the only per-variant channel there is — **carries no stated terms of its own**: the
+# README offers it as the open substitute for the licensed full database, and neither party publishes
+# a licence for those bytes.
+#
+# Under the house rule that is unknown, not permissive (`@no-named-licence`). `license=None` because
+# `licensing.py` defines null as "the terms could not be established", which is weaker and more honest
+# than either permission or refusal, and is the state we are actually in; `license_url` points at
+# CHOP's `LICENSE.md` so a reader can see what *is* established. Unknown terms warn and never gate:
+# `taints_commercial_use` requires `commercial_use is False`, so a module carrying PubMind values
+# compiles, records `pubmind` in `manifest.sources.unknown_terms_sources`, and drives the module-wide
+# verdict to `None` — undetermined, never permitted. What the answer would gate is *publishing* such a
+# module, which is RM27's undesigned redistribution axis rather than this source's problem.
+#
+# The unblock action is to ask WGLab and CHOP's Office of Technology Transfer, in writing, whether the
+# ANNOVAR-shipped subset may be redistributed and on what terms. Nobody else can answer it, and it
+# will not resolve itself by the file continuing to download without a key.
+PUBMIND_TERMS = SourceTerms(
+    source="pubmind",
+    license=None,
+    license_url="https://github.com/WGLab/PubMind/blob/main/LICENSE.md",
+    attribution=(
+        "PubMind, The Children's Hospital of Philadelphia (https://pubmind.wglab.org); "
+        "Wang & Wang, Nat Commun 2026, doi:10.1038/s41467-026-76834-4"
+    ),
+    notice=(
+        "The data terms could not be established: CHOP's LICENSE.md covers the software (academic, "
+        "non-commercial, tech-transfer for anything else), the paper is CC BY-NC-ND 4.0, and the "
+        "ANNOVAR-distributed coordinate table states no terms at all. Every value is an LLM's "
+        "reading of the published literature, not a curated assertion, and it is not intended for "
+        "direct diagnostic use or medical decision-making."
+    ),
+    share_alike=None,
+    commercial_use=None,
+    redistribution=None,
+)
+
+
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
@@ -379,6 +421,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         ENSEMBL_TERMS,
         GNOMAD_TERMS,
         GWAS_CATALOG_TERMS,
+        PUBMIND_TERMS,
     )
 }
 

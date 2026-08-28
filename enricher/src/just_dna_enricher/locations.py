@@ -99,6 +99,14 @@ CPIC_SUBDIR: str = "cpic"
 #: deliberately no `download.ensure_pharmvar_snapshot` and no publish command.
 PHARMVAR_SUBDIR: str = "pharmvar"
 
+#: PubMind's cache is inject-only for a different reason and the difference is worth reading. PharmVar's
+#: bytes arrive under a key whose terms bar passing it on; PubMind's arrive under **no stated terms at
+#: all** — the ANNOVAR-redistributed table publishes none, and unknown is not permissive. Same
+#: consequence either way (`None` is never `True`): a builder and a `resolve_`, deliberately no
+#: `download.ensure_pubmind_snapshot` and no HF repo, and a `pubmind publish` that exists in order to
+#: refuse rather than being absent for somebody to helpfully add.
+PUBMIND_SUBDIR: str = "pubmind"
+
 
 def read_release(reference: Path) -> dict | None:
     """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
@@ -267,6 +275,11 @@ def default_pharmvar_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     return _cache_dir(PHARMVAR_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
+def default_pubmind_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/pubmind` directory — operator-built only (see `PUBMIND_SUBDIR`)."""
+    return _cache_dir(PUBMIND_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
 def resolve_constraint_reference(
     constraint_cache: Path | None = None, *, load_dotenv_file: bool = True
 ) -> Path | None:
@@ -341,5 +354,22 @@ def resolve_pharmvar_reference(
     return _resolve_parquet_cache(
         pharmvar_cache, "JUST_DNA_PHARMVAR_CACHE",
         default_pharmvar_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def resolve_pubmind_reference(
+    pubmind_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate an **operator-built** PubMind snapshot (`$JUST_DNA_PUBMIND_CACHE`).
+
+    There is deliberately no `download.ensure_pubmind_snapshot` to pair with this — see
+    `PUBMIND_SUBDIR`. A deployment builds its own with `pubmind build`, or this returns `None` and the
+    PubMind leg reads `unchecked` rather than absent: nobody asked is a third state beside
+    asked-and-failed and asked-and-absent (`@unreachable-not-absent`).
+    """
+    return _resolve_parquet_cache(
+        pubmind_cache, "JUST_DNA_PUBMIND_CACHE",
+        default_pubmind_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )

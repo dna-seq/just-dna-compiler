@@ -701,6 +701,28 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   citations; and both citation sites count (RM47) — blind to bin `pmid`s the compiler would now
   *discard* a threshold's evidence rather than warn about it.
 
+
+- `@one-normalizer-two-spellings` — **A check that compares two normalizations reports on the normalizer,
+  not on the sources — so there is exactly one map (RM134 § A).** `_normalize_clin_sig` lived inside
+  `clinvar_build` with one caller, and the assessment proposed a second hand-written map for PubMind
+  citing `_CLIN_SIG_MAP` as the *precedent*. Two maps for one vocabulary, feeding a check whose whole
+  output is "do these two normalized calls agree": a drift makes it report `discordant` on our own
+  tables while both authorities agree. **But reusing the existing function unchanged was also wrong**, and
+  the defect was invisible from either source alone: the map's keys are underscored because ClinVar
+  underscore-encodes spaces in `CLNSIG`, PubMind writes `Uncertain significance` and `Conflicting`, and
+  both fell through to `other` — against `uncertain_significance` and `conflicting` for ClinVar's own
+  wording of the same two concepts. A ClinVar-only suite is green on that; a PubMind-only suite would
+  have justified the second map. The repair is two things and no more: a whitespace→underscore step in
+  the tokenizer, an **identity on every existing key** (asserted as an equality over the walked map, not
+  spot-checked), and a bare `conflicting` key. **What was NOT done matters as much**: PubMind's
+  `Benign/Likely benign` folds to `likely_benign`, the same answer ClinVar's `Benign/Likely_benign` gets
+  from the severity order, even though `PUBMIND_ASSESSMENT.md` wrote it as `benign` — teaching one
+  spelling a different answer from the other is the drift the single map exists to remove. The test that
+  matters runs **both sources' raw tokens through the one function and names the member both must
+  reach**; comparing them only to each other passes when both land on `other`. `clin_sig.py` imports
+  `VALID_CLIN_SIG` and nothing else, so a runtime pass reads it without the builders' `[dev]` extra —
+  which is the argument for a shared module rather than one builder importing another.
+
 ## PAR loci and contig ploidy
 
 - `@y-not-haploid` — **`chrom=Y` is NOT "never diploid" — PAR1 and PAR2 are diploid in every karyotype.**
@@ -2032,6 +2054,21 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   is a term at `…/ORDO/Orphanet_558`, so composing `stem + PREFIX + "_" + local` queries `ORPHA_558`
   and gets **HTTP 200 with zero terms**, which is indistinguishable from "this id does not exist". That
   last one is the shape to watch for: a lookup bug that surfaces as a false finding about the module.
+
+
+- `@multiplicity-is-a-finding` — **A source whose record id is keyed on extracted text fans one variant
+  into many contradicting rows, and the fan-out is the result (RM134 § A).** PubMind consolidates into a
+  PVID on gene symbol plus cDNA or protein change, never on a coordinate, so 72,121 of 358,559 allele
+  keys in the 2026-08-24 file carry several PVIDs, worst case 47, and 35,742 of those disagree on the
+  normalized call. Collapsing to one winner was the obvious repair and it is rejected: choosing needs an
+  ordering nobody defined, which is `mode()` over an unsorted group — banned outright. Every PVID stays
+  its own row and `release.json` records `multi_pvid_keys`, `max_pvids_per_key` and **`contested_keys`
+  separately**, because "several records here" is tidy-up work while "several records that contradict
+  each other" is the finding. The same builder drops two thirds of its input (codon enumerations that
+  need two or three simultaneous substitutions), which is why the drop reasons are a walked registry and
+  `input_rows == record_count + sum(dropped.values())` is asserted as an equality: silent truncation
+  reads as full coverage. One drop reason was found only by probing the real file — 16 rows whose alt is
+  `0` or `N`, which no documentation mentions (`@probe-the-real-file`).
 
 ## Dogfooding, adversarial probing, and how a finding gets filed
 

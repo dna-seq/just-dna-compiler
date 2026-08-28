@@ -304,6 +304,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
+| `clin_sig` | **0.7**: the one raw-significance → `VALID_CLIN_SIG` normalizer, shared by every source that reports one. Dependency-free on purpose, so a runtime pass reads it without the `[dev]` extra | format `VALID_CLIN_SIG` |
 | `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe` | stdlib |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
 | `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
@@ -330,13 +331,14 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `sequences` | reference-sequence access (cached) + the reference-allele check | `ga4gh.vrs` |
-| `locations` | cache-location resolution for all **six** snapshots + `.env` (moved from the compiler) | `platformdirs`, `python-dotenv` |
-| `download` | HuggingFace **snapshot** download (Ensembl, ClinVar, constraint, ClinPGx, CPIC; footer-checked, atomic). **No PharmVar** — see *The caches* | `huggingface_hub` (lazy) |
+| `locations` | cache-location resolution for all **seven** snapshots + `.env` (moved from the compiler) | `platformdirs`, `python-dotenv` |
+| `download` | HuggingFace **snapshot** download (Ensembl, ClinVar, constraint, ClinPGx, CPIC; footer-checked, atomic). **No PharmVar and no PubMind** — see *The caches* | `huggingface_hub` (lazy) |
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
+| `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar` build+publish, `vrs mint` | `typer` |
+| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` build+publish, `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
 
@@ -683,7 +685,7 @@ a set, which is unreadable in practice.
 
 ## The caches
 
-**Six parquet snapshots, one base directory, one rule: locate, never download — except where you ask.**
+**Seven parquet snapshots, one base directory, one rule: locate, never download — except where you ask.**
 Every live source this tier reaches has (or can have) a local copy, and the whole reason is in the rate
 table above: *a shared IP shares one budget.* An author on their own machine can go live for everything;
 a **host** cannot, and for the three licence-gated sources it should not (see *On a host, or in a
@@ -697,8 +699,11 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `just-dna-seq/clinpgx` | clinical annotations (`clinpgx check`) |
 | **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `just-dna-seq/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
 | **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
+| **PubMind** ❓ | `pubmind/` | `$JUST_DNA_PUBMIND_CACHE` | **none, by design** | **never published** | literature-derived verdicts (RM134) |
 
-🔒 = licence-gated (`commercial_use=False`). The bottom three are RM38, new in 0.5.1.
+🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
+is a different state and not a weaker one: unknown is not permissive. The three 🔒 rows are RM38, new in
+0.5.1; the ❓ row is RM134, new in 0.7.
 
 **One base, so a single just-dna-lite deployment's cache serves all of them.** Each subdir sits under
 `$JUST_DNA_PIPELINES_CACHE_DIR`, or platformdirs' user cache for `just-dna-pipelines`
@@ -774,7 +779,7 @@ Note the `--include`: `data/*.parquet` alone would drag in the stale flat file a
 `from just_dna_enricher.download import ensure_clinvar_snapshot; ensure_clinvar_snapshot()`, which does
 the filtering, the footer check and the atomic rename for you.
 
-### Building the three that are not (fully) published
+### Building the four that are not (fully) published
 
 ```bash
 # CPIC — open and unauthenticated, so this is about a host's shared budget, not access.
@@ -787,6 +792,9 @@ just-dna-enricher clinpgx publish ./clinpgx --repo <org>/clinpgx
 
 # PharmVar — needs YOUR key, and there is no publish command.
 PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --out ./pharmvar --use non-commercial
+
+# PubMind — no key and no `--use` flag; `pubmind publish` exists and refuses (see below).
+just-dna-enricher pubmind build --download --out ./pubmind        # or --table hg38_pubmind_db.txt.gz
 ```
 
 Then point at them, or move them under the base directory so the default resolvers find them:
@@ -803,6 +811,27 @@ on — `redistribution=True` describes the CC BY-SA grant over the *content*, no
 *account*. An unestablished permission is never a permission, the same `None` ≠ `False` rule that
 governs `share_alike` and `commercial_use`. So the snapshot is operator-built and inject-only, its
 `release.json` says so (`"redistributable": false`), and the build command prints the same warning.
+
+**Why PubMind has no publish command either, and why its reason is a different one (RM134).** PharmVar's
+bytes arrive under terms that bar passing them on; PubMind's arrive under **no stated terms at all**. Two
+things are licensed and only one clearly: CHOP's `LICENSE.md` covers the *software* (academic,
+non-commercial, tech-transfer for anything else), the paper is CC BY-NC-ND 4.0, and the
+ANNOVAR-redistributed coordinate table — the only per-variant channel there is — publishes nothing. Under
+the house rule that is unknown, not permissive, so `PUBMIND_TERMS` records `None` on every axis and the
+snapshot is operator-built and inject-only.
+
+`pubmind publish` therefore **exists in order to refuse**, rather than being absent: a missing command
+reads as an oversight somebody will helpfully add. It exits non-zero and names the reason, the PharmVar
+precedent, and what would lift it — an answer in writing from WGLab and CHOP's Office of Technology
+Transfer, which is the only thing that can.
+
+**Unknown terms warn; they never gate, and that is why `pubmind build` has no `--use` flag.**
+`taints_commercial_use` requires `commercial_use is False`, so a module carrying PubMind values compiles,
+lands `pubmind` in `manifest.sources.unknown_terms_sources`, and drives the module-wide verdict to `None`
+— undetermined, never permitted. `check_declared_use(PUBMIND_TERMS, …)` returns a skip reason for *every*
+declaration, so wiring the flag in the way `pharmvar build` does would refuse every build; a flag feeding
+a gate that never gates is a flag that does nothing. What the terms would gate is **publishing** a module
+carrying those bytes, which is RM27's undesigned redistribution axis rather than this source's problem.
 
 ### Snapshot-first, live second, `--offline` first-only
 
@@ -1417,7 +1446,8 @@ The resolver link reads only `chrom/start/ref/alt`; the rest is annotation the p
 (it never enters `resolution.csv` — orthogonal axes, P5). `clin_sig` is folded into `vocab.VALID_CLIN_SIG`
 by an explicit **severity order** (a multi-valued `CLNSIG` picks the most severe, splitting on `|`/`/`/`,`
 so `Pathogenic,_low_penetrance` is recognised) while `clin_sig_raw` keeps the verbatim `CLNSIG`
-(lossless, auditable). A `release.json` records provenance (`clinvar_file_date` from the VCF `##fileDate`,
+(lossless, auditable). **Since 0.7 the fold itself lives in `clin_sig.py`, not here** — see below.
+ A `release.json` records provenance (`clinvar_file_date` from the VCF `##fileDate`,
 `source_url`, `source_sha256`, `record_count`, `built_at`, `builder_version`) — the values
 `clinvar.clinvar_dataset_label` turns into the `dataset` a drafted module's licence row records (RM4),
 which is what the clinical cross-check reads back to know it would be comparing a value against itself.
@@ -1430,6 +1460,42 @@ The parquet is **byte-reproducible** across rebuilds (rows sorted per chromosome
 `built_at` varies). `polars` is a `[dev]`, guarded import — the runtime `clinvar` link is polars-free.
 `download_clinvar_vcf` streams the NCBI VCF with the core `httpx` (atomic `.part` rename, sha256 while
 streaming). VCF-parsing idioms are leeched from just-dna-lite's `v1_port.clinvar`.
+
+### One significance normalizer, shared (`clin_sig.py`, 0.7 — RM134)
+
+`normalize_clin_sig(raw)` is the single raw-token → `VALID_CLIN_SIG` fold, and it moved out of
+`clinvar_build` the moment a second source started reporting a significance. The reason is not tidiness:
+a concordance check's entire output is a comparison of two *normalized* calls, so two hand-written maps
+make any drift between them read as a disagreement between the authorities rather than between our own
+tables. The module imports `VALID_CLIN_SIG` and nothing else, so a runtime pass reads it without the
+`[dev]` extra the builders need.
+
+**Two defects were fixed on the way out, and neither is visible from ClinVar's side.** The map's keys
+are underscored because that is how ClinVar spells `CLNSIG`; PubMind spells the same concepts with
+spaces, so two of its six tokens fell through to `other`:
+
+| Token | before | after |
+|---|---|---|
+| `Uncertain significance` | `other` | `uncertain_significance` |
+| `Conflicting` | `other` | `conflicting` |
+
+ClinVar's own `Uncertain_significance` and `Conflicting_classifications_of_pathogenicity` mapped
+correctly all along, so the two sources would have been reported as disagreeing where they agree — on
+the largest disagreeing class in the measured corpus join. The repair is a whitespace→underscore step
+in the tokenizer, an **identity on every existing key**, plus a bare `conflicting` key. Both registries
+are asserted as equalities at import: `set(CLIN_SIG_SEVERITY) == VALID_CLIN_SIG` and
+`set(CLIN_SIG_MAP.values()) == VALID_CLIN_SIG`.
+
+**A composite is still resolved by severity, and PubMind gets ClinVar's answer.** `Benign/Likely benign`
+folds to `likely_benign`, exactly as ClinVar's `Benign/Likely_benign` does. `PUBMIND_ASSESSMENT.md`
+wrote that mapping as `benign` while it still proposed a second map; teaching one spelling a different
+answer from the other is the drift the single map exists to remove, so the assessment's line is
+superseded here rather than implemented.
+
+One more tightening rode along: a whitespace-only or token-less value is `not_provided` rather than
+`other`. "The source states no classification" and "the source stated something we do not model" are
+different answers, and only the second is a disagreement. No ClinVar `CLNSIG` takes that shape, so
+nothing built to date moves.
 
 ### The clinical cross-check (`clinical.py`, offline)
 
@@ -1538,6 +1604,67 @@ passed that was never put. Its values are `not_requested` (the author's own `--n
 `no_snapshot`, `unusable_snapshot` (present but not queryable — `compare_clin_sig` returns `None` rather
 than a comparison of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
 typed the `clin_sig`, nothing changes — that is the case this check exists for.
+
+## PubMind snapshot (`pubmind_build.py`, `[dev]`) — RM134 § A
+
+PubMind (Wang & Wang, *Nat Commun* 2026, doi:10.1038/s41467-026-76834-4) extracts
+variant–disease–pathogenicity assertions from 41.7 M abstracts and 5.4 M full texts with an LLM. It is a
+**source**, of the same kind ClinVar is: an authoritative *annotation* source. Nothing it produces may
+enter `resolution.csv` — its coordinates are PyEnsembl back-mappings of extracted text, and
+`resolution.csv`'s `authority` column is a different word for a different thing.
+
+**There is exactly one per-variant channel.** The web API has two endpoints, neither takes a variant,
+and both state that per-record detail is withheld; the per-record `LLM_reasoning` and evidence passages
+— the genuinely novel part — are reachable only through CHOP's licensed full database. So the input is
+the ANNOVAR-redistributed `hg38_pubmind_db.txt.gz`, whose columns are **VCF-style despite the ANNOVAR
+packaging**: no `-` alleles, a one-base deletion written `1 1014264 1014265 CC C` with the anchor base
+retained, and `Start` the 1-based POS. A join needs no coordinate translation.
+
+`build_snapshot(table, out_dir)` writes one `out_dir/data/pubmind.parquet` plus `release.json`:
+
+```
+chrom, start, ref, alt, pvid, clin_sig, clin_sig_raw, pathogenicity_score, confidence, derivation
+```
+
+**The names are unprefixed on purpose** — `clin_sig`, not `pubmind_sig`. The ClinVar snapshot already
+uses them, the source is the file, and one column vocabulary across every snapshot is what lets a check
+read N authorities with no per-source mapping. `pathogenicity_score` is nullable and **null means not
+computed, never 0.0**; `confidence` is PubMind's own 0–3 evidence-depth count and is deliberately *not*
+normalized against ClinVar's `review_stars` — different instruments, and folding them into one number
+would be three axes in one field.
+
+**Two thirds of the file is not a genotypable position, and every dropped row is counted.** When PubMind
+recovers only a protein change from the text it back-maps through the transcript and writes out every
+codon that could encode it. `derivation` records what survived:
+
+| `derivation` | What it is |
+|---|---|
+| `direct` | the source row was already one base against one base |
+| `codon` | an equal-length block differing at exactly one position, decomposed onto that base |
+| `indel` | a length-changing row, kept but marked — upstream left-normalization is **unverified** |
+
+and `PUBMIND_DROP_REASONS` records what did not: `off_target_chrom`, `non_acgt` (16 rows in the
+2026-08-24 file whose alt is `0` or `N`), `ref_equals_alt` (523), `multi_substitution` (a block needing
+two or three simultaneous changes — a statement about the protein, not a position), and
+`identical_duplicate` (two codon rows decomposing onto one row identical in every column). The registry
+is walked, so `input_rows == record_count + sum(dropped.values())` is an equality over it: silent
+truncation reads as full coverage.
+
+**A contested coordinate keeps every PVID as its own row, and that is the finding.** Consolidation into a
+PVID is keyed on the *text* the model extracted, never on a coordinate, so one physical variant fragments
+into many records whose verdicts disagree — at chr6:26092913 (HFE C282Y) the table holds eight, split
+across four verdicts, one of which pairs `rs1800562` with *TMPRSS6* and is exactly the shape
+`_gene_locus_conflicts` catches. Collapsing them would mean choosing a winner by an ordering nobody
+defined, which is `mode()` over an unsorted group. `release.json` records `multi_pvid_keys`,
+`max_pvids_per_key` and `contested_keys` — the last being how many of those coordinates actually
+disagree, which is why the multiplicity may not be tidied away.
+
+The parquet is **byte-reproducible** across rebuilds (rows sorted by chromosome in karyotype order, then
+`start, ref, alt, pvid`); only `release.json`'s `built_at` varies. `release.json` also carries the
+source's sha256 **and** its `ETag` and `Last-Modified` — all three available, all three recorded, so an
+upstream revision becomes a finding rather than a silent change of answer — plus `redistributable: false`
+and the reason. A local `--table` establishes neither header, so both are recorded as `null`: unknown
+rather than absent. `polars` is a `[dev]`, guarded import.
 
 ## Gene–disease validity (`gene_validity.py`, online only) — RM24
 
@@ -2042,6 +2169,14 @@ Two things the flat "non-commercial" summary does *not* say, both of which matte
 | **CPIC** | `api.cpicpgx.org/v1` (PostgREST) | none | same policy | ❌ |
 | **PharmVar** | `www.pharmvar.org/api-service` | `Api-Key` header, 2 rps | CC BY-SA 4.0 **+ research-use-only** | ❌ |
 | Ensembl / dbSNP | already in the chain | none | unrestricted | ✅ |
+| **PubMind** *(read 2026-08-28, RM134)* | `openbioinformatics.org/annovar/download/hg38_pubmind_db.txt.gz` | none | **none stated for the data** | **❓** |
+
+PubMind is the only ❓ and the row is dated separately, because it was read almost four weeks after the
+others and it is a different *kind* of answer. The 🔒 sources publish terms that forbid sale; PubMind
+publishes no data terms at all. `LICENSE.md` covers the software (academic, non-commercial, CHOP
+tech-transfer for anything else), the paper is CC BY-NC-ND 4.0, and the ANNOVAR-redistributed table —
+the only per-variant channel — states nothing. So every axis is `None`: unknown is not permissive, and
+`None` is not `False`. See *The caches* for what that does and does not gate.
 
 Three things follow, and each shaped the code:
 
@@ -2570,6 +2705,8 @@ just-dna-enricher cpic build --out cpic/ --use non-commercial     # whole CPIC �
 just-dna-enricher cpic publish cpic/ --repo org/cpic              # redistribution is granted
 just-dna-enricher clinpgx publish cp/ --repo org/clinpgx          # LICENSE.txt travels with it
 just-dna-enricher pharmvar build --out pv/ --use non-commercial   # YOUR key; never published
+just-dna-enricher pubmind build --download --out pm/             # literature verdicts; never published
+just-dna-enricher pubmind publish                                # exits 1 and says why (by design)
 just-dna-enricher pgx spec/ --offline --use non-commercial        # both legs off snapshots
 just-dna-enricher pgx spec/ --cpic-cache cpic/ --pharmvar-cache pv/
 just-dna-enricher draft spec/ --gene CYP2C9 --offline --use non-commercial
@@ -2639,6 +2776,7 @@ directly to compose passes, inject clients, or run in-process.
 | `cache status` / `cache pull` | `locations.resolve_*_reference` / `download.ensure_*_snapshot` |
 | `cpic build` / `publish` | `cpic_build.build_snapshot` / `upload.publish_reference_snapshot` |
 | `pharmvar build` | `pharmvar_build.build_snapshot` (no publish — see *The caches*) |
+| `pubmind build` / `publish` | `pubmind_build.download_pubmind_table` + `build_snapshot` / **refuses**, `cli.PUBMIND_PUBLISH_REFUSAL` |
 | `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
