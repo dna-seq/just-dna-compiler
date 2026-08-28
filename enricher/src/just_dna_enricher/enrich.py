@@ -10,7 +10,7 @@ fails unless every in-scope variant resolves to a position (the network analogue
 
 import csv
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -27,7 +27,7 @@ from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.layout import atomic_writer
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
-from just_dna_format.resolution import ResolutionRow
+from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
@@ -69,6 +69,7 @@ from just_dna_enricher.sequences import (
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
+from just_dna_enricher.transaction import ResolutionJournal, SubjectProgress, spec_lock
 from just_dna_enricher.verification import (
     DETAIL_LIMIT,
     examples,
@@ -341,6 +342,74 @@ class EnrichmentError(RuntimeError):
     """Raised in strict mode when the chain cannot fully resolve the module."""
 
 
+@dataclass(frozen=True)
+class SubjectDrift:
+    """One subject whose recorded facts and freshly derived facts disagree, under `rederive=True`.
+
+    The canary MODULE_LIFECYCLE describes, finally performed. Merge-not-clobber means an ordinary
+    re-run never re-asks about a recorded row, so a source that silently *revised* an answer moves no
+    `fetched_at`, no fact signature and no digest — and the only way to notice was to delete the table
+    and re-derive, which used to discard the curator's rows with it. With corrections living in the
+    overlay a full re-derivation costs nothing, and because the fresh table is staged beside the
+    current one both sides exist at the commit boundary, so the comparison is free.
+
+    `before`/`after` render the **fact** columns only (`RESOLUTION_FACT_FIELDS`), read off the
+    registry rather than restated here: the provenance columns move on every run by design, and a
+    report that called a new `fetched_at` a drift would cry wolf on every subject.
+    """
+
+    variant_key: str
+    before: str
+    after: str
+
+    def __str__(self) -> str:
+        return f"{self.variant_key}: {self.before} → {self.after}"
+
+
+def _render_facts(rows: Sequence[ResolutionRow]) -> str:
+    """A subject's resolved facts as one comparable string, in `locus_index` order."""
+    return " + ".join(
+        "|".join("" if getattr(row, name) is None else str(getattr(row, name))
+                 for name in RESOLUTION_FACT_FIELDS)
+        for row in sorted(rows, key=lambda r: r.locus_index)
+    )
+
+
+def _rederived_drift(
+    before: Mapping[tuple, Sequence[ResolutionRow]],
+    after: Sequence[ResolutionRow],
+    *,
+    skip: Collection[tuple] = (),
+) -> tuple[list[SubjectDrift], int]:
+    """`(what moved, how many subjects were re-asked)` between a recorded table and a fresh one.
+
+    Compared **only** over subjects present on both sides and not in `skip`. A recorded subject the run
+    could not ask about this time produces no fresh row at all — the three branches that deliberately
+    write nothing for an unanswerable subject — and calling that a drift would report the run's own
+    reach as a change in the source.
+
+    `skip` is what the carry-forward put back, and it is not optional bookkeeping: the carried rows are
+    in `after` by the time this runs, so without it every un-asked subject would still land in the
+    denominator and the warning would publish "N of M **re-asked**" over an M that includes subjects
+    nothing asked. A count that travels with a finding has to be the count the sentence names.
+    """
+    skipped = set(skip)
+    fresh: dict[tuple, list[ResolutionRow]] = {}
+    for row in after:
+        fresh.setdefault(merge_key(row), []).append(row)
+    drift: list[SubjectDrift] = []
+    compared = 0
+    for key, old_rows in before.items():
+        new_rows = fresh.get(key)
+        if new_rows is None or key in skipped:
+            continue
+        compared += 1
+        was, now = _render_facts(old_rows), _render_facts(new_rows)
+        if was != now:
+            drift.append(SubjectDrift(old_rows[0].variant_key, was, now))
+    return sorted(drift, key=lambda d: d.variant_key), compared
+
+
 def spec_genome_build(spec_dir: Path) -> str:
     """The build the module itself declares, which is the only build enrichment may resolve against.
 
@@ -489,6 +558,12 @@ class EnrichmentResult:
     # built the result by hand; `enrich()` always sets it, carrying `not_checked` when the pass could
     # not run rather than an empty finding list that reads as a clean bill.
     rsid_coordinates: PairCheck | None = None
+    # What a full re-derivation found had moved since the recorded table was written — `rederive=True`
+    # only. **`None` is not `[]`**: `None` says nobody re-derived, and an empty list says every
+    # recorded subject was re-asked and every one still answers the same. Only the second of those is
+    # a clean bill, and only the second is worth printing (an empty one prints nothing at all — a
+    # comparison that found nothing must not report a zero as though it were a finding).
+    rederived: list[SubjectDrift] | None = None
 
     @property
     def fully_resolved(self) -> bool:
@@ -523,6 +598,9 @@ def enrich(
     verify_clinsig: bool = True,
     verify_rsids: bool = True,
     keep_par_twin: bool = False,
+    rederive: bool = False,
+    keep_staging: bool = False,
+    progress: Callable[[int, int], None] | None = None,
     resolver: EnsemblResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
     grch37_client: Grch37Client | None = None,
@@ -565,8 +643,82 @@ def enrich(
     is injected data that travels with the module, so the choice is *recorded* and
     `compile → reverse → compile` stays a fixed point either way, whereas a compiler flag would not
     survive `reverse_module` rebuilding the spec from parquet alone (Principle 7).
+
+    **The run is a transaction.** What the sources answer is staged to disk as the run proceeds, in the
+    target's own directory (`transaction.ResolutionJournal`), and the table itself is written once — at
+    the gate, through a writer that renames into place. Two properties follow, and the second is the
+    one the item was really about. A kill at minute 29 leaves the staged answers, so the next run
+    resumes instead of paying the thirty minutes again. And **a refused `strict` run commits nothing**:
+    every refusal below raises before the write block, so the module is left exactly as it was — a
+    written promise rather than an accident of statement order. `keep_staging` leaves the staged
+    answers behind after a successful commit, for debugging; the default removes them.
+
+    The whole run is one read-modify-write window over `resolution.csv`, so it is held under an
+    advisory `flock` on the spec directory (`transaction.spec_lock`) — two concurrent runs were
+    last-writer-wins over a merge with neither able to see the other, and a shorter table is
+    indistinguishable from a module whose author resolved less. A second run refuses rather than
+    waiting; a platform or filesystem that will not take the lock degrades with a warning that says so.
+    `write=False` takes no lock and stages nothing: with nothing written there is no window to exclude,
+    which keeps the flag meaning one thing everywhere.
+
+    `rederive` re-asks the sources about **every** subject, including the ones already recorded, and
+    reports which of them changed value (`EnrichmentResult.rederived`). That is the drift canary: an
+    ordinary run gap-fills and never re-asks, so a source that silently revised an answer moves
+    nothing an author could notice. A recorded subject this run could not ask about keeps its recorded
+    rows — re-deriving must never be a way to shorten the table, which is the very incident this
+    transaction exists for.
+
+    `progress` is called `(done, total)` over **subjects**, `total` known before the first call. It
+    exists for a caller with an idle timeout: what such a caller needs is a keepalive with monotonic
+    progress, which a phase counter cannot give (a twenty-nine-minute phase emits nothing) and a link
+    counter cannot promise (its total is not known until resolution finds the links). Exceptions from
+    the callback are not swallowed; under the transaction that costs nothing, since the staged answers
+    survive an abort exactly as they survive a kill.
     """
     spec_dir = Path(spec_dir)
+    # The lock spans the whole window — from the read of the recorded table to the commit — so it is
+    # taken here and not inside the run. A `write=False` caller touches no file and takes none.
+    with spec_lock(spec_dir, enabled=write, error=EnrichmentError):
+        return _run_enrichment(
+            spec_dir,
+            mode=mode, offline=offline, ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
+            use_clinvar=use_clinvar, use_gnomad=use_gnomad, download=download,
+            genome_build=genome_build, write=write, mint_vrs=mint_vrs, verify_ref=verify_ref,
+            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids, keep_par_twin=keep_par_twin,
+            rederive=rederive, keep_staging=keep_staging, progress=progress,
+            resolver=resolver, gnomad_client=gnomad_client, grch37_client=grch37_client,
+        )
+
+
+def _run_enrichment(
+    spec_dir: Path,
+    *,
+    mode: str,
+    offline: bool,
+    ensembl_cache: Path | None,
+    clinvar_cache: Path | None,
+    use_clinvar: bool,
+    use_gnomad: bool,
+    download: bool,
+    genome_build: str | None,
+    write: bool,
+    mint_vrs: bool,
+    verify_ref: bool,
+    verify_clinsig: bool,
+    verify_rsids: bool,
+    keep_par_twin: bool,
+    rederive: bool,
+    keep_staging: bool,
+    progress: Callable[[int, int], None] | None,
+    resolver: EnsemblResolver | None,
+    gnomad_client: Optional["GnomadClient"],
+    grch37_client: Grch37Client | None,
+) -> EnrichmentResult:
+    """The run itself, with the advisory lock already held. Every argument is `enrich`'s; see it.
+
+    Split out rather than indented under a `with` so the chain below reads as one straight sequence of
+    links and passes, which is how every comment in it is written.
+    """
     if genome_build is None:
         genome_build = spec_genome_build(spec_dir)
     variants: list[VariantRow] = []
@@ -586,8 +738,10 @@ def enrich(
         # own copy, and repeating them would double every message an author sees for one cause.
         _restamp_for_build(variants, genome_build)
 
-    # Existing/human rows are authoritative — merge, never clobber.
-    existing: dict[str, list[ResolutionRow]] = {}
+    # Existing/human rows are authoritative — merge, never clobber. Keyed by `base.merge_key`,
+    # which returns a **tuple** — the annotation said `str` and nothing reads it, but a wrong one
+    # beside a new lookup is how the next reader learns the key shape wrong.
+    existing: dict[tuple, list[ResolutionRow]] = {}
     # Through the shared resolver, so the pass writes back to wherever the module keeps this table —
     # root or `derived/`, whatever it is called. Reading one copy and writing another would leave the
     # module carrying two, which is the collision (RM49/RM51).
@@ -601,6 +755,18 @@ def enrich(
             # `subject` rather than `equality` because one rsID legitimately resolves to several loci
             # and this pass replaces the group whole (S51).
             existing.setdefault(merge_key(row), []).append(row)
+
+    # What the chain treats as already answered. Ordinarily that is every recorded subject —
+    # merge-not-clobber, unchanged. Under `rederive` it is nothing at all, so every subject re-enters
+    # the worklist and the recorded rows survive only as the baseline the report is computed against
+    # and as the carry-forward for a subject this run cannot ask about.
+    covered: Mapping[tuple, list[ResolutionRow]] = {} if rederive else existing
+    # The staged answers, in the target's own directory. `write=False` stages nothing: a caller that
+    # touches no file has nothing to commit toward, and staging would leave droppings behind instead.
+    journal = ResolutionJournal(
+        resolution_path, genome_build=genome_build, enabled=write, rederive=rederive
+    )
+    staged = journal.resume()
 
     if genome_build != genome_build.strip() or genome_build != "GRCh38":
         logger.warning(
@@ -621,15 +787,24 @@ def enrich(
 
     # Every table that can ask for a coordinate, not just variants.csv (a PGx module has none).
     subjects = _collect_subjects(spec_dir, variants, genome_build)
+    # The progress unit. Constructed here because this is the first moment `total` is knowable, and it
+    # reports `(0, total)` immediately so a caller rendering a bar has the denominator before any work
+    # starts. Subjects that share an rsID settle together, which is why the map is built once.
+    tracker = SubjectProgress(len(subjects), progress)
+    subjects_of_rsid: dict[str, list[str]] = {}
+    for v in subjects:
+        if v.rsid:
+            subjects_of_rsid.setdefault(v.rsid, []).append(v.variant_key)
+    tracker.settle(v.variant_key for v in subjects if _subject_key(v) in covered)
 
     # Partition the subjects that still need work (skip those an existing row already covers).
     need_pos = [
         v for v in subjects
-        if v.rsid is not None and v.chrom is None and _subject_key(v) not in existing
+        if v.rsid is not None and v.chrom is None and _subject_key(v) not in covered
     ]
     need_rsid = [
         v for v in subjects
-        if v.rsid is None and v.chrom is not None and _subject_key(v) not in existing
+        if v.rsid is None and v.chrom is not None and _subject_key(v) not in covered
     ]
     # Rows that authored BOTH halves of the identity. They need no resolution, which is exactly why
     # nothing used to look at them: they fall through to the verbatim branch below. But an authored
@@ -701,6 +876,7 @@ def enrich(
             if cands:
                 rev_candidates[pt] = cands
                 rev_source[pt] = "cache"
+        tracker.settle(k for rsid in rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
 
     # ── ClinVar cache link (offline, after Ensembl cache, before live) ─────────────────────────
     # Fills only what the Ensembl cache missed, stamping source="clinvar". Placing it after the
@@ -751,9 +927,45 @@ def enrich(
                     if cands and not rev_candidates.get(pt):
                         rev_candidates[pt] = cands
                         rev_source[pt] = "clinvar"
+                tracker.settle(
+                    k for rsid in cv_rsid_to_loci for k in subjects_of_rsid.get(rsid, ())
+                )
+
+    # ── staged answers from an interrupted run, between the caches and the live links ──────────
+    # Placed exactly here, and the position is the whole reason a resumed run reproduces an
+    # uninterrupted one. Only the *live* links journal, so a staged answer is by construction one no
+    # cache had; seeding it after the caches lets a snapshot provisioned between the kill and the
+    # resume win the variant it would have won on a first run, and seeding it before the live links
+    # keeps the request from being made a second time. Nothing derived from an answer is staged — the
+    # hosting filter, the pseudoautosomal selection, `locus_index` and the minted ids all recompute —
+    # so a flag that changed between the two runs changes the table, exactly as it would have.
+    #
+    # **A staged answer is honoured only if the link that produced it would run this time.** The two
+    # gates below are the live links' own — the same names decide whether each block executes — so a
+    # `--no-gnomad` or `--offline` resume drops what that link had already answered instead of
+    # stamping a `source="gnomad"` row a first run with those flags would never have written. `alts`
+    # is a fact column, so honouring a disabled link would move the compiled digest too.
+    live_ensembl_runs = not offline and genome_build == "GRCh38"
+    gnomad_runs = use_gnomad and not offline and genome_build == "GRCh38"
+    dropped_link: list[str] = []
+    for rsid, (staged_source, staged_loci) in staged.items():
+        if not (gnomad_runs if staged_source == "gnomad" else live_ensembl_runs):
+            dropped_link.append(staged_source)
+            continue
+        if rsid not in rsid_to_loci:
+            rsid_to_loci[rsid] = staged_loci
+            source_of_rsid[rsid] = staged_source
+        tracker.settle(subjects_of_rsid.get(rsid, ()))
+    if dropped_link:
+        logger.info(
+            "%d staged answer(s) are not seeded because the link that produced them is switched off "
+            "this run (%s): a resume must reproduce the run its flags describe, not the run that was "
+            "killed. Their subjects go back to the chain.",
+            len(dropped_link), ", ".join(sorted(set(dropped_link))),
+        )
 
     # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
-    if not offline and genome_build == "GRCh38":
+    if live_ensembl_runs:
         missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
         if missing:
             owned = resolver is None
@@ -769,6 +981,13 @@ def enrich(
                     elif loci:
                         rsid_to_loci[rsid] = loci
                         source_of_rsid[rsid] = src or "ensembl"
+                        # Staged before the next request is made, which is what makes minute 29
+                        # recoverable: everything answered so far is already on disk when the kill
+                        # arrives. Only a positive answer is staged — a request that failed is
+                        # unchecked rather than absent, and freezing that into the journal would turn
+                        # a transient outage into a permanent negative on every future run.
+                        journal.record(rsid, src or "ensembl", loci)
+                        tracker.settle(subjects_of_rsid.get(rsid, ()))
             finally:
                 if owned:
                     client.close()
@@ -780,7 +999,7 @@ def enrich(
     # *observed in gnomAD*, not every allele dbSNP knows, so promoting it would narrow some already-
     # compiled module's alts and move its artifact.digest. Going last means it can only ever add
     # variants nothing else had — a strictly additive link.
-    if use_gnomad and not offline and genome_build == "GRCh38":
+    if gnomad_runs:
         missing = [v.rsid for v in need_pos if v.rsid and v.rsid not in rsid_to_loci]
         if missing:
             owned = gnomad_client is None
@@ -790,6 +1009,8 @@ def enrich(
                     if loci and rsid not in rsid_to_loci:
                         rsid_to_loci[rsid] = loci
                         source_of_rsid[rsid] = "gnomad"
+                        journal.record(rsid, "gnomad", loci)
+                        tracker.settle(subjects_of_rsid.get(rsid, ()))
             except GnomadError as exc:  # a last-resort link must not sink the whole enrichment
                 logger.warning("gnomAD link failed (%s); continuing without it.", exc)
             finally:
@@ -812,9 +1033,13 @@ def enrich(
     for v in subjects:
         key = v.variant_key
         subject = _subject_key(v)
-        if subject in existing:
-            out.extend(existing[subject])
-            if not any(r.chrom is not None for r in existing[subject]):
+        # Every subject reaches this loop exactly once, whichever branch it takes, so counting here is
+        # what makes the last progress report `(total, total)` rather than stopping wherever the links
+        # happened to run out.
+        tracker.settle((key,))
+        if subject in covered:
+            out.extend(covered[subject])
+            if not any(r.chrom is not None for r in covered[subject]):
                 unresolved.append(key)
             continue
         if v.rsid is not None and v.chrom is None:
@@ -940,6 +1165,44 @@ def enrich(
                 variant_key=key, rsid=v.rsid, chrom=v.chrom, start=v.start, ref=v.ref, alts=v.alts,
                 genome_build=genome_build, source="authored", status="resolved",
             ))
+
+    # The subject keys the carry-forward below puts back, so the report can leave them out of its own
+    # denominator: they are in `out` by then, and a subject nothing asked must not be counted as one
+    # that was re-asked.
+    carried_keys: set[tuple] = set()
+    if rederive:
+        # **Re-deriving must never be a way to shorten the table.** A recorded subject the sources
+        # could not be asked about this run produces no fresh row at all — the three branches above
+        # that deliberately write nothing for an unanswerable subject — and committing that table
+        # would overwrite a full one with a shorter one, which is the incident this whole transaction
+        # exists for wearing a new flag. Such a subject keeps exactly the rows it had; only an
+        # *answered* one (including answered-and-absent, which does write a `not_found` row) replaces.
+        fresh_keys = {merge_key(row) for row in out}
+        # Only subjects the spec still names. A recorded row for a variant the author has since
+        # deleted is dropped by an ordinary run — the assembly loop iterates `subjects` and nothing
+        # else — so carrying it forward here would make `--rederive` resurrect rows a plain re-run
+        # prunes, which is a second behaviour nobody asked this flag for.
+        in_scope = {_subject_key(v) for v in subjects}
+        carried: list[str] = []
+        still_resolved: set[str] = set()
+        for subject_key, recorded in existing.items():
+            if subject_key in fresh_keys or subject_key not in in_scope:
+                continue
+            out.extend(recorded)
+            carried_keys.add(subject_key)
+            carried.append(recorded[0].variant_key)
+            if any(r.chrom is not None for r in recorded):
+                still_resolved.add(recorded[0].variant_key)
+        unresolved = [k for k in unresolved if k not in still_resolved]
+        if carried:
+            logger.warning(
+                "Re-derivation kept the recorded rows for %d subject(s) no source could be asked "
+                "about this run (%s): a re-derivation that dropped them would replace a longer table "
+                "with a shorter one, which nothing downstream can tell from a module whose author "
+                "resolved less. They are unchanged rather than re-derived, so the report below says "
+                "nothing about them.",
+                len(carried), examples(sorted(carried)),
+            )
 
     # One line for the whole run, grouped by reason and counted. These are not findings about the
     # module — they are the resolver's second spelling of a place the module already names — so a line
@@ -1162,6 +1425,28 @@ def enrich(
             row.authority = resolution_authority(row.source)
 
     out.sort(key=lambda r: (r.variant_key, r.locus_index))
+
+    # The drift canary, and it fires only where a baseline exists. `rm` plus a re-run destroys the old
+    # values before the fresh ones arrive, so nothing holds both sides and that path re-derives
+    # silently and correctly; here the recorded table is still in memory and the fresh one has not
+    # been committed, so the comparison costs nothing. `None` when nobody re-derived — an empty list
+    # means every recorded subject was re-asked and every one still answers the same, which is a very
+    # different statement and the only one of the two that is a clean bill.
+    rederived: list[SubjectDrift] | None = None
+    if rederive:
+        rederived, compared = _rederived_drift(existing, out, skip=carried_keys)
+        if rederived:
+            # The denominator travels with the finding: "3 subjects moved" is unreadable without the
+            # number re-asked. Nothing is printed when nothing moved — a comparison whose empty result
+            # is the normal case must not announce a zero as though it were evidence.
+            logger.warning(
+                "Re-derivation: %d of %d re-asked subject(s) now answer differently from the "
+                "recorded table — %s. The fresh answer is committed and the old one is not kept; a "
+                "value you decided rather than derived belongs in overrides.csv, where re-deriving "
+                "cannot reach it.",
+                len(rederived), compared, "; ".join(str(d) for d in rederived),
+            )
+
     sources = sorted({r.source for r in out if r.source})
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
@@ -1172,6 +1457,7 @@ def enrich(
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
         rsid_coordinates=pair_check,
+        rederived=rederived,
     )
 
     if unreachable_rsids:
@@ -1254,6 +1540,10 @@ def enrich(
             f"loci by hand to resolution.csv, or enrich with mode='best_effort'."
         )
 
+    # ── the commit ─────────────────────────────────────────────────────────────────────────────
+    # Everything above this line is staging. Every refusal above raises before it, which is what makes
+    # *a refused strict run changes nothing* a promise rather than an accident of statement order —
+    # and it is asserted on the bytes on disk by test, not on a return value.
     if write:
         _write_resolution_csv(out, resolution_path)
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
@@ -1290,6 +1580,16 @@ def enrich(
             spec_dir,
             error=EnrichmentError,
         )
+        # Committed, so the staged answers have served their purpose. Kept only on request, and the
+        # request says where they are — a debugging aid nobody can find is not one.
+        if keep_staging:
+            logger.info(
+                "keep_staging: the staged answers this run resolved are left at %s. They are read by "
+                "the next run of this spec directory, so delete them once you are done reading them.",
+                journal.path,
+            )
+        else:
+            journal.discard()
     return result
 
 

@@ -1894,6 +1894,84 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     copying a neighbour, so a fix scoped to the report is `@registry-completeness` waiting to happen;
     the guard walks the set with an AST check and asserts an equality, not a floor.
 
+- `@enrich-is-a-transaction` — **A long pass that persists nothing until its tail is not "risky", it
+  is a run whose work does not exist yet (S66, RM128).** `enrich()` had one `if write:` block at the
+  bottom and everything above it in memory, so a kill at minute 29 had written zero bytes. The obvious
+  repair, checkpointing the table as it goes, trades away a property nobody had written down — that a
+  refused `strict` run leaves the module exactly as it was — and the trade turned out to be
+  unnecessary. Four things worth keeping:
+  - **Stage the answer, commit the table.** What goes to disk as the run proceeds is a journal of what
+    each *live link answered* (`rsid → [locus]`), never the assembled `ResolutionRow`. Everything
+    downstream of an answer recomputes on the resumed run — the hosting filter, the pseudoautosomal
+    selection, `locus_index`, the minted ids — so a flag that changed between the kill and the resume
+    changes the table exactly as it would have, and the journal cannot carry a stale derivation. It is
+    seeded **between the caches and the live links**, which is what makes *resumed equals uninterrupted*
+    a property rather than a hope: a snapshot provisioned in between still wins what it would have won.
+    Only *positive* answers are staged; a failed request is unchecked, not absent. And a staged answer
+    is honoured **only if the link that produced it would run this time** — the seeding reads the same
+    two booleans that gate the live blocks, so a `--no-gnomad` or `--offline` resume drops that link's
+    answers instead of stamping a row a first run with those flags could never have written.
+  - **Same-directory staging is the correctness condition, not tidiness.** `os.replace` is atomic only
+    within a filesystem, and `shutil.move` across a partition degrades to copy-then-delete. Staging
+    beside the target makes a cross-device move structurally impossible rather than merely avoided, so
+    the test asserts the sibling relationship instead of trusting a comment. `layout.atomic_writer`
+    already staged exactly there — this extends a shipped primitive from one file to a whole run.
+  - **Write the promise down when you get the chance.** *A refused `strict` run changes nothing* was
+    true only because the refusals happened to precede the write block. It is now stated, and asserted
+    on the **bytes of a pre-existing table** — "the file is absent" would have passed for a run that
+    wrote nothing and for one that wrote and then failed to clean up.
+  - **A knob may not mean two things.** `write=True` meaning "at the end" under `strict` and "as we go"
+    under `best_effort` was refused in advance (`@flag-means-same`). Under a transaction it means one
+    thing everywhere, because committing is the only write — and `write=False` therefore stages nothing
+    and takes no lock, since a caller that writes nothing has no window to exclude.
+
+- `@flock-not-a-lockfile` — **A lock left behind by exactly the kill it exists for is worse than no
+  lock (RM128).** Two concurrent `enrich` runs over one spec directory were last-writer-wins over a
+  merge with neither knowing; a zombie run once replaced a restored 330-row table with 162 rows, after
+  which the module validated, closed and compiled green. A **lockfile** is the obvious repair and it is
+  wrong: the kill this item is about leaves one behind, blocking every subsequent run, and the
+  staleness rule that would fix that is a clock (`@hash-the-probe` — guard the plan, not the clock).
+  `fcntl.flock` on the spec directory's own descriptor dies with the process, so nothing goes stale and
+  nothing needs cleaning up. **Non-blocking**: a run silently waiting half an hour behind a zombie is
+  its own unattended failure, and the refusal is accurate by construction since the lock is only ever
+  held by something alive. **The degradation is owed and is documented rather than silent** — no
+  `fcntl` on a non-POSIX platform, or a filesystem answering `ENOLCK`/`EOPNOTSUPP`, logs that the run
+  is *not* excluded from a concurrent one, and both branches are reached by tests because an unreached
+  refusal branch is not an API. `flock` is untested here on the network filesystems a consumer may use,
+  and ENRICHER says so where a consumer meets it.
+
+- `@progress-unit-is-subjects` — **The unit a progress callback reports is a contract, so argue it
+  rather than guessing (RM128).** `enrich`'s resolver chain is batched inside `resolver.py` rather than
+  being a per-subject loop, so `(done, total)` could have counted subjects, links or phases, and P3
+  keeps whichever was shipped working forever. Subjects, for three reasons that compose: the incident
+  is an **idle timeout** (both reported runs died at 1800 s with essentially every variant resolved),
+  so the caller needs a keepalive with monotonic progress — which rules out phases, since a 29-minute
+  phase emits nothing and the timeout fires anyway; **`total` must be known up front** for the number to
+  render, and the subject count is while the link count is not; and subjects are the only unit an
+  author's mental model already has, where publishing a link count would make a refactor of
+  `resolver.py` a contract change. No protocol was added because none was asked for. Monotonicity is
+  **structural** — `done` is the size of a set that only grows — and the assembly loop touches every
+  subject, so the last report is always `(total, total)` rather than wherever the links ran out.
+
+- `@rederive-never-shortens` — **A re-derivation that drops what it could not ask about is the
+  corruption it was meant to detect (RM83's residue, in RM128).** `enrich --rederive` re-asks every
+  recorded subject and reports what moved — MODULE_LIFECYCLE § 5.1's canary, which merge-not-clobber
+  had made unperformable. The hole is that the three branches deliberately writing **no row** for an
+  unanswerable subject fire under `--rederive` too, so an offline re-derivation would commit a table
+  with nothing in it and nothing downstream could tell that from a module whose author resolved less.
+  So: a recorded subject **answered** this run replaces (including answered-and-absent, which writes a
+  `not_found` row); one that could **not be asked** keeps exactly the rows it had, and the carry-forward
+  warns naming them — scoped to subjects the spec still names, since an ordinary run prunes a recorded
+  row whose variant the author deleted and `--rederive` must not resurrect it. **A re-derivation also
+  resumes only another re-derivation**: after a gap-filling run commits, its staged answers are exactly
+  what produced the recorded table, so seeding them would compare that table against its own provenance
+  and report a clean bill for the subjects being re-checked — which `--keep-staging` would otherwise
+  make easy to walk into. Two more things worth keeping: the report is `None` when nobody re-derived and
+  `[]` when nothing moved — only a real difference prints, since a comparison whose empty result is the
+  normal case must not announce a zero; and the honest limit is stated rather than hidden, because
+  `rm` plus a re-run re-derives just as correctly and reports **nothing**, having destroyed the old
+  values before the fresh ones arrive.
+
 - `@gnomad-rate-limits` — **Rate limits are load-bearing in `gnomad.py`.** 10 requests/IP/60s, so everything is batched (20
   aliases; 29 returns HTTP 400) behind a 6s pacing gate on an **injectable clock** — tests prove the
   interval without really sleeping. Per-alias GraphQL errors must never sink a batch; a *pathless* error

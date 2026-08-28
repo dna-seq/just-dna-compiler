@@ -303,12 +303,21 @@ row 3 the only row that means *the world moved*, which is what the canary is for
 
 **And the canary is an operation, not a passive signal.** Merge-not-clobber means a re-run never
 re-asks about a row already recorded, so a source that quietly revised an existing answer moves
-nothing at all — no stamp, no signature, no digest. Detecting upstream drift therefore *is* the
-delete-and-re-derive: note the fact signature, delete the sidecar, re-derive, compare. If it moved,
-the source changed its answer under you. No command performs that sequence, and deleting the sidecar
-is also what discards any curator overrides in it (§6.3) — which is why this and the override problem
-are one item with one plausible shape, a `--refresh` that re-asks and reports rather than merging
-([RM83](ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)).
+nothing at all — no stamp, no signature, no digest. Detecting upstream drift is therefore an act, and
+since 0.7 there is a command that performs it: **`just-dna-enricher enrich spec/ --rederive`** re-asks
+every recorded subject and names the ones that came back different. It costs the full resolution time,
+which is why it is a flag rather than the default.
+
+Two things made this unperformable before, and both are gone. The overrides a re-derivation used to
+discard now live in `overrides.csv` and are never inside the derived file (§6.3), so re-deriving costs
+nothing. And the comparison is free because the run is a transaction: the fresh table is staged beside
+the current one and commits by rename, so both sides exist at the commit boundary.
+
+**The honest limit, because it is the obvious alternative.** `rm resolution.csv` plus a re-run
+re-derives just as correctly and reports **nothing** — it destroys the old values before the fresh ones
+arrive, so nothing holds both sides and there is no comparison left to make. Use `--rederive` when you
+want to be told; use `rm` when you only want the file rebuilt. A subject the sources could not be asked
+about keeps the rows it had either way: re-deriving is never a way to shorten the table.
 
 ## 6. Pass two and beyond
 
@@ -701,11 +710,12 @@ Stated plainly, because each of these is currently an absence a reader has to in
   source-refresh pass. Today the author has to know. Filed as
   [RM85](ROADMAP_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it),
   where the tempting repair — a column recording the origin — is refused on RM71's argument.
-- **Nothing re-asks a question already answered.** Merge-not-clobber means a source that revised a row
-  it already gave us moves no signature at all, and the only refresh is `rm`, which discards the
-  curator's overrides with the stale rows.
-  [RM83](ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)
-  is that gap, and §5.1's canary is unperformable until it closes.
+- **Nothing re-asked a question already answered — closed in 0.7.** Merge-not-clobber still means an
+  ordinary re-run re-asks nothing, so a source that revised a row it already gave us moves no signature
+  at all; what changed is that `enrich --rederive` now re-asks every recorded subject and reports what
+  moved, and `rm` no longer costs anything because the curator's corrections are in the overlay rather
+  than inside the derived file. §5.1's canary is performable. What remains is that it costs a full
+  resolution and nobody schedules it for you.
 - **The artifact records no predecessor.** `manifest.json` carries `identity.version` and nothing
   linking it to the version before it — no parent digest, no previous `content_signature`. The
   registry knows the history; a module handed to you on a disk does not.

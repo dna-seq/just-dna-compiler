@@ -85,6 +85,140 @@ hand-kept mirror of our table constants, and a name missing there is a file drop
 which is how `licensing.csv` was lost before their 0.16.2. `overrides.csv` needs one entry added there;
 it is recorded in [INTEGRATION_0_6.md](INTEGRATION_0_6.md) rather than left to be discovered.
 
+## RM128 — `enrich()` persisted nothing until its tail, so a run killed at minute 29 had written nothing
+
+**Shipped in `just-dna-enricher` on 2026-08-28**, as `just_dna_enricher.transaction` plus three
+keyword arguments on `enrich()` and two flags on the command. Additive: no schema, no manifest field,
+no vocabulary. **Motivating case** S66 (just-module-creator).
+
+**The truncation half was already closed** on 2026-08-24 — nine sidecar writers go through
+`layout.atomic_writer`, so a killed process leaves the previous table rather than a short one. What
+this entry records is the three asks beside it, each of which was a decision rather than a missing
+line.
+
+**The central ask dissolved rather than being argued down.** It was filed as incremental or
+checkpointed persistence, and it turned on a question nobody had written down: *is a `strict` refusal
+allowed to leave rows behind?* The choice looked like **keep the promise or recover the thirty
+minutes**. It is not a choice. The run becomes a **transaction**, which keeps the promise absolutely
+and recovers the work as well.
+
+- **Durable staging beside the target, plus an atomic commit at the gate.** Each live link's answer is
+  staged to `.<name>.staging/answers.csv` beside `resolution.csv` as it arrives; the table is still
+  written once, at the bottom, by a writer that renames into place. `layout.atomic_writer` already
+  staged exactly there, so this extends a shipped primitive from one file to a whole run rather than
+  inventing one.
+- **Same-directory staging is the correctness condition, not a convenience.** A rename within one
+  filesystem is atomic; `shutil.move` across a partition degrades to copy-then-delete and is not.
+  Staging beside the target makes a cross-device move structurally impossible rather than merely
+  avoided, which is why the test asserts the sibling relationship structurally.
+- **What is staged is the answer, never the row.** Everything downstream of an answer recomputes —
+  the hosting filter, the pseudoautosomal selection, `locus_index`, the minted ids — so a flag that
+  changed between the kill and the resume changes the table exactly as it would have, and the journal
+  cannot carry a stale derivation. It is seeded **between the caches and the live links**, so a
+  snapshot provisioned in between still wins the variant it would have won on a first run.
+- **Only positive answers are staged.** A failed request is unchecked rather than absent
+  (`@unreachable-not-absent`), and freezing one into the journal would make a transient outage
+  permanent on every future run. And a staged answer is honoured **only if the link that produced it
+  would run this time**: the seeding reads the same two booleans that gate the live blocks, so a
+  `--no-gnomad` or `--offline` resume drops that link's answers rather than stamping a row a first run
+  with those flags could never have written — `alts` is a fact column, so the alternative would move
+  the compiled digest.
+- **The gate commits**, so *a refused `strict` run changes nothing* became a written promise instead
+  of an accident of statement order — the item's actual question, answered in the direction that
+  breaks nothing. The test asserts it on the bytes of a pre-existing table, not on a return value.
+- **`--keep-staging` keeps the staged answers after a successful commit**, for debugging; the default
+  removes them, and both values are exercised.
+- **Not mode-conditional**, as the entry refused in advance: `write=True` meaning "at the end" under
+  `strict` and "as we go" under `best_effort` is a flag that does not mean the same thing in every
+  function that takes one. Under a transaction it does, because committing is the only write, and
+  `write=False` stages nothing and takes no lock — with nothing written there is no window to exclude.
+
+**RM124 thins what the promise has to protect**, and the two were reached independently. What a
+staged, uncommitted table can contain is now provably machine-derived and never an authored value,
+because the author's corrections live in the overlay.
+
+### The lock, and why it is `flock`
+
+The transaction does not close the concurrency window: two runs can each stage and each commit, last
+writer winning over a merge with neither knowing. The reported incident is the sharp form — a
+client-side kill did not stop the worker, a zombie run reached the write and overwrote a restored
+330-row table with 162 rows, and the module then validated, closed and compiled green. Nothing
+downstream could see it, because the three branches that deliberately write **no row** for an
+unanswerable subject make a shorter table indistinguishable from a module whose author resolved less.
+Those branches are correct and were not in scope.
+
+`flock` on the spec directory's own descriptor, non-blocking, **no lockfile**. A lockfile left by
+exactly the kill this item is about would block every subsequent run — a worse unattended failure than
+the one it prevents — and the staleness rule that would fix it is a clock, which this repo has refused
+before (*guard the plan, not the clock*). `flock` dies with the process, so there is nothing to expire.
+Non-blocking because a run silently waiting half an hour behind a zombie is its own unattended failure,
+and the refusal is accurate by construction: the lock is only ever held by a live process.
+
+**The degradation is documented rather than silent, which the design explicitly owed.** No `fcntl` on
+a non-POSIX platform, or a filesystem answering `ENOLCK`/`EOPNOTSUPP`, logs that the run is **not**
+excluded from a concurrent one and carries on. Both branches are reached by tests — an unreached
+refusal branch is not an API, which the wave-1 audit had just demonstrated. **`flock` is untested here
+on the network filesystems a consumer may use**, and ENRICHER says so where a consumer meets it.
+
+### The progress unit, argued rather than guessed
+
+`progress: Callable[[int, int], None] | None = None`, reporting `(done, total)` over **subjects**. The
+entry filed this rather than shipping it because the resolver chain is batched inside `resolver.py`
+rather than being a per-subject loop, so the unit reported is a design choice — and a leaf shipped
+against a guess is one Principle 3 keeps working forever.
+
+- **The incident is an idle timeout.** Both reported runs died at 1800 s with essentially every
+  variant resolved, so what the caller needs first is a keepalive with monotonic progress — which
+  rules out **phases**, since a 29-minute phase emits nothing and the timeout fires anyway.
+- **`total` must be known up front** for the number to mean anything to a caller rendering it. The
+  subject count is; the link count is not, since it depends on what resolution finds.
+- **Subjects are the only unit the author's mental model already has.** Links are an implementation
+  detail of the batched resolver, and publishing one would make a refactor of `resolver.py` a contract
+  change — the rename P3 forbids arriving through the back door.
+
+No protocol was added, because none was asked for: two integers, no object, no event vocabulary to
+keep working forever. Monotonicity is structural — `done` is the size of a set that only grows — and
+the assembly loop touches every subject, so the last report is always `(total, total)`.
+
+### `enrich --rederive` — RM83's residue, and it composes rather than adds
+
+A full re-derivation that keeps a baseline reports what moved, which is MODULE_LIFECYCLE § 5.1's
+canary performed. It composes with the transaction: the recorded table is still in memory and the
+fresh one has not been committed, so both sides exist at the commit boundary and the comparison is
+free. The comparison is over `RESOLUTION_FACT_FIELDS`, read off the registry rather than restated,
+because the provenance columns move on every run by design.
+
+- **`None` is not `[]`.** `None` says nobody re-derived; `[]` says every recorded subject was re-asked
+  and every one still answers the same. Only a real difference prints — a comparison whose empty
+  result is the normal case must not announce a zero as though it were evidence.
+- **A recorded subject the run could not ask about keeps its recorded rows**, and the carry-forward
+  warns naming them. Without it, an offline `--rederive` would replace a full table with an empty one:
+  the reported incident wearing a new flag, and the sharpest test in the unit. Answered-and-absent is
+  an answer and does replace (it writes a `not_found` row); could-not-ask is not.
+- **A re-derivation resumes only another re-derivation.** After a gap-filling run commits, its staged
+  answers are exactly what produced the recorded table, so seeding them would compare that table
+  against its own provenance and report a clean bill for precisely the subjects being re-checked —
+  the canary silenced by a file left behind for debugging. The journal records which run wrote each
+  row; the reverse direction is allowed, because an answer a re-derivation obtained is still an answer.
+- **The honest limit is stated rather than hidden.** `rm resolution.csv` plus a re-run re-derives just
+  as correctly and reports **nothing**, because it destroys the old values before the fresh ones
+  arrive and nothing holds both sides.
+
+**Repairs rejected**, kept because each looks obvious from the headline: a `--refresh` command (RM83's
+three open questions were all answered elsewhere, leaving a mode on the command that already does the
+derivation); a diffs file or table, or a proposed table beside the current one (version control with no
+consumer, beside the version control the author already has); a pass that *applies* the newer value
+(rewriting an authored or curator-set cell destroys the evidence of the upstream change — still the
+rule, and the overlay does not soften it); and re-asking every subject on **every** run (dropping
+merge-not-clobber did not mean that, and reading it that way would put the full resolution time on
+every pass to buy drift detection nobody asked to run continuously).
+
+### Charter check
+
+P2 — enricher-only; the compile path imports none of it. P3 — three keyword arguments with defaults, a
+staging directory and a new module are additive; no schema, no manifest field, no vocabulary. P7 — a
+committed run produces the table an uninterrupted run produces, which the resume path proves by test.
+
 ## RM83 — a derived sidecar can only be refreshed by deleting it, which discards the overrides it exists to hold
 
 **Closed, not shipped, on 2026-08-28**, in the commit that landed RM124 and not before — a closure

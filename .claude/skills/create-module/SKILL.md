@@ -304,6 +304,8 @@ it aside and re-enrich; comparing the two is the check, and no command does it f
 ```bash
 just-dna-enricher enrich spec/                  # → resolution.csv (rsid ↔ coordinate, VRS ids, ref check)
 just-dna-enricher enrich spec/ --offline        # caches only, zero egress
+just-dna-enricher enrich spec/ --rederive       # re-ask every recorded subject; report what moved
+just-dna-enricher enrich spec/ --keep-staging   # leave the staged answers behind, to read them
 just-dna-enricher frequencies spec/             # → frequencies.csv   (gnomAD, paced ~6s/batch)
 just-dna-enricher gene-metrics spec/            # → gene_metrics.csv  (gnomAD constraint)
 just-dna-enricher dosage spec/                  # → ClinGen dosage rows onto gene_metrics.csv
@@ -325,10 +327,30 @@ of which can be turned off (`--no-clinvar`, `--no-gnomad`), and folds in three c
 disable: `--verify-ref`, `--verify-clinsig`, `--verify-rsids`. Snapshots are provisioned from
 HuggingFace when absent and `--offline` is not set.
 
-**An existing sidecar is authoritative and merged, never clobbered.** To regenerate `resolution.csv` /
-`frequencies.csv` / `gene_metrics.csv` after changing the spec you must **delete the file first**, or
-stale rows persist silently. Moving it aside and re-enriching is also the only way to ask whether an
-injected table still agrees with the sources.
+**An existing sidecar is authoritative and merged, never clobbered.** To regenerate `frequencies.csv`
+or `gene_metrics.csv` after changing the spec you must **delete the file first**, or stale rows persist
+silently. Your corrections are safe either way, because they live in `overrides.csv` and not inside the
+derived file.
+
+**`enrich --rederive` re-asks every recorded subject and names the ones that came back different.**
+That is the only way to notice a source that quietly *revised* an answer: an ordinary run fills gaps and
+never re-asks, so a changed upstream value moves nothing you could see. It reports the difference and
+commits the fresh answer; a value you decided rather than derived belongs in `overrides.csv`, where
+re-deriving cannot reach it. Deleting `resolution.csv` and re-running re-derives just as correctly, but
+reports nothing — the old values are gone before the new ones arrive, so there is no comparison left to
+make.
+
+**An enrichment run is a transaction, so a run you kill costs you nothing.** Answers are staged to disk
+beside `resolution.csv` as the sources reply, and the table is written once at the end; kill the run at
+minute 29 and the next one resumes from what was already answered instead of asking again. A `--strict`
+run that refuses commits nothing at all — the module is left exactly as it was. One spec directory takes
+one run at a time: a second one refuses rather than racing, and says so.
+
+Two things a resume deliberately will **not** do. It does not honour an answer from a link you have
+since switched off, so `--no-gnomad` or `--offline` on the re-run drops what that link had already
+said rather than recording a row the flags you gave could never have produced. And `--rederive` never
+seeds from an ordinary run's staged answers: once that run committed, its answers are exactly what is
+in your table, so re-using them would tell you nothing had changed no matter what the source now says.
 
 **`resolution.csv` covers every table that can name a locus, but the compiler applies it to
 `variants.csv` alone.** So `enrich` resolves your `pharm_variants.csv`, `haplotypes.csv` and

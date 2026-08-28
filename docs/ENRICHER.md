@@ -301,6 +301,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | Module | Role | Notable deps |
 |---|---|---|
 | `enrich` | orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
+| `transaction` | **0.7** (RM128): the run's durability — staged answers beside the target, the advisory `flock` over the read-modify-write window, and the `(done, total)` progress unit | format `atomic_writer`, stdlib `fcntl` |
 | `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
@@ -446,7 +447,8 @@ enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
        clinvar_cache=None, use_clinvar=True, use_gnomad=True, download=True,
        genome_build=None, write=True, mint_vrs=True,
        verify_ref=True, verify_clinsig=True, verify_rsids=True,
-       keep_par_twin=False, resolver=None, gnomad_client=None) -> EnrichmentResult
+       keep_par_twin=False, rederive=False, keep_staging=False, progress=None,
+       resolver=None, gnomad_client=None, grch37_client=None) -> EnrichmentResult
 ```
 
 **`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
@@ -493,6 +495,133 @@ coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resoluti
 
 After the chain settles, `vrs.mint_resolution_rows` stamps `vrs_id`/`vrs_spec` onto every mintable row
 (`mint_vrs=True`). An existing id is never overwritten.
+
+### The run is a transaction (0.7, RM128)
+
+`enrich()` used to persist nothing until its tail: a single `if write:` block at the bottom, everything
+above it in memory, so a run killed at minute 29 had written **zero bytes** and the thirty minutes were
+gone (S66). The obvious repair — checkpoint the table as it goes — trades away a property somebody may
+be relying on, that a refused `strict` run leaves the module exactly as it was. **The trade is
+unnecessary.** The run is a transaction, which keeps the promise absolutely and recovers the work.
+
+* **Staged answers, in the target's own directory.** As each live link answers, the raw answer
+  (`rsid → [locus]`, plus which link said so) is written to `.<name>.staging/answers.csv` beside the
+  table — `transaction.ResolutionJournal`, `transaction.staging_dir_for`. Same directory is the
+  *correctness condition*, not a convenience: `os.replace` is atomic only within one filesystem, and
+  `shutil.move` across a partition degrades to copy-then-delete. Staging beside the target makes a
+  cross-device move structurally impossible rather than merely avoided, and a test asserts the sibling
+  relationship rather than trusting the prose.
+* **What is staged is the answer, never the row.** Everything downstream of an answer — the
+  allele-aware hosting filter, the pseudoautosomal selection, `locus_index`, the minted ids — recomputes
+  on the resumed run, so a flag that changed between the kill and the resume changes the table exactly
+  as it would have on a first run, and the journal cannot carry a stale derivation. What it cannot
+  survive is a different `genome_build`, which is checked and, on a mismatch, discarded whole with a
+  warning. Only **positive** answers are staged: a request that failed is unchecked rather than absent,
+  and freezing that into the journal would make a transient outage permanent.
+* **Seeded between the caches and the live links**, so a snapshot provisioned between the kill and the
+  resume still wins the variant it would have won on a first run — and the live request is not made
+  twice. That placement is what makes *a resumed run produces the table an uninterrupted run produces*
+  a property rather than a hope; it is the item's P7 obligation and it has a test.
+* **A staged answer is honoured only if the link that produced it would run this time.** The seeding
+  reads the *same two booleans* that decide whether the live Ensembl and gnomAD blocks execute, so a
+  `--no-gnomad` or `--offline` resume drops what that link had already answered instead of stamping a
+  `source="gnomad"` row a first run with those flags could never have written. `alts` is in
+  `RESOLUTION_FACT_FIELDS`, so honouring a switched-off link would move the compiled digest too. The
+  dropped answers are logged, and their subjects go back to the chain.
+* **The gate commits.** Every refusal (`ref` mismatches, withdrawn rsIDs, stale rsIDs, unresolved keys)
+  raises **before** the write block, so *a refused `strict` run changes nothing* is now a written
+  promise rather than an accident of statement order. The test asserts it on the bytes on disk of a
+  pre-existing table, not on a return value. The staged answers are left behind by a refusal, which is
+  the point: the next run resumes.
+* **`keep_staging=True` / `--keep-staging`** leaves the staged answers after a successful commit, for
+  debugging, and logs where they are. The default removes them.
+* **Not mode-conditional.** `write=True` meaning "at the end" under `strict` and "as we go" under
+  `best_effort` was refused in advance — a flag must mean the same thing in every function that takes
+  one. Under a transaction it does, because committing is the only write. `write=False` stages nothing
+  and takes no lock: with nothing written there is no window to exclude.
+
+### The advisory lock, and how it degrades
+
+The transaction does not close the concurrency window. Two runs can each stage and each commit, last
+writer winning over a merge with neither knowing — the reported incident is the sharp form, where a
+client-side kill did not stop the worker, a zombie run reached the write and overwrote a restored
+330-row table with 162 rows, and the module then validated, closed and compiled green. Nothing
+downstream could see it: the three branches that deliberately write **no row** for an unanswerable
+subject make a shorter table indistinguishable from a module whose author resolved less, and those
+branches are correct.
+
+So the whole read-modify-write window is held under `fcntl.flock` on the spec directory's own
+descriptor (`transaction.spec_lock`). **No lockfile**, because one left behind by exactly the kill this
+item is about would block every subsequent run — a worse unattended failure than the one it prevents —
+and the staleness rule that would fix it is a clock. `flock` dies with the process, so there is nothing
+to expire. The lock is **non-blocking**: a second run refuses with a pinned message rather than waiting
+half an hour behind a zombie, and the refusal is accurate by construction since the lock is only ever
+held by a live process.
+
+`spec_lock` is the **first** thing `enrich()` does, ahead of every loader, so a `spec_dir` that is not
+an openable directory meets it before anything else. It refuses with `EnrichmentError` rather than
+letting `os.open`'s own exception past the pass that owns the call.
+
+**The degradation is documented rather than silent.** Without `fcntl` (a non-POSIX platform), or on a
+filesystem that refuses the call — a network mount may answer `ENOLCK`/`EOPNOTSUPP`, or emulate `flock`
+in a way that excludes nothing — the run proceeds and logs `Advisory locking is unavailable for …, so
+this run is NOT excluded from a concurrent one`. **`flock` is untested here on the network filesystems
+a consumer may use**; serialize enrichment of one spec directory yourself where that matters. Both
+degradation branches are exercised by tests, because an unreached branch is not an API.
+
+### `progress` — `(done, total)` over subjects
+
+`progress: Callable[[int, int], None] | None = None`. Two integers, no object, no event vocabulary to
+keep working forever. The unit is argued rather than guessed, because P3 keeps a leaf working:
+
+* **The incident is an idle timeout.** Both reported runs died at 1800 s with essentially every variant
+  resolved, so what the caller needs first is a keepalive with monotonic progress — which rules out
+  *phases*, since a 29-minute phase emits nothing and the timeout fires anyway.
+* **`total` must be known up front** for the number to mean anything to a caller rendering it. The
+  subject count is; the link count is not, since it depends on what resolution finds.
+* **Subjects are the only unit the author's mental model already has.** Links are an implementation
+  detail of the batched resolver, and publishing one would make a refactor of `resolver.py` a contract
+  change.
+
+`(0, total)` is reported before any work starts. `done` is the size of a set that only grows, so
+monotonicity is structural rather than promised, and the assembly loop touches every subject, so the
+last report is always `(total, total)`. The callback's exceptions are not swallowed — under the
+transaction an abort there leaves the staged answers exactly as a kill does.
+
+### `rederive` — the drift canary, performed (0.7, RM83's residue)
+
+An ordinary run gap-fills and never re-asks about a recorded subject, so a source that silently
+*revised* an answer moves no `fetched_at`, no fact signature and no digest: MODULE_LIFECYCLE § 5.1's
+canary was an instrument that could not fire. `rederive=True` / `--rederive` re-asks **every** subject
+and reports which recorded ones came back different, as `EnrichmentResult.rederived`.
+
+It composes with the transaction rather than adding machinery: the recorded table is already in memory
+and the fresh one has not been committed, so both sides exist at the commit boundary and the comparison
+is free. The comparison is over `RESOLUTION_FACT_FIELDS` only — read off the registry rather than
+restated — because the provenance columns move on every run by design.
+
+* **`None` is not `[]`.** `None` says nobody re-derived; `[]` says every recorded subject was re-asked
+  and every one still answers the same. Only the second is a clean bill, and only a real difference is
+  printed — an empty comparison must not announce a zero as though it were evidence.
+* **A recorded subject this run could not ask about keeps its recorded rows.** Otherwise re-deriving
+  would be a way to *shorten* the table, which is the reported incident wearing a new flag; an offline
+  `--rederive` would replace a full table with an empty one. Answered-and-absent is an answer and does
+  replace (it writes a `not_found` row); could-not-ask is not. The carry-forward warns, naming the
+  subjects it kept.
+* **A re-derivation resumes only another re-derivation.** After a gap-filling run commits, its staged
+  answers are exactly what produced the recorded table — so a later `--rederive` seeded from them
+  would compare that table against its own provenance and report a clean bill for precisely the
+  subjects it was asked to re-check. The journal records which run wrote each row, a `--rederive` run
+  skips the gap-filling ones and says how many it skipped, and the reverse direction is allowed
+  because an answer a re-derivation obtained is still an answer. `--keep-staging` is the door this
+  closes: without the rule, a file kept for debugging silences the canary.
+* **The honest limit.** `rm resolution.csv` plus a re-run re-derives just as correctly and reports
+  **nothing**: it destroys the old values before the fresh ones arrive, so nothing holds both sides.
+* **What is not built**, and each looks obvious from the headline: a `--refresh` command, a diffs file
+  or table, a proposed table beside the current one, a pass that *applies* the newer value to an
+  authored or curator-set cell (that destroys the evidence of the upstream change — still the rule), and
+  re-asking every subject on *every* run (it would put the full resolution time on every pass to buy
+  drift detection nobody asked to run continuously).
 
 ### Which tables ask for a coordinate
 
@@ -2724,6 +2853,8 @@ just-dna-enricher enrich spec/ --no-verify-ref     # skip the reference-allele c
 just-dna-enricher enrich spec/ --no-verify-clinsig # skip the ClinVar clin_sig cross-check
 just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdrawal check
 just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseudoautosomal locus
+just-dna-enricher enrich spec/ --rederive          # re-ask every recorded subject; report what moved
+just-dna-enricher enrich spec/ --keep-staging      # keep the staged answers after a successful commit
 just-dna-enricher literature spec/                 # pass 4: write spec/literature.csv (online only);
                                                    #   reads studies.csv AND any binning row's pmid
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
@@ -2783,8 +2914,14 @@ just-dna-enricher clinvar publish cv/ --dry-run                 # plan the refer
 just-dna-enricher clinvar publish cv/                           # create-or-update datasets/just-dna-seq/clinvar
 ```
 
-`enrich`/`enrich-and-compile` take `--strict/--best-effort`, `--offline`, `--ensembl-cache`,
-`--clinvar-cache`, `--clinvar/--no-clinvar`, and the three verify toggles above; `literature` takes
+`enrich` takes the mode and cache flags (`--strict/--best-effort`, `--offline`, `--ensembl-cache`,
+`--clinvar-cache`), the per-link toggles (`--clinvar/--no-clinvar`, `--gnomad/--no-gnomad`,
+`--vrs/--no-vrs`), the three verify toggles above, `--keep-par-twin`, and the two transaction flags
+`--rederive` / `--keep-staging`. **`enrich-and-compile` takes the mode, cache and link flags and none
+of the rest** — it is the offline convenience wrapper, so the verify toggles and the transaction flags
+are `enrich`'s alone. That distinction is the rule worth writing down; the enumeration is not, because
+a flag list restated in prose rots the moment a flag is added, and **`--help` is the authority**.
+`literature` takes
 `--strict/--best-effort`, `--offline`, `--fulltext/--no-fulltext`; `check-identifiers` takes
 `--strict`, `--traits/--no-traits`, `--genes/--no-genes` and, like `check-acmg`, **writes no authored
 cell and records that the question was put**: there is no sidecar column for a module-level identifier
@@ -2999,10 +3136,11 @@ validated, closed and compiled green.
 nine were reported and the other six had the identical shape, so a fix scoped to the report would have
 left the next writer inheriting whichever neighbour it was copied from.
 
-**What this does not fix**, and what [RM128](ROADMAP.md#rm128--enrich-persists-nothing-until-its-tail-so-a-run-killed-at-minute-29-has-written-nothing)
-holds: `enrich()` still persists nothing until its tail, so a run killed before the write has written
-nothing at all — atomically. The lost-work half, the missing lock over a read-modify-write window that
-spans the entire run, and the absent progress callback are each a decision rather than a missing line.
+**What this did not fix, and what [RM128](ROADMAP_HISTORY.md#rm128--enrich-persisted-nothing-until-its-tail-so-a-run-killed-at-minute-29-had-written-nothing) then did.** Atomic writing left `enrich()`
+persisting nothing until its tail, so a run killed before the write had written nothing at all —
+atomically. The lost-work half, the missing lock over a read-modify-write window that spans the entire
+run, and the absent progress callback were each a decision rather than a missing line, and all three
+shipped in 0.7: see *The run is a transaction* above.
 
 ## `resolution.csv` is provisional (0.5)
 

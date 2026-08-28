@@ -694,7 +694,7 @@ the thing we are constitutionally not in, which is what makes it a good source a
 
 ## RM128 — `enrich()` persists nothing until its tail, so a run killed at minute 29 has written nothing
 
-**Severity** medium · **Owner** enricher · **Entry** [ROADMAP.md § RM128](../ROADMAP.md#rm128--enrich-persists-nothing-until-its-tail-so-a-run-killed-at-minute-29-has-written-nothing) ·
+**Severity** medium · **Owner** enricher · **Entry** [ROADMAP_HISTORY.md § RM128](../ROADMAP_HISTORY.md#rm128--enrich-persisted-nothing-until-its-tail-so-a-run-killed-at-minute-29-had-written-nothing) (shipped; it left ROADMAP.md when it landed) ·
 **Motivating case** S66 (just-module-creator)
 
 ### The problem, and the ask that dissolved

@@ -312,6 +312,11 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The run with nothing to do is a path: re-run a merge pass over a table it already filled. `@empty-work-is-a-path`
 - Probe a source's real file before modelling it; the docs lie by omission. `@probe-the-real-file`
 - A sidecar writer is atomic or it leaves a valid short file a merge believes. `@atomic-sidecar-write`
+- An `enrich` run is a transaction: stage the *answer* beside the target, commit the table at the gate. `@enrich-is-a-transaction`
+- A refused `strict` run commits nothing — a written promise now, asserted on the bytes. `@enrich-is-a-transaction`
+- `flock` the directory, never a lockfile: the kill it guards against is what leaves one behind. `@flock-not-a-lockfile`
+- A progress callback's unit is a contract — subjects, because `total` must be known up front. `@progress-unit-is-subjects`
+- `--rederive` never shortens a table: answered replaces, could-not-ask keeps its rows. `@rederive-never-shortens`
 - A source's record-id fan-out is a finding: keep every row, count the contested keys, never `mode()` a winner. `@multiplicity-is-a-finding`
 
 ## The design cycle (the order of things)

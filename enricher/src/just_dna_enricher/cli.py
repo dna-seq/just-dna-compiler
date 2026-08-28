@@ -197,6 +197,18 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
              "which is the one every annotation source uses and the only one a hard-masked GRCh38 "
              "analysis set can match.",
     ),
+    rederive: bool = typer.Option(
+        False, "--rederive",
+        help="Re-ask every source about every subject, including the ones already recorded, and "
+             "report which of them changed value. An ordinary run gap-fills and never re-asks, so a "
+             "source that quietly revised an answer moves nothing you could notice.",
+    ),
+    keep_staging: bool = typer.Option(
+        False, "--keep-staging",
+        help="Leave the staged answers beside resolution.csv after a successful run. They are "
+             "removed by default; a killed run leaves them either way, and the next run resumes "
+             "from them.",
+    ),
 ) -> None:
     """Resolve a spec's variants into resolution.csv beside the spec. Exit 1 in strict mode if unresolved."""
     try:
@@ -205,6 +217,7 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, use_clinvar=use_clinvar,
             use_gnomad=use_gnomad, mint_vrs=mint_vrs, verify_ref=verify_ref,
             verify_clinsig=verify_clinsig, verify_rsids=verify_rsids, keep_par_twin=keep_par_twin,
+            rederive=rederive, keep_staging=keep_staging,
         )
     except EnrichmentError as exc:
         typer.secho(f"ENRICH FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -271,6 +284,11 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # because those are the rows that need answering.
     if result.clin_sig_comparison is not None:
         typer.secho(f"  clin_sig: {result.clin_sig_comparison}", fg=typer.colors.CYAN)
+    # `None` means nobody re-derived and there is nothing to say; an empty list means every recorded
+    # subject was re-asked and none moved, which prints nothing either — a comparison whose empty
+    # result is the normal case would be announcing a zero as evidence. Only a real difference prints.
+    for drift in result.rederived or ():
+        typer.secho(f"  re-derived: {drift}", fg=typer.colors.YELLOW, err=True)
 
 
 @app.command("frequencies")

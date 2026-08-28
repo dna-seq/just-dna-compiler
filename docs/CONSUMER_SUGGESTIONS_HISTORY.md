@@ -5045,9 +5045,10 @@ reports too much of, and what it does not report at all.
 
 ## S66 — `enrich()` writes `resolution.csv` once, at the very end, in place, with no lock — so a run killed at minute 29 has written nothing, and one killed mid-write leaves a valid-looking short file
 
-**Status — accepted. Ask 1 shipped 2026-08-24; asks 2, 3 and 4 are filed as
-[RM128](ROADMAP.md#rm128--enrich-persists-nothing-until-its-tail-so-a-run-killed-at-minute-29-has-written-nothing),
-open, a minor, release undecided.** Every line of your reading holds against the tree and not only
+**Status — accepted, and all four asks have now shipped. Ask 1 landed 2026-08-24; asks 2, 3 and 4
+shipped in 0.7 as [RM128](ROADMAP_HISTORY.md#rm128--enrich-persisted-nothing-until-its-tail-so-a-run-killed-at-minute-29-had-written-nothing) — the run became a transaction, so a kill leaves the staged
+answers for the next run to resume from and a refused `strict` run commits nothing; the lock is
+`flock` on the spec directory; and `progress` reports `(done, total)` over subjects.** Every line of your reading holds against the tree and not only
 against the installed package — one write at `enrich.py:1248`, a truncating writer, no `flock`,
 `fcntl`, `os.replace`, `NamedTemporary` or `fsync` anywhere in any of the three packages, and the
 read-modify-write window really is the whole run.

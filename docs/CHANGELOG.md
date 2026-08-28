@@ -90,7 +90,60 @@ inside this same number. Each entry below names the packages it actually touched
 - **RM83 — closed, not shipped.** Dissolved by RM124 rather than argued down: with the corrections in
   the overlay there is nothing inside a sidecar to preserve, so the `--refresh` command it asked for
   has no problem left to solve and the drift detection it wanted falls out of an ordinary
-  re-derivation. See [ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold).
+  re-derivation. Its residue shipped as `enrich --rederive`, in RM128's entry below. See
+  [ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold).
+
+
+- **RM128 — an enrichment run is a transaction, and it holds a lock, reports progress, and can
+  re-derive.** *(`just-dna-enricher`; no schema, no manifest field, no vocabulary — a new module, three
+  keyword arguments and two flags.)* `enrich()` persisted nothing until its tail, so a run killed at
+  minute 29 had written **zero bytes**. The obvious repair, checkpointing the table as it goes, trades
+  away a property somebody may be relying on — that a refused `strict` run leaves the module exactly as
+  it was — and the trade turned out to be unnecessary.
+
+  **Durable staging beside the target, plus an atomic commit at the gate.** Each live link's answer is
+  written to `.<name>.staging/answers.csv` beside `resolution.csv` as it arrives; the table itself is
+  still written once, at the bottom, by a writer that renames into place. Same-directory staging is the
+  correctness condition rather than a convenience: `os.replace` is atomic only within one filesystem,
+  so staging beside the target makes a cross-device move structurally impossible instead of merely
+  avoided. What is staged is the **raw answer**, never the assembled row — the hosting filter, the
+  pseudoautosomal selection, `locus_index` and the minted ids all recompute — so a resumed run
+  reproduces the table an uninterrupted one produces, which is the item's P7 obligation and has a test.
+
+  **A refused `strict` run commits nothing**, now as a written promise rather than an accident of
+  statement order, asserted on the bytes on disk of a pre-existing table. `--keep-staging` leaves the
+  staged answers after a successful commit, for debugging; the default removes them. Not
+  mode-conditional: `write` gates the persistence machinery whole, so it means one thing everywhere.
+
+  **`flock` on the spec directory, non-blocking, no lockfile.** Two concurrent runs were
+  last-writer-wins over a merge with neither knowing, and a zombie run once overwrote a restored 330-row
+  table with 162 rows that then validated, closed and compiled green. A lockfile left by exactly the
+  kill this item is about would block every subsequent run, and the staleness rule that would fix it is
+  a clock; `flock` dies with the process. A second run refuses with a pinned message. **The degradation
+  is documented, not silent** — no `fcntl`, or a filesystem answering `ENOLCK`/`EOPNOTSUPP`, logs that
+  the run is not excluded from a concurrent one. `flock` is untested here on the network filesystems a
+  consumer may use.
+
+  **`progress: Callable[[int, int], None] | None`, reporting `(done, total)` over SUBJECTS.** The
+  incident is an idle timeout — both reported runs died at 1800 s with essentially every variant
+  resolved — so the caller needs a keepalive with monotonic progress. That rules out phases (a
+  29-minute phase emits nothing) and links (whose total is unknown until resolution finds them). No
+  protocol: two integers, no object, no event vocabulary to keep working forever.
+
+  A staged answer is honoured **only if the link that produced it would run this time** — the seeding
+  reads the same two booleans that gate the live blocks — so a `--no-gnomad` or `--offline` resume does
+  not stamp a row a first run with those flags could never have written.
+
+  **`--rederive` is RM83's residue, and it composes rather than adding machinery.** It re-asks every
+  recorded subject and names the ones that came back different — MODULE_LIFECYCLE § 5.1's canary,
+  finally performable. `None` means nobody re-derived and `[]` means nothing moved; only a real
+  difference prints. **A recorded subject the sources could not be asked about keeps its rows**, or
+  re-deriving would be a way to shorten the table — the reported incident wearing a new flag. The
+  **A re-derivation resumes only another re-derivation**, because a gap-filling run's staged answers
+  are, after its commit, exactly what produced the recorded table — seeding them would compare the
+  table against its own provenance and report a clean bill for the subjects being re-checked. The
+  honest limit is stated with it: `rm` plus a re-run re-derives just as correctly and reports nothing,
+  because it destroys the old values before the fresh ones arrive.
 
 
 - **RM126 — a release now declares what it changed about compiled output.** Principle 3, as amended
