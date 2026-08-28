@@ -12,11 +12,17 @@ import io
 from pathlib import Path
 
 import pytest
-from just_dna_compiler.compiler import compile_module, reverse_module, validate_spec
+from just_dna_compiler.compiler import (
+    OVERRIDES_CSV,
+    compile_module,
+    reverse_module,
+    validate_spec,
+)
 from just_dna_compiler.draft import DRAFTABLE, DraftError, model_for
 from just_dna_compiler.scaffold import (
     COMPANION_KINDS,
     MODULE_SPEC,
+    _RECOGNIZED_TABLES,
     companions_for,
     module_spec_template,
     scaffold_module,
@@ -53,6 +59,12 @@ def _fill_csv(path: Path) -> None:
                 row[column] = values.get(column, "1")
         if row.get("unresolved") == "false" and not row.get("measure_min"):
             row["measure_min"] = "1"
+        if path.name == OVERRIDES_CSV:
+            # An overlay row is valid only as a WHOLE: `field` must be a column of whatever table
+            # `table` names, and whether `member` is required depends on that same table's key.
+            # Neither is derivable from a per-column fill, so one coherent row is stated instead —
+            # the same shape as the resolved-bin fixup above, and for the same reason.
+            row.update({"table": "literature.csv", "operation": "update", "field": "doi"})
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
@@ -143,12 +155,13 @@ def test_the_companion_rule_matches_the_compilers_own_requirement(tmp_path: Path
 @pytest.mark.parametrize("kind", sorted(DRAFTABLE))
 def test_every_kind_can_be_scaffolded_and_filled(kind: str, tmp_path: Path) -> None:
     spec_dir = tmp_path / "spec"
-    # The licence sidecar is not a table a module can consist of — "no recognized table" is the right
-    # refusal for a module that is only a licence file — so it is scaffolded beside the SNP core. Every
-    # other kind stands alone (S21). Derived from the spellings rather than naming one, because it has
-    # two of them since 0.6 (RM51) and a hand-kept name here would have covered only the older one.
-    licence_sidecar = kind in sidecar_spellings(SOURCES_CSV)
-    kinds = ["variants.csv", kind] if licence_sidecar else [kind]
+    # Two authored files are not tables a module can *consist of* — "no recognized table" is the right
+    # refusal for a module that is only a licence ledger (S21) or only a set of corrections to derived
+    # tables it does not have (RM124) — so each is scaffolded beside the SNP core. **Derived from the
+    # compiler's own composition rule** rather than named: a hand-kept list here covered only the older
+    # licence spelling when RM51 added the second one, and would have missed the overlay outright.
+    stands_alone = kind in _RECOGNIZED_TABLES or kind == "studies.csv"
+    kinds = [kind] if stands_alone else ["variants.csv", kind]
     plan = scaffold_module(spec_dir, kinds=kinds, name="demo")
     assert (spec_dir / kind) in plan.created
     _fill_module(spec_dir)
@@ -507,7 +520,10 @@ def test_the_licence_ledger_does_not_count_as_a_recognized_table() -> None:
 
 def test_every_table_kind_grounds_a_studies_row_on_its_own() -> None:
     """Set equality over the walked set: a table kind added later must not reintroduce the stub."""
-    kinds = {k for k in DRAFTABLE if k not in {"variants.csv", "studies.csv", SOURCES_CSV, "licensing.csv"}}
+    # The exclusions are DERIVED from what actually satisfies composition, not named: the licence
+    # ledger and the overlay are authored files that are not tables a module can consist of, and a
+    # hand-kept list of them goes stale the next time one lands.
+    kinds = {k for k in DRAFTABLE if k in _RECOGNIZED_TABLES and k != "variants.csv"}
     assert kinds
     assert {k: companions_for([k, "studies.csv"]) for k in kinds} == dict.fromkeys(kinds, [])
 

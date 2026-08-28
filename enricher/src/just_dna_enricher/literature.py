@@ -1647,6 +1647,14 @@ def _write_literature_csv(rows: list[LiteratureRow], output_path: Path) -> None:
 
     Generic over the fields rather than a per-column dict literal, for the reason `_FIELDNAMES` gives:
     a hand-kept renderer is the same thing as a hand-kept column list, one edit later.
+
+    **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
+    nothing preserves such an edit — a correction to a derived row belongs in `overrides.csv` beside
+    the spec, where the compiler applies it on every build and it travels with the reason it was
+    made. That is what makes deleting this file and re-running cost nothing: the author's judgements
+    are not in here to lose, including the deliberate blank a merge could never tell from an absent
+    value. The re-run itself is unchanged, and still gap-fills rather than re-asking every subject;
+    what changed is that leaving a recorded row alone now risks nothing.
     """
     with atomic_writer(output_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)

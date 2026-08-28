@@ -1031,78 +1031,13 @@ by-product of building this.
 
 ## RM83 — a derived sidecar can only be refreshed by deleting it, which discards the overrides it exists to hold
 
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it) on 2026-08-28 — CLOSED, dissolved by RM124 rather than argued down, contingent on the overlay landing.** Both halves stop existing once derived tables are pure build products. The residue is `enrich --rederive` — a flag on the command that already derives, composing with RM128's transaction so a baseline exists for the diff — not the `--refresh` command with its three open questions. Move this entry to ROADMAP_HISTORY in the commit that lands the overlay, not before.
-
-**Severity** medium-high · **Status** open — one shape named, tier undecided · **Owner** enricher
-(probably; see below) · **Motivating case** every second pass; upstream-drift detection
-
-### The two halves, which are one mechanism
-
-**The refresh half.** Every derived sidecar is merge-not-clobber: an existing row is authoritative and a
-re-run adds to it rather than replacing it. The rule exists because these tables are human-overridable
-by design. Its consequence is the single most important operational fact about a second pass, and
-[MODULE_LIFECYCLE § 6.3](MODULE_LIFECYCLE.md#63-what-must-be-deleted-and-what-deleting-costs) tabulates
-it per table: **to re-derive a sidecar you delete it first, and deleting it discards every hand-curated
-row in it along with the stale ones.** For `resolution.csv` those rows are real and not reproducible by
-re-running — `reference_examples/cyp2c9_warfarin_grch37/` carries three hand-authored `source=manual`
-rows — and for `literature.csv` the loss includes a curator's deliberate blank, which a merge cannot
-distinguish from an absent value in the first place.
-
-**The drift half.** Merge-not-clobber also means a re-run never re-asks about a row already recorded, so
-a source that quietly **revised** an existing answer moves nothing at all: no `fetched_at`, no fact
-signature, no digest. §5.1's canary — *content unchanged, a fact signature moved, therefore the world
-moved* — is a real instrument and it cannot fire on its own. Detecting upstream drift **is** the
-delete-and-re-derive: note the signature, delete the sidecar, re-derive, compare. No command performs
-that sequence, and the sequence is the one that discards the overrides.
-
-So they are not two items. The same missing operation causes both, and one shape closes both.
-
-### The charter already knows about this, and discharged it exactly once
-
-The 2026-08-12 amendment says a derived table that is both machine-written and human-overridable *wants
-a mechanism rather than a convention*. RM45 discharged that for **one** table: `verification.json` is
-"the one derived artifact whose human-overridability must not be a feature", which is why it is a JSON
-document rather than a fifth fact CSV. Nothing discharges it for the six tables where overriding **is**
-the intended feature. The second pass is where the convention fails, and `rm` is the whole of the
-current mechanism.
-
-### The shape
-
-A `--refresh` that **re-asks and reports the difference rather than merging**. It re-puts the question
-to the source for rows already recorded, and renders what changed instead of silently taking either
-side — which keeps the standing rule that a pass reports and never repairs, and makes the canary
-performable rather than merely readable.
-
-### The open questions, which are why this is filed rather than built
-
-- **Which tier owns it.** The enricher is what re-asks, so the refresh belongs there; but "tell me what
-  moved between this sidecar and a freshly derived one" is a comparison over injected bytes, which is
-  compiler-shaped. Splitting it wrongly gives two half-commands.
-- **What it does with a difference.** Report only and leave the file untouched is the conservative
-  answer and consistent with every other check; it also means the author is back to `rm` if they want
-  the new value. A third file (a proposed table beside the current one) is the other shape and needs a
-  name, a lifecycle and a rule about what compiles.
-- **The blocking one: on most sidecars nothing records that a row was overridden.** `source` is an open
-  provenance column that *can* say `manual` — `ResolutionRow`'s does, on real rows — but nothing sets it
-  when a human edits a cell of an existing machine-written row in place, so that row still reads
-  `source=gnomad`. "Re-derive the machine rows and keep the overrides" is therefore **not implementable
-  today**: the tier cannot tell a curator's edit from what the source said last time. Either the refresh
-  compares against the source and reports every difference without classifying it, or something has to
-  start recording the edit — and that second option is a schema question with the usual cost, not a flag.
-
-  **The second option now has a proposed shape and a motivating case: [RM124](#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it),
-  filed 2026-08-20 from S60.** A consumer built the *first* option — a non-destructive
-  capture/delete/re-derive/reapply wrapper — and it stops precisely where this paragraph says it must,
-  on a subject present in both copies with a differing fact. Their answer is an authored overlay table
-  that is never merged into the derived one, so the edit is recorded by construction. RM124 carries the
-  four questions it leaves open; this item stays the *refresh operation*, which the overlay makes
-  implementable rather than replaces.
-
-### What it must not become
-
-A pass that **applies** the newer value. Rewriting an authored or curator-set cell destroys the evidence
-of the upstream change, which is the rule every cross-check in this tier already follows, and it is the
-parked co-authoring item wearing a different name.
+**Moved to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold) on 2026-08-28.**
+Closed rather than shipped, dissolved by RM124 once derived tables became pure build products, and
+moved out of this file in the commit that landed the overlay — which is the condition
+[PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it)
+attached to the closure, because a closure recorded against an unlanded dependency is the kind of
+bookkeeping that makes a ledger untrustworthy. **The heading is kept verbatim for its anchor** — six
+documents link to it — and the entry and its reasoning now live in the history file.
 
 ## RM84 — a module has no version identity on the discovery path, and the publisher is the half we own
 
@@ -1458,7 +1393,15 @@ right.
 
 ## RM124 — an author's correction to a derived table has nowhere to live except inside it
 
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it) on 2026-08-28 — BUILDS in 0.7, and it is the round's keystone.** `overrides.csv`, keyed `(table, subject, member, field)`; operations `update`/`insert`/`suppress`, with the wildcard refused for `suppress` alone; applied at load and merge-not-clobber dropped for the six covered tables; P7 held by idempotency, so no `previous_value` column. Question 2 answered as a dated succession — see **RM135**.
+**SHIPPED 2026-08-28 — the entry below is kept as the record of what was observed, and
+[ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm124--an-authors-correction-to-a-derived-table-now-has-somewhere-to-live)
+carries what it did when it landed.** Two things the entry and the proposal both got wrong or left
+open, corrected there rather than here: the covered set is **seven** tables and not six (the proposal
+never enumerated them and the six was a miscount — `gwas_effects.csv` is the one nobody counted), and
+the wildcard `member` is refused for **`insert` as well as `suppress`**, because the row an insert
+would create under an empty member carries no member value and so could never be matched again.
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it) on 2026-08-28 — BUILDS in 0.7, and it is the round's keystone.** `overrides.csv`, keyed `(table, subject, member, field)`; operations `update`/`insert`/`suppress`, with the wildcard refused for the destructive one; applied at load and merge-not-clobber's *cost* dropped for the covered tables; P7 held by idempotency, so no `previous_value` column. Question 2 answered as a dated succession — see **RM135**.
 
 **Severity** medium-high · **Status** open — a shape proposed by a consumer who built the workaround,
 tier argued, four questions unsettled · **Owner** format + compiler · **Motivating case**

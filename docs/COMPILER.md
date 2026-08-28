@@ -1191,7 +1191,8 @@ resolves from a table that no longer says what it said.
 `module_spec.yaml` (always), `variants.csv` + `resolution.csv` (when `weights.parquet` exists;
 `resolution.csv` gated on `write_resolution=True`), `studies.csv` (when present), one CSV per present
 table kind, and one CSV per derived-fact sidecar whose parquet is present (`frequencies.csv`,
-`gene_metrics.csv`, `literature.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `sources.csv`).
+`gene_metrics.csv`, `literature.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `sources.csv`),
+plus `overrides.csv` when `overrides.parquet` is present (0.7, RM124).
 
 - **Preserved (round-trip-critical, Principle 7):** every authored `VariantRow`/`StudyRow`/table value;
   genotype phase (the `phased` bit re-emits `A|G` vs sorted `A/G`); tri-state bools; `priority` verbatim;
@@ -1207,6 +1208,16 @@ table kind, and one CSV per derived-fact sidecar whose parquet is present (`freq
   `status="resolved"`. So **`reverse → compile` reproduces the identical `artifact.digest` with no
   reference and no network** — hardening Principle 7's round-trip from reference-dependent to
   self-contained.
+- **The derived sidecars come back POST-overlay, and `overrides.csv` comes back beside them** (0.7,
+  RM124). The overlay is applied at compile, so what reverse reads out of the parquets is already the
+  corrected table — and it re-emits the overlay too, which means **the overlay applies twice and the
+  fixed point is checked by test rather than assumed**. It holds because all three operations are
+  idempotent set operations: an update to a value already present, an insert of a row already keyed
+  `(subject, member)`, and a suppress of a row already absent are each a no-op. The alternative —
+  emitting the *pre*-overlay table so the apply happens exactly once — would need the overlay to record
+  the value it replaced, which is a derived cell inside an authored table and rots the moment the source
+  moves. `overrides.csv` is written at the spec **root** under its one legal name, not through
+  `sidecar_write_path`: it is authored, like `variants.csv`.
 - **Provenance is deliberately dropped** on the way back: `source`/`status`/`fetched_at` are reset and
   `rsid_alternates`/`rsid_current`/`rsid_status` are not written, because those columns are kept out of
   the fact set precisely so they never enter the artifact — there is nothing for reverse to read. Recover
@@ -1404,6 +1415,28 @@ compiled artifact — reverse will not re-emit them — and --strict refuses ins
 with an injected table present, which spells out that the flag names Ensembl but is the master switch
 and that there is no "do not reach the network" flag because the compiler never does.
 
+**The overlay's two warnings (0.7, RM124), and there are only two on purpose.** `overrides.csv`
+applies before any check reads a derived row, so what a check reports is what the module asserts. No
+operation reports its own no-op — `reverse_module` emits the post-overlay table plus the overlay, so
+on a recompile update-already-equal, insert-already-present and suppress-already-absent are all three
+true of a healthy module, and reporting any of them would make a module and its own round trip
+disagree on `manifest.compilation.warnings`. What is left is the pair that is stable on both laps:
+
+```
+overrides.csv: {n} update override(s) name a row {table} does not carry: {subjects}. Two readings and
+nothing here separates them — the subject/member may be mistyped, or the source may have stopped
+publishing the row the correction was about. Neither an insert nor a suppress reports this: an insert
+creates the row and a suppress is satisfied by its absence.
+
+overrides.csv corrects {tables}, which this module does not carry. An overlay lies on top of a derived
+table and never creates one, so those rows change nothing. Run the pass that writes the table, or drop
+the override rows.
+```
+
+Both warn in **both** modes and both are aggregated into one sentence rather than one per row. The
+consequence a consumer should know is the one no message can carry: **a `suppress` with a typo'd
+subject does nothing, forever, and cannot warn** — check a suppression by reading the compiled table.
+
 **Substrings the suite pins as contract**, so changing one is a deliberate act rather than a reword:
 `test_validate_agrees_with_compile.py` holds `"forbid sale"`, `"does not match the id recomputed"`,
 `"could not be verified"`, `"p_value_num says"`, `"not among the"`, `"IUPAC ambiguity code"`,
@@ -1552,6 +1585,7 @@ would break scripts for no gain.
 | frozen `variant_key` identity (`base.derive_variant_key`) | ✅ stamped once, never re-keyed by resolution (P7); excluded from `authoring_reference()` | ✅ `weights.parquet` (compiler-managed) | **shipped** |
 | rsid↔coord resolution: one-to-many expansion, deterministic order, inject-only consistency check | ✅ `ORDER BY`; disagreement → warning; non-GRCh38 skipped | ✅ N coord-keyed rows per one-to-many rsid; idempotent | **shipped** (the DuckDB engine now lives in `just-dna-enricher`; GRCh38-only; multi-build RM15) |
 | **expansion marker: `VariantRow.locus_index` + `locus_count` (0.6, RM87)** | ✅ stamped at the expansion loop, authored cells overwritten by `_freeze_identity`; `exclude=True`, so no `content_signature` moves | ✅ `weights.parquet` (`UInt32` ×2, hand-listed in `_build_weights`); reverse prefers the stored index over its recompute and never re-emits either column into `variants.csv` | **shipped** — `locus_count > 1` is the row-level predicate; the positional pass's hard-coded `0` is honest only while those tables never expand (a line on RM65) |
+| **authored overlay `overrides.csv` (0.7, RM124)** | ✅ `OverrideRow` (`AuthoredModel`); `table` and `operation` are closed vocabularies; **`reason` required**; a `field` outside the named table's columns, or naming its own subject/member column, is refused; a wildcard `member` is refused for `insert` and `suppress`; duplicate `(table, subject, member, field)` and a key group carrying two operations are errors — all of it in **both** `validate_spec` and `compile_module` | ✅ `overrides.parquet`, **last** in `ARTIFACT_PARQUETS` so no published digest moves; applied to the seven covered derived tables before any check reads a row, so the fact signatures and `resolution_signature` are post-overlay | **shipped** — the derived files are pure build products, `reverse` emits post-overlay tables *plus* the overlay, and no operation reports its own no-op |
 | **VCF pointer namespace + cardinality (0.6, RM53/RM54/RM61)** | ✅ `INFO/`/`FORMAT/` qualifier and the spec's key charset accepted (widening only); `_check_vcf_pointers` warns in **both** modes on a bare colliding key and on a spec-multi-valued target with no element rule, aggregated by reason | ✅ `source_element` → the binning parquets via the generic materializer; round-trips through `reverse` unchanged | **shipped** (`source_element` on `MeasureBinRow`; `callable_element`/`quality_element` **reserved**, not built) |
 
 ## Upgrade derivation (`state`/booleans → 0.3 axes)

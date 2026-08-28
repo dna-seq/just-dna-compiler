@@ -41,6 +41,7 @@ from just_dna_format.manifest import (
     Weighting,
 )
 from just_dna_format.normalize import IDENTITY_AUTHORITY_KEYS, IDENTITY_AUTHORITY_REASONS
+from just_dna_format.overrides import OverrideRow
 from just_dna_format.pgs import (
     PgsRow,
 )
@@ -143,6 +144,18 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     "VerificationRecord": VerificationRecord,
 }
 
+# `overrides.csv` is a **third** category and gets its own group rather than joining either
+# neighbour, because it belongs to neither and blurring the line is what the 0.5 rework spent a
+# release undoing. It is not an annotation table like `_VARIANT_MODELS`/`_PGX_MODELS`: it asserts
+# nothing about a genotype, it is not a *lead* table, and a directory carrying only this file is not
+# a module. It is not a `_FACT_MODELS` sidecar either: a human writes every row of it, so it carries
+# `AuthoredModel`'s reserved-namespace guard, it is inside `content_signature`, and it is byte-hashed
+# into `manifest.inputs` rather than fact-hashed.
+#
+# What it *is* is the overlay that makes the seven fact tables pure build products (RM124), so a
+# reader of the authoring reference meets it beside them and not inside them.
+_OVERLAY_MODELS: dict[str, type[BaseModel]] = {"OverrideRow": OverrideRow}
+
 _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_MODULE_MODELS,
     **_VARIANT_MODELS,
@@ -150,6 +163,7 @@ _ALL_MODELS: dict[str, type[BaseModel]] = {
     **_PGX_MODELS,
     **_PGS_MODELS,
     **_FACT_MODELS,
+    **_OVERLAY_MODELS,
 }
 
 
