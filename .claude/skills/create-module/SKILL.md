@@ -220,7 +220,22 @@ Nothing automated fills these, on purpose:
 | `trait_efo_id` | A source's condition is free text / MedGen. Mapping it to an ontology is inference. |
 | `conclusion` | What the module *says*. Keep it hedged where the biology is (penetrance, tissue, co-factors). |
 
-To write a genotype you need the alleles. Ask, without writing anything:
+To write a genotype you need the alleles. **For rows a draft produced, re-run the draft** — the
+worklist is not a one-off:
+
+```bash
+just-dna-enricher draft-panel spec/ --gene HFE --dry-run   # every open row's alleles; appends nothing
+```
+
+It lists **every row in the file whose `genotype` is still `<<REPLACE>>`**, not just the rows the last
+run added, so it answers as many times as you ask. Rows you have already written a genotype for drop
+off the list, which is how you watch the work shrink. An open row this run has no record for — most
+often one drafted for another gene, or under a different `--clin-sig` / `--min-review-stars` — is
+counted and its gene named in one line, with the alleles withheld rather than guessed: re-run for that
+gene, or ask `hint variant`. The scaffolded template row does not appear: it has no identity yet, so
+no draft can state its alleles, and the compiler names it separately.
+
+For anything the draft did not produce, or a single row you want to check:
 
 ```bash
 just-dna-enricher hint variant --rsid rs1801133          # locus, ref, alts — and "[redundancy_bearing]"
@@ -680,7 +695,7 @@ workaround.
 | `gene-metrics <dir>` | → `gene_metrics.csv` constraint. Snapshot first, live API (v2.1.1) as fallback |
 | `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |
 | `literature <dir>` | → `literature.csv`. `--fulltext/--no-fulltext`, `--doi/--no-doi` |
-| `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--dry-run` |
+| `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--offline`, `--cpic-cache`, `--dry-run` |
 | `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--snapshot`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--use`, `--dry-run` |
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC). `--no-traits`, `--no-genes` |

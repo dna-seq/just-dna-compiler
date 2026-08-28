@@ -17,6 +17,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_enricher.cli import app
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher"
 
@@ -241,3 +242,44 @@ def test_a_leaked_client_is_closed_when_the_gwas_pass_raises(tmp_path: Path) -> 
     # An injected client is the caller's to close, which is the branch `owned` protects — the pass
     # must not close what it did not open, and must close what it did.
     assert client._client is not None, "an injected client must not be closed by the pass"
+
+
+# ── `--dry-run` means the same thing in every drafting command (RM71) ────────────────────────────
+#
+# The fifth surface defect of the same family, and the one RM71 tripped over: a flag that exists on
+# one command and not its sibling, or exists on both meaning different things, is invisible from
+# inside either. The behavioural half lives beside each provider — a dry run appends nothing and
+# still reports what it would have added (`test_pgx_draft`, `test_clinvar_draft`). This half is what
+# nothing else can see: that the three commands *declare* one flag rather than three.
+
+
+def _dry_run_declaration(callback) -> tuple:
+    """What one command's `--dry-run` promises: its spellings, its default and its help text."""
+    option = inspect.signature(callback).parameters["dry_run"].default
+    return tuple(option.param_decls), option.default, option.help
+
+
+def test_every_drafting_command_declares_the_same_dry_run_flag() -> None:
+    """Equality over the walked set, not a spot check on the pair that motivated it.
+
+    The drafting family is read off the CLI's own registry, so a fourth provider fails this test
+    until it joins the promise rather than quietly sitting outside it.
+    """
+    drafting = {
+        (command.name or command.callback.__name__): command.callback
+        for command in app.registered_commands
+        if command.callback.__name__.startswith("draft")
+    }
+    assert set(drafting) == {"draft", "draft-panel", "draft-clinpgx"}, (
+        "a new drafting command has to join this guard, not be exempted by it"
+    )
+
+    declared = {name: _dry_run_declaration(callback) for name, callback in drafting.items()}
+    assert len(set(declared.values())) == 1, f"the flag means different things: {declared}"
+
+    decls, default, help_text = declared["draft"]
+    assert decls == ("--dry-run",) and default is False, "opt-in, and spelled one way"
+    assert "write" in help_text and "would" in help_text, (
+        "the promise is 'report what would be added; write nothing' — if the wording drifts, the "
+        "three have to drift together, which is what the equality above enforces"
+    )

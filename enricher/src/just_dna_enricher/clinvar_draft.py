@@ -43,6 +43,7 @@ from pathlib import Path
 
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows, append_rows
 from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from pydantic import ValidationError
 
@@ -221,8 +222,94 @@ def _signature(cells: dict) -> tuple[str, ...]:
 
 
 def _label(record: dict) -> str:
-    """How to name one ClinVar record to a human: its rsID, else its coordinate."""
+    """How to name one ClinVar record to a human: its rsID, else its coordinate.
+
+    Takes an authored CSV row just as happily as a snapshot record — both spell `rsid`, `chrom` and
+    `start` the same way — which is what lets the reports below name a row they read back out of the
+    file in the same words they name a record this run selected.
+    """
     return (record.get("rsid") or "").strip() or f"{record.get('chrom')}:{record.get('start')}"
+
+
+def _publishes_alleles(record: dict) -> bool:
+    """Whether the source stated both alleles for this record: the worklist's own precondition.
+
+    Named once because two callers need it and a second copy is the one about to be wrong — the
+    worklist skips a record it cannot describe, and the count of what was skipped is reported
+    separately, so both have to agree on what "cannot describe" means.
+    """
+    return bool((record.get("ref") or "").strip() and (record.get("alt") or "").strip())
+
+
+def _placeholder_rows(path: Path, column: str) -> list[dict[str, str]]:
+    """Rows already in the authored file whose `column` is still the drafting placeholder.
+
+    **The scope of everything this provider reports as open work (RM71).** It used to be the rows a
+    single run *added*, which is a correct answer to a different question: a re-run of the command
+    adds nothing, so it reported nothing, and the alleles a stubbed `genotype` must be written from
+    were stated exactly once in a stream the author had no way to ask again. Every place those
+    alleles could legally be *written* is the wrong place — the identity is filled whole or not at
+    all, `alts` is redundancy-bearing, and an unread sidecar becomes a permanent resident — so the
+    repair is that the stream can be re-requested rather than that a file gains a column.
+
+    Reading the file back also keeps the earlier repair's benefit, and for a better reason than
+    scoping did: a row the model refused is not in the file at all, and a row the human has settled
+    no longer carries the placeholder.
+
+    **A row whose identity is itself a placeholder is not a variant yet, and is skipped.** That is
+    the scaffolded template row — `<<REPLACE>>` in `rsid` as well as in `genotype` — which is the
+    documented state of a spec directory *before* anything is drafted into it. It has no identity to
+    match, so nothing can ever hold its alleles, and reporting it here would put a row no draft
+    produced into a list of drafting work with the sentinel as its name. The compiler already refuses
+    it by name, which is where that row's notice belongs.
+    """
+    if not path.is_file() or path.stat().st_size == 0:
+        return []
+    with open(path, encoding="utf-8", newline="") as handle:
+        return [
+            row
+            for row in csv.DictReader(handle)
+            if (row.get(column) or "").strip() == TEMPLATE_PLACEHOLDER
+            and TEMPLATE_PLACEHOLDER not in _signature(row)
+        ]
+
+
+def _open_stubs(
+    report: DraftReport,
+    column: str,
+    stubbed_by_signature: dict[tuple[str, ...], tuple[str, ...]],
+) -> list[tuple[tuple[str, ...], dict[str, str] | None]]:
+    """Every row with an open `column` stub: the file's, plus the ones a dry run would have written.
+
+    One path and no `dry_run` branch, because the union is what makes the two agree. After a real run
+    the added rows are in the file already, so they contribute nothing and the union is idempotent;
+    under `dry_run` the file has not moved, so `report.added` is the only place they exist. A dry run
+    that reported an empty worklist on a fresh spec directory would be exactly the once-only defect
+    again, one flag over.
+
+    Which columns a would-add row leaves open is **read back from the decision that made the row**
+    (`stubbed_by_signature`, the same tuple handed to `PartialRow`), never restated here: a provider
+    that can fill `genotype` on a haploid contig fills it, and a second copy of that rule is the one
+    that goes stale.
+
+    Returns `(signature, authored row or None)` in file order, then would-add order. The row is
+    carried because it is the only thing that can name a stub this run holds no record for.
+    """
+    tasks: list[tuple[tuple[str, ...], dict[str, str] | None]] = []
+    covered: set[tuple[str, ...]] = set()
+    for row in _placeholder_rows(report.path, column):
+        signature = _signature(row)
+        covered.add(signature)
+        tasks.append((signature, row))
+    for outcome in report.added:
+        signature = outcome.key
+        if signature is None or signature in covered:
+            continue
+        if column not in stubbed_by_signature.get(signature, ()):
+            continue
+        covered.add(signature)
+        tasks.append((signature, None))
+    return tasks
 
 
 def _refusal_summary(invalid: Sequence) -> list[str]:
@@ -272,10 +359,19 @@ def _genotype_worklist(records: Sequence[dict]) -> list[str]:
     One line per stubbed row, uncapped: each is a task the author must do, and a task list that
     silently drops entries is worse than a long one.
 
-    **Pass the records that were actually added.** It used to be given every candidate record, so the
-    list covered rows the model had refused and rows already in the file — a "3 row(s) carry a
-    placeholder" header followed by twenty-seven lines. A worklist naming work that does not exist is
-    worse than no worklist.
+    **Pass the records whose rows are still open** — `_open_stubs` decides which those are, off the
+    file rather than off this run. It used to be given every candidate record, so the list covered
+    rows the model had refused and rows already in the file: a "3 row(s) carry a placeholder" header
+    followed by twenty-seven lines. A worklist naming work that does not exist is worse than no
+    worklist, and that repair stands. What it also did, though, was make the list a property of a
+    single run — so a second `draft-panel` added nothing and therefore said nothing, and the alleles
+    could not be re-requested from the command that stated them (RM71). Scoping to the file's current
+    placeholder rows keeps both: refused rows were never written, settled rows no longer carry the
+    stub, and the answer survives the run that produced it.
+
+    **A record whose alleles the source did not state gets no line, and the caller counts it.** That
+    is `_publishes_alleles`, shared rather than repeated, because a row silently absent from a
+    worklist is the same defect as a row wrongly in one.
 
     **A pair is the wrong instruction on a contig that cannot host one.** Where the ploidy is
     undecidable rather than diploid — chrY on a build with no pseudoautosomal table — the author still
@@ -285,9 +381,9 @@ def _genotype_worklist(records: Sequence[dict]) -> list[str]:
     """
     lines: list[str] = []
     for record in records:
-        ref, alt = (record.get("ref") or "").strip(), (record.get("alt") or "").strip()
-        if not (ref and alt):
+        if not _publishes_alleles(record):
             continue
+        ref, alt = (record.get("ref") or "").strip(), (record.get("alt") or "").strip()
         chrom = normalize_chrom(str(record.get("chrom") or ""))
         if chrom == "Y":
             lines.append(
@@ -560,8 +656,9 @@ def draft_gene_panel(
             f"alone cannot say which allele the row is about."
         )
     record_by_signature: dict[tuple[str, ...], dict] = {}
-    # signature -> the clinical call that left `state` undecidable, for the aggregated report below.
-    undirected: dict[tuple[str, ...], str] = {}
+    # signature -> the columns this run left for a human, so the reports below read the *decision*
+    # `PartialRow` was given rather than restating which columns a stub can land in.
+    stubbed_by_signature: dict[tuple[str, ...], tuple[str, ...]] = {}
     for record in records:
         cells = _row_cells(record, force_coordinate=(record.get("rsid") or "").strip() in ambiguous)
         if cells is None:
@@ -581,8 +678,7 @@ def draft_gene_panel(
         stubbed = tuple(column for column in ("genotype", "state") if column not in cells)
         signature = _signature(cells)
         record_by_signature[signature] = record
-        if "state" not in cells:
-            undirected[signature] = cells.get("clin_sig") or "no call"
+        stubbed_by_signature[signature] = stubbed
         partials.append(
             PartialRow(
                 model=VariantRow,
@@ -638,49 +734,90 @@ def draft_gene_panel(
                 f"`clinvar citations` drops them at the source."
             )
     warnings.extend(_refusal_summary(report.invalid))
-    if report.added:
-        added_records = [
-            record_by_signature[o.key] for o in report.added if o.key in record_by_signature
+
+    # ── What is still open, scoped to the FILE rather than to this run (RM71) ────────────────────
+    #
+    # Both stub reports below hang off `_open_stubs`, so a re-run of the command answers the question
+    # it answered the first time and `--dry-run` answers it without appending. They have to move
+    # together: the `state` line reads as "these rows *also*", so a file-wide genotype denominator
+    # beside a run-scoped `state` one would name two different sets in consecutive lines.
+    genotype_stubs = _open_stubs(report, "genotype", stubbed_by_signature)
+    if genotype_stubs:
+        warnings.append(
+            f"{len(genotype_stubs)} row(s) carry an unreplaced genotype placeholder and will not "
+            f"compile until you decide the zygosity each finding is about."
+        )
+        warnings.extend(
+            _genotype_worklist(
+                [
+                    record_by_signature[signature]
+                    for signature, _ in genotype_stubs
+                    if signature in record_by_signature
+                ]
+            )
+        )
+        # The rows this run cannot describe: drafted for another gene, or under a filter this run did
+        # not use, so nothing here holds their alleles. Counted and their genes named — an unknown is
+        # withheld, never guessed, and never silently dropped from a count the file can see.
+        withheld = [
+            (row or {}).get("gene") or ""
+            for signature, row in genotype_stubs
+            if signature not in record_by_signature
+            or not _publishes_alleles(record_by_signature[signature])
         ]
-        # Split by whether the row still needs a human. A row on a haploid contig was written whole,
-        # so counting it among the placeholders would name work that does not exist — the same defect
-        # `_genotype_worklist` was already fixed for once.
-        stubbed_records = [r for r in added_records if sole_expressible_genotype(r) is None]
-        written_records = [r for r in added_records if sole_expressible_genotype(r) is not None]
-        if stubbed_records:
+        if withheld:
+            genes = examples(sorted({gene.strip() for gene in withheld if gene.strip()}))
+            # States what it knows and stops. It does NOT say *why* this run holds no record — the
+            # usual reason is another gene or a tighter --clin-sig/--min-review-stars, but a record
+            # that publishes no alleles lands here too, and naming a cause the pass did not establish
+            # would be a guess dressed as a finding.
             warnings.append(
-                f"{len(stubbed_records)} row(s) carry an unreplaced genotype placeholder and will not "
-                f"compile until you decide the zygosity each finding is about."
+                f"{len(withheld)} row(s) of that list carry alleles this run cannot state, because "
+                f"nothing it selected covers them "
+                f"(gene: {genes or 'none recorded'}). The alleles are withheld rather than guessed: "
+                f"draft-panel for the gene each row records, or `hint variant`, will state them."
             )
-            warnings.extend(_genotype_worklist(stubbed_records))
-        # One line, not one per row: at panel scale this is hundreds of loci, and what the author has
-        # to know is the *reading* the provider committed to, which is identical for all of them.
-        if written_records:
-            contigs = ", ".join(
-                sorted({normalize_chrom(str(r.get("chrom") or "")) for r in written_records})
-            )
-            warnings.append(
-                f"{len(written_records)} row(s) on non-diploid contigs ({contigs}) were written with "
-                f"a single-allele genotype: exactly one is expressible there, so no zygosity decision "
-                f"was pre-empted. They read as homoplasmic/hemizygous — a heteroplasmic level is a "
-                f"different question and belongs in heteroplasmy.csv."
-            )
+
     # One line per clinical CALL, not per row: which call carries no direction is the thing the author
-    # needs to know, and the answer is identical for every row carrying it. Only rows that were actually
-    # added are counted — a row already in the file is the author's, stub or not.
+    # needs to know, and the answer is identical for every row carrying it.
+    #
+    # The record wins over the authored row for the *label*, so this list and the worklist above name
+    # the same row the same way. They diverge otherwise: a row written by coordinate because its rsID
+    # names several alleles carries no `rsid` cell, so the file would call it `16:23603601` while the
+    # worklist two lines up calls it `rs118203998`, and the author could not cross-reference the two.
     by_call: dict[str, list[str]] = {}
-    for outcome in report.added:
-        call = undirected.get(outcome.key or ())
-        if call is not None:
-            by_call.setdefault(call, []).append(_label(record_by_signature[outcome.key]))
+    for signature, row in _open_stubs(report, "state", stubbed_by_signature):
+        source = record_by_signature.get(signature) or row or {}
+        by_call.setdefault(
+            (source.get("clin_sig") or "").strip() or "no call", []
+        ).append(_label(source))
     for call, labels in sorted(by_call.items()):
         shown = ", ".join(labels[:6]) + (f", … and {len(labels) - 6} more" if len(labels) > 6 else "")
         warnings.append(
-            f"{len(labels)} of those also carry a `state` placeholder, all with clin_sig={call!r}: "
+            f"{len(labels)} row(s) also carry a `state` placeholder, all with clin_sig={call!r}: "
             f"ClinVar states no direction for that call, and VALID_STATES has no member meaning "
             f"'undecided' — `neutral` would assert the variant is benign, `risk` would assert a "
             f"direction the submitters did not. So `state` is yours to decide too, per row. "
             f"Affected: {shown}."
+        )
+
+    # The non-diploid notice stays scoped to what this run WROTE, deliberately: it reports a reading
+    # the provider committed to on rows it just filled, not work anybody has left to do. One line, not
+    # one per row — at panel scale this is hundreds of loci and the reading is identical for all.
+    written_records = [
+        record_by_signature[o.key]
+        for o in report.added
+        if o.key in record_by_signature and "genotype" not in stubbed_by_signature.get(o.key, ())
+    ]
+    if written_records:
+        contigs = ", ".join(
+            sorted({normalize_chrom(str(r.get("chrom") or "")) for r in written_records})
+        )
+        warnings.append(
+            f"{len(written_records)} row(s) on non-diploid contigs ({contigs}) were written with "
+            f"a single-allele genotype: exactly one is expressible there, so no zygosity decision "
+            f"was pre-empted. They read as homoplasmic/hemizygous — a heteroplasmic level is a "
+            f"different question and belongs in heteroplasmy.csv."
         )
     # WHICH release the rows were copied out of, in the column that exists to say so (RM4). The draft
     # was machined, so the marker is machined too: `clinical.tautology_reason` reads this back and can

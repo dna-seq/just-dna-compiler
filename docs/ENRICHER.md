@@ -2196,6 +2196,30 @@ and loudly incomplete until someone decides. A re-draft after those decisions ad
 partial row matches on the identity columns rather than on the natural key — that key runs straight
 through the column still holding the stub.
 
+**The alleles the author writes that genotype *from* stay in the report, and since 0.7 the report can
+be asked again (RM71).** A drafted row is rsID-only, so `rs118203998` arrives with empty `ref`/`alts`
+and the pair is stated only in the warning stream — one line per open row, uncapped, because each is a
+task. Every place the alleles could legally be *written* is the wrong place: identity is filled whole
+or not at all, `alts` is redundancy-bearing (filling it makes the compiler compare ClinVar with
+ClinVar), a comment column is full cost on the most expensive table and rots at the next release, and
+an unread sidecar becomes a permanent resident of every drafted module. So the repair is scope, not a
+column. The worklist covers **every row in the file whose `genotype` is still the placeholder**, not
+only the rows this run added, so a second `draft-panel` reprints it instead of falling silent — and
+`--dry-run` obtains it without appending anything, meaning exactly what it means on `draft`. The
+earlier narrowing survives for a better reason than scoping gave it: a row the model refused was never
+written, and a row the author has settled no longer carries the stub. The `state` line moves with it,
+since it reads as "these rows *also*". Where the run holds no record for an open row — usually another
+gene, or a tighter `--clin-sig`/`--min-review-stars`, though the pass cannot tell which — the alleles
+are genuinely unknown, so they are **withheld** and the rows are named by gene in one aggregated line
+rather than guessed at or dropped from the count. The line states only that nothing this run selected
+covers them; naming a cause it did not establish would be a guess dressed as a finding.
+
+**A scaffolded template row is not drafting work.** `scaffold` writes a `variants.csv` row carrying
+the placeholder in `rsid` as well as in `genotype`, and file scope would otherwise sweep it in — as an
+inflated count, as a row supposedly belonging to some other gene, and as `<<REPLACE>>` in a list of
+row labels. A row whose identity is itself the placeholder is skipped here: it has no identity to
+match, so no run can ever hold its alleles, and the compiler already refuses it by name.
+
 Two rules worth keeping in view. **Identity is filled whole or not at all**: the rsID, else the
 complete coordinate, never a subset, because a lone `alts` on a position-only row makes
 `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref` — a partial coordinate
@@ -2586,6 +2610,7 @@ just-dna-enricher draft-clinpgx spec/ --snapshot cp/ --drug simvastatin --use no
 just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1   # ClinVar gene panel (snapshot auto)
 just-dna-enricher draft-panel spec/ --gene MTHFR --snapshot cv/ --offline   # a snapshot you built
 just-dna-enricher draft-panel spec/ --gene MTHFR --no-download   # use a cached snapshot; fetch none
+just-dna-enricher draft-panel spec/ --gene MTHFR --dry-run   # the genotype worklist, appending nothing
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
 
