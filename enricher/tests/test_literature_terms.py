@@ -1,4 +1,4 @@
-"""Per-article licences, the second citation site, and PMCID → PMID (RM46 + RM47 + RM50).
+"""Per-article licences, the citation sites beyond `studies.csv`, and PMCID → PMID (RM46 + RM47 + RM50 + RM132).
 
 Both payloads here are **recorded from the live services**, not hand-written.
 `europepmc_licensed_payload.json` was recorded on 2026-08-13 and carries the two facts the licence
@@ -14,11 +14,14 @@ The already-recorded `europepmc_search_payload.json` carries the complementary c
 that state no licence at all — which is what the withhold path is tested against.
 """
 
+import ast
 import json
 from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_compiler.compiler import _CITING_TABLE_KINDS
+from just_dna_enricher import literature as literature_module
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.licensing import ARTICLE_TERMS_BY_LICENSE, ArticleTerms, article_terms
 from just_dna_enricher.literature import (
@@ -106,7 +109,9 @@ def _idconv(records: list[dict]) -> PmcIdConverterClient:
     return client
 
 
-def _spec(d: Path, *, studies: str | None = None, bins: str | None = None) -> Path:
+def _spec(
+    d: Path, *, studies: str | None = None, bins: str | None = None, pharm: str | None = None
+) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     (d / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     if studies is not None:
@@ -116,6 +121,8 @@ def _spec(d: Path, *, studies: str | None = None, bins: str | None = None) -> Pa
         (d / "studies.csv").write_text(studies, encoding="utf-8")
     if bins is not None:
         (d / "repeat_alleles.csv").write_text(bins, encoding="utf-8")
+    if pharm is not None:
+        (d / "pharm_variants.csv").write_text(pharm, encoding="utf-8")
     return d
 
 
@@ -378,3 +385,90 @@ def test_the_converter_batches_and_answers_by_requested_id() -> None:
     assert resolved["PMC9999999999"].in_pmc is False
     assert resolved["PMC9999999999"].pmid is None
     assert resolved["PMC9999999999"].error == "Identifier not found in PMC"
+
+
+# ── RM132: the third citation site, and the roster this tier must not keep ───────────────────────
+
+
+def test_a_module_whose_only_citations_are_pharm_pointers_is_enriched(tmp_path: Path) -> None:
+    """The enricher half of the same-release obligation.
+
+    Before the site was wired in, this module did not merely go unchecked — the pass **refused** it,
+    because `studies.csv` and the binning kinds were the whole of what it could see, and a
+    `pharm_variants.csv` row grounding its own drug/genotype claim was not a citation as far as this
+    tier was concerned. A citation the format ships and never checks is what RM47 recorded as worse
+    than the gap.
+    """
+    spec = _spec(
+        tmp_path / "s",
+        pharm=(
+            "rsid,gene,genotype,drug,phenotype_category,conclusion,pmid\n"
+            f"rs4149056,SLCO1B1,C/C,simvastatin,Toxicity,higher myopathy risk,{_REAL}\n"
+            "rs4149056,SLCO1B1,T/T,simvastatin,Toxicity,lower myopathy risk,\n"
+        ),
+    )
+    assert not (spec / "studies.csv").exists()
+    result = enrich_literature(
+        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False
+    )
+    assert [r.pmid for r in result.rows] == [_REAL]
+    assert result.rows[0].exists is True
+    # And it asks no quote question, for the reason the column exists at all: `provenance_quote`
+    # deliberately did not follow the `pmid` to this site, so there is nothing to locate.
+    assert result.rows[0].quotes_authored == 0
+    assert result.rows[0].quotes_found is None
+
+
+def test_the_offline_run_still_sees_the_pharm_citation(tmp_path: Path) -> None:
+    """`--offline` is a no-op for the network half and must not become one for the *reading* half:
+    the pass still has to report which citations the module makes, or a manifest cannot tell a run
+    that saw no citations from one that put no question."""
+    spec = _spec(
+        tmp_path / "s",
+        pharm=(
+            "rsid,gene,genotype,drug,conclusion,pmid\n"
+            f"rs4149056,SLCO1B1,C/C,simvastatin,higher myopathy risk,[PMID: {_REAL}]\n"
+        ),
+    )
+    result = enrich_literature(spec, offline=True, write=False)
+    assert result.skipped_offline is True
+    assert result.cited == [_REAL]
+
+
+def test_the_enricher_keeps_no_second_roster_of_the_citing_kinds() -> None:
+    """The RM40/RM41 shape, guarded by walking this module's own source rather than by a comment.
+
+    The pass reads its citation sites through the compiler's derived registry, so naming any citing
+    table here would be a second copy that goes stale the next time a model declares a `pmid` — which
+    is exactly how a citation site comes to be read by one tier and not the other. Docstrings are
+    excluded because prose *may* name a table; a bare string constant is a roster.
+    """
+    source = Path(literature_module.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+    literals = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    }
+    citing = {csv_name for csv_name, _model in _CITING_TABLE_KINDS}
+    assert citing, "the registry must be non-empty for this guard to mean anything"
+    assert literals & citing == set()
+    # The guard has to be able to fail, so prove it sees a roster when one is there.
+    assert ast.parse('KINDS = ["pharm_variants.csv"]').body
+    planted = {
+        node.value
+        for node in ast.walk(ast.parse('KINDS = ["pharm_variants.csv"]'))
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert planted & citing == {"pharm_variants.csv"}

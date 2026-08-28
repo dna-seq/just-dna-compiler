@@ -1,10 +1,13 @@
-"""The two citation sites, and what the compiler owes each of them (RM47 + RM46).
+"""The citation sites, and what the compiler owes each of them (RM47 + RM46 + RM132).
 
 Until 0.6 a citation could only name a variant, so `studies.csv` was the only place a module could
 say where a claim came from and a bin *boundary* — the most interpretive number the format carries —
-had nowhere to cite. `MeasureBinRow.pmid` is the second site. The same-release obligation is what
-most of this file is about: a citation site the enricher and the compiler do not read is evidence the
-format never checks, which is worse than the honest gap it replaced.
+had nowhere to cite. `MeasureBinRow.pmid` is the second site and `PharmVariantRow.pmid` the third,
+both reached by the same rule: a row cites when its claim is finer-grained than `studies.csv`'s key.
+The same-release obligation is what most of this file is about: a citation site the enricher and the
+compiler do not read is evidence the format never checks, which is worse than the honest gap it
+replaced. Since 0.7 the set of sites is derived rather than listed, and the equality below is what
+keeps it honest.
 
 Expectations are computed from the real reference examples at runtime; nothing is a count read off a
 data dump.
@@ -12,26 +15,35 @@ data dump.
 
 import csv
 import io
+import json
 from pathlib import Path
 
 import pytest
 from just_dna_compiler.compiler import (
+    _BINNING_TABLE_KINDS,
+    _CITING_TABLE_KINDS,
+    _TABLE_KINDS,
     _check_quoted_article_licenses,
     _cross_check_literature,
     _source_checks,
     binning_citations,
     compile_module,
     load_binning_rows,
+    load_citing_rows,
     reverse_module,
+    split_cited_literature,
+    table_citations,
     validate_spec,
 )
 from just_dna_format.binning import RepeatAlleleRow
 from just_dna_format.literature import LiteratureRow
+from just_dna_format.pgx import PharmVariantRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _HTT = _EXAMPLES / "htt_repeat_expansion"
+_SLCO1B1 = _EXAMPLES / "pgx_slco1b1_simvastatin"
 
 _YAML = (
     "schema_version: '1.0'\n"
@@ -40,6 +52,10 @@ _YAML = (
 )
 #: A real pair: PMID 8458085 is the CAG-threshold literature the HTT example's README points at.
 _PMID = "8458085"
+#: The SEARCH Collaborative Group's SLCO1B1 paper — the evidence behind the simvastatin myopathy
+#: rows in the `pgx_slco1b1_simvastatin` example, and a claim `studies.csv` cannot ground on its own
+#: because the same variant carries efficacy and metabolism rows that paper is not about.
+_PGX_PMID = "18650507"
 
 
 def _spec_with_cited_bins(tmp_path: Path, *, pmid: str | None = _PMID) -> Path:
@@ -56,6 +72,47 @@ def _spec_with_cited_bins(tmp_path: Path, *, pmid: str | None = _PMID) -> Path:
     for row in rows:
         writer.writerow({**row, "pmid": "" if row["unresolved"] == "true" else (pmid or "")})
     (spec / "repeat_alleles.csv").write_text(buffer.getvalue(), encoding="utf-8")
+    return spec
+
+
+def _spec_with_cited_pharm_rows(
+    tmp_path: Path, *, pmid: str = _PGX_PMID, name: str = "cited_pharm"
+) -> Path:
+    """The SLCO1B1/simvastatin example with a `pmid` written onto the toxicity rows only.
+
+    Onto *some* rows rather than all of them on purpose: the toxicity claim is what the SEARCH paper
+    established, and the efficacy and metabolism rows for the same variant are about other work. That
+    asymmetry is the whole reason the column exists — one `studies.csv` row keyed `(variant_key,
+    pmid)` would attach that paper to every drug, genotype and phenotype category recorded here.
+    """
+    spec = tmp_path / name
+    spec.mkdir()
+    for filename in ("module_spec.yaml", "licensing.csv", "resolution.csv"):
+        source = _SLCO1B1 / filename
+        if source.is_file():
+            (spec / filename).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    rows = list(csv.DictReader(io.StringIO((_SLCO1B1 / "pharm_variants.csv").read_text())))
+    fieldnames = [*rows[0].keys(), "pmid"]
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(
+            {**row, "pmid": pmid if row["phenotype_category"] == "Toxicity" else ""}
+        )
+    (spec / "pharm_variants.csv").write_text(buffer.getvalue(), encoding="utf-8")
+    return spec
+
+
+def _plain_pharm_spec(tmp_path: Path, name: str = "plain_pharm") -> Path:
+    """The same example verbatim — no `pmid` header at all, which is every module published to date."""
+    spec = tmp_path / name
+    spec.mkdir()
+    for source in _SLCO1B1.glob("*.csv"):
+        (spec / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    (spec / "module_spec.yaml").write_text(
+        (_SLCO1B1 / "module_spec.yaml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     return spec
 
 
@@ -171,9 +228,7 @@ def test_a_bin_cited_paper_is_not_an_orphan_in_literature_csv() -> None:
 
     # RM79 gave that finding teeth, so the stakes are now higher than a warning: blind to the bin,
     # the compiler would **discard** the very row the threshold's evidence lives in. The split reads
-    # both citation sites for exactly this reason.
-    from just_dna_compiler.compiler import split_cited_literature
-
+    # every citation site for exactly this reason.
     _kept_blind, dropped_blind = split_cited_literature(rows, studies, {})
     assert [r.pmid for r in dropped_blind] == [_PMID]
     kept_seeing, dropped_seeing = split_cited_literature(rows, studies, bins)
@@ -402,3 +457,145 @@ def test_a_bin_only_citation_carries_a_denominator_of_zero_rather_than_being_ski
     assert not any(
         "quotes_authored disagrees" in w for w in _cross_check_literature(rows, [], bins)
     )
+
+
+# ── RM132: the third citation site, and the registry that will find the fourth ──────────────────
+
+
+def test_the_citing_kinds_are_exactly_the_table_kinds_declaring_a_pmid() -> None:
+    """The registry, as an equality over the walked set rather than a floor.
+
+    A hand-kept list is what RM40/RM41 named and what this replaces, but a *derived* one still has a
+    derivation that can be wrong in either direction: a kind silently escaping the literature
+    cross-check is RM47's failure again, and a kind wrongly joining it would make the compiler read
+    citations off a table that does not cite. Both sides are pinned here, from `model_fields`, so
+    widening or narrowing the set is a deliberate act with a failing test attached.
+    """
+    walked = {csv_name for csv_name, _parquet, model in _TABLE_KINDS if "pmid" in model.model_fields}
+    assert {csv_name for csv_name, _model in _CITING_TABLE_KINDS} == walked
+    # And it is a strict superset of the binning kinds, which is the whole change: the binning
+    # accessors stay narrow, and the literature cross-check reads the wider set.
+    binning = {csv_name for csv_name, _model in _BINNING_TABLE_KINDS}
+    citing = {csv_name for csv_name, _model in _CITING_TABLE_KINDS}
+    assert binning < citing
+    assert citing - binning == {"pharm_variants.csv"}
+
+
+def test_a_cited_pharm_row_round_trips_through_compile_and_reverse(tmp_path: Path) -> None:
+    """The third touch point: a column absent from the reverse writer is silent data loss.
+
+    `pharm_variants.csv` goes through the generic materializer and the generic writer, so this proves
+    the generic path really carries the new column rather than assuming it — and the recompile is
+    asserted byte-for-byte on the parquet, not only on the authored identity, because a column that
+    reversed into a different *cell* would still hash equal under `exclude_none`.
+    """
+    spec = _spec_with_cited_pharm_rows(tmp_path)
+    authored = list(csv.DictReader(io.StringIO((spec / "pharm_variants.csv").read_text())))
+    assert {r["pmid"] for r in authored} == {_PGX_PMID, ""}, "the fixture must exercise both cells"
+
+    out = tmp_path / "out"
+    assert compile_module(spec, out).success
+    back = tmp_path / "back"
+    reverse_module(out, back)
+    reversed_rows = list(csv.DictReader(io.StringIO((back / "pharm_variants.csv").read_text())))
+    assert [r["pmid"] for r in reversed_rows] == [r["pmid"] for r in authored]
+
+    again = tmp_path / "again"
+    assert compile_module(back, again).success
+    assert (again / "pharm_variants.parquet").read_bytes() == (
+        out / "pharm_variants.parquet"
+    ).read_bytes()
+    first = json.loads((out / "manifest.json").read_text())
+    second = json.loads((again / "manifest.json").read_text())
+    assert first["content_signature"] == second["content_signature"]
+    assert first["artifact"]["digest"] == second["artifact"]["digest"]
+
+
+def test_a_module_that_never_writes_the_column_keeps_its_content_signature(tmp_path: Path) -> None:
+    """P8: optional with respect to every published module.
+
+    The two specs differ only in that one carries a `pmid` header with every cell empty, which is what
+    a reversed pre-0.7 module looks like the moment it is recompiled under 0.7. `exclude_none=True` is
+    the mechanism, and the point of running it rather than citing it is that the signature is computed
+    over the *parsed rows*: an empty cell that parsed to `""` instead of `None` would break this.
+    """
+    without = _plain_pharm_spec(tmp_path, name="without")
+    rows = list(csv.DictReader(io.StringIO((without / "pharm_variants.csv").read_text())))
+    assert "pmid" not in rows[0], "the untouched fixture must predate the column"
+
+    with_empty = _spec_with_cited_pharm_rows(tmp_path, pmid="", name="with_empty")
+    assert compile_module(without, tmp_path / "a").success
+    assert compile_module(with_empty, tmp_path / "b").success
+    first = json.loads((tmp_path / "a" / "manifest.json").read_text())["content_signature"]
+    second = json.loads((tmp_path / "b" / "manifest.json").read_text())["content_signature"]
+    assert first == second
+
+    # And a filled cell IS content, or the column would be outside the authored identity.
+    cited = _spec_with_cited_pharm_rows(tmp_path, name="cited")
+    assert compile_module(cited, tmp_path / "c").success
+    third = json.loads((tmp_path / "c" / "manifest.json").read_text())["content_signature"]
+    assert third != first
+
+
+def test_a_pharm_cited_paper_is_not_an_orphan_in_literature_csv() -> None:
+    """The compiler half of the same-release obligation, on the shape that actually breaks.
+
+    A module cites one paper from `studies.csv` and another from a `pharm_variants.csv` row, and the
+    sidecar covers both. Blind to the third site the compiler calls the pharm row's citation an
+    orphan — and since RM79 gave that finding teeth, it does not merely report it: it **discards** the
+    literature row the claim's evidence lives in.
+    """
+    other = "9545397"
+    studies = [StudyRow(rsid="rs1800562", pmid=other)]
+    rows = [LiteratureRow(pmid=other, exists=True), LiteratureRow(pmid=_PGX_PMID, exists=True)]
+    pharm = {
+        "pharm_variants.csv": [
+            PharmVariantRow(
+                rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin",
+                phenotype_category="Toxicity", conclusion="higher myopathy risk", pmid=_PGX_PMID,
+            )
+        ]
+    }
+    blind = _cross_check_literature(rows, studies, {})
+    assert any(
+        _PGX_PMID in w and "no study, bin or pharm row in this module cites" in w for w in blind
+    )
+    seeing = _cross_check_literature(rows, studies, pharm)
+    assert not any("no study, bin or pharm row in this module cites" in w for w in seeing)
+
+    _kept_blind, dropped_blind = split_cited_literature(rows, studies, {})
+    assert [r.pmid for r in dropped_blind] == [_PGX_PMID]
+    kept_seeing, dropped_seeing = split_cited_literature(rows, studies, pharm)
+    assert dropped_seeing == [] and {r.pmid for r in kept_seeing} == {other, _PGX_PMID}
+
+
+def test_a_pharm_only_citation_carries_a_denominator_of_zero_rather_than_being_skipped() -> None:
+    """`provenance_quote` did not follow the `pmid` to this site, so a pharm row cites and cannot
+    quote — its literature row is current at zero and must not be reported as a stale counter."""
+    pharm = {
+        "pharm_variants.csv": [
+            PharmVariantRow(
+                rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin",
+                conclusion="higher myopathy risk", pmid=_PGX_PMID,
+            )
+        ]
+    }
+    rows = [LiteratureRow(pmid=_PGX_PMID, exists=True, quotes_authored=0)]
+    assert not any(
+        "quotes_authored disagrees" in w for w in _cross_check_literature(rows, [], pharm)
+    )
+
+
+def test_the_public_readers_answer_over_every_citing_kind(tmp_path: Path) -> None:
+    """What the enricher reaches through, end to end on a real spec directory.
+
+    `load_binning_rows`/`binning_citations` stay narrow — a caller asking for the binning kinds is
+    asking about thresholds — so a module citing only from `pharm_variants.csv` is *invisible* to
+    them, and that is exactly why the pass now reads the wider pair. Both halves are asserted so the
+    narrowing cannot be mistaken for a bug and "fixed" by widening the old symbols.
+    """
+    spec = _spec_with_cited_pharm_rows(tmp_path, pmid=f"[PMID: {_PGX_PMID}]")
+    assert set(load_citing_rows(spec)) == {"pharm_variants.csv"}
+    assert table_citations(load_citing_rows(spec)) == [_PGX_PMID]
+    assert load_binning_rows(spec) == {}
+    assert binning_citations(load_citing_rows(spec)) == []
