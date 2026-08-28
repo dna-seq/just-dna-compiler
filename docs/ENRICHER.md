@@ -1644,11 +1644,21 @@ codon that could encode it. `derivation` records what survived:
 | `indel` | a length-changing row, kept but marked — upstream left-normalization is **unverified** |
 
 and `PUBMIND_DROP_REASONS` records what did not: `off_target_chrom`, `non_acgt` (16 rows in the
-2026-08-24 file whose alt is `0` or `N`), `ref_equals_alt` (523), `multi_substitution` (a block needing
-two or three simultaneous changes — a statement about the protein, not a position), and
-`identical_duplicate` (two codon rows decomposing onto one row identical in every column). The registry
-is walked, so `input_rows == record_count + sum(dropped.values())` is an equality over it: silent
-truncation reads as full coverage.
+2026-08-24 file whose alt is `0` or `N`), `ref_equals_alt` (523), `no_pvid`, `unparsable_position`,
+`multi_substitution` (a block needing two or three simultaneous changes — a statement about the
+protein, not a position), and `identical_duplicate` (two codon rows decomposing onto one row identical
+in every column). The registry is walked, so `input_rows == record_count + sum(dropped.values())` is an
+equality over it: silent truncation reads as full coverage.
+
+`no_pvid` earns its place twice over. The PVID is PubMind's *record* id, and the whole snapshot is
+organised around record identity — a verdict with no id cannot be attributed, cannot be deduped against
+its twin, and cannot join the multiplicity accounting; carrying one as a null would also merge distinct
+records under `identical_duplicate`, which compares whole rows. A **bad cell is different from a bad
+row**: a malformed `pathogenicity_score` or `confidence` withholds that one value as null and counts it
+in `unparsable_score` / `unparsable_confidence`, keeping the row. `NaN` and `inf` count as unparsable
+rather than being stored, because `float()` accepts both and they would otherwise poison every
+comparison downstream; a non-integral confidence is withheld rather than truncated, since `2` is a
+definite count the source did not state.
 
 **A contested coordinate keeps every PVID as its own row, and that is the finding.** Consolidation into a
 PVID is keyed on the *text* the model extracted, never on a coordinate, so one physical variant fragments
@@ -1663,8 +1673,12 @@ The parquet is **byte-reproducible** across rebuilds (rows sorted by chromosome 
 `start, ref, alt, pvid`); only `release.json`'s `built_at` varies. `release.json` also carries the
 source's sha256 **and** its `ETag` and `Last-Modified` — all three available, all three recorded, so an
 upstream revision becomes a finding rather than a silent change of answer — plus `redistributable: false`
-and the reason. A local `--table` establishes neither header, so both are recorded as `null`: unknown
-rather than absent. `polars` is a `[dev]`, guarded import.
+and the reason. A local `--table` establishes neither header **nor the URL**, so all three are recorded
+as `null`: unknown rather than absent, and never a default the build did not establish.
+`download_pubmind_table` translates `httpx` into `PubMindUnavailable`, a **subclass** of
+`PubMindBuildError`, so one `except` arm catches a moved bulk URL as well as a malformed table while a
+caller who needs to tell an outage from bad data still can (`@client-exception-contract`; the subclass
+makes a caller's `except` **order** load-bearing). `polars` is a `[dev]`, guarded import.
 
 ## Gene–disease validity (`gene_validity.py`, online only) — RM24
 

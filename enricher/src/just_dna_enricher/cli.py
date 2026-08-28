@@ -1640,12 +1640,17 @@ def pubmind_build_(
         typer.secho("Provide --table PATH or --download.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     fetched = None
+    # `PubMindBuildError` covers the download too: it translates `httpx` into `PubMindUnavailable`, a
+    # subclass, so this one arm catches a moved bulk URL as well as a malformed table. Without that,
+    # ANNOVAR rotating the file — the rot the source's own lack of a cadence invites — printed a
+    # traceback instead of this line.
     try:
         if table is None:
             fetched = download_pubmind_table(out / "hg38_pubmind_db.txt.gz")
         result = build_pubmind_snapshot(
             fetched.path if fetched is not None else table,
             out,
+            source_url=fetched.url if fetched is not None else None,
             source_sha256=fetched.sha256 if fetched is not None else None,
             source_etag=fetched.etag if fetched is not None else None,
             source_last_modified=fetched.last_modified if fetched is not None else None,

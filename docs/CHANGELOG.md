@@ -70,6 +70,16 @@ and the compile path imports none of it. Decided in
   changes is dropped, because it asserts a change to the protein rather than to a genotypable position.
   Length-changing rows are kept and stamped `derivation=indel`: upstream left-normalization is
   unverified, and a consumer must be able to exclude them without re-deriving why.
+- **A bad cell and a bad row are different outcomes.** A row with no PVID or an unreadable `Start` is
+  dropped and counted (`no_pvid`, `unparsable_position`) — the PVID is the record id everything here is
+  keyed on, and a null one would have merged distinct records under `identical_duplicate` as well as
+  crashing the emit sort. A malformed `pathogenicity_score` or `confidence` withholds *that value* and
+  keeps the row, counted in `unparsable_score` / `unparsable_confidence`. `NaN` and `inf` count as
+  unparsable rather than being stored (`float()` accepts both), and a non-integral confidence is
+  withheld rather than truncated to a count the source never stated.
+- **`download_pubmind_table` raises `PubMindUnavailable`**, a subclass of `PubMindBuildError`, so a
+  moved bulk URL surfaces as this tier's type rather than `httpx`'s and one `except` arm covers both an
+  outage and a malformed table. The subclass makes a caller's `except` order load-bearing.
 - **A contested coordinate keeps every PVID as its own row.** Consolidation into a PVID is keyed on the
   text the model extracted, never on a coordinate, so one variant fragments into records whose verdicts
   disagree. Collapsing them was rejected: it needs an ordering nobody defined, which is `mode()` over an

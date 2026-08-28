@@ -44,6 +44,7 @@ import gzip
 import hashlib
 import json
 import logging
+import math
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -95,6 +96,14 @@ PUBMIND_DROP_REASONS: tuple[str, ...] = (
     "non_acgt",
     # 523 rows in the same file assert a change from a base to itself, which is not a variant.
     "ref_equals_alt",
+    # No PVID. The PVID is PubMind's *record* id, and this whole snapshot is organized around record
+    # identity: a verdict with no id cannot be attributed, cannot be deduped against its twin, and
+    # cannot join the multiplicity accounting. Dropped rather than carried with a null, because a null
+    # id would silently merge distinct records under `identical_duplicate`.
+    "no_pvid",
+    # A `Start` that is not a number. The one cell that used to be parsed without a guard, which meant
+    # a blank or truncated line killed the whole build mid-stream instead of being counted.
+    "unparsable_position",
     # A codon block needing two or three simultaneous substitutions, or a longer MNV block. It is a
     # statement about the protein, not about a position a consumer can genotype.
     "multi_substitution",
@@ -128,6 +137,19 @@ class PubMindBuildError(RuntimeError):
     """A PubMind snapshot could not be built from the table given."""
 
 
+class PubMindUnavailable(PubMindBuildError):
+    """The ANNOVAR-distributed table could not be reached.
+
+    A **subclass**, so `except PubMindBuildError` keeps catching everything it did while a caller who
+    wants to tell "the source is down" from "your table is malformed" can. That distinction has to be
+    carried by the *type*: neither `exc.__cause__` nor a message is pinned as an API, so a reword
+    would flip a consumer's verdict from `unchecked` to "your data is wrong".
+
+    The subclassing makes a caller's `except` **order** load-bearing — list this arm before its parent
+    or it is dead code (`@client-exception-contract`).
+    """
+
+
 @dataclass(frozen=True)
 class PubMindDownload:
     """What a download established about the bytes — each half `None` when the server did not say.
@@ -138,6 +160,9 @@ class PubMindDownload:
 
     path: Path
     sha256: str | None
+    #: The URL the bytes actually came from, so `release.json` states a provenance the build
+    #: established rather than the module's default.
+    url: str | None = None
     etag: str | None = None
     last_modified: str | None = None
 
@@ -187,18 +212,27 @@ def download_pubmind_table(
     tmp = dest.with_name(dest.name + ".part")
     hasher = hashlib.sha256()
     logger.info("Downloading the PubMind table from %s ...", url)
-    with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
-        resp.raise_for_status()
-        etag = resp.headers.get("ETag")
-        last_modified = resp.headers.get("Last-Modified")
-        with open(tmp, "wb") as fh:
-            for chunk in resp.iter_bytes():
-                fh.write(chunk)
-                hasher.update(chunk)
+    try:
+        with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
+            resp.raise_for_status()
+            etag = resp.headers.get("ETag")
+            last_modified = resp.headers.get("Last-Modified")
+            with open(tmp, "wb") as fh:
+                for chunk in resp.iter_bytes():
+                    fh.write(chunk)
+                    hasher.update(chunk)
+    except httpx.HTTPError as exc:
+        raise PubMindUnavailable(
+            f"could not download the PubMind table from {url}: {exc}. It is a single dated bulk file "
+            f"on a third party's server, so a move or a rotation looks exactly like this — pass "
+            f"`--table` with a copy you already hold."
+        ) from exc
     tmp.replace(dest)
     digest = hasher.hexdigest()
     logger.info("Downloaded %s (sha256 %s, etag %s)", dest, digest, etag)
-    return PubMindDownload(path=dest, sha256=digest, etag=etag, last_modified=last_modified)
+    return PubMindDownload(
+        path=dest, sha256=digest, url=url, etag=etag, last_modified=last_modified
+    )
 
 
 def _schema() -> dict:
@@ -226,7 +260,10 @@ def _open_table(table: Path) -> Iterator[dict[str, str]]:
     """Yield the table's rows as dicts, from a `.gz` or a plain text file."""
     opener = gzip.open if table.suffix == ".gz" else open
     with opener(table, "rt", encoding="utf-8", newline="") as handle:  # type: ignore[operator]
-        reader = csv.DictReader(handle, delimiter="\t")
+        # `restval=""` so a truncated line yields empty cells rather than `None`: without it a short
+        # row was silently *kept*, its blank `clin_sig` reading as "PubMind states no classification"
+        # at a coordinate PubMind never spoke about, and counted by no drop reason at all.
+        reader = csv.DictReader(handle, delimiter="\t", restval="")
         missing = [c for c in _REQUIRED_COLUMNS if c not in (reader.fieldnames or [])]
         if missing:
             raise PubMindBuildError(
@@ -237,22 +274,46 @@ def _open_table(table: Path) -> Iterator[dict[str, str]]:
         yield from reader
 
 
-def _number(raw: str | None) -> tuple[float | None, bool]:
-    """`(value, unparsable)` — an empty cell is a plain absence, a malformed one is a finding."""
+def _score(raw: str | None) -> tuple[float | None, bool]:
+    """`(value, unparsable)` — an empty cell is a plain absence, a malformed one is a finding.
+
+    `NaN` and `inf` are *rejected* rather than stored, and that is not pedantry: `float()` accepts both,
+    so they would slip past the counter as parsed values and then poison every comparison downstream.
+    A routine cell in a bioinformatics TSV.
+    """
     text = (raw or "").strip()
     if not text:
         return None, False
     try:
-        return float(text), False
+        value = float(text)
     except ValueError:
         return None, True
+    return (value, False) if math.isfinite(value) else (None, True)
+
+
+def _confidence(raw: str | None) -> tuple[int | None, bool]:
+    """PubMind's 0-3 evidence-depth count. Non-integral is withheld, never truncated.
+
+    `int(float("2.7"))` is `2`, which would record a definite count the source did not state — and
+    `int(float("nan"))` raises. Both are unparsable: withhold and count.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None, False
+    try:
+        value = float(text)
+    except ValueError:
+        return None, True
+    if not math.isfinite(value) or value != int(value):
+        return None, True
+    return int(value), False
 
 
 def build_snapshot(
     table: Path,
     out_dir: Path,
     *,
-    source_url: str = DEFAULT_PUBMIND_URL,
+    source_url: str | None = None,
     source_sha256: str | None = None,
     source_etag: str | None = None,
     source_last_modified: str | None = None,
@@ -262,6 +323,12 @@ def build_snapshot(
     Rows are emitted sorted by `(chrom in karyotype order, start, ref, alt, pvid)`, so a rebuild from
     the same input is byte-identical (Principle 7); `release.json`'s `built_at` is the only
     per-run-varying byte and lives outside the parquet.
+
+    **Every provenance argument defaults to `None` rather than to the module's constants**, and
+    `source_url` in particular: only a caller that actually fetched can say where the bytes came from.
+    Defaulting it to `DEFAULT_PUBMIND_URL` would have written the ANNOVAR URL into the `release.json`
+    of a snapshot built from a file on local disk — asserting a provenance the build never established,
+    in the one file whose whole job is to pin which bytes it was built from.
     """
     if pl is None:  # pragma: no cover - exercised only where the [dev] extra is absent
         raise ImportError(
@@ -296,7 +363,15 @@ def build_snapshot(
         if ref == alt:
             dropped["ref_equals_alt"] += 1
             continue
-        start = int((row[_COL_START] or "").strip())
+        pvid = (row[_COL_PVID] or "").strip()
+        if not pvid:
+            dropped["no_pvid"] += 1
+            continue
+        position = (row[_COL_START] or "").strip()
+        if not position.isdigit():
+            dropped["unparsable_position"] += 1
+            continue
+        start = int(position)
         if len(ref) != len(alt):
             derivation = "indel"
         elif len(ref) == 1:
@@ -310,8 +385,8 @@ def build_snapshot(
             start, ref, alt = start + index, ref[index], alt[index]
             derivation = "codon"
         raw_sig = row[_COL_SIG] or None
-        score, bad_score = _number(row.get(_COL_SCORE))
-        confidence, bad_confidence = _number(row.get(_COL_CONFIDENCE))
+        score, bad_score = _score(row.get(_COL_SCORE))
+        confidence, bad_confidence = _confidence(row.get(_COL_CONFIDENCE))
         unparsable_score += bad_score
         unparsable_confidence += bad_confidence
         records.append(
@@ -320,11 +395,11 @@ def build_snapshot(
                 "start": start,
                 "ref": ref,
                 "alt": alt,
-                "pvid": (row[_COL_PVID] or "").strip() or None,
+                "pvid": pvid,
                 "clin_sig": normalize_clin_sig(raw_sig),
                 "clin_sig_raw": raw_sig,
                 "pathogenicity_score": score,
-                "confidence": None if confidence is None else int(confidence),
+                "confidence": confidence,
                 "derivation": derivation,
             }
         )
@@ -407,7 +482,7 @@ def _write_release_json(
     out_dir: Path,
     result: PubMindBuildResult,
     *,
-    source_url: str,
+    source_url: str | None,
     source_etag: str | None,
     source_last_modified: str | None,
 ) -> Path:
@@ -417,8 +492,9 @@ def _write_release_json(
     can cohabit one snapshot directory (ClinVar's citations beside its records), and this snapshot
     directory holds one thing.
 
-    `source_etag` and `source_last_modified` are `None` when the table came off local disk — unknown
-    rather than absent, which is why they are recorded as null instead of omitted.
+    All three of `source_url`, `source_etag` and `source_last_modified` are `None` when the table came
+    off local disk — unknown rather than absent, which is why they are recorded as null instead of
+    omitted, and why none of them takes a default the build did not establish.
     """
     release = {
         "source_url": source_url,

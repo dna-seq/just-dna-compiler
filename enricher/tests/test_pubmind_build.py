@@ -21,10 +21,13 @@ import polars as pl
 import pytest
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.pubmind_build import (
+    DEFAULT_PUBMIND_URL,
     PUBMIND_DERIVATIONS,
     PUBMIND_DROP_REASONS,
     PubMindBuildError,
+    PubMindUnavailable,
     build_snapshot,
+    download_pubmind_table,
 )
 from just_dna_format.vocab import VALID_CLIN_SIG
 
@@ -381,6 +384,138 @@ def test_a_missing_table_raises_rather_than_writing_an_empty_snapshot(tmp_path: 
     """An empty snapshot would later read as "PubMind says nothing about anything"."""
     with pytest.raises(FileNotFoundError):
         build_snapshot(tmp_path / "absent.txt.gz", tmp_path / "out")
+
+
+def _tiny(tmp_path: Path, body: str, name: str = "tiny.txt") -> Path:
+    """A hand-written table in the source's own column order, for the malformed-input cases."""
+    header = (
+        "#Chr\tStart\tEnd\tRef\tAlt\tPVID\tPubMindDB_pathogenicity_sum\t"
+        "PubMindDB_paper_level_pathogenicity_score\tPubMindDB_confidence"
+    )
+    path = tmp_path / name
+    path.write_text(f"{header}\n{body}", encoding="utf-8")
+    return path
+
+
+def test_a_row_with_no_pvid_is_dropped_rather_than_carried_with_a_null(tmp_path: Path) -> None:
+    """The PVID is PubMind's record id, and this snapshot is organised around record identity.
+
+    The bug this pins is two-headed. A null `pvid` sorts against a real one in the emit key — and two
+    records at one coordinate is this snapshot's *headline* property, so the tuple comparison really is
+    reached — which crashed the whole build with a `TypeError`. And a null id would silently merge
+    distinct records under `identical_duplicate`, since that collapse compares whole rows.
+    """
+    path = _tiny(
+        tmp_path,
+        "1\t100\t100\tA\tG\t\tPathogenic\t0.9\t2\n"
+        "1\t100\t100\tA\tG\tPV1\tBenign\t0.1\t1\n",
+    )
+    result = build_snapshot(path, tmp_path / "out")
+    assert result.dropped["no_pvid"] == 1
+    frame = pl.read_parquet(result.parquet_file)
+    assert frame["pvid"].to_list() == ["PV1"]
+    assert frame["pvid"].null_count() == 0
+    assert result.input_rows == result.record_count + sum(result.dropped.values())
+
+
+def test_a_truncated_line_is_dropped_and_counted_rather_than_silently_kept(tmp_path: Path) -> None:
+    """A short row used to be *kept*, asserting `not_provided` where the source said nothing at all.
+
+    `csv.DictReader` fills missing trailing fields with `None` unless told otherwise, so five of nine
+    columns produced a record whose significance folded to "PubMind states no classification" at a
+    coordinate PubMind never mentioned — and no drop reason counted it, against a module whose stated
+    discipline is that every dropped row is counted.
+    """
+    result = build_snapshot(_tiny(tmp_path, "1\t100\t100\tA\tG\n"), tmp_path / "out")
+    assert result.record_count == 0
+    assert result.dropped["no_pvid"] == 1
+    assert result.input_rows == 1 == sum(result.dropped.values())
+
+
+def test_a_position_that_is_not_a_number_is_dropped_rather_than_killing_the_build(
+    tmp_path: Path,
+) -> None:
+    """`Start` was the one cell parsed with a bare `int()`, so a blank raised mid-stream.
+
+    Raising after an arbitrary amount of work is the worst of both: no snapshot, and no count of what
+    was wrong with the input.
+    """
+    result = build_snapshot(
+        _tiny(
+            tmp_path,
+            "1\t\t100\tA\tG\tPV1\tPathogenic\t0.9\t2\n"
+            "1\tnot-a-number\t100\tA\tG\tPV2\tBenign\t0.1\t1\n"
+            "1\t300\t300\tA\tG\tPV3\tBenign\t0.1\t1\n",
+        ),
+        tmp_path / "out",
+    )
+    assert result.dropped["unparsable_position"] == 2
+    assert result.record_count == 1
+    assert result.input_rows == result.record_count + sum(result.dropped.values())
+
+
+def test_a_non_finite_or_non_integral_number_is_withheld_rather_than_accepted(
+    tmp_path: Path,
+) -> None:
+    """`float()` accepts `NaN` and `inf`, and `NaN` is a routine cell in a bioinformatics TSV.
+
+    Both would have slipped past the counter as parsed values and then poisoned every comparison
+    downstream — and `int(float("nan"))` raises outright. `2.7` is the quieter half of the same
+    defect: truncating it to `2` records a definite evidence count the source never stated.
+    """
+    result = build_snapshot(
+        _tiny(
+            tmp_path,
+            "1\t100\t100\tA\tG\tPV1\tPathogenic\tNaN\t2\n"
+            "1\t200\t200\tA\tG\tPV2\tBenign\tinf\t1\n"
+            "1\t300\t300\tA\tG\tPV3\tBenign\t0.5\tNaN\n"
+            "1\t400\t400\tA\tG\tPV4\tBenign\t0.5\t2.7\n",
+        ),
+        tmp_path / "out",
+    )
+    frame = pl.read_parquet(result.parquet_file)
+    assert result.record_count == 4, "a bad cell withholds a value, it does not drop the row"
+    assert result.unparsable_score == 2                     # NaN and inf
+    assert result.unparsable_confidence == 2                # NaN and 2.7
+    assert frame["pathogenicity_score"].null_count() == 2
+    assert frame["confidence"].to_list() == [2, 1, None, None]
+
+
+def test_a_download_failure_arrives_as_this_tier_s_own_type(tmp_path: Path, monkeypatch) -> None:
+    """A moved bulk URL must not surface as `httpx`'s type: the pass owes its own.
+
+    `PubMindUnavailable` is a **subclass** of `PubMindBuildError`, so one `except` arm on the parent
+    catches both an outage and a malformed table while a caller who needs to tell them apart can.
+    """
+    import httpx
+
+    def _refuse(*_args, **_kwargs):
+        raise httpx.ConnectError("name or service not known")
+
+    monkeypatch.setattr(httpx, "stream", _refuse)
+    with pytest.raises(PubMindUnavailable) as caught:
+        download_pubmind_table(tmp_path / "table.txt.gz")
+    assert issubclass(PubMindUnavailable, PubMindBuildError)
+    assert "--table" in str(caught.value), "the message has to name the way round it"
+    assert DEFAULT_PUBMIND_URL in str(caught.value)
+    assert not (tmp_path / "table.txt.gz").exists(), "no half-written file survives the failure"
+
+
+def test_a_local_table_records_no_source_url_it_did_not_establish(tmp_path: Path) -> None:
+    """`release.json` exists to pin which bytes a snapshot holds; a guessed URL is not that.
+
+    Defaulting `source_url` to the ANNOVAR address wrote it into the provenance of a snapshot built
+    from a file on disk, beside the `null` ETag and `null` Last-Modified that correctly said the build
+    established nothing about where the bytes came from.
+    """
+    build_snapshot(_SLICE, tmp_path / "local")
+    assert json.loads((tmp_path / "local" / "release.json").read_text())["source_url"] is None
+
+    build_snapshot(_SLICE, tmp_path / "fetched", source_url=DEFAULT_PUBMIND_URL)
+    assert (
+        json.loads((tmp_path / "fetched" / "release.json").read_text())["source_url"]
+        == DEFAULT_PUBMIND_URL
+    )
 
 
 def test_an_unreadable_numeric_cell_is_withheld_rather_than_guessed_and_is_counted(
