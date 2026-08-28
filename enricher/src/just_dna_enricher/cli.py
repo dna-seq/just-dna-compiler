@@ -589,8 +589,9 @@ def literature_(
 ) -> None:
     """Fill literature.csv from a module's citations (pass 4, online only).
 
-    Two citation sites since 0.6: `studies.csv`, and a `pmid` on a binning row, which grounds the
-    threshold it sits on.
+    `studies.csv` is one citation site of several: a `pmid` on a binning row grounds the threshold it
+    sits on, and one on a `pharm_variants.csv` row grounds that row's own drug and genotype claim. The
+    pass reads every site, so a module citing only from those tables is enriched rather than refused.
     """
     try:
         result = enrich_literature(
@@ -2011,8 +2012,9 @@ def hint_citation_(
     fabricated citation. The title, journal, year and first author come back in the same response and
     are printed for exactly that comparison (S12).
 
-    **`--pmcid` goes the other way.** `studies.csv` and a binning row's `pmid` both key on the PubMed
-    id, and a curator holding only a `PMC…` id had no route to it — the schema refused the cell and
+    **`--pmcid` goes the other way.** Every `pmid` in the schema keys on the PubMed id — `studies.csv`,
+    a binning row's and a `pharm_variants.csv` row's alike — and a curator holding only a `PMC…` id had
+    no route to it — the schema refused the cell and
     named no remedy. This resolves it and then asks PubMed which paper that is. The id is **reported,
     never written**: filling `pmid` from NCBI would make the existence check compare NCBI with itself.
     """
