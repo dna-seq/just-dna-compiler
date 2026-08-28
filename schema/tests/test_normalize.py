@@ -192,6 +192,10 @@ def test_each_authority_key_fails_with_its_own_reason(key: str) -> None:
     assert IDENTITY_AUTHORITY_REASONS[key] in message
     # The way out is named, or the diagnosis is just a longer dead end.
     assert "strip_authority_keys" in message and "--strip-identity" in message
+    # The third of the three places that say `module.version` is NOT registry-stamped — the other two
+    # are the constant's own comment and `authoring_reference()`'s `registry_stamped_keys`. It is here
+    # because this message is where the author who wrote a stray key is actually reading.
+    assert "module.version" in message
 
 
 def test_authority_keys_are_reported_together_and_sorted() -> None:
