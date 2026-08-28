@@ -708,7 +708,11 @@ workaround.
 | `template <kind>` | the compiler's, mirrored |
 
 Snapshot builders (dev/publisher surface, mostly needing the `polars` extra):
-`clinvar build|citations|publish`, `clinpgx build`, `acmg build`, `gnomad constraint`, `upload`.
+`clinvar build|citations|publish`, `clinpgx build|check|publish`, `cpic build|publish`, `pharmvar build`,
+`acmg build`, `gnomad constraint build|publish`, `pubmind build`, `cache status|pull`, `upload`.
+Two of those never publish and say so when asked: `pharmvar build` and `pubmind build` write a local
+snapshot only, because a bulk file arriving under terms nobody has established is not a file this
+workspace may pass on.
 
 Every pass takes `--strict` / `--best-effort`, and every pass that can degrade takes `--offline`.
 `--offline` is the only switch; an explicit `--*-cache` path is the inject-only escape hatch and is

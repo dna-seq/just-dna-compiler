@@ -819,6 +819,59 @@ a key. Separately, RM27 still owes the redistribution axis (`@redistribution-ung
 *publishing a module that carries such bytes*, not on building the snapshot or running the check
 locally, and conflating the two is what stalled this area in the first draft.
 
+## RM136 — `enrich` re-reads the derived file, so an overlay correction is invisible to the checks
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Found by** the wave-1 audit of RM124, 2026-08-28
+
+The compiler applies `overrides.csv` before any check reads a row, which is the whole point: a check
+must see what the module asserts. The enricher does not. Its own passes re-read the raw derived file,
+so an author who corrects a `resolution.csv` cell through the overlay — the mechanism RM124 built for
+exactly this — will see `enrich` report the same finding on every subsequent run, forever, with no way
+to clear it and no indication that their correction was recorded and honoured one tier over.
+
+`INTEGRATION_0_6.md` states the asymmetry for *consumers* ("read the derived parquets, not the derived
+CSVs"). It is not stated for the **author**, who meets it first and has no parquet to read at the point
+they are curating.
+
+**What is not the repair.** Teaching every enricher pass to apply the overlay puts a second
+implementation of `apply_overrides` in the tier that fetches, and the two would drift on exactly the
+normalization seam that already produced one silent P7 break in this feature's first week. Nor should
+the enricher *write* through the overlay: an overlay row is the author's answer to a difference, never
+the tier's (RM83's standing refusal).
+
+**The shape worth designing.** Probably the enricher reading the overlay read-only and suppressing a
+finding it has already been answered for — which needs a decision about what "answered" means when the
+overlay corrects a different column than the one the check is about, and that decision is the item.
+
+## RM137 — an overlay `update` on a row the compiler drops warns on the second lap only
+
+**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** compiler ·
+**Found by** the wave-1 audit of RM124, 2026-08-28, reproduced end to end
+
+`reverse_module` rebuilds a derived table from the artifact, and two tables are rebuilt from something
+narrower than the file the compiler read: `literature.csv` loses its uncited rows before the parquet
+(`@uncited-literature-dropped`) and is rebuilt *from* that parquet, and `resolution.csv` has no parquet
+at all and is rebuilt from the SNP core. An `update` naming such a row therefore matches on lap 1 and
+warns on lap 2, so a module and its own `compile → reverse → compile` disagree on
+`manifest.compilation.warnings`, a published field. Both hashes hold; only the warning moves.
+
+Reproduced on `reference_examples/hboc_palb2` with one uncited `literature.csv` row under a one-row
+overlay: lap 1 warns zero times, lap 2 once.
+
+**Already done, and it is not the fix**: the message now names the third reading, so it no longer
+tells an author their subject is mistyped when the correction is fine and the table is short.
+
+**Why each obvious repair is wrong.** *Apply the overlay after the drop* — the checks then stop seeing
+what the module asserts, which is the property the apply position exists to hold. *Make reverse emit
+the dropped rows* — there is no source of truth for them; they are not in the artifact at all.
+*Suppress the warning for the two tables* — re-opens the silent-suppress hole the design already calls
+its worst case, and it would hide a genuine typo on the tables most likely to carry one.
+
+The honest framing is that this is the round trip being lossy about **warnings** rather than about
+content, on a channel RM126 has now made load-bearing. Worth deciding against RM131's `carried` split,
+which is the discriminator that could classify it.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
