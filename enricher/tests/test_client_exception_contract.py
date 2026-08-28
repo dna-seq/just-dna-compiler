@@ -28,6 +28,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 from just_dna_enricher.cpic import CpicClient, CpicError
+from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseUnavailable
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
 from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
@@ -85,6 +86,16 @@ def _cpic_row_count(handler: Callable[[httpx.Request], httpx.Response]) -> Calla
     return lambda: client.row_count("allele")
 
 
+def _currency(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM85's release probe. It *streams* rather than fetching a body, which is the reason it is here
+    on its own line: `raise_for_status()` inside a `with client.stream(...)` block is a shape none of
+    the others has, and getting it wrong leaks the status leg exactly as `gnomad._post` once did."""
+    client = ClinVarReleaseClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
+    )
+    return client.current_release
+
+
 def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
     """OLS4/HGNC. RM97 left this one behind, and the guard below is why nobody noticed (RM101)."""
     client = OntologyClient(gate=_instant_gate())
@@ -111,6 +122,9 @@ CLIENTS = [
     # `IdentifierUnavailable` rather than its parent on purpose: it is strictly the stronger
     # assertion, since passing it also proves an `except IdentifierCheckError` still fires.
     ("identifiers", _ontology, IdentifierUnavailable),
+    # `ReleaseUnavailable` rather than its parent, for the reason above it: it is the stronger
+    # assertion, and every failure of this probe really is "the source could not be asked".
+    ("currency", _currency, ReleaseUnavailable),
 ]
 
 

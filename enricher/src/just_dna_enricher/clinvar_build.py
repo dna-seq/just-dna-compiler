@@ -160,15 +160,38 @@ def _condition(clndn: str | None) -> str | None:
     return clndn.replace("_", " ").strip() or None
 
 
+#: The header line ClinVar states its release date on. Public because two readers now need it and
+#: they read different *media*: this module reads a downloaded file, and `currency` reads the first
+#: few kilobytes of the same file over the wire without downloading 200 MB. A second spelling of the
+#: convention would let the builder's label and the currency check's label drift apart silently — the
+#: same argument `clinvar_dataset_label` makes for being one function called from both sides.
+FILE_DATE_HEADER = "##fileDate="
+
+
+def file_date_from_header(header: str) -> str | None:
+    """The ``##fileDate=YYYY-MM-DD`` value from VCF header text, or `None` when it states none.
+
+    Takes text rather than a path so a caller holding a decompressed *prefix* of the file can ask the
+    same question as one holding the whole thing. Stops at the first data line, so handing it an
+    entire VCF costs nothing beyond the header.
+    """
+    for line in header.splitlines():
+        if not line.startswith("#"):
+            break
+        if line.startswith(FILE_DATE_HEADER):
+            return line.split("=", 1)[1].strip() or None
+    return None
+
+
 def _read_file_date(vcf_path: Path) -> str | None:
-    """The ClinVar release date from the ``##fileDate=YYYY-MM-DD`` header line."""
+    """The ClinVar release date from a downloaded VCF, through the shared header reader above."""
+    header: list[str] = []
     with gzip.open(vcf_path, "rt") as handle:
         for line in handle:
             if not line.startswith("#"):
                 break
-            if line.startswith("##fileDate="):
-                return line.split("=", 1)[1].strip()
-    return None
+            header.append(line)
+    return file_date_from_header("".join(header))
 
 
 def _iter_records(vcf_path: Path) -> Iterator[tuple[str, str, str, str, str, str]]:
