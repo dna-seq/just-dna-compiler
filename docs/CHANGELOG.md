@@ -243,6 +243,80 @@ inside this same number. Each entry below names the packages it actually touched
   since 0.5.1, so that half of the item was already true and is now pinned by a test over the whole
   drafting family rather than asserted.
 
+- **RM134 § A — the PubMind snapshot, and one significance normalizer.** *(`just-dna-enricher`; nothing in the format or compiler tiers moves and the compile path imports none of it.)*
+
+  **Package: `just-dna-enricher`.** Additive: a new module, a new snapshot kind and two new commands.
+  Nothing in the format or compiler tiers moves, no schema field is added, removed, promoted or retyped,
+  and the compile path imports none of it. Decided in
+  [PROPOSAL_0_7 § RM134](proposals/PROPOSAL_0_7.md); the evidence is
+  [PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md).
+
+  - **`clin_sig.normalize_clin_sig` is now the one raw-significance → `VALID_CLIN_SIG` fold**, moved out
+    of `clinvar_build._normalize_clin_sig`, and **two defects were fixed on the way out**. Its map keys
+    are underscored because that is ClinVar's spelling; PubMind spells the same concepts with spaces, so
+    `Uncertain significance` and `Conflicting` both fell through to `other` while ClinVar's
+    `Uncertain_significance` and `Conflicting_classifications_of_pathogenicity` mapped correctly — two
+    sources that agree, reported as disagreeing. Repaired with a whitespace→underscore step in the
+    tokenizer (an identity on every existing key) and a bare `conflicting` key. **No ClinVar answer
+    changes**, which is asserted as an equality over the walked map rather than spot-checked. A second
+    hand-written map was the rejected repair: the concordance check RM134 § B builds compares two
+    *normalized* calls, so a drift between two maps would report a disagreement between our own tables.
+  - **A whitespace-only or token-less significance value is now `not_provided`, not `other`.** "The source
+    states no classification" and "the source stated something we do not model" are different answers and
+    only the second is a disagreement. No ClinVar `CLNSIG` takes that shape, so nothing built to date
+    moves.
+  - **New: `just-dna-enricher pubmind build`** (`[dev]`, `polars`) — the ANNOVAR-redistributed
+    `hg38_pubmind_db.txt.gz` → `data/pubmind.parquet` + `release.json`, byte-reproducible across rebuilds.
+    Columns are `chrom, start, ref, alt, pvid, clin_sig, clin_sig_raw, pathogenicity_score, confidence,
+    derivation`; the significance names are **unprefixed**, matching the ClinVar snapshot, because one
+    column vocabulary across every snapshot is what lets a later check read N authorities with no
+    per-source mapping. `pathogenicity_score` is nullable and null means *not computed*, never 0.0;
+    `confidence` is PubMind's own 0–3 and is deliberately not normalized against `review_stars`.
+  - **Every dropped row is counted, as an equality over a walked registry.**
+    `input_rows == record_count + sum(dropped.values())` over `PUBMIND_DROP_REASONS` — `off_target_chrom`,
+    `non_acgt`, `ref_equals_alt`, `multi_substitution`, `identical_duplicate`. A codon block differing at
+    exactly one base is decomposed onto it (`derivation=codon`); one needing two or three simultaneous
+    changes is dropped, because it asserts a change to the protein rather than to a genotypable position.
+    Length-changing rows are kept and stamped `derivation=indel`: upstream left-normalization is
+    unverified, and a consumer must be able to exclude them without re-deriving why.
+  - **A bad cell and a bad row are different outcomes.** A row with no PVID or an unreadable `Start` is
+    dropped and counted (`no_pvid`, `unparsable_position`) — the PVID is the record id everything here is
+    keyed on, and a null one would have merged distinct records under `identical_duplicate` as well as
+    crashing the emit sort. A malformed `pathogenicity_score` or `confidence` withholds *that value* and
+    keeps the row, counted in `unparsable_score` / `unparsable_confidence`. `NaN` and `inf` count as
+    unparsable rather than being stored (`float()` accepts both), and a non-integral confidence is
+    withheld rather than truncated to a count the source never stated.
+  - **`download_pubmind_table` raises `PubMindUnavailable`**, a subclass of `PubMindBuildError`, so a
+    moved bulk URL surfaces as this tier's type rather than `httpx`'s and one `except` arm covers both an
+    outage and a malformed table. The subclass makes a caller's `except` order load-bearing.
+  - **A contested coordinate keeps every PVID as its own row.** Consolidation into a PVID is keyed on the
+    text the model extracted, never on a coordinate, so one variant fragments into records whose verdicts
+    disagree. Collapsing them was rejected: it needs an ordering nobody defined, which is `mode()` over an
+    unsorted group. `release.json` records `multi_pvid_keys`, `max_pvids_per_key` and `contested_keys`.
+  - **New: `just-dna-enricher pubmind publish`, which refuses and says why.** On the PharmVar precedent,
+    with a different reason: PharmVar's bytes arrive under terms that bar passing them on, PubMind's under
+    **no stated data terms at all**. The command exists rather than being absent, because a missing command
+    reads as an oversight somebody will helpfully add. The refusal text is pinned by a test.
+  - **`PUBMIND_TERMS` records `None` on every licence axis**, and the nulls are load-bearing: null means
+    *the terms could not be established*. Unknown terms **warn and never gate** — `taints_commercial_use`
+    requires `commercial_use is False` — so a module carrying PubMind values compiles, lands `pubmind` in
+    `manifest.sources.unknown_terms_sources`, and drives the module-wide verdict to `None`: undetermined,
+    never permitted. That is also why `pubmind build` has **no `--use` flag**: `check_declared_use` returns
+    a skip for every declaration, so the gate would refuse every build and the flag would do nothing.
+  - **New cache: `pubmind/`, `$JUST_DNA_PUBMIND_CACHE`**, with `resolve_pubmind_reference` and
+    `default_pubmind_cache_dir` and deliberately **no `ensure_pubmind_snapshot`** — a refused publish means
+    no repo to provision from. `cache status` lists it as build-your-own.
+  - **Fixed a counted-prose assertion that a correct addition broke.**
+    `test_every_resolver_and_default_dir_takes_the_off_switch` asserted `len(named) == 12` with "expected
+    six resolvers and six default dirs" in its message, so the seventh snapshot failed it on arithmetic.
+    It now asserts an equality between the two walked families keyed by snapshot name, which says
+    something the count never did: no resolver is missing its default directory and none is orphaned.
+
+  **Still open, and named rather than implied.** The ANNOVAR-distributed table's data terms are
+  unestablished and only CHOP can settle them; the unblock action is to ask WGLab and CHOP's Office of
+  Technology Transfer in writing. Whether the indel rows are left-normalized is likewise unestablished,
+  which is what `derivation=indel` exists to let a consumer act on.
+
 ## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
 **Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately

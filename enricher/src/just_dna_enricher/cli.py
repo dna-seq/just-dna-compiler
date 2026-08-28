@@ -97,6 +97,7 @@ from just_dna_enricher.locations import (
     resolve_cpic_reference,
     resolve_ensembl_reference,
     resolve_pharmvar_reference,
+    resolve_pubmind_reference,
 )
 from just_dna_enricher.lookup import (
     as_report_rows,
@@ -110,6 +111,11 @@ from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.pharmvar import PharmVarError
 from just_dna_enricher.pharmvar_build import build_snapshot as build_pharmvar_snapshot
+from just_dna_enricher.pubmind_build import (
+    PubMindBuildError,
+    download_pubmind_table,
+)
+from just_dna_enricher.pubmind_build import build_snapshot as build_pubmind_snapshot
 from just_dna_enricher.sequences import summarize_ref_mismatches
 from just_dna_enricher.upload import DEFAULT_CLINPGX_REPO_ID, DEFAULT_CPIC_REPO_ID
 from just_dna_enricher.verification import record_verification, skipped
@@ -1340,6 +1346,7 @@ _CACHES: list[tuple[str, object, object, str]] = [
     ("clinpgx", resolve_clinpgx_reference, ensure_clinpgx_snapshot, "clinical annotations (clinpgx check)"),
     ("cpic", resolve_cpic_reference, ensure_cpic_snapshot, "alleles/diplotypes/recommendations (pgx, draft)"),
     ("pharmvar", resolve_pharmvar_reference, None, "star alleles (pgx) — build your own, never published"),
+    ("pubmind", resolve_pubmind_reference, None, "literature-derived verdicts — build your own, never published"),
 ]
 
 
@@ -1580,6 +1587,109 @@ def pharmvar_build_(
         "  operator-built and inject-only: do not publish or pass this snapshot on (terms §2).",
         fg=typer.colors.YELLOW,
     )
+
+
+# ── the PubMind snapshot (build only; publish exists in order to refuse) — RM134 § A ────────────
+
+pubmind_app = typer.Typer(
+    add_completion=False,
+    help=(
+        "Build the PubMind literature-derived snapshot. Operator-built and inject-only; "
+        "never published."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(pubmind_app, name="pubmind")
+
+#: The refusal `pubmind publish` prints. Pinned by a test because a refusal's *reason* is the whole
+#: value of a command that exists in order to say no (`@warning-text-is-api`).
+PUBMIND_PUBLISH_REFUSAL = (
+    "pubmind publish is refused by design. The ANNOVAR-distributed PubMind table states no data "
+    "terms of its own: CHOP's LICENSE.md covers the software (academic, non-commercial), the paper "
+    "is CC BY-NC-ND 4.0, and nobody publishes a licence for those bytes. An unestablished permission "
+    "is not a permission, so a bulk file arriving under terms we cannot establish is not a file we "
+    "may pass on — the same rule that leaves PharmVar's snapshot unpublishable. Build your own with "
+    "`pubmind build` and point at it with $JUST_DNA_PUBMIND_CACHE. Lifting this needs an answer from "
+    "WGLab and CHOP's Office of Technology Transfer, in writing, not a flag."
+)
+
+
+@pubmind_app.command("build")
+def pubmind_build_(
+    table: Path | None = typer.Option(
+        None, "--table", exists=True, dir_okay=False,
+        help="Local hg38_pubmind_db.txt.gz. Omit and pass --download to fetch it from ANNOVAR.",
+    ),
+    download: bool = typer.Option(
+        False, "--download", help="Download the ANNOVAR-distributed PubMind table into --out first.",
+    ),
+    out: Path = typer.Option(
+        Path("pubmind"), "--out", file_okay=False,
+        help="Output snapshot directory (writes data/pubmind.parquet + release.json).",
+    ),
+) -> None:
+    """Reduce the ANNOVAR-distributed PubMind table to the parquet snapshot the checks read.
+
+    **There is no `--use` flag, and its absence is the design.** PubMind's data terms could not be
+    established, and unknown terms warn rather than gate (`commercial_use=None` never taints a
+    module). A declared-use gate here would refuse every build unconditionally, and a flag feeding a
+    gate that never gates is a flag that does nothing. What the unknown terms do gate is *publishing*
+    a snapshot or a module carrying these bytes — see `pubmind publish`, which refuses.
+    """
+    if table is None and not download:
+        typer.secho("Provide --table PATH or --download.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    fetched = None
+    # `PubMindBuildError` covers the download too: it translates `httpx` into `PubMindUnavailable`, a
+    # subclass, so this one arm catches a moved bulk URL as well as a malformed table. Without that,
+    # ANNOVAR rotating the file — the rot the source's own lack of a cadence invites — printed a
+    # traceback instead of this line.
+    try:
+        if table is None:
+            fetched = download_pubmind_table(out / "hg38_pubmind_db.txt.gz")
+        result = build_pubmind_snapshot(
+            fetched.path if fetched is not None else table,
+            out,
+            source_url=fetched.url if fetched is not None else None,
+            source_sha256=fetched.sha256 if fetched is not None else None,
+            source_etag=fetched.etag if fetched is not None else None,
+            source_last_modified=fetched.last_modified if fetched is not None else None,
+        )
+    except (FileNotFoundError, ImportError, PubMindBuildError) as exc:
+        typer.secho(f"PUBMIND BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"pubmind snapshot: {result.parquet_file}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"kept: {result.record_count} of {result.input_rows} row(s)  "
+        f"dataset: {result.dataset}  "
+        + "  ".join(f"{name}: {count}" for name, count in sorted(result.derivations.items()))
+    )
+    typer.secho(
+        "  dropped: "
+        + ", ".join(f"{name} {count}" for name, count in result.dropped.items()),
+        fg=typer.colors.YELLOW,
+    )
+    typer.secho(
+        f"  {result.multi_pvid_keys} of {result.allele_keys} coordinate(s) carry several PVIDs "
+        f"(worst {result.max_pvids_per_key}), and {result.contested_keys} of those disagree. Every "
+        f"PVID is kept as its own row: choosing a winner would be an ordering nobody defined.",
+        fg=typer.colors.YELLOW,
+    )
+    typer.secho(
+        "  data terms unestablished: operator-built and inject-only, never published.",
+        fg=typer.colors.YELLOW,
+    )
+
+
+@pubmind_app.command("publish")
+def pubmind_publish_() -> None:
+    """Refuse to publish the PubMind snapshot, and say why.
+
+    The command exists in order to refuse. A missing one reads as an oversight somebody will helpfully
+    add, and the reason belongs where a reader looks for it rather than only in a design document.
+    """
+    typer.secho(f"REFUSED: {PUBMIND_PUBLISH_REFUSAL}", fg=typer.colors.RED, err=True)
+    raise typer.Exit(code=1)
 
 
 # ── gnomAD constraint snapshot (build + publish, publisher/dev surface) ─────────────────────────

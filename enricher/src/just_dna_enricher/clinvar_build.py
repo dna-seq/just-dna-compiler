@@ -4,7 +4,9 @@ Turns the NCBI ClinVar GRCh38 VCF (`clinvar.vcf.gz`, ~200 MB gz, 4.4M records) i
 schema-shaped, per-chromosome parquet snapshot the resolver reads (`clinvar/data/*.parquet`) — the
 same on-disk layout as the Ensembl snapshot, so one DuckDB view shape serves both. One row per ALT
 allele; `clin_sig` is normalized into `vocab.VALID_CLIN_SIG` while `clin_sig_raw` keeps the verbatim
-`CLNSIG` (lossless, auditable). A `release.json` beside the parquet records the provenance
+`CLNSIG` (lossless, auditable) — the fold itself lives in `clin_sig.py` since 0.7, because a second
+source reporting a significance must reach the same map rather than grow its own. A `release.json`
+beside the parquet records the provenance
 (`clinvar_file_date`, `source_url`, `source_sha256`, `record_count`, ...) that will feed
 `GenePanelSpec.reference`/`reference_sha256` when RM4 lands.
 
@@ -28,8 +30,8 @@ from pathlib import Path
 import httpx
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import extract_pmids
-from just_dna_format.vocab import VALID_CLIN_SIG
 
+from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
@@ -82,60 +84,6 @@ def _empty_schema() -> dict:
     }
 
 
-# ── CLNSIG → VALID_CLIN_SIG normalization ──────────────────────────────────────────────────────
-# ClinVar aggregate germline classifications (verbatim tokens, lowercased) mapped onto the module
-# vocabulary. A token ClinVar coins that has no module axis maps to "other" via the default; the raw
-# CLNSIG is always kept in `clin_sig_raw`, so nothing is lost and the mapping stays auditable.
-_CLIN_SIG_MAP: dict[str, str] = {
-    "pathogenic": "pathogenic",
-    "pathogenic_low_penetrance": "pathogenic",
-    "likely_pathogenic": "likely_pathogenic",
-    "likely_pathogenic_low_penetrance": "likely_pathogenic",
-    "uncertain_significance": "uncertain_significance",
-    "uncertain_risk_allele": "uncertain_significance",
-    "likely_benign": "likely_benign",
-    "benign": "benign",
-    "drug_response": "drug_response",
-    "association": "association",
-    "association_not_found": "other",
-    "risk_factor": "risk_factor",
-    "established_risk_allele": "risk_factor",
-    "likely_risk_allele": "risk_factor",
-    "protective": "protective",
-    "affects": "affects",
-    "conflicting_classifications_of_pathogenicity": "conflicting",
-    "conflicting_interpretations_of_pathogenicity": "conflicting",
-    "not_provided": "not_provided",
-    "no_classification_provided": "not_provided",
-    "no_classification_for_the_single_variant": "not_provided",
-    "no_classifications_from_unflagged_records": "not_provided",
-    "no_assertion_provided": "not_provided",
-    "other": "other",
-    "confers_sensitivity": "other",
-    "low_penetrance": "other",
-}
-# When a single CLNSIG carries several values (`Pathogenic/Likely_pathogenic`, joined by | or /),
-# the winner is the most clinically consequential — picked by this explicit order, never set
-# iteration (Principle 7: deterministic). Every member of VALID_CLIN_SIG appears exactly once.
-_CLIN_SIG_SEVERITY: tuple[str, ...] = (
-    "pathogenic",
-    "likely_pathogenic",
-    "drug_response",
-    "risk_factor",
-    "affects",
-    "association",
-    "protective",
-    "conflicting",
-    "uncertain_significance",
-    "likely_benign",
-    "benign",
-    "not_provided",
-    "other",
-)
-assert set(_CLIN_SIG_SEVERITY) == VALID_CLIN_SIG, "severity order must cover VALID_CLIN_SIG exactly"
-
-_CLIN_SIG_SPLIT = re.compile(r"[|/,]")
-
 # ClinVar review status → gold-star rating (the ClinVar star system).
 _REVIEW_STARS: dict[str, int] = {
     "practice_guideline": 4,
@@ -149,21 +97,6 @@ _REVIEW_STARS: dict[str, int] = {
     "no_classifications_from_unflagged_records": 0,
     "no_assertion_provided": 0,
 }
-
-
-def _normalize_clin_sig(raw: str | None) -> str:
-    """Fold a raw CLNSIG value into a single `VALID_CLIN_SIG` member (most-severe wins)."""
-    if not raw:
-        return "not_provided"
-    tokens = {
-        _CLIN_SIG_MAP.get(tok.strip().lower(), "other")
-        for tok in _CLIN_SIG_SPLIT.split(raw)
-        if tok.strip()
-    }
-    for sig in _CLIN_SIG_SEVERITY:
-        if sig in tokens:
-            return sig
-    return "other"
 
 
 def review_stars(revstat: str | None) -> int | None:
@@ -530,7 +463,7 @@ def build_snapshot(
             "allele_id": info_d.get("ALLELEID"),
             "gene": gene_syms[0] if gene_syms else None,
             "genes": "|".join(gene_syms) if gene_syms else None,
-            "clin_sig": _normalize_clin_sig(clnsig_raw),
+            "clin_sig": normalize_clin_sig(clnsig_raw),
             "clin_sig_raw": clnsig_raw,
             "review_status": info_d.get("CLNREVSTAT"),
             "review_stars": review_stars(info_d.get("CLNREVSTAT")),
