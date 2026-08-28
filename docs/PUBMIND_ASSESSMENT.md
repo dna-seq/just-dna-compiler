@@ -5,7 +5,7 @@
 which is authoritative where the two disagree.** This document stays the **evidence** — what was probed,
 measured and read — and is not rewritten to match the decisions; where a decision changed something
 below, an inline note says so and names it. Three such notes exist: the significance mapping, the
-`pubmind_sig` column names, and the concordance outcome table. Written 2026-08-28 against the paper's
+`clin_sig` column names, and the concordance outcome table. Written 2026-08-28 against the paper's
 accepted version and against the database's own bytes, both probed the same day. The open item is
 [RM134](ROADMAP.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check).
 
@@ -191,7 +191,8 @@ something is the one nobody is asking for: a `pubmind_score` **authored** column
 and Principle 5 rules on it before the price matters. A single score covering how many papers spoke,
 how confidently, and in which direction is three axes in one field — the anti-pattern Principle 5
 exists to name, made permanent for the rest of the major by Principle 3. The snapshot keeps them
-apart, `pubmind_sig` / `pathogenicity_score` / `confidence`, and the split is not cosmetic.
+apart, `clin_sig` / `pathogenicity_score` / `confidence`, and the split is not cosmetic. (Written as
+`pubmind_sig`; renamed before it shipped — see the supersession note below.)
 
 **Drafting is where Principle 3's one-way door actually bites.** Drafted rows land in `variants.csv`
 using columns that already exist, so the draft itself adds nothing — but `--min-confidence`,
@@ -454,7 +455,8 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
   plus the kept count equals the input row count, an equality over a walked set rather than a floor
   (`@registry-completeness`).
 - **the `VALID_CLIN_SIG` mapping is total** — every distinct `pathogenicity_sum` in the fixture maps to
-  a vocabulary member, and `pubmind_sig_raw` round-trips the composite tokens verbatim.
+  a vocabulary member, and `clin_sig_raw` (written here as `pubmind_sig_raw`) round-trips the
+  composite tokens verbatim.
 - **rebuild is byte-identical** from the same input, which is what the fixed column order buys.
 - **all seven concordance outcomes are reachable**, each from a constructed three-way case, and
   `authorities_differ` is warning-tier under `strict` — the assertion that would have caught an

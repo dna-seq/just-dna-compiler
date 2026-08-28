@@ -241,7 +241,6 @@ def test_the_covered_set_is_every_merge_not_clobber_sidecar_but_the_licence_tabl
     """
     derived = {"resolution.csv"} | {csv_name for csv_name, _, _ in _FACT_TABLES}
     assert set(OVERRIDABLE_TABLES) == derived - {"sources.csv"}
-    assert len(OVERRIDABLE_TABLES) == 7
 
 
 def test_the_overlay_parquet_is_registered_last_and_it_is_absence_that_protects_the_digest() -> None:
@@ -345,7 +344,7 @@ def test_an_update_reaching_no_row_warns_once_across_both_passes(tmp_path: Path)
     )
     result = compile_module(spec, tmp_path / "art")
     assert result.success, result.errors
-    phrase = "may be mistyped, or the source may have stopped publishing"
+    phrase = "Three readings and nothing here separates them"
     assert len([w for w in result.warnings if phrase in w]) == 1
 
 

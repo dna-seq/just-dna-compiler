@@ -101,7 +101,7 @@ def test_a_real_environment_variable_still_outranks_the_dotenv(dotenv_only_cache
 
 # ── the off-switch (S39) ────────────────────────────────────────────────────────────────────────
 #
-# `load_dotenv_file=False` reached none of the six resolvers until 0.6.3: each passes its
+# `load_dotenv_file=False` reached none of the resolvers until 0.6.3: each passes its
 # `default_*_cache_dir()` as an *argument*, and that helper loaded the `.env` unconditionally, so the
 # load happened before the resolver had looked at its own flag. Two properties are worth pinning
 # separately — that the knob works, and that every resolver *has* it — because the second is what a

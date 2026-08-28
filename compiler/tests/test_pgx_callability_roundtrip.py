@@ -24,20 +24,46 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import (
+    _TABLE_KINDS,
     compile_module,
     content_signature,
     reverse_module,
     validate_spec,
 )
+from just_dna_format.reference import _ALL_MODELS
 
 _EXAMPLE = (
     Path(__file__).resolve().parents[2] / "reference_examples" / "cyp2c9_warfarin_grch37"
 )
 #: (authored CSV, compiled parquet, the columns that identify one row across the round trip).
+#:
+#: Hand-kept, and tied to the model registry by the guard below so it cannot silently fall behind.
+#: `schema/tests/test_pgx_callability.py` asserts a walked equality over `_ALL_MODELS` for *which*
+#: models carry the column; that guard cannot see this file, so a fourth carrier added there would
+#: get zero compile/reverse coverage with nothing failing. The assertion under this tuple closes it.
 _TABLES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("haplotypes.csv", "haplotypes.parquet", ("haplotype_name", "rsid", "allele")),
     ("pharm_variants.csv", "pharm_variants.parquet", ("rsid", "genotype", "annotation_id")),
 )
+
+def test_the_roster_covers_every_pgx_table_that_carries_the_column() -> None:
+    """The roster is derived from the models, not trusted (`@registry-completeness`).
+
+    `_TABLES` drives three parametrized round-trip tests. A fourth PGx carrier of `requires_callable`
+    added to the schema tier would pass that tier's walked equality and never reach a compile or a
+    reverse here, so the column could ship untested through the artifact. Asserted as an EQUALITY
+    over the walked registry rather than a floor, minus `VariantRow`, whose column rides
+    `weights.parquet` and is covered elsewhere.
+    """
+    carriers = {
+        name
+        for name, model in _ALL_MODELS.items()
+        if "requires_callable" in model.model_fields and name != "VariantRow"
+    }
+    model_by_csv = {csv_name: model for csv_name, _, model in _TABLE_KINDS}
+    covered = {model_by_csv[csv_name].__name__ for csv_name, _, _ in _TABLES}
+    assert covered == carriers
+
 
 #: How a CSV cell spells each of the three states. Shared by the reader and the assertions below so a
 #: rendering change cannot be absorbed by restating it twice.

@@ -382,9 +382,17 @@ def test_the_excluded_manifest_fields_each_carry_their_reason() -> None:
     assert unresolved == []
     for path, reason in EXCLUDED_MANIFEST_FIELDS.items():
         assert reason.strip(), path
-    # The three routed-elsewhere fields are excluded from `manifest_fields` and answered by their own
-    # axis, so nothing they carry is silently dropped.
-    assert {"content_signature", "artifact.digest", "artifact.files"} <= set(EXCLUDED_MANIFEST_FIELDS)
+    # Every field excluded because it is ROUTED to its own axis, asserted as an equality over the
+    # walked registry rather than as a floor — a `<=` here passes unchanged when a fifth routed field
+    # is added and answered by nobody, which is the one thing this guard exists to catch. The prose
+    # also said "three" while four entries gave routing as their reason.
+    routed = {path for path, reason in EXCLUDED_MANIFEST_FIELDS.items() if "routed" in reason.lower()}
+    assert routed == {
+        "content_signature",
+        "artifact.digest",
+        "artifact.files",
+        "compilation.warnings",
+    }
 
 
 def test_a_record_that_leaves_an_axis_unanswered_is_refused() -> None:

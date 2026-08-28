@@ -28,6 +28,7 @@ from just_dna_enricher.licensing import (
     merge_sources_file,
 )
 from just_dna_format.sources import taints_commercial_use, taints_redistribution
+from just_dna_format.vocab import VALID_DECLARED_USE
 
 _EXAMPLE = Path(__file__).resolve().parents[2] / "reference_examples" / "hfe_hemochromatosis"
 
@@ -78,10 +79,13 @@ def test_the_acquisition_gate_skips_rather_than_refusing_or_permitting() -> None
     That is why `pubmind build` carries no `--use` flag: a gate that answers the same way for every
     declaration would refuse every build, and a flag feeding it would be a flag that does nothing.
     """
+    # Walked from the vocabulary, never restated: a fourth `declared_use` member added upstream must
+    # be exercised here, because the "no `--use` flag" decision rests on EVERY declaration answering
+    # the same way. A hand-kept tuple silently exempts the new member from the claim.
     reasons = {
-        declared: check_declared_use(PUBMIND_TERMS, declared)
-        for declared in ("unstated", "non_commercial", "commercial")
+        declared: check_declared_use(PUBMIND_TERMS, declared) for declared in VALID_DECLARED_USE
     }
+    assert set(reasons) == set(VALID_DECLARED_USE)
     assert all(isinstance(r, str) for r in reasons.values()), reasons
     assert all("terms could not be established" in r for r in reasons.values())
 
