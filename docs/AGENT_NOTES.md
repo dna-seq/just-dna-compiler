@@ -469,8 +469,10 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
   **It carries a parquet anyway, and that is forced.** `reverse_module` rebuilds a spec from the
   artifact and has nothing else to read the corrections back from, so without `overrides.parquet` the
-  round trip would silently discard every one of them and move `content_signature` — Principle 7. It
-  sits **last** in `ARTIFACT_PARQUETS`, the one slot where an already-published digest cannot move.
+  round trip would silently discard every one of them and move `content_signature` — Principle 7.
+  **What keeps an already-published digest still is its absence, not its slot**: `artifact_digest` sorts the file listing by name before hashing, so a tuple position is invisible to it — what protects an already-published module is that it carries no `overrides.csv`, so the file is absent from its listing entirely. The
+  first version of this note said the opposite, and it was a false reason for a true conclusion — the
+  kind that survives review because the answer it gives is right today.
 
   **No operation reports its own no-op, and the reason is the round trip rather than tidiness.**
   Reverse emits the post-overlay table plus the overlay, so on a recompile update-already-equal,

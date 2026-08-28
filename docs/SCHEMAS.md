@@ -86,10 +86,12 @@ existence and identifiers exactly like a study-grounded one. `sources.csv` does 
 either: it records a *dataset's* terms and attribution, which answers where a table came from, never
 why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the six derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
-`gene_validity.csv` / `clinical_assertions.csv` / `sources.csv`, which are therefore absent from the
-table below. Since 0.7 an author corrects any of them through `overrides.csv`, which *is* authored and
-therefore *is* in the table — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
+the seven derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+`gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `sources.csv`, which are
+therefore absent from the table below. Since 0.7 an author corrects them through `overrides.csv`,
+which *is* authored and therefore *is* in the table — **except `sources.csv`**, which the overlay
+deliberately does not cover: it has its own merge path and is the one derived table a human is told to
+write. `resolution.csv` is covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
 **`sources.csv` is the one of those six a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
@@ -1633,9 +1635,9 @@ The overlay is authored input, so it is inside `content_signature` and byte-hash
 `manifest.inputs` (and therefore inside the verification binding — editing a correction un-closes a
 module, correctly). **No published module's `content_signature` moves**, because an absent optional
 table contributes nothing, exactly as an unset optional column does. It also carries an
-`overrides.parquet`, **last** in `ARTIFACT_PARQUETS`, which is forced rather than chosen: `reverse` has
-nothing else to read the corrections back from, and the end of that tuple is the one slot where no
-already-published digest moves.
+`overrides.parquet`, which is forced rather than chosen: `reverse` has nothing else to read the
+corrections back from. Its position in `ARTIFACT_PARQUETS` is **not** what keeps published digests
+still — `artifact_digest` sorts the file listing by name before hashing, so a tuple position is invisible to it — what protects an already-published module is that it carries no `overrides.csv`, so the file is absent from its listing entirely.
 
 The fact signatures and `resolution_signature` are over the derived tables **as they stand**,
 therefore post-overlay — a signature should describe what the module actually asserts.

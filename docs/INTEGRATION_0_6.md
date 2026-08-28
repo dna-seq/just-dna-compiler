@@ -756,8 +756,9 @@ value they rejected while leaving the module compiling green.
 date carries one, so neither `content_signature` nor `artifact.digest` moves anywhere. When a module
 *does* carry one:
 
-- **The compiled artifact gains `overrides.parquet`**, last in `artifact.files` and therefore last in
-  the digest. A consumer iterating `artifact.files` sees one more entry; a consumer reading a fixed
+- **The compiled artifact gains `overrides.parquet`** — only when the module carries an overlay.
+  `artifact.files` is name-sorted, so it lands between `literature.parquet` and `pgs.parquet` rather
+  than at the end. A consumer iterating `artifact.files` sees one more entry; a consumer reading a fixed
   list of parquets is unaffected, because nothing else moved.
 - **Read the derived parquets, not the derived CSVs, if you want what the module asserts.** The
   overlay is applied at compile, so `frequencies.parquet` and its siblings are post-overlay while the

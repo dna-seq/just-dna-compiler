@@ -1256,9 +1256,8 @@ plus `overrides.csv` when `overrides.parquet` is present (0.7, RM124).
 
 ## Output artifact & hashing
 
-**`ARTIFACT_PARQUETS` in `artifact.digest` order**, which is the tuple's own order and not sorted —
-`build_artifact` skips absent files, so a module's digest is over exactly the parquets it has, in this
-sequence:
+**`ARTIFACT_PARQUETS` is the `artifact.files` listing order** — the tuple's own order, which
+`build_artifact` walks, skipping absent files so a module lists exactly the parquets it has:
 
 ```
 weights  annotations  studies                                    ← the SNP core
@@ -1267,9 +1266,18 @@ haplotypes  allele_function  diplotypes  pgs  pharm_variants      ← the nine t
 frequencies  gene_metrics  literature  gene_validity
 clinical_assertions  gwas_effects                                 ← the derived-fact sidecars
 sources                                                           ← the licence table
+overrides                                                         ← the authored overlay (0.7)
 ```
 
-Nineteen names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
+**It is not digest order, and this section said it was.** `artifact_digest` sorts the listing by name
+before hashing (`integrity.py`), so the tuple's position is invisible to the digest and a name is what
+places an entry — `overrides.parquet` hashes between `literature.parquet` and `pgs.parquet` however
+late it sits in the tuple. What the position does govern is the order a consumer iterating
+`artifact.files` sees. Appending is still the right move for a new parquet, but the reason is the
+listing, not the hash; what keeps an already-published digest still is that the module has no such
+file at all.
+
+Twenty names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
 nine table kinds — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the
@@ -1734,7 +1742,7 @@ modules silently vanishing from a catalogue.
 | frozen `variant_key` identity (`base.derive_variant_key`) | ✅ stamped once, never re-keyed by resolution (P7); excluded from `authoring_reference()` | ✅ `weights.parquet` (compiler-managed) | **shipped** |
 | rsid↔coord resolution: one-to-many expansion, deterministic order, inject-only consistency check | ✅ `ORDER BY`; disagreement → warning; non-GRCh38 skipped | ✅ N coord-keyed rows per one-to-many rsid; idempotent | **shipped** (the DuckDB engine now lives in `just-dna-enricher`; GRCh38-only; multi-build RM15) |
 | **expansion marker: `VariantRow.locus_index` + `locus_count` (0.6, RM87)** | ✅ stamped at the expansion loop, authored cells overwritten by `_freeze_identity`; `exclude=True`, so no `content_signature` moves | ✅ `weights.parquet` (`UInt32` ×2, hand-listed in `_build_weights`); reverse prefers the stored index over its recompute and never re-emits either column into `variants.csv` | **shipped** — `locus_count > 1` is the row-level predicate; the positional pass's hard-coded `0` is honest only while those tables never expand (a line on RM65) |
-| **authored overlay `overrides.csv` (0.7, RM124)** | ✅ `OverrideRow` (`AuthoredModel`); `table` and `operation` are closed vocabularies; **`reason` required**; a `field` outside the named table's columns, or naming its own subject/member column, is refused; a wildcard `member` is refused for `insert` and `suppress`; duplicate `(table, subject, member, field)` and a key group carrying two operations are errors — all of it in **both** `validate_spec` and `compile_module` | ✅ `overrides.parquet`, **last** in `ARTIFACT_PARQUETS` so no published digest moves; applied to the seven covered derived tables before any check reads a row, so the fact signatures and `resolution_signature` are post-overlay | **shipped** — the derived files are pure build products, `reverse` emits post-overlay tables *plus* the overlay, and no operation reports its own no-op |
+| **authored overlay `overrides.csv` (0.7, RM124)** | ✅ `OverrideRow` (`AuthoredModel`); `table` and `operation` are closed vocabularies; **`reason` required**; a `field` outside the named table's columns, or naming its own subject/member column, is refused; a wildcard `member` is refused for `insert` and `suppress`; duplicate `(table, subject, member, field)` and a key group carrying two operations are errors — all of it in **both** `validate_spec` and `compile_module` | ✅ `overrides.parquet`, written only when the module carries an overlay — its absence, not its slot, is why no published digest moves (`artifact_digest` name-sorts); applied to the seven covered derived tables before any check reads a row, so the fact signatures and `resolution_signature` are post-overlay | **shipped** — the derived files are pure build products, `reverse` emits post-overlay tables *plus* the overlay, and no operation reports its own no-op |
 | **VCF pointer namespace + cardinality (0.6, RM53/RM54/RM61)** | ✅ `INFO/`/`FORMAT/` qualifier and the spec's key charset accepted (widening only); `_check_vcf_pointers` warns in **both** modes on a bare colliding key and on a spec-multi-valued target with no element rule, aggregated by reason | ✅ `source_element` → the binning parquets via the generic materializer; round-trips through `reverse` unchanged | **shipped** (`source_element` on `MeasureBinRow`; `callable_element`/`quality_element` **reserved**, not built) |
 
 ## Upgrade derivation (`state`/booleans → 0.3 axes)

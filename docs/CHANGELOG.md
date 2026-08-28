@@ -56,8 +56,10 @@ inside this same number. Each entry below names the packages it actually touched
   of its subject's group in overlay order, because parquet bytes depend on row order.
 
   **What it costs an existing module: nothing.** The table is optional, an absent optional table
-  contributes nothing to `content_signature`, and `overrides.parquet` sits **last** in
-  `ARTIFACT_PARQUETS`, so no published module's identity moves on either axis. The overlay is authored
+  contributes nothing to `content_signature`, and a module that carries no overlay carries no
+  `overrides.parquet` either, so no published module's identity moves on either axis. (Its slot in
+  `ARTIFACT_PARQUETS` is not what protects them: `artifact_digest` name-sorts the listing before
+  hashing, so tuple position is invisible to the digest.) The overlay is authored
   input, so when a module carries one it is inside `content_signature` and byte-hashed into
   `manifest.inputs` — editing a correction un-closes a module, which is correct.
 
