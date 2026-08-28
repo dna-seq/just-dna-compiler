@@ -1954,6 +1954,43 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   deliberately in the first group, not the third — it is a genuine advisory authored field, coerced to
   SemVer (RM17) rather than stripped.
 
+  **The registry-owned half is two families, not one, and 0.7 adds the second** (RM133).
+  `IDENTITY_AUTHORITY_KEYS` (`namespace`, `owner`, `canonical_id`) says *which module this is*;
+  `PRESENTATION_AUTHORITY_KEYS` (`short_description`) says *how it is shown*. They are separate
+  `frozenset`s because those are different reasons for a key to be registry-owned and a consumer may
+  stamp one without the other, and `strip_authority_keys` takes either or their union — one stripper,
+  since removing a key from the `module:` block is the same act whichever family it came from. The
+  reasons maps mirror the split (`PRESENTATION_AUTHORITY_REASONS`), so a caller can name what it
+  dropped without first working out where the key came from. Injecting the union is the realistic
+  registry call: `strip_authority_keys(block, IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS)`.
+  The compiler's `--strip-identity` flag still means identity and nothing else; the CLI route to the
+  second family is `--authority-key short_description`.
+
+  **Why the subtitle lives beside the module rather than inside it.** Rewriting `module.description`
+  moves no `content_signature`, no `artifact.digest` and no fact signature, and yet drops the closure,
+  because `manifest.inputs` covers the raw bytes of `module_spec.yaml` and `verification.json`'s
+  `module_hash` binds them — so the shortest fixable prose in the system was the one that could not be
+  fixed, while `README.md` sits outside `inputs` and is freely amendable. The binding is **not** where
+  that gets repaired and that question is closed: an attestation answers *is this the same document a
+  named person signed off*, and a partition drawn along `content_signature`'s line excludes name,
+  version and namespace too, which would make a closure transferable across a rename. So the registry
+  holds `short_description` in its own record, hands us a `module:` block carrying it, the stripper
+  removes it before validation, and the stored bytes never move — `manifest.inputs` still matches,
+  `verify_manifest` still passes, the closure still stands. A `short_description` field on
+  `spec.ModuleInfo` is the natural-looking route and is deliberately **not** taken: every key in
+  `module_spec.yaml` is on the un-amendable side of that binding, so it would reproduce the defect in
+  a new place. An authored `short_description:` is still refused by `extra="forbid"` — the validator
+  validates, it does not fix.
+
+  **`SHORT_DESCRIPTION_MAX_CHARS = 120` ships as a constant and refuses nothing.** A field that exists
+  to fit a fixed layout is *specified* by that layout, so the calibration belongs beside the key rather
+  than in each consumer's head; it is drawn from the live catalog, where 71 characters reads
+  comfortably in a card and 467 is the subtitle that prompted the item. Enforcement is the storing
+  authority's, not ours: no model here carries it as a `max_length`, `Display.description` stays
+  unbounded on purpose (a ceiling would refuse a merely verbose spec after its prose was written, and
+  retroactively invalidate published modules that met every requirement that existed), and absent the
+  key everything behaves exactly as it did before.
+
   **What that coercion does with a version holding no digits at all: it returns `0.0.0` (S42).**
   `normalize_version` strips every non-digit and pads to three parts, so `abc`, `draft` and
   `unreleased` all become `0.0.0` — and that value reaches `manifest.identity.version` on a real

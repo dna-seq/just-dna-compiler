@@ -34,7 +34,40 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-24 (latest) — twelve consumer items in one pass (S63–S74)
+## 0.7.0 (latest) — RM133: the card subtitle gets a home a registry can amend
+
+**Package: `just-dna-format`.** Additive under Principle 3 — two new constants and one new number, no
+authored field, no schema change, no parquet column, nothing invalidated. Principle 4 is deliberately
+untouched: the closure binding is exactly what it was.
+
+- **`normalize.PRESENTATION_AUTHORITY_KEYS = frozenset({"short_description"})`** — a second
+  registry-owned key family beside `IDENTITY_AUTHORITY_KEYS`, with
+  **`PRESENTATION_AUTHORITY_REASONS`** mirroring the identity map. Separate sets because ownership and
+  presentation are different reasons for a key to be registry-owned and a consumer may stamp one
+  without the other; **one stripper** — `strip_authority_keys` takes either family or their union, so
+  there is one path and not two.
+- **`normalize.SHORT_DESCRIPTION_MAX_CHARS = 120`** — the card-subtitle calibration, published here
+  rather than guessed at downstream. It **refuses nothing**: no model carries it as a `max_length`,
+  `Display.description` stays unbounded on purpose, and absent the key everything behaves as before.
+- **Why this and not a smaller binding.** Rewriting `module.description` moves no `content_signature`,
+  no `artifact.digest` and no fact signature, and still drops the closure, because `manifest.inputs`
+  covers the raw bytes of `module_spec.yaml`. The binding stays as it is — an attestation answers *is
+  this the same document a named person signed off*, and a partition along `content_signature`'s line
+  would make a closure transferable across a rename. A `short_description` field on `ModuleInfo` is
+  refused for the same reason: every key in the spec is on the un-amendable side.
+
+**For `just-dna-marketplace` and any other publishing registry — this is the integration note.** Store
+`short_description` in your own record beside the module, never in `module_spec.yaml`. Import the two
+constants from `just_dna_format.normalize` and strip the union before handing a block to our
+validator: `strip_authority_keys(block, IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS)`. The
+stored bytes then never move, so `manifest.inputs` still matches, `verify_manifest(check_inputs=True)`
+still passes and a closure over those bytes still stands — **your `amend_display` endpoint is not gated
+on us**. Read the ceiling off `SHORT_DESCRIPTION_MAX_CHARS` rather than hardcoding 120; enforcing it is
+yours to do, since we bound nothing. Nothing is retroactive: the seven published modules met every
+requirement that existed and are untouched. On the CLI, `--strip-identity` still means identity alone;
+the second family is `--authority-key short_description`.
+
+## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
 **Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately
 left uncut (2026-08-27).** The number is not decided, so nothing here names one: the replies'

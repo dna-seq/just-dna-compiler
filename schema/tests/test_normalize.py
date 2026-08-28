@@ -16,6 +16,9 @@ from just_dna_format.literature import LiteratureRow
 from just_dna_format.normalize import (
     IDENTITY_AUTHORITY_KEYS,
     IDENTITY_AUTHORITY_REASONS,
+    PRESENTATION_AUTHORITY_KEYS,
+    PRESENTATION_AUTHORITY_REASONS,
+    SHORT_DESCRIPTION_MAX_CHARS,
     normalize_utc_timestamp,
     normalize_version,
     now_utc_iso,
@@ -64,6 +67,96 @@ def test_strip_authority_keys_accepts_a_custom_injected_set() -> None:
     block = {"name": "m", "vendor": "x", "title": "M"}
     clean, dropped = strip_authority_keys(block, {"vendor"})
     assert clean == {"name": "m", "title": "M"} and dropped == ["vendor"]
+
+
+# ── the presentation family: a second registry-owned set, one stripper (RM133) ───────────────────
+
+
+def test_the_two_registry_owned_families_are_separate_and_each_key_carries_a_reason() -> None:
+    """Ownership and presentation are different reasons for a key to be registry-owned.
+
+    Separate sets rather than one merged constant is what leaves the choice of *which* family to strip
+    with the caller, which is the inject-only rule this module exists to implement. Both assertions
+    are equalities over the walked sets, so a key added to either without a reason fails here rather
+    than reaching a consumer as an unexplained strip."""
+    assert not (IDENTITY_AUTHORITY_KEYS & PRESENTATION_AUTHORITY_KEYS), "a key belongs to one family"
+    assert set(PRESENTATION_AUTHORITY_REASONS) == set(PRESENTATION_AUTHORITY_KEYS)
+    assert set(IDENTITY_AUTHORITY_REASONS) == set(IDENTITY_AUTHORITY_KEYS)
+    assert all(reason.strip() for reason in PRESENTATION_AUTHORITY_REASONS.values())
+    # `version` is a genuine advisory authored field and is in NEITHER family.
+    assert "version" not in IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS
+
+
+def test_one_function_strips_both_families_and_drops_exactly_their_union() -> None:
+    """One path rather than two: the same stripper takes the union, and drops all of it and no more.
+
+    The expectation is computed from the two constants at runtime, so this is an equality over the
+    walked union — a new member of either family is covered the moment it is declared, and a stripper
+    that silently stopped reaching one family fails."""
+    both = IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS
+    authored = {"name": "m", "title": "M", "description": "About m.", "report_title": "M"}
+    block = authored | {key: f"registry-{key}" for key in sorted(both)}
+
+    clean, dropped = strip_authority_keys(block, both)
+
+    assert dropped == sorted(both)
+    assert clean == authored
+    assert list(clean) == list(authored), "the surviving keys keep their authored order"
+
+
+def test_either_family_can_be_injected_without_the_other() -> None:
+    """The point of two sets: a consumer that stamps identity but not presentation, or the reverse."""
+    block = {"name": "m", "namespace": "acme", "short_description": "A short one."}
+
+    identity_only, dropped_identity = strip_authority_keys(block, IDENTITY_AUTHORITY_KEYS)
+    assert dropped_identity == ["namespace"]
+    assert "short_description" in identity_only, "presentation was not injected, so it is not stripped"
+
+    presentation_only, dropped_presentation = strip_authority_keys(block, PRESENTATION_AUTHORITY_KEYS)
+    assert dropped_presentation == ["short_description"]
+    assert "namespace" in presentation_only
+
+
+def test_a_block_carrying_neither_family_is_untouched_by_the_union() -> None:
+    """Absent the keys, everything behaves exactly as it did before — nothing is added or reordered."""
+    block = _module_block(version="v2")
+    clean, dropped = strip_authority_keys(
+        block, IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS
+    )
+    assert dropped == []
+    assert clean == block and list(clean) == list(block)
+    assert ModuleInfo(**clean).version == "2.0.0"
+
+
+def test_short_description_is_registry_owned_and_deliberately_not_a_module_info_field() -> None:
+    """The rejected repair, made falsifiable.
+
+    Putting `short_description` on `ModuleInfo` (or on the `Display` base it extends) is the natural-
+    looking route and it reproduces the defect: every key in `module_spec.yaml` is inside the bytes
+    `manifest.inputs` hashes and the closure binds, so an authored subtitle would be exactly as
+    un-amendable as `description` is today. It lives beside the module instead."""
+    assert "short_description" in PRESENTATION_AUTHORITY_KEYS
+    assert "short_description" not in ModuleInfo.model_fields
+    # An author who writes it anyway is still refused — the validator stays strict, and a stripper the
+    # caller did not point at it is exactly the case `extra="forbid"` is there to catch.
+    with pytest.raises(ValidationError):
+        ModuleInfo(**_module_block(short_description="A short one."))
+
+
+def test_the_subtitle_ceiling_is_published_and_refuses_nothing() -> None:
+    """The calibration ships as a constant rather than being guessed at downstream — and it is advisory.
+
+    ~120 characters, against a measured 71 (comfortable in a card) and 467 (the subtitle that prompted
+    the item). It bounds a registry-held value, which is the one place such a bound is legitimate; it
+    is emphatically not a length check on the authored `description`, where a ceiling would refuse a
+    merely verbose spec after its prose was written."""
+    assert SHORT_DESCRIPTION_MAX_CHARS == 120
+    assert 71 < SHORT_DESCRIPTION_MAX_CHARS < 467, "between the comfortable case and the outlier"
+    # It is stated where a consumer stripping the key will read it.
+    assert str(SHORT_DESCRIPTION_MAX_CHARS) in PRESENTATION_AUTHORITY_REASONS["short_description"]
+    # Nothing in the authored surface enforces it: the 467-character case still validates untouched.
+    outlier = "x" * 467
+    assert ModuleInfo(**_module_block(description=outlier)).description == outlier
 
 
 # ── reject_authority_keys: the diagnosis half of the same constant ──────────────────────────────
