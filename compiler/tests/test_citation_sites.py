@@ -613,17 +613,20 @@ def test_the_public_readers_answer_over_every_citing_kind(tmp_path: Path) -> Non
     assert binning_citations(load_citing_rows(spec)) == []
 
 
-def test_both_call_sites_hand_the_pharm_rows_to_the_cross_check(tmp_path: Path) -> None:
-    """The wiring, not the function — and they are two different call sites.
+def test_every_call_site_hands_the_pharm_rows_to_the_literature_checks(tmp_path: Path) -> None:
+    """The wiring, not the function — and there are three call sites, not the two you would guess.
 
-    `_cross_check_literature` reading three sites is worth nothing if the caller hands it two, and
-    the compiler calls it twice: once in the pre-flight, over `loaded_kinds`, and once inside the
-    fact-table loop, over `kind_rows`. `validate_spec` reaches only the first and `compile_module`
-    reaches both, so the parity rule this repo audits **by check** wants both commands asserted.
+    `_cross_check_literature` reading every citation site is worth nothing if a caller hands it a
+    subset, and the compiler passes the kind map in three places: the pre-flight
+    `_cross_check_literature` over `loaded_kinds`, the fact-loop one over `kind_rows`, and the
+    `split_cited_literature` in the fact loop that decides what reaches `literature.parquet`.
+    `validate_spec` reaches the first and `compile_module` reaches all three, so the parity rule this
+    repo audits **by check** wants both commands asserted.
 
-    The stake is higher than a warning: since RM79 the compiler *discards* an uncited literature row,
-    so a caller that withheld the pharm rows would drop the evidence for the claim from the artifact
-    and report it stale on the way out.
+    The third is why this matters more than a warning: since RM79 the compiler *discards* an uncited
+    literature row, so a caller that withheld the pharm rows would drop the evidence for the claim
+    from the artifact and report it stale on the way out. Each of the three was mutated in turn to
+    watch this fail before it was kept.
     """
     grounding, orphan = "8458085", "9545397"  # both real; the second is cited from nowhere
     spec = _spec_with_cited_pharm_rows(tmp_path, name="wired")
