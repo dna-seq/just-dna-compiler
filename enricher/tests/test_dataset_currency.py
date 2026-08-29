@@ -363,3 +363,206 @@ def test_ncbi_states_a_release_the_probe_can_read() -> None:
     finally:
         client.close()
     assert label is not None and label.startswith(CLINVAR_DATASET_PREFIX)
+
+
+# ── wired into `enrich()` ────────────────────────────────────────────────────────────────────────
+
+_YAML = (
+    "schema_version: '1.0'\n"
+    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+)
+
+
+def _spec(tmp_path, dataset: str = "clinvar_2026-06-27"):
+    """A module recording that its annotations were drafted from one ClinVar release.
+
+    No `variants.csv` row needs resolving: the currency check is about the module's own provenance
+    claim, and giving the resolver work to do would only make the test slower and its failure noisier.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    (spec / "variants.csv").write_text("rsid,genotype\n", encoding="utf-8")
+    (spec / "studies.csv").write_text("rsid,pmid\n", encoding="utf-8")
+    (spec / "sources.csv").write_text(
+        "source,layer,license,declared_use,dataset\n"
+        f"clinvar,annotation,public-domain,unstated,{dataset}\n",
+        encoding="utf-8",
+    )
+    return spec
+
+
+def _records(spec) -> dict:
+    from just_dna_format.layout import VERIFICATION_JSON, sidecar_write_path
+    from just_dna_format.verification import read_verification
+
+    doc = read_verification(sidecar_write_path(spec, VERIFICATION_JSON))
+    return {r.check: r for r in doc.records}
+
+
+@pytest.fixture(autouse=True)
+def _cheap_proof_of_work(monkeypatch):
+    """The attestation mines a nonce; 8 bits keeps these cases from paying for real difficulty."""
+    from just_dna_format import verification as verification_module
+
+    monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", 8)
+
+
+def test_enrich_records_the_gap_and_the_module_is_left_alone(tmp_path, caplog) -> None:
+    """The finding reaches the run's report, the attestation, and nothing else.
+
+    `write=False` so the assertion below is over the whole directory: a real run legitimately writes
+    `resolution.csv` and `verification.json`, and the claim being made here is narrower and sharper —
+    *this check* takes nothing into the module and repairs nothing.
+    """
+    from just_dna_enricher.enrich import enrich
+
+    spec = _spec(tmp_path)
+    before = {p.name: p.read_bytes() for p in sorted(spec.iterdir())}
+    with caplog.at_level("WARNING"):
+        result = enrich(
+            spec, offline=False, write=False, download=False, use_gnomad=False,
+            verify_ref=False, verify_clinsig=False, verify_rsids=False,
+            release_probes={"clinvar": _probe("clinvar_2026-08-25")},
+        )
+    assert [c.recorded for c in result.dataset_currency.behind] == ["clinvar_2026-06-27"]
+    assert "have been superseded" in caplog.text
+    assert {p.name: p.read_bytes() for p in sorted(spec.iterdir())} == before
+
+
+def test_the_attestation_carries_the_comparison_with_its_denominator(tmp_path) -> None:
+    from just_dna_enricher.enrich import enrich
+
+    spec = _spec(tmp_path)
+    enrich(
+        spec, offline=False, download=False, use_gnomad=False,
+        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        release_probes={"clinvar": _probe("clinvar_2026-08-25")},
+    )
+    record = _records(spec)["dataset_currency"]
+    assert (record.subjects, record.findings, record.skipped) == (1, 1, None)
+    assert "clinvar_2026-06-27 → clinvar_2026-08-25" in record.detail
+
+
+def test_a_module_still_on_the_current_release_is_recorded_as_compared_and_clean(tmp_path) -> None:
+    """`ran(1, 0)` — a real comparison that found nothing, which is a different record from a skip."""
+    from just_dna_enricher.enrich import enrich
+
+    spec = _spec(tmp_path)
+    enrich(
+        spec, offline=False, download=False, use_gnomad=False,
+        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        release_probes={"clinvar": _probe("clinvar_2026-06-27")},
+    )
+    record = _records(spec)["dataset_currency"]
+    assert (record.subjects, record.findings, record.skipped) == (1, 0, None)
+
+
+def test_offline_attests_unchecked_and_never_invokes_the_probe(tmp_path) -> None:
+    """The tri-state where it bites, proved by the probe never being called (`@off-switch-needs-a-probe`)."""
+    from just_dna_enricher.enrich import enrich
+
+    spec = _spec(tmp_path)
+    registry = _NeverAsked()
+    result = enrich(spec, offline=True, release_probes=registry.registry())
+    record = _records(spec)["dataset_currency"]
+    assert record.skipped == "offline"
+    assert (record.subjects, record.findings) == (0, 0)
+    assert result.dataset_currency.behind == []
+    assert all(leg.behind is None for leg in result.dataset_currency.unchecked)
+
+
+def test_the_off_switch_attests_not_requested_and_asks_nobody(tmp_path) -> None:
+    """`not_requested` and `offline` are different facts and only one is cleared by egress."""
+    from just_dna_enricher.enrich import enrich
+
+    spec = _spec(tmp_path)
+    registry = _NeverAsked()
+    result = enrich(
+        spec, offline=False, download=False, use_gnomad=False,
+        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        verify_datasets=False, release_probes=registry.registry(),
+    )
+    assert result.dataset_currency is None
+    assert _records(spec)["dataset_currency"].skipped == "not_requested"
+
+
+def test_strict_refuses_over_a_superseded_release(tmp_path) -> None:
+    """Severity follows the mode, and the refusal names both labels and the way out."""
+    from just_dna_enricher.enrich import EnrichmentError, enrich
+
+    spec = _spec(tmp_path)
+    with pytest.raises(EnrichmentError) as caught:
+        enrich(
+            spec, mode="strict", offline=False, download=False, use_gnomad=False,
+            verify_ref=False, verify_clinsig=False, verify_rsids=False,
+            release_probes={"clinvar": _probe("clinvar_2026-08-25")},
+        )
+    assert "have been superseded" in str(caught.value)
+    assert "clinvar_2026-08-25" in str(caught.value)
+    # A refused strict run commits nothing — the transaction's promise, asserted on the bytes.
+    assert not (spec / "resolution.csv").exists()
+
+
+def test_strict_never_escalates_a_source_nobody_could_reach(tmp_path) -> None:
+    """`--offline --strict` must stay possible: nothing an author edits clears a failed request.
+
+    The `unreachable_rsids` rule, and the reason the gate is over `behind` alone. Driven both ways —
+    an offline run and a probe that raises — because they reach the skip by different routes and only
+    one of them would be caught by reading the `offline` flag.
+    """
+    from just_dna_enricher.enrich import enrich
+
+    spec = _spec(tmp_path)
+    offline_run = enrich(spec, mode="strict", offline=True, release_probes=_NeverAsked().registry())
+    assert offline_run.dataset_currency.not_checked == "offline"
+
+    unreachable = enrich(
+        spec, mode="strict", offline=False, download=False, use_gnomad=False,
+        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        release_probes={"clinvar": _refuses},
+    )
+    assert unreachable.dataset_currency.not_checked == "unreachable"
+
+
+def test_a_module_recording_no_dataset_attests_nothing_to_check(tmp_path) -> None:
+    """`ran(0, 0)` here would be the pass claiming it compared nothing and found nothing wrong."""
+    from just_dna_enricher.enrich import enrich
+
+    spec = _spec(tmp_path, dataset="")
+    enrich(
+        spec, offline=False, download=False, use_gnomad=False,
+        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        release_probes={"clinvar": _probe("clinvar_2026-08-25")},
+    )
+    record = _records(spec)["dataset_currency"]
+    assert record.skipped == "nothing_to_check"
+    assert (record.subjects, record.findings) == (0, 0)
+
+
+def test_the_cli_prints_the_gap_and_says_when_it_could_not_ask(tmp_path, monkeypatch) -> None:
+    """The phrases an author greps for, pinned — a warning's text is an API."""
+    import just_dna_enricher.enrich as enrich_module
+    from just_dna_enricher.cli import app
+    from typer.testing import CliRunner
+
+    spec = _spec(tmp_path)
+    real = enrich_module.enrich
+
+    def moved(spec_dir, **kwargs):
+        # `download=False` as well as the probe: the CLI has no flag for it, and a run that tries to
+        # provision a snapshot would make this case depend on whether the runner has egress.
+        kwargs["release_probes"] = {"clinvar": _probe("clinvar_2026-08-25")}
+        kwargs["download"] = False
+        return real(spec_dir, **kwargs)
+
+    monkeypatch.setattr(enrich_module, "enrich", moved)
+    monkeypatch.setattr("just_dna_enricher.cli.enrich", moved)
+    result = CliRunner().invoke(app, ["enrich", str(spec), "--no-verify-rsids"])
+    assert result.exit_code == 0, result.output
+    assert "dataset moved on: clinvar (annotation): drafted from clinvar_2026-06-27, now " \
+           "clinvar_2026-08-25" in result.output
+
+    offline = CliRunner().invoke(app, ["enrich", str(spec), "--offline"])
+    assert offline.exit_code == 0, offline.output
+    assert "dataset currency not checked: offline" in offline.output

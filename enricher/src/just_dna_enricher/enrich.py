@@ -39,6 +39,12 @@ from just_dna_enricher.clinical import (
     tautology_reason,
 )
 from just_dna_enricher.clinvar import clinvar_dataset_label
+from just_dna_enricher.currency import (
+    CurrencyCheck,
+    ReleaseProbe,
+    check_dataset_currency,
+    summarize_currency,
+)
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
 from just_dna_enricher.gnomad import GnomadClient, GnomadError
@@ -564,6 +570,13 @@ class EnrichmentResult:
     # a clean bill, and only the second is worth printing (an empty one prints nothing at all — a
     # comparison that found nothing must not report a zero as though it were a finding).
     rederived: list[SubjectDrift] | None = None
+    # Whether each release this module records having been drafted from is still the one its source
+    # publishes (RM85). `--rederive`'s cheap neighbour: that one re-asks every source about every
+    # subject and reports the rows that moved, this one asks about the release **label** alone, so it
+    # is what tells an author whether the expensive question is worth putting. `None` only for a
+    # caller that built the result by hand; `enrich()` always sets it, carrying `not_checked` when the
+    # pass could not run rather than an empty finding list that would read as a clean bill.
+    dataset_currency: CurrencyCheck | None = None
 
     @property
     def fully_resolved(self) -> bool:
@@ -597,6 +610,7 @@ def enrich(
     verify_ref: bool = True,
     verify_clinsig: bool = True,
     verify_rsids: bool = True,
+    verify_datasets: bool = True,
     keep_par_twin: bool = False,
     rederive: bool = False,
     keep_staging: bool = False,
@@ -604,6 +618,7 @@ def enrich(
     resolver: EnsemblResolver | None = None,
     gnomad_client: Optional["GnomadClient"] = None,
     grch37_client: Grch37Client | None = None,
+    release_probes: Mapping[str, ReleaseProbe] | None = None,
 ) -> EnrichmentResult:
     """Resolve a spec's variants into `resolution.csv`. See the module docstring for the chain/modes.
 
@@ -635,6 +650,16 @@ def enrich(
     offline-capable (the snapshot is local) and is the **one check whose severity does not follow the
     mode**: it warns in `strict` too, because failing a compile would make the format arbitrate a
     clinical disagreement. See `clinical.verify_clin_sig` for the full argument.
+
+    `verify_datasets` compares every release this module records having been drafted from
+    (`SourceRow.dataset`) against the one that source publishes now, and reports the gap (RM85). It is
+    `rederive`'s cheap neighbour: both ask *has the world moved*, one about the rows and one about the
+    release **label**, so this is the question you put first — it costs one request per source and
+    tells you whether the full re-derivation is worth running. It reads and never writes; repairing a
+    stale label is a re-draft, which is an author's decision and a different command. Severity follows
+    the mode. `--offline` makes it `unchecked`, never *up to date*, and an unreachable source is never
+    escalated by `strict` — nothing an author can edit clears a failed request. `release_probes`
+    injects the registry the way `resolver`/`gnomad_client` inject theirs.
 
     `keep_par_twin` keeps both spellings of a pseudoautosomal locus. By default only the X one is
     recorded, because every annotation source uses X and a standard GRCh38 analysis set hard-masks the
@@ -684,9 +709,11 @@ def enrich(
             mode=mode, offline=offline, ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
             use_clinvar=use_clinvar, use_gnomad=use_gnomad, download=download,
             genome_build=genome_build, write=write, mint_vrs=mint_vrs, verify_ref=verify_ref,
-            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids, keep_par_twin=keep_par_twin,
+            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
+            verify_datasets=verify_datasets, keep_par_twin=keep_par_twin,
             rederive=rederive, keep_staging=keep_staging, progress=progress,
             resolver=resolver, gnomad_client=gnomad_client, grch37_client=grch37_client,
+            release_probes=release_probes,
         )
 
 
@@ -706,6 +733,7 @@ def _run_enrichment(
     verify_ref: bool,
     verify_clinsig: bool,
     verify_rsids: bool,
+    verify_datasets: bool,
     keep_par_twin: bool,
     rederive: bool,
     keep_staging: bool,
@@ -713,6 +741,7 @@ def _run_enrichment(
     resolver: EnsemblResolver | None,
     gnomad_client: Optional["GnomadClient"],
     grch37_client: Grch37Client | None,
+    release_probes: Mapping[str, ReleaseProbe] | None,
 ) -> EnrichmentResult:
     """The run itself, with the advisory lock already held. Every argument is `enrich`'s; see it.
 
@@ -1447,6 +1476,30 @@ def _run_enrichment(
                 len(rederived), compared, "; ".join(str(d) for d in rederived),
             )
 
+    # Fifth validation pass, and the only one whose subject is a claim the module makes about its own
+    # provenance rather than about a variant (RM85). Read off `sources.csv` **as it stands** — the
+    # licence rows this run writes are at the resolution layer and carry no `dataset`, so nothing here
+    # is comparing the module against something this same run just derived. That is the trap next
+    # door: a check satisfied by the value it is checking agrees with itself, which is how a
+    # re-derivation once reported a clean bill for exactly the subjects it had rewritten.
+    dataset_currency: CurrencyCheck | None = None
+    if verify_datasets:
+        dataset_currency = check_dataset_currency(
+            read_sources_file(spec_dir), probes=release_probes, offline=offline
+        )
+        for line in summarize_currency(dataset_currency):
+            # One line per reason, never one per row. Warned in both modes; `strict`'s refusal below
+            # is over the superseded releases alone, and it comes after this so the sentence an author
+            # reads is the same one either way.
+            logger.warning("Dataset currency: %s.", line)
+        if dataset_currency.not_checked is not None:
+            # Silence would read as "checked, all clear" — the one thing it must never mean (S4).
+            logger.info(
+                "Dataset currency: not checked (%s). No source was asked which release it publishes, "
+                "so every recorded dataset is unchecked rather than current.",
+                dataset_currency.not_checked,
+            )
+
     sources = sorted({r.source for r in out if r.source})
     result = EnrichmentResult(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
@@ -1458,6 +1511,7 @@ def _run_enrichment(
         unconsulted_rsids=sorted(unconsulted_rsids),
         rsid_coordinates=pair_check,
         rederived=rederived,
+        dataset_currency=dataset_currency,
     )
 
     if unreachable_rsids:
@@ -1540,6 +1594,27 @@ def _run_enrichment(
             f"loci by hand to resolution.csv, or enrich with mode='best_effort'."
         )
 
+    if mode == "strict" and dataset_currency is not None and dataset_currency.behind:
+        # Last of the gates, because it is the mildest diagnosis of the five: nothing here contradicts
+        # the genome or leaves a variant unplaced, it says the module is describing an older release
+        # than the one its source serves today.
+        #
+        # **Over `behind` alone**, never over the unchecked legs. An unreachable source and an
+        # `--offline` run both leave every leg unchecked, and refusing on those would make `--offline
+        # --strict` impossible forever over something no author can edit — the `unreachable_rsids`
+        # rule, which warns in both modes and escalates in neither.
+        superseded = dataset_currency.behind
+        raise EnrichmentError(
+            f"strict enrichment: {len(superseded)} of {dataset_currency.subjects} recorded "
+            f"release(s) have been superseded — "
+            + "; ".join(str(c) for c in superseded)
+            + ". An all-or-nothing artifact should not silently describe a release its source has "
+            "moved past: re-draft from the current one (which rewrites `sources.csv`'s dataset), or "
+            "enrich with mode='best_effort' to record this as a warning. `--rederive` is the next "
+            "question — whether any answer actually changed — and `--no-verify-datasets` turns this "
+            "check off."
+        )
+
     # ── the commit ─────────────────────────────────────────────────────────────────────────────
     # Everything above this line is staging. Every refusal above raises before it, which is what makes
     # *a refused strict run changes nothing* a promise rather than an accident of statement order —
@@ -1567,6 +1642,8 @@ def _run_enrichment(
                 stale_rsids=stale_rsids,
                 pairs=pair_check,
                 ensembl_ref=reference,
+                verify_datasets=verify_datasets,
+                currency=dataset_currency,
             ),
             spec_dir,
             error=EnrichmentError,
@@ -1638,8 +1715,10 @@ def _verification_records(
     stale_rsids: list[RsidStatus],
     pairs: PairCheck,
     ensembl_ref: Path | None,
+    verify_datasets: bool,
+    currency: CurrencyCheck | None,
 ) -> list[VerificationRecord]:
-    """The five checks this pass puts, as records `verification.json` can carry (RM45).
+    """The six checks this pass puts, as records `verification.json` can carry (RM45).
 
     Every count comes from the check that produced it — never re-derived here. That is the whole
     reason `verify_reference_alleles` and `verify_clin_sig` now return what they compared: a
@@ -1861,6 +1940,40 @@ def _verification_records(
                 source="ensembl",
                 release=_snapshot_release(ensembl_ref),
                 detail=" ".join(notes) or None,
+            )
+        )
+
+    # Dataset currency (RM85). `source` is left empty on purpose and is the one place this record
+    # departs from its neighbours: it is a single join key into the licence table, and this check is
+    # multi-leg by construction — a module recording ClinVar and CPIC has two sources implicated, so
+    # naming one would hide the other and a comma-joined value would break the join the column exists
+    # for. The same call `allele_function` makes for its two authorities. `release` is left empty for
+    # the same reason: there is no one release this check was put *against*.
+    if not verify_datasets or currency is None:
+        records.append(skipped("dataset_currency", "not_requested"))
+    elif currency.not_checked is not None:
+        records.append(
+            skipped(
+                "dataset_currency",
+                currency.not_checked,
+                detail=(
+                    "; ".join(summarize_currency(currency))
+                    or "the module records no release, so it makes no claim about where its rows "
+                       "came from"
+                ),
+            )
+        )
+    else:
+        # `subjects` is the legs asked **and answered comparably**, never every recorded release: a
+        # source nobody could reach is named in `detail` instead, because counting it would publish
+        # coverage of a fraction the record does not state — the defect the reference-allele pass
+        # shipped once and `_vrs_coverage` exists for.
+        records.append(
+            ran(
+                "dataset_currency",
+                subjects=currency.subjects,
+                findings=len(currency.behind),
+                detail="; ".join(summarize_currency(currency)) or None,
             )
         )
 

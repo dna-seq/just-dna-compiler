@@ -56,6 +56,7 @@ from just_dna_enricher.clinvar_draft import ClinVarDraftError, draft_gene_panel
 from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicError
 from just_dna_enricher.cpic_build import CpicBuildError
 from just_dna_enricher.cpic_build import build_snapshot as build_cpic_snapshot
+from just_dna_enricher.currency import unchecked_sentences
 from just_dna_enricher.download import (
     ensure_clinpgx_snapshot,
     ensure_clinvar_snapshot,
@@ -191,6 +192,12 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         True, "--verify-rsids/--no-verify-rsids",
         help="Check each authored rsID against dbSNP for merges/withdrawals (online only).",
     ),
+    verify_datasets: bool = typer.Option(
+        True, "--verify-datasets/--no-verify-datasets",
+        help="Check each release recorded in sources.csv against the one that source publishes now, "
+             "and report the gap. One request per source, and the cheap question to put before "
+             "--rederive: it tells you whether re-asking every subject is worth the run.",
+    ),
     keep_par_twin: bool = typer.Option(
         False, "--keep-par-twin",
         help="Record both contigs of a pseudoautosomal locus. Default keeps only the X spelling, "
@@ -216,7 +223,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             spec_dir, mode=_mode(strict), offline=offline,
             ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, use_clinvar=use_clinvar,
             use_gnomad=use_gnomad, mint_vrs=mint_vrs, verify_ref=verify_ref,
-            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids, keep_par_twin=keep_par_twin,
+            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
+            verify_datasets=verify_datasets, keep_par_twin=keep_par_twin,
             rederive=rederive, keep_staging=keep_staging,
         )
     except EnrichmentError as exc:
@@ -289,6 +297,28 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     # result is the normal case would be announcing a zero as evidence. Only a real difference prints.
     for drift in result.rederived or ():
         typer.secho(f"  re-derived: {drift}", fg=typer.colors.YELLOW, err=True)
+    # RM85. One line per superseded release rather than an aggregate: `sources.csv` carries one row
+    # per (source, layer), so this is a handful of lines on the largest module — the collapse rule is
+    # for the per-variant passes, where a systematic mistake produces thousands. Yellow, because an
+    # author has something to do about it; the legs nobody could ask are cyan, since that is not a
+    # finding about the module, and they are aggregated by reason because a reason repeats.
+    if result.dataset_currency is not None:
+        for superseded in result.dataset_currency.behind:
+            typer.secho(f"  dataset moved on: {superseded}", fg=typer.colors.YELLOW, err=True)
+        for line in unchecked_sentences(result.dataset_currency):
+            typer.secho(f"  dataset currency: {line}", fg=typer.colors.CYAN)
+        # Silence would read as "checked, all clear" (S4). `not_requested` is the author's own
+        # `--no-verify-datasets` and needs no echo back.
+        if (
+            result.dataset_currency.not_checked is not None
+            and result.dataset_currency.not_checked != "nothing_to_check"
+        ):
+            typer.secho(
+                f"  dataset currency not checked: {result.dataset_currency.not_checked} — no source "
+                f"was asked which release it publishes, so every recorded dataset is unchecked "
+                f"rather than current",
+                fg=typer.colors.CYAN,
+            )
 
 
 @app.command("frequencies")

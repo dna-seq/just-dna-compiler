@@ -308,6 +308,8 @@ def _records_for(ref_check, build, **over):
         "stale_rsids": [],
         "pairs": PairCheck(not_checked="nothing_to_check"),
         "ensembl_ref": None,
+        "verify_datasets": False,
+        "currency": None,
         **over,
     }
     return {r.check: r for r in _verification_records(**kwargs)}
@@ -783,3 +785,43 @@ def test_the_detail_aggregates_rather_than_listing_every_row() -> None:
     assert "40 opposed" in detail
     assert f"and {40 - DETAIL_LIMIT} more" in detail
     assert detail.count("vs benign") == DETAIL_LIMIT
+
+
+def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
+    """The claim `verification.py`'s docstring makes, as a walked set rather than a sentence.
+
+    That paragraph has now been wrong three times — once naming a writer that did not exist, once
+    missing two that did, and once carrying a total (*"fifteen of the seventeen"*) that went stale the
+    moment a member landed. A number in prose is a registry nothing iterates, so the claim moves here:
+    every emission site in the tier is discovered by walking the sources for a `ran(...)`/`skipped(...)`
+    whose first argument is a literal, and the result must equal the vocabulary minus the members whose
+    comment beside them says RESERVED.
+
+    An EQUALITY, not a floor: a floor cannot see a member that lost its only emitter in a refactor,
+    which is the direction the last three defects all ran.
+    """
+    import ast
+    import pkgutil
+
+    import just_dna_enricher
+    from just_dna_format.vocab import VALID_VERIFICATION_CHECKS
+
+    root = Path(just_dna_enricher.__path__[0])
+    emitted: set[str] = set()
+    for info in pkgutil.iter_modules(just_dna_enricher.__path__):
+        source = (root / f"{info.name}.py").read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id not in {"ran", "skipped"} or not node.args:
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                emitted.add(first.value)
+
+    #: Named rather than silently subtracted, so each one is a decision a reader can dispute — and
+    #: each says RESERVED beside itself in `VALID_VERIFICATION_CHECKS`, with the reason.
+    reserved = {"gene_disease_validity", "dosage_sensitivity"}
+    assert emitted == VALID_VERIFICATION_CHECKS - reserved, sorted(
+        emitted.symmetric_difference(VALID_VERIFICATION_CHECKS - reserved)
+    )

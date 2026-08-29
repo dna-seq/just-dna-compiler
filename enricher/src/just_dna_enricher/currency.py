@@ -369,26 +369,35 @@ def _ask(probes: Mapping[str, ReleaseProbe], source: str) -> tuple[str | None, s
         return None, "unreachable"
 
 
-def summarize_currency(check: CurrencyCheck) -> list[str]:
-    """One sentence per *reason*, never one per row — the aggregation rule this tree shares.
+def unchecked_sentences(check: CurrencyCheck) -> list[str]:
+    """One sentence per *reason* for the legs that could not be settled — never one per row.
 
-    Returns the sentences a record's `detail` and the CLI's report are both built from, so what an
-    author reads on the terminal and what the attestation carries cannot drift.
+    Shared between the record's `detail` and the CLI's report, so what an author reads on the terminal
+    and what the attestation carries cannot drift into two accounts of one run.
     """
-    lines: list[str] = []
-    behind = check.behind
-    if behind:
-        lines.append(
-            f"{len(behind)} recorded release(s) have been superseded: "
-            + examples([f"{c.source} {c.recorded} → {c.current}" for c in behind])
-        )
     by_reason: dict[str, list[DatasetCurrency]] = {}
     for leg in check.unchecked:
         by_reason.setdefault(leg.unchecked or "unreachable", []).append(leg)
-    for reason in sorted(by_reason):
-        legs = by_reason[reason]
-        lines.append(
-            f"{len(legs)} recorded release(s) unchecked ({reason}): "
-            + examples([f"{c.source} {c.recorded}" for c in legs])
-        )
-    return lines
+    return [
+        f"{len(by_reason[reason])} recorded release(s) unchecked ({reason}): "
+        + examples([f"{c.source} {c.recorded}" for c in by_reason[reason]])
+        for reason in sorted(by_reason)
+    ]
+
+
+def summarize_currency(check: CurrencyCheck) -> list[str]:
+    """What a record's `detail` carries: the superseded releases, then the legs nobody could settle.
+
+    The shortfall travels with the finding rather than beside it — a coverage figure whose
+    denominator is stated elsewhere is the defect `_vrs_coverage` exists for, one check over.
+    """
+    behind = check.behind
+    superseded = (
+        [
+            f"{len(behind)} recorded release(s) have been superseded: "
+            + examples([f"{c.source} {c.recorded} → {c.current}" for c in behind])
+        ]
+        if behind
+        else []
+    )
+    return superseded + unchecked_sentences(check)
