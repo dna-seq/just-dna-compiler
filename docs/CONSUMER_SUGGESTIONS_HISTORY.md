@@ -5928,9 +5928,11 @@ installed package at the lines given.
 ## S73 — an open question, not a defect: `pharm_variants.csv` has no citation column, so a ClinPGx-drafted module makes 1,482 clinical claims with nowhere to cite them
 
 **Status — answered: your third reading is the intended one, and the column is missing rather than
-deliberately absent. Stated in [SCHEMAS.md](SCHEMAS.md) as you asked, and the column is filed as
-[RM132](ROADMAP.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant),
-open, a minor.**
+deliberately absent. Stated in [SCHEMAS.md](SCHEMAS.md) as you asked, filed as
+[RM132](ROADMAP_HISTORY.md#rm132--pharm_variantscsv-made-a-clinical-claim-per-row-and-could-only-cite-per-variant)
+— and ✅ shipped in 0.7 (2026-08-28) as `PharmVariantRow.pmid`, with both literature cross-check sites
+reading it in the same release. The question this reply left open is answered the way the binning side
+answered it: `provenance_quote` does not follow.**
 
 **The one-sentence answer: a row cites when its claim is finer-grained than `studies.csv`' key.** That
 is the rule, and it decides every table without anyone having to ask again. `studies.csv` keys on

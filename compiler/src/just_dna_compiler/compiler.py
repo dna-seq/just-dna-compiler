@@ -1987,6 +1987,19 @@ def load_binning_rows(spec_dir: Path) -> dict[str, list[MeasureBinRow]]:
     return _load_kind_rows(spec_dir, _BINNING_TABLE_KINDS)
 
 
+def _citations_over(
+    rows_by_csv: dict[str, list[Any]], kinds: tuple[tuple[str, type[BaseModel]], ...]
+) -> list[str]:
+    """The shared body behind `table_citations` and `binning_citations`."""
+    seen: dict[str, None] = {}
+    for csv_name, _model in kinds:
+        for row in rows_by_csv.get(csv_name) or []:
+            if row.pmid:
+                for pmid in extract_pmids(row.pmid):
+                    seen.setdefault(pmid, None)
+    return list(seen)
+
+
 def table_citations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
     """Digit-only PMIDs the module's annotation tables cite, de-duplicated — **every** citing kind
     (`MeasureBinRow.pmid` RM47, `PharmVariantRow.pmid` RM132).
@@ -2011,19 +2024,6 @@ def binning_citations(rows_by_csv: dict[str, list[Any]]) -> list[str]:
     cross-check must read every citation site, and this one answers a question about thresholds.
     """
     return _citations_over(rows_by_csv, _BINNING_TABLE_KINDS)
-
-
-def _citations_over(
-    rows_by_csv: dict[str, list[Any]], kinds: tuple[tuple[str, type[BaseModel]], ...]
-) -> list[str]:
-    """The shared body behind `table_citations` and `binning_citations`."""
-    seen: dict[str, None] = {}
-    for csv_name, _model in kinds:
-        for row in rows_by_csv.get(csv_name) or []:
-            if row.pmid:
-                for pmid in extract_pmids(row.pmid):
-                    seen.setdefault(pmid, None)
-    return list(seen)
 
 
 def _allowed_alleles(
@@ -6313,8 +6313,7 @@ def _cross_check_literature(
             "literature_row_uncited",
             f"literature.csv describes {len(dropped)} citation(s) no study, bin or pharm row in "
             f"this module cites: {sorted({r.pmid for r in dropped})} — left out of the artifact, "
-            f"and left in "
-            f"the CSV, which is the pin that keeps a re-run cheap",
+            f"and left in the CSV, which is the pin that keeps a re-run cheap",
         ))
     findings.extend(_check_quoted_article_licenses(kept, studies))
     findings.extend(_check_quote_counter_is_current(kept, studies, kind_rows))
@@ -6329,7 +6328,8 @@ def split_cited_literature(
     """`(kept, dropped)` — the literature rows this module actually cites, and the rest (RM79).
 
     **The compiler discards the rest; `literature.csv` keeps them.** A row describing a citation no
-    study and no citing table row names is dead weight in the artifact: nothing joins to it, and it is only there
+    study and no citing table row names is dead weight in the artifact: nothing joins to it, and it
+    is only there
     because `literature.csv` is merge-not-clobber, so a citation the author has since deleted from
     `studies.csv` leaves its row behind. Keeping the row in the CSV is the point of that rule — it is
     the pin that makes a re-run cheap — and carrying it into the parquet and the manifest is a
