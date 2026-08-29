@@ -1418,7 +1418,8 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
 - **sources and licensing** — `source_row_unused`, `source_terms_unrecorded`,
   `declared_license_disagrees`
 - **the injected fact tables** — `derived_row_orphan`, `faf95_exceeds_frequency`,
-  `oe_lof_outside_interval`, `oe_lof_disagrees_with_counts`, `clin_sig_contradicts_frequency`
+  `oe_lof_outside_interval`, `oe_lof_disagrees_with_counts`, `clin_sig_contradicts_frequency`,
+  `clin_sig_concordance_contested`
 - **the overlay** — `overlay_update_unmatched`, `overlay_targets_missing_table`,
   `overlay_rows_suppressed`
 - **verification and closure** — `verification_two_copies`, `verification_unreadable`,
@@ -1558,6 +1559,34 @@ the override rows.
 Both warn in **both** modes and both are aggregated into one sentence rather than one per row. The
 consequence a consumer should know is the one no message can carry: **a `suppress` with a typo'd
 subject does nothing, forever, and cannot warn** — check a suppression by reading the compiled table.
+
+**The concordance record's one warning (0.7, RM130).** `clin_sig_concordance.csv` names the subjects
+where the module's clinical call and an annotation authority's disagree, or where two authorities
+disagree with each other, and this is the sentence that says so at `validate` and at `compile`:
+
+```
+clin_sig_concordance.csv records {n} contested subject(s): {opposed} of them opposed calls
+(pathogenic-class against benign-class)[, {k} with an authority that could not be consulted]. A
+contested subject is a question, not a defect — half the time the archive is the stale side, which is
+why this never fails a build in either mode. Answer one by adding a row to overrides.csv naming table
+'clin_sig_concordance.csv', the subject's variant_key and its genotype, with the reason you stand by
+the module's call.
+```
+
+Three things about it are decisions rather than wording. It **never escalates under `--strict`**, for
+the reason the check that produced the rows does not: escalating would have this format arbitrate a
+clinical dispute. It is **actionable rather than carried**, unlike `verification_findings_recorded`
+one section down, and the difference is real — a number sitting in `verification.json` is not
+something an author can move, while a contested row is answered by writing an overlay row, and the
+count here is taken over the **post-overlay** table so answering one clears it. And it names
+`overrides.csv` and **never `provenance.json`'s `outranks`**: the two are the same idea one table
+apart, 0.7 settled the overlap as a succession in the overlay's favour, and an author meeting this
+warning for the first time should be sent to the mechanism that survives 1.0.
+
+The count is embedded although both passes emit the sentence. That is normally the trap where a
+message carrying a number is rebuilt from inputs resolution changed in between; it is not one here,
+because no compile step between the two passes touches this table or the overlay above it, so both
+passes reach a byte-identical sentence and the existing de-duplication collapses them.
 
 **Substrings the suite pins as contract**, so changing one is a deliberate act rather than a reword:
 `test_validate_agrees_with_compile.py` holds `"forbid sale"`, `"does not match the id recomputed"`,

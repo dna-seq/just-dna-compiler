@@ -57,6 +57,10 @@ from just_dna_format.binning import (
     measurement_shape_warnings,
     validate_bins,
 )
+from just_dna_format.concordance import (
+    ClinSigAuthorityCallRow,
+    ClinSigConcordanceRow,
+)
 from just_dna_format.findings import CodedWarning, classify, restate
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
@@ -65,6 +69,8 @@ from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import (
     build_artifact,
+    clin_sig_authority_call_signature,
+    clin_sig_concordance_signature,
     file_entries,
     file_entry,
     newline_normalized_file_entries,
@@ -114,6 +120,7 @@ from just_dna_format.manifest import (
     README_CANDIDATES,
     README_EXTENSIONS,
     ClinicalAssertions,
+    ClinSigConcordance,
     Compilation,
     Display,
     FileEntry,
@@ -285,6 +292,14 @@ _TABLE_DUPE_KEYS: dict[type[BaseModel], Callable[[Any], tuple]] = dict.fromkeys(
         PgsRow,
         PharmVariantRow,
         SourceRow,
+        # The concordance record and its paired detail table (RM130). The parent keys on
+        # `(variant_key, genotype)` and the detail on `(variant_key, genotype, authority)`, and both
+        # are registered for the reason `SourceRow` was: a duplicate under the key is two answers to
+        # one question with no order between them, and here it would be two verdicts about one
+        # contested subject — which is what an overlay row is written against, so the author would
+        # be answering a question the module states twice.
+        ClinSigConcordanceRow,
+        ClinSigAuthorityCallRow,
         # `OverrideRow` keys on `(table, subject, member, field)` — the overlay's own key. Two rows
         # under it are two answers to one question with no defined order between them, which is the
         # `SourceRow` failure one table over: a pair free to carry opposite values in the file a
@@ -351,6 +366,13 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # `artifact.digest` order, so inserting anywhere but beside its siblings would move the digest of
     # every module carrying a later table for no reason.
     "gwas_effects.parquet",
+    # RM130 (0.7), on the same terms as the seven above and in the same place for the same reason —
+    # beside its siblings, so `manifest.artifact.files` reads in family order. The pair is two
+    # parquets because it is two tables: the agreement state belongs to the subject and each
+    # authority's own words belong to the authority, and one of them keys on `authority` while the
+    # other must not.
+    "clin_sig_concordance.parquet",
+    "clin_sig_authority_calls.parquet",
     "sources.parquet",
     # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
     # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
@@ -392,6 +414,8 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("gene_validity.csv", "gene_validity.parquet", GeneValidityRow),
     ("clinical_assertions.csv", "clinical_assertions.parquet", ClinicalAssertionRow),
     ("gwas_effects.csv", "gwas_effects.parquet", GwasEffectRow),
+    ("clin_sig_concordance.csv", "clin_sig_concordance.parquet", ClinSigConcordanceRow),
+    ("clin_sig_authority_calls.csv", "clin_sig_authority_calls.parquet", ClinSigAuthorityCallRow),
     ("sources.csv", "sources.parquet", SourceRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
@@ -3887,6 +3911,20 @@ def _validate_spec(
             frequency_errors, frequency_warnings = _check_frequency_arithmetic(injected_rows)
             all_errors.extend(frequency_errors)
             all_warnings.extend(frequency_warnings)
+        if model is ClinSigConcordanceRow and not injected_errors:
+            # Reported at the pre-flight as well as at compile, for the reason the parity rule gives:
+            # this reads injected bytes and the authored variant list and consults nothing else, so
+            # there is nothing about it that needs an `output_dir`. It is also the finding an author
+            # most wants *before* a compile — the answer to it is an `overrides.csv` row, and writing
+            # one is cheap while the module is still open.
+            all_warnings.extend(_concordance_warnings(injected_rows))
+            all_warnings.extend(
+                _cross_check_clin_sig_concordance(injected_rows, variants, table=csv_name)
+            )
+        if model is ClinSigAuthorityCallRow and not injected_errors:
+            all_warnings.extend(
+                _cross_check_clin_sig_concordance(injected_rows, variants, table=csv_name)
+            )
         if model is LiteratureRow and not injected_errors:
             # Stashed rather than checked here: the citation sites (`studies.csv`, and since 0.6 the
             # binning tables' `pmid`) are loaded further down, so the cross-check runs once both are
@@ -5018,6 +5056,35 @@ def compile_module(
     def _gwas_effect_checks(rows: list) -> tuple[list[str], list[str]]:
         return [], list(_cross_check_gwas_effects(rows, variants))
 
+    def _concordance_checks(rows: list) -> tuple[list[str], list[str]]:
+        # De-duplicated on the message, the `_literature_checks` idiom: `compile_module` runs
+        # `validate_spec`, which emits the identical sentences over the identical post-overlay rows,
+        # and an unfiltered re-run would publish the count twice. Safe to run twice at all because
+        # no compile step between the two passes touches this table or the overlay above it — which
+        # is the standing test `@no-rerun-with-counts` actually applies.
+        warns = [w for w in _concordance_warnings(rows) if w not in all_warnings]
+        warns.extend(
+            w
+            for w in _cross_check_clin_sig_concordance(
+                rows, variants, table="clin_sig_concordance.csv"
+            )
+            if w not in all_warnings
+        )
+        return [], warns
+
+    def _authority_call_checks(rows: list) -> tuple[list[str], list[str]]:
+        # No check that the subject also appears in the parent record, deliberately: an author who
+        # answers a contested subject suppresses the parent row through the overlay, and the calls
+        # behind it stay — the evidence outliving the question is correct, and warning about it would
+        # make answering a finding produce a finding.
+        return [], [
+            w
+            for w in _cross_check_clin_sig_concordance(
+                rows, variants, table="clin_sig_authority_calls.csv"
+            )
+            if w not in all_warnings
+        ]
+
     def _sources_checks(rows: list) -> tuple[list[str], list[str]]:
         # `sources.csv` is last in `_FACT_TABLES`, so the other sidecars are already parsed into
         # `fact_rows` and their `source` values can be cross-checked here. Warnings only — the gate
@@ -5054,6 +5121,14 @@ def compile_module(
         ),
         GwasEffectRow: (
             _gwas_effect_checks, lambda rows: _build_table(rows, GwasEffectRow, module_name),
+        ),
+        ClinSigConcordanceRow: (
+            _concordance_checks,
+            lambda rows: _build_table(rows, ClinSigConcordanceRow, module_name),
+        ),
+        ClinSigAuthorityCallRow: (
+            _authority_call_checks,
+            lambda rows: _build_table(rows, ClinSigAuthorityCallRow, module_name),
         ),
         SourceRow: (_sources_checks, lambda rows: _build_table(rows, SourceRow, module_name)),
     }
@@ -5120,6 +5195,8 @@ def compile_module(
     gene_validity_rows: list[GeneValidityRow] = fact_rows.get(GeneValidityRow, [])
     clinical_assertion_rows: list[ClinicalAssertionRow] = fact_rows.get(ClinicalAssertionRow, [])
     gwas_effect_rows: list[GwasEffectRow] = fact_rows.get(GwasEffectRow, [])
+    concordance_rows: list[ClinSigConcordanceRow] = fact_rows.get(ClinSigConcordanceRow, [])
+    authority_call_rows: list[ClinSigAuthorityCallRow] = fact_rows.get(ClinSigAuthorityCallRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
 
     logs = _collect_logs(spec_dir, output_dir, log_files)
@@ -5179,6 +5256,7 @@ def compile_module(
         gene_validity=_gene_validity_block(gene_validity_rows),
         clinical_assertions=_clinical_assertions_block(clinical_assertion_rows),
         gwas_effects=_gwas_effects_block(gwas_effect_rows),
+        clin_sig_concordance=_clin_sig_concordance_block(concordance_rows, authority_call_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),
         verification=verification,
@@ -5415,6 +5493,90 @@ def _gwas_effects_block(rows: list[GwasEffectRow]) -> GwasEffects | None:
         traits=sorted({r.trait_efo_id for r in rows if r.trait_efo_id}),
         not_found_count=sum(1 for r in rows if r.status == "not_found"),
     )
+
+
+def _clin_sig_concordance_block(
+    rows: list[ClinSigConcordanceRow], calls: list[ClinSigAuthorityCallRow]
+) -> ClinSigConcordance | None:
+    """The manifest's `clin_sig_concordance` summary, or `None` when the module carries no record.
+
+    `None` rather than a block of zeros, on the rule the whole record is built on: a module that
+    never had the comparison run is not a module where nothing is contested, and an all-zero summary
+    would read as the latter.
+
+    Two hashes, because it is two tables. A corrected normalization moves every detail row without
+    moving one verdict, and a reader able to see that is a reader who can tell *our* mapping changed
+    from *an archive* changed its mind.
+
+    `opposed_count` and `unchecked_count` are published beside the row count because neither is
+    derivable from it and both change what the number means: forty subjects where every disagreement
+    crosses the pathogenic/benign line is a different module from forty that differ by a confidence
+    step, and a record that shrank because an archive could not be reached has not improved.
+
+    **No consensus facet.** Nothing here says which authority is right where two disagree; resolving
+    a split needs a weighting model this format does not have, and publishing one as a summary field
+    would make a judgement look like a fact.
+    """
+    if not rows:
+        return None
+    return ClinSigConcordance(
+        signature=clin_sig_concordance_signature(rows),
+        calls_signature=clin_sig_authority_call_signature(calls) if calls else None,
+        authorities=sorted({r.authority for r in calls}),
+        datasets=sorted({r.dataset for r in calls if r.dataset}),
+        row_count=len(rows),
+        call_count=len(calls),
+        opposed_count=sum(1 for r in rows if r.opposed is True),
+        unchecked_count=sum(
+            1
+            for r in rows
+            if "unchecked" in {r.authority_concordance, r.authored_position}
+        ),
+        concordance_states=sorted({r.authority_concordance for r in rows}),
+        authored_positions=sorted({r.authored_position for r in rows}),
+    )
+
+
+def _concordance_warnings(rows: list[ClinSigConcordanceRow]) -> list[str]:
+    """Say that the module carries contested subjects, and where the answer goes (RM130).
+
+    **A question, never a defect**, and never a `strict` matter: a disagreement with an archive is a
+    fact about the field, the archive is the stale side often enough that failing a build on one
+    would be wrong, and escalating would have this format arbitrate a clinical dispute — which is
+    the same reason the check that produced these rows warns in both modes.
+
+    **It names `overrides.csv` and never `provenance.json`'s `outranks`.** Both record an authored
+    value beating a source with prose, and 0.7 settled the overlap as a dated succession: the
+    overlay wins and the knob is filed for removal at the major. An author meeting this warning for
+    the first time is exactly who should be steered onto the mechanism that survives, and it costs a
+    clause.
+
+    **The count is safe to embed although both passes emit it**, which is normally the trap where a
+    message carrying a number is built twice from inputs resolution changed in between. This one
+    reads `clin_sig_concordance.csv` after the overlay, and no compile step between the two passes
+    touches either the file or the overlay — so both passes reach a byte-identical sentence and the
+    existing message de-duplication collapses them. Pinned by a test rather than left to the
+    argument.
+
+    **Counted over the post-overlay rows**, which is what makes the finding clearable: an author who
+    has answered a contested subject with a `suppress` override removes it from the built table, and
+    the suppression is itself reported by `overlay_rows_suppressed`, so nothing goes quiet.
+    """
+    if not rows:
+        return []
+    opposed = sum(1 for r in rows if r.opposed is True)
+    unresolved_camps = sum(1 for r in rows if r.opposed is None)
+    split = f"{opposed} of them opposed calls (pathogenic-class against benign-class)"
+    if unresolved_camps:
+        split += f", {unresolved_camps} with an authority that could not be consulted"
+    return [CodedWarning(
+        "clin_sig_concordance_contested",
+        f"clin_sig_concordance.csv records {len(rows)} contested subject(s): {split}. A contested "
+        f"subject is a question, not a defect — half the time the archive is the stale side, which "
+        f"is why this never fails a build in either mode. Answer one by adding a row to "
+        f"overrides.csv naming table 'clin_sig_concordance.csv', the subject's variant_key and its "
+        f"genotype, with the reason you stand by the module's call.",
+    )]
 
 
 def _check_license_gate(rows: list[SourceRow]) -> list[str]:
@@ -5828,6 +5990,7 @@ def _build_manifest(
     gene_validity: GeneValidity | None = None,
     clinical_assertions: ClinicalAssertions | None = None,
     gwas_effects: GwasEffects | None = None,
+    clin_sig_concordance: ClinSigConcordance | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
     verification: Verification | None = None,
@@ -5897,6 +6060,7 @@ def _build_manifest(
         gene_validity=gene_validity,
         clinical_assertions=clinical_assertions,
         gwas_effects=gwas_effects,
+        clin_sig_concordance=clin_sig_concordance,
         literature=literature,
         sources=sources,
         verification=verification,
@@ -6550,6 +6714,42 @@ def _cross_check_clinical_assertions(
         "derived_row_orphan",
         f"clinical_assertions.csv describes {len(orphans)} coordinate(s) no variant in this module "
         f"sits at: {orphans}",
+    )]
+
+
+def _cross_check_clin_sig_concordance(
+    rows: list, variants: list[VariantRow], *, table: str
+) -> list[str]:
+    """Warn when a concordance row is about a subject no variant in the module carries.
+
+    Matched on `variant_key` against the **authored** keys, which is `_cross_check_gwas_effects`'s
+    rule and for its reason: comparing against expanded keys would let a one-to-many rsID report its
+    own siblings.
+
+    An orphan here means something narrower than it does on the sibling tables, and the difference is
+    worth stating. This record is rewritten whole on every run rather than merged, so a row cannot
+    survive a re-run of the check that produced it — an orphan can only mean `variants.csv` was
+    narrowed since, and the remedy is to re-run rather than to edit anything. Warning-only in both
+    modes, like every other over-broad sidecar.
+
+    Serves both halves of the pair, which is why the table is a parameter: a detail row and a subject
+    row go stale together and for the same reason, and two functions saying so differently is how the
+    two spellings of one finding get reported as two findings.
+    """
+    if not variants or not rows:
+        return []
+    known = {v.variant_key for v in variants if v.variant_key}
+    known |= {v.rsid for v in variants if v.rsid}
+    if not known:
+        return []
+    orphans = sorted({r.variant_key for r in rows if r.variant_key not in known})
+    if not orphans:
+        return []
+    return [CodedWarning(
+        "derived_row_orphan",
+        f"{table} records {len(orphans)} subject(s) no variant in this module carries: {orphans}. "
+        f"The record is rebuilt whole on every run, so this means variants.csv was narrowed since "
+        f"the comparison last ran — re-run it rather than editing the table.",
     )]
 
 

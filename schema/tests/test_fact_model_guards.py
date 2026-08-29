@@ -18,6 +18,8 @@ import math
 
 import pytest
 from just_dna_format.assertions import ClinicalAssertionRow
+from just_dna_format.base import field_vocabularies
+from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
@@ -39,7 +41,31 @@ _MINIMAL: dict[type, dict] = {
         "variant_key": "rs1800562",
         "dataset": "gwas_catalog_2026-06",
     },
+    ClinSigConcordanceRow: {
+        "variant_key": "rs1800562",
+        "genotype": "A/G",
+        "authority_concordance": "single",
+        "authored_position": "matches_none",
+    },
+    ClinSigAuthorityCallRow: {
+        "variant_key": "rs1800562",
+        "genotype": "A/G",
+        "authority": "clinvar",
+        "status": "no_record",
+    },
 }
+
+#: Models whose `status` column is **not** the `ResolutionRow` vocabulary, with the member the guard
+#: below feeds them instead. Keyed rather than special-cased in the test body, so a third such model
+#: is a line here rather than an `if` nobody reads.
+#:
+#: `ClinSigAuthorityCallRow` is the first: its column answers *what happened when this authority was
+#: consulted* — recorded, asked-and-absent, or never asked at all — which is a different question
+#: from whether a lookup resolved, and borrowing `resolved` for it would have made "the archive
+#: classified this variant" and "the lookup succeeded" the same word. `no_record` rather than
+#: `recorded`, because the model refuses a recorded call that names no classification — the roster
+#: feeds a row that stands on its own, and the vocabulary is what this guard is asking about.
+_STATUS_MEMBER: dict[type, str] = {ClinSigAuthorityCallRow: "no_record"}
 
 
 def test_the_roster_covers_every_fact_model_on_the_authoring_reference() -> None:
@@ -67,11 +93,17 @@ def test_a_fact_rows_status_is_a_closed_vocabulary(model: type) -> None:
     if "status" not in model.model_fields:
         pytest.skip(f"{model.__name__} has no status column")
 
-    accepted = model(**_MINIMAL[model], status="resolved")
-    assert accepted.status == "resolved"
+    member = _STATUS_MEMBER.get(model, "resolved")
+    # Read off the field's own vocabulary marker rather than trusted: a model whose status column
+    # stopped carrying the member this roster feeds it would otherwise pass by accepting a value the
+    # published vocabulary no longer has.
+    assert member in field_vocabularies(model)["status"]["options"]
+    fields = {**_MINIMAL[model], "status": member}
+    accepted = model(**fields)
+    assert accepted.status == member
 
     with pytest.raises(ValueError) as caught:
-        model(**_MINIMAL[model], status="totally-made-up")
+        model(**{**fields, "status": "totally-made-up"})
     assert "status" in str(caught.value)
 
 
