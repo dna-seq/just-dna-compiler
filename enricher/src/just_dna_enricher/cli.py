@@ -2013,9 +2013,8 @@ def hint_citation_(
     are printed for exactly that comparison (S12).
 
     **`--pmcid` goes the other way.** Every `pmid` in the schema keys on the PubMed id — `studies.csv`,
-    a binning row's and a `pharm_variants.csv` row's alike — and a curator holding only a `PMC…` id had
-    no route to it — the schema refused the cell and
-    named no remedy. This resolves it and then asks PubMed which paper that is. The id is **reported,
+    a binning row's and a `pharm_variants.csv` row's alike — and a curator holding only a `PMC…` id
+    had no route to it: the schema refused the cell and named no remedy. This resolves it and then asks PubMed which paper that is. The id is **reported,
     never written**: filling `pmid` from NCBI would make the existence check compare NCBI with itself.
     """
     if pmid is None and doi is None and pmcid is None:
