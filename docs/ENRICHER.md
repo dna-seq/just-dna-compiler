@@ -21,7 +21,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
-| **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**) |
+| **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the concordance record by `clinical.clin_sig_concordance` (0.7, RM130) |
 | **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
@@ -1733,6 +1733,52 @@ passed that was never put. Its values are `not_requested` (the author's own `--n
 `no_snapshot`, `unusable_snapshot` (present but not queryable — `compare_clin_sig` returns `None` rather
 than a comparison of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
 typed the `clin_sig`, nothing changes — that is the case this check exists for.
+
+### The concordance record (`concordance.py`, offline) — RM130
+
+The check above counts its findings and, until 0.7, kept none of them. `clin_sig_concordance(variants,
+resolution_rows, *, reference)` in `clinical.py` runs the same comparison and returns the two tables
+`concordance.write_concordance_tables` puts beside the spec:
+
+| file | key | carries |
+| --- | --- | --- |
+| `clin_sig_concordance.csv` | `(variant_key, genotype)` | `authority_concordance`, `authored_position`, `opposed`, and the module's own call |
+| `clin_sig_authority_calls.csv` | `(variant_key, genotype, authority)` | that authority's normalized `clin_sig`, its raw token, and its confidence in its own units |
+
+`None` rather than two empty tables when there is no snapshot or an unusable one, and the distinction
+is the whole tri-state: two empty tables are a claim (*nothing here is contested*), while `None` says
+the question was never put. A caller must not write a file that says the first when the second
+happened.
+
+**Not merge-not-clobber, and it is the one derived sidecar that is not.** Every other one gap-fills
+because a recorded row might carry a curator's judgement; this one carries none, since the judgement
+about a contested subject goes in `overrides.csv`. Merging would be actively wrong: a subject the
+archive stopped contesting has to *leave* the record, because a conflict that stops being reported is
+exactly how an author learns the archive caught up with them.
+
+**`classify_concordance` is a pure function over N authority outcomes**, and it knows nothing about
+ClinVar. That is what makes the arity property testable at the three and five authorities the
+vocabularies were designed against rather than at the one the producer reaches today. `CLIN_SIG_CAMP`
+moved here from `clinical.py` for the neighbouring reason: the record and the two-way check must draw
+the opposed-versus-differing line in the same place, and two maps for one distinction is how a drift
+in our own code comes to read as a disagreement between two archives.
+
+**The subject list is built from the comparison that already ran**, never from a second pass over the
+snapshot. A subject that produced a conflict is rendered from that conflict's own record, so the
+verdict and the finding are one fact told twice rather than two computations that can drift — and
+re-asking would cost the whole comparison again.
+
+**`ClinSigConflict` no longer names its authority in a field name.** It carried `clinvar: str` until
+0.7; `authority` and `authority_clin_sig` replace it, with `clinvar` kept as a read-only alias so an
+existing caller keeps working. The rename is the point: a finding whose field is named after one
+archive costs a rename — major-only work — the moment a second one arrives.
+
+**One thing the record makes visible that the two-way check cannot.** At a single authority every
+reported conflict is `opposed` by construction, because the check only reports where both sides are
+opinionated and their camps differ, and `pathogenic`/`benign` are the only two opinionated camps. So
+the *differing-but-not-opposed* case has no producer at N=1 — `_clin_sig_detail`'s second group is
+unreachable today. It becomes reachable as soon as two authorities can disagree with each other while
+neither contradicts the module, which is what the record is shaped for.
 
 ## PubMind snapshot (`pubmind_build.py`, `[dev]`) — RM134 § A
 

@@ -34,7 +34,7 @@ The dependency arrow points inward and only one tier fetches.
 
 | Surface | Repo / package | Owns | Never |
 |---|---|---|---|
-| **schema** | `just-dna-format` | the models, vocabularies, the nine hashes, `layout`, signing/verification helpers, the generated authoring reference | fetches; ships a CLI |
+| **schema** | `just-dna-format` | the models, vocabularies, the hash family, `layout`, signing/verification helpers, the generated authoring reference | fetches; ships a CLI |
 | **transform** | `just-dna-compiler` | spec → parquet + `manifest.json`; `validate`, `reverse`, `close`, `signature`, scaffolding/templates, `hints`, the authoring-reference CLI | fetches; creates a row no curator wrote |
 | **network** | `just-dna-enricher` | resolution, VRS minting, the derived sidecars, the drafting providers, every cross-check, snapshot build/publish | decides what a variant *means*; repairs an authored cell |
 | **catalog** | `just-dna-registry` (checkout: `../just-dna-marketplace`) | accounts, namespaces, publish, search, download, the module card, recompilation server-side | authors anything |

@@ -43,6 +43,60 @@ uncut minor and deliberately names no number — there is a version to write dow
 `pyproject.toml` files still read `0.6.6` until the release is cut, and the 2026-08-24 work ships
 inside this same number. Each entry below names the packages it actually touched.
 
+- **RM130 — a contested clinical call now has a name to act on, and a key that survives five
+  authorities.** *(`just-dna-format` + `just-dna-compiler` + `just-dna-enricher`; two new optional
+  derived tables, three new closed vocabularies, one new warning code.)* The ClinVar cross-check
+  reported *twenty findings of 141,616 subjects* and kept none of the twenty: they reached a logger
+  and nothing else, so an author could read the number and not act on it. `clin_sig_concordance.csv`
+  is those subjects, named and joinable, keyed `(variant_key, genotype)` — genotype because the
+  comparison is of an authored call for a genotype, and a table keyed on the variant alone collapses
+  two authored calls that disagree with the archive differently. Beside it
+  `clin_sig_authority_calls.csv` carries what each authority actually said, keyed
+  `(variant_key, genotype, authority)`.
+
+  **The shape is RM134's, not the one RM130 first decided, and the swap is the interesting part.** The
+  original record carried "the authored value, the source's value" and named its authority in a
+  *field* — `ClinSigConflict.clinvar` — which would have cost a key change or a retype the moment a
+  second archive arrived, one item later in this same release. P3 reserves both for a major. So the
+  parent row carries an agreement *state* instead: `authority_concordance`
+  (`concordant`/`discordant`/`single`/`none`/`unchecked`) and `authored_position`
+  (`matches_all`/`matches_some`/`matches_none`/`absent`/`unchecked`), two orthogonal closed
+  vocabularies that are five members at two authorities and five at five. A single vocabulary was
+  drafted and failed a stress test at five sources because its members named the authority inside
+  themselves; the root cause was one field carrying two axes, which is the Principle 5 anti-pattern
+  and the combinatorial growth was its symptom.
+
+  **Nothing resolves a split.** With five authorities in a two-against-three disagreement, precedence
+  names one winner and majority names another, and choosing needs a weighting model this workspace has
+  declined to invent three times. There is no `majority` column, no consensus call and no resolved
+  winner anywhere in the tables or the manifest block. Confidence is likewise not normalized across
+  authorities — a gold-star count and a literature miner's evidence-depth count are different
+  instruments — so the detail row carries the published value with `confidence_unit` beside it, and the
+  model refuses a magnitude with no instrument named.
+
+  **A conflict is a question and an `overrides.csv` row is the answer.** The record joins the overlay's
+  covered set, taking it from seven to eight, and it is in for a different reason from the other seven:
+  not because it carries curation to lose — it carries none and is rewritten whole on every run — but
+  because answering a contested subject is what an overlay row *is*. The paired detail table stays out
+  by name: the author answers the question and does not get to rewrite what an archive published. The
+  table's documentation and the new `clin_sig_concordance_contested` warning both name `overrides.csv`
+  and never `provenance.json`'s `outranks`, steering new authors onto the side of the succession that
+  survives 1.0. The warning is **actionable rather than carried**, unlike its neighbour
+  `verification_findings_recorded`, because it counts the post-overlay rows — so writing the answer
+  clears the finding, and `overlay_rows_suppressed` reports the removal so nothing goes quiet. It never
+  escalates under `--strict`, for the reason the check beneath it does not: half the time the archive
+  is the stale side, and escalating would have this format arbitrate a clinical dispute.
+
+  Two smaller things travelled with it. `_CLIN_SIG_CAMP` moved out of `clinical.py` into the new
+  `concordance.py`, because the record and the two-way check must draw the opposed-versus-differing
+  line in one place — two maps for one distinction is how a drift in our own code comes to read as a
+  disagreement between two archives. And an honest note that came out of building it: at a single
+  authority every reported conflict is `opposed` by construction, since the check only fires where both
+  sides are opinionated and `pathogenic`/`benign` are the only opinionated camps, so
+  `_clin_sig_detail`'s differing-but-not-opposed group has no producer today. It gets one as soon as two
+  authorities can disagree with each other while neither contradicts the module, which is what the
+  record is shaped for.
+
 - **RM131 — the warnings channel says what each finding is, and whether an author can clear it.**
   *(`just-dna-format` + `just-dna-compiler`, plus the deprecated resolver in `just-dna-enricher`; a
   structure change to a surface that already ships.)* `ValidationResult`, `ClosureResult` and
