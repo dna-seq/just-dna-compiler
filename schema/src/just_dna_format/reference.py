@@ -25,6 +25,7 @@ from just_dna_format.binning import (
     MeasureBinRow,
     RepeatAlleleRow,
 )
+from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
@@ -141,6 +142,13 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     "GeneValidityRow": GeneValidityRow,
     "ClinicalAssertionRow": ClinicalAssertionRow,
     "GwasEffectRow": GwasEffectRow,
+    # The concordance record (0.7, RM130). Two models, one table pair, and they are here on the
+    # `GeneValidityRow`/`ClinicalAssertionRow` argument rather than the `SourceRow` one: nobody
+    # hand-writes a row of either, but between them they introduce three new closed vocabularies
+    # (`authority_concordance`, `authored_position`, `authority_call_status`), and the only guard
+    # that discovers an undeclared one walks this registry.
+    "ClinSigConcordanceRow": ClinSigConcordanceRow,
+    "ClinSigAuthorityCallRow": ClinSigAuthorityCallRow,
     "VerificationRecord": VerificationRecord,
 }
 

@@ -742,7 +742,7 @@ def _conflict(key: str, authored: str, clinvar: str, *, opposed: bool):
 
     return ClinSigConflict(
         variant_key=key, genotype="A/G", chrom="1", start=1, ref="A", alt="G",
-        authored=authored, clinvar=clinvar, review_stars=2, review_status="criteria_provided",
+        authored=authored, authority_clin_sig=clinvar, review_stars=2, review_status="criteria_provided",
         condition=None, opposed=opposed,
     )
 

@@ -170,6 +170,22 @@ _INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
             ),
             "haploinsufficiency",
         ),
+        (
+            "clin_sig_concordance.csv",
+            (
+                "variant_key,genotype,authored_clin_sig,authority_concordance,authored_position\n"
+                "rs1800562,A/G,pathogenic,mostly,matches_none\n"
+            ),
+            "authority_concordance",
+        ),
+        (
+            "clin_sig_authority_calls.csv",
+            (
+                "variant_key,genotype,authority,status,clin_sig\n"
+                "rs1800562,A/G,clinvar,consulted,benign\n"
+            ),
+            "status",
+        ),
 )
 
 

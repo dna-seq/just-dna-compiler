@@ -15,7 +15,11 @@ import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_enricher.clinical import compare_clin_sig, verify_clin_sig
+from just_dna_enricher.clinical import (
+    clin_sig_concordance,
+    compare_clin_sig,
+    verify_clin_sig,
+)
 from just_dna_enricher.clinvar import clinvar_dataset_label, select_by_gene
 from just_dna_enricher.clinvar_build import build_snapshot
 from just_dna_enricher.clinvar_draft import draft_gene_panel
@@ -661,3 +665,108 @@ def test_an_unusable_snapshot_degrades_instead_of_raising(tmp_path: Path) -> Non
     )
     variant = _variant("benign", "A/T")
     assert verify_clin_sig([variant], _resolution(variant), reference=tmp_path / "broken") == []
+
+
+# ── the concordance record, built from the same comparison (RM130) ──────────────────────────────
+
+
+def test_the_record_names_exactly_the_rows_the_check_reports(snapshot: Path) -> None:
+    """The degenerate case at one authority is precisely today's finding, and that is the contract.
+
+    A three-way check has to *subsume* the two-way rather than run beside it, or an author meets one
+    disagreement twice. So the emitted subject set must equal the conflict set exactly — computed
+    from the same run rather than asserted from two hardcoded lists, because the claim is that the
+    two agree and not that either matches a number somebody wrote down.
+    """
+    opposed = _variant("benign", "A/T")
+    agreeing = _variant("pathogenic", "A/T", rsid="rs334")
+    rows = [*_resolution(opposed), *_resolution(agreeing)]
+
+    conflicts = verify_clin_sig([opposed, agreeing], rows, reference=snapshot)
+    record = clin_sig_concordance([opposed, agreeing], rows, reference=snapshot)
+    assert record is not None
+    parents, calls = record
+
+    assert {(p.variant_key, p.genotype) for p in parents} == {
+        (c.variant_key, c.genotype) for c in conflicts
+    }
+    assert {(c.variant_key, c.genotype) for c in calls} == {
+        (p.variant_key, p.genotype) for p in parents
+    }
+
+
+def test_the_record_carries_clinvars_own_call_and_its_stars_in_clinvars_units(snapshot: Path) -> None:
+    """What the archive said, with the instrument named beside the number.
+
+    `review_stars` is ClinVar's own scale, so it travels unconverted with `confidence_unit` saying
+    which scale it is — the record must never leave a magnitude standing on its own.
+    """
+    variant = _variant("benign", "A/T")
+    record = clin_sig_concordance([variant], _resolution(variant), reference=snapshot)
+    assert record is not None
+    parents, calls = record
+
+    assert [p.authored_clin_sig for p in parents] == ["benign"]
+    assert [p.authority_concordance for p in parents] == ["single"]
+    assert [p.authored_position for p in parents] == ["matches_none"]
+    assert [p.opposed for p in parents] == [True]
+    assert [c.authority for c in calls] == ["clinvar"]
+    assert [c.status for c in calls] == ["recorded"]
+    assert [c.clin_sig for c in calls] == ["pathogenic"]
+    assert [c.confidence_unit for c in calls] == ["review_stars"]
+    assert calls[0].confidence == str(
+        verify_clin_sig([variant], _resolution(variant), reference=snapshot)[0].review_stars
+    )
+    assert calls[0].dataset == clinvar_dataset_label(snapshot)
+
+
+def test_a_module_that_agrees_with_the_archive_records_nothing(snapshot: Path) -> None:
+    """No row per compared subject — a record of every agreement is a copy of the module's own
+    `clin_sig` column with a second opinion attached, and the number of subjects compared is already
+    published as the check's denominator."""
+    variant = _variant("pathogenic", "A/T")
+    record = clin_sig_concordance([variant], _resolution(variant), reference=snapshot)
+    assert record == ([], [])
+
+
+def test_a_run_with_no_snapshot_writes_no_record_rather_than_an_empty_one(snapshot: Path) -> None:
+    """`None`, never two empty tables. Two empty tables are the claim *nothing here is contested*,
+    and a run that never put the question has established no such thing."""
+    variant = _variant("benign", "A/T")
+    assert clin_sig_concordance([variant], _resolution(variant), reference=None) is None
+
+
+def test_a_module_drafted_from_this_snapshot_gets_no_record_either(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    """The tautology reaches the record too, and an empty record would be the S4 defect in a new place.
+
+    Where the `clin_sig` was copied out of the snapshot it would be compared against, the comparison
+    is a value against itself and is guaranteed to find nothing. Writing two empty tables there
+    publishes *nothing is contested* on no evidence — the same shape as the `findings: 0` that
+    started this. Built by really drafting a panel rather than by hand-stamping a licence row, so the
+    guard is exercised against the marker the drafter actually writes.
+    """
+    spec = _drafted_panel(tmp_path / "spec", snapshot)
+
+    sources = _read_sources(spec)
+    variants = _read_variants(spec)
+    resolution = [row for v in variants for row in _resolution(v)]
+    assert clin_sig_concordance(
+        variants, resolution, reference=snapshot, sources=sources, spec_dir=spec
+    ) is None
+
+    # Not passing the licence table establishes nothing, so the comparison runs — an unknown is
+    # never a permission to skip.
+    assert clin_sig_concordance(variants, resolution, reference=snapshot) is not None
+
+
+def _read_sources(spec: Path) -> list:
+    from just_dna_enricher.licensing import read_sources_file
+
+    return read_sources_file(spec)
+
+
+def _read_variants(spec: Path) -> list[VariantRow]:
+    with (spec / "variants.csv").open(encoding="utf-8", newline="") as handle:
+        return [VariantRow(**{k: v for k, v in row.items() if v}) for row in csv.DictReader(handle)]

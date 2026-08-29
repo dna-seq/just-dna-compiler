@@ -231,16 +231,25 @@ def test_an_inserted_row_lands_at_the_end_of_its_subjects_group(tmp_path: Path) 
 # ── the registries and the promise to already-published modules ─────────────────────────────────
 
 
-def test_the_covered_set_is_every_merge_not_clobber_sidecar_but_the_licence_table() -> None:
+def test_the_covered_set_is_every_derived_sidecar_but_two_named_decisions() -> None:
     """An **equality over a walked set**, never a floor (`@registry-completeness`).
 
     Derived from the compiler's own table tuples, so a new derived sidecar landing without an entry
-    in `OVERRIDABLE_TABLES` fails here rather than shipping as a table nobody can correct. The one
-    exclusion is stated as a name because it is a decision: `sources.csv` / `licensing.csv` has its
-    own merge path and is the one derived table a human is told to hand-write.
+    in `OVERRIDABLE_TABLES` fails here rather than shipping as a table nobody can correct. Both
+    exclusions are stated as names because each is a decision rather than an oversight:
+
+    * `sources.csv` / `licensing.csv` has its own merge path and is the one derived table a human is
+      told to hand-write.
+    * `clin_sig_authority_calls.csv` (RM130) carries what an archive published, and an author does
+      not get to rewrite that. The question is theirs to answer — which is why its parent, the
+      concordance record, *is* covered — but an overlay over the detail table would let a module
+      ship ClinVar's name above a classification ClinVar never made.
     """
     derived = {"resolution.csv"} | {csv_name for csv_name, _, _ in _FACT_TABLES}
-    assert set(OVERRIDABLE_TABLES) == derived - {"sources.csv"}
+    assert set(OVERRIDABLE_TABLES) == derived - {
+        "sources.csv",
+        "clin_sig_authority_calls.csv",
+    }
 
 
 def test_the_overlay_parquet_is_registered_last_and_it_is_absence_that_protects_the_digest() -> None:

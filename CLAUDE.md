@@ -45,7 +45,7 @@ PharmVar's OpenAPI document and its licence text).
 | [ROADMAP_0_7.md](docs/ROADMAP_0_7.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
 | [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos); 2026-08-12 onward, earlier entries in [history/](docs/history/CHANGELOG_PRE_0_6.md) | `grep -rn '^## 2026-' docs/CHANGELOG.md docs/history/` |
 | [INTEGRATION_0_6.md](docs/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists | `grep -n '^## \|^### ' docs/INTEGRATION_0_6.md` |
-| [SCHEMAS.md](docs/SCHEMAS.md) | models, CSV families, conventions, the hash family (14, of which the fact signatures are the "nine"), the tri-state inventory, the allele grammar | `grep -n '^## ' docs/SCHEMAS.md` |
+| [SCHEMAS.md](docs/SCHEMAS.md) | models, CSV families, conventions, the hash family (one signature per derived sidecar, plus the two identity halves and the three verification ones — the roster states the rule, never a total), the tri-state inventory, the allele grammar | `grep -n '^## ' docs/SCHEMAS.md` |
 | [COMPILER.md](docs/COMPILER.md) | validation ceiling, compile pipeline, **§ Resolution** + round-trip matrix, reverse, coverage, **deterministic ordering**, the **warning-text catalogue** a consumer greps | `grep -n '^## ' docs/COMPILER.md` |
 | [ENRICHER.md](docs/ENRICHER.md) | resolver chain, the check table, rate limits, caches, publish/upload, and the open questions the code does not answer | `grep -n '^## ' docs/ENRICHER.md` |
 | [MODULE_LIFECYCLE.md](docs/MODULE_LIFECYCLE.md) | origin → publish → a consumer's join; **what pass 2+ moves** | `grep -n '^## ' docs/MODULE_LIFECYCLE.md` |

@@ -736,6 +736,85 @@ class Literature(BaseModel):
     )
 
 
+class ClinSigConcordance(BaseModel):
+    """Summary of a module's clinical-significance concordance record (0.7, RM130).
+
+    The two counters that matter are `opposed_count` and `unchecked_count`, and they answer different
+    questions from `row_count`. A record of forty subjects where every disagreement is a
+    pathogenic-against-benign pair is a very different module from one where forty rows differ by a
+    confidence step, and the split is the same one the check itself draws.
+
+    `unchecked_count` is published beside them because a run that could not reach an authority is not
+    a run that found agreement. Absent it, a shrinking record would read as an improving module when
+    it may only mean a snapshot went missing.
+
+    **No consensus field, and the omission is the decision.** Nothing here says which authority is
+    right when two disagree: resolving a split needs a weighting model this format does not have, and
+    precomputing one would publish a judgement as though it were a fact.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description=(
+            "Fact-hash of clin_sig_concordance.csv (integrity.clin_sig_concordance_signature); out "
+            "of artifact.digest"
+        ),
+    )
+    calls_signature: str | None = Field(
+        default=None,
+        description=(
+            "Fact-hash of the paired clin_sig_authority_calls.csv "
+            "(integrity.clin_sig_authority_call_signature). Two hashes because they are two tables: "
+            "a corrected normalization moves the detail rows without moving a single verdict."
+        ),
+    )
+    authorities: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted union of the authorities consulted, e.g. ['clinvar']. The length is the N the "
+            "record was built at, and it is data here rather than a member name in a vocabulary."
+        ),
+    )
+    datasets: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the authority releases the calls were read from",
+    )
+    row_count: int = Field(
+        default=0, description="Contested subjects recorded, one row per (variant_key, genotype)"
+    )
+    call_count: int = Field(
+        default=0,
+        description=(
+            "Rows in the paired detail table. Higher than `row_count` once more than one authority "
+            "is consulted, and equal to it at one — which is the arithmetic that makes the record's "
+            "growth with N visible without a reader counting files."
+        ),
+    )
+    opposed_count: int = Field(
+        default=0,
+        description=(
+            "Subjects where two calls in play sit in opposite camps (pathogenic-class against "
+            "benign-class) rather than merely differing. The finding worth acting on."
+        ),
+    )
+    unchecked_count: int = Field(
+        default=0,
+        description=(
+            "Subjects where at least one authority could not be consulted, so the comparison is "
+            "incomplete rather than clean. Counted separately because an unreachable archive must "
+            "never read as an archive that agreed."
+        ),
+    )
+    concordance_states: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of `authority_concordance` values present in the record",
+    )
+    authored_positions: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of `authored_position` values present in the record",
+    )
+
+
 class Sources(BaseModel):
     """Summary of a module's data-source licensing sidecar (0.5), out of `artifact.digest`.
 
@@ -1500,6 +1579,15 @@ class ModuleManifest(BaseModel):
             "Summary of the injected citation sidecar (0.5), when the module carries one. Carries the "
             "coverage counters as well as the fact-hash, because the fulltext check is partial by "
             "nature and a consumer must be able to tell 'checked and found' from 'never retrievable'."
+        ),
+    )
+    clin_sig_concordance: ClinSigConcordance | None = Field(
+        default=None,
+        description=(
+            "Summary of the clinical-significance concordance record (0.7), when the module carries "
+            "one. Publishes the opposed and unchecked counts beside the row count, because a "
+            "disagreement that crosses the pathogenic/benign line and one that does not are the "
+            "distinction an author acts on, and an unreachable archive is not an archive that agreed."
         ),
     )
     sources: Sources | None = Field(

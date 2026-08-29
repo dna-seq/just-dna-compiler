@@ -21,6 +21,10 @@ from pydantic import BaseModel
 
 from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS
 from just_dna_format.base import DEFAULT_GENOME_BUILD
+from just_dna_format.concordance import (
+    CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS,
+    CLIN_SIG_CONCORDANCE_FACT_FIELDS,
+)
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.gene_validity import GENE_VALIDITY_FACT_FIELDS
@@ -362,6 +366,36 @@ def gwas_effect_signature(rows: Sequence[BaseModel]) -> str:
     the source said rather than of what the module knew.
     """
     return fact_signature(rows, GWAS_FACT_FIELDS)
+
+
+def clin_sig_concordance_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `clin_sig_concordance.csv` (`concordance.CLIN_SIG_CONCORDANCE_FACT_FIELDS`), RM130.
+
+    `opposed` is **inside**, and it is the column the fact set would be wrong without: the two verdict
+    columns say the authorities disagree and where the module sits, and neither says whether the
+    disagreement crosses the pathogenic/benign line. A module whose contested subjects are opposed
+    asserts something different from one whose subjects merely differ, so the two must not hash equal.
+
+    `checked_at` is **outside**, on the rule every sibling applies to `fetched_at`: a re-run that put
+    the same questions and got the same answers has changed nothing anybody asserted.
+    """
+    return fact_signature(rows, CLIN_SIG_CONCORDANCE_FACT_FIELDS)
+
+
+def clin_sig_authority_call_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `clin_sig_authority_calls.csv`
+    (`concordance.CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS`), RM130.
+
+    `confidence` and `confidence_unit` are both inside, together, for `gwas_effect_signature`'s own
+    reason one table over: an unconverted magnitude and the instrument it was measured on are one
+    fact in two cells, and hashing the number without the unit would make two authorities' different
+    scales collide.
+
+    `status` is inside too. `no_record` and `unchecked` are different statements about the same
+    subject — one archive was asked and has nothing, the other could not be asked — and a record that
+    swapped them says something else about how much of the check actually ran.
+    """
+    return fact_signature(rows, CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS)
 
 
 def source_signature(rows: Sequence[BaseModel]) -> str:

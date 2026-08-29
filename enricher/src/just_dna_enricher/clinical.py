@@ -27,42 +27,42 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.clinvar import clinvar_dataset_label, lookup_clin_sig
+from just_dna_enricher.concordance import (
+    CLIN_SIG_CAMP,
+    AuthorityCall,
+    ConcordanceSubject,
+    concordance_tables,
+)
 from just_dna_enricher.provenance import drafted_unchanged
 
 logger = logging.getLogger(__name__)
 
-# The four camps a clinical significance can fall into, for the purpose of deciding whether two values
-# actually *disagree*. This is coarser than `VALID_CLIN_SIG` on purpose: `pathogenic` vs
-# `likely_pathogenic` is a difference of confidence within one conclusion, not a conflict, and warning
-# on it would bury the real finding under noise.
-_CLIN_SIG_CAMP: dict[str, str] = {
-    "pathogenic": "pathogenic",
-    "likely_pathogenic": "pathogenic",
-    "risk_factor": "pathogenic",
-    "benign": "benign",
-    "likely_benign": "benign",
-    "protective": "benign",
-    # Opinions that are not a pathogenic/benign call at all. Anything paired with one of these is not
-    # a conflict — there is no opposing claim to conflict with.
-    "uncertain_significance": "undecided",
-    "conflicting": "undecided",
-    "not_provided": "undecided",
-    "other": "undecided",
-    # Orthogonal axes: a drug-response or expression call is about something else entirely.
-    "drug_response": "orthogonal",
-    "association": "orthogonal",
-    "affects": "orthogonal",
-}
+#: Which annotation authority this module's comparison is against. One string, named once, because
+#: RM130 took the authority out of the finding's field names and a literal in three places would put
+#: it straight back.
+CLINVAR_AUTHORITY: str = "clinvar"
+
+#: The instrument ClinVar measures its own confidence on. Recorded beside the number rather than
+#: converted into anybody else's scale: a gold-star count and a literature miner's evidence-depth
+#: count are not the same quantity.
+CLINVAR_CONFIDENCE_UNIT: str = "review_stars"
 
 
 @dataclass
 class ClinSigConflict:
-    """One authored clinical significance that ClinVar's records do not support."""
+    """One authored clinical significance an annotation authority's records do not support.
+
+    **The authority is a field, not a field name** (RM130). This carried `clinvar: str` until 0.7,
+    which read fine while there was one archive and would have cost a rename — major-only work under
+    the additive rule — the moment a second one arrived. `clinvar` survives as a read-only alias so
+    an existing caller keeps working; new code reads `authority_clin_sig` and `authority`.
+    """
 
     variant_key: str
     genotype: str
@@ -71,17 +71,29 @@ class ClinSigConflict:
     ref: str
     alt: str
     authored: str
-    clinvar: str
+    authority_clin_sig: str
     review_stars: int | None
     review_status: str | None
     condition: str | None
     #: True when the two are opposed calls (pathogenic-class vs benign-class) rather than merely
     #: different. An opposed pair is the finding worth acting on; the rest is worth knowing.
+    #:
+    #: **At one authority this is true of every conflict that is reported at all**, and that is a
+    #: property of the comparison rather than a bug in the flag: the check only reports where both
+    #: sides are opinionated and their camps differ, and `pathogenic` and `benign` are the only two
+    #: opinionated camps. The distinction becomes live in the concordance record, where two
+    #: authorities can differ without either of them opposing the module.
     opposed: bool = False
+    authority: str = CLINVAR_AUTHORITY
+
+    @property
+    def clinvar(self) -> str:
+        """The authority's own call. Superseded spelling of `authority_clin_sig`, kept for callers."""
+        return self.authority_clin_sig
 
     @property
     def confidence(self) -> str:
-        """How much review sits behind ClinVar's side, in the terms ClinVar itself uses."""
+        """How much review sits behind the authority's side, in the terms it itself uses."""
         if self.review_stars is None:
             return "unrated"
         return f"{self.review_stars}-star"
@@ -91,9 +103,10 @@ class ClinSigConflict:
         detail = f" for {self.condition!r}" if self.condition else ""
         return (
             f"{self.variant_key} genotype {self.genotype}: authored clin_sig {self.authored!r} "
-            f"{kind} ClinVar's {self.clinvar!r}{detail} at {self.chrom}:{self.start} {self.ref}>"
-            f"{self.alt} ({self.confidence}, {self.review_status!r}) — reported, never overwritten; "
-            f"a curator may legitimately disagree with a low-reviewed submission"
+            f"{kind} {self.authority}'s {self.authority_clin_sig!r}{detail} at "
+            f"{self.chrom}:{self.start} {self.ref}>{self.alt} ({self.confidence}, "
+            f"{self.review_status!r}) — reported, never overwritten; a curator may legitimately "
+            f"disagree with a low-reviewed submission"
         )
 
 
@@ -205,11 +218,17 @@ class ClinSigComparison:
     * `no_record` — resolved, but nothing at those coordinates to compare (or no ALT to ask about).
       Counted rather than folded into `compared`, which would claim a comparison nobody made.
     * `conflicts` — the disagreements, exactly as before.
+    * `subjects` — every `(variant_key, genotype)` the comparison put a question about, with the
+      authority's answer attached (RM130). The input to the concordance record, kept here rather
+      than rebuilt by a second pass over the snapshot: re-asking would cost the whole comparison
+      again, and a second implementation of the record-selection rule is a second place for it to
+      drift from the one that decided the conflicts.
     """
 
     compared: int = 0
     no_record: int = 0
     conflicts: list[ClinSigConflict] = field(default_factory=list)
+    subjects: list[ConcordanceSubject] = field(default_factory=list)
 
     def __str__(self) -> str:
         return (
@@ -309,14 +328,23 @@ def compare_clin_sig(
 
     conflicts: list[ClinSigConflict] = []
     compared = 0
+    # Per `(variant_key, genotype)` rather than per plan entry, because that is the concordance
+    # record's key and one authored subject legitimately spans several loci when its rsID expands.
+    # Insertion-ordered, so the record comes out in the module's own row order (Principle 7).
+    pooled: dict[tuple[str, str], list[dict]] = {}
+    conflicted: dict[tuple[str, str], ClinSigConflict] = {}
+    authored_by_subject: dict[tuple[str, str], str] = {}
     for variant, authored, targets, locus_wide in plan:
-        authored_camp = _CLIN_SIG_CAMP.get(authored, "undecided")
+        authored_camp = CLIN_SIG_CAMP.get(authored, "undecided")
         candidates = [
             (target, record)
             for target in targets
             for record in records.get(target, [])
             if record.get("clin_sig")
         ]
+        subject = (variant.variant_key or "", variant.genotype)
+        authored_by_subject[subject] = authored
+        pooled.setdefault(subject, []).extend(record for _t, record in candidates)
         if not candidates:
             no_record += 1
             continue
@@ -325,34 +353,167 @@ def compare_clin_sig(
             continue
         # Agreement anywhere at the locus settles it — especially in the locus-wide fallback, where
         # several alts are in play and only one of them is the author's subject.
-        if any(_CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") == authored_camp for _t, r in candidates):
+        if any(CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") == authored_camp for _t, r in candidates):
             continue
         opinionated = [
             (t, r) for t, r in candidates
-            if _CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") not in {"undecided", "orthogonal"}
+            if CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") not in {"undecided", "orthogonal"}
         ]
         if not opinionated:
             continue
         # Report the best-reviewed disagreement: it is the one an author most needs to answer, and
         # `lookup_clin_sig` already ordered the records so the first is the best-reviewed.
         (chrom, start, ref, alt), record = opinionated[0]
-        conflicts.append(
-            ClinSigConflict(
-                variant_key=variant.variant_key or "",
-                genotype=variant.genotype,
-                chrom=chrom, start=start, ref=ref, alt=alt,
-                authored=authored,
-                clinvar=record["clin_sig"],
-                review_stars=record.get("review_stars"),
-                review_status=record.get("review_status"),
-                condition=record.get("condition"),
-                opposed=_CLIN_SIG_CAMP.get(record["clin_sig"], "undecided") != authored_camp
-                and _CLIN_SIG_CAMP.get(record["clin_sig"], "undecided") in {"pathogenic", "benign"},
-            )
+        conflict = ClinSigConflict(
+            variant_key=variant.variant_key or "",
+            genotype=variant.genotype,
+            chrom=chrom, start=start, ref=ref, alt=alt,
+            authored=authored,
+            authority_clin_sig=record["clin_sig"],
+            review_stars=record.get("review_stars"),
+            review_status=record.get("review_status"),
+            condition=record.get("condition"),
+            opposed=CLIN_SIG_CAMP.get(record["clin_sig"], "undecided") != authored_camp
+            and CLIN_SIG_CAMP.get(record["clin_sig"], "undecided") in {"pathogenic", "benign"},
         )
+        conflicts.append(conflict)
+        conflicted.setdefault(subject, conflict)
         if locus_wide:
             logger.debug(
                 "%s: compared against the whole locus (the annotation's ALT could not be determined "
                 "from genotype %s)", variant.variant_key, variant.genotype,
             )
-    return ClinSigComparison(compared=compared, no_record=no_record, conflicts=conflicts)
+    return ClinSigComparison(
+        compared=compared,
+        no_record=no_record,
+        conflicts=conflicts,
+        subjects=_concordance_subjects(pooled, conflicted, authored_by_subject, reference),
+    )
+
+
+def _representative(records: list[dict], authored: str) -> dict | None:
+    """The one ClinVar record that stands for this subject in the concordance record.
+
+    Not "the first one", because a subject can pool several genuine records — different submissions,
+    different conditions, and every alt at a locus when the annotation's own ALT could not be
+    determined. The precedence is the two-way check's own, so the record and the finding cannot
+    disagree about a subject: **an agreeing record wins**, because agreement anywhere settles the
+    comparison and reporting a sibling allele's opposing call would manufacture a conflict out of
+    ClinVar agreeing with the module; failing that the best-reviewed opinionated record, which is the
+    one an author most needs to answer; failing that whatever was recorded, so an archive that spoke
+    is never rendered as an archive that did not.
+    """
+    if not records:
+        return None
+    authored_camp = CLIN_SIG_CAMP.get(authored, "undecided")
+    for record in records:
+        if CLIN_SIG_CAMP.get(record["clin_sig"], "undecided") == authored_camp:
+            return record
+    for record in records:
+        if CLIN_SIG_CAMP.get(record["clin_sig"], "undecided") in {"pathogenic", "benign"}:
+            return record
+    return records[0]
+
+
+def _concordance_subjects(
+    pooled: dict[tuple[str, str], list[dict]],
+    conflicted: dict[tuple[str, str], ClinSigConflict],
+    authored_by_subject: dict[tuple[str, str], str],
+    reference: Path | None,
+) -> list[ConcordanceSubject]:
+    """Every subject the comparison asked about, with ClinVar's answer attached (RM130).
+
+    **Derived from the comparison that already ran, never from a second pass.** A subject that
+    produced a conflict is rendered from that conflict's own record, so the concordance verdict and
+    the finding are the same fact told twice rather than two computations that could drift — which
+    is the whole reason this is built here instead of by a caller re-reading the snapshot.
+
+    A subject nothing was found for gets a `no_record` call, not an absent one: the archive was
+    consulted and has nothing at those coordinates, which is an established absence. `unchecked` is
+    reserved for an archive that could not be consulted at all, and that case never reaches here —
+    `compare_clin_sig` returns `None` for it, because a check that could not run is not a check that
+    found nothing.
+    """
+    dataset = clinvar_dataset_label(reference)
+    subjects: list[ConcordanceSubject] = []
+    for subject, records in pooled.items():
+        variant_key, genotype = subject
+        authored = authored_by_subject[subject]
+        conflict = conflicted.get(subject)
+        if conflict is not None:
+            call = AuthorityCall(
+                authority=CLINVAR_AUTHORITY,
+                status="recorded",
+                clin_sig=conflict.authority_clin_sig,
+                clin_sig_raw=None,
+                confidence=None if conflict.review_stars is None else str(conflict.review_stars),
+                confidence_unit=None if conflict.review_stars is None else CLINVAR_CONFIDENCE_UNIT,
+                dataset=dataset,
+            )
+        else:
+            record = _representative(records, authored)
+            stars = None if record is None else record.get("review_stars")
+            call = AuthorityCall(
+                authority=CLINVAR_AUTHORITY,
+                status="no_record" if record is None else "recorded",
+                clin_sig=None if record is None else record["clin_sig"],
+                clin_sig_raw=None if record is None else record.get("clin_sig_raw"),
+                confidence=None if stars is None else str(stars),
+                confidence_unit=None if stars is None else CLINVAR_CONFIDENCE_UNIT,
+                dataset=dataset,
+            )
+        subjects.append(
+            ConcordanceSubject(
+                variant_key=variant_key,
+                genotype=genotype,
+                authored_clin_sig=authored,
+                calls=(call,),
+            )
+        )
+    return subjects
+
+
+def clin_sig_concordance(
+    variants: list[VariantRow],
+    resolution_rows: list[ResolutionRow],
+    *,
+    reference: Path | None,
+    sources: Sequence[SourceRow] | None = None,
+    spec_dir: Path | None = None,
+    checked_at: str | None = None,
+) -> tuple[list[ClinSigConcordanceRow], list[ClinSigAuthorityCallRow]] | None:
+    """The concordance record for a module, or `None` when the comparison could not be made at all.
+
+    The record RM130 exists for: the contested subjects, named, in a form something can join to —
+    against the counts the check has always published and the log lines nothing kept.
+
+    `None` rather than two empty tables when the question could not be put, and the distinction is
+    the whole tri-state. Two empty tables are a claim — *nothing here is contested* — and a caller
+    that wrote them after a comparison that never happened would be publishing that claim on no
+    evidence. There are two ways to reach `None`, and neither is "nothing disagreed":
+
+    * **no snapshot, or one that is present and not queryable**, which `compare_clin_sig` already
+      answers with `None` rather than a comparison of zeros; and
+    * **the tautology**, when `sources` (and `spec_dir`) say the module's `clin_sig` column was
+      copied out of the very snapshot it would be compared against and has not moved since. That
+      check is the caller's in `enrich()` and it is repeated here on purpose: this function has its
+      own callers, an empty record is exactly as misleading as a `findings: 0` was, and the guard
+      being one call to `tautology_reason` rather than a second copy of the rule is what keeps the
+      two from drifting. Omitting `sources` is not treated as a pass — with nothing to read, nothing
+      is established and the comparison runs.
+
+    **One authority today, and the shape does not change when there are five.** The subject rows
+    carry the agreement state and the call rows carry each authority's own words, so a second archive
+    adds rows to the detail table and changes no key and no column.
+    """
+    if sources is not None and tautology_reason(sources, reference, spec_dir) is not None:
+        logger.info(
+            "The concordance record was not written: this module's clin_sig column was drafted from "
+            "the snapshot it would be compared against and has not moved since, so an empty record "
+            "would report a comparison nobody made."
+        )
+        return None
+    comparison = compare_clin_sig(variants, resolution_rows, reference=reference)
+    if comparison is None:
+        return None
+    return concordance_tables(comparison.subjects, checked_at=checked_at)

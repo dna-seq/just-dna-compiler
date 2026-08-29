@@ -282,6 +282,10 @@ is what makes it checkable. **When adding a field that answers a question, find 
 | `derive.pathogenic_from_clin_sig` / `benign_from_clin_sig` | returns `True` or `None` — never a fabricated `False` |
 | `weights.parquet.likely_pathogenic` / `.likely_benign` | **the exception, and it is a known wart (S43)**: hardcoded `False`, never `None` and never `True`. Read `clin_sig` instead |
 | `MeasureBinRow.unresolved` vs "no matching bin" | measurement **absent** and measurement **present but unbinned** are different states |
+| `ClinSigAuthorityCallRow.status` | `no_record` = the archive was consulted and has nothing here; `unchecked` = it could not be consulted at all. Neither is agreement, and only the first can make a record's concordance `none` |
+| `ClinSigConcordanceRow.authority_concordance` = `unchecked` | the authorities' agreement could not be established. **Kleene, not withhold-on-any-unknown**: an authority that could not be asked does not unmake a disagreement two others already witnessed, so `discordant` wins over it |
+| `ClinSigConcordanceRow.authored_position` = `unchecked` | the ∀ claims (`matches_all`, `matches_none`) need the set closed. `matches_some` survives an unreachable sibling, because both halves of it are witnessed by authorities that did speak |
+| `ClinSigConcordanceRow.opposed` | `None` = the camps were never established, which is **not** `False`: a subject nobody could be asked about has not been shown to be uncontroversial |
 | `check_vocab(None, …)` | absent = unknown, and never becomes a member |
 
 The pattern worth extracting: in almost every row the `0`/`False` case is a *real observation* and the
@@ -1173,23 +1177,30 @@ Position-level **matching** helpers (studies, the reverse pos→rsid lookup, hap
 `derive_variant_key` **without** `alts` and therefore never mint a VA — a study matches its variant at
 `chrom:start:ref` regardless of allele. Mixing those up would orphan every study.
 
-## The derived-fact tables (0.5–0.6, **provisional**)
+## The derived-fact tables (0.5–0.7, **provisional**)
 
-Six siblings of `resolution.csv` at six different grains — `frequency.FrequencyRow` →
+Eight siblings of `resolution.csv` at eight different grains — `frequency.FrequencyRow` →
 `frequencies.csv` per **allele**, `gene_metrics.GeneMetricsRow` → `gene_metrics.csv` per **gene**,
 `literature.LiteratureRow` → `literature.csv` per **citation**, `gene_validity.GeneValidityRow` →
 `gene_validity.csv` per **(gene, disease, inheritance mode, submitter)** (0.6, RM24),
 `assertions.ClinicalAssertionRow` → `clinical_assertions.csv` per **(allele, archive record)**
-(0.6, RM25), and `sources.SourceRow` → `sources.csv` per **(data source, layer)**. All are reference
+(0.6, RM25), `concordance.ClinSigConcordanceRow` → `clin_sig_concordance.csv` per
+**(variant, genotype)** and its paired `concordance.ClinSigAuthorityCallRow` →
+`clin_sig_authority_calls.csv` per **(variant, genotype, authority)** (0.7, RM130), and
+`sources.SourceRow` → `sources.csv` per **(data source, layer)**. All are reference
 facts rather than annotation: injected, hashed by facts, and compiled into their own optional
 parquets. All are standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow`
 is.
 
-Five of the six are machine-produced and human-*overridable*; `sources.csv` is machine-produced and
-human-**authored**, because a source a curator read by hand has no pass to write its row (see above).
-That is why it is the only one with a `draft`/`template` route and a natural key.
+All but two are machine-produced and human-*overridable* through `overrides.csv`. `sources.csv` is
+machine-produced and human-**authored**, because a source a curator read by hand has no pass to write
+its row (see above) — which is why it is the only one with a `draft`/`template` route and a natural
+key. `clin_sig_authority_calls.csv` is the other exception and a different one: it records what an
+archive published, and an author does not get to rewrite that. Its parent **is** overridable, because
+an overlay row against a contested subject is precisely how an author answers the question the record
+asks.
 
-**Why six tables is not sprawl, stated once because the instinct recurs.** The 0.6 charter amendment
+**Why eight tables is not sprawl, stated once because the instinct recurs.** The 0.6 charter amendment
 prices a schema addition by the layer it lands in: a parquet column is approximately free, a *derived*
 CSV is half, and an **authored** schema is full cost. The "one CSV, one concern, do not burden the
 rare author" gate is a rule about the authored layer — nobody hand-writes `gene_validity.csv`, so its
@@ -1508,6 +1519,95 @@ downstream.
   downloaded where a source ships one, and pins it with `license_sha256`. A source→licence map in the
   compiler would be an un-injected reference (Principle 2) and would go stale — both halves of one did,
   inside a single release.
+
+## The concordance record (0.7, RM130) — `clin_sig_concordance.csv` and its paired detail table
+
+The clinical cross-check has always counted its findings and kept none of them: it reports *twenty of
+141,616* and the twenty reach a logger. This is those rows, named, in a form something can join to.
+
+**A conflict is a question, and an `overrides.csv` row is the answer.** That is the whole lifetime.
+The record is machine-written and never hand-edited; an author who has read a contested subject and
+decided records the decision as an overlay row against this table, carrying the `reason` the overlay
+makes mandatory. Two things follow. The decision travels with the module instead of living in a
+curator's head, and the terminal state becomes visible for free — an overlay row that stops changing
+anything means the archive caught up with the author, which is evidence a judgement was vindicated
+and is available nowhere else in this format.
+
+**It names `overrides.csv` and never `provenance.json`'s `outranks`.** The two are the same idea one
+table apart, 0.7 settled the overlap as a dated succession in the overlay's favour, and steering a new
+author onto the side that survives 1.0 costs a sentence.
+
+### Two tables, and why the split is the design
+
+| table | key | carries |
+| --- | --- | --- |
+| `clin_sig_concordance.csv` | `(variant_key, genotype)` | the agreement state: `authority_concordance`, `authored_position`, `opposed`, and the module's own call |
+| `clin_sig_authority_calls.csv` | `(variant_key, genotype, authority)` | what each authority said — its normalized `clin_sig`, its raw token, and its confidence in its own units |
+
+The agreement state belongs to the subject and each authority's words belong to the authority, and one
+row cannot hold both without either nesting a cell or keying on the authority. Keying on the authority
+gives N rows per variant and leaves the state with nowhere to live.
+
+**The key cannot be a bare `variant_key`.** The comparison is of an authored call for a *genotype*,
+and `annotations.parquet` keys on genotype for the same reason; a table keyed on the variant alone
+collapses two authored calls that disagree with the archive differently.
+
+**The parent's key is stable at any number of authorities**, and that is what the shape buys. The
+record was first decided in a ClinVar-shaped form whose finding named its authority in a *field*
+(`ClinSigConflict.clinvar`), which would have cost a rename — major-only work under Principle 3 — the
+moment a second archive arrived, one item later in the same release.
+
+### The two vocabularies, and the stress test that produced them
+
+| field | members |
+| --- | --- |
+| `authority_concordance` | `concordant` / `discordant` / `single` / `none` / `unchecked` |
+| `authored_position` | `matches_all` / `matches_some` / `matches_none` / `absent` / `unchecked` |
+
+A single vocabulary was drafted and failed at five authorities: its members named the authority inside
+themselves (`clinvar_only`, `pubmind_only`), so a third source needed a third member and five needed
+every subset. The root cause was one field carrying two axes — *do the authorities agree with each
+other* and *where does the module's own call sit* — which is the Principle 5 anti-pattern, and the
+combinatorial growth was its symptom. Split, both sets are five members at two authorities and five at
+five, and *which* authority spoke is data in the detail table.
+
+Both are camp-level, the same coarseness the check itself uses: `pathogenic` against
+`likely_pathogenic` is a difference of confidence within one conclusion, not a position against it.
+Only `pathogenic` and `benign` are opinionated camps, so an `uncertain_significance` call opposes
+nothing and cannot on its own put a module in dispute.
+
+### Nothing resolves a split
+
+With five authorities in a two-against-three disagreement, a declared precedence order names one
+winner and a majority names another, and choosing between those rules is a judgement about how rank
+trades against agreement count — a weighting model. This workspace has declined to invent one three
+times, and the same refusal applies here: **no `majority` column, no consensus call, no resolved
+winner**, in the tables or in the manifest block. `authored_position` is a relation to the *set*,
+which is computable with no weights and true under either rule, and a consumer holding its own model
+has the detail rows to apply it to.
+
+**Confidence is not normalized across authorities** for the same reason at one level down. A
+gold-star count and a literature miner's evidence-depth count are different instruments, so the detail
+row carries the value the authority published with `confidence_unit` naming the instrument beside it —
+a magnitude with no unit is the defect `weight` has carried since 0.1, and this table refuses one at
+the model boundary.
+
+### What is written, and what is only reachable
+
+A row is written when a disagreement is **established**: the module's call and an authority's sit in
+opposite camps, or two authorities that spoke disagree with each other. At one authority the second
+clause cannot fire, so the emitted set is exactly the conflicts the shipped two-way check already
+reports — which is what keeps a three-way check a superset of the two-way rather than a second opinion
+beside it, and keeps an author from meeting one disagreement twice.
+
+An authority that could not be consulted never produces a row on its own. It cannot unmake a
+disagreement two others already witnessed, but a question nobody could put is not a finding.
+
+Several vocabulary members are therefore **reachable by the classifier and not by today's producer** —
+`absent` needs a subject the module makes no clinical claim about, `none` needs every archive to have
+been asked and come back empty, and neither is a contested subject. They are kept for the reason
+`VALID_RSID_STATUS.withdrawn` is kept: a member is permanent within a major under Principle 3, so
+reserving one now is free and adding one later is not.
 
 ## The authored overlay (0.7, RM124) — `overrides.csv`
 
@@ -1870,9 +1970,13 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
 
 ## The hash family — the complete roster
 
-Fourteen functions, in three groups. The doc map's shorthand is *"the nine hashes"*, which is the
-**fact-signature** family below; the other five are real and are listed because a reader counting to
-nine and stopping will miss `module_binding` and `pow_digest` entirely.
+Sixteen functions, in three groups, and **the rule that fixes the number is stated here rather than
+the number being restated elsewhere**: it is one `*_signature` per derived sidecar, plus the two
+identity halves, plus the three on the verification side. So a release that lands a new sidecar moves
+this count by one and nothing else has to be edited to agree. RM130 landed two at once (0.7), which is
+why the fact-signature family is now **eleven** where older prose says nine — a reader counting to
+nine and stopping would miss `module_binding` and `pow_digest` entirely, which is the reason this
+section exists at all.
 
 **Content and byte identity** — `content_signature` (`integrity.py`) over the authored rows,
 independent of the reference that resolved them and of the module's name and display metadata; and
@@ -1882,7 +1986,8 @@ bytes, from this compiler*.
 
 **The fact-signature family** — one shared discipline, `fact_signature`, and the per-table functions
 built on it: `frequency_signature`, `gene_metrics_signature`, `literature_signature`,
-`gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`, `source_signature`,
+`gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`,
+`clin_sig_concordance_signature`, `clin_sig_authority_call_signature`, `source_signature`,
 `resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
 whole point — these tables are multi-producer (enricher, human, `reverse`), so a raw-bytes hash would be
 unstable across producers writing the same facts. It is also why none of them appears in
@@ -1899,11 +2004,12 @@ failure message is a known wrinkle where `attestation_failure` reuses it for a c
 
 ## Identity & integrity
 
-Nine SHA-256 hashes (`sha256:` hex prefix), each a different job — see [COMPILER.md](COMPILER.md) and
-the CONSTITUTION for how they compose. (Two are structural, `artifact_digest` and `content_signature`;
-the other seven are the one-per-injected-table family below — it was five until 0.6 added the two
-derived tables, and the count is stated here rather than in prose precisely so it cannot go stale
-silently.)
+Two structural hashes — `artifact_digest` and `content_signature` — plus **one per injected table**,
+each a different job; see [COMPILER.md](COMPILER.md) and the CONSTITUTION for how they compose. The
+rule is what is stated, not the total: the family is exactly as long as the list of derived sidecars,
+so a release that adds one adds a row below and nothing anywhere else needs re-counting. (It read
+"nine" while there were seven sidecars, went stale twice — at 0.6, which added two, and at 0.7's
+RM130, which added two more — and the count is gone rather than corrected a third time.)
 
 | Hash (`integrity.py`) | Over | Order | Reference-dependent | Purpose |
 |---|---|---|---|---|
@@ -1916,9 +2022,11 @@ silently.)
 | `gene_validity_signature(rows)` | gene–disease **facts** (`GENE_VALIDITY_FACT_FIELDS`) | order-independent | n/a | pins which curated assertions the module carries, at which strength |
 | `clinical_assertion_signature(rows)` | archive-record **facts** (`CLINICAL_ASSERTION_FACT_FIELDS`) | order-independent | n/a | pins the clinical calls **and the review behind them** |
 | `gwas_effect_signature(rows)` | published-association **facts** (`GWAS_FACT_FIELDS`) | order-independent | n/a | pins the effect sizes **and the unit each is in** — `effect_unit` is inside, `trait` (a churning label) is not |
+| `clin_sig_concordance_signature(rows)` | contested-subject **facts** (`CLIN_SIG_CONCORDANCE_FACT_FIELDS`) | order-independent | n/a | pins which subjects are contested and how — `opposed` is inside, because a record whose disagreements cross the pathogenic/benign line asserts something the two verdict columns do not say |
+| `clin_sig_authority_call_signature(rows)` | per-authority **facts** (`CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS`) | order-independent | n/a | pins what each authority said, in its own units — `confidence` and `confidence_unit` are inside together, because a magnitude and its instrument are one fact in two cells |
 | `source_signature(rows)` | licensing **facts** (`SOURCE_FACT_FIELDS`) | order-independent | n/a | pins what the module was built from, and on what terms |
 
-The last seven share one body, `fact_signature(rows, fact_fields)` — every injected table under one
+Every row but the first two shares one body, `fact_signature(rows, fact_fields)` — every injected table under one
 hashing discipline, so the rule cannot drift between them as more sidecars land. What differs is only
 each table's fact set, and the exclusions are where the thinking is: provenance is always out, and so is
 any column describing the *outside world's* current state rather than the module's content

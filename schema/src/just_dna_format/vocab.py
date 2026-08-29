@@ -650,6 +650,69 @@ VALID_RSID_STATUS: frozenset[str] = frozenset({"live", "merged", "absent", "with
 # body. Collapsing the two would let "not in the 200-word abstract" read as "not in the paper".
 VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
 
+# ── The clinical-significance concordance record (0.7, RM130) ───────────────────────────────────
+#
+# Two vocabularies, and the *separation* is the design (Principle 5). A single set naming the
+# authority inside the member — `clinvar_only`, `pubmind_only` — was drafted and failed a stress test
+# at five authorities: one field was carrying two axes, "do the authorities agree with each other" and
+# "where does the authored call sit", so a third source needed a third member and five needed every
+# subset. Split, both sets are five members at N=2 and five at N=5, and *which* authority spoke is
+# data in `clin_sig_authority_calls.csv` rather than a member name.
+#
+# Whether the authorities that were consulted agree **with each other**. Says nothing about the
+# module's own call — that is the other axis.
+#
+#  * `concordant`  — two or more spoke, every one of them lands in the same camp, none was unreachable.
+#  * `discordant`  — two or more spoke and they do not. Establishable even with an unreachable sibling:
+#                    `unknown AND false` is `false` under Kleene, so a disagreement already seen is not
+#                    unseen by a source that could not be asked.
+#  * `single`      — exactly one spoke, all others were asked and had no record. One opinion is not
+#                    agreement, and recording it as `concordant` would claim a corroboration nobody gave.
+#  * `none`        — every authority was asked and none has a record for this subject. A fact about the
+#                    archives, not an unknown: they were consulted.
+#  * `unchecked`   — at least one authority could not be consulted at all and what the rest said leaves
+#                    the question open. The third state beside asked-and-absent, and the reason a
+#                    run with no snapshot never reports agreement.
+VALID_AUTHORITY_CONCORDANCE: frozenset[str] = frozenset(
+    {"concordant", "discordant", "single", "none", "unchecked"}
+)
+
+# Where the module's own `clin_sig` sits relative to the authorities that spoke. Camp-level, the same
+# coarseness the cross-check itself uses: `pathogenic` against `likely_pathogenic` is a difference of
+# confidence within one conclusion, not a position against it.
+#
+#  * `matches_all`  — at least one authority spoke and every one of them is in the authored camp.
+#                     Requires the set to be closed, so an unreachable authority yields `unchecked`.
+#  * `matches_some` — some agree and some do not. Establishable under an unreachable sibling, because
+#                     both halves are witnessed by authorities that did speak.
+#  * `matches_none` — authorities spoke and not one is in the authored camp. Needs the set closed for
+#                     the same reason `matches_all` does.
+#  * `absent`       — the module states no clinical call for this subject, so there is no position to
+#                     take. Distinct from disagreeing with everyone.
+#  * `unchecked`    — the relation could not be established, because an authority could not be asked
+#                     and what the rest said does not settle it on its own.
+#
+# **Nothing here resolves a split.** With five authorities in a 2/3 disagreement, lexicographic
+# precedence and majority give different winners, and choosing between them needs a weighting model
+# this workspace has declined to invent three times. So the position is a relation to the *set*,
+# computable with no weights and true at any topology, and a consumer holding its own model computes
+# what it likes from the detail rows.
+VALID_AUTHORED_POSITION: frozenset[str] = frozenset(
+    {"matches_all", "matches_some", "matches_none", "absent", "unchecked"}
+)
+
+# What one authority did when it was consulted about one subject — the per-row half of the record.
+#
+#  * `recorded`  — the authority has a classification here, and `clin_sig` carries it.
+#  * `no_record` — the authority was consulted and has nothing at this subject. An established
+#                  absence, which is why it can make the concordance `none` rather than `unchecked`.
+#  * `unchecked` — the authority could not be consulted at all (no snapshot provisioned, or one that
+#                  is present and not queryable). Nobody-asked, the third state, and the one that
+#                  must never be read as agreement.
+#
+# `clin_sig` is empty on both non-`recorded` states: an unknown is withheld, never negated.
+VALID_AUTHORITY_CALL_STATUS: frozenset[str] = frozenset({"recorded", "no_record", "unchecked"})
+
 # ── The verification attestation (0.6, RM45) ────────────────────────────────────────────────────
 # Which question a recorded check put. **Closed, and audited once here rather than grown ad hoc**: a
 # free-string key would recreate the failure RM44 documents one level down — the enricher writing one
@@ -1324,6 +1387,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "oe_lof_outside_interval",          # a point estimate outside the interval published beside it
         "oe_lof_disagrees_with_counts",     # obs/exp and `oe_lof` are one quantity and they differ
         "clin_sig_contradicts_frequency",   # a pathogenic call above the BA1 frequency threshold
+        "clin_sig_concordance_contested",   # the concordance record names subjects still unanswered
         # ── the overlay (overrides.csv) ──
         "overlay_update_unmatched",         # an `update` naming a row the target table does not carry
         "overlay_targets_missing_table",    # an overlay correcting a table this module does not carry
