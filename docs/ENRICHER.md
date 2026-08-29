@@ -3156,10 +3156,11 @@ to check both sides and a bare key cannot be checked at all.
 `manifest.verification.checks[]` and an author running the validator saw a green result. A record
 reporting zero says nothing — a check that could not fail must not report one.
 
-**What is still owed is [RM130](ROADMAP.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on):**
-a `detail` makes the rows nameable to a human, not joinable. The sidecar that would make them joinable
-is the input side of RM117 and is blocked on RM124's question about whether one record serves both an
-overlay and `outranks`.
+**The other half shipped in 0.7 as [RM130](ROADMAP_HISTORY.md#rm130--a-checks-findings-were-counted-and-not-kept-so-a-conflict-had-no-name-to-act-on):**
+a `detail` makes the rows nameable to a human and not joinable, and the concordance record above is
+what makes them joinable. RM124's question about whether one record serves both an overlay and
+`outranks` was answered as a dated succession, so the record is the overlay's *input side* — a
+conflict is a question and an `overrides.csv` row is the answer.
 
 ### How a sidecar is written, and why merge-not-clobber makes that load-bearing (S66)
 

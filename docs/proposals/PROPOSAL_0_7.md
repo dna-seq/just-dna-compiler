@@ -447,7 +447,7 @@ against an unlanded dependency is the kind of bookkeeping that makes a ledger un
 
 ## RM130 — a check's findings are counted and not kept, so a conflict has no name to act on
 
-**Severity** medium · **Owner** enricher · **Entry** [ROADMAP.md § RM130](../ROADMAP.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on) ·
+**Severity** medium · **Owner** enricher · **Entry** [ROADMAP_HISTORY.md § RM130](../ROADMAP_HISTORY.md#rm130--a-checks-findings-were-counted-and-not-kept-so-a-conflict-had-no-name-to-act-on) (shipped 2026-08-28; it left ROADMAP.md when it landed) ·
 **Motivating case** S70 (just-module-creator)
 
 ### The problem, and what was blocking it

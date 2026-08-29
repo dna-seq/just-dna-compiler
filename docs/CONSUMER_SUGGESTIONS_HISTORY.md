@@ -5574,7 +5574,7 @@ either side.
 ## S70 — `verification.json` counts a check's findings and keeps none of them, and `clinical_significance` is the only check where that leaves nothing at all
 
 **Status — accepted. Ask 2 and the cheap half of ask 1 shipped 2026-08-24; the sidecar is filed as
-[RM130](ROADMAP.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on),
+[RM130](ROADMAP_HISTORY.md#rm130--a-checks-findings-were-counted-and-not-kept-so-a-conflict-had-no-name-to-act-on),
 open, a minor.** Your table of where each check's findings survive is correct check by check, and your
 claim that **nothing in `compiler.py` reads `VerificationRecord.findings`** is confirmed against the
 tree — one grep, no hits.

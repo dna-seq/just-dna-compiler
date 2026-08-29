@@ -462,48 +462,6 @@ it is closed rather than parked:
 formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
 natural-language question. Presence is the bit a check may read.
 
-## RM130 — a check's findings are counted and not kept, so a conflict has no name to act on
-
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on) on 2026-08-28 — BUILDS in 0.7; its blocker is answered.** RM124's question 2 resolved as a succession, so the sidecar ships keyed `(variant_key, genotype)` as the **overlay's input side**: a conflict is a question and an overlay row is the answer. Its documentation names `overrides.csv` and never `outranks`, so authors are steered onto the mechanism that survives 1.0. **Amended the same day when RM134 was pulled in**: the row carries `authority_concordance` + `authored_position` with each authority's call in a paired detail table keyed `(variant_key, genotype, authority)`, not "the authored value, the source's value" — that shape bakes the authority into a field name and would have cost a major one item later.
-
-**Severity** medium · **Status** open — **a minor, release undecided** — the observability half
-shipped 2026-08-24 · **Owner** enricher · **Motivating case** S70 (just-module-creator) in
-CONSUMER_SUGGESTIONS_HISTORY.md
-
-**What shipped, and it is the cheap half of ask 1 plus all of ask 2.** `clinical_significance` now
-writes a `detail` grouped on `opposed` with `verification.examples`' aggregation, so an author can see
-which rows and both values without re-running the comparison; and `_findings_warning` says at
-`validate`/`compile` that a record reports a non-zero `findings` — nothing read
-`VerificationRecord.findings` at all before, so twenty contested rows out of 141,616 were visible only
-to a consumer who went looking in `manifest.verification.checks[]`.
-
-**What is left is the sidecar, and it is deliberately not shipped because a neighbouring item says to
-decide something first.** The reporter asks for a derived table keyed on `variant_key` carrying the
-authored value, the source's value, and whether the two are *opposed* or merely *different* — and they
-are right that this is **the input side of RM117**: `ProvenanceItem.outranks` records *why* a row
-outranks an archive, and an author can only write one for a row they can name. A `detail` string makes
-the rows nameable to a human; it does not make them joinable.
-
-**The blocker is RM124's open question 2, and it is exactly on point.** That item asks whether one
-record serves both an authored overlay and `outranks` — *both are an authored value beating a source
-with prose* — and says to decide that **before either grows a second field**. A new conflict sidecar is
-a third table in the same family, so shipping it now pre-empts the decision RM124 exists to make. The
-question to settle first: is the conflict record an *input* to the overlay family (a derived table the
-author reads and answers in `provenance.json`), or is it the overlay's own evidence column? Those give
-different keys and different lifetimes.
-
-**One thing that is settled and worth not re-deriving.** The key cannot be a bare `variant_key`: a
-conflict is per `(variant_key, genotype)` because `compare_clin_sig` compares an authored call for a
-*genotype*, and `annotations.parquet` keys on genotype for the same reason (`@annotations-keys-genotype`).
-A table keyed on the variant alone would collapse two authored calls that disagree with the archive
-differently.
-
-**Not in scope, on the reporter's own scoping**: no escalation, no `strict` matter, and emphatically no
-auto-correction. A conflict is a question and half the time the archive is the stale side, which is why
-the ClinVar cross-check does not escalate under `strict` (`@clinsig-never-escalates`) and why the
-warning that shipped says so in its own text.
-
-
 ## RM132 — `pharm_variants.csv` makes a clinical claim per row and cites per variant
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm132--pharm_variantscsv-makes-a-clinical-claim-per-row-and-cites-per-variant) on 2026-08-28 — BUILDS in 0.7, and it is the item that makes the round's sort rule load-bearing.** A full-cost authored column is taken anyway because **the risk P9 prices — getting the shape wrong — was spent by RM47 a release ago**, so demand has nothing left to fix. `PharmVariantRow.pmid` plus both cross-check sites in the same release; `provenance_quote` does **not** follow, stated rather than implied.

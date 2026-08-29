@@ -29,6 +29,132 @@ The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 
 built. Every one is additive under Principles 3 and 8; what is kept here is each entry's reasoning,
 including the repairs it refused, which is the half that would otherwise be re-derived.
 
+## RM130 — a check's findings were counted and not kept, so a conflict had no name to act on
+
+**Shipped in `just-dna-format` + `just-dna-compiler` + `just-dna-enricher` on 2026-08-28.** Two new
+optional derived tables, three new closed vocabularies and one new warning code — additive throughout,
+and no published module's identity moves, because a module that carries neither file contributes
+neither entry.
+
+**Severity** medium · **Status** ✅ shipped in 0.7 (the observability half shipped 2026-08-24) ·
+**Owner** enricher · **Motivating case** S70 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md ·
+**Decided in** [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm130--a-checks-findings-are-counted-and-not-kept-so-a-conflict-has-no-name-to-act-on),
+amended the same day by RM134
+
+### What shipped
+
+`clin_sig_concordance.csv`, keyed `(variant_key, genotype)`, and its paired
+`clin_sig_authority_calls.csv`, keyed `(variant_key, genotype, authority)`. The first carries the
+agreement state — `authority_concordance`, `authored_position`, `opposed`, and the module's own call —
+and the second carries what each authority actually said, with its raw token and its confidence in its
+own units. Both are compiled to parquets, fact-hashed, summarized in `manifest.clin_sig_concordance`,
+and reported at `validate` and `compile` by `clin_sig_concordance_contested`.
+
+The enricher half is `concordance.py` (the classifier, the row builder and the writer) plus
+`clinical.clin_sig_concordance`, which returns the two tables or `None`. `ClinSigConflict.clinvar`
+became `authority_clin_sig` beside a new `authority`, with the old name kept as a read-only alias.
+
+### Why the shape changed before it was built, and the reason is the durable part
+
+The entry asked for a table carrying *the authored value, the source's value, and whether the two are
+opposed or merely different*. That shape names its authority in a **field** — `ClinSigConflict` really
+did carry `clinvar: str` — and RM134 arrived in the same release with a second authority. Shipping the
+first shape would have cost a key change or a retype one item later, and Principle 3 reserves both for
+a major. Two items landing in one release is what caught it; either alone would not have.
+
+So the parent row carries an agreement *state* instead of a pair of values, and *which* authority spoke
+became data in the detail table. That is what makes the key stable at any N.
+
+### The stress test, and why one field could not have held it
+
+A single vocabulary was drafted with seven outcomes and failed at five authorities: its members named
+the authority inside themselves (`clinvar_only`, `pubmind_only`), so a third source needed a third
+member and five needed every subset. The root cause was one field carrying two axes — *do the
+authorities agree with each other* and *where does the module's own call sit* — with `concordant`
+defined as "both agree **and** the authored row agrees with them" and `authored_dissents` as a sibling
+member. That is the Principle 5 anti-pattern and the combinatorial growth was its symptom. Split, both
+vocabularies are five members at two authorities and five at five.
+
+### Nothing resolves a split, and that is a decision rather than an omission
+
+At five authorities with a declared order E>B>D>C>A, suppose E and A agree and B, C and D agree against
+them. Lexicographic resolution says E; majority says B/C/D; choosing between those rules is a judgement
+about how authority rank trades against agreement count, and it needs a weighting model. This
+workspace has refused to invent one three times — RM126's `should_rebuild` (*the same fact costs
+consumers differently, so the decision is theirs and only the fact is ours*), `@clinsig-never-escalates`,
+and RM16's PRS weights. So `authored_position` is a relation to the **set**: computable with no weights,
+true at any topology, and the E+A case reads `discordant` + `matches_some` under either rule.
+
+The same refusal one level down keeps confidence unnormalized. A gold-star count and a literature
+miner's evidence-depth count are different instruments, and folding them into one number is three axes
+in one field — so the detail row carries the published value with `confidence_unit` beside it, and the
+model refuses a magnitude with no instrument named (`@weight-has-no-unit`, enforced rather than
+documented).
+
+### The lifetime, and the succession it promotes
+
+**A conflict is a question and an `overrides.csv` row is the answer.** The record joined the overlay's
+covered set, taking it from seven to eight, and it is in for a *different* reason from the other seven:
+not because it carries hand-curation a re-derivation would destroy — it carries none and is rewritten
+whole on every run — but because answering a contested subject is what an overlay row is. RM124's
+vindication signal then works for free: when the archive catches up, the author's `suppress` stops
+changing anything.
+
+The paired detail table is **out**, by name, in the same equality test. The author answers the question;
+they do not get to rewrite what an archive published, and an overlay over the detail table would let a
+module ship ClinVar's name above a classification ClinVar never made.
+
+The table's documentation and the warning both name `overrides.csv` and **never**
+`provenance.json`'s `outranks`. The two are the same idea one table apart, 0.7 settled the overlap as a
+dated succession in the overlay's favour, and steering a new author onto the side that survives 1.0
+cost a sentence.
+
+### Severity, and the one thing it must never become
+
+Warning-tier in both modes, never escalating under `strict` (`@clinsig-never-escalates`). A
+disagreement with an archive is a fact about the field, not a defect in the module: half the time the
+archive is the stale side, and failing a build on one would have this format arbitrate a clinical
+dispute.
+
+The finding is **actionable rather than carried**, which inverts its neighbour
+`verification_findings_recorded` and does so deliberately. Nothing an author writes moves a number
+sitting in `verification.json`; a contested row is answered by writing an overlay row, and the count is
+taken over the **post-overlay** table, so writing one clears the finding. `overlay_rows_suppressed`
+reports the removal, so an answered conflict is visible rather than silent.
+
+### Two things found while building it
+
+**`opposed` is a tautology at one authority, and the record is what makes it stop being one.** The
+two-way check only reports where both sides are opinionated and their camps differ, and
+`pathogenic`/`benign` are the only two opinionated camps — so every conflict it reports is opposed by
+construction, and `_clin_sig_detail`'s differing-but-not-opposed group has no producer today. Filed
+rather than mended: the formatter lives in `enrich.py`, the group becomes reachable as soon as two
+authorities can disagree while neither contradicts the module, and that is exactly what the record is
+shaped for.
+
+**Several vocabulary members are reachable by the classifier and not by today's producer** — `absent`
+needs a subject the module makes no clinical claim about, and `none` needs every archive asked and
+empty; neither is a contested subject, so neither is written. They are kept on the
+`VALID_RSID_STATUS.withdrawn` precedent: a member is permanent within a major, so reserving one now is
+free and adding one later is not. The classifier tests walk every topology at three and five
+authorities and assert an equality against both vocabularies, which is where the members are exercised.
+
+### Repairs rejected
+
+- **Folding the conflict into the overlay as an evidence column.** A conflict nobody has answered has
+  no overlay row to live on, so unanswered conflicts — the entire point — would have nowhere to be.
+- **Escalation under `strict`, or auto-correction.** Out of scope on the reporter's own scoping and
+  ours: a conflict is a question, and half the time the archive is the stale side.
+- **A `majority` or consensus field.** The E+A case is the argument; precomputing it is
+  `should_rebuild` wearing a different name, and it would publish a judgement as a fact.
+- **A second significance map.** The check's whole output is a comparison of two normalizations, so a
+  drift between two maps would report a disagreement with ourselves as a disagreement between two
+  archives. `CLIN_SIG_CAMP` moved out of `clinical.py` rather than being copied, for the same reason
+  one level up.
+- **Writing a row for every compared subject.** A record of every agreement is a copy of the module's
+  own `clin_sig` column with a second opinion attached, and the number of subjects compared is already
+  published as the check's denominator.
+
 ## RM131 — the warnings channel says what each finding is, and whether an author can clear it
 
 **Shipped in `just-dna-format` + `just-dna-compiler` on 2026-08-28**, with the deprecated DuckDB
