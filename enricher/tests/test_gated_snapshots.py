@@ -436,6 +436,8 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     # cannot go unnoticed — the two things the floor allowed through.
     assert set(found) == {
         "cpic.CpicClient._request",
+        # RM85's release probe: the retried inner reads the header, the outer translates both legs.
+        "currency.ClinVarReleaseClient._header_bytes",
         "ensembl.EnsemblResolver._graphql_rsid",
         "ensembl.EnsemblResolver._rest_rsid",
         "eutils.EutilsClient._request",

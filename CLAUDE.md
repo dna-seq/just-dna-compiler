@@ -320,6 +320,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `flock` the directory, never a lockfile: the kill it guards against is what leaves one behind. `@flock-not-a-lockfile`
 - A progress callback's unit is a contract — subjects, because `total` must be known up front. `@progress-unit-is-subjects`
 - `--rederive` never shortens a table: answered replaces, could-not-ask keeps its rows. `@rederive-never-shortens`
+- A currency check asks the source, never the cache it was drafted from; and a digest label does not compare against a dated one. `@currency-asks-the-source-not-the-cache`
 - A source's record-id fan-out is a finding: keep every row, count the contested keys, never `mode()` a winner. `@multiplicity-is-a-finding`
 
 ## The design cycle (the order of things)

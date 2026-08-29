@@ -704,12 +704,18 @@ Stated plainly, because each of these is currently an absence a reader has to in
   something moved, and nothing that says *what*.
 - **Nothing generates a changelog.** It is prose typed at publish time, and it lives only in the
   registry — outside every hash, every signature and the artifact.
-- **Nothing tells an author their source has moved on.** The tautology skip reads the release the
-  module was drafted from, and `withdraw_stale_dataset` handles a module that ends up mixing two.
-  Neither answers *"ClinVar has published since you drafted this"*, which is the actual trigger for a
-  source-refresh pass. Today the author has to know. Filed as
-  [RM85](ROADMAP_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it),
-  where the tempting repair — a column recording the origin — is refused on RM71's argument.
+- **Nothing told an author their source had moved on — closed in 0.7 for one source, and honestly
+  unanswered for the rest.** The tautology skip reads the release the module was drafted from, and
+  `withdraw_stale_dataset` handles a module that ends up mixing two; neither answers *"ClinVar has
+  published since you drafted this"*, which is the actual trigger for a source-refresh pass.
+  [RM85](ROADMAP_HISTORY.md#rm85--a-recorded-release-compared-against-the-one-its-source-publishes-now) closed that as an
+  enricher check rather than the tempting column (refused on RM71's argument — it restates `dataset`
+  and rots where `dataset` is maintained): `enrich --verify-datasets` compares each recorded
+  `SourceRow.dataset` against the release its source publishes now, and it is the cheap question to put
+  before `--rederive`. **What remains is the reach.** Only ClinVar has a live release label this tier
+  can read in the namespace it records, so every other source reports `unchecked` with `unsupported`
+  beside it — which is the honest state, not a clean bill, but it does mean a CPIC- or ClinPGx-drafted
+  module still relies on its author knowing. Adding a probe is adding a registry member.
 - **Nothing re-asked a question already answered — closed in 0.7.** Merge-not-clobber still means an
   ordinary re-run re-asks nothing, so a source that revised a row it already gave us moves no signature
   at all; what changed is that `enrich --rederive` now re-asks every recorded subject and reports what

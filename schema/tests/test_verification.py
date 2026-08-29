@@ -433,6 +433,7 @@ def test_every_check_name_is_a_verification_question() -> None:
         "vrs_allele_id",
         "gene_disease_validity",
         "genome_build_agreement",
+        "dataset_currency",
     } == VALID_VERIFICATION_CHECKS
 
 

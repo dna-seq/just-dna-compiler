@@ -29,6 +29,75 @@ The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 
 built. Every one is additive under Principles 3 and 8; what is kept here is each entry's reasoning,
 including the repairs it refused, which is the half that would otherwise be re-derived.
 
+## RM85 — a recorded release, compared against the one its source publishes now
+
+**Shipped in `just-dna-enricher` (plus a `just-dna-format` vocabulary member) on 2026-08-29.** The
+enricher check `PROPOSAL_0_7` decided: `currency.check_dataset_currency`, run at the end of `enrich()`
+and attested as `dataset_currency`, with `--verify-datasets/--no-verify-datasets` as its switch.
+
+**Severity** low-medium · **Status** ✅ shipped in 0.7 · **Owner** enricher ·
+**Motivating case** a source-drafted panel two ClinVar releases later
+
+### What it does
+
+`SourceRow.dataset` had recorded which release a module's rows came from since RM4, and two things read
+it — the tautology skip, and `withdraw_stale_dataset` when a module ends up mixing two. Neither answered
+*"ClinVar has published since you drafted this"*. The check reads `sources.csv`, asks each source which
+release it publishes now, and reports the gap. It writes nothing: repairing a stale label is a re-draft,
+which is an author's decision and a different command.
+
+It is `--rederive`'s cheap neighbour, and ENRICHER § `rederive` now says so where an author reads it.
+Both ask *has the world moved* — one about the rows, one about the release **label** — and the label
+question costs one request per source, so it is what tells an author whether the expensive one is worth
+running.
+
+### The three things the entry did not settle, decided in the build
+
+- **Which source can actually be asked.** The entry said "the source's current release" as though every
+  source publishes one in a form we record. They do not: `dataset` labels are minted by whichever pass
+  wrote the row, and only ClinVar's has a live counterpart this tier can read in the same namespace
+  (`clinvar_<##fileDate>`, through the reader `clinvar_build` already uses). So **one probe ships**, in
+  a registry (`PROBE_SOURCES`, derived from `default_probes` rather than restated beside it), and every
+  other source reports `unsupported` — an honest *this tier cannot ask*, never a clean bill. Widening it
+  is adding a member.
+- **Comparability is a third state, beside the tri-state the entry did name.** `clinvar_dataset_label`
+  has a digest form for a snapshot built from a VCF whose header stated no date. A digest against a
+  stated date names one release space in two spellings and equality across them means nothing, so it is
+  *uncomparable* (`no_reference`), not *behind*. Reporting it as behind would send an author to
+  re-draft a module that may already be current.
+- **`strict` refuses over `behind` alone.** Severity follows the mode, as the decision says — but an
+  unreachable source and an `--offline` run both leave every leg unchecked, and escalating those would
+  make `--offline --strict` impossible forever over something no author can edit. That is the
+  `unreachable_rsids` rule (warned in both modes, escalated in neither), and the gate is written over
+  the superseded set so the two cannot be confused.
+
+### What the shape had to avoid
+
+**A check must not be able to agree with itself.** Wave 2 had just found a `--rederive` path seeded from
+its own staged answers, reporting a clean bill for exactly the subjects it was re-checking. The same
+shape was available here — comparing `dataset` against the *provisioned snapshot's* `release.json`,
+which is very often the snapshot the module was drafted from. So the current release is read from the
+source over the wire, and the rows compared are the ones on disk before this run's commit; the licence
+rows `enrich()` itself writes are at the `resolution` layer and carry no `dataset` at all.
+
+**And the denominator has to be honest.** `subjects` counts the legs asked *and* answered comparably;
+an unreachable or unaskable source is named in the record's `detail` rather than counted, and with no
+leg settled the pass records a **skip** instead of `ran(0, 0)`.
+
+### Repairs refused, and still refused
+
+- **A column stating what this module was made from and what would age it** — RM71's argument one table
+  over: it restates `dataset` and rots where `dataset` is maintained.
+- **A publish-time or catalog-side signal** — puts the notice where a reader is rather than where an
+  author is, and is out of these packages' scope. Still recorded as an ask rather than built.
+- **Nothing, deliberately** — defensible only while a module has one author who remembers.
+
+### Also worth knowing
+
+The probe **streams and abandons** rather than sending a `Range` header: a server that ignores one
+answers `200` with the whole 200 MB body, and the probe silently becomes a download. Reading the first
+256 kB off a normal stream and closing it needs no promise from the server.
+
 ## RM131 — the warnings channel says what each finding is, and whether an author can clear it
 
 **Shipped in `just-dna-format` + `just-dna-compiler` on 2026-08-28**, with the deprecated DuckDB

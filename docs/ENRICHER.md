@@ -37,6 +37,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
 | **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) |
+| **Dataset currency** | a recorded `SourceRow.dataset` vs the release that source publishes **now** (0.7) | `currency.check_dataset_currency` → `enrich()` (reports; `strict` refuses over a superseded release, never over an unreachable source) |
 
 **Every check that runs records what it did — `verification.json` (RM45, 0.6).** Until 0.6 the table
 above described work whose result died with the process: a check's findings reached a log line and an
@@ -446,9 +447,10 @@ Org limits apply **per member**, not shared. Source of truth:
 enrich(spec_dir, *, mode="best_effort", offline=False, ensembl_cache=None,
        clinvar_cache=None, use_clinvar=True, use_gnomad=True, download=True,
        genome_build=None, write=True, mint_vrs=True,
-       verify_ref=True, verify_clinsig=True, verify_rsids=True,
+       verify_ref=True, verify_clinsig=True, verify_rsids=True, verify_datasets=True,
        keep_par_twin=False, rederive=False, keep_staging=False, progress=None,
-       resolver=None, gnomad_client=None, grch37_client=None) -> EnrichmentResult
+       resolver=None, gnomad_client=None, grch37_client=None,
+       release_probes=None) -> EnrichmentResult
 ```
 
 **`genome_build=None` means "read the module's declaration"** (`spec_genome_build`), not "assume
@@ -622,6 +624,59 @@ restated — because the provenance columns move on every run by design.
   authored or curator-set cell (that destroys the evidence of the upstream change — still the rule), and
   re-asking every subject on *every* run (it would put the full resolution time on every pass to buy
   drift detection nobody asked to run continuously).
+* **Put the cheap question first.** `--verify-datasets` below asks the same *has the world moved* about
+  the release **label** and costs one request per source, so it is what tells you whether re-asking
+  every subject is worth the run. A module whose recorded release is still the one its source publishes
+  has had no upstream revision to detect — and one whose release has moved is exactly the module worth
+  re-deriving.
+
+### `verify_datasets` — has your source published since? (0.7, RM85)
+
+`SourceRow.dataset` has recorded which release a module's rows came from since RM4, and two things read
+it — the tautology skip, and `licensing.withdraw_stale_dataset` when a module ends up mixing two.
+Neither answers the question an author who has forgotten, or a curator who inherited the module,
+actually has: *has ClinVar published since this was drafted?* `currency.check_dataset_currency` is that
+comparison, run at the end of `enrich()` and attested as `dataset_currency`.
+
+It is a comparison and **not a column**. The column-shaped repair — a field saying what this module was
+made from and what would age it — was refused one table over in RM71 on the grounds that it restates
+`dataset` and then rots where `dataset` is maintained. This reads `sources.csv` and writes nothing at
+all; repairing a stale label is a re-draft, which is an author's decision and a different command.
+
+* **Three states, and the third is the item.** `DatasetCurrency.behind` is `True` (the source has
+  published since, with both labels named), `False` (still current), or **`None`** — nobody could ask.
+  `None` is never `False`. `--offline` is where that bites: an offline run makes no request, so every
+  recorded release is `unchecked`, and a check that reported a clean bill for a source it never reached
+  would be S4's defect wearing the badge of the mechanism S4 built.
+* **The denominator is what was compared.** `subjects` counts the legs asked *and answered comparably*;
+  an unreachable or unaskable source is named in the record's `detail` instead of being counted, because
+  counting it would publish coverage of a fraction the record does not state. With no leg settled the
+  pass records a **skip** rather than `ran(0, 0)`.
+* **Comparability is tri-state too.** `clinvar_dataset_label` has two forms — `clinvar_2026-08-25` from
+  the VCF header and `clinvar_sha256:…` for a snapshot whose VCF stated no date. They name one release
+  space and equality across the two forms means nothing, so a digest against a stated date is
+  *uncomparable* (`no_reference`), not *behind*.
+* **Severity follows the mode, over `behind` alone.** `strict` refuses on a superseded release and
+  **never** on an unchecked one: an unreachable source and an `--offline` run both leave every leg
+  unchecked, and escalating those would make `--offline --strict` impossible forever over something no
+  author can edit — the `unreachable_rsids` rule, which warns in both modes and escalates in neither.
+* **One probe ships, deliberately: ClinVar.** It is the source the item is about and the only one this
+  tier can ask for a release label in the namespace it already records —
+  `currency.ClinVarReleaseClient` streams the live VCF, reads `##fileDate=` through the same reader
+  `clinvar_build` uses on a downloaded file, and abandons the stream after 256 kB rather than asking for
+  a byte range a server may ignore. One definition of the label, because two spellings would not fail:
+  they would simply never match, and the check would report every ClinVar module as behind forever.
+  Every other source is honestly `unsupported`. `currency.PROBE_SOURCES` is the set, derived from
+  `default_probes` rather than restated beside it; `release_probes=` injects a wider registry, and the
+  injected one — never `PROBE_SOURCES` — decides who can be asked.
+* **One request per source, not per row.** `sources.csv` is keyed `(source, layer)` and *"what does
+  ClinVar publish now"* has one answer whatever a module used it for, so the two layers share it and
+  can never be told different things.
+* **It cannot agree with itself.** The rows it reads are the ones on disk before this run's commit, and
+  the licence rows `enrich()` writes are at the `resolution` layer with no `dataset` at all — so
+  nothing here is comparing the module against something this same run derived. That is the trap next
+  door: `--rederive` seeded from its own staged answers would have reported a clean bill for exactly
+  the subjects it was re-checking.
 
 ### Which tables ask for a coordinate
 
@@ -2861,6 +2916,7 @@ just-dna-enricher enrich spec/ --no-clinvar        # Ensembl links only
 just-dna-enricher enrich spec/ --no-verify-ref     # skip the reference-allele check
 just-dna-enricher enrich spec/ --no-verify-clinsig # skip the ClinVar clin_sig cross-check
 just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdrawal check
+just-dna-enricher enrich spec/ --no-verify-datasets # skip the recorded-release currency check
 just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseudoautosomal locus
 just-dna-enricher enrich spec/ --rederive          # re-ask every recorded subject; report what moved
 just-dna-enricher enrich spec/ --keep-staging      # keep the staged answers after a successful commit

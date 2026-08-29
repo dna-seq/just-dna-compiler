@@ -17,21 +17,28 @@ extra guarantee. `enrich()` therefore collects its records and writes once at th
 writes its own three, `clinpgx` its one, and the merge below is what keeps several commands' records
 in one document instead of overwriting each other.
 
-**Which commands actually call this, as of 0.6 — seven of them, for fifteen of the seventeen check
-members.** `enrich` (five: reference allele, wrong build, clinical significance, rsID currency,
-rsid↔coordinate), `literature` (three), `check-identifiers` (three: gene symbol currency, trait
-currency, gene↔locus agreement), `clinpgx check`, `pgx`, `vrs mint` and `check-acmg` (one each). The
-two remaining members, `gene_disease_validity` and `dosage_sensitivity`, are reserved and each says so
-beside itself in `vocab.VALID_VERIFICATION_CHECKS`.
+**Which commands actually call this — seven of them, covering every member of
+`vocab.VALID_VERIFICATION_CHECKS` except the ones whose comment there says RESERVED.** `enrich` (six:
+reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate, dataset
+currency), `literature` (three), `check-identifiers` (three: gene symbol currency, trait currency,
+gene↔locus agreement), `clinpgx check`, `pgx`, `vrs mint` and `check-acmg` (one each).
 
 **Count the call sites before you edit that paragraph, and edit it whenever you add one.** The
 sentence it replaces said *"`enrich` (four checks), `literature` (three) and `clinpgx` (one)"* and was
-wrong three ways at once — `enrich` emits five, and `pgx` and `vrs mint` had been wired for a release
+wrong three ways at once — `enrich` emitted five, and `pgx` and `vrs mint` had been wired for a release
 without the sentence learning about them. Its own predecessor was wrong the other way, naming
 `check-identifiers` as a writer years before it was one, so the merge was machinery tested against a
-document no two commands produced. A count of call sites is exactly the thing that goes stale, which
-is this module's own argument for being one function; the honest version of that argument is to derive
-the list with a grep rather than from memory.
+document no two commands produced. Its successor then said *"fifteen of the seventeen"* and went stale
+again the moment a sixteenth member landed, which is why the totals are gone rather than corrected: a
+number in prose is a registry nothing iterates (`@registry-completeness`), and *"every member except
+the ones marked RESERVED"* is a rule a `grep` settles. A count of call sites is exactly the thing that
+goes stale, which is this module's own argument for being one function; the honest version of that
+argument is to derive the list with a grep rather than from memory:
+
+```bash
+grep -rn 'record_verification(' enricher/src/    # the writers
+grep -n  '"[a-z_]*",  *#' schema/src/just_dna_format/vocab.py   # the members, each with its emitter
+```
 """
 
 import logging

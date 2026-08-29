@@ -1074,52 +1074,6 @@ recorded here because this entry is where a reader meets the publisher.
   `_ALLOW_PATTERNS` carried no 0.4 family and no derived-fact table either, so eight *more* examples
   published a manifest attesting parquets that were never uploaded.
 
-## RM85 — the origin of a module predicts the shape of its second pass, and nothing records it
-
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it) on 2026-08-28 — BUILDS in 0.7** as the enricher check comparing `SourceRow.dataset` against the source's current release. Tri-state: unreachable is `unchecked`, never up-to-date.
-
-**Severity** low-medium · **Status** open — the fact is nearly recorded already; nothing acts on it ·
-**Owner** format (a column) or enricher (a report) — undecided, and that is the item · **Motivating
-case** a source-drafted panel two ClinVar releases later
-
-### The observation
-
-A module drafted from a source (ClinVar, CPIC, ClinPGx) inherits that source's release cadence and will
-need a **source-refresh pass**. A module built from one paper the author read inherits the *literature's*
-cadence and needs an **evidence pass** when the preprint is published or a replication lands. The origin
-picks the shape of the second pass, and
-[MODULE_LIFECYCLE § 7](MODULE_LIFECYCLE.md#7-what-no-stage-owns) records the consequence: **nothing tells
-an author their source has moved on.** The tautology skip reads the release the module was drafted from
-and `withdraw_stale_dataset` handles a module that ends up mixing two, but neither answers *"ClinVar has
-published since you drafted this"*. Today the author has to know.
-
-`SourceRow.dataset` records the release, so the fact is nearly there. What is missing is anything that
-acts on it.
-
-### Why the obvious repair is not obvious
-
-The tempting shape is a column saying what this module was made from and what would age it — and the
-identical proposal is already refused one table over, in
-[RM71](ROADMAP_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file):
-a comment column would be *"a statement about a snapshot release, and a re-draft from a newer one leaves
-it naming the old alleles — exactly the staleness `licensing.withdraw_stale_dataset` had to be built for
-on `dataset`, on a column where nothing could notice."* Same shape one table over. A column that states
-what `dataset` already states, and rots where `dataset` is maintained, is the wrong half of the answer.
-
-So the live candidates are the ones that read rather than write:
-
-- **A check that compares `SourceRow.dataset` against the source's current release** and reports the
-  gap. Needs the network, so it is an enricher check, and it is the cheapest thing that answers the
-  actual question. It is also RM83's neighbour — the same "has the world moved" question, asked about
-  the release label instead of about the rows.
-- **A publish-time or catalog-side signal**, which puts the notice where a reader is rather than where
-  an author is, and is out of these packages' scope.
-- **Nothing, deliberately** — the author knows their sources. This is the status quo, and it is only
-  defensible while modules have one author who remembers; it fails exactly when a module outlives its
-  curator, which is the case the whole lifecycle document was written for.
-
-**Confirmed to have no `Sn` and no `RMn`** of its own before this entry.
-
 ## RM86 — a review pass is legal at the gate, refused by the pre-flight, and invisible once published
 
 **Severity** medium-high · **Status** ✅ **CLOSED 2026-08-20** — all three findings answered by

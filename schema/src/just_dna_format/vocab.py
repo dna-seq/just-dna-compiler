@@ -677,25 +677,38 @@ VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
 # * `genome_build_agreement` gained its emitter in the same release: `grch37.diagnose_wrong_build`
 #   compares an authored coordinate against the other assembly, and the compiler's offline
 #   `_check_build_coordinates` asks the cheap half of the same question.
+# * `dataset_currency` was added in 0.7 (RM85) and passes the membership rule on a row whose subject
+#   is unusual: the thing the module asserts is `SourceRow.dataset` — *these rows came from that
+#   release* — and the source is asked which release it publishes now. A recorded claim against what
+#   a source says, so it is a check; contrast the recording passes below, which write down a source's
+#   answer and compare nothing.
 #
 # It deliberately **excludes** the ClinVar assertion tier, whose own docstring says it "records what
 # ClinVar says and adjudicates nothing" — a member for it would let a manifest report a check where no
 # question was put, the exact confusion this block exists to end. `frequencies.csv`,
 # `gene_metrics.csv` and the article-licence columns are the same class and have no member either.
 #
-# **Every member says on its own line what puts it, or that nothing does (RM72).** Two of the
-# seventeen are reserved — a member with no emitter is legitimate on the `withdrawn` precedent above,
-# and the defect was that only one of the two said so, which is how a headline count of unreachable
-# members read wrong. A comment per member, and it is free: the emitter is the first thing a reader
+# **Every member says on its own line what puts it, or that nothing does (RM72).** Two members are
+# reserved — a member with no emitter is legitimate on the `withdrawn` precedent above, and the defect
+# was that only one of the two said so, which is how a headline count of unreachable members read
+# wrong. **Deliberately no total in this prose**: it said "two of the seventeen" while the set grew,
+# and a number in a comment is a registry nothing iterates (`@registry-completeness`). The reserved
+# ones are the members whose comment says RESERVED, and counting them is a `grep`.
+# A comment per member, and it is free: the emitter is the first thing a reader
 # asking "was this check run" needs, and it is the first thing to rot when a pass moves.
 VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
     {
-        # ── wired: `enrich` writes these five at the end of its run ──
+        # ── wired: `enrich` writes these six at the end of its run ──
         "reference_allele",           # authored `ref` vs the actual reference sequence — `enrich`
         "rsid_currency",              # authored rsID vs dbSNP (live / merged / absent) — `enrich`
         "clinical_significance",      # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
         "rsid_coordinate_agreement",  # an authored rsID+coordinate PAIR vs the reference — `enrich`
         "genome_build_agreement",     # authored coordinates vs the declared assembly — `enrich`
+        "dataset_currency",           # a recorded `SourceRow.dataset` vs the release that source
+                                      #   publishes NOW — `enrich`. The subject is the module's own
+                                      #   claim about where its rows came from, which is why this is a
+                                      #   check and not a recording pass: it compares something the
+                                      #   module asserts against what the source says.
         # ── wired: one command each ──
         "citation_existence",         # an authored `pmid`/`doi` vs PubMed and Crossref — `literature`
         "citation_identifier",        # an authored `doi` vs the registry's own for that PMID — `literature`

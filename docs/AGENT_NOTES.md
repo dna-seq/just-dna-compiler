@@ -2035,6 +2035,27 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **structural** — `done` is the size of a set that only grows — and the assembly loop touches every
   subject, so the last report is always `(total, total)` rather than wherever the links ran out.
 
+- `@currency-asks-the-source-not-the-cache` — **A "has my source moved" check must ask the source, and
+  a label only compares against a label of its own kind (RM85).** `SourceRow.dataset` recorded which
+  release a module's rows came from and nothing acted on it, so `enrich --verify-datasets` now compares
+  it against the release the source publishes now. Three things about the shape, each one a repair that
+  looked obvious and is wrong. **The current release comes over the wire, never from the provisioned
+  snapshot's `release.json`** — that snapshot is very often the one the module was drafted from, so the
+  cheap version of this check would compare a value against its own origin and report a confident clean
+  bill, the same self-agreement `--rederive` had to be stopped from doing one flag over. **A digest
+  label and a stated-date label do not compare**: `clinvar_dataset_label` falls back to
+  `clinvar_sha256:…` when the VCF header states no date, so the two forms name one release space in two
+  spellings and equality across them means nothing — uncomparable is `no_reference`, and reporting it as
+  *behind* would send an author to re-draft a module that may already be current. **And the tri-state
+  has to survive the aggregation**: an unaskable leg is named in the record's `detail` and counted into
+  neither `subjects` nor `findings`, because a coverage figure whose denominator is stated elsewhere is
+  the defect `_vrs_coverage` exists for. The `strict` gate is written over the superseded set alone for
+  the `unreachable_rsids` reason — nothing an author edits clears a failed request, so escalating one
+  would make `--offline --strict` impossible forever. **The reach is the honest limit**: only ClinVar
+  publishes a release label this tier can read in the namespace it records, so one probe ships in a
+  registry derived from `default_probes`, and every other source reports `unsupported` — which is *this
+  tool cannot ask*, never *you are up to date*.
+
 - `@rederive-never-shortens` — **A re-derivation that drops what it could not ask about is the
   corruption it was meant to detect (RM83's residue, in RM128).** `enrich --rederive` re-asks every
   recorded subject and reports what moved — MODULE_LIFECYCLE § 5.1's canary, which merge-not-clobber
