@@ -18,6 +18,7 @@ import io
 import json
 from pathlib import Path
 
+import polars as pl
 import pytest
 from just_dna_compiler.compiler import (
     _BINNING_TABLE_KINDS,
@@ -468,17 +469,28 @@ def test_the_citing_kinds_are_exactly_the_table_kinds_declaring_a_pmid() -> None
     A hand-kept list is what RM40/RM41 named and what this replaces, but a *derived* one still has a
     derivation that can be wrong in either direction: a kind silently escaping the literature
     cross-check is RM47's failure again, and a kind wrongly joining it would make the compiler read
-    citations off a table that does not cite. Both sides are pinned here, from `model_fields`, so
-    widening or narrowing the set is a deliberate act with a failing test attached.
+    citations off a table that does not cite.
+
+    **Stated, not re-derived.** Recomputing the set the way the module computes it and comparing the
+    two is a check that agrees with itself — it passes for any derivation, including a wrong one, and
+    for a hardcoded tuple. So the ground truth here is written out: these five kinds and no others,
+    with `binning` and `citing` split so a member moving between them is visible. The membership
+    *rule* is then asserted against each model separately, which is the part a new kind has to obey.
     """
-    walked = {csv_name for csv_name, _parquet, model in _TABLE_KINDS if "pmid" in model.model_fields}
-    assert {csv_name for csv_name, _model in _CITING_TABLE_KINDS} == walked
-    # And it is a strict superset of the binning kinds, which is the whole change: the binning
-    # accessors stay narrow, and the literature cross-check reads the wider set.
-    binning = {csv_name for csv_name, _model in _BINNING_TABLE_KINDS}
     citing = {csv_name for csv_name, _model in _CITING_TABLE_KINDS}
+    binning = {csv_name for csv_name, _model in _BINNING_TABLE_KINDS}
+    assert citing == {
+        "activity_phenotype.csv", "copynumbers.csv", "repeat_alleles.csv", "heteroplasmy.csv",
+        "pharm_variants.csv",
+    }
     assert binning < citing
     assert citing - binning == {"pharm_variants.csv"}
+
+    # And the rule that decides membership, per model: a kind cites exactly when it declares the
+    # column. Written as a per-kind equality so the failure names the kind, and so a table kind added
+    # with a `pmid` and left out of the set fails here rather than going quietly uncross-checked.
+    for csv_name, _parquet, model in _TABLE_KINDS:
+        assert (csv_name in citing) == ("pmid" in model.model_fields), csv_name
 
 
 def test_a_cited_pharm_row_round_trips_through_compile_and_reverse(tmp_path: Path) -> None:
@@ -599,3 +611,57 @@ def test_the_public_readers_answer_over_every_citing_kind(tmp_path: Path) -> Non
     assert table_citations(load_citing_rows(spec)) == [_PGX_PMID]
     assert load_binning_rows(spec) == {}
     assert binning_citations(load_citing_rows(spec)) == []
+
+
+def test_both_call_sites_hand_the_pharm_rows_to_the_cross_check(tmp_path: Path) -> None:
+    """The wiring, not the function — and they are two different call sites.
+
+    `_cross_check_literature` reading three sites is worth nothing if the caller hands it two, and
+    the compiler calls it twice: once in the pre-flight, over `loaded_kinds`, and once inside the
+    fact-table loop, over `kind_rows`. `validate_spec` reaches only the first and `compile_module`
+    reaches both, so the parity rule this repo audits **by check** wants both commands asserted.
+
+    The stake is higher than a warning: since RM79 the compiler *discards* an uncited literature row,
+    so a caller that withheld the pharm rows would drop the evidence for the claim from the artifact
+    and report it stale on the way out.
+    """
+    grounding, orphan = "8458085", "9545397"  # both real; the second is cited from nowhere
+    spec = _spec_with_cited_pharm_rows(tmp_path, name="wired")
+    # A subject-less study row, which RM47 made legal: it puts a citation into `cited` from a site
+    # other than the one under test. Without it this module cites nothing when the pharm rows are
+    # withheld, and `split_cited_literature` deliberately discards nothing in that case — so a blind
+    # caller would go quiet rather than misreport, and the control would pass for the wrong reason.
+    (spec / "studies.csv").write_text(
+        f'rsid,chrom,pmid,conclusion\n,,{grounding},"grounds the module"\n', encoding="utf-8"
+    )
+    (spec / "literature.csv").write_text(
+        f"pmid,exists\n{grounding},true\n{_PGX_PMID},true\n{orphan},true\n", encoding="utf-8"
+    )
+
+    def _uncited(warnings: list[str]) -> set[str]:
+        # Every matching line, never the first: the check runs on both sides and de-duplicates on the
+        # message, so a caller that withheld the rows on one side alone emits a *second*, differently
+        # worded line beside the correct one. Reading only the first would report the healthy half and
+        # call the blind half green — which is the exact shape this test exists to catch.
+        return {
+            found
+            for w in warnings
+            if "no study, bin or pharm row in this module cites" in w
+            for found in (grounding, _PGX_PMID, orphan)
+            if found in w
+        }
+
+    validated = validate_spec(spec)
+    assert validated.valid, validated.errors
+    assert _uncited(validated.warnings) == {orphan}
+
+    out = tmp_path / "out"
+    result = compile_module(spec, out)
+    assert result.success, result.errors
+    assert _uncited(result.warnings) == {orphan}
+
+    # And the pharm-cited row survived into the artifact while the orphan did not (RM79) — the stake
+    # that makes this wiring more than a warning. Withheld, the evidence for the claim would be the
+    # row dropped.
+    kept = pl.read_parquet(out / "literature.parquet")
+    assert set(kept["pmid"].to_list()) == {grounding, _PGX_PMID}
