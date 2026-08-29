@@ -308,7 +308,6 @@ def _records_for(ref_check, build, **over):
         "stale_rsids": [],
         "pairs": PairCheck(not_checked="nothing_to_check"),
         "ensembl_ref": None,
-        "verify_datasets": False,
         "currency": None,
         **over,
     }

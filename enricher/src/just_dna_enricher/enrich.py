@@ -44,6 +44,7 @@ from just_dna_enricher.currency import (
     ReleaseProbe,
     check_dataset_currency,
     summarize_currency,
+    unchecked_sentences,
 )
 from just_dna_enricher.download import ensure_clinvar_snapshot, ensure_snapshot
 from just_dna_enricher.ensembl import EnsemblResolver
@@ -1487,13 +1488,22 @@ def _run_enrichment(
         dataset_currency = check_dataset_currency(
             read_sources_file(spec_dir), probes=release_probes, offline=offline
         )
-        for line in summarize_currency(dataset_currency):
-            # One line per reason, never one per row. Warned in both modes; `strict`'s refusal below
-            # is over the superseded releases alone, and it comes after this so the sentence an author
-            # reads is the same one either way.
-            logger.warning("Dataset currency: %s.", line)
+        if dataset_currency.behind:
+            # One sentence for the run, aggregated by reason; warned in BOTH modes, with `strict`'s
+            # refusal below over the same set. It comes first so the sentence an author reads is the
+            # same one either way.
+            logger.warning(
+                "Dataset currency: %s. Re-draft from the current release to move the label, and "
+                "consider --rederive to see whether any answer actually changed.",
+                summarize_currency(dataset_currency)[0],
+            )
+        for line in unchecked_sentences(dataset_currency):
+            # INFO, not WARNING, and the level is the judgement: this is not a finding about the
+            # module, and an offline run of any drafted module would otherwise carry a warning on
+            # every pass — which is how a channel stops being read. Said out loud all the same,
+            # because silence here would read as "checked, all clear" (S4).
+            logger.info("Dataset currency: %s — unchecked is not up to date.", line)
         if dataset_currency.not_checked is not None:
-            # Silence would read as "checked, all clear" — the one thing it must never mean (S4).
             logger.info(
                 "Dataset currency: not checked (%s). No source was asked which release it publishes, "
                 "so every recorded dataset is unchecked rather than current.",
@@ -1642,7 +1652,6 @@ def _run_enrichment(
                 stale_rsids=stale_rsids,
                 pairs=pair_check,
                 ensembl_ref=reference,
-                verify_datasets=verify_datasets,
                 currency=dataset_currency,
             ),
             spec_dir,
@@ -1715,7 +1724,6 @@ def _verification_records(
     stale_rsids: list[RsidStatus],
     pairs: PairCheck,
     ensembl_ref: Path | None,
-    verify_datasets: bool,
     currency: CurrencyCheck | None,
 ) -> list[VerificationRecord]:
     """The six checks this pass puts, as records `verification.json` can carry (RM45).
@@ -1949,7 +1957,10 @@ def _verification_records(
     # naming one would hide the other and a comma-joined value would break the join the column exists
     # for. The same call `allele_function` makes for its two authorities. `release` is left empty for
     # the same reason: there is no one release this check was put *against*.
-    if not verify_datasets or currency is None:
+    # `None` **is** the not-requested case and is not tested beside a flag: `_run_enrichment` sets
+    # one from the other, so taking both would let this function disagree with itself — a
+    # `verify_datasets=True, currency=None` call would record `not_requested` about a check that was.
+    if currency is None:
         records.append(skipped("dataset_currency", "not_requested"))
     elif currency.not_checked is not None:
         records.append(

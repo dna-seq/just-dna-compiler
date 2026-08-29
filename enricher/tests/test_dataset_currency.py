@@ -346,6 +346,25 @@ def test_both_legs_of_the_probe_arrive_as_this_tiers_own_type(monkeypatch, handl
     assert caught.value.__cause__ is not None
 
 
+def test_the_two_probe_failures_are_recorded_as_different_reasons() -> None:
+    """Never reached and answered-unusably are opposite histories, and the subclass says which.
+
+    The conflation `clingen` and `gene_validity` were both repaired for, one tier over: one type
+    covering "the source could not be fetched" and "what came back cannot be used" leaves a reader
+    unable to tell whether re-running would help. One `except` arm here, with the reason read off the
+    type, so there is no handler ordering to get wrong either.
+    """
+
+    def unusable() -> str | None:
+        raise ReleaseProbeError("the release endpoint answered with something unreadable")
+
+    unreachable = check_dataset_currency([_row()], probes={"clinvar": _refuses})
+    answered = check_dataset_currency([_row()], probes={"clinvar": unusable})
+    assert unreachable.not_checked == "unreachable"
+    assert answered.not_checked == "no_reference"
+    assert unreachable.unchecked[0].behind is answered.unchecked[0].behind is None
+
+
 def test_the_unavailability_type_is_a_subclass_so_an_existing_handler_keeps_firing() -> None:
     """P3: `except ReleaseProbeError` must keep catching what it caught."""
     assert issubclass(ReleaseUnavailable, ReleaseProbeError)

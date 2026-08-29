@@ -361,12 +361,19 @@ def _ask(probes: Mapping[str, ReleaseProbe], source: str) -> tuple[str | None, s
         return None, "unsupported"
     try:
         return probe(), None
-    except ReleaseUnavailable as exc:
-        logger.warning(
-            "Could not ask %s which release it publishes (%s); its recorded dataset is unchecked "
-            "rather than current.", source, exc,
+    except ReleaseProbeError as exc:
+        # **The parent, with the reason read off the type.** One `except` arm, so there is no handler
+        # ordering to get wrong, and the subclass does the work it exists for: `ReleaseUnavailable`
+        # means the source was never reached, while a bare `ReleaseProbeError` means it answered and
+        # what it said could not be used — opposite histories, and folding them into one reason is the
+        # conflation `clingen`/`gene_validity` had to be repaired for. Catching only the subclass would
+        # instead let a future probe's parent-typed failure abort the whole run.
+        reason = "unreachable" if isinstance(exc, ReleaseUnavailable) else "no_reference"
+        logger.info(
+            "Could not settle which release %s publishes (%s); its recorded dataset is unchecked "
+            "(%s) rather than current.", source, exc, reason,
         )
-        return None, "unreachable"
+        return None, reason
 
 
 def unchecked_sentences(check: CurrencyCheck) -> list[str]:
