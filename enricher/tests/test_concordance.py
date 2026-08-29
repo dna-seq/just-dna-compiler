@@ -153,7 +153,7 @@ def test_the_five_authority_split_reads_as_a_relation_to_the_set_and_resolves_no
     parents, _calls = concordance_tables(
         [ConcordanceSubject("rs1", "A/G", "pathogenic", tuple(calls))]
     )
-    assert not {"majority", "consensus", "resolved", "winner"} & set(parents[0].model_fields)
+    assert not {"majority", "consensus", "resolved", "winner"} & set(ClinSigConcordanceRow.model_fields)
 
 
 # ── the tri-state, and what an unreachable authority may and may not do ──────────────────────────

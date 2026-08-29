@@ -213,7 +213,8 @@ class ClinSigConcordanceRow(BaseModel):
     @field_validator("checked_at", mode="before")
     @classmethod
     def _check_checked_at(cls, v: object) -> str | None:
-        return normalize_utc_timestamp(v, "checked_at")
+        """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
+        return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
 
 
 class ClinSigAuthorityCallRow(BaseModel):
@@ -336,7 +337,8 @@ class ClinSigAuthorityCallRow(BaseModel):
     @field_validator("checked_at", mode="before")
     @classmethod
     def _check_checked_at(cls, v: object) -> str | None:
-        return normalize_utc_timestamp(v, "checked_at")
+        """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
+        return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
 
     @field_validator("confidence_unit")
     @classmethod
