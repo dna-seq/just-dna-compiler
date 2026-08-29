@@ -54,6 +54,7 @@ from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_va
 
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import AuthoredModel, vocabulary
+from just_dna_format.concordance import ClinSigConcordanceRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
@@ -82,11 +83,20 @@ class OverlayTarget:
 
 #: The derived tables an overlay may correct, and how each one is keyed.
 #:
-#: **Seven, and the number is the decision** — every merge-not-clobber derived sidecar, decided
-#: 2026-08-28. The proposal that carries RM124 says "the six covered derived tables" and never
-#: enumerates them; the roadmap entry it inherits the number from does not either. It is a miscount,
-#: pinned here rather than left to be re-counted, and `test_overrides.py` asserts an **equality**
-#: against the compiler's own table tuples.
+#: **Eight, and the number is a decision rather than a count** — the seven merge-not-clobber derived
+#: sidecars settled on 2026-08-28, plus the concordance record RM130 added the same day. The proposal
+#: that carries RM124 says "the six covered derived tables" and never enumerates them; the roadmap
+#: entry it inherits the number from does not either. That miscount is pinned here rather than left to
+#: be re-counted, and the compiler's own test asserts an **equality** against its table tuples, so a
+#: new sidecar landing without a decision here fails rather than shipping as a table nobody can
+#: correct.
+#:
+#: `clin_sig_concordance.csv` is in for a *different* reason from the seven, and the difference is
+#: worth keeping. It is not merge-not-clobber and never carried hand-curation to lose; it is here
+#: because **an overlay row is the answer to the question it asks.** An author who has read a
+#: contested subject and decided records that decision as an overlay row against it, carrying the
+#: `reason` this table makes mandatory — which is what turns a finding into a record, and what makes
+#: the vindication signal work: when the archive later moves, that row stops changing anything.
 #:
 #: `sources.csv` / `licensing.csv` is deliberately outside. It has its own merge path
 #: (`just_dna_enricher.licensing.merge_sources_file`) and it is not a table where overriding is the
@@ -107,6 +117,14 @@ class OverlayTarget:
 #:   five-column grain into `subject` would be the per-table key grammar this design exists to avoid.
 #: * `clinical_assertions.csv` — `variation_id`. One variant carries a row per ClinVar record.
 #: * `literature.csv` / `gwas_effects.csv` — none. `pmid` and `association_id` each identify one row.
+#: * `clin_sig_concordance.csv` — `genotype`. The record is per `(variant_key, genotype)` because the
+#:   comparison is of an authored call for a genotype, so one variant carries a row per genotype the
+#:   module annotates and the subject alone does not reach one of them.
+#:
+#: **`clin_sig_authority_calls.csv` is deliberately outside, and it is the pair's second decision.**
+#: The author answers the question; they do not get to rewrite what an archive published. An overlay
+#: over the detail table would let a module ship ClinVar's name above a classification ClinVar never
+#: made, and the parent's overlay records the disagreement without needing that.
 OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
     "resolution.csv": OverlayTarget(ResolutionRow, "variant_key", "locus_index"),
     "frequencies.csv": OverlayTarget(FrequencyRow, "variant_key", "population"),
@@ -115,6 +133,7 @@ OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
     "clinical_assertions.csv": OverlayTarget(ClinicalAssertionRow, "variant_key", "variation_id"),
     "literature.csv": OverlayTarget(LiteratureRow, "pmid", None),
     "gwas_effects.csv": OverlayTarget(GwasEffectRow, "association_id", None),
+    "clin_sig_concordance.csv": OverlayTarget(ClinSigConcordanceRow, "variant_key", "genotype"),
 }
 
 #: The tables an overlay may name — a closed vocabulary (Principle 6), read off the registry so the
