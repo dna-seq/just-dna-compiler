@@ -10,13 +10,6 @@ import csv
 from pathlib import Path
 
 import pytest
-from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
-from just_dna_format.vocab import (
-    VALID_AUTHORED_POSITION,
-    VALID_AUTHORITY_CALL_STATUS,
-    VALID_AUTHORITY_CONCORDANCE,
-)
-
 from just_dna_enricher.concordance import (
     AUTHORITY_CALLS_CSV,
     CLIN_SIG_CAMP,
@@ -27,6 +20,12 @@ from just_dna_enricher.concordance import (
     classify_concordance,
     concordance_tables,
     write_concordance_tables,
+)
+from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.vocab import (
+    VALID_AUTHORED_POSITION,
+    VALID_AUTHORITY_CALL_STATUS,
+    VALID_AUTHORITY_CONCORDANCE,
 )
 
 
@@ -53,23 +52,15 @@ def _unreachable(authority: str) -> AuthorityCall:
 # ── arity: the property the split exists to hold ────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("n_authorities", [1, 2, 3, 5])
-def test_the_vocabularies_do_not_grow_a_member_as_authorities_are_added(n_authorities: int) -> None:
-    """The stress test that reshaped this record, run rather than argued.
+def _reachable(n_authorities: int) -> tuple[set[str], set[str]]:
+    """Every `(authority_concordance, authored_position)` the classifier can produce at N authorities.
 
-    The drafted vocabulary named the authority *inside* the member (`clinvar_only`, `pubmind_only`),
-    so a third source needed a third member and five needed every subset — one field carrying two
-    axes, and the combinatorial growth was the symptom. Split, the member sets are fixed, and what
-    a walk over every reachable topology at N authorities must produce is a **subset of a set that
-    does not depend on N**.
-
-    An equality would be the wrong assertion here and a floor would be no assertion at all: the
-    reachable set at N=1 is genuinely smaller (no authority can disagree with another when there is
-    only one), so the claim is *containment in an unchanged vocabulary*, plus the separate equality
-    below that the whole vocabulary is reachable once N is large enough.
+    A full walk rather than a sample: each authority takes one of five shapes — two opinionated
+    calls, an undecided one, asked-and-absent, and never-asked — against four authored positions, so
+    at five authorities this is 5**5 * 4 classifications and still instant.
     """
     authorities = [f"a{i}" for i in range(n_authorities)]
-    shapes = ["pathogenic", "benign", "uncertain_significance", None, "unreachable"]
+    shapes = ("pathogenic", "benign", "uncertain_significance", None, "unreachable")
     seen_concordance: set[str] = set()
     seen_position: set[str] = set()
 
@@ -90,42 +81,39 @@ def test_the_vocabularies_do_not_grow_a_member_as_authorities_are_added(n_author
             walk(index + 1, [*calls, call])
 
     walk(0, [])
+    return seen_concordance, seen_position
+
+
+def test_the_member_set_is_unchanged_between_three_authorities_and_five() -> None:
+    """The property the two-axis split exists to hold, asserted as an **equality across arities**.
+
+    This is the test the stress test asked for and a coverage case at two authorities cannot be. The
+    drafted vocabulary named the authority inside the member (`clinvar_only`, `pubmind_only`), so a
+    third source needed a third member and five needed every subset — one field carrying two axes,
+    and the combinatorial growth was the symptom. Split, what the classifier can say at three
+    authorities is exactly what it can say at five, and both are exactly the published vocabularies.
+
+    An equality rather than a containment, because containment is a floor: a sixth member added to
+    the frozenset *and* produced at five authorities would satisfy `<=` and satisfy nothing this test
+    is about.
+    """
+    at_three = _reachable(3)
+    at_five = _reachable(5)
+    assert at_three == at_five
+    assert at_three == (VALID_AUTHORITY_CONCORDANCE, VALID_AUTHORED_POSITION)
+
+
+@pytest.mark.parametrize("n_authorities", [1, 2, 3, 5])
+def test_no_arity_produces_a_member_outside_the_published_vocabulary(n_authorities: int) -> None:
+    """The other direction, at every arity including the degenerate ones.
+
+    One authority reaches genuinely fewer members — nothing can be `discordant` when there is only
+    one opinion — so the claim here is containment, and the equality above is what makes containment
+    mean something rather than being a floor on its own.
+    """
+    seen_concordance, seen_position = _reachable(n_authorities)
     assert seen_concordance <= VALID_AUTHORITY_CONCORDANCE
     assert seen_position <= VALID_AUTHORED_POSITION
-
-
-def test_every_member_of_both_vocabularies_is_reachable_by_the_classifier() -> None:
-    """An equality over a walked set, never a floor (`@registry-completeness`).
-
-    A member no topology can produce is a member no producer can ever write, which is the gap the
-    significance map's own assertion exists to catch one module over. Walked at three authorities,
-    which is the smallest N at which every member is reachable — `discordant` needs two speakers and
-    `matches_some` needs one of each beside a third.
-    """
-    authorities = ["a0", "a1", "a2"]
-    shapes = ["pathogenic", "benign", "uncertain_significance", None, "unreachable"]
-    seen_concordance: set[str] = set()
-    seen_position: set[str] = set()
-
-    def walk(index: int, calls: list[AuthorityCall]) -> None:
-        if index == len(authorities):
-            for authored in ("pathogenic", "benign", None):
-                verdict = classify_concordance(authored, calls)
-                seen_concordance.add(verdict.authority_concordance)
-                seen_position.add(verdict.authored_position)
-            return
-        for shape in shapes:
-            if shape is None:
-                call = _silent(authorities[index])
-            elif shape == "unreachable":
-                call = _unreachable(authorities[index])
-            else:
-                call = _spoke(authorities[index], shape)
-            walk(index + 1, [*calls, call])
-
-    walk(0, [])
-    assert seen_concordance == VALID_AUTHORITY_CONCORDANCE
-    assert seen_position == VALID_AUTHORED_POSITION
 
 
 def test_the_five_authority_split_reads_as_a_relation_to_the_set_and_resolves_nothing() -> None:

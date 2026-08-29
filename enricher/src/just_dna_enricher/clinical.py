@@ -478,6 +478,8 @@ def clin_sig_concordance(
     resolution_rows: list[ResolutionRow],
     *,
     reference: Path | None,
+    sources: Sequence[SourceRow] | None = None,
+    spec_dir: Path | None = None,
     checked_at: str | None = None,
 ) -> tuple[list[ClinSigConcordanceRow], list[ClinSigAuthorityCallRow]] | None:
     """The concordance record for a module, or `None` when the comparison could not be made at all.
@@ -485,15 +487,32 @@ def clin_sig_concordance(
     The record RM130 exists for: the contested subjects, named, in a form something can join to —
     against the counts the check has always published and the log lines nothing kept.
 
-    `None` rather than two empty tables when there is no snapshot or an unusable one, and the
-    distinction is the whole tri-state. Two empty tables are a claim (*nothing here is contested*);
-    `None` says the question was never put, and the caller must not write a file that says the
-    former when the latter happened.
+    `None` rather than two empty tables when the question could not be put, and the distinction is
+    the whole tri-state. Two empty tables are a claim — *nothing here is contested* — and a caller
+    that wrote them after a comparison that never happened would be publishing that claim on no
+    evidence. There are two ways to reach `None`, and neither is "nothing disagreed":
+
+    * **no snapshot, or one that is present and not queryable**, which `compare_clin_sig` already
+      answers with `None` rather than a comparison of zeros; and
+    * **the tautology**, when `sources` (and `spec_dir`) say the module's `clin_sig` column was
+      copied out of the very snapshot it would be compared against and has not moved since. That
+      check is the caller's in `enrich()` and it is repeated here on purpose: this function has its
+      own callers, an empty record is exactly as misleading as a `findings: 0` was, and the guard
+      being one call to `tautology_reason` rather than a second copy of the rule is what keeps the
+      two from drifting. Omitting `sources` is not treated as a pass — with nothing to read, nothing
+      is established and the comparison runs.
 
     **One authority today, and the shape does not change when there are five.** The subject rows
     carry the agreement state and the call rows carry each authority's own words, so a second archive
     adds rows to the detail table and changes no key and no column.
     """
+    if sources is not None and tautology_reason(sources, reference, spec_dir) is not None:
+        logger.info(
+            "The concordance record was not written: this module's clin_sig column was drafted from "
+            "the snapshot it would be compared against and has not moved since, so an empty record "
+            "would report a comparison nobody made."
+        )
+        return None
     comparison = compare_clin_sig(variants, resolution_rows, reference=reference)
     if comparison is None:
         return None

@@ -1763,6 +1763,14 @@ moved here from `clinical.py` for the neighbouring reason: the record and the tw
 the opposed-versus-differing line in the same place, and two maps for one distinction is how a drift
 in our own code comes to read as a disagreement between two archives.
 
+**The tautology skip reaches the record too**, and it is repeated here rather than left to the
+caller. Where a module's `clin_sig` column was drafted out of the snapshot it would be compared
+against and has not moved since, the comparison is a value against itself and is guaranteed to find
+nothing — so writing two empty tables would publish *nothing here is contested* on no evidence, which
+is the `findings: 0` defect wearing a new file. `clin_sig_concordance` takes `sources`/`spec_dir` and
+calls `tautology_reason`, the same function `enrich()` calls, rather than restating the rule.
+Omitting them establishes nothing and the comparison runs: an unknown is never a permission to skip.
+
 **The subject list is built from the comparison that already ran**, never from a second pass over the
 snapshot. A subject that produced a conflict is rendered from that conflict's own record, so the
 verdict and the finding are one fact told twice rather than two computations that can drift — and
