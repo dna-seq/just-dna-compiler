@@ -1105,8 +1105,20 @@ since nothing authored changes.
 
 ## RM85 — the origin of a module predicts the shape of its second pass, and nothing records it
 
+**✅ BUILT — shipped in 0.7** as `currency.check_dataset_currency`, a sixth `enrich()` check attested
+as `dataset_currency`, switched by `--verify-datasets`. Three things this section left open were settled
+in the build. **"The source's current release" is not uniformly askable**: a `dataset` label is minted by
+whichever pass wrote the row, and only ClinVar's has a live counterpart readable in the same namespace,
+so one probe ships in a derived registry and every other source is honestly `unsupported` rather than
+quietly current. **Comparability is a withhold of its own** beside the tri-state named here —
+`clinvar_dataset_label`'s digest form and its stated-date form name one release space in two spellings,
+so a digest against a date is uncomparable, not behind. And **`strict` refuses over the superseded set
+alone**: severity follows the mode as decided, but an unreachable source and an `--offline` run both
+leave every leg unchecked, and escalating those would make `--offline --strict` impossible forever over
+something no author can edit.
+
 **Severity** low-medium · **Owner** enricher · **Entry**
-[ROADMAP_0_7.md § RM85](../ROADMAP_0_7.md#rm85--the-origin-of-a-module-predicts-the-shape-of-its-second-pass-and-nothing-records-it)
+[ROADMAP_HISTORY.md § RM85](../ROADMAP_HISTORY.md#rm85--a-recorded-release-compared-against-the-one-its-source-publishes-now)
 
 ### The problem
 

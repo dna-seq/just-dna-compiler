@@ -498,6 +498,23 @@ many you wrote or edited, and how many conflict. (A conflict is a warning in bot
 this is the one check that never fails a run, because a curator is allowed to disagree with a
 low-reviewed submission.) `--no-verify-clinsig` is the manual switch and reports `not_requested`.
 
+**`dataset moved on: clinvar (annotation): drafted from clinvar_2026-06-27, now clinvar_2026-08-25`**
+Your `sources.csv` records which release these rows were drafted from, and that source has published
+since. Nothing is wrong with the module as it stands — the rows still say what the older release said —
+but the second pass this module needs is a **source refresh**: re-draft from the current release, which
+rewrites the recorded label, and read the drafting report for the rows that came back different. Worth
+putting `--rederive` on the same run afterwards, to see whether any *resolved* answer moved too. In
+`--strict` this refuses the run; `--no-verify-datasets` turns the check off.
+
+**`dataset currency not checked: offline`** (also `unreachable`, `unsupported`, `no_reference`)
+Nobody was asked which release they publish, so every recorded release is **unchecked** — which is not
+"up to date". `offline` clears with egress. `unreachable` means the request was made and failed, so
+re-run. `unsupported` means this tool has no way to ask that source at all (only ClinVar can be asked
+today); a re-run changes nothing, and you are back to knowing your own sources. `no_reference` means the
+source answered and named no release this could be compared against — including the case where your
+recorded label is a content digest and the source states a date, which are two spellings of one release
+space and cannot be equated.
+
 **`clin_sig cross-check not run: the ClinVar snapshot is present but not queryable`**
 The cache was found and could not be read — usually a file the current builder would not have written
 sitting in its `data/` directory, which puts two schemas under one query. Nothing was compared, and the

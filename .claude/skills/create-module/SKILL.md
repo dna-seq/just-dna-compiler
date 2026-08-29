@@ -305,6 +305,7 @@ it aside and re-enrich; comparing the two is the check, and no command does it f
 just-dna-enricher enrich spec/                  # → resolution.csv (rsid ↔ coordinate, VRS ids, ref check)
 just-dna-enricher enrich spec/ --offline        # caches only, zero egress
 just-dna-enricher enrich spec/ --rederive       # re-ask every recorded subject; report what moved
+just-dna-enricher enrich spec/ --no-verify-datasets  # skip the recorded-release currency check
 just-dna-enricher enrich spec/ --keep-staging   # leave the staged answers behind, to read them
 just-dna-enricher frequencies spec/             # → frequencies.csv   (gnomAD, paced ~6s/batch)
 just-dna-enricher gene-metrics spec/            # → gene_metrics.csv  (gnomAD constraint)
@@ -323,9 +324,9 @@ submitters and that disagreement is the data, so it is recorded per submitter ra
 into one verdict.
 
 `enrich` runs several links in order (Ensembl cache → ClinVar snapshot → live Ensembl → gnomAD), each
-of which can be turned off (`--no-clinvar`, `--no-gnomad`), and folds in three checks you can also
-disable: `--verify-ref`, `--verify-clinsig`, `--verify-rsids`. Snapshots are provisioned from
-HuggingFace when absent and `--offline` is not set.
+of which can be turned off (`--no-clinvar`, `--no-gnomad`), and folds in four checks you can also
+disable: `--verify-ref`, `--verify-clinsig`, `--verify-rsids`, `--verify-datasets`. Snapshots are
+provisioned from HuggingFace when absent and `--offline` is not set.
 
 **An existing sidecar is authoritative and merged, never clobbered.** To regenerate `frequencies.csv`
 or `gene_metrics.csv` after changing the spec you must **delete the file first**, or stale rows persist
@@ -339,6 +340,18 @@ commits the fresh answer; a value you decided rather than derived belongs in `ov
 re-deriving cannot reach it. Deleting `resolution.csv` and re-running re-derives just as correctly, but
 reports nothing — the old values are gone before the new ones arrive, so there is no comparison left to
 make.
+
+**`enrich` also tells you when the source you drafted from has published since.** `sources.csv`
+records which release each source's rows came from, and the run compares that against the release the
+source publishes right now — one request per source, so it is the cheap question to put *before*
+`--rederive`. A module still on the current release has had no upstream revision to detect; a module
+whose release has moved is exactly the one worth re-deriving, and then re-drafting from the newer
+release. Three answers, and the third is the one to read carefully: still current, superseded (both
+labels are named), or **unchecked**, because the source could not be asked. `--offline` always reports
+unchecked, never up to date — silence here would read as a clean bill for a source nobody reached.
+`--strict` refuses over a superseded release and never over an unchecked one, since no edit of yours
+clears a failed request. Only ClinVar can be asked today; every other source reports unchecked with
+`unsupported` beside it, which is an honest "this tool cannot ask", not "you are up to date".
 
 **An enrichment run is a transaction, so a run you kill costs you nothing.** Answers are staged to disk
 beside `resolution.csv` as the sources reply, and the table is written once at the end; kill the run at
@@ -712,7 +725,7 @@ workaround.
 
 | Command | Does |
 |---|---|
-| `enrich <dir>` | → `resolution.csv`. `--strict`, `--offline`, `--no-clinvar`, `--no-gnomad`, `--no-vrs`, `--no-verify-ref/-clinsig/-rsids`, `--keep-par-twin`, `--ensembl-cache`, `--clinvar-cache` |
+| `enrich <dir>` | → `resolution.csv`. `--strict`, `--offline`, `--no-clinvar`, `--no-gnomad`, `--no-vrs`, `--no-verify-ref/-clinsig/-rsids/-datasets`, `--keep-par-twin`, `--rederive`, `--keep-staging`, `--ensembl-cache`, `--clinvar-cache` |
 | `frequencies <dir>` | → `frequencies.csv` from gnomAD. `--populations`, `--dataset`. Online only |
 | `gene-metrics <dir>` | → `gene_metrics.csv` constraint. Snapshot first, live API (v2.1.1) as fallback |
 | `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |

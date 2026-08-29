@@ -43,6 +43,47 @@ uncut minor and deliberately names no number — there is a version to write dow
 `pyproject.toml` files still read `0.6.6` until the release is cut, and the 2026-08-24 work ships
 inside this same number. Each entry below names the packages it actually touched.
 
+- **RM85 — a recorded release, compared against the one its source publishes now.**
+  *(`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member in `just-dna-format`.)*
+  `SourceRow.dataset` has recorded which release a module's rows came from since RM4, and two things
+  read it — the tautology skip, and `withdraw_stale_dataset` when a module ends up mixing two. Neither
+  answered *"ClinVar has published since you drafted this"*, which is the actual trigger for a
+  source-refresh pass, so an author who had forgotten and a curator who inherited the module were both
+  on their own. `currency.check_dataset_currency` is that comparison, run at the end of `enrich()`,
+  attested as `dataset_currency`, switched by `--verify-datasets/--no-verify-datasets`.
+
+  **A comparison, not a column.** The column-shaped repair — a field saying what this module was made
+  from and what would age it — was refused one table over in RM71 for restating `dataset` and then
+  rotting where `dataset` is maintained. This reads `sources.csv` and writes nothing at all; repairing
+  a stale label is a re-draft, which is an author's decision and a different command.
+
+  **Three states, and the third is the item.** `behind` is `True` (the source has published since, with
+  both labels named), `False` (still current) or `None` — nobody could ask. `--offline` is where that
+  bites: an offline run makes no request, so every recorded release is `unchecked`, never *up to date*.
+  `subjects` counts the legs asked **and** answered comparably, an unaskable source is named in the
+  record's `detail` rather than counted, and with no leg settled the pass records a skip rather than
+  `ran(0, 0)`. Comparability is a withhold of its own: `clinvar_dataset_label`'s digest form and its
+  stated-date form name one release space in two spellings, so a digest against a date is
+  *uncomparable*, not behind.
+
+  **Severity follows the mode, over the superseded set alone.** `strict` refuses on a release the
+  source has moved past and never on an unchecked one — escalating an unreachable source would make
+  `--offline --strict` impossible forever over something no author can edit, which is the
+  `unreachable_rsids` rule.
+
+  **One probe ships: ClinVar.** It is the only source this tier can ask for a release label in the
+  namespace it already records — the live VCF's `##fileDate=`, read through the same function
+  `clinvar_build` uses on a downloaded file, because two spellings of one label would not fail, they
+  would simply never match. The stream is abandoned after 256 kB rather than sending a `Range` header a
+  server may ignore. Every other source reports `unsupported`, and `PROBE_SOURCES` is derived from the
+  registry rather than restated beside it.
+
+  It is **`--rederive`'s cheap neighbour** — the same *has the world moved* question asked about the
+  release label instead of the rows, at one request per source — so ENRICHER § `rederive` now says to
+  put it first. And it cannot agree with itself: the rows compared are the ones on disk before this
+  run's commit, and the licence rows `enrich()` writes are at the `resolution` layer with no `dataset`
+  at all.
+
 - **RM131 — the warnings channel says what each finding is, and whether an author can clear it.**
   *(`just-dna-format` + `just-dna-compiler`, plus the deprecated resolver in `just-dna-enricher`; a
   structure change to a surface that already ships.)* `ValidationResult`, `ClosureResult` and
