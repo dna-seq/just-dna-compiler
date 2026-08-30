@@ -53,7 +53,12 @@ from just_dna_enricher.literature import (
     _identifiers,
     bibliographic,
 )
-from just_dna_enricher.locations import resolve_clinvar_reference, resolve_ensembl_reference
+from just_dna_enricher.locations import (
+    resolve_clinvar_reference,
+    resolve_ensembl_reference,
+    resolve_pubmind_reference,
+)
+from just_dna_enricher.pubmind_draft import PubMindDraftError, select_by_positions
 from just_dna_enricher.resolver import lookup_loci
 
 logger = logging.getLogger(__name__)
@@ -119,6 +124,10 @@ class VariantHint:
     rsid_candidates: list[str] = field(default_factory=list)
     populations: list[dict] = field(default_factory=list)
     clin_sig: list[dict] = field(default_factory=list)
+    #: PubMind's records at each resolved allele — every PVID, never one winner. Empty means
+    #: either that the corpus holds nothing there or that no snapshot was consulted, and the two
+    #: are told apart by the findings rather than by this list.
+    pubmind: list[dict] = field(default_factory=list)
     vrs_id: str | None = None
     findings: list[Finding] = field(default_factory=list)
     alterations: list[Alteration] = field(default_factory=list)
@@ -194,6 +203,7 @@ def lookup_variant(
     offline: bool = False,
     ensembl_cache: Path | None = None,
     clinvar_cache: Path | None = None,
+    pubmind_cache: Path | None = None,
     clients: LookupClients | None = None,
 ) -> VariantHint:
     """Answer "what is this variant?" — validity, coordinates, alleles, frequencies, clinical calls.
@@ -226,6 +236,7 @@ def lookup_variant(
         )
 
     _lookup_clin_sig(hint, clinvar_cache)
+    _lookup_pubmind(hint, pubmind_cache, (chrom, start, ref, alts))
     if hint.ambiguous and ambiguity:
         hint.findings.append(
             Finding(
@@ -466,6 +477,116 @@ def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Path | None) -> None:
                     "to differ — the format never arbitrates a clinical dispute",
                 )
             )
+
+
+def _lookup_pubmind(
+    hint: VariantHint,
+    pubmind_cache: Path | None,
+    authored: tuple[str | None, int | None, str | None, str | None],
+) -> None:
+    """What PubMind's corpus says at each resolved allele — reported, never written (RM134 § D).
+
+    **It may not fill `clin_sig`, and the reason is sharper here than for ClinVar.** That cell is
+    cross-examined by the concordance check, and a hint that filled it from one of the authorities
+    being compared would make the check agree with the source it is checking (`@hint-redundancy-bearing`).
+    So every call comes back as an `Alteration` with `applied=False` and the redundancy-bearing
+    refusal, exactly as ClinVar's does — the same defect `@draft-digest` handles one layer down, and
+    here there is no digest to rescue it.
+
+    **Three states, not two.** No snapshot is *nobody asked* — the snapshot is operator-built and
+    there is deliberately nothing to download — and it says so rather than answering silently, because
+    an empty answer would otherwise read as "PubMind states nothing here". An absence *in* the corpus
+    is the third state and is also reported: no paper survived their triage, which is not a benign
+    call and not a disagreement.
+
+    A contested coordinate returns every record. Picking one would need an ordering nobody has
+    defined, and a hint that picked would be answering a question the snapshot refuses to.
+    """
+    #: The coordinate the caller typed counts as well as one a lookup resolved, which is a
+    #: difference from the ClinVar leg and follows from the source rather than from taste: `hint.loci`
+    #: is filled by an **rsID** lookup, and PubMind's channel is coordinate-keyed with most of its
+    #: rows carrying no rs-number at all. Asking by coordinate is the case this surface exists for,
+    #: so answering nothing there would make the leg unreachable for most of the corpus.
+    loci = [*hint.loci]
+    chrom, start, ref, alts = authored
+    if chrom and start is not None and ref and alts:
+        authored_locus = {"chrom": chrom, "start": start, "ref": ref, "alts": alts}
+        if authored_locus not in loci:
+            loci.append(authored_locus)
+    alleles = [
+        (str(locus["chrom"]), int(locus["start"]), str(locus["ref"]), alt)
+        for locus in loci
+        if locus.get("ref") and locus.get("alts")
+        for alt in str(locus["alts"]).split(",")
+        if alt
+    ]
+    if not alleles:
+        return
+    reference = resolve_pubmind_reference(pubmind_cache)
+    if reference is None:
+        hint.findings.append(
+            Finding(
+                None, "clin_sig", "info",
+                "PubMind was not consulted: no snapshot found ($JUST_DNA_PUBMIND_CACHE, or "
+                "--pubmind-cache). It is operator-built and there is none to download, so this is "
+                "nobody-asked rather than an absence in their corpus — build one with "
+                "`just-dna-enricher pubmind build`",
+            )
+        )
+        return
+    wanted = {(chrom, start, ref, alt) for chrom, start, ref, alt in alleles}
+    try:
+        found = select_by_positions(reference, [(chrom, start) for chrom, start, _, _ in alleles])
+    except (duckdb.Error, PubMindDraftError) as exc:
+        hint.findings.append(
+            Finding(
+                None, "clin_sig", "info",
+                f"PubMind snapshot unreadable, its verdict unchecked: {_brief(exc)}",
+            )
+        )
+        return
+    hint.pubmind.extend(
+        record
+        for record in found
+        if (
+            str(record["chrom"]), int(record["start"]), str(record["ref"]), str(record["alt"])
+        ) in wanted
+    )
+    if not hint.pubmind:
+        hint.findings.append(
+            Finding(
+                None, "clin_sig", "info",
+                "PubMind's corpus holds no record at this allele — no paper survived their triage "
+                "stage, which is not a benign call and not a disagreement with anybody",
+            )
+        )
+        return
+    for record in hint.pubmind:
+        call = record.get("clin_sig")
+        if not call:
+            continue
+        hint.alterations.append(
+            _advisory(
+                "clin_sig",
+                str(call),
+                "pubmind",
+                f"PubMind {record.get('pvid')}: an LLM's reading of the literature "
+                f"(confidence {record.get('confidence')}, derivation {record.get('derivation')}). "
+                f"Yours is cross-examined against it, so filling it from here would have the check "
+                f"agree with the source it is checking",
+            )
+        )
+    calls = {str(r.get("clin_sig") or "") for r in hint.pubmind}
+    if len(calls) > 1:
+        hint.findings.append(
+            Finding(
+                None, "clin_sig", "warning",
+                f"PubMind's own records disagree here: {', '.join(sorted(calls))} across "
+                f"{len(hint.pubmind)} record(s). Their record id keys on the text a model extracted "
+                f"rather than on the coordinate, so one position can carry several — every one is "
+                f"reported and none is picked",
+            )
+        )
 
 
 def _offer_coordinates(hint: VariantHint) -> None:

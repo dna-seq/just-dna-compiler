@@ -53,7 +53,7 @@ def test_the_map_covers_every_source_that_drafts_and_then_checks_the_same_column
     it reintroduces the silent tautology this exists to end. Asserted as set equality against the
     providers that actually ship, not as a count.
     """
-    assert set(DRAFT_PROJECTIONS) == {"clinvar", "cpic", "clinpgx"}
+    assert set(DRAFT_PROJECTIONS) == {"clinvar", "cpic", "clinpgx", "pubmind"}
     for source, projection in DRAFT_PROJECTIONS.items():
         assert projection.table.endswith(".csv"), source
         assert projection.identity and projection.checked, source

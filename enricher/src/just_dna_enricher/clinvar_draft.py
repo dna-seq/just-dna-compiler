@@ -338,8 +338,13 @@ def _refusal_summary(invalid: Sequence) -> list[str]:
     return lines
 
 
-def _genotype_worklist(records: Sequence[dict]) -> list[str]:
+def _genotype_worklist(records: Sequence[dict], *, source: str = "ClinVar") -> list[str]:
     """The alleles each stubbed row's pending genotype must be written from.
+
+    **`source` names whoever published the alleles**, because the PubMind provider reports the same
+    worklist about a different authority (RM134 § C) and a line reading "ClinVar publishes A>G" about
+    a row ClinVar never spoke of is a false attribution in the one place an author cross-references.
+    Defaulted, so this caller's pinned text is unchanged.
 
     **The provider was asking for a decision and withholding its inputs.** A `genotype` is nucleotides
     drawn from `{ref} ∪ alts`, and a row identified by its rsID carries neither — `_identity_cells`
@@ -387,15 +392,52 @@ def _genotype_worklist(records: Sequence[dict]) -> list[str]:
         chrom = normalize_chrom(str(record.get("chrom") or ""))
         if chrom == "Y":
             lines.append(
-                f"  genotype for {_label(record)}: ClinVar publishes {ref}>{alt} — chrY, so a single "
+                f"  genotype for {_label(record)}: {source} publishes {ref}>{alt} — chrY, so a single "
                 f"allele ('{alt}') outside the pseudoautosomal regions and a pair inside them; this "
                 f"build has no PAR table, so which one is yours to establish"
             )
             continue
         alleles = ", ".join(sorted({ref, alt}))
         lines.append(
-            f"  genotype for {_label(record)}: ClinVar publishes {ref}>{alt} — "
+            f"  genotype for {_label(record)}: {source} publishes {ref}>{alt} — "
             f"an allele pair from {{{alleles}}}"
+        )
+    return lines
+
+
+def _state_stub_warnings(
+    tasks: Sequence[tuple[tuple[str, ...], dict[str, str] | None]],
+    record_by_signature: dict[tuple[str, ...], dict],
+    *,
+    source: str = "ClinVar",
+) -> list[str]:
+    """One line per clinical CALL, not per row — which call carries no direction is the finding.
+
+    The answer is identical for every row carrying a given call, so a per-row line would be the
+    aggregation defect this package has hit five times. Shared with the PubMind provider, which stubs
+    `state` for the same reason against a different authority (RM134 § C): `source` names whoever
+    declined to state a direction, and defaults so this caller's pinned text is unchanged.
+
+    The record wins over the authored row for the *label*, so this list and the genotype worklist name
+    the same row the same way. They diverge otherwise: a row written by coordinate because its rsID
+    names several alleles carries no `rsid` cell, so the file would call it `16:23603601` while the
+    worklist calls it `rs118203998`, and the author could not cross-reference the two.
+    """
+    by_call: dict[str, list[str]] = {}
+    for signature, row in tasks:
+        record = record_by_signature.get(signature) or row or {}
+        by_call.setdefault((record.get("clin_sig") or "").strip() or "no call", []).append(
+            _label(record)
+        )
+    lines: list[str] = []
+    for call, labels in sorted(by_call.items()):
+        shown = ", ".join(labels[:6]) + (f", … and {len(labels) - 6} more" if len(labels) > 6 else "")
+        lines.append(
+            f"{len(labels)} row(s) also carry a `state` placeholder, all with clin_sig={call!r}: "
+            f"{source} states no direction for that call, and VALID_STATES has no member meaning "
+            f"'undecided' — `neutral` would assert the variant is benign, `risk` would assert a "
+            f"direction the submitters did not. So `state` is yours to decide too, per row. "
+            f"Affected: {shown}."
         )
     return lines
 
@@ -778,28 +820,11 @@ def draft_gene_panel(
                 f"draft-panel for the gene each row records, or `hint variant`, will state them."
             )
 
-    # One line per clinical CALL, not per row: which call carries no direction is the thing the author
-    # needs to know, and the answer is identical for every row carrying it.
-    #
-    # The record wins over the authored row for the *label*, so this list and the worklist above name
-    # the same row the same way. They diverge otherwise: a row written by coordinate because its rsID
-    # names several alleles carries no `rsid` cell, so the file would call it `16:23603601` while the
-    # worklist two lines up calls it `rs118203998`, and the author could not cross-reference the two.
-    by_call: dict[str, list[str]] = {}
-    for signature, row in _open_stubs(report, "state", stubbed_by_signature):
-        source = record_by_signature.get(signature) or row or {}
-        by_call.setdefault(
-            (source.get("clin_sig") or "").strip() or "no call", []
-        ).append(_label(source))
-    for call, labels in sorted(by_call.items()):
-        shown = ", ".join(labels[:6]) + (f", … and {len(labels) - 6} more" if len(labels) > 6 else "")
-        warnings.append(
-            f"{len(labels)} row(s) also carry a `state` placeholder, all with clin_sig={call!r}: "
-            f"ClinVar states no direction for that call, and VALID_STATES has no member meaning "
-            f"'undecided' — `neutral` would assert the variant is benign, `risk` would assert a "
-            f"direction the submitters did not. So `state` is yours to decide too, per row. "
-            f"Affected: {shown}."
+    warnings.extend(
+        _state_stub_warnings(
+            _open_stubs(report, "state", stubbed_by_signature), record_by_signature
         )
+    )
 
     # The non-diploid notice stays scoped to what this run WROTE, deliberately: it reports a reading
     # the provider committed to on rows it just filled, not work anybody has left to do. One line, not

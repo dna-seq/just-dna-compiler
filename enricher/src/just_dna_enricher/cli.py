@@ -117,6 +117,11 @@ from just_dna_enricher.pubmind_build import (
     download_pubmind_table,
 )
 from just_dna_enricher.pubmind_build import build_snapshot as build_pubmind_snapshot
+from just_dna_enricher.pubmind_draft import (
+    DEFAULT_MIN_CONFIDENCE,
+    PubMindDraftError,
+    draft_gene_panel_from_pubmind,
+)
 from just_dna_enricher.sequences import summarize_ref_mismatches
 from just_dna_enricher.upload import DEFAULT_CLINPGX_REPO_ID, DEFAULT_CPIC_REPO_ID
 from just_dna_enricher.verification import record_verification, skipped
@@ -1939,6 +1944,10 @@ def hint_variant_(
     offline: bool = typer.Option(False, "--offline", help="Snapshots only; never touch the network."),
     ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache."),
     clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot."),
+    pubmind_cache: Path | None = typer.Option(
+        None, "--pubmind-cache",
+        help="Explicit PubMind snapshot (see `pubmind build`); $JUST_DNA_PUBMIND_CACHE otherwise.",
+    ),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
 ) -> None:
     """Validity, coordinates, alleles, populations and clinical calls for one variant.
@@ -1953,7 +1962,7 @@ def hint_variant_(
     hint = lookup_variant(
         rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alts,
         ambiguity=ambiguity, frequencies=frequencies, offline=offline,
-        ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
+        ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, pubmind_cache=pubmind_cache,
     )
     if as_json:
         typer.echo(json.dumps({
@@ -1963,6 +1972,7 @@ def hint_variant_(
             "rsid_candidates": hint.rsid_candidates,
             "populations": hint.populations,
             "clin_sig": hint.clin_sig,
+            "pubmind": hint.pubmind,
             "vrs_id": hint.vrs_id,
             "ambiguous": hint.ambiguous,
             "advisory": as_report_rows(hint),
@@ -1978,6 +1988,13 @@ def hint_variant_(
         typer.echo(
             f"population\t{population.get('population')}\tAC={population.get('allele_count')}"
             f"\tAN={population.get('allele_number')}\tAF={'' if af is None else f'{af:.6g}'}"
+        )
+    # One line per PubMind record, never a rolled-up verdict: several records can describe one
+    # position and their calls are allowed to differ, which is the finding rather than untidiness.
+    for record in hint.pubmind:
+        typer.echo(
+            f"pubmind\t{record.get('clin_sig')}\t{record.get('pvid')}"
+            f"\tconfidence={record.get('confidence')}\tderivation={record.get('derivation')}"
         )
     _echo_hint(hint)
 
@@ -2143,16 +2160,37 @@ def draft_clinpgx_(
     typer.secho(f"{verb} {result.added} row(s) in {spec_dir}", fg=typer.colors.GREEN)
 
 
+#: Which authority `draft-panel` may draft from. A closed set, and the members reach an author's
+#: `sources.csv` through `SourceRow.source`, so they are named after the source and nothing else.
+PANEL_SOURCES: frozenset[str] = frozenset({"clinvar", "pubmind"})
+
+
 @app.command("draft-panel")
 def draft_panel_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    gene: list[str] = typer.Option(..., "--gene", help="Gene to draft from ClinVar (repeatable)."),
+    gene: list[str] = typer.Option(..., "--gene", help="Gene to draft rows for (repeatable)."),
+    source: str = typer.Option(
+        "clinvar", "--source",
+        help=(
+            "Which authority to draft the calls from: clinvar (the default), or pubmind — an LLM's "
+            "reading of the literature, which needs an operator-built snapshot and still reads the "
+            "ClinVar one for its gene attribution."
+        ),
+    ),
     snapshot: Path | None = typer.Option(
         None, "--snapshot", exists=True, file_okay=False,
         help=(
             "Built ClinVar snapshot (see `clinvar build`). Omit it and the cache is used, or the "
             "published snapshot downloaded — the citations table comes with it, which is what a panel "
-            "needs to compile."
+            "needs to compile. Read for its gene attribution under --source pubmind, which publishes "
+            "no gene column of its own."
+        ),
+    ),
+    pubmind_cache: Path | None = typer.Option(
+        None, "--pubmind-cache", exists=True, file_okay=False,
+        help=(
+            "Built PubMind snapshot (see `pubmind build`), for --source pubmind. Omit it and "
+            "$JUST_DNA_PUBMIND_CACHE is read; there is no published one to download."
         ),
     ),
     offline: bool = typer.Option(
@@ -2170,16 +2208,22 @@ def draft_panel_(
     ),
     min_review_stars: int = typer.Option(
         2, "--min-review-stars", min=0, max=4,
-        help="Review-status floor. 2 = multiple submitters, no conflicts.",
+        help="Review-status floor, --source clinvar only. 2 = multiple submitters, no conflicts.",
     ),
     max_citations: int = typer.Option(
         3, "--max-citations", min=0,
-        help="Study rows to draft per variant from ClinVar's literature links. 0 disables.",
+        help="Study rows to draft per variant from ClinVar's literature links. 0 disables. "
+             "--source clinvar only: PubMind's channel carries no PMID.",
+    ),
+    min_confidence: int = typer.Option(
+        DEFAULT_MIN_CONFIDENCE, "--min-confidence", min=0, max=3,
+        help="Evidence-depth floor, --source pubmind only. PubMind's confidence counts how much of "
+             "the literature spoke, 0-3; 1 means more than a single mention.",
     ),
     use: str = typer.Option("unstated", "--use", help="Declared use (ClinVar is public domain)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
 ) -> None:
-    """Draft a gene panel's variants.csv rows from ClinVar — appends, never overwrites a row.
+    """Draft a gene panel's variants.csv rows from an authority — appends, never overwrites a row.
 
     The drafted rows carry a **genotype placeholder**, so the module will not compile until you decide
     what each finding is about. That is deliberate: ClinVar publishes alleles, and whether carrying one
@@ -2187,20 +2231,49 @@ def draft_panel_(
     source does not say. Rows land in their gene's block, and a re-run leaves anything already there —
     stub or filled — exactly as it is.
     """
+    if source not in PANEL_SOURCES:
+        typer.secho(
+            f"--source {source!r} is not an authority this command drafts from. "
+            f"Known: {', '.join(sorted(PANEL_SOURCES))}.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1)
     calls = (
         frozenset(c.strip() for c in clin_sig.split(",") if c.strip()) if clin_sig else None
     )
+    # A dial belonging to the other authority, set to something other than its default, is named
+    # rather than silently ignored: a run that honoured neither the flag nor the author's expectation
+    # is the failure this reports before it happens.
+    for dial, value, default, belongs in (
+        ("--min-review-stars", min_review_stars, 2, "clinvar"),
+        ("--max-citations", max_citations, 3, "clinvar"),
+        ("--min-confidence", min_confidence, DEFAULT_MIN_CONFIDENCE, "pubmind"),
+    ):
+        if value != default and source != belongs:
+            typer.secho(
+                f"  warning: {dial} is a --source {belongs} dial and does nothing under "
+                f"--source {source}",
+                fg=typer.colors.YELLOW, err=True,
+            )
     try:
-        result = draft_gene_panel(
-            spec_dir, gene, snapshot=snapshot, offline=offline, download=download,
-            **({"clin_sig": calls} if calls else {}),
-            min_review_stars=min_review_stars, max_citations=max_citations,
-            declared_use=_use(use), dry_run=dry_run,
-        )
-    except (ClinVarDraftError, *_DRAFT_PRECONDITION_ERRORS) as exc:
+        if source == "pubmind":
+            result = draft_gene_panel_from_pubmind(
+                spec_dir, gene, snapshot=snapshot, pubmind_snapshot=pubmind_cache,
+                offline=offline, download=download,
+                **({"clin_sig": calls} if calls else {}),
+                min_confidence=min_confidence, declared_use=_use(use), dry_run=dry_run,
+            )
+        else:
+            result = draft_gene_panel(
+                spec_dir, gene, snapshot=snapshot, offline=offline, download=download,
+                **({"clin_sig": calls} if calls else {}),
+                min_review_stars=min_review_stars, max_citations=max_citations,
+                declared_use=_use(use), dry_run=dry_run,
+            )
+    except (ClinVarDraftError, PubMindDraftError, *_DRAFT_PRECONDITION_ERRORS) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    if result.skipped:
+    if getattr(result, "skipped", False):
         for warning in result.warnings:
             typer.secho(f"  skipped: {warning}", fg=typer.colors.YELLOW, err=True)
         return

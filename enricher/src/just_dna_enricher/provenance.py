@@ -106,6 +106,18 @@ DRAFT_PROJECTIONS: dict[str, DraftProjection] = {
         ),
         checked=("evidence_level",),
     ),
+    # **The one identity here that is not the drafter's `match_on`, and the difference is the point.**
+    # `pubmind_draft` matches a row on all five identity columns, so a coordinate PubMind and ClinVar
+    # both speak about is one row rather than two — but `rsid` is never a cell this provider *writes*:
+    # the snapshot has no rsID column, and most of the source's rows carry no rs-number at all. So the
+    # projection is the coordinate it actually establishes. Including `rsid` would make the digest
+    # move the moment an author added an rs-number to a row nobody had touched otherwise, which is a
+    # change to the row's spelling and not to the call the cross-check reads.
+    "pubmind": DraftProjection(
+        table="variants.csv",
+        identity=("chrom", "start", "ref", "alts"),
+        checked=("clin_sig",),
+    ),
 }
 
 
