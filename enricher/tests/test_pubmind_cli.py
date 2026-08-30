@@ -131,3 +131,28 @@ def test_there_is_no_ensure_pubmind_snapshot_to_pair_with_the_resolver() -> None
     from just_dna_enricher import download
 
     assert not [name for name in vars(download) if "pubmind" in name.lower()]
+
+
+def test_enrich_takes_the_pubmind_cache_the_check_needs(tmp_path: Path, monkeypatch) -> None:
+    """The concordance check shipped with no way to reach it from the command line.
+
+    RM134 § B built the second authority's leg but could not add the flag, because `cli.py` belonged
+    to the sibling lane that release; its report said one was owed. Without it the only routes were
+    `enrich(pubmind_cache=...)` in Python or the environment variable, so the flag the check exists
+    for was unreachable from the surface every author actually uses.
+
+    Asserted through the real CLI signature rather than the help text, because a help string can say
+    `--pubmind-cache` while the value never reaches `enrich()` — which is the failure this pins.
+    """
+    import inspect
+
+    from just_dna_enricher.cli import enrich_
+
+    assert "pubmind_cache" in inspect.signature(enrich_).parameters
+
+    source = inspect.getsource(enrich_)
+    assert "pubmind_cache=pubmind_cache" in source, "the flag is declared but never passed through"
+
+    result = _runner.invoke(app, ["enrich", "--help"])
+    assert result.exit_code == 0
+    assert "--pubmind-cache" in result.output

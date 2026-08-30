@@ -1929,7 +1929,10 @@ The snapshot is located by `locations.resolve_pubmind_reference` — explicit pa
 `$JUST_DNA_PUBMIND_CACHE` → the default cache directory — and there is **no `ensure_pubmind_snapshot`
 to pair with it**: the snapshot is operator-built, `pubmind publish` refuses, and a missing one is
 `unchecked` rather than a download a run should attempt. `enrich(pubmind_cache=…)` overrides the
-lookup.
+lookup, and `just-dna-enricher enrich --pubmind-cache <dir>` is the same override from the
+command line. The flag was owed for a release: § B built the check while `cli.py` belonged to
+the sibling lane, so the second authority shipped reachable only from Python or the
+environment variable.
 
 ## PubMind snapshot (`pubmind_build.py`, `[dev]`) — RM134 § A
 

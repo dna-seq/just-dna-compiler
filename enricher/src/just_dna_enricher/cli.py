@@ -182,6 +182,15 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     offline: bool = typer.Option(False, "--offline", help="Cache-only: never touch the network."),
     ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."),
     clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
+    pubmind_cache: Path | None = typer.Option(
+        None,
+        "--pubmind-cache",
+        help=(
+            "Built PubMind snapshot dir (from `pubmind build`) — the second authority in the "
+            "clinical-significance concordance check. Omit it and $JUST_DNA_PUBMIND_CACHE is read; "
+            "with neither, PubMind's leg reads unchecked rather than agreement."
+        ),
+    ),
     use_clinvar: bool = typer.Option(True, "--clinvar/--no-clinvar", help="Use the ClinVar link (after the Ensembl cache)."),
     use_gnomad: bool = typer.Option(True, "--gnomad/--no-gnomad", help="Use the gnomAD link (last, after live Ensembl)."),
     mint_vrs: bool = typer.Option(True, "--vrs/--no-vrs", help="Mint GA4GH VRS allele ids onto resolved rows."),
@@ -226,7 +235,8 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     try:
         result = enrich(
             spec_dir, mode=_mode(strict), offline=offline,
-            ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, use_clinvar=use_clinvar,
+            ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
+            pubmind_cache=pubmind_cache, use_clinvar=use_clinvar,
             use_gnomad=use_gnomad, mint_vrs=mint_vrs, verify_ref=verify_ref,
             verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
             verify_datasets=verify_datasets, keep_par_twin=keep_par_twin,
