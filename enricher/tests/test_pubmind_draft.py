@@ -167,6 +167,58 @@ def test_a_gene_clinvar_does_not_record_refuses_with_the_reason_rather_than_draf
     assert any("no gene map to ask" in w for w in result.warnings)
 
 
+def test_a_position_two_requested_genes_claim_leaves_the_cell_empty_and_says_so(
+    tmp_path: Path,
+) -> None:
+    """Both other readings are wrong to write: `BRCA1, BRCA2` is not a symbol any lookup resolves,
+    and choosing one is the gene model this pass goes to ClinVar precisely to avoid inventing. The
+    row is still drafted — the coordinate is its identity."""
+    overlapping = [
+        *_CLINVAR,
+        {
+            "chrom": "17", "start": 43093220, "ref": "C", "alt": "T", "rsid": "rs80357382",
+            "gene": "BRCA2", "clin_sig": "pathogenic", "review_status": "criteria_provided",
+            "review_stars": 2, "condition": "Breast-ovarian cancer", "variation_id": "17664",
+        },
+    ]
+    spec = _spec(tmp_path)
+    result = draft_gene_panel_from_pubmind(
+        spec, ["BRCA1", "BRCA2"],
+        snapshot=_clinvar_snapshot(tmp_path, overlapping),
+        pubmind_snapshot=_pubmind_snapshot(tmp_path, [_pubmind_record()]),
+    )
+    (row,) = _rows(spec / "variants.csv")
+    assert row["gene"] == ""
+    assert row["chrom"] == "17" and row["clin_sig"] == "pathogenic"
+    (line,) = [w for w in result.warnings if "more than one of the genes" in w]
+    assert "17:43093220 C>T" in line and "BRCA1/BRCA2" in line
+
+
+def test_a_position_one_gene_claims_still_carries_that_gene(tmp_path: Path) -> None:
+    """The contrast, so the assertion above is about ambiguity rather than about `gene` never being
+    written at all."""
+    spec = _spec(tmp_path)
+    result = _draft(spec, tmp_path, [_pubmind_record()])
+    (row,) = _rows(spec / "variants.csv")
+    assert row["gene"] == "BRCA1"
+    assert not [w for w in result.warnings if "more than one of the genes" in w]
+
+
+def test_the_missing_clinvar_snapshot_is_this_passs_own_error_and_says_why_it_needs_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pass owes its caller its own exception type, and an author told 'no ClinVar snapshot' by a
+    PubMind command has been handed a puzzle unless the message says what it is wanted for."""
+    monkeypatch.setenv("JUST_DNA_CLINVAR_CACHE", str(tmp_path / "empty"))
+    with pytest.raises(PubMindDraftError) as excinfo:
+        draft_gene_panel_from_pubmind(
+            _spec(tmp_path), ["BRCA1"],
+            pubmind_snapshot=_pubmind_snapshot(tmp_path, [_pubmind_record()]),
+            offline=True,
+        )
+    assert "names no gene" in str(excinfo.value)
+
+
 # ── Reading the snapshot ────────────────────────────────────────────────────────────────────────
 
 

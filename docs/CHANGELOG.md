@@ -608,7 +608,10 @@ inside this same number. Each entry below names the packages it actually touched
     sources speak about is one row rather than two. No `clinvar`, `pathogenic` or `benign` is folded:
     all three are ClinVar flags by their own field descriptions, and a position appearing in ClinVar's
     gene map says nothing about whether *this allele* is in ClinVar. No `studies.csv` row is drafted —
-    the ANNOVAR channel carries no PMID — and the run says so, because that table is mandatory.
+    the ANNOVAR channel carries no PMID — and the run says so, because that table is mandatory. A
+    position two requested genes both claim leaves `gene` **empty**, counted and named: a joined
+    `BRCA1, BRCA2` is not a symbol `check-identifiers` resolves, and picking one is the gene model the
+    pass went to ClinVar to avoid inventing.
   - **New: `pubmind` in `DRAFT_PROJECTIONS`**, projected onto `clin_sig`, so a module drafted from
     PubMind cannot confirm itself when the concordance check reads the same column (`@draft-digest`).
     Its `identity` is the coordinate and **not** the provider's `match_on`: the source states no

@@ -78,6 +78,7 @@ from just_dna_enricher.clinvar_draft import (
     _MATCH_ON,
     _STATE_BY_CLIN_SIG,
     DEFAULT_CLIN_SIG,
+    ClinVarDraftError,
     _genotype_worklist,
     _open_stubs,
     _refusal_summary,
@@ -327,8 +328,10 @@ def _group_by_key(records: Sequence[dict]) -> list[_Key]:
     """Records → one `_Key` per `(chrom, start, ref, alt)`, in the order the reader emitted them."""
     grouped: dict[tuple[str, int, str, str], list[dict]] = {}
     for record in records:
+        # Normalized here as well as in the reader's filter, so the key a row is grouped under is
+        # spelled exactly as `gene_positions` spelled it — the two are looked up against each other.
         key = (
-            str(record["chrom"]), int(record["start"]),
+            normalize_chrom(str(record["chrom"])), int(record["start"]),
             str(record["ref"]), str(record["alt"]),
         )
         grouped.setdefault(key, []).append(record)
@@ -364,25 +367,30 @@ def _withhold_reason(key: _Key, *, clin_sig: frozenset[str], min_confidence: int
 def _row_cells(key: _Key, genes: set[str]) -> dict:
     """One PubMind key → the authored cells this provider is willing to state.
 
-    `gene` is ClinVar's attribution of the position and is written as such; where ClinVar attributes
-    the position to two of the requested genes the cell names both, because picking one would be this
-    module inventing the gene model it went to ClinVar to avoid inventing.
+    `gene` is ClinVar's attribution of the position, and it is written only where that attribution
+    names **one** of the requested genes. Two overlapping genes both claiming the position is a real
+    ambiguity: joining the symbols would put `BRCA1, BRCA2` in a cell `check-identifiers` looks up as
+    a symbol, and picking one would be this module inventing the gene model it went to ClinVar to
+    avoid inventing. So the cell is withheld and the caller names the rows — an unknown is withheld,
+    never guessed. The row is still drafted: `gene` is optional and the coordinate is the identity.
+
+    `call` and the confidence are both known to be present here — a key with no stated confidence, or
+    with a call outside the filter, was withheld before this is reached — so neither is defended
+    against twice.
     """
     call = key.calls[0]
-    confidences = key.confidences
-    confidence = f"confidence {max(confidences)}" if confidences else "confidence not stated"
     cells: dict = {
         "chrom": key.chrom,
         "start": key.start,
         "ref": key.ref,
         "alts": key.alt,
-        "gene": ", ".join(sorted(genes)) or None,
-        "clin_sig": call or None,
+        "gene": next(iter(genes)) if len(genes) == 1 else None,
+        "clin_sig": call,
         # A transcription of what the snapshot holds, not a reading of it — the shape `pgx_draft` set
         # and `clinvar_draft` follows. The derivation rides here because there is no authored column
         # for it and nobody has priced one.
         "conclusion": (
-            f"{PUBMIND_LABEL}: {call or 'no call'} ({confidence}; "
+            f"{PUBMIND_LABEL}: {call} (confidence {max(key.confidences)}; "
             f"{len(key.records)} record(s): {examples(key.pvids)}; "
             f"derivation {', '.join(key.derivations)}) — an LLM's reading of the published "
             f"literature, not a curated assertion"
@@ -490,7 +498,20 @@ def draft_gene_panel_from_pubmind(
             )
         reference = Path(resolved)
 
-    clinvar_reference, provisioning = _resolve_snapshot(snapshot, offline=offline, download=download)
+    # A pass owes its caller its own exception type (`@client-exception-contract`), and the ClinVar
+    # ladder raises ClinVar's. Translated rather than left to leak, with the reason the second
+    # snapshot is wanted at all — an author told "no ClinVar snapshot" by a PubMind command has been
+    # handed a puzzle rather than a diagnosis.
+    try:
+        clinvar_reference, provisioning = _resolve_snapshot(
+            snapshot, offline=offline, download=download
+        )
+    except ClinVarDraftError as exc:
+        raise PubMindDraftError(
+            f"{exc} A ClinVar snapshot is needed even for a PubMind draft: PubMind's table names no "
+            f"gene, so a coordinate is attributed to one through ClinVar's own per-record gene "
+            f"attribution and through nothing else."
+        ) from exc
     warnings.extend(provisioning)
     if build_warning:
         warnings.append(build_warning)
@@ -519,6 +540,7 @@ def draft_gene_panel_from_pubmind(
     keys = _group_by_key(select_by_positions(reference, list(positions)))
     withheld = dict.fromkeys(PUBMIND_WITHHELD_REASONS, 0)
     contested: list[_Key] = []
+    ambiguous_gene: list[str] = []
     partials: list[PartialRow] = []
     record_by_signature: dict[tuple[str, ...], dict] = {}
     stubbed_by_signature: dict[tuple[str, ...], tuple[str, ...]] = {}
@@ -529,7 +551,10 @@ def draft_gene_panel_from_pubmind(
             if reason == "contested_key":
                 contested.append(key)
             continue
-        cells = _row_cells(key, positions[(key.chrom, key.start)])
+        genes_here = positions[(key.chrom, key.start)]
+        if len(genes_here) > 1:
+            ambiguous_gene.append(f"{key.label} ({'/'.join(sorted(genes_here))})")
+        cells = _row_cells(key, genes_here)
         # `state` is stubbed for the same reason it is on the ClinVar path: PubMind states a call, and
         # `VALID_STATES` has no member meaning "undecided", so a call the fold does not cover is the
         # human's. Derived from the cells rather than listed, so a column this provider filled — the
@@ -561,6 +586,15 @@ def draft_gene_panel_from_pubmind(
         spoken_positions=len({(k.chrom, k.start) for k in keys}),
     )
     result.warnings.extend(_withheld_warnings(withheld, contested, min_confidence, clin_sig))
+    if ambiguous_gene:
+        result.warnings.append(
+            f"{len(ambiguous_gene)} coordinate(s) are attributed to more than one of the genes you "
+            f"asked for, so their `gene` cell is empty rather than naming one or naming both: "
+            f"{examples(ambiguous_gene)}. Both readings are wrong to write — a joined pair is not a "
+            f"symbol any lookup resolves, and choosing between them is the gene model this pass goes "
+            f"to ClinVar precisely to avoid inventing. The row is drafted; the coordinate is its "
+            f"identity, and `gene` is yours to fill if you want one."
+        )
     # Absence is not disagreement and is not silence: a position PubMind says nothing about means no
     # paper in the corpus survived their triage, never that the literature is quiet.
     if result.spoken_positions < result.mapped_positions:

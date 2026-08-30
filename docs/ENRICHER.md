@@ -2726,7 +2726,10 @@ review filter, because it is a locus universe rather than a selection and filter
 what PubMind is even asked about, invisibly. A min/max span over those positions was refused: it
 invents a boundary nobody defined and writes a `gene` cell that is a false claim wherever two genes
 overlap. Both snapshots are therefore required, and each absence names its own switch —
-`$JUST_DNA_PUBMIND_CACHE` or `--pubmind-cache` for one, the ClinVar ladder for the other.
+`$JUST_DNA_PUBMIND_CACHE` or `--pubmind-cache` for one, the ClinVar ladder for the other. A missing
+ClinVar snapshot raises **this** pass's `PubMindDraftError` rather than leaking ClinVar's, and the
+message says what the second snapshot is wanted for: told "no ClinVar snapshot" by a PubMind command,
+an author has otherwise been handed a puzzle.
 
 The cost of that choice is stated rather than counted: **a PubMind verdict at a position ClinVar has
 no record for cannot be reached by gene at all**, and that class is not countable, since attributing
@@ -2736,6 +2739,12 @@ it to a gene is precisely what there is no map for. It includes many of the codo
 source's rows carry no rs-number, so `chrom`/`start`/`ref`/`alts` go in together. The row still matches
 on the same five identity columns a ClinVar-drafted row does, so a coordinate both sources speak about
 is one row in the file rather than two.
+
+**A position two requested genes both claim leaves `gene` empty, counted and named.** Both other
+readings are wrong to write: `BRCA1, BRCA2` in that cell is not a symbol `check-identifiers` can
+resolve, and picking one is the gene model this pass went to ClinVar precisely to avoid inventing. The
+row is still drafted — `gene` is optional and the coordinate is the identity — and the author is told
+which coordinates and which genes, so filling it stays their call.
 
 **Five classes never become a row, and each is named at draft time.** A contested key, a
 length-changing row, a call outside `--clin-sig`, a confidence below `--min-confidence`, and a
