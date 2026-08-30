@@ -43,6 +43,62 @@ uncut minor and deliberately names no number — there is a version to write dow
 `pyproject.toml` files still read `0.6.6` until the release is cut, and the 2026-08-24 work ships
 inside this same number. Each entry below names the packages it actually touched.
 
+- **RM134 § B — the concordance check takes a second authority, and the record has a producer.**
+  *(`just-dna-enricher`, plus one optional `module_spec.yaml` field in `just-dna-format` and its
+  one-line passthrough in `just-dna-compiler`.)* PubMind (RM134 § A shipped its snapshot) joins ClinVar
+  as an annotation authority, and `clinical.clin_sig_concordance` becomes an N-authority check whose
+  seam is RM130's `classify_concordance` — a pure function that already knew nothing about ClinVar.
+  `pubmind.py` is the runtime reader over the snapshot, duckdb beside the polars builder; there is
+  deliberately no `lookup_loci` on it, because PubMind's coordinates are back-mappings of extracted
+  text and nothing it produces may enter `resolution.csv`.
+
+  **The three-way check subsumes the two-way rather than running beside it.** With no PubMind snapshot
+  that authority's call reads `unchecked` on every subject, and the degenerate case is exactly the
+  ClinVar-only finding: the same subjects are contested, the same conflicts are logged in the same
+  pinned words, and no author meets one disagreement twice. What changes is what the record withholds
+  — `authority_concordance` reads `unchecked` rather than `single`, because one authority speaking
+  while another was never asked is not corroboration and must not be recorded as any.
+
+  **The record now has a caller.** RM130 shipped the models, the classifier and the writer with
+  nothing producing them; `enrich()` builds the record from the comparison it already ran — never a
+  second pass over the snapshot — and commits both tables at the gate, after every strict refusal, so
+  a refused run leaves none behind. A module holding a ClinVar snapshot therefore carries the record
+  even when nothing is contested: the empty pair is the claim *we asked, and nothing here is
+  contested*, which is a different claim from the absent pair a run with no authority to ask leaves.
+
+  **The tautology is decided per leg.** Where a module's `clin_sig` was drafted out of a snapshot it
+  would be compared against and has not moved since, that authority is not consulted at all and states
+  nothing — a call recorded there would agree with the module by construction. But the *check* is
+  skipped only when every leg is hollow or unasked: a module drafted from ClinVar still gets a real
+  comparison out of PubMind, and throwing that away to suppress the hollow half is the error
+  `enrich_pgx` already made once. `is_tautological_leg` states the conjunction once and reads the
+  checked column out of `DRAFT_PROJECTIONS`, so § C's drafter needs no edit here.
+
+  **Several PVIDs over one allele fold to one call, camp guard first.** PubMind consolidates on
+  extracted text, so one allele carries several records whose verdicts disagree — 35,742 disagreeing
+  keys in the measured file. Where they straddle the pathogenic/benign line the answer is
+  `conflicting`, the vocabulary's own word for it, in the camp that opposes nothing; folding by
+  severity there would silently answer `pathogenic`, a winner picked by an ordering nobody defined.
+  Within one camp the fold is the shared normalizer's own severity rule, the same one that resolves a
+  composite token. Confidence is withheld unless exactly one record stands behind the call, and the
+  multiplicity is counted on the record rather than discarded.
+
+  **`authority_precedence:` is recorded and computed with by nothing.** One optional ordered list in
+  `module_spec.yaml`, beside `weighting:`/`authorship:`, saying whose call the curator weighted while
+  deciding — machine-readable so a consumer can see the stance, and read by no tier. Two modules
+  differing only in it compile to byte-identical parquets with the same `content_signature` and the
+  same `artifact.digest`, which is the property the tests assert rather than a round trip of the
+  value. **Nothing resolves a split**: no `majority`, no consensus call, no resolved winner, because
+  choosing between a declared order and a majority needs a weighting model this workspace has
+  declined to invent three times.
+
+  **Warning-tier in both modes, escalating in neither** (`@clinsig-never-escalates`), with more force
+  at two authorities than at one: a disagreement with a literature miner's aggregate is a statement
+  about that extraction's limits at least as often as about the module, the measured corpus join
+  agreed 62 % of the time, and `discordant` is a fact about the field rather than a defect in the
+  module. A run that found nothing contested reports no zero, and a run that could not put the
+  question writes nothing at all.
+
 - **RM85 — a recorded release, compared against the one its source publishes now.**
   *(`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member in `just-dna-format`.)*
   `SourceRow.dataset` has recorded which release a module's rows came from since RM4, and two things

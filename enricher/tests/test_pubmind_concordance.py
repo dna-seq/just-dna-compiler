@@ -264,7 +264,10 @@ def test_several_pvids_that_straddle_the_camps_fold_to_conflicting_not_to_the_se
         (_CHROM, _START, "T", "A", "PV1", "Pathogenic", "0.9", "2"),
         (_CHROM, _START, "T", "A", "PV2", "Benign", "0.1", "1"),
     ])
-    variant = _variant("pathogenic", "A/T")
+    # Authored `benign`, so the subject is contested by ClinVar either way and the record exists
+    # under the mutation too — otherwise removing the guard would fail this test by emptying the
+    # record, and the assertion that matters would never be reached.
+    variant = _variant("benign", "A/T")
     record = clin_sig_concordance(
         [variant], _resolution(variant), reference=clinvar, pubmind_reference=contested
     )
@@ -295,11 +298,18 @@ def test_within_one_camp_the_fold_is_the_shared_normalizers_own_severity_rule() 
 def test_the_straddling_fold_is_symmetric_in_the_order_the_records_arrive() -> None:
     """Reversing the input cannot change the answer — a fold that depended on arrival order would be
     the unsorted `mode()` this item rejected, wearing a different name."""
-    records = [
+    # Same camp, so the camp guard is not what is being exercised: the answer has to come from the
+    # severity order, and a fold reading `records[0]` would give two different answers here.
+    within = [
+        {"clin_sig": "benign", "clin_sig_raw": "Benign"},
+        {"clin_sig": "likely_benign", "clin_sig_raw": "Likely benign"},
+    ]
+    assert fold_authority_records(within) == fold_authority_records(list(reversed(within)))
+    across = [
         {"clin_sig": "benign", "clin_sig_raw": "Benign"},
         {"clin_sig": "pathogenic", "clin_sig_raw": "Pathogenic"},
     ]
-    assert fold_authority_records(records) == fold_authority_records(list(reversed(records)))
+    assert fold_authority_records(across) == fold_authority_records(list(reversed(across)))
 
 
 def test_a_subject_no_authority_classified_carries_no_classification() -> None:

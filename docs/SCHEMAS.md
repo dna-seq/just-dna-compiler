@@ -108,7 +108,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 
 | File | Model (module) | Role |
 |---|---|---|
-| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` (deprecated, RM4) / `authorship` / `license` / `weighting` (0.6, RM92) |
+| `module_spec.yaml` | `spec.ModuleSpecConfig` (`ModuleInfo`, `Defaults`) | identity / display / defaults / `panel` (deprecated, RM4) / `authorship` / `license` / `weighting` (0.6, RM92) / `authority_precedence` (0.7, RM134) |
 | `variants.csv` | `spec.VariantRow` | SNP-core annotations (the weights table) |
 | `studies.csv` | `spec.StudyRow` | grounding evidence (PMID/DOI + provenance) |
 | `resolution.csv` | `resolution.ResolutionRow` | injected rsid↔coord facts (0.5; enricher-produced) |
@@ -1586,6 +1586,23 @@ winner**, in the tables or in the manifest block. `authored_position` is a relat
 which is computable with no weights and true under either rule, and a consumer holding its own model
 has the detail rows to apply it to.
 
+**`module_spec.yaml`'s `authority_precedence:` is the stance, and it is computed with by nothing**
+(0.7, RM134). An optional ordered list of authority names beside `weighting:`/`authorship:`, saying
+whose call the curator weighted while deciding this module's `clin_sig` column — machine-readable so
+a consumer can see the stance instead of inferring it by reading every contested row, and **never an
+input any tier resolves with**. Nothing keys on it: no check consults it, no verdict and no emitted
+row depends on it, and two modules differing only in this field compile to byte-identical parquets
+with the same `content_signature` and the same `artifact.digest`. It is priced at the authored
+layer's full rate under Principle 9 and pays for itself by making a methodological position readable;
+and because nothing resolves with it, it has no arity to outgrow. Advisory in the same class as
+`weighting:`/`authorship:`/`license:` — copied into the manifest, out of both identity halves, and
+not reconstructed by the lossy `reverse_module`. A per-variant exception is an `overrides.csv` row
+rather than a second mechanism.
+
+The vocabulary is **open**, because `authority` is open wherever else it appears. The two things it
+refuses are about the list being an *order*: a blank entry ranks nothing, and a name appearing twice
+states two ranks for one authority.
+
 **Confidence is not normalized across authorities** for the same reason at one level down. A
 gold-star count and a literature miner's evidence-depth count are different instruments, so the detail
 row carries the value the authority published with `confidence_unit` naming the instrument beside it —
@@ -1595,10 +1612,13 @@ the model boundary.
 ### What is written, and what is only reachable
 
 A row is written when a disagreement is **established**: the module's call and an authority's sit in
-opposite camps, or two authorities that spoke disagree with each other. At one authority the second
-clause cannot fire, so the emitted set is exactly the conflicts the shipped two-way check already
-reports — which is what keeps a three-way check a superset of the two-way rather than a second opinion
-beside it, and keeps an author from meeting one disagreement twice.
+opposite camps, or two authorities that spoke disagree with each other. Where only one authority was
+consulted the second clause cannot fire, so the emitted set is exactly the conflicts the two-way
+check reports — which is what keeps the three-way check a superset of the two-way rather than a
+second opinion beside it, and keeps an author from meeting one disagreement twice. The second clause
+became live in 0.7, when RM134 § B added PubMind as a second authority; a deployment holding no
+PubMind snapshot still sees exactly the degenerate case, with that authority's call reading
+`unchecked`.
 
 An authority that could not be consulted never produces a row on its own. It cannot unmake a
 disagreement two others already witnessed, but a question nobody could put is not a finding.

@@ -374,6 +374,42 @@ class ModuleSpecConfig(BaseModel):
         ),
     )
 
+    authority_precedence: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Optional ordered list of the annotation authorities this module's curator weighted while deciding its clinical calls, most-trusted first — e.g. `[clinvar, pubmind]` (RM134). A **methodological stance, recorded and computed with by nothing**: no tier reads it to resolve anything, no check consults it, no verdict and no emitted row depends on it, and changing it moves neither identity half. It exists so a consumer can see the stance instead of inferring it by reading every contested row.\n\nIt resolves nothing because nothing can. With five authorities in a two-against-three disagreement, this order says one thing and a majority says another, and choosing between those rules is a judgement about how rank trades against agreement count — a weighting model this format does not have and has declined to invent three times. So the concordance record states the agreement state and each authority's own call, a consumer holding its own model computes what it likes, and a per-variant exception is an `overrides.csv` row rather than a second mechanism. Advisory like `weighting:`/`authorship:`/`license:`, copied into the manifest, and NOT reconstructed by the lossy `reverse_module`."
+        ),
+    )
+
+    @field_validator("authority_precedence")
+    @classmethod
+    def _check_authority_precedence(cls, v: list[str]) -> list[str]:
+        """Reject an empty entry and a repeated one; the vocabulary itself stays open.
+
+        Open because `authority` is open wherever else it appears — a deployment may weigh an
+        authority this release has never heard of, and a closed set would make declaring that
+        impossible rather than merely unusual.
+
+        The two refusals are about the list being an *order*: a blank entry ranks nothing, and a name
+        appearing twice states two different ranks for one authority, which is not an order at all.
+        Neither is a judgement about which authorities exist.
+        """
+        cleaned = [(entry or "").strip() for entry in v]
+        if any(not entry for entry in cleaned):
+            raise ValueError(
+                "authority_precedence is an ORDER, so every entry must name an authority — an empty "
+                "entry ranks nothing. Drop it rather than leaving a hole in the list."
+            )
+        seen: set[str] = set()
+        repeated = sorted({entry for entry in cleaned if entry in seen or seen.add(entry)})
+        if repeated:
+            raise ValueError(
+                f"authority_precedence names {repeated} more than once, which states two ranks for "
+                f"one authority. Each authority appears at most once; the order is the whole content "
+                f"of the field."
+            )
+        return cleaned
+
     @field_validator("schema_version")
     @classmethod
     def _validate_version(cls, v: str) -> str:

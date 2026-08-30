@@ -1508,6 +1508,12 @@ class ModuleManifest(BaseModel):
             "should look."
         ),
     )
+    authority_precedence: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The annotation authorities this module's curator weighted while deciding its clinical calls, most-trusted first (RM134). Author-declared via `module_spec.yaml`'s `authority_precedence:` and copied through; empty means the module has not said, which is not the same as saying its curator weighted them equally. **Nothing computes with it**, here or in any tier: it records a stance so a consumer can see it, and resolving a disagreement between authorities needs a weighting model this format does not have. Out of `artifact.digest` and `content_signature`."
+        ),
+    )
     weighting: Weighting | None = Field(
         default=None,
         description=(
